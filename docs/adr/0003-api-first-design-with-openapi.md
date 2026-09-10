@@ -20,7 +20,7 @@ The Elixir ecosystem supports both code-first (annotate controllers → generate
 **Spec-first (B3)** : The OpenAPI YAML spec is the authoritative contract. Both Phoenix controllers and the TypeScript client library are generated from it.
 
 - The spec lives at `priv/api/openapi.yaml` in the Phoenix app.
-- A custom Mix task (`mix gen.controllers`) reads the spec and generates Phoenix boilerplate: controllers, JSON renderers, router entries, and ExUnit contract tests.
+- A custom Mix task (`mix gen.controllers`) reads the spec and generates Phoenix boilerplate: controllers, JSON renderers, router entries, and ExUnit contract tests — one set per slice (see "Scaffolding Unit: the Slice").
 - `openapi-typescript` generates the TypeScript client from the same spec.
 - The TypeScript client is published as a workspace package (`packages/api-client`) in the monorepo.
 - The spec grows incrementally per domain — not written globally upfront.
@@ -40,9 +40,17 @@ The Elixir ecosystem supports both code-first (annotate controllers → generate
 
 Request validation is **explicit and generated**, not runtime-magical. The generator emits an Ecto.Changeset in each controller action that casts and validates params according to the OpenAPI spec's request body schema. If the spec changes, re-run `mix gen.controllers` to update the validation code. This keeps the OpenAPI spec as the contract source of truth while avoiding the "spec-driven config" anti-pattern — there is no invisible plug that auto-validates from the YAML at runtime.
 
+### Scaffolding Unit: the Slice
+
+The generator's unit of scaffolding is the **slice**, named by the `operationId` prefix (`inventoryStructure.showDefinition` → slice `inventoryStructure` → `inventory_structure_controller.ex`). The **tag** remains the domain boundary — "one domain = one tag = one URL root" — and carries the `x-context` / `x-resource` extensions.
+
+Separating the two lets one domain be served by several controllers without giving up its single tag and URL root. The `Inventory` tag, for example, owns both the `inventoryStructure` and `inventoryOperatorItems` slices. Keying scaffolding on the tag instead made the generator re-emit a broken stub for every tag whose controllers were deliberately named per slice.
+
+Every operation therefore **must** carry an `operationId` of the form `<slice>.<action>`, where `<slice>` underscores to the intended controller filename. An operationId with no prefix falls back to the tag name as its slice, preserving the original one-controller-per-tag behaviour.
+
 ### File Overwrite Behaviour
 
-The generator skips existing files by default. Re-running it only creates new files for newly-added endpoints. Use `--force` to overwrite a specific file. This prevents accidental loss of hand-written context calls.
+A slice's controller, JSON renderer, and contract test are one all-or-nothing unit. If the controller exists, the slice is considered hand-owned and all three are skipped — checking each file independently used to resurrect renderers for slices that deliberately render through another module. Re-running the generator therefore only creates files for newly-added slices, and `mise run api-gen` is idempotent. Use `--force` to overwrite everything, or `--force=<controller path>` for one slice. This prevents accidental loss of hand-written context calls.
 
 ### Auth
 
