@@ -279,7 +279,27 @@ defmodule DhcWeb.Router do
     # carries container location, notes, and maintenance facts, which spec
     # ALE-280 story 45 forbids showing members in ordinary browsing. They live
     # in the :inventory_admin_api scope below; the member-shaped catalog is
-    # ALE-285.
+    # the ALE-285 block that follows.
+
+    # ALE-285 member catalog and own loans. Member-readable by design: these
+    # serve separate read models that cannot express container location,
+    # operator notes, maintenance facts, or another member's loans. Access
+    # follows membership, not a role list — an inactive member cannot hold a
+    # session (ALE-280 story 46), so :authenticated_api already means "active
+    # member". A request is addressed to an item, so it hangs off the item;
+    # reading and cancelling a loan hangs off /loans/mine, whose `mine`
+    # segment is the authorization model made visible.
+    get "/inventory/catalog/items", InventoryCatalogController, :list_items
+    get "/inventory/catalog/items/:slugOrId", InventoryCatalogController, :show_item
+
+    post "/inventory/catalog/items/:slugOrId/requests",
+         InventoryCatalogController,
+         :request_loan
+
+    get "/inventory/loans/mine", InventoryMemberLoansController, :list
+    get "/inventory/loans/mine/:loanId", InventoryMemberLoansController, :show
+    post "/inventory/loans/mine/:loanId/cancel", InventoryMemberLoansController, :cancel
+
     # ALE-108: any authenticated member may read the global inventory activity feed.
     get "/inventory/history", InventoryHistoryController, :index
     get "/inventory/stats", InventoryDashboardController, :stats

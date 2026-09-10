@@ -4700,6 +4700,391 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemValidationError"
 
+  /inventory/catalog/items:
+    get:
+      operationId: inventoryCatalog.listItems
+      tags:
+        - Inventory
+      summary: Browse the member catalog
+      description: |
+        The member-facing catalog: cursor-paginated, non-archived Items with
+        the derived label, the immutable slug, the Category, typed property
+        values, and a **generic** availability reason.
+
+        This is not a role variant of the operator item viewer. It is a
+        different read model, and deliberately cannot express the operator
+        one: there is no Container, no operator notes, no Maintenance detail,
+        and no borrower — availability never discloses who holds an Item.
+        There is also no archive filter; retirement is an operator concern.
+        A member's own retained Loan history keeps showing archived Items
+        through its snapshots.
+
+        Search (`q`) covers the derived label through its ingredients: the
+        immutable slug, the Category name, and the property values the label
+        is built from (the label is derived, never stored). Filters:
+        `categoryId` (comma-separated) and `property` (comma-separated
+        `definitionId:value` pairs, OR within one definition and AND across
+        definitions). Container is intentionally not a member filter.
+
+        Ordering is by `slug` with an `id` tie-break, so page boundaries are
+        stable under concurrent edits. `totalCount` is exact. Cursors are
+        opaque and bind to limit, direction, search, and every filter; a
+        cursor replayed against a different query returns `400`.
+
+        Requires any authenticated Phoenix session. An inactive Member cannot
+        hold a session at all, so they have no catalog access.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 25
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: |
+            Opaque cursor from a previous response. Binds to limit,
+            direction, search, and every filter; a mismatched cursor
+            returns 400.
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+          description: Slug ordering direction.
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: |
+            Free-text search over the slug, Category name, and property
+            values — the ingredients of the derived label. Empty or
+            whitespace means no search.
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+          description: |
+            Comma-separated category ids. Absent or empty returns all
+            categories.
+        - name: property
+          in: query
+          schema:
+            type: string
+          description: |
+            Comma-separated `definitionId:value` pairs. Values of the same
+            definition are ORed; separate definitions are ANDed.
+      responses:
+        "200":
+          description: Cursor-paginated member catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryCatalogItemListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/catalog/items/{slugOrId}:
+    get:
+      operationId: inventoryCatalog.showItem
+      tags:
+        - Inventory
+      summary: Get one member catalog item by slug or id
+      description: |
+        Resolves one non-archived Item into the member shape, by its
+        immutable slug (`item-000001`) or its id. This is the detail behind
+        the mobile browse-and-request sheet.
+
+        An archived Item answers `404` rather than a distinct reason: to a
+        Member it simply is not in the catalog, and reporting "archived"
+        would disclose an operator fact about an Item they cannot see.
+
+        Requires any authenticated Phoenix session.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/SlugOrId"
+      responses:
+        "200":
+          description: The catalog item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryCatalogItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No non-archived item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/catalog/items/{slugOrId}/requests:
+    post:
+      operationId: inventoryCatalog.requestLoan
+      tags:
+        - Inventory
+      summary: Request an available catalog item
+      description: |
+        Submits a Loan request for the **calling** Member. There is no
+        borrower field: a Member may only ever request for themselves, and an
+        operator wanting to borrow does so as a Member under exactly these
+        rules.
+
+        `startsOn` and `dueOn` are calendar dates in `Europe/Dublin`; both
+        must be today or later with `dueOn` on or after `startsOn`. A
+        request creates **no** queue, reservation, or entitlement: competing
+        requests coexist while the Item stays available, and approval is the
+        single decision point. A Member may hold at most one pending request
+        per Item, but any number across different Items.
+
+        An Item that is in Maintenance or held by an approved/checked-out
+        Loan answers `409 item_unavailable` — a generic reason that never
+        discloses a borrower, a date, or a Maintenance note. An archived or
+        unknown Item answers `404`.
+
+        Requires any authenticated Phoenix session.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/SlugOrId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryLoanRequestRequest"
+      responses:
+        "201":
+          description: The created request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMemberLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No non-archived item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |
+            The item is not requestable (`item_unavailable`), or the member
+            already has a pending request for it (`duplicate_request`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMemberLoanConflictError"
+        "422":
+          description: Invalid dates or note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMemberLoanValidationError"
+
+  /inventory/loans/mine:
+    get:
+      operationId: inventoryMemberLoans.list
+      tags:
+        - Inventory
+      summary: List the calling member's own loans
+      description: |
+        The Member's complete Loan history, newest first — including
+        rejected and cancelled requests with their notes, so the record is
+        whole rather than only the currently interesting rows.
+
+        Every Item reference is the retained snapshot captured at request
+        time (`itemSlug`, `itemLabel`), not a live Item read, so an archived
+        Item does not rot the history. `containerPath` is present only from
+        approval onward: that is the one flow entitled to the Item's
+        location.
+
+        This operation returns **only** the caller's own Loans. Other
+        Members' Loans and borrower identities are never reachable here; the
+        operator Loan queue is a separate operation.
+
+        Requires any authenticated Phoenix session.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 25
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: |
+            Opaque cursor from a previous response. Binds to limit,
+            direction, and the status filter; a mismatched cursor
+            returns 400.
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+          description: |
+            Ordering on the Loan's immutable creation time. Defaults to
+            `desc` — newest first is how a history is read.
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [all, open, closed]
+            default: all
+          description: |
+            `open` narrows to requested/approved/checked-out obligations the
+            Member can still act on, `closed` to
+            rejected/cancelled/returned records, `all` (default) returns the
+            complete history.
+      responses:
+        "200":
+          description: The member's own loans
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMemberLoanListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/loans/mine/{loanId}:
+    get:
+      operationId: inventoryMemberLoans.show
+      tags:
+        - Inventory
+      summary: Get one of the calling member's own loans
+      description: |
+        The Loan detail behind the mobile collection flow: approved dates
+        and, once approved, the Item's Container path so the Member can
+        collect it without a second lookup.
+
+        A Loan belonging to another Member answers `404`: whether someone
+        else's Loan exists is not a Member-visible fact.
+
+        Requires any authenticated Phoenix session.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      responses:
+        "200":
+          description: The loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMemberLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The caller has no loan with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/loans/mine/{loanId}/cancel:
+    post:
+      operationId: inventoryMemberLoans.cancel
+      tags:
+        - Inventory
+      summary: Cancel one of the calling member's own loans
+      description: |
+        Cancels the Member's own `requested` or `approved` Loan and releases
+        the Item immediately. After checkout the Member physically holds the
+        Item, so release is the operator's return command, and a
+        checked-out or already-closed Loan answers `409 not_cancellable`.
+
+        Cancelling an already-cancelled Loan is a no-op, so a repeated tap on
+        a mobile button is not an error. A Loan belonging to another Member
+        answers `404`.
+
+        Requires any authenticated Phoenix session.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryLoanCancelRequest"
+      responses:
+        "200":
+          description: The cancelled loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMemberLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: The caller has no loan with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The loan is checked out or already closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMemberLoanConflictError"
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMemberLoanValidationError"
+
   /inventory/containers/{id}/move:
     post:
       operationId: inventoryContainers.move
@@ -5949,6 +6334,14 @@ components:
       description: |
         The Item's immutable slug (`item-000001`) or its uuid. A value
         that parses as a uuid resolves by id, anything else by slug.
+    LoanId:
+      name: loanId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: The Loan id.
   schemas:
     OnboardingStartAcceptanceRequest:
       type: object
@@ -9332,6 +9725,330 @@ components:
                   - retired_option
                   - retired_definition
                   - unknown_definition
+    InventoryCatalogAvailability:
+      type: object
+      description: |
+        The **only** explanation a Member ever receives for an unavailable
+        Item. `on_loan` and `maintenance` are deliberately generic: they can
+        never identify a borrower, reveal Loan dates, or expose an operator
+        Maintenance note. Recomputed on read from the same projection the
+        operator viewer uses, so the two can never disagree about whether an
+        Item is free.
+      required:
+        - available
+        - reason
+      properties:
+        available:
+          type: boolean
+        reason:
+          type: string
+          enum:
+            - available
+            - on_loan
+            - maintenance
+    InventoryCatalogCategoryRef:
+      type: object
+      description: A minimal Category reference for the member catalog.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    InventoryCatalogItem:
+      type: object
+      description: |
+        One Item as a Member sees it. This carries everything a Member is
+        entitled to and nothing more: no Container, no operator notes, no
+        Maintenance facts, no borrower, no archive state. The absent fields
+        are the contract — this is a separate read model from
+        `InventoryOperatorItem`, not a filtered view of it.
+
+        `label` is derived server-side from the Category plus its ordered
+        identifying values (slug as fallback) and is never stored.
+      required:
+        - id
+        - slug
+        - label
+        - category
+        - values
+        - availability
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: Immutable server-minted identity, e.g. `item-000001`.
+        label:
+          type: string
+          description: Server-derived display label. Never stored.
+        category:
+          allOf:
+            - $ref: "#/components/schemas/InventoryCatalogCategoryRef"
+          nullable: true
+        values:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryOperatorItemValue"
+          description: |
+            Typed property values, reusing the operator value shape: a
+            value is a Category-level fact with no privacy dimension.
+        availability:
+          $ref: "#/components/schemas/InventoryCatalogAvailability"
+    InventoryCatalogItemListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - items
+            - totalCount
+            - limit
+            - nextCursor
+            - previousCursor
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryCatalogItem"
+            totalCount:
+              type: integer
+              minimum: 0
+              description: Exact count over the filtered set, never an estimate.
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            nextCursor:
+              type: string
+              nullable: true
+            previousCursor:
+              type: string
+              nullable: true
+    InventoryCatalogItemResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryCatalogItem"
+    InventoryLoanRequestRequest:
+      type: object
+      description: |
+        A Member's Loan request for themselves. There is no borrower field by
+        design: the borrower is the authenticated caller.
+      required:
+        - startsOn
+        - dueOn
+      properties:
+        startsOn:
+          type: string
+          format: date
+          description: |
+            Intended collection date, a calendar date in `Europe/Dublin`.
+            Must be today or later.
+        dueOn:
+          type: string
+          format: date
+          description: |
+            Intended return date, a calendar date in `Europe/Dublin`. Must
+            be on or after `startsOn`.
+        note:
+          type: string
+          maxLength: 1000
+          description: Optional plain-text note. Blank means absent.
+    InventoryLoanCancelRequest:
+      type: object
+      description: A Member cancelling their own Loan before checkout.
+      properties:
+        note:
+          type: string
+          maxLength: 1000
+          description: Optional plain-text reason. Blank means absent.
+    InventoryMemberLoan:
+      type: object
+      description: |
+        One Loan as its borrower sees it.
+
+        `itemSlug` and `itemLabel` are the immutable snapshots captured at
+        request time, not a live Item read, so history stays readable after
+        the Item is archived. `containerPath` is populated only from approval
+        onward — before approval there is no entitlement to the Item's
+        location.
+
+        `overdue` is derived from passing the approved due date in
+        `Europe/Dublin` calendar days, never a stored state: extending the
+        due date clears it with no transition to undo.
+      required:
+        - id
+        - itemId
+        - status
+        - overdue
+        - requestedStartOn
+        - requestedDueOn
+        - approvedStartOn
+        - approvedDueOn
+        - checkedOutAt
+        - returnedAt
+        - requestNote
+        - decisionNote
+        - itemSlug
+        - itemLabel
+        - containerPath
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - requested
+            - approved
+            - rejected
+            - cancelled
+            - checked_out
+            - returned
+        overdue:
+          type: boolean
+          description: Derived, never stored.
+        requestedStartOn:
+          type: string
+          format: date
+        requestedDueOn:
+          type: string
+          format: date
+        approvedStartOn:
+          type: string
+          format: date
+          nullable: true
+        approvedDueOn:
+          type: string
+          format: date
+          nullable: true
+        checkedOutAt:
+          type: string
+          format: date-time
+          nullable: true
+        returnedAt:
+          type: string
+          format: date-time
+          nullable: true
+        requestNote:
+          type: string
+          nullable: true
+        decisionNote:
+          type: string
+          nullable: true
+          description: |
+            The rejection, cancellation, or approval note, including the
+            system-authored note on an automatically rejected competing
+            request.
+        itemSlug:
+          type: string
+          description: Immutable snapshot captured at request time.
+        itemLabel:
+          type: string
+          description: Immutable snapshot captured at request time.
+        containerPath:
+          type: string
+          nullable: true
+          description: |
+            The Item's location, disclosed only from approval onward for
+            collection.
+        createdAt:
+          type: string
+          format: date-time
+    InventoryMemberLoanListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - loans
+            - totalCount
+            - limit
+            - nextCursor
+            - previousCursor
+          properties:
+            loans:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryMemberLoan"
+            totalCount:
+              type: integer
+              minimum: 0
+              description: |
+                Exact count of the Member's own Loans in the filtered set,
+                never an estimate.
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            nextCursor:
+              type: string
+              nullable: true
+            previousCursor:
+              type: string
+              nullable: true
+    InventoryMemberLoanResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryMemberLoan"
+    InventoryMemberLoanConflictError:
+      type: object
+      required:
+        - errors
+      description: |
+        409 conflicts on a member Loan command. Each is a domain conflict a
+        losing racer receives instead of a server error. `item_unavailable`
+        is deliberately generic — it never says who holds the Item or why.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - item_unavailable
+                - duplicate_request
+                - not_cancellable
+    InventoryMemberLoanValidationError:
+      type: object
+      required:
+        - errors
+      description: 422 validation failures on a member Loan command.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - invalid_dates
+                - invalid_note
     InventoryContainerMoveRequest:
       type: object
       properties:
