@@ -14,9 +14,9 @@ defmodule DhcWeb.InventoryMemberLoansController do
 
   Requesting an item is `DhcWeb.InventoryCatalogController` — a request is
   addressed to an item, whose availability gates it. The operator loan queue
-  and every operator transition (approve, reject, checkout, return, due-date
-  edits) are ALE-286 and will be their own operator-gated slice; nothing here
-  can be reached with an operator role that a plain member could not reach.
+  and every operator transition live on `/inventory/operator/loans*`
+  (ALE-298); nothing here can be reached with an operator role that a
+  plain member could not reach.
 
   The controller only maps `Dhc.Inventory` result tuples onto status codes.
   """
