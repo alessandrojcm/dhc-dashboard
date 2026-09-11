@@ -43,11 +43,14 @@ tags:
       root. Legacy category, container, item, history, and dashboard
       operations keep their existing tags until ALE-289 collapses them.
 
-      Target operator item operations are parked under
-      `/inventory/operator/items` only because the legacy `/inventory/items`
-      paths are still serving the current dashboard. ALE-289 deletes the
-      legacy operations and moves these onto the freed `/inventory/items`
-      URLs, leaving one tag and one root with no `operator` segment.
+      Target operator item operations and operator loan operations are
+      parked under `/inventory/operator/...` only because the legacy
+      `/inventory/items` paths are still serving the current dashboard.
+      ALE-289 deletes the legacy operations and moves these onto the
+      freed `/inventory/items` URLs, leaving one tag and one root with
+      no `operator` segment. Operator loan commands and the shared
+      queue stay under `/inventory/operator/loans` — they have no
+      legacy twin.
     x-context: Dhc.Inventory
     x-resource: PropertyDefinition
   - name: Members
@@ -4699,6 +4702,453 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemValidationError"
+
+  /inventory/operator/loans/queue:
+    get:
+      operationId: inventoryOperatorLoanQueue.show
+      tags:
+        - Inventory
+      summary: Shared operator loan queue
+      description: |
+        The duty-officer work list: every open Loan partitioned into four
+        buckets — pending requests, handovers due, returns and overdue,
+        and open maintenance. Each bucket is `{count, rows}` where
+        `count` is the length of `rows`, so a count can never disagree
+        with the list beside it.
+
+        The queue is deliberately unpaginated. The open-loan set is
+        bounded by the club's physical items, and a cursor that hid
+        rows would make `count` lie about what the operator can see.
+        A future-dated approval is in no bucket: there is nothing to
+        hand over today. Closed loans never appear.
+
+        Operator-only: rows name the borrower and disclose the
+        Container path and maintenance reasons. This is not a role
+        variant of `/inventory/loans/mine`.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, `admin`.
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: The four work-list buckets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanQueueResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated but not an inventory operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/operator/loans/{loanId}:
+    get:
+      operationId: inventoryOperatorLoans.show
+      tags:
+        - Inventory
+      summary: Get one loan as an operator sees it
+      description: |
+        Operator-shaped Loan viewer: borrower, requested and approved
+        dates, actual checkout/return timestamps, notes, the item
+        snapshot, and the Container path snapshotted at approval.
+
+        Distinct from `/inventory/loans/mine/{loanId}`, which must not
+        gain operator fields.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      responses:
+        "200":
+          description: The loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated but not an inventory operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No loan exists with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/operator/loans/{loanId}/approve:
+    post:
+      operationId: inventoryOperatorLoans.approve
+      tags:
+        - Inventory
+      summary: Approve a pending loan request
+      description: |
+        Approves one `requested` Loan, reserving the Item and rejecting
+        every competing pending request with a system note. Dates may
+        be adjusted; omitted dates keep the Member's requested values.
+        The Container path is snapshotted here — approval is the
+        collection entitlement.
+
+        Notifies the borrower with the approved dates and Container
+        path. Automatically rejected competitors are not notified.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorLoanApproveRequest"
+      responses:
+        "200":
+          description: The approved loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated but not an inventory operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No loan exists with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The loan is not pending, or the item is already allocated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanConflictError"
+        "422":
+          description: Invalid dates or note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanValidationError"
+
+  /inventory/operator/loans/{loanId}/reject:
+    post:
+      operationId: inventoryOperatorLoans.reject
+      tags:
+        - Inventory
+      summary: Reject a pending loan request
+      description: |
+        Rejects one `requested` Loan with an optional operator note.
+        Reserves nothing. Notifies the borrower.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorLoanNoteRequest"
+      responses:
+        "200":
+          description: The rejected loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated but not an inventory operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No loan exists with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The loan is not pending
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanConflictError"
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanValidationError"
+
+  /inventory/operator/loans/{loanId}/cancel:
+    post:
+      operationId: inventoryOperatorLoans.cancel
+      tags:
+        - Inventory
+      summary: Cancel an approved loan as an operator
+      description: |
+        Cancels one `approved` Loan. A pending request is rejected
+        instead; after checkout release is a return. Notifies the
+        borrower.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorLoanNoteRequest"
+      responses:
+        "200":
+          description: The cancelled loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated but not an inventory operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No loan exists with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The loan is not approved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanConflictError"
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanValidationError"
+
+  /inventory/operator/loans/{loanId}/checkout:
+    post:
+      operationId: inventoryOperatorLoans.checkout
+      tags:
+        - Inventory
+      summary: Check out an approved loan
+      description: |
+        Hands an approved Item over to its borrower. Gated to an
+        `approved` Loan whose approved window contains today and whose
+        Item is out of maintenance. An early or late handover edits
+        the dates first — this command does not widen the window.
+
+        No notification: checkout is a physical fact the borrower is
+        present for.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      responses:
+        "200":
+          description: The checked-out loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated but not an inventory operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No loan exists with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The loan is not approved, is outside its window, or the item is in maintenance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanConflictError"
+
+  /inventory/operator/loans/{loanId}/return:
+    post:
+      operationId: inventoryOperatorLoans.return
+      tags:
+        - Inventory
+      summary: Return a checked-out loan
+      description: |
+        Returns a `checked_out` Item, releasing it immediately. There
+        is no condition outcome. No notification: the borrower is
+        present for the handback.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      responses:
+        "200":
+          description: The returned loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated but not an inventory operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No loan exists with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The loan is not checked out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanConflictError"
+
+  /inventory/operator/loans/{loanId}/dates:
+    post:
+      operationId: inventoryOperatorLoans.editDates
+      tags:
+        - Inventory
+      summary: Edit the approved dates of a live loan
+      description: |
+        Edits the approved start and/or due date of an `approved` or
+        `checked_out` Loan. Omitted dates are left as they are. The
+        start is immutable after checkout; the due date stays editable
+        but may never precede the handover day.
+
+        A due-date change notifies the borrower. Reminders reschedule
+        from the new date with no write on this path.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - $ref: "#/components/parameters/LoanId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorLoanDatesRequest"
+      responses:
+        "200":
+          description: The updated loan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated but not an inventory operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No loan exists with that id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The loan is not editable, or the start is immutable after checkout
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanConflictError"
+        "422":
+          description: Invalid dates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorLoanValidationError"
 
   /inventory/catalog/items:
     get:
@@ -10035,6 +10485,319 @@ components:
       required:
         - errors
       description: 422 validation failures on a member Loan command.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - invalid_dates
+                - invalid_note
+    InventoryOperatorLoan:
+      type: object
+      description: |
+        One Loan as an operator sees it.
+
+        Distinct from `InventoryMemberLoan`: this viewer names the
+        borrower, always carries the Container path (snapshotted at
+        approval), and includes deciding-operator and actual handover
+        timestamps. It must never be handed to a member read.
+
+        `itemSlug` and `itemLabel` are the immutable snapshots captured
+        at request time. `overdue` is derived from passing the approved
+        due date in `Europe/Dublin` calendar days, never a stored state.
+      required:
+        - id
+        - itemId
+        - borrowerPrincipalId
+        - status
+        - overdue
+        - requestedStartOn
+        - requestedDueOn
+        - approvedStartOn
+        - approvedDueOn
+        - checkedOutAt
+        - returnedAt
+        - decidedAt
+        - decidedByPrincipalId
+        - returnedByPrincipalId
+        - requestNote
+        - decisionNote
+        - itemSlug
+        - itemLabel
+        - containerPath
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        borrowerPrincipalId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - requested
+            - approved
+            - rejected
+            - cancelled
+            - checked_out
+            - returned
+        overdue:
+          type: boolean
+          description: Derived, never stored.
+        requestedStartOn:
+          type: string
+          format: date
+        requestedDueOn:
+          type: string
+          format: date
+        approvedStartOn:
+          type: string
+          format: date
+          nullable: true
+        approvedDueOn:
+          type: string
+          format: date
+          nullable: true
+        checkedOutAt:
+          type: string
+          format: date-time
+          nullable: true
+        returnedAt:
+          type: string
+          format: date-time
+          nullable: true
+        decidedAt:
+          type: string
+          format: date-time
+          nullable: true
+        decidedByPrincipalId:
+          type: string
+          format: uuid
+          nullable: true
+        returnedByPrincipalId:
+          type: string
+          format: uuid
+          nullable: true
+        requestNote:
+          type: string
+          nullable: true
+        decisionNote:
+          type: string
+          nullable: true
+        itemSlug:
+          type: string
+        itemLabel:
+          type: string
+        containerPath:
+          type: string
+          nullable: true
+          description: |
+            Snapshotted at approval. Always present on this viewer once
+            the Loan has been approved; null while still requested.
+        createdAt:
+          type: string
+          format: date-time
+    InventoryOperatorLoanHandover:
+      allOf:
+        - $ref: "#/components/schemas/InventoryOperatorLoan"
+        - type: object
+          required:
+            - readyForCheckout
+          properties:
+            readyForCheckout:
+              type: boolean
+              description: |
+                Advisory: whether `checkout` would accept this Loan
+                right now. The command re-decides under the item lock.
+    InventoryOperatorLoanMaintenanceRow:
+      type: object
+      description: |
+        One Item with an open Maintenance Period, as it appears in the
+        operator queue. `itemLabel` is the derived catalog label.
+      required:
+        - id
+        - itemId
+        - itemSlug
+        - itemLabel
+        - startedAt
+        - startedByPrincipalId
+        - startReason
+      properties:
+        id:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        itemSlug:
+          type: string
+          nullable: true
+        itemLabel:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        startedByPrincipalId:
+          type: string
+          format: uuid
+          nullable: true
+        startReason:
+          type: string
+          nullable: true
+    InventoryOperatorLoanBucket:
+      type: object
+      required:
+        - count
+        - rows
+      properties:
+        count:
+          type: integer
+          minimum: 0
+          description: Length of `rows`. Never a second aggregate.
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryOperatorLoan"
+    InventoryOperatorLoanHandoverBucket:
+      type: object
+      required:
+        - count
+        - rows
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryOperatorLoanHandover"
+    InventoryOperatorLoanMaintenanceBucket:
+      type: object
+      required:
+        - count
+        - rows
+      properties:
+        count:
+          type: integer
+          minimum: 0
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryOperatorLoanMaintenanceRow"
+    InventoryOperatorLoanQueue:
+      type: object
+      description: |
+        The four work-list buckets. Unpaginated by design: each
+        `count` is `length(rows)` of the bucket beside it.
+      required:
+        - pendingRequests
+        - handoversDue
+        - returnsAndOverdue
+        - openMaintenance
+      properties:
+        pendingRequests:
+          $ref: "#/components/schemas/InventoryOperatorLoanBucket"
+        handoversDue:
+          $ref: "#/components/schemas/InventoryOperatorLoanHandoverBucket"
+        returnsAndOverdue:
+          $ref: "#/components/schemas/InventoryOperatorLoanBucket"
+        openMaintenance:
+          $ref: "#/components/schemas/InventoryOperatorLoanMaintenanceBucket"
+    InventoryOperatorLoanQueueResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryOperatorLoanQueue"
+    InventoryOperatorLoanResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryOperatorLoan"
+    InventoryOperatorLoanApproveRequest:
+      type: object
+      description: |
+        Approve a pending request. Omitted dates keep the Member's
+        requested values. The approved start may be in the past.
+      properties:
+        startsOn:
+          type: string
+          format: date
+        dueOn:
+          type: string
+          format: date
+        note:
+          type: string
+          maxLength: 1000
+          description: Optional plain-text note. Blank means absent.
+    InventoryOperatorLoanNoteRequest:
+      type: object
+      description: Optional operator note on reject or operator cancel.
+      properties:
+        note:
+          type: string
+          maxLength: 1000
+          description: Optional plain-text reason. Blank means absent.
+    InventoryOperatorLoanDatesRequest:
+      type: object
+      description: |
+        Edit approved dates. Omitted dates are left as they are. The
+        start is immutable after checkout.
+      properties:
+        startsOn:
+          type: string
+          format: date
+        dueOn:
+          type: string
+          format: date
+    InventoryOperatorLoanConflictError:
+      type: object
+      required:
+        - errors
+      description: |
+        409 interlock and invalid-transition conflicts on an operator
+        Loan command. Each is a domain conflict a losing racer or a
+        wrong-state tap receives instead of a server error.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - not_pending
+                - not_approved
+                - not_checked_out
+                - not_editable
+                - item_unavailable
+                - already_allocated
+                - start_immutable
+                - outside_window
+                - maintenance_open
+    InventoryOperatorLoanValidationError:
+      type: object
+      required:
+        - errors
+      description: 422 validation failures on an operator Loan command.
       properties:
         errors:
           type: object

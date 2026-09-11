@@ -376,6 +376,30 @@ defmodule DhcWeb.Router do
     post "/inventory/operator/items/:slugOrId/restore",
          InventoryOperatorItemsController,
          :restore
+
+    # ALE-286c operator loan viewers, commands, and the shared queue.
+    # Equal authority for quartermaster, president, and admin. Each
+    # transition is its own route so there is no generic loan patch.
+    # The queue is unpaginated: bucket counts are length(rows).
+    get "/inventory/operator/loans/queue", InventoryOperatorLoanQueueController, :show
+    get "/inventory/operator/loans/:loanId", InventoryOperatorLoansController, :show
+
+    post "/inventory/operator/loans/:loanId/approve",
+         InventoryOperatorLoansController,
+         :approve
+
+    post "/inventory/operator/loans/:loanId/reject", InventoryOperatorLoansController, :reject
+    post "/inventory/operator/loans/:loanId/cancel", InventoryOperatorLoansController, :cancel
+
+    post "/inventory/operator/loans/:loanId/checkout",
+         InventoryOperatorLoansController,
+         :checkout
+
+    post "/inventory/operator/loans/:loanId/return", InventoryOperatorLoansController, :return
+
+    post "/inventory/operator/loans/:loanId/dates",
+         InventoryOperatorLoansController,
+         :edit_dates
   end
 
   # Phoenix-session auth API. Lives under /api/auth/* and is the first

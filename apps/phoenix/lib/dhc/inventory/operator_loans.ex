@@ -71,15 +71,12 @@ defmodule Dhc.Inventory.OperatorLoans do
 
   ## Notifications
 
-  None, on purpose. ALE-280 makes the keyed, idempotent notification seam
-  (ALE-287) a hard prerequisite before any loan command is *exposed*, and
-  ALE-287 is sequenced after this slice. Wiring the current non-keyed
-  `Dhc.Notifications.create/2` path here would create exactly the duplicate
-  notification problem ALE-287 exists to prevent. Every transition this
-  module writes is a durable row, so ALE-287 can attach keyed notifications
-  to them without reshaping these commands — the same contract
-  `Dhc.Inventory.MemberLoans` deliberately left for it. The API exposure of
-  these commands is ALE-286c and is blocked on ALE-287.
+  None, on purpose. ALE-298 attaches keyed notifications *after* these
+  commands return, through `Dhc.Inventory.notify_loan_transition/2`. Wiring
+  `Dhc.Notifications.create/2` here would create exactly the duplicate
+  notification problem the keyed seam exists to prevent. Every transition
+  this module writes is a durable row, so the HTTP layer can name the
+  logical event without reshaping these commands.
   """
 
   import Ecto.Query

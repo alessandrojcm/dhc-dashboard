@@ -16,6 +16,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Inventory.Items
   alias Dhc.Inventory.MemberCatalog
+  alias Dhc.Inventory.LoanNotifications
   alias Dhc.Inventory.LoanReminders
   alias Dhc.Inventory.MemberLoans
   alias Dhc.Inventory.OperatorItemLifecycle
@@ -94,8 +95,8 @@ defmodule Dhc.Inventory do
 
   # ALE-296 (286a) operator loan transitions. Each locks the item before the
   # loan and returns a domain conflict on a race; approval reserves the item
-  # exactly once and rejects every competing request. Notifications are
-  # ALE-287 and deliberately absent — the API exposure is ALE-286c. Operator
+  # exactly once and rejects every competing request. Notifications stay
+  # absent here — ALE-298 attaches them after the command returns. Operator
   # cancel applies only to an approved loan; the member's own cancellation
   # stays in `MemberLoans`.
   defdelegate approve_loan(loan_id, attrs, actor_id), to: OperatorLoans
@@ -113,6 +114,12 @@ defmodule Dhc.Inventory do
   # disclose container and maintenance facts, which the member read model
   # (ALE-285) cannot express at all.
   defdelegate get_operator_loan_queue(), to: OperatorLoanQueue
+
+  # ALE-298 (286c) post-commit keyed notifications for exposed operator
+  # transitions. The commands themselves stay notification-free; the
+  # controller calls this after they return so a retry cannot land a
+  # second unread row (create_keyed/3).
+  defdelegate notify_loan_transition(loan, kind), to: LoanNotifications
 
   # ALE-287 loan reminders. A durable ledger whose delivery pass is also its
   # reconciliation: one pre-due reminder, one at overdue, weekly thereafter,
