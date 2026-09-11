@@ -18,6 +18,8 @@ Target Inventory Item operations are exposed on the temporary `/api/inventory/op
 
 Loan commands are split domain-seam-first: `Dhc.Inventory.OperatorLoans` (ALE-296) writes every operator transition as durable rows and emits **no notifications**, because ALE-280 makes the ALE-287 keyed notification seam a hard prerequisite before any loan command is *exposed*. Wiring the non-keyed `Dhc.Notifications.create/2` path into a loan transition is the specific mistake that split exists to prevent; API exposure waits for ALE-287. See the operator loan row in `docs/agents/where-to-look.md`.
 
+The operator loan queue (`Dhc.Inventory.OperatorLoanQueue`, ALE-297) is a lock-free, actor-free **read model** over those rows: bucket counts are `length(rows)` of the bucket beside them rather than a second aggregate query, so the queue is deliberately unpaginated. It projects loans through the now-public `OperatorLoans.operator_view/2` instead of rebuilding the shape, which is the rule to preserve when adding a bucket or field — a queue row and the operator detail read must not be able to disagree. See the operator loan queue row in `docs/agents/where-to-look.md`.
+
 `mix gen.controllers` scaffolds one controller + JSON renderer + contract test per **slice** — the `operationId` prefix — not per tag, so a domain keeps one tag and one URL root while being served by several controllers (the `Inventory` tag owns `inventoryStructure` and `inventoryOperatorItems`). Every operation needs an `operationId` of `<slice>.<action>` whose prefix underscores to the controller filename, and `mise run api-gen` must stay idempotent (only `skip` lines, no new files). See ADR 0003 and the `mix gen.controllers` gotchas in `docs/agents/notes.md`.
 
 ## Navigation
