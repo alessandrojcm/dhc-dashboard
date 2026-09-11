@@ -116,12 +116,19 @@ defmodule Dhc.Notifications do
       nil ->
         {:error, :not_found}
 
-      notification ->
-        notification
-        |> Ecto.Changeset.change(
-          read_at: notification.read_at || DateTime.utc_now() |> DateTime.truncate(:second)
-        )
-        |> Repo.update()
+      # Already read: keep the original timestamp so re-reading is idempotent
+      # and does not rewrite when the recipient actually saw it.
+      %Notification{read_at: %DateTime{}} = notification ->
+        {:ok, notification}
+
+      %Notification{} = notification ->
+        {1, [%Notification{} = updated]} =
+          Notification
+          |> where([n], n.id == ^notification.id)
+          |> select([n], n)
+          |> Repo.update_all(set: [read_stamp()])
+
+        {:ok, updated}
     end
   end
 
@@ -131,10 +138,24 @@ defmodule Dhc.Notifications do
     {updated_count, _} =
       Notification
       |> where([n], n.principal_id == ^user_id and is_nil(n.read_at))
-      |> Repo.update_all(set: [read_at: DateTime.utc_now() |> DateTime.truncate(:second)])
+      |> Repo.update_all(set: [read_stamp()])
 
     {:ok, updated_count}
   end
+
+  # `read_at` is stamped by the database and clamped to `created_at`, never
+  # computed in Elixir.
+  #
+  # `notifications` has a `read_at >= created_at` check constraint, and
+  # `created_at` defaults to `NOW()` with microsecond precision. Truncating an
+  # Elixir `utc_now/0` to the second rounds *down*, so a notification read in
+  # the same second it was created produced a `read_at` before its
+  # `created_at` and raised `Ecto.ConstraintError` — a 500 on "mark as read"
+  # for the newest notification, which is precisely the one a recipient taps.
+  # `GREATEST` makes the stamp monotonic with respect to the row it belongs to,
+  # and reading the clock in Postgres keeps it consistent with the default that
+  # set `created_at`.
+  defp read_stamp, do: {:read_at, dynamic([n], fragment("GREATEST(now(), ?)", n.created_at))}
 
   defp parse_options(params) do
     limit = parse_integer(Map.get(params, "limit", "10"))
