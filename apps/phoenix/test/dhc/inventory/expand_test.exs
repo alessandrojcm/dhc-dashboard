@@ -153,14 +153,36 @@ defmodule Dhc.Inventory.ExpandTest do
       borrower = insert_principal!()
       loan_id = insert_loan!(item_id, borrower, "requested")
 
-      insert_reminder!(loan_id, borrower, "due_soon", 0)
+      insert_reminder!(loan_id, borrower, "pre_due", 0)
 
       assert_raise Postgrex.Error, ~r/ledger_key_unique/i, fn ->
-        insert_reminder!(loan_id, borrower, "due_soon", 0)
+        insert_reminder!(loan_id, borrower, "pre_due", 0)
       end
 
       # A due-date revision is a new ledger key (no stale retry).
-      insert_reminder!(loan_id, borrower, "due_soon", 1)
+      insert_reminder!(loan_id, borrower, "pre_due", 1)
+
+      # A different kind for the same revision is its own occurrence, which is
+      # what lets one loan hold a pre-due and an overdue reminder at once.
+      insert_reminder!(loan_id, borrower, "overdue", 0)
+      insert_reminder!(loan_id, borrower, "overdue_week_2", 0)
+    end
+
+    test "reminder kinds are constrained to the scheduled occurrences" do
+      category = insert_category()
+      container_id = insert_container!()
+      {:ok, item_id} = insert_item(container_id, category.id)
+      borrower = insert_principal!()
+      loan_id = insert_loan!(item_id, borrower, "requested")
+
+      # ALE-287 fixed the occurrence vocabulary: one pre-due, one at overdue,
+      # then numbered weekly repeats. An arbitrary kind would silently create a
+      # reminder no pass ever delivers or supersedes.
+      for invalid <- ["due_soon", "overdue_week_0", "overdue_weekly", "OVERDUE", ""] do
+        assert_raise Postgrex.Error, ~r/kind_check/i, fn ->
+          insert_reminder!(loan_id, borrower, invalid, 0)
+        end
+      end
     end
 
     test "new foreign keys are restrictive" do

@@ -16,6 +16,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Inventory.Items
   alias Dhc.Inventory.MemberCatalog
+  alias Dhc.Inventory.LoanReminders
   alias Dhc.Inventory.MemberLoans
   alias Dhc.Inventory.OperatorItemLifecycle
   alias Dhc.Inventory.OperatorItemList
@@ -112,6 +113,17 @@ defmodule Dhc.Inventory do
   # disclose container and maintenance facts, which the member read model
   # (ALE-285) cannot express at all.
   defdelegate get_operator_loan_queue(), to: OperatorLoanQueue
+
+  # ALE-287 loan reminders. A durable ledger whose delivery pass is also its
+  # reconciliation: one pre-due reminder, one at overdue, weekly thereafter,
+  # none for a closed loan, and no duplicate per occurrence across retries or
+  # scheduler restarts. Reminders are *derived* from each loan's approved due
+  # date, so a due-date edit reschedules them with no write on the transition
+  # path — which is why the loan commands stay reminder-free. Driven on a cron
+  # by `Dhc.Inventory.Workers.LoanReminderWorker`; `run_loan_reminders/0` is
+  # exposed for that worker and for operational repair.
+  defdelegate run_loan_reminders(), to: LoanReminders, as: :run
+  defdelegate due_loan_reminders(), to: LoanReminders, as: :due
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
   defdelegate list_history(opts \\ %{}), to: ItemHistory
