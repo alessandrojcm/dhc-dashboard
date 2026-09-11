@@ -56,6 +56,96 @@ defmodule Dhc.Notifications do
     end
   end
 
+  @doc """
+  Creates a Notification **at most once** for a `(principal_id, key)` pair.
+
+  `create/2` is at-least-once by construction: a caller that crashes or retries
+  after the commit creates a second row. Every notification ALE-280 asks for is
+  emitted from a retryable context — an Oban reminder tick, a reconciliation
+  pass repairing a missed event, a loan transition a client may resubmit — so
+  the caller needs to be able to name the *logical event* and have a repeat be a
+  no-op (story 51: no duplicate unread notification per reminder kind across
+  retries and scheduler restarts).
+
+  The `key` identifies the event, never the recipient: one overdue loan
+  notifies the borrower and every operator, and each gets their own row from the
+  same key. Uniqueness is scoped to `(principal_id, key)` in the database, so a
+  caller never has to smuggle a principal id into the key string.
+
+  Behaviour beyond `create/2`:
+
+    * Insert is `ON CONFLICT DO NOTHING` against
+      `notifications_principal_notification_key_unique`, so a concurrent
+      duplicate is a normal outcome and never a `Postgrex.Error`.
+    * Returns `{:ok, :created}` when this call created the row and
+      `{:ok, :already_created}` when a row for the key already existed. Callers
+      that must not act twice (an email, an external side effect) branch on
+      this; callers that only need the notification to exist can ignore it.
+    * Broadcasts **only** on `:created`. Re-signalling on a retry would make a
+      duplicate-suppressed write look like new activity to the recipient's
+      client, which is the user-visible half of the duplicate problem.
+    * Never updates the existing row. The row is a fact the recipient may
+      already have read and acted on; replacing its body or clearing `read_at`
+      would resurrect a handled notification.
+
+  Returns `{:error, :invalid_notification_key}` for a blank key rather than
+  silently degrading to an unkeyed row, `{:error, :notification_create_inside_transaction}`
+  for a nested call, and `{:error, changeset}` for an invalid recipient.
+  """
+  @spec create_keyed(String.t(), String.t(), String.t()) ::
+          {:ok, :created | :already_created} | {:error, term()}
+  def create_keyed(principal_id, key, body)
+      when is_binary(principal_id) and is_binary(key) and is_binary(body) do
+    cond do
+      String.trim(key) == "" ->
+        {:error, :invalid_notification_key}
+
+      Repo.in_transaction?() ->
+        {:error, :notification_create_inside_transaction}
+
+      true ->
+        principal_id
+        |> notification_changeset(body)
+        |> Ecto.Changeset.put_change(:notification_key, String.trim(key))
+        |> insert_keyed()
+    end
+  end
+
+  # The changeset is built (and validated) exactly as for `create/2`, but the
+  # write goes through `insert_all` because it is the one insert API that
+  # reports whether a row was actually written. `Repo.insert` with
+  # `on_conflict: :nothing` cannot answer that here: the schema autogenerates
+  # its `binary_id` in Elixir, so the returned struct carries an id whether or
+  # not the row reached the table.
+  defp insert_keyed(%Ecto.Changeset{valid?: false} = changeset),
+    do: {:error, %{changeset | action: :insert}}
+
+  defp insert_keyed(%Ecto.Changeset{} = changeset) do
+    entry =
+      Map.take(Ecto.Changeset.apply_changes(changeset), [:principal_id, :body, :notification_key])
+
+    # `id` and `created_at` are left to their database defaults, so the row's
+    # identity and creation time are assigned where the uniqueness decision is
+    # made rather than by a caller that may be retrying an old attempt.
+    Notification
+    |> Repo.insert_all([entry],
+      on_conflict: :nothing,
+      conflict_target:
+        {:unsafe_fragment, "(principal_id, notification_key) WHERE notification_key IS NOT NULL"},
+      returning: true
+    )
+    |> case do
+      {0, _none} ->
+        {:ok, :already_created}
+
+      {1, [%Notification{} = notification]} ->
+        # Best-effort, exactly as in `create/2`: the row is already durable, and
+        # only a genuinely new row rings the recipient's bell.
+        _ = Broadcaster.notification_created(notification)
+        {:ok, :created}
+    end
+  end
+
   defp after_commit_signal({:ok, %{notification: notification}}) do
     # Best-effort: the row is already durably committed by Repo.transact/2.
     # A broadcast failure is logged inside the broadcaster but does not
