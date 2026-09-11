@@ -20,6 +20,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.OperatorItemLifecycle
   alias Dhc.Inventory.OperatorItemList
   alias Dhc.Inventory.OperatorItems
+  alias Dhc.Inventory.OperatorLoans
   alias Dhc.Inventory.Stats
   alias Dhc.Inventory.Structure
 
@@ -88,6 +89,20 @@ defmodule Dhc.Inventory do
   defdelegate cancel_loan(loan_id, attrs, borrower_id), to: MemberLoans
   defdelegate list_own_loans(borrower_id, params \\ %{}), to: MemberLoans
   defdelegate get_own_loan(loan_id, borrower_id), to: MemberLoans
+
+  # ALE-296 (286a) operator loan transitions. Each locks the item before the
+  # loan and returns a domain conflict on a race; approval reserves the item
+  # exactly once and rejects every competing request. Notifications are
+  # ALE-287 and deliberately absent — the API exposure is ALE-286c. Operator
+  # cancel applies only to an approved loan; the member's own cancellation
+  # stays in `MemberLoans`.
+  defdelegate approve_loan(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate reject_loan(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate cancel_operator_loan(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate check_out_loan(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate return_loan(loan_id, actor_id), to: OperatorLoans
+  defdelegate edit_loan_dates(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate get_operator_loan(loan_id), to: OperatorLoans
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
   defdelegate list_history(opts \\ %{}), to: ItemHistory

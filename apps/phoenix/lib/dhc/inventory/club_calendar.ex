@@ -32,6 +32,23 @@ defmodule Dhc.Inventory.ClubCalendar do
   end
 
   @doc """
+  The club's calendar day containing `at`.
+
+  Needed wherever a stored UTC timestamp has to be compared with a loan date:
+  a handover at 23:30 UTC on the 1st is already the 2nd in Dublin summer
+  time, so converting with `DateTime.to_date/1` would compare the wrong day.
+  The conversion goes through Postgres for the same reason as `today/0` —
+  this application ships no time-zone database.
+  """
+  @spec on_date(DateTime.t()) :: Date.t()
+  def on_date(%DateTime{} = at) do
+    %{rows: [[%Date{} = date]]} =
+      Repo.query!("SELECT ($1::timestamptz AT TIME ZONE $2)::date", [at, @zone])
+
+    date
+  end
+
+  @doc """
   The club's time-zone name, for documentation and error messages.
   """
   @spec zone() :: String.t()
