@@ -76,7 +76,10 @@ config :dhc, Oban,
        {"0 0 * * *", Dhc.StripeSync.Worker},
        {"0 * * * *", Dhc.Discord.Workers.JoinGrantCleanupWorker},
        {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker},
-       {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker}
+       {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker},
+       # ALE-287: hourly rather than daily so a missed window is repaired
+       # within the hour. A pass in an unchanged state delivers nothing.
+       {"0 * * * *", Dhc.Inventory.Workers.LoanReminderWorker}
      ]}
   ]
 
@@ -105,6 +108,7 @@ config :logger, :default_formatter,
     :covered_price_ids,
     :created_by,
     :customer_id,
+    :delivered,
     :discord_jobs,
     :email,
     :email_jobs,
