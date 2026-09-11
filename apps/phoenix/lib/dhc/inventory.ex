@@ -20,6 +20,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.OperatorItemLifecycle
   alias Dhc.Inventory.OperatorItemList
   alias Dhc.Inventory.OperatorItems
+  alias Dhc.Inventory.OperatorLoanQueue
   alias Dhc.Inventory.OperatorLoans
   alias Dhc.Inventory.Stats
   alias Dhc.Inventory.Structure
@@ -103,6 +104,14 @@ defmodule Dhc.Inventory do
   defdelegate return_loan(loan_id, actor_id), to: OperatorLoans
   defdelegate edit_loan_dates(loan_id, attrs, actor_id), to: OperatorLoans
   defdelegate get_operator_loan(loan_id), to: OperatorLoans
+
+  # ALE-297 (286b) the shared operator loan queue. A read model bucketed by
+  # lifecycle and due date, with counts derived from the rows beside them. No
+  # actor and no claim semantics: the queue is shared, so every duty officer
+  # sees the same thing. Operator-only — these rows name the borrower and
+  # disclose container and maintenance facts, which the member read model
+  # (ALE-285) cannot express at all.
+  defdelegate get_operator_loan_queue(), to: OperatorLoanQueue
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
   defdelegate list_history(opts \\ %{}), to: ItemHistory
