@@ -417,20 +417,26 @@ defmodule Dhc.Inventory.OperatorLoans do
   def get_operator_loan(loan_id) when is_binary(loan_id) do
     with {:ok, id} <- cast_id(loan_id),
          %Loan{} = loan <- Repo.one(from(l in Loan, where: l.id == ^id)) do
-      {:ok, operator_view(loan)}
+      {:ok, operator_view(loan, ClubCalendar.today())}
     else
       _absent -> {:error, :not_found}
     end
   end
 
-  # The one place a loan row becomes an operator read model. When the queue
-  # (ALE-286b) needs the same shape it should reach it through this module
-  # rather than rebuilding it, so a queue row and a detail read cannot
-  # disagree about status or overdue — but it stays private until there is a
-  # second caller to justify the wider surface.
-  defp operator_view(%Loan{} = loan), do: operator_view(loan, ClubCalendar.today())
+  @doc """
+  The one place a loan row becomes an operator read model.
 
-  defp operator_view(%Loan{} = loan, %Date{} = today) do
+  Public for `Dhc.Inventory.OperatorLoanQueue` (ALE-297), which projects the
+  same rows: a queue row and this module's detail read must not be able to
+  disagree about status, overdue, or dates. `today` is a parameter so a caller
+  projecting many rows resolves the club's calendar day once and judges every
+  row against the same day, rather than straddling midnight mid-list.
+
+  Not part of the `Dhc.Inventory` public surface — callers outside the
+  inventory slices reach loans through the context.
+  """
+  @spec operator_view(Loan.t(), Date.t()) :: operator_loan()
+  def operator_view(%Loan{} = loan, %Date{} = today) do
     %{
       id: loan.id,
       item_id: loan.item_id,
@@ -639,7 +645,7 @@ defmodule Dhc.Inventory.OperatorLoans do
       end
     end)
     |> case do
-      {:ok, %Loan{} = loan} -> {:ok, operator_view(loan)}
+      {:ok, %Loan{} = loan} -> {:ok, operator_view(loan, ClubCalendar.today())}
       {:error, reason} -> {:error, reason}
     end
   end
