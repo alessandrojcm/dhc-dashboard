@@ -111,10 +111,11 @@ defmodule Dhc.AuthMigrationFixtures do
   Restores schema objects changed by migrations that shipped after M2.
 
   The rehearsal starts from a pre-M2 backup, while testcontainers migrates the
-  database through the full stack. Recreate the empty history table, remove the
-  later Notification ownership FK, drop the later target inventory
-  tables/columns (ALE-282), and restore the old ownership column names
-  before `M2.rollback!/1` rebuilds the legacy auth foreign keys.
+  database through the full stack. Remove the later Notification ownership
+  FK, drop the later target inventory tables/columns (ALE-282), and restore
+  the old ownership column names before `M2.rollback!/1` rebuilds the
+  legacy auth foreign keys. (`inventory_history` is gone entirely since
+  ALE-289, so there is no history table to recreate.)
   """
   def restore_pre_m2_schema! do
     # ALE-282 target tables reference `principals.id` with restrictive FKs.

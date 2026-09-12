@@ -12,7 +12,6 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Invitations.Invitation
   alias Dhc.Inventory.Categories
   alias Dhc.Inventory.Containers
-  alias Dhc.Inventory.Items
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
@@ -254,12 +253,6 @@ defmodule Dhc.E2EHarness do
     DhcWeb.InventoryContainersJSON.render("item.json", %{container: container}).data
   end
 
-  def seed("inventoryItem", attrs) do
-    actor_id = Map.fetch!(attrs, "actorId")
-    {:ok, item} = Items.create_item(Map.delete(attrs, "actorId"), actor_id)
-    DhcWeb.InventoryItemsJSON.render("item.json", %{item: item}).data
-  end
-
   def seed("registration", attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -325,7 +318,6 @@ defmodule Dhc.E2EHarness do
 
   def delete_fixture("inventoryCategory", id), do: Categories.delete_category(id)
   def delete_fixture("inventoryContainer", id), do: Containers.delete_container(id)
-  def delete_fixture("inventoryItem", id), do: Items.delete_item(id)
 
   def delete_fixture("registration", id) do
     case Repo.get(Registration, id) do
@@ -356,11 +348,6 @@ defmodule Dhc.E2EHarness do
   def update_fixture("inventoryContainer", id, attrs) do
     {:ok, container} = Containers.update_container(id, attrs)
     DhcWeb.InventoryContainersJSON.render("item.json", %{container: container}).data
-  end
-
-  def update_fixture("inventoryItem", id, %{"actorId" => actor_id} = attrs) do
-    {:ok, item} = Items.update_item(id, Map.delete(attrs, "actorId"), actor_id)
-    DhcWeb.InventoryItemsJSON.render("item.json", %{item: item}).data
   end
 
   def login_cookie(email) do

@@ -199,8 +199,6 @@ defmodule Dhc.Inventory.Containers do
       order_by: [asc: i.created_at],
       select: %{
         "id" => fragment("?::text", i.id),
-        "quantity" => i.quantity,
-        "out_for_maintenance" => i.out_for_maintenance,
         "category" =>
           fragment(
             "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?::text, 'name', ?) ELSE NULL END",

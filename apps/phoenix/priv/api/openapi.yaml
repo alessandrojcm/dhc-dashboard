@@ -15,42 +15,17 @@ servers:
     description: Relative path (same origin)
 
 tags:
-  - name: InventoryCategories
-    description: Equipment category management (quartermaster)
-    x-context: Dhc.Inventory
-    x-resource: EquipmentCategory
-  - name: InventoryContainers
-    description: Inventory container (storage location) management with parent/child hierarchy (quartermaster)
-    x-context: Dhc.Inventory
-    x-resource: Container
-  - name: InventoryItems
-    description: Inventory item CRUD with audit history recording (quartermaster)
-    x-context: Dhc.Inventory
-    x-resource: Item
-  - name: InventoryHistory
-    description: Global inventory activity/history feed (quartermaster)
-    x-context: Dhc.Inventory
-    x-resource: InventoryHistory
-  - name: InventoryDashboard
-    description: Aggregate inventory dashboard reads
-    x-context: Dhc.Inventory
-    x-resource: InventoryDashboard
   - name: Inventory
     description: |
-      Target Inventory capability (ALE-272 / ALE-283c / ALE-284c). New
-      operator viewer operations — Property Definitions, single-select
-      Options, and target Items — live here under the one `/api/inventory`
-      root. Legacy category, container, item, history, and dashboard
-      operations keep their existing tags until ALE-289 collapses them.
+      Target Inventory capability (ALE-272 / ALE-283c / ALE-284c / ALE-289).
+      Category management, container management, target Items, member
+      catalog, own loans, operator loans, and the shared queue live here
+      under the one `/api/inventory` root.
 
-      Target operator item operations and operator loan operations are
-      parked under `/inventory/operator/...` only because the legacy
-      `/inventory/items` paths are still serving the current dashboard.
-      ALE-289 deletes the legacy operations and moves these onto the
-      freed `/inventory/items` URLs, leaving one tag and one root with
-      no `operator` segment. Operator loan commands and the shared
-      queue stay under `/inventory/operator/loans` — they have no
-      legacy twin.
+      Target item operations live on the freed `/inventory/items` URLs;
+      the legacy quantity/JSON-attributes/history slice is gone.
+      Operator loan commands and the shared queue stay under
+      `/inventory/operator/loans` — they have no legacy twin.
     x-context: Dhc.Inventory
     x-resource: PropertyDefinition
   - name: Members
@@ -3115,7 +3090,7 @@ paths:
     get:
       operationId: inventoryCategories.index
       tags:
-        - InventoryCategories
+        - Inventory
       summary: List equipment categories
       description: |
         Returns equipment categories ordered by name, each with an `itemCount`
@@ -3140,13 +3115,12 @@ paths:
     post:
       operationId: inventoryCategories.create
       tags:
-        - InventoryCategories
+        - Inventory
       summary: Create an equipment category
       description: |
-        Creates a new equipment category. The `availableAttributes` array
-        defines the dynamic attribute definitions items in this category may
-        carry. Supported attribute `type` values: `text`, `select`, `number`,
-        `boolean`. Select attributes must include `options`.
+        Creates a new equipment category (`name`, optional `description`).
+        Typed property definitions are managed separately through the
+        structure operations; categories carry no attribute config.
 
         Requires a Phoenix session whose roles include one of:
         `quartermaster`, `president`, or `admin`.
@@ -3194,7 +3168,7 @@ paths:
     get:
       operationId: inventoryCategories.show
       tags:
-        - InventoryCategories
+        - Inventory
       summary: Get one equipment category
       description: |
         Returns a single equipment category by id, including its `itemCount`.
@@ -3232,11 +3206,11 @@ paths:
     patch:
       operationId: inventoryCategories.update
       tags:
-        - InventoryCategories
+        - Inventory
       summary: Update an equipment category
       description: |
         Updates a single equipment category. Accepts the same writable fields
-        as create (`name`, `description`, `availableAttributes`).
+        as create (`name`, `description`).
 
         Requires a Phoenix session whose roles include one of:
         `quartermaster`, `president`, or `admin`.
@@ -3296,7 +3270,7 @@ paths:
     delete:
       operationId: inventoryCategories.delete
       tags:
-        - InventoryCategories
+        - Inventory
       summary: Delete an equipment category
       description: |
         Deletes an equipment category. The delete is rejected with `409` when
@@ -3824,9 +3798,10 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOptionRetireError"
 
-  /inventory/operator/items:
+  # ALE-289: target item operations live on the freed /inventory/items URLs.
+  /inventory/items:
     get:
-      operationId: inventoryOperatorItems.list
+      operationId: inventoryItems.list
       tags:
         - Inventory
       summary: List target inventory items for an operator
@@ -3929,7 +3904,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
     post:
-      operationId: inventoryOperatorItems.create
+      operationId: inventoryItems.create
       tags:
         - Inventory
       summary: Create one target inventory item
@@ -3988,9 +3963,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemValidationError"
 
-  /inventory/operator/items/{slugOrId}:
+  /inventory/items/{slugOrId}:
     get:
-      operationId: inventoryOperatorItems.show
+      operationId: inventoryItems.show
       tags:
         - Inventory
       summary: Get one target inventory item by slug or id
@@ -4035,7 +4010,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
     patch:
-      operationId: inventoryOperatorItems.update
+      operationId: inventoryItems.update
       tags:
         - Inventory
       summary: Edit a target inventory item's notes and values
@@ -4100,7 +4075,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemValidationError"
     delete:
-      operationId: inventoryOperatorItems.delete
+      operationId: inventoryItems.delete
       tags:
         - Inventory
       summary: Delete a history-free target inventory item
@@ -4160,9 +4135,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemValidationError"
 
-  /inventory/operator/items/{slugOrId}/category:
+  /inventory/items/{slugOrId}/category:
     post:
-      operationId: inventoryOperatorItems.changeCategory
+      operationId: inventoryItems.changeCategory
       tags:
         - Inventory
       summary: Reclassify a target inventory item
@@ -4224,9 +4199,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemValidationError"
 
-  /inventory/operator/items/{slugOrId}/move:
+  /inventory/items/{slugOrId}/move:
     post:
-      operationId: inventoryOperatorItems.move
+      operationId: inventoryItems.move
       tags:
         - Inventory
       summary: Move a target inventory item to another container
@@ -4289,9 +4264,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemValidationError"
 
-  /inventory/operator/items/{slugOrId}/maintenance:
+  /inventory/items/{slugOrId}/maintenance:
     get:
-      operationId: inventoryOperatorItems.listMaintenance
+      operationId: inventoryItems.listMaintenance
       tags:
         - Inventory
       summary: List an item's retained maintenance periods
@@ -4336,9 +4311,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /inventory/operator/items/{slugOrId}/maintenance/start:
+  /inventory/items/{slugOrId}/maintenance/start:
     post:
-      operationId: inventoryOperatorItems.startMaintenance
+      operationId: inventoryItems.startMaintenance
       tags:
         - Inventory
       summary: Start a maintenance period on a target inventory item
@@ -4403,9 +4378,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemValidationError"
 
-  /inventory/operator/items/{slugOrId}/maintenance/end:
+  /inventory/items/{slugOrId}/maintenance/end:
     post:
-      operationId: inventoryOperatorItems.endMaintenance
+      operationId: inventoryItems.endMaintenance
       tags:
         - Inventory
       summary: End a target inventory item's open maintenance period
@@ -4462,9 +4437,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemConflictError"
 
-  /inventory/operator/items/{slugOrId}/archive:
+  /inventory/items/{slugOrId}/archive:
     post:
-      operationId: inventoryOperatorItems.archive
+      operationId: inventoryItems.archive
       tags:
         - Inventory
       summary: Archive a target inventory item
@@ -4523,9 +4498,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryOperatorItemConflictError"
 
-  /inventory/operator/items/{slugOrId}/restore:
+  /inventory/items/{slugOrId}/restore:
     post:
-      operationId: inventoryOperatorItems.restore
+      operationId: inventoryItems.restore
       tags:
         - Inventory
       summary: Restore an archived target inventory item
@@ -5432,7 +5407,7 @@ paths:
     post:
       operationId: inventoryContainers.move
       tags:
-        - InventoryContainers
+        - Inventory
       summary: Move a container
       description: |
         Dedicated move command. Relocates the container and its whole
@@ -5493,7 +5468,7 @@ paths:
     post:
       operationId: inventoryContainers.archive
       tags:
-        - InventoryContainers
+        - Inventory
       summary: Archive a container
       description: |
         Archives a container. Active child containers and items must be
@@ -5547,7 +5522,7 @@ paths:
     post:
       operationId: inventoryContainers.restore
       tags:
-        - InventoryContainers
+        - Inventory
       summary: Restore an archived container
       description: |
         Restores an archived container. The parent chain must be active.
@@ -5600,7 +5575,7 @@ paths:
     get:
       operationId: inventoryContainers.index
       tags:
-        - InventoryContainers
+        - Inventory
       summary: List inventory containers
       description: |
         Returns inventory containers as a flat list ordered by name, each
@@ -5628,7 +5603,7 @@ paths:
     post:
       operationId: inventoryContainers.create
       tags:
-        - InventoryContainers
+        - Inventory
       summary: Create an inventory container
       description: |
         Creates a new inventory container. Optionally nest it under a parent
@@ -5675,7 +5650,7 @@ paths:
     get:
       operationId: inventoryContainers.show
       tags:
-        - InventoryContainers
+        - Inventory
       summary: Get one inventory container with relations
       description: |
         Returns a single inventory container by id with its `parentContainer`
@@ -5716,7 +5691,7 @@ paths:
     patch:
       operationId: inventoryContainers.update
       tags:
-        - InventoryContainers
+        - Inventory
       summary: Update an inventory container
       description: |
         Updates a single inventory container. Accepts the same writable
@@ -5779,7 +5754,7 @@ paths:
     delete:
       operationId: inventoryContainers.delete
       tags:
-        - InventoryContainers
+        - Inventory
       summary: Delete an inventory container
       description: |
         Deletes an inventory container. The delete is rejected with `409` when
@@ -5823,531 +5798,6 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: The container still contains inventory items
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /inventory/items:
-    get:
-      operationId: inventoryItems.index
-      tags:
-        - InventoryItems
-      summary: List inventory items
-      description: |
-        Returns a cursor-paginated list of inventory items, newest first, each
-        carrying `container` and `category` summaries.
-
-        Filters (all optional): `categoryId`, `containerId`,
-        `outForMaintenance` (boolean), and `search` (case-insensitive partial
-        match against item notes, category name, and container name).
-
-        Cursor is opaque and stable within the current filter set; pass the
-        `nextCursor` from a previous response to fetch the next page. When the
-        returned page is the last, `nextCursor` is `null`.
-
-        Requires a valid Supabase JWT (any authenticated member).
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            enum: [10, 25, 50, 100]
-            default: 50
-        - name: cursor
-          in: query
-          schema:
-            type: string
-          description: Opaque cursor returned by a previous response.
-        - name: categoryId
-          in: query
-          schema:
-            type: string
-            format: uuid
-        - name: containerId
-          in: query
-          schema:
-            type: string
-            format: uuid
-        - name: outForMaintenance
-          in: query
-          schema:
-            type: boolean
-        - name: search
-          in: query
-          schema:
-            type: string
-            maxLength: 200
-          description: Case-insensitive partial match across notes, category name, and container name.
-      responses:
-        "200":
-          description: Cursor-paginated inventory items
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryItemListResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-    post:
-      operationId: inventoryItems.create
-      tags:
-        - InventoryItems
-      summary: Create an inventory item
-      description: |
-        Creates a new inventory item. `createdBy` is derived from the caller's
-        JWT `sub` and is never user-writable. On insert, an `inventory_history`
-        row with action `created` is recorded in the same transaction
-        (`changedBy` = caller `sub`, `newContainerId` = the item's container).
-
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `quartermaster`, `president`, or `admin`.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InventoryItemCreateRequest"
-      responses:
-        "201":
-          description: The created item
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryItemResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "403":
-          description: Authenticated user lacks a write role
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "422":
-          description: Invalid item payload or unknown container/category
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /inventory/items/{id}:
-    get:
-      operationId: inventoryItems.show
-      tags:
-        - InventoryItems
-      summary: Get one inventory item
-      description: |
-        Returns a single inventory item by id with `container` and `category`
-        summaries. Requires a valid Supabase JWT (any authenticated member).
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: The item id.
-      responses:
-        "200":
-          description: The inventory item
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryItemResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: No item exists for the given id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-    patch:
-      operationId: inventoryItems.update
-      tags:
-        - InventoryItems
-      summary: Update an inventory item
-      description: |
-        Updates a single inventory item. Accepts the same writable fields as
-        create, all optional on update (PATCH semantics). `updatedBy` is set
-        from the caller's JWT `sub`.
-
-        On a successful update, an `inventory_history` row with action
-        `updated` is recorded in the same transaction (`changedBy` = caller
-        `sub`). If `containerId` changed, the move is additionally recorded
-        with action `moved` and the old/new container ids (preserves the
-        SvelteKit `ItemService.moveToContainer` history behavior); the `moved`
-        row is written before the `updated` row so the chronological order is
-        move → update.
-
-        Setting `containerId` to a missing container returns `422`. Setting
-        `categoryId` to a missing category returns `422`.
-
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `quartermaster`, `president`, or `admin`.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: The item id.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InventoryItemCreateRequest"
-      responses:
-        "200":
-          description: The updated item
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryItemResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "403":
-          description: Authenticated user lacks a write role
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: No item exists for the given id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "422":
-          description: Invalid item payload or unknown container/category
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-    delete:
-      operationId: inventoryItems.delete
-      tags:
-        - InventoryItems
-      summary: Delete an inventory item
-      description: |
-        Deletes a single inventory item. `inventory_history.item_id` is
-        `on_delete: :delete_all`, so the item's history rows are cascade-removed
-        with it; no dedicated `deleted` history row is recorded (it would be
-        cascade-wiped and is pointless).
-
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `quartermaster`, `president`, or `admin`.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: The item id.
-      responses:
-        "204":
-          description: Item deleted
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "403":
-          description: Authenticated user lacks a write role
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: No item exists for the given id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /inventory/items/{id}/history:
-    get:
-      operationId: inventoryItems.history
-      tags:
-        - InventoryItems
-      summary: List history for one inventory item
-      description: |
-        Returns the most recent `inventory_history` rows for a single item,
-        newest first, each with `oldContainer` and `newContainer` name
-        summaries. The item's `attributes` snapshot is not embedded in history
-        rows (the source schema stores it on the item, not the history row).
-
-        Requires a valid Supabase JWT (any authenticated member). Returns
-        `404` when the item id does not exist.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: The item id.
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-      responses:
-        "200":
-          description: History rows for the item
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryItemHistoryListResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: No item exists for the given id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /inventory/items/{id}/move:
-    post:
-      operationId: inventoryItems.move
-      tags:
-        - InventoryItems
-      summary: Move an inventory item to a different container
-      description: |
-        Moves a single inventory item to a different container in one transaction
-        and records an `inventory_history` row with action `moved` carrying the
-        old/new container ids and the optional `notes` (preserves the prior
-        SvelteKit `ItemService.moveToContainer` behavior as a dedicated command
-        endpoint).
-
-        `updatedBy` is set from the caller's JWT `sub`. The item's other fields
-        (quantity, category, attributes, maintenance flag) are left untouched; use
-        `PATCH /inventory/items/{id}` for general edits.
-
-        Setting `containerId` to the item's current container is a no-op move
-        (still records a `moved` history row with identical old/new container,
-        mirroring the standalone move command's contract). Setting `containerId`
-        to a missing container returns `422`.
-
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `quartermaster`, `president`, or `admin`.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: The item id.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InventoryItemMoveRequest"
-      responses:
-        "200":
-          description: The moved item
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryItemResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "403":
-          description: Authenticated user lacks a write role
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: No item exists for the given id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "422":
-          description: Invalid move payload or unknown container
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /inventory/items/{id}/maintenance:
-    post:
-      operationId: inventoryItems.maintenance
-      tags:
-        - InventoryItems
-      summary: Toggle an inventory item's maintenance state
-      description: |
-        Sets an inventory item's `outForMaintenance` flag and records an
-        `inventory_history` row in the same transaction: action
-        `maintenance_out` when the flag is set to `true`, action `maintenance_in`
-        when set to `false`. `updatedBy` is set from the caller's JWT
-        `sub`; the optional `notes` is stored on the history row.
-
-        The previous SvelteKit `ItemService.markMaintenance` toggled the flag
-        without recording history; this command endpoint preserves the toggle
-        and adds the audit side effect required by the Inventory contract.
-
-        Sending the same value the item already holds is allowed and still
-        records a `maintenance_out`/`maintenance_in` row (explicit command
-        semantics — the caller chose to mark it).
-
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `quartermaster`, `president`, or `admin`.
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-          description: The item id.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InventoryItemMaintenanceRequest"
-      responses:
-        "200":
-          description: The updated item
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryItemResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "403":
-          description: Authenticated user lacks a write role
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: No item exists for the given id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "422":
-          description: Invalid maintenance payload
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /inventory/history:
-    get:
-      operationId: inventoryHistory.index
-      tags:
-        - InventoryHistory
-      summary: List recent global inventory activity
-      description: |
-        Returns the most recent `inventory_history` rows across all inventory
-        items, newest first, each carrying `oldContainer`/`newContainer` name
-        summaries and an `item` summary (`{ id, attributes }`) so the UI can
-        render the affected item's display name without a second lookup. The
-        per-item `GET /inventory/items/{id}/history` endpoint leaves `item` null
-        because the caller already knows the item.
-
-        Requires a valid Supabase JWT (any authenticated member).
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 50
-      responses:
-        "200":
-          description: Recent global inventory activity
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryItemHistoryListResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /inventory/stats:
-    get:
-      operationId: inventoryDashboard.stats
-      tags:
-        - InventoryDashboard
-      summary: Get inventory dashboard counts
-      description: |
-        Returns aggregate counts for containers, equipment categories, items,
-        and items currently out for maintenance. Requires a valid Supabase JWT
-        from any authenticated member.
-      security:
-        - bearerAuth: []
-      responses:
-        "200":
-          description: Inventory dashboard counts
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InventoryDashboardStatsResponse"
-        "401":
-          description: Missing or invalid Supabase JWT
           content:
             application/json:
               schema:
@@ -9030,50 +8480,12 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/SettingsItem"
-    InventoryCategoryAttributeDefinition:
-      type: object
-      required:
-        - type
-        - label
-      properties:
-        name:
-          type: string
-          description: |
-            Machine key for the attribute. The UI derives this from the label
-            (lowercased, spaces → hyphens); when omitted the API preserves the
-            stored value (categories seeded pre-API may carry keys).
-        label:
-          type: string
-          description: Human-readable label shown in the UI.
-        type:
-          type: string
-          enum:
-            - text
-            - select
-            - number
-            - boolean
-          description: UI input kind for the attribute.
-        required:
-          type: boolean
-          description: Whether items must populate this attribute.
-        options:
-          type: array
-          items:
-            type: string
-          description: Allowed values for `select` attributes.
-        defaultValue:
-          description: Default value for the attribute (type depends on `type`).
-          oneOf:
-            - type: string
-            - type: number
-            - type: boolean
     InventoryCategory:
       type: object
       required:
         - id
         - name
         - description
-        - availableAttributes
         - itemCount
         - createdAt
         - updatedAt
@@ -9086,10 +8498,6 @@ components:
         description:
           type: string
           nullable: true
-        availableAttributes:
-          type: array
-          items:
-            $ref: "#/components/schemas/InventoryCategoryAttributeDefinition"
         itemCount:
           type: integer
           description: Number of inventory items in this category.
@@ -9124,7 +8532,6 @@ components:
       type: object
       required:
         - name
-        - availableAttributes
       properties:
         name:
           type: string
@@ -9134,10 +8541,6 @@ components:
           type: string
           nullable: true
           maxLength: 500
-        availableAttributes:
-          type: array
-          items:
-            $ref: "#/components/schemas/InventoryCategoryAttributeDefinition"
     InventoryContainer:
       type: object
       description: |
@@ -9253,21 +8656,15 @@ components:
       type: object
       description: |
         Minimal inventory item summary shown on the container detail page:
-        identity, `category` summary, quantity, and maintenance flag. Item
-        attributes are not embedded (full item detail lives in the items slice).
+        identity and `category` summary. Availability lives in the item
+        viewer, not here (full item detail lives in the items slice).
       required:
         - id
-        - quantity
-        - outForMaintenance
         - category
       properties:
         id:
           type: string
           format: uuid
-        quantity:
-          type: integer
-        outForMaintenance:
-          type: boolean
         category:
           type: object
           nullable: true
@@ -10675,341 +10072,6 @@ components:
           nullable: true
           description: |
             New parent container id, or null to make this a root container.
-    InventoryDashboardStatsResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: object
-          required:
-            - containers
-            - categories
-            - items
-            - maintenance
-          properties:
-            containers:
-              type: integer
-              minimum: 0
-            categories:
-              type: integer
-              minimum: 0
-            items:
-              type: integer
-              minimum: 0
-            maintenance:
-              type: integer
-              minimum: 0
-
-    InventoryItem:
-      type: object
-      description: |
-        Inventory item with `container` and `category` summaries used by both
-        the list and single-item responses.
-      required:
-        - id
-        - containerId
-        - categoryId
-        - quantity
-        - outForMaintenance
-        - attributes
-        - container
-        - category
-        - createdBy
-        - createdAt
-        - updatedAt
-      properties:
-        id:
-          type: string
-          format: uuid
-        containerId:
-          type: string
-          format: uuid
-          nullable: true
-          description: |
-            Container the item lives in. Nullable in the schema for forward
-            compatibility, but the persistence layer marks the column NOT
-            NULL today, so reads always return a value.
-        categoryId:
-          type: string
-          format: uuid
-          nullable: true
-          description: |
-            Equipment category the item belongs to. Nullable in the schema;
-            the persistence column is NOT NULL today.
-        quantity:
-          type: integer
-          minimum: 1
-        outForMaintenance:
-          type: boolean
-        attributes:
-          type: object
-          description: |
-            Free-form attribute values keyed by the category's attribute
-            `name`. Shape is not validated against the category's
-            `availableAttributes` in this slice (future work).
-        notes:
-          type: string
-          nullable: true
-          maxLength: 1000
-        photoUrl:
-          type: string
-          nullable: true
-        container:
-          type: object
-          nullable: true
-          description: Summary of the item's container, or null.
-          properties:
-            id:
-              type: string
-              format: uuid
-            name:
-              type: string
-            parentContainerId:
-              type: string
-              format: uuid
-              nullable: true
-          required:
-            - id
-            - name
-            - parentContainerId
-        category:
-          type: object
-          nullable: true
-          description: Summary of the item's equipment category, or null.
-          properties:
-            id:
-              type: string
-              format: uuid
-            name:
-              type: string
-          required:
-            - id
-            - name
-        createdBy:
-          type: string
-          format: uuid
-          nullable: true
-          description: Supabase user id of the creator (JWT `sub`).
-        updatedBy:
-          type: string
-          format: uuid
-          nullable: true
-          description: Supabase user id of the last updater (JWT `sub`).
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-    InventoryItemListResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: object
-          required:
-            - items
-            - limit
-            - nextCursor
-          properties:
-            items:
-              type: array
-              items:
-                $ref: "#/components/schemas/InventoryItem"
-            limit:
-              type: integer
-              enum: [10, 25, 50, 100]
-            nextCursor:
-              type: string
-              nullable: true
-              description: Opaque cursor for the next page, or null when this is the last page.
-    InventoryItemResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          $ref: "#/components/schemas/InventoryItem"
-    InventoryItemCreateRequest:
-      type: object
-      required:
-        - containerId
-        - categoryId
-        - quantity
-      properties:
-        containerId:
-          type: string
-          format: uuid
-          description: Container the item lives in. Required on create.
-        categoryId:
-          type: string
-          format: uuid
-          description: Equipment category for the item. Required on create.
-        attributes:
-          type: object
-          description: |
-            Free-form attribute values keyed by the category's attribute
-            `name`. Defaults to `{}` when omitted.
-        quantity:
-          type: integer
-          minimum: 1
-          description: Item count; must be positive (DB CHECK constraint).
-        notes:
-          type: string
-          nullable: true
-          maxLength: 1000
-        outForMaintenance:
-          type: boolean
-          default: false
-        photoUrl:
-          type: string
-          nullable: true
-    InventoryItemHistory:
-      type: object
-      description: |
-        One `inventory_history` row for an item. `oldContainer` and
-        `newContainer` are name summaries (nullable when the action did not
-        involve a container move). `item` is the affected item summary — only
-        populated by the global `GET /inventory/history` endpoint; the per-item
-        history endpoint leaves it null.
-      required:
-        - id
-        - itemId
-        - action
-        - oldContainerId
-        - newContainerId
-        - oldContainer
-        - newContainer
-        - item
-        - notes
-        - changedBy
-        - createdAt
-      properties:
-        id:
-          type: string
-          format: uuid
-        itemId:
-          type: string
-          format: uuid
-        action:
-          type: string
-          enum:
-            - created
-            - updated
-            - moved
-            - maintenance_out
-            - maintenance_in
-        oldContainerId:
-          type: string
-          format: uuid
-          nullable: true
-        newContainerId:
-          type: string
-          format: uuid
-          nullable: true
-        oldContainer:
-          type: object
-          nullable: true
-          properties:
-            id:
-              type: string
-              format: uuid
-            name:
-              type: string
-          required:
-            - id
-            - name
-        newContainer:
-          type: object
-          nullable: true
-          properties:
-            id:
-              type: string
-              format: uuid
-            name:
-              type: string
-          required:
-            - id
-            - name
-        item:
-          type: object
-          nullable: true
-          description: |
-            Summary of the affected item, populated only by the global history
-            endpoint. `attributes` is the free-form attribute map so the UI can
-            derive a display name without a second lookup.
-          properties:
-            id:
-              type: string
-              format: uuid
-            attributes:
-              type: object
-          required:
-            - id
-            - attributes
-        notes:
-          type: string
-          nullable: true
-        changedBy:
-          type: string
-          format: uuid
-          nullable: true
-          description: Supabase user id of the actor (JWT `sub`).
-        createdAt:
-          type: string
-          format: date-time
-    InventoryItemMoveRequest:
-      type: object
-      description: Body for `POST /inventory/items/{id}/move`.
-      required:
-        - containerId
-      properties:
-        containerId:
-          type: string
-          format: uuid
-          description: The container to move the item into.
-        notes:
-          type: string
-          nullable: true
-          maxLength: 1000
-          description: Optional note stored on the `moved` history row.
-    InventoryItemMaintenanceRequest:
-      type: object
-      description: Body for `POST /inventory/items/{id}/maintenance`.
-      required:
-        - outForMaintenance
-      properties:
-        outForMaintenance:
-          type: boolean
-          description: |
-            `true` records a `maintenance_out` history row; `false` records a
-            `maintenance_in` history row.
-        notes:
-          type: string
-          nullable: true
-          maxLength: 1000
-          description: Optional note stored on the maintenance history row.
-    InventoryItemHistoryListResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: object
-          required:
-            - history
-            - limit
-          properties:
-            history:
-              type: array
-              items:
-                $ref: "#/components/schemas/InventoryItemHistory"
-            limit:
-              type: integer
-              minimum: 1
-              maximum: 100
     Error:
       type: object
       properties:

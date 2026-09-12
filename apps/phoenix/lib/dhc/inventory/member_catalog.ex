@@ -121,7 +121,6 @@ defmodule Dhc.Inventory.MemberCatalog do
     query =
       slug_or_id
       |> ItemGuards.item_query()
-      |> where([i], not is_nil(i.slug))
       |> where([i], is_nil(i.archived_at))
 
     case Repo.one(query) do
@@ -212,11 +211,10 @@ defmodule Dhc.Inventory.MemberCatalog do
 
   # ── Query ───────────────────────────────────────────────────────
 
-  # Unslugged rows are legacy create paths (ALE-289 removes them) and have no
-  # identity a member could resolve or page by; archived rows are out of the
-  # catalog by definition.
+  # Slugs are immutable and unique, so they are the page key; archived rows
+  # are out of the catalog by definition.
   defp base_query(opts) do
-    from(i in Item, as: :item, where: not is_nil(i.slug), where: is_nil(i.archived_at))
+    from(i in Item, as: :item, where: is_nil(i.archived_at))
     |> filter_categories(opts.category_ids)
     |> filter_properties(opts.properties)
     |> filter_availability(opts.availability)

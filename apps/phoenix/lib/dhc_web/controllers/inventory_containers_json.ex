@@ -71,18 +71,8 @@ defmodule DhcWeb.InventoryContainersJSON do
     }
   end
 
-  defp render_item(%{
-         "id" => id,
-         "quantity" => quantity,
-         "out_for_maintenance" => out,
-         "category" => category
-       }) do
-    %{
-      id: id,
-      quantity: quantity,
-      outForMaintenance: out,
-      category: category
-    }
+  defp render_item(%{"id" => id, "category" => category}) do
+    %{id: id, category: category}
   end
 
   defp serialize_datetime(nil), do: nil

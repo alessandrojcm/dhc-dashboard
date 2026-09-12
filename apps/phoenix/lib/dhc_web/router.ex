@@ -263,16 +263,6 @@ defmodule DhcWeb.Router do
     # ALE-106: any authenticated member may read inventory containers.
     get "/inventory/containers", InventoryContainersController, :index
     get "/inventory/containers/:id", InventoryContainersController, :show
-    # ALE-107: any authenticated member may read inventory items + history.
-    get "/inventory/items", InventoryItemsController, :index
-    get "/inventory/items/:id", InventoryItemsController, :show
-    get "/inventory/items/:id/history", InventoryItemsController, :history
-
-    # ALE-284c target item reads are NOT here on purpose: the operator viewer
-    # carries container location, notes, and maintenance facts, which spec
-    # ALE-280 story 45 forbids showing members in ordinary browsing. They live
-    # in the :inventory_admin_api scope below; the member-shaped catalog is
-    # the ALE-285 block that follows.
 
     # ALE-285 member catalog and own loans. Member-readable by design: these
     # serve separate read models that cannot express container location,
@@ -292,10 +282,6 @@ defmodule DhcWeb.Router do
     get "/inventory/loans/mine", InventoryMemberLoansController, :list
     get "/inventory/loans/mine/:loanId", InventoryMemberLoansController, :show
     post "/inventory/loans/mine/:loanId/cancel", InventoryMemberLoansController, :cancel
-
-    # ALE-108: any authenticated member may read the global inventory activity feed.
-    get "/inventory/history", InventoryHistoryController, :index
-    get "/inventory/stats", InventoryDashboardController, :stats
   end
 
   scope "/api", DhcWeb do
@@ -323,51 +309,43 @@ defmodule DhcWeb.Router do
     post "/inventory/containers", InventoryContainersController, :create
     patch "/inventory/containers/:id", InventoryContainersController, :update
     delete "/inventory/containers/:id", InventoryContainersController, :delete
-    # ALE-107: write roles only.
+
+    # ALE-289: the target item viewer and commands live on the freed
+    # /inventory/items URLs. Equal authority for quartermaster, president,
+    # and admin. Reads live here rather than in the member scope because
+    # the operator viewer discloses container location, notes, and
+    # maintenance facts (ALE-280 story 45). Each availability-changing
+    # command is its own route so the generic PATCH cannot express it.
+    get "/inventory/items", InventoryItemsController, :index
+    get "/inventory/items/:slugOrId", InventoryItemsController, :show
     post "/inventory/items", InventoryItemsController, :create
-    patch "/inventory/items/:id", InventoryItemsController, :update
-    delete "/inventory/items/:id", InventoryItemsController, :delete
-    # ALE-108: dedicated movement/maintenance command endpoints, write roles only.
-    post "/inventory/items/:id/move", InventoryItemsController, :move
-    post "/inventory/items/:id/maintenance", InventoryItemsController, :maintenance
+    patch "/inventory/items/:slugOrId", InventoryItemsController, :update
+    delete "/inventory/items/:slugOrId", InventoryItemsController, :delete
 
-    # ALE-284c target item viewers and commands. Equal authority for
-    # quartermaster, president, and admin. Reads live here rather than in the
-    # member scope because the operator viewer discloses container location,
-    # notes, and maintenance facts (ALE-280 story 45). Each
-    # availability-changing command is its own route so the generic PATCH
-    # cannot express it. These sit under /operator only until ALE-289 frees
-    # the legacy /inventory/items paths and moves them there.
-    get "/inventory/operator/items", InventoryOperatorItemsController, :index
-    get "/inventory/operator/items/:slugOrId", InventoryOperatorItemsController, :show
-    post "/inventory/operator/items", InventoryOperatorItemsController, :create
-    patch "/inventory/operator/items/:slugOrId", InventoryOperatorItemsController, :update
-    delete "/inventory/operator/items/:slugOrId", InventoryOperatorItemsController, :delete
-
-    post "/inventory/operator/items/:slugOrId/category",
-         InventoryOperatorItemsController,
+    post "/inventory/items/:slugOrId/category",
+         InventoryItemsController,
          :change_category
 
-    post "/inventory/operator/items/:slugOrId/move", InventoryOperatorItemsController, :move
+    post "/inventory/items/:slugOrId/move", InventoryItemsController, :move
 
-    get "/inventory/operator/items/:slugOrId/maintenance",
-        InventoryOperatorItemsController,
+    get "/inventory/items/:slugOrId/maintenance",
+        InventoryItemsController,
         :maintenance
 
-    post "/inventory/operator/items/:slugOrId/maintenance/start",
-         InventoryOperatorItemsController,
+    post "/inventory/items/:slugOrId/maintenance/start",
+         InventoryItemsController,
          :start_maintenance
 
-    post "/inventory/operator/items/:slugOrId/maintenance/end",
-         InventoryOperatorItemsController,
+    post "/inventory/items/:slugOrId/maintenance/end",
+         InventoryItemsController,
          :end_maintenance
 
-    post "/inventory/operator/items/:slugOrId/archive",
-         InventoryOperatorItemsController,
+    post "/inventory/items/:slugOrId/archive",
+         InventoryItemsController,
          :archive
 
-    post "/inventory/operator/items/:slugOrId/restore",
-         InventoryOperatorItemsController,
+    post "/inventory/items/:slugOrId/restore",
+         InventoryItemsController,
          :restore
 
     # ALE-286c operator loan viewers, commands, and the shared queue.

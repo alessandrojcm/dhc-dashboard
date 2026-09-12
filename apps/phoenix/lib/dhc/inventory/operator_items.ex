@@ -26,10 +26,9 @@ defmodule Dhc.Inventory.OperatorItems do
       mapping old values explicitly. Partial reclassification is impossible.
     * **Notes.** Plain-text current facts with no audit history.
 
-  Target paths ignore legacy columns: they never write `inventory_history`
-  and never touch `photo_url`, `attributes`, or `out_for_maintenance`.
-  `quantity` is server-set to 1 solely to satisfy the surviving NOT NULL
-  until ALE-289 removes the column.
+  One row is one physical unit; ALE-289 dropped the legacy columns
+  (`quantity`, `photo_url`, `attributes`, `out_for_maintenance`) and the
+  `inventory_history` table, so there is nothing legacy left to touch.
 
   Movement, maintenance periods, and archive interlocks live in
   `Dhc.Inventory.OperatorItemLifecycle` (ALE-284b); the viewer contract is
@@ -105,9 +104,7 @@ defmodule Dhc.Inventory.OperatorItems do
     |> Ecto.Changeset.change(%{
       container_id: container_id,
       category_id: category_id,
-      notes: notes,
-      # Only to satisfy the surviving legacy NOT NULL; ALE-289 drops it.
-      quantity: 1
+      notes: notes
     })
     |> Ecto.Changeset.validate_length(:notes, max: 1000)
     |> Repo.insert!()

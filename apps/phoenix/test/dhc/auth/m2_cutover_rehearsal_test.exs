@@ -50,9 +50,9 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
              )
 
     assert auth_user_foreign_keys() == []
-    assert Enum.count_until(application_principal_foreign_keys(), 18) == 17
+    assert Enum.count_until(application_principal_foreign_keys(), 17) == 16
 
-    assert [["ok", %{"foreign_keys_repointed" => 17, "pending_invitations_deleted" => 0}]] =
+    assert [["ok", %{"foreign_keys_repointed" => 16, "pending_invitations_deleted" => 0}]] =
              rows("""
              SELECT status, counts
              FROM auth_migration_audit
@@ -105,7 +105,7 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
     assert column_exists?("user_profiles", "supabase_user_id")
     assert column_exists?("user_roles", "user_id")
     refute column_exists?("user_profiles", "principal_id")
-    assert Enum.count_until(auth_user_foreign_keys(), 15) == 14
+    assert Enum.count_until(auth_user_foreign_keys(), 14) == 13
     assert application_principal_foreign_keys() == []
   end
 

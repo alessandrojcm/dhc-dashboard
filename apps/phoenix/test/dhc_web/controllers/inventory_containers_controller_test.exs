@@ -85,13 +85,14 @@ defmodule DhcWeb.InventoryContainersControllerTest do
       Repo.query(
         """
         INSERT INTO inventory_items
-          (id, container_id, category_id, attributes, quantity, created_at, updated_at)
-        VALUES ($1, $2, $3, '{}'::jsonb, 1, NOW(), NOW())
+          (id, container_id, category_id, slug, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, NOW(), NOW())
         """,
         [
           Ecto.UUID.dump!(Ecto.UUID.generate()),
           Ecto.UUID.dump!(container_id),
-          Ecto.UUID.dump!(category_id)
+          Ecto.UUID.dump!(category_id),
+          "test-#{System.unique_integer([:positive])}"
         ]
       )
 
@@ -220,8 +221,7 @@ defmodule DhcWeb.InventoryContainersControllerTest do
 
       [item] = payload["items"]
       assert item["category"]["name"] == "Detail Cat"
-      assert item["quantity"] == 1
-      assert item["outForMaintenance"] == false
+      assert Enum.sort(Map.keys(item)) == ["category", "id"]
     end
 
     test "returns childContainers as empty for a leaf container", %{conn: conn} do

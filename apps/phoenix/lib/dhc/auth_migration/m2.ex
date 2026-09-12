@@ -42,8 +42,7 @@ defmodule Dhc.AuthMigration.M2 do
      :delete_all},
     {"containers", "created_by", "containers_created_by_fkey", :nothing},
     {"inventory_items", "created_by", "inventory_items_created_by_fkey", :nothing},
-    {"inventory_items", "updated_by", "inventory_items_updated_by_fkey", :nothing},
-    {"inventory_history", "changed_by", "inventory_history_changed_by_fkey", :nothing}
+    {"inventory_items", "updated_by", "inventory_items_updated_by_fkey", :nothing}
   ]
 
   @legacy_constraint_names %{

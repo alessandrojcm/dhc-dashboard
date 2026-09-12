@@ -766,7 +766,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
                Inventory.resolve_operator_item(item.id)
     end
 
-    test "no column stores availability and the legacy flag is never written" do
+    test "no column stores availability and no legacy columns remain" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
 
@@ -777,11 +777,10 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       refute "availability" in columns
       refute "available" in columns
 
-      # `out_for_maintenance` is the legacy boolean this slice replaces.
-      assert %{rows: [[false]]} =
-               Repo.query!("SELECT out_for_maintenance FROM inventory_items WHERE id = $1", [
-                 Ecto.UUID.dump!(item.id)
-               ])
+      # ALE-289 dropped the legacy boolean and its siblings outright.
+      for legacy <- ~w(quantity photo_url attributes out_for_maintenance) do
+        refute legacy in columns
+      end
     end
   end
 
@@ -976,7 +975,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
                )
     end
 
-    test "target lifecycle paths never write inventory_history" do
+    test "target lifecycle paths have no history table to write" do
       %{category: category, container_id: container_id} = fixture()
       destination = create_container!()
       {:ok, item} = create_item(container_id, category.id)
@@ -995,10 +994,13 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       {:ok, _} = Inventory.archive_operator_item(item.id, %{}, principal_id())
       {:ok, _} = Inventory.restore_operator_item(item.id, principal_id())
 
-      assert %{rows: [[0]]} =
-               Repo.query!("SELECT count(*) FROM inventory_history WHERE item_id = $1", [
-                 Ecto.UUID.dump!(item.id)
-               ])
+      # ALE-289 dropped the generic-history table: movement, maintenance,
+      # and archive leave retained facts in their own tables, not rows here.
+      assert %{rows: [[false]]} =
+               Repo.query!(
+                 "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_history')",
+                 []
+               )
     end
   end
 
