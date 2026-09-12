@@ -22,6 +22,7 @@ signup spec creates missing `DHC_COACH_TIER` / `DHC_STUDENT_TIER` coupons and
 retains them just like membership prices.
 
 - `playwright.config.ts` starts the `e2e-phoenix-server` and `e2e-web-server` mise tasks; their task-local `env` tables define the test server environment.
+- `playwright.config.ts` keeps `serviceWorkers: "block"`. The ALE-270 shell-caching worker re-issues same-origin requests from the worker, which bypasses `page.route` mocks (e.g. the Discord acceptance mock) without changing app behavior — every mocked-navigation test fails with the app working fine. Do not remove the block; the PWA shell spec asserts on static output only by design.
 - `mix e2e.server` starts the application through a custom Mix task, so E2E-only Stripe coupon overrides are read in `config/test.exs` when `E2E_SERVER=true`; do not rely on production-only runtime configuration for the test server.
 - `playwright.config.ts` appends its process ID to the configured `E2E_COMPOSE_PROJECT` prefix. Phoenix and global teardown inherit that value, giving every run an isolated Compose project instead of attaching to a stale database from another worktree.
 - `mix e2e.server` starts the root Compose `test-db` through testcontainers-elixir, reads its dynamic port, migrates it, and starts Phoenix on `127.0.0.1:4000`.
