@@ -7,7 +7,7 @@ defmodule DhcWeb.InventoryCatalogController do
     * POST /inventory/catalog/items/:slugOrId/requests     — request, any member.
 
   **Member-readable by design, and deliberately not the operator viewer.**
-  `DhcWeb.InventoryOperatorItemsController` discloses the container location,
+  `DhcWeb.InventoryItemsController` discloses the container location,
   operator notes, and maintenance facts, which spec ALE-280 story 45 forbids
   showing members in ordinary browsing. This controller serves a different
   read model (`Dhc.Inventory.MemberCatalog`) whose rows cannot carry those

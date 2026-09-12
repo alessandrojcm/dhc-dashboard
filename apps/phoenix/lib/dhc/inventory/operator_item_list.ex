@@ -98,11 +98,9 @@ defmodule Dhc.Inventory.OperatorItemList do
 
   # ── Query ───────────────────────────────────────────────────────
 
-  # Target reads only ever see slugged rows: legacy create paths leave the
-  # slug null until ALE-289 removes them, and an unslugged row has no
-  # identity this viewer can resolve or page by.
+  # Slugs are immutable and unique, so they are the page key.
   defp base_query(opts) do
-    from(i in Item, as: :item, where: not is_nil(i.slug))
+    from(i in Item, as: :item)
     |> filter_archived(opts.archived)
     |> filter_categories(opts.category_ids)
     |> filter_properties(opts.properties)

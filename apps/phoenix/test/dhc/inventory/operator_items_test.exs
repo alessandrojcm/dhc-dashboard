@@ -608,8 +608,8 @@ defmodule Dhc.Inventory.OperatorItemsTest do
     end
   end
 
-  describe "legacy columns are ignored by target paths" do
-    test "never writes inventory_history and leaves legacy item columns alone" do
+  describe "legacy slice is gone" do
+    test "target writes touch only target columns" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, brand} = create_definition(category.id, "Brand", "text")
 
@@ -631,26 +631,22 @@ defmodule Dhc.Inventory.OperatorItemsTest do
           principal_id()
         )
 
-      assert %{rows: [[0]]} =
-               Repo.query!("SELECT count(*) FROM inventory_history WHERE item_id = $1", [
+      # ALE-289 dropped the legacy columns and the inventory_history table:
+      # the row carries only target facts. Assert at the catalog level so
+      # the test names columns, not their absence.
+      assert %{rows: [[slug, notes]]} =
+               Repo.query!("SELECT slug, notes FROM inventory_items WHERE id = $1", [
                  Ecto.UUID.dump!(item.id)
                ])
 
-      assert %{rows: [[quantity, photo_url, attributes, out_for_maintenance]]} =
-               Repo.query!(
-                 """
-                 SELECT quantity, photo_url, attributes, out_for_maintenance
-                 FROM inventory_items WHERE id = $1
-                 """,
-                 [Ecto.UUID.dump!(item.id)]
-               )
+      assert slug == item.slug
+      assert notes == "still target only"
 
-      # `quantity` is server-set to 1 only to satisfy the surviving NOT NULL
-      # until ALE-289 removes it.
-      assert quantity == 1
-      assert photo_url == nil
-      assert attributes == %{}
-      assert out_for_maintenance == false
+      assert %{rows: [[false]]} =
+               Repo.query!(
+                 "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_history')",
+                 []
+               )
     end
 
     test "the minted slug is rejected as a duplicate by the database" do

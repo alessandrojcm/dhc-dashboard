@@ -520,8 +520,13 @@ defmodule DhcWeb.InventoryStructureControllerTest do
     item_id = Ecto.UUID.generate()
 
     Dhc.Repo.query!(
-      "INSERT INTO inventory_items (id, container_id, category_id, attributes, quantity, created_at, updated_at) VALUES ($1, $2, $3, '{}'::jsonb, 1, NOW(), NOW())",
-      [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(container_id), Ecto.UUID.dump!(category_id)]
+      "INSERT INTO inventory_items (id, container_id, category_id, slug, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
+      [
+        Ecto.UUID.dump!(item_id),
+        Ecto.UUID.dump!(container_id),
+        Ecto.UUID.dump!(category_id),
+        "test-#{System.unique_integer([:positive])}"
+      ]
     )
 
     {:ok, item_id}

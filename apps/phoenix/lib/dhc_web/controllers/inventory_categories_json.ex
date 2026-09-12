@@ -8,15 +8,8 @@ defmodule DhcWeb.InventoryCategoriesJSON do
   #   * single     → `%{data: %{...}}`              (InventoryCategoryResponse)
   #   * error      → `%{errors: %{detail: ...}}`     (Error)
   #
-  # Payload keys are camelCase per the contract: `availableAttributes`,
-  # `itemCount`, `createdAt`, `updatedAt`. The `availableAttributes` element
-  # maps are passed through verbatim — the persistence layer (and the old
-  # Svelte service) store attribute definitions with their own keys
-  # (`name`/`label`/`type`/`required`/`options`, and historically
-  # `default_value`); the contract's `defaultValue` is the canonical name but
-  # elements are intentionally not reshaped here so existing rows round-trip
-  # without data loss. Once item-attribute validation lands, the element shape
-  # can be normalized at the schema boundary.
+  # Payload keys are camelCase per the contract: `itemCount`, `createdAt`,
+  # `updatedAt`.
 
   def render("index.json", %{categories: categories}) do
     %{data: %{categories: Enum.map(categories, &render_category/1)}}
@@ -35,7 +28,6 @@ defmodule DhcWeb.InventoryCategoriesJSON do
       id: category.id,
       name: category.name,
       description: category.description,
-      availableAttributes: category.available_attributes || [],
       itemCount: category.item_count || 0,
       createdAt: serialize_datetime(category.created_at),
       updatedAt: serialize_datetime(category.updated_at)

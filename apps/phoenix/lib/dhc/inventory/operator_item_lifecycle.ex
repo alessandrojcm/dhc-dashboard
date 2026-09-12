@@ -36,9 +36,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
   interlock cannot commit underneath the check.
 
   Availability itself is never stored — see `Dhc.Inventory.ItemProjection`.
-  Target paths never write `inventory_history` and never touch
-  `out_for_maintenance`. The loan commands are ALE-286; the viewer contract
-  is ALE-284c.
+  The loan commands are ALE-286; the viewer contract is ALE-284c.
   """
 
   import Ecto.Query

@@ -84,34 +84,33 @@ defmodule Dhc.InventoryTest do
   end
 
   describe "create_category/1" do
-    test "creates with camelCase payload keys" do
+    test "creates with name and description" do
       assert {:ok, %EquipmentCategory{} = category} =
                Inventory.create_category(%{
                  "name" => "Inert Bucklers",
-                 "description" => "Small shields",
-                 "availableAttributes" => [
-                   %{"name" => "brand", "type" => "text", "label" => "Brand", "required" => true}
-                 ]
+                 "description" => "Small shields"
                })
 
       assert category.name == "Inert Bucklers"
-      assert [attr] = category.available_attributes
-      assert attr["name"] == "brand"
+      assert category.description == "Small shields"
     end
 
-    test "coerces an empty legacy {} column default to an empty list" do
-      # Create without available_attributes; the column default is `'{}'::jsonb`
-      # (an empty jsonb object), which JsonArray normalizes to `[]` on load.
+    test "ignores legacy attribute config keys" do
+      # ALE-289 dropped the available_attributes / attribute_schema JSON
+      # columns; typed definitions live behind Dhc.Inventory.Structure.
+      # A stale caller still sending them must not fail or persist them.
       assert {:ok, %EquipmentCategory{} = category} =
-               Inventory.create_category(%{"name" => "No Attrs"})
+               Inventory.create_category(%{
+                 "name" => "No Attrs",
+                 "availableAttributes" => [%{"name" => "brand", "type" => "text"}]
+               })
 
-      reloaded = Repo.get!(EquipmentCategory, category.id)
-      assert reloaded.available_attributes == []
+      assert category.name == "No Attrs"
+      refute Map.has_key?(Map.from_struct(category), :available_attributes)
     end
 
     test "returns {:error, changeset} when name is missing" do
-      assert {:error, %Ecto.Changeset{} = changeset} =
-               Inventory.create_category(%{"availableAttributes" => []})
+      assert {:error, %Ecto.Changeset{} = changeset} = Inventory.create_category(%{})
 
       assert changeset.errors[:name]
     end
@@ -121,26 +120,6 @@ defmodule Dhc.InventoryTest do
 
       assert {:error, :conflict, %Ecto.Changeset{}} =
                Inventory.create_category(%{"name" => "Existing"})
-    end
-
-    test "rejects non-array availableAttributes as a changeset error" do
-      assert {:error, %Ecto.Changeset{} = changeset} =
-               Inventory.create_category(%{
-                 "name" => "Bad Attrs",
-                 "availableAttributes" => "nope"
-               })
-
-      assert changeset.errors[:available_attributes]
-    end
-
-    test "rejects an attribute with an invalid type" do
-      assert {:error, %Ecto.Changeset{} = changeset} =
-               Inventory.create_category(%{
-                 "name" => "Bad Type Attr",
-                 "availableAttributes" => [%{"name" => "x", "type" => "frobnicate"}]
-               })
-
-      assert changeset.errors[:available_attributes]
     end
   end
 
@@ -226,7 +205,7 @@ defmodule Dhc.InventoryTest do
 
     {:ok, category} =
       %EquipmentCategory{}
-      |> Ecto.Changeset.cast(attrs, [:name, :description, :available_attributes])
+      |> Ecto.Changeset.cast(attrs, [:name, :description])
       |> Ecto.Changeset.validate_required([:name])
       |> Repo.insert()
 
@@ -260,15 +239,16 @@ defmodule Dhc.InventoryTest do
       Repo.query(
         """
         INSERT INTO inventory_items
-          (id, container_id, category_id, attributes, quantity, created_at, updated_at)
-        VALUES ($1, $2, $3, '{}'::jsonb, 1, NOW(), NOW())
+          (id, container_id, category_id, slug, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, NOW(), NOW())
         """,
         # All three are uuid columns — Postgrex requires 16-byte binaries, not
         # string UUIDs, for raw SQL parameters.
         [
           Ecto.UUID.dump!(item_id),
           Ecto.UUID.dump!(container_id),
-          Ecto.UUID.dump!(category_id)
+          Ecto.UUID.dump!(category_id),
+          "test-#{System.unique_integer([:positive])}"
         ]
       )
 

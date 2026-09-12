@@ -20,7 +20,7 @@ defmodule Dhc.Inventory.Container do
     * `:parent_container` — `%{id, name}` summary of the parent, or `nil`.
     * `:child_containers` — list of `%{id, name}` child summaries.
     * `:items` — list of minimal item summaries
-      (`%{id, quantity, out_for_maintenance, category}`) for the detail view.
+      (`%{id, category}`) for the detail view.
 
   ## `created_by`
 

@@ -1,4 +1,4 @@
-defmodule DhcWeb.InventoryOperatorItemsClientParityTest do
+defmodule DhcWeb.InventoryItemsClientParityTest do
   @moduledoc """
   ALE-295 client parity: every operator item operation in the contract must
   be reachable from `@dhc/api-client`.
@@ -93,18 +93,18 @@ defmodule DhcWeb.InventoryOperatorItemsClientParityTest do
     public = File.read!(context.public)
 
     helpers = ~w(
-      inventoryOperatorItemsListOptions
-      inventoryOperatorItemsListQueryKey
-      inventoryOperatorItemsShowOptions
-      inventoryOperatorItemsCreateMutation
-      inventoryOperatorItemsUpdateMutation
-      inventoryOperatorItemsMoveMutation
-      inventoryOperatorItemsStartMaintenanceMutation
-      inventoryOperatorItemsEndMaintenanceMutation
-      inventoryOperatorItemsArchiveMutation
-      inventoryOperatorItemsRestoreMutation
-      inventoryOperatorItemsChangeCategoryMutation
-      inventoryOperatorItemsDeleteMutation
+      inventoryItemsListOptions
+      inventoryItemsListQueryKey
+      inventoryItemsShowOptions
+      inventoryItemsCreateMutation
+      inventoryItemsUpdateMutation
+      inventoryItemsMoveMutation
+      inventoryItemsStartMaintenanceMutation
+      inventoryItemsEndMaintenanceMutation
+      inventoryItemsArchiveMutation
+      inventoryItemsRestoreMutation
+      inventoryItemsChangeCategoryMutation
+      inventoryItemsDeleteMutation
     )
 
     for helper <- helpers do
@@ -130,7 +130,7 @@ defmodule DhcWeb.InventoryOperatorItemsClientParityTest do
     {:ok, spec} = YamlElixir.read_from_file(path)
 
     for {path, methods} <- spec["paths"],
-        String.starts_with?(path, "/inventory/operator/items"),
+        String.starts_with?(path, "/inventory/items"),
         {_method, operation} <- methods,
         is_map(operation),
         id = operation["operationId"],
@@ -138,7 +138,7 @@ defmodule DhcWeb.InventoryOperatorItemsClientParityTest do
         do: id
   end
 
-  # `inventoryOperatorItems.list` → `inventoryOperatorItemsList`
+  # `inventoryItems.list` → `inventoryItemsList`
   defp sdk_function_name(operation_id) do
     [namespace, action] = String.split(operation_id, ".", parts: 2)
 

@@ -4,17 +4,14 @@ defmodule Dhc.Inventory do
 
   This module is the stable Phoenix context boundary used by controllers and
   other callers. Implementation is split by inventory slice under
-  `Dhc.Inventory.*` so category, container, item, and history behavior can stay
-  navigable without changing the public API.
+  `Dhc.Inventory.*` so category, container, item, loan, and notification
+  behavior can stay navigable without changing the public API.
   """
 
   alias Dhc.Inventory.Categories
   alias Dhc.Inventory.Containers
   alias Dhc.Inventory.EquipmentCategory
-  alias Dhc.Inventory.InventoryHistory
   alias Dhc.Inventory.Item
-  alias Dhc.Inventory.ItemHistory
-  alias Dhc.Inventory.Items
   alias Dhc.Inventory.MemberCatalog
   alias Dhc.Inventory.LoanNotifications
   alias Dhc.Inventory.LoanReminders
@@ -24,13 +21,11 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.OperatorItems
   alias Dhc.Inventory.OperatorLoanQueue
   alias Dhc.Inventory.OperatorLoans
-  alias Dhc.Inventory.Stats
   alias Dhc.Inventory.Structure
 
   @type category :: EquipmentCategory.t()
   @type container :: Containers.container()
   @type item :: Item.t()
-  @type history :: InventoryHistory.t()
 
   defdelegate list_categories(), to: Categories
   defdelegate get_category(id), to: Categories
@@ -47,16 +42,9 @@ defmodule Dhc.Inventory do
   defdelegate restore_container(id), to: Containers
   defdelegate delete_container(id), to: Containers
 
-  defdelegate list_items(opts \\ %{}), to: Items
-  defdelegate get_item(id), to: Items
-  defdelegate create_item(attrs, actor_id), to: Items
-  defdelegate update_item(id, attrs, actor_id), to: Items
-  defdelegate delete_item(id), to: Items
-  defdelegate move_item(id, attrs, actor_id), to: Items
-  defdelegate set_item_maintenance(id, attrs, actor_id), to: Items
-
-  # ALE-284a target item slice. The legacy `*_item` functions above stay
-  # until ALE-289 removes them; target paths never write `inventory_history`.
+  # ALE-289: the legacy quantity/JSON-attributes slice is gone. One row is
+  # one physical unit with an immutable slug; labels are derived, never
+  # stored; availability is a projection, never a stored flag.
   defdelegate resolve_operator_item(slug_or_id), to: OperatorItems
   # ALE-284c paginated operator read backing the viewer contract.
   defdelegate list_operator_items(params \\ %{}), to: OperatorItemList
@@ -131,11 +119,6 @@ defmodule Dhc.Inventory do
   # exposed for that worker and for operational repair.
   defdelegate run_loan_reminders(), to: LoanReminders, as: :run
   defdelegate due_loan_reminders(), to: LoanReminders, as: :due
-
-  defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
-  defdelegate list_history(opts \\ %{}), to: ItemHistory
-
-  defdelegate get_stats(), to: Stats
 
   defdelegate list_definitions(category_id), to: Structure
   defdelegate get_definition(id), to: Structure

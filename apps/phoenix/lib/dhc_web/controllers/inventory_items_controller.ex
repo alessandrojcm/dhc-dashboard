@@ -1,48 +1,72 @@
 defmodule DhcWeb.InventoryItemsController do
   @moduledoc """
-  Inventory Item management endpoints — ALE-107.
+  Operator viewers and commands for target inventory Items — ALE-284c.
 
-  Mirrors the ALE-104 Inventory REST contract for the item slice:
+    * GET    /inventory/items                                 — list, write roles.
+    * POST   /inventory/items                                 — create, write roles.
+    * GET    /inventory/items/:slugOrId                       — show, write roles.
+    * PATCH  /inventory/items/:slugOrId                       — generic edit, write roles.
+    * DELETE /inventory/items/:slugOrId                       — delete, write roles.
+    * POST   /inventory/items/:slugOrId/category              — reclassify, write roles.
+    * POST   /inventory/items/:slugOrId/move                  — move, write roles.
+    * GET    /inventory/items/:slugOrId/maintenance           — periods, write roles.
+    * POST   /inventory/items/:slugOrId/maintenance/start     — start, write roles.
+    * POST   /inventory/items/:slugOrId/maintenance/end       — end, write roles.
+    * POST   /inventory/items/:slugOrId/archive               — archive, write roles.
+    * POST   /inventory/items/:slugOrId/restore               — restore, write roles.
 
-    * GET    /inventory/items          — list (cursor-paginated, filtered,
-      with container/category summaries), any authenticated member.
-    * POST   /inventory/items          — create, write roles.
-    * GET    /inventory/items/:id       — detail (container/category summaries),
-      any authenticated member.
-    * PATCH  /inventory/items/:id       — update, write roles.
-    * DELETE /inventory/items/:id       — delete (204), write roles.
-    * GET    /inventory/items/:id/history — item history (newest first), any
-      authenticated member.
+  Every command is its own action with its own request body, so the generic
+  edit cannot express a move, a maintenance transition, an archive, or a
+  loan change. Operator authority is equal for `quartermaster`,
+  `president`, and `admin`, all enforced by the `:inventory_admin_api`
+  pipeline.
 
-  RBAC is enforced by the `:inventory_admin_api` (writes) and
-  `:authenticated_api` (reads) pipelines in the router, mirroring the existing
-  SvelteKit `INVENTORY_ROLES` (`quartermaster`, `president`, `admin`).
+  **Reads are operator-only too.** This viewer discloses the container
+  location, operator notes, and maintenance facts, which spec ALE-280 story
+  45 forbids exposing to members in ordinary browsing. The member-shaped
+  catalog projection — label, slug, category, values, and a generic
+  unavailability reason only — is ALE-285, not a role variant of this one.
 
-  The controller does no business logic; it derives `created_by`/`updated_by`
-  from `conn.assigns.current_user.sub` on write, maps `Dhc.Inventory` result
-  tuples to HTTP status codes, and delegates rendering to
-  `DhcWeb.InventoryItemsJSON`.
+  The controller only maps `Dhc.Inventory` result tuples onto status codes.
+  Interlock conflicts become `409` with a typed `code`, per-definition value
+  failures become `422` carrying `valueErrors`, and nothing is allowed to
+  surface as a server error.
   """
 
   use DhcWeb, :controller
 
   alias Dhc.Inventory
 
+  @view [json: DhcWeb.InventoryItemsJSON]
+
+  # Domain reasons that mean "an interlock refused this", not "you sent
+  # something invalid" — they map to 409 with a machine-readable code.
+  @conflict_codes %{
+    archived: "The item is archived and therefore read-only",
+    loan_active: "An approved or checked-out loan holds this item",
+    maintenance_open: "The item already has an open maintenance period",
+    no_open_maintenance: "The item has no open maintenance period",
+    has_history: "The item has loan or maintenance history — archive it instead"
+  }
+
+  @validation_codes %{
+    invalid_notes: "notes must be text",
+    archived_category: "The category is archived",
+    archived_container: "The container is archived",
+    reason_required: "A maintenance reason is required",
+    confirmation_required: "Deletion requires explicit confirmation"
+  }
+
   @doc """
   GET /inventory/items
   """
   def index(conn, params) do
-    case Inventory.list_items(params) do
-      {:ok, %{items: items, limit: limit, next_cursor: next_cursor}} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:index, items: items, limit: limit, next_cursor: next_cursor)
+    case Inventory.list_operator_items(params) do
+      {:ok, page} ->
+        conn |> put_view(@view) |> render(:index, page: page)
 
-      {:error, :invalid_limit} ->
-        bad_request(conn, "limit must be one of 10, 25, 50, 100")
-
-      {:error, :bad_cursor} ->
-        bad_request(conn, "Invalid or stale cursor")
+      {:error, reason} ->
+        bad_request(conn, list_error_detail(reason))
     end
   end
 
@@ -50,187 +74,178 @@ defmodule DhcWeb.InventoryItemsController do
   POST /inventory/items
   """
   def create(conn, params) do
-    actor_id = conn.assigns.current_session.principal.id
-
-    case Inventory.create_item(params, actor_id) do
-      {:ok, item} ->
-        conn
-        |> put_status(:created)
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
-
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
-    end
+    params
+    |> Inventory.create_operator_item(actor_id(conn))
+    |> respond(conn, :created)
   end
 
   @doc """
-  GET /inventory/items/{id}
+  GET /inventory/items/:slugOrId
   """
-  def show(conn, %{"id" => id}) do
-    case Inventory.get_item(id) do
-      {:ok, item} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
-
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
-    end
+  def show(conn, %{"slugOrId" => slug_or_id}) do
+    slug_or_id |> Inventory.resolve_operator_item() |> respond(conn)
   end
 
   @doc """
-  PATCH /inventory/items/{id}
+  PATCH /inventory/items/:slugOrId
   """
-  def update(conn, %{"id" => id} = params) do
-    actor_id = conn.assigns.current_session.principal.id
-
-    case Inventory.update_item(id, params, actor_id) do
-      {:ok, item} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
-
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
-
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
-    end
+  def update(conn, %{"slugOrId" => slug_or_id} = params) do
+    slug_or_id
+    |> Inventory.update_operator_item(params, actor_id(conn))
+    |> respond(conn)
   end
 
   @doc """
-  DELETE /inventory/items/{id}
+  DELETE /inventory/items/:slugOrId
   """
-  def delete(conn, %{"id" => id}) do
-    case Inventory.delete_item(id) do
+  def delete(conn, %{"slugOrId" => slug_or_id} = params) do
+    slug_or_id |> Inventory.delete_operator_item(params) |> respond(conn)
+  end
+
+  @doc """
+  POST /inventory/items/:slugOrId/category
+  """
+  def change_category(conn, %{"slugOrId" => slug_or_id} = params) do
+    slug_or_id
+    |> Inventory.change_operator_item_category(params, actor_id(conn))
+    |> respond(conn)
+  end
+
+  @doc """
+  POST /inventory/items/:slugOrId/move
+  """
+  def move(conn, %{"slugOrId" => slug_or_id} = params) do
+    slug_or_id
+    |> Inventory.move_operator_item(params, actor_id(conn))
+    |> respond(conn)
+  end
+
+  @doc """
+  GET /inventory/items/:slugOrId/maintenance
+  """
+  def maintenance(conn, %{"slugOrId" => slug_or_id}) do
+    case Inventory.resolve_operator_item(slug_or_id) do
       {:ok, _item} ->
-        send_delete(conn)
+        periods = Inventory.list_operator_item_maintenance_periods(slug_or_id)
+        conn |> put_view(@view) |> render(:maintenance, periods: periods)
 
       {:error, :not_found} ->
-        not_found(conn, "Item not found")
+        not_found(conn)
     end
   end
 
   @doc """
-  GET /inventory/items/{id}/history
+  POST /inventory/items/:slugOrId/maintenance/start
   """
-  def history(conn, %{"id" => id} = params) do
-    case Inventory.list_item_history(id, params) do
-      {:ok, history} ->
-        limit = history_limit(params)
-
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:history, history: history, limit: limit)
-
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
-    end
+  def start_maintenance(conn, %{"slugOrId" => slug_or_id} = params) do
+    slug_or_id
+    |> Inventory.start_operator_item_maintenance(params, actor_id(conn))
+    |> respond(conn)
   end
 
   @doc """
-  POST /inventory/items/{id}/move — ALE-108 dedicated move command.
+  POST /inventory/items/:slugOrId/maintenance/end
   """
-  def move(conn, %{"id" => id} = params) do
-    actor_id = conn.assigns.current_session.principal.id
-
-    case Inventory.move_item(id, params, actor_id) do
-      {:ok, item} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
-
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
-
-      {:error, :invalid_container} ->
-        unprocessable(conn, "container_id unknown container")
-
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
-    end
+  def end_maintenance(conn, %{"slugOrId" => slug_or_id} = params) do
+    slug_or_id
+    |> Inventory.end_operator_item_maintenance(params, actor_id(conn))
+    |> respond(conn)
   end
 
   @doc """
-  POST /inventory/items/{id}/maintenance — ALE-108 dedicated maintenance command.
+  POST /inventory/items/:slugOrId/archive
   """
-  def maintenance(conn, %{"id" => id} = params) do
-    actor_id = conn.assigns.current_session.principal.id
-
-    case Inventory.set_item_maintenance(id, params, actor_id) do
-      {:ok, item} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
-
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
-
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
-    end
+  def archive(conn, %{"slugOrId" => slug_or_id} = params) do
+    slug_or_id
+    |> Inventory.archive_operator_item(params, actor_id(conn))
+    |> respond(conn)
   end
 
-  # ── Error helpers ─────────────────────────────────────────────────────
+  @doc """
+  POST /inventory/items/:slugOrId/restore
+  """
+  def restore(conn, %{"slugOrId" => slug_or_id}) do
+    slug_or_id |> Inventory.restore_operator_item(actor_id(conn)) |> respond(conn)
+  end
 
-  defp not_found(conn, detail) do
+  # ── Result mapping ──────────────────────────────────────────────
+
+  defp respond(result, conn, success_status \\ :ok)
+
+  defp respond({:ok, item}, conn, success_status) do
     conn
-    |> put_status(:not_found)
-    |> put_view(json: DhcWeb.InventoryItemsJSON)
-    |> render(:error, detail: detail)
+    |> put_status(success_status)
+    |> put_view(@view)
+    |> render(:show, item: item)
   end
 
-  defp bad_request(conn, detail) do
+  defp respond({:error, :not_found}, conn, _status), do: not_found(conn)
+
+  defp respond({:error, :invalid_values, value_errors}, conn, _status) do
+    render_error(conn, :unprocessable_entity, %{
+      detail: "One or more property values are invalid",
+      code: "invalid_values",
+      valueErrors: value_errors
+    })
+  end
+
+  defp respond({:error, reason}, conn, _status) when is_map_key(@conflict_codes, reason) do
+    render_error(conn, :conflict, %{
+      detail: Map.fetch!(@conflict_codes, reason),
+      code: to_string(reason)
+    })
+  end
+
+  defp respond({:error, reason}, conn, _status) when is_map_key(@validation_codes, reason) do
+    render_error(conn, :unprocessable_entity, %{
+      detail: Map.fetch!(@validation_codes, reason),
+      code: to_string(reason)
+    })
+  end
+
+  defp respond({:error, %Ecto.Changeset{} = changeset}, conn, _status) do
+    render_error(conn, :unprocessable_entity, %{
+      detail: changeset_detail(changeset),
+      code: "invalid_values"
+    })
+  end
+
+  defp list_error_detail(:invalid_limit), do: "limit must be one of 10, 25, 50, 100"
+  defp list_error_detail(:invalid_direction), do: "direction must be asc or desc"
+
+  defp list_error_detail(:invalid_archived),
+    do: "archived must be exclude, include, or only"
+
+  defp list_error_detail(:invalid_category),
+    do: "categoryId must be comma-separated category UUIDs"
+
+  defp list_error_detail(:invalid_property),
+    do: "property must be comma-separated definitionId:value pairs"
+
+  defp list_error_detail(:bad_cursor), do: "cursor does not match the current query"
+
+  defp not_found(conn), do: render_error(conn, :not_found, %{detail: "Item not found"})
+
+  defp bad_request(conn, detail), do: render_error(conn, :bad_request, %{detail: detail})
+
+  defp render_error(conn, status, assigns) do
     conn
-    |> put_status(:bad_request)
-    |> put_view(json: DhcWeb.InventoryItemsJSON)
-    |> render(:error, detail: detail)
+    |> put_status(status)
+    |> put_view(@view)
+    |> render(:error, assigns)
   end
 
-  defp unprocessable(conn, %Ecto.Changeset{} = changeset) do
-    detail =
-      changeset
-      |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-      |> render_error_detail()
-
-    unprocessable_detail(conn, detail)
-  end
-
-  defp unprocessable(conn, detail) when is_binary(detail) do
-    unprocessable_detail(conn, detail)
-  end
-
-  defp unprocessable_detail(conn, detail) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> put_view(json: DhcWeb.InventoryItemsJSON)
-    |> render(:error, detail: detail)
-  end
-
-  # traverse_errors returns a nested map of field → [messages]. Flatten to a
-  # human-readable string (matches the project's flat `errors.detail` shape).
-  defp render_error_detail(errors) when errors == %{}, do: "Invalid item payload"
-
-  defp render_error_detail(errors) do
-    Enum.map_join(errors, "; ", fn {field, messages} ->
+  defp changeset_detail(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
+    |> Enum.map_join("; ", fn {field, messages} ->
       "#{field} #{Enum.join(List.wrap(messages), ", ")}"
     end)
-  end
-
-  defp send_delete(conn) do
-    conn
-    |> put_status(:no_content)
-    |> send_resp(:no_content, "")
-  end
-
-  defp history_limit(%{"limit" => limit}) when is_binary(limit) do
-    case Integer.parse(limit) do
-      {n, ""} -> n
-      _ -> 20
+    |> case do
+      "" -> "Invalid item payload"
+      detail -> detail
     end
   end
 
-  defp history_limit(%{"limit" => limit}) when is_integer(limit), do: limit
-  defp history_limit(_), do: 20
+  defp actor_id(conn), do: conn.assigns.current_session.principal.id
 end
