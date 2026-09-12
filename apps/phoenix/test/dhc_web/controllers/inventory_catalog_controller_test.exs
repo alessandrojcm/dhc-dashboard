@@ -242,6 +242,46 @@ defmodule DhcWeb.InventoryCatalogControllerTest do
       assert Enum.map(property_data["items"], & &1["id"]) == [regenyei.id]
     end
 
+    test "filters by availability without leaking operator facts", %{conn: conn} do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, free} = create_item(container_id, category.id)
+      {:ok, borrowed} = create_item(container_id, category.id)
+      {:ok, serviced} = create_item(container_id, category.id)
+      borrower = principal!("availability")
+
+      create_loan!(borrowed, borrower, "checked_out")
+
+      assert {:ok, _} =
+               Inventory.start_operator_item_maintenance(
+                 serviced.slug,
+                 %{"reason" => "Blade bent in sparring"},
+                 @actor_id
+               )
+
+      available =
+        conn
+        |> auth_conn("member")
+        |> get("/api/inventory/catalog/items", %{"availability" => "available"})
+
+      assert %{"data" => available_data} = json_response(available, 200)
+      assert Enum.map(available_data["items"], & &1["id"]) == [free.id]
+      assert available_data["totalCount"] == 1
+
+      unavailable =
+        build_conn()
+        |> auth_conn("member")
+        |> get("/api/inventory/catalog/items", %{"availability" => "unavailable"})
+
+      assert %{"data" => unavailable_data} = json_response(unavailable, 200)
+
+      assert Enum.sort(Enum.map(unavailable_data["items"], & &1["id"])) ==
+               Enum.sort([borrowed.id, serviced.id])
+
+      body = Jason.encode!(unavailable_data)
+      refute body =~ borrower
+      refute body =~ "bent"
+    end
+
     test "answers 400 for a bad parameter or mismatched cursor", %{conn: conn} do
       bad_limit =
         conn |> auth_conn("member") |> get("/api/inventory/catalog/items", %{"limit" => "7"})
@@ -264,6 +304,16 @@ defmodule DhcWeb.InventoryCatalogControllerTest do
 
       assert %{"errors" => %{"detail" => category_detail}} = json_response(bad_category, 400)
       assert category_detail =~ "categoryId"
+
+      bad_availability =
+        build_conn()
+        |> auth_conn("member")
+        |> get("/api/inventory/catalog/items", %{"availability" => "archived"})
+
+      assert %{"errors" => %{"detail" => availability_detail}} =
+               json_response(bad_availability, 400)
+
+      assert availability_detail =~ "availability"
     end
   end
 

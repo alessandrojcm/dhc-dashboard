@@ -246,8 +246,103 @@ defmodule Dhc.Inventory.MemberCatalogTest do
       assert {:error, :invalid_property} =
                Inventory.list_catalog_items(%{"property" => "not-a-pair"})
 
+      assert {:error, :invalid_availability} =
+               Inventory.list_catalog_items(%{"availability" => "archived"})
+
       assert {:error, :invalid_limit} = Inventory.list_catalog_items(%{"limit" => "7"})
       assert {:error, :invalid_direction} = Inventory.list_catalog_items(%{"direction" => "up"})
+    end
+
+    test "filters by member-actionable availability over the projection facts" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, free} = create_item(container_id, category.id)
+      {:ok, borrowed} = create_item(container_id, category.id)
+      {:ok, serviced} = create_item(container_id, category.id)
+      borrower = principal_id()
+
+      create_loan!(borrowed, borrower, "checked_out")
+
+      assert {:ok, _} =
+               Inventory.start_operator_item_maintenance(
+                 serviced.slug,
+                 %{"reason" => "Blade bent in sparring"},
+                 principal_id()
+               )
+
+      assert {:ok, available} = Inventory.list_catalog_items(%{"availability" => "available"})
+      assert Enum.map(available.items, & &1.id) == [free.id]
+      assert available.total_count == 1
+
+      assert {:ok, unavailable} = Inventory.list_catalog_items(%{"availability" => "unavailable"})
+
+      assert Enum.sort(Enum.map(unavailable.items, & &1.id)) ==
+               Enum.sort([borrowed.id, serviced.id])
+
+      assert unavailable.total_count == 2
+
+      assert {:ok, all} = Inventory.list_catalog_items(%{"availability" => "all"})
+      assert all.total_count == 3
+
+      # Absent means all; blank means all.
+      assert {:ok, defaulted} = Inventory.list_catalog_items(%{})
+      assert defaulted.total_count == 3
+
+      assert {:ok, blank} = Inventory.list_catalog_items(%{"availability" => ""})
+      assert blank.total_count == 3
+    end
+
+    test "a pending request never makes an item unavailable" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, item} = create_item(container_id, category.id)
+      borrower = principal_id()
+
+      create_loan!(item, borrower, "requested")
+
+      assert {:ok, available} = Inventory.list_catalog_items(%{"availability" => "available"})
+      assert Enum.map(available.items, & &1.id) == [item.id]
+
+      assert {:ok, unavailable} = Inventory.list_catalog_items(%{"availability" => "unavailable"})
+      assert unavailable.items == []
+      assert unavailable.total_count == 0
+    end
+
+    test "combines availability with category and search while binding the cursor" do
+      %{category: category, container_id: container_id} = fixture()
+      other = create_category!()
+
+      {:ok, free} = create_item(container_id, category.id)
+      {:ok, _other_free} = create_item(container_id, other.id)
+      {:ok, busy} = create_item(container_id, category.id)
+      create_loan!(busy, principal_id(), "approved")
+
+      assert {:ok, page} =
+               Inventory.list_catalog_items(%{
+                 "categoryId" => category.id,
+                 "availability" => "available",
+                 "limit" => "10"
+               })
+
+      assert Enum.map(page.items, & &1.id) == [free.id]
+      assert page.total_count == 1
+
+      # A cursor from the available-only query cannot be replayed as
+      # unavailable or unfiltered.
+      if page.next_cursor do
+        for replay <- [%{"availability" => "unavailable"}, %{}] do
+          assert {:error, :bad_cursor} =
+                   Inventory.list_catalog_items(
+                     Map.merge(replay, %{"limit" => "10", "cursor" => page.next_cursor})
+                   )
+        end
+      else
+        assert {:ok, replayed} =
+                 Inventory.list_catalog_items(%{
+                   "availability" => "unavailable",
+                   "categoryId" => category.id
+                 })
+
+        assert Enum.map(replayed.items, & &1.id) == [busy.id]
+      end
     end
   end
 

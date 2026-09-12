@@ -107,6 +107,9 @@ defmodule DhcWeb.InventoryCatalogController do
   defp list_error_detail(:invalid_property),
     do: "property must be comma-separated definitionId:value pairs"
 
+  defp list_error_detail(:invalid_availability),
+    do: "availability must be one of all, available, unavailable"
+
   defp list_error_detail(:bad_cursor), do: "cursor does not match the current query"
 
   defp not_found(conn), do: render_error(conn, :not_found, %{detail: "Item not found"})
