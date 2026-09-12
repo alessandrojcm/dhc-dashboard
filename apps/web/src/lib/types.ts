@@ -82,67 +82,6 @@ export type WorkshopCalendarEvent = {
 	handleEdit?: (workshop: WorkshopCalendarItem) => void;
 };
 
-export type InventoryAttributeValue =
-	| string
-	| number
-	| boolean
-	| null
-	| undefined;
-
-export type InventoryAttributeDefinition = {
-	name: string;
-	label: string;
-	required: boolean;
-	type: "text" | "select" | "number" | "boolean";
-	options?: string[];
-	default_value?: InventoryAttributeValue;
-};
-
-export type InventoryAttributes = Record<string, InventoryAttributeValue>;
-
-export type InventoryCategory =
-	Database["public"]["Tables"]["equipment_categories"]["Row"] & {
-		available_attributes: InventoryAttributeDefinition[];
-	};
-
-export type InventoryContainer =
-	Database["public"]["Tables"]["containers"]["Row"];
-
-export type InventoryItem =
-	Database["public"]["Tables"]["inventory_items"]["Row"];
-
-export type InventoryItemWithRelations = InventoryItem & {
-	attributes: InventoryAttributes;
-	container: {
-		id: string | null;
-		name: string | null;
-		parent_container_id: string | null;
-	};
-	category: {
-		id: string | null;
-		name: string | null;
-		available_attributes: InventoryAttributeDefinition[];
-		attribute_schema: Database["public"]["Tables"]["equipment_categories"]["Row"]["attribute_schema"];
-		description: string | null;
-		created_at: string | null;
-		updated_at: string | null;
-	};
-};
-
-export type InventoryHistoryWithRelations =
-	Database["public"]["Tables"]["inventory_history"]["Row"] & {
-		item: {
-			id: string;
-			attributes: InventoryAttributes;
-		} | null;
-		old_container: {
-			name: string;
-		} | null;
-		new_container: {
-			name: string;
-		} | null;
-	};
-
 export type ClubActivity =
 	Database["public"]["Tables"]["club_activities"]["Row"];
 
