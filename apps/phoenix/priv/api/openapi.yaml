@@ -5172,9 +5172,12 @@ paths:
         Search (`q`) covers the derived label through its ingredients: the
         immutable slug, the Category name, and the property values the label
         is built from (the label is derived, never stored). Filters:
-        `categoryId` (comma-separated) and `property` (comma-separated
+        `categoryId` (comma-separated), `property` (comma-separated
         `definitionId:value` pairs, OR within one definition and AND across
-        definitions). Container is intentionally not a member filter.
+        definitions), and `availability` (`all`/`available`/`unavailable`,
+        default `all`) over the same open-maintenance and
+        approved/checked-out-loan facts the displayed reason is projected
+        from. Container is intentionally not a member filter.
 
         Ordering is by `slug` with an `id` tie-break, so page boundaries are
         stable under concurrent edits. `totalCount` is exact. Cursors are
@@ -5229,6 +5232,19 @@ paths:
           description: |
             Comma-separated `definitionId:value` pairs. Values of the same
             definition are ORed; separate definitions are ANDed.
+        - name: availability
+          in: query
+          schema:
+            type: string
+            enum: [all, available, unavailable]
+            default: all
+          description: |
+            Member-actionable availability filter over the same projection
+            the catalog displays: `available` narrows to requestable items,
+            `unavailable` to items held by an approved/checked-out loan or an
+            open maintenance period, `all` (default) returns both. A pending
+            request never makes an item unavailable. There is no archive
+            filter; archived items stay out of the catalog entirely.
       responses:
         "200":
           description: Cursor-paginated member catalog

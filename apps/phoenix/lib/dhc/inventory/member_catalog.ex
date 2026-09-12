@@ -1,6 +1,9 @@
 defmodule Dhc.Inventory.MemberCatalog do
   @moduledoc """
   ALE-285: the member-facing catalog read behind `Dhc.Inventory`.
+  ALE-288 adds the `availability` filter (`all`/`available`/`unavailable`,
+  default `all`) over the same open-maintenance and
+  approved/checked-out-loan facts `Dhc.Inventory.ItemProjection` uses.
 
   This is **not** a role variant of the operator item viewer
   (`Dhc.Inventory.OperatorItemList`): it is a different read model, and the
@@ -50,6 +53,8 @@ defmodule Dhc.Inventory.MemberCatalog do
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.ItemValues
+  alias Dhc.Inventory.Loan
+  alias Dhc.Inventory.MaintenancePeriod
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
   alias Dhc.Repo
@@ -83,11 +88,14 @@ defmodule Dhc.Inventory.MemberCatalog do
           previous_cursor: String.t() | nil
         }
 
+  @type availability_filter :: :all | :available | :unavailable
+
   @type error ::
           :invalid_limit
           | :invalid_direction
           | :invalid_category
           | :invalid_property
+          | :invalid_availability
           | :bad_cursor
 
   @doc """
@@ -211,6 +219,7 @@ defmodule Dhc.Inventory.MemberCatalog do
     from(i in Item, as: :item, where: not is_nil(i.slug), where: is_nil(i.archived_at))
     |> filter_categories(opts.category_ids)
     |> filter_properties(opts.properties)
+    |> filter_availability(opts.availability)
     |> apply_search(opts.q)
   end
 
@@ -251,6 +260,59 @@ defmodule Dhc.Inventory.MemberCatalog do
           fragment("?::text = ?", v.decimal_value, ^value)
       )
     end)
+  end
+
+  # Availability is a projection, never a stored column, so filtering
+  # constrains on the same open-maintenance and approved/checked-out-loan
+  # facts `Dhc.Inventory.ItemProjection` uses — not a new flag. The active
+  # loan statuses come from the projection so the filter and the displayed
+  # reason cannot disagree. A pending request is deliberately not an input.
+  defp filter_availability(query, :all), do: query
+
+  defp filter_availability(query, :available) do
+    statuses = ItemProjection.active_loan_statuses()
+
+    where(
+      query,
+      [i],
+      not exists(
+        from(p in MaintenancePeriod,
+          where: p.item_id == parent_as(:item).id,
+          where: is_nil(p.ended_at),
+          select: 1
+        )
+      ) and
+        not exists(
+          from(l in Loan,
+            where: l.item_id == parent_as(:item).id,
+            where: l.status in ^statuses,
+            select: 1
+          )
+        )
+    )
+  end
+
+  defp filter_availability(query, :unavailable) do
+    statuses = ItemProjection.active_loan_statuses()
+
+    where(
+      query,
+      [i],
+      exists(
+        from(p in MaintenancePeriod,
+          where: p.item_id == parent_as(:item).id,
+          where: is_nil(p.ended_at),
+          select: 1
+        )
+      ) or
+        exists(
+          from(l in Loan,
+            where: l.item_id == parent_as(:item).id,
+            where: l.status in ^statuses,
+            select: 1
+          )
+        )
+    )
   end
 
   # Search covers the derived label by searching what it is derived from.
@@ -307,7 +369,8 @@ defmodule Dhc.Inventory.MemberCatalog do
     with {:ok, limit} <- parse_limit(take(params, ["limit"])),
          {:ok, direction} <- parse_direction(take(params, ["direction"])),
          {:ok, category_ids} <- parse_categories(take(params, ["categoryId", "category_id"])),
-         {:ok, properties} <- parse_properties(take(params, ["property", "properties"])) do
+         {:ok, properties} <- parse_properties(take(params, ["property", "properties"])),
+         {:ok, availability} <- parse_availability(take(params, ["availability"])) do
       {:ok,
        %{
          limit: limit,
@@ -315,6 +378,7 @@ defmodule Dhc.Inventory.MemberCatalog do
          direction: direction,
          category_ids: category_ids,
          properties: properties,
+         availability: availability,
          q: blank_to_nil(take(params, ["q"])),
          cursor: blank_to_nil(take(params, ["cursor"]))
        }}
@@ -344,6 +408,20 @@ defmodule Dhc.Inventory.MemberCatalog do
   end
 
   defp parse_direction(_direction), do: {:error, :invalid_direction}
+
+  defp parse_availability(nil), do: {:ok, :all}
+  defp parse_availability(""), do: {:ok, :all}
+
+  defp parse_availability(raw) when is_binary(raw) do
+    case raw |> String.trim() |> String.downcase() do
+      "all" -> {:ok, :all}
+      "available" -> {:ok, :available}
+      "unavailable" -> {:ok, :unavailable}
+      _other -> {:error, :invalid_availability}
+    end
+  end
+
+  defp parse_availability(_raw), do: {:error, :invalid_availability}
 
   defp parse_properties(nil), do: {:ok, %{}}
   defp parse_properties(""), do: {:ok, %{}}
@@ -431,6 +509,7 @@ defmodule Dhc.Inventory.MemberCatalog do
       "categoryIds" => Enum.sort(opts.category_ids),
       "properties" =>
         opts.properties |> Enum.sort() |> Enum.map(fn {k, v} -> [k, Enum.sort(v)] end),
+      "availability" => Atom.to_string(opts.availability),
       "q" => opts.q
     }
   end
