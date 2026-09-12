@@ -1,6 +1,5 @@
 import {
 	DISCORD_DOCTOR_ROLES,
-	INVENTORY_ROLES,
 	WORKSHOP_ROLES,
 } from "$lib/server/roles";
 import type { NavData, NavigationGroup } from "$lib/types";
@@ -60,33 +59,6 @@ const data: NavData = {
 			title: "My Loans",
 			url: "/dashboard/my-loans",
 			role: new Set(["member"]), // Own-loan history (ALE-288)
-		},
-		{
-			title: "Inventory",
-			url: "/dashboard/inventory",
-			role: INVENTORY_ROLES,
-			items: [
-				{
-					title: "Overview",
-					url: "/dashboard/inventory",
-					role: INVENTORY_ROLES,
-				},
-				{
-					title: "Containers",
-					url: "/dashboard/inventory/containers",
-					role: INVENTORY_ROLES,
-				},
-				{
-					title: "Categories",
-					url: "/dashboard/inventory/categories",
-					role: INVENTORY_ROLES,
-				},
-				{
-					title: "Items",
-					url: "/dashboard/inventory/items",
-					role: INVENTORY_ROLES,
-				},
-			],
 		},
 	],
 };

@@ -3,8 +3,6 @@ import type {
 	InventoryCategoryCreateRequest,
 	InventoryContainer,
 	InventoryContainerCreateRequest,
-	InventoryItem,
-	InventoryItemCreateRequest,
 	InvitationCreateInvite,
 	InvitationStatus,
 	RegistrationStatus,
@@ -141,11 +139,6 @@ type InventoryContainerSeed = {
 	result: InventoryContainer;
 };
 
-type InventoryItemSeed = {
-	attrs: InventoryItemCreateRequest & { actorId: string };
-	result: InventoryItem;
-};
-
 export type E2ERegistrationSeedRequest = {
 	workshopId: string;
 	memberUserId: string;
@@ -189,7 +182,6 @@ type E2EScenarios = {
 	workshop: WorkshopSeed;
 	inventoryCategory: InventoryCategorySeed;
 	inventoryContainer: InventoryContainerSeed;
-	inventoryItem: InventoryItemSeed;
 	registration: RegistrationSeed;
 	waitlistStatus: WaitlistStatusSeed;
 	setting: SettingSeed;
@@ -361,7 +353,6 @@ export async function clearOnboardingFinalizationInterruption(
 type E2EUpdatableFixture =
 	| "inventoryCategory"
 	| "inventoryContainer"
-	| "inventoryItem"
 	| "registration"
 	| "workshop";
 
