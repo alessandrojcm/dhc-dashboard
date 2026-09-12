@@ -52,6 +52,16 @@ const data: NavData = {
 			role: new Set(["member"]), // All authenticated users have member role
 		},
 		{
+			title: "Equipment",
+			url: "/dashboard/equipment",
+			role: new Set(["member"]), // Member catalog browse (ALE-288)
+		},
+		{
+			title: "My Loans",
+			url: "/dashboard/my-loans",
+			role: new Set(["member"]), // Own-loan history (ALE-288)
+		},
+		{
 			title: "Inventory",
 			url: "/dashboard/inventory",
 			role: INVENTORY_ROLES,
