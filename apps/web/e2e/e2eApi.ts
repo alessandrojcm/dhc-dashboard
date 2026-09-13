@@ -229,9 +229,7 @@ export type InventoryLoanSeed = {
 		operatorActorId?: string;
 		cancelledBy?: "member" | "operator";
 		dueOffsetDays?: number;
-		// IMPL-04 passthrough: accepted by the harness and ignored until the
-		// reminder contract lands.
-		reminderState?: "preDue" | "overdue" | "weekly";
+		reminderState?: ReminderState;
 	};
 	result: {
 		loanId: string;
@@ -250,6 +248,8 @@ export type InventoryLoanSeed = {
 		dueOn: string;
 		containerPath: string | null;
 		decidedBy: string | null;
+		owedKind: "pre_due" | "overdue" | `overdue_week_${number}` | null;
+		notificationKey: string | null;
 	};
 };
 
@@ -263,6 +263,45 @@ export type InventoryLoanPairSeed = {
 		itemId: string;
 	};
 };
+
+export type InventoryMaintenanceSeed = {
+	attrs: {
+		preset: "open" | "closed";
+		itemId?: string;
+		itemSlug?: string;
+		reason: string;
+		endNote?: string | null;
+		operatorActorId: string;
+	};
+	result: {
+		periodId: string;
+		itemId: string;
+		slug: string;
+		open: boolean;
+		reason: string;
+		startedBy: string;
+		endedBy: string | null;
+	};
+};
+
+export type InventoryArchiveSeed = {
+	attrs: {
+		itemId?: string;
+		itemSlug?: string;
+		reason?: string | null;
+		operatorActorId: string;
+	};
+	result: {
+		itemId: string;
+		slug: string;
+		archived: boolean;
+		archivedBy: string;
+		catalogHidden: boolean;
+		historyKept: boolean;
+	};
+};
+
+export type ReminderState = "preDue" | "overdue" | "weekly";
 
 export type E2ERegistrationSeedRequest = {
 	workshopId: string;
@@ -316,6 +355,8 @@ type E2EScenarios = {
 	// Pair seeds use the same scenario name with preset: "competingPair";
 	// narrow via Extract when the test needs loans[]:
 	// type PairResult = InventoryLoanPairSeed["result"];
+	inventoryMaintenance: InventoryMaintenanceSeed;
+	inventoryArchive: InventoryArchiveSeed;
 	registration: RegistrationSeed;
 	waitlistStatus: WaitlistStatusSeed;
 	setting: SettingSeed;
