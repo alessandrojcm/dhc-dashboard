@@ -16,7 +16,12 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.Loan
+  alias Dhc.Inventory.LoanReminder
+  alias Dhc.Inventory.LoanReminders
   alias Dhc.Inventory.MaintenancePeriod
+  alias Dhc.Inventory.MemberCatalog
+  alias Dhc.Inventory.MemberLoans
+  alias Dhc.Inventory.ClubCalendar
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
   alias Dhc.MemberProfiles.MemberProfile
@@ -526,19 +531,22 @@ defmodule Dhc.E2EHarness do
   # `Dhc.Inventory` only (member request/cancel via `MemberLoans`,
   # approve/reject/cancel/checkout/return via `OperatorLoans`,
   # notification-free — exposure attaches `create_keyed/3` after return,
-  # never `Notifications.create/2` here). Returns plain camelCase maps with
+  # `Notifications.create/2` here). Returns plain camelCase maps with
   # viewer-neutral ids, never `*JSON.render/2` output. `overdue` is derived
   # in club-calendar days, never a stored flag; the seed fabricates elapsed
-  # time with a harness-only backdate. `reminderState` (IMPL-04) is accepted
-  # and ignored until that contract lands.
+  # time with a harness-only backdate. `reminderState` (IMPL-04) pins the
+  # due-date geometry in-transaction and — for `weekly` only — earns its
+  # delivered history via one domain `run` *after* commit, because
+  # `create_keyed/3` refuses to write inside a transaction.
   def seed("inventoryLoan", attrs) when is_map(attrs) do
-    case Repo.transaction(fn -> do_seed_loan!(attrs) end) do
+    case Repo.transaction(fn -> do_seed_loan_transaction!(attrs) end) do
+      {:ok, {:single_loan, loan_id, preset}} -> finish_single_loan_seed!(loan_id, preset, attrs)
       {:ok, result} -> result
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp do_seed_loan!(attrs) do
+  defp do_seed_loan_transaction!(attrs) do
     preset = Map.get(attrs, "preset")
 
     unless preset in ~w(requested approved checkedOut returned rejected cancelled overdue competingPair) do
@@ -546,16 +554,24 @@ defmodule Dhc.E2EHarness do
             "inventoryLoan seed requires preset requested/approved/checkedOut/returned/rejected/cancelled/overdue/competingPair"
     end
 
-    # IMPL-04 passthrough: accepted and ignored until the reminder contract lands.
-    _ = Map.get(attrs, "reminderState")
+    reminder_state = Map.get(attrs, "reminderState")
+
+    if reminder_state != nil and reminder_state not in ~w(preDue overdue weekly) do
+      raise ArgumentError, "inventoryLoan reminderState must be preDue/overdue/weekly"
+    end
+
+    if preset == "competingPair" and reminder_state != nil do
+      raise ArgumentError,
+            "inventoryLoan reminderState needs exactly one live loan, not a competingPair"
+    end
 
     case preset do
       "competingPair" -> seed_loan_pair!(attrs)
-      _ -> seed_single_loan!(preset, attrs)
+      _ -> {:single_loan, seed_single_loan_transaction!(preset, attrs), preset}
     end
   end
 
-  defp seed_single_loan!(preset, attrs) do
+  defp seed_single_loan_transaction!(preset, attrs) do
     item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
 
     if item_ref == nil or item_ref == "" do
@@ -575,53 +591,56 @@ defmodule Dhc.E2EHarness do
 
     operator_id = Map.get(attrs, "operatorActorId")
     note = Map.get(attrs, "note")
-    today = Dhc.Inventory.ClubCalendar.today()
+    today = ClubCalendar.today()
     {starts_on, due_on} = loan_default_dates!(attrs, today)
 
-    case preset do
-      "requested" ->
-        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-        loan_seed_row!(loan_id)
+    loan_id =
+      case preset do
+        "requested" ->
+          request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
 
-      "approved" ->
-        require_operator!(operator_id, preset)
-        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-        approve_seed_loan!(loan_id, note, operator_id)
-        loan_seed_row!(loan_id)
+        "approved" ->
+          require_operator!(operator_id, preset)
+          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+          approve_seed_loan!(loan_id, note, operator_id)
+          loan_id
 
-      "checkedOut" ->
-        require_operator!(operator_id, preset)
-        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-        approve_seed_loan!(loan_id, note, operator_id)
-        checkout_seed_loan!(loan_id, operator_id)
-        loan_seed_row!(loan_id)
+        "checkedOut" ->
+          require_operator!(operator_id, preset)
+          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+          approve_seed_loan!(loan_id, note, operator_id)
+          checkout_seed_loan!(loan_id, operator_id)
+          loan_id
 
-      "returned" ->
-        require_operator!(operator_id, preset)
-        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-        approve_seed_loan!(loan_id, note, operator_id)
-        checkout_seed_loan!(loan_id, operator_id)
-        return_seed_loan!(loan_id, operator_id)
-        loan_seed_row!(loan_id)
+        "returned" ->
+          require_operator!(operator_id, preset)
+          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+          approve_seed_loan!(loan_id, note, operator_id)
+          checkout_seed_loan!(loan_id, operator_id)
+          return_seed_loan!(loan_id, operator_id)
+          loan_id
 
-      "rejected" ->
-        require_operator!(operator_id, preset)
-        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-        reject_seed_loan!(loan_id, note, operator_id)
-        loan_seed_row!(loan_id)
+        "rejected" ->
+          require_operator!(operator_id, preset)
+          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+          reject_seed_loan!(loan_id, note, operator_id)
+          loan_id
 
-      "cancelled" ->
-        seed_cancelled_loan!(attrs, item_ref, starts_on, due_on, note, borrower_id, operator_id)
+        "cancelled" ->
+          seed_cancelled_loan!(attrs, item_ref, starts_on, due_on, note, borrower_id, operator_id)
 
-      "overdue" ->
-        require_operator!(operator_id, preset)
-        offset = loan_due_offset!(attrs)
-        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-        approve_seed_loan!(loan_id, note, operator_id)
-        checkout_seed_loan!(loan_id, operator_id)
-        backdate_overdue_loan!(loan_id, offset, today)
-        loan_seed_row!(loan_id)
-    end
+        "overdue" ->
+          require_operator!(operator_id, preset)
+          offset = loan_due_offset!(attrs)
+          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+          approve_seed_loan!(loan_id, note, operator_id)
+          checkout_seed_loan!(loan_id, operator_id)
+          backdate_overdue_loan!(loan_id, offset, today)
+          loan_id
+      end
+
+    force_loan_reminder_geometry!(loan_id, preset, attrs, today)
+    loan_id
   end
 
   defp seed_cancelled_loan!(attrs, item_ref, starts_on, due_on, note, borrower_id, operator_id) do
@@ -635,14 +654,14 @@ defmodule Dhc.E2EHarness do
       "member" ->
         loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
         cancel_seed_loan!(loan_id, note, borrower_id)
-        loan_seed_row!(loan_id)
+        loan_id
 
       "operator" ->
         require_operator!(operator_id, "cancelled")
         loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
         approve_seed_loan!(loan_id, note, operator_id)
         cancel_operator_seed_loan!(loan_id, note, operator_id)
-        loan_seed_row!(loan_id)
+        loan_id
     end
   end
 
@@ -798,7 +817,7 @@ defmodule Dhc.E2EHarness do
   end
 
   defp loan_seed_row!(loan_id) do
-    today = Dhc.Inventory.ClubCalendar.today()
+    today = ClubCalendar.today()
 
     case Repo.get(Loan, loan_id) do
       nil ->
@@ -818,8 +837,223 @@ defmodule Dhc.E2EHarness do
           startsOn: Date.to_iso8601(starts_on),
           dueOn: Date.to_iso8601(due_on),
           containerPath: loan_member_container_path(loan),
-          decidedBy: loan.decided_by_principal_id
+          decidedBy: loan.decided_by_principal_id,
+          owedKind: nil,
+          notificationKey: nil
         }
+    end
+  end
+
+  # ALE-288 IMPL-04: `reminderState` flag on the `inventoryLoan` seed. Pins
+  # the due-date geometry + delivery history so the next
+  # `LoanReminders.run(today)` owes exactly the named occurrence. Performs
+  # no notification writes itself (except the single domain `run` the
+  # `weekly` state needs to earn its delivered history) — notifications are
+  # produced only by `LoanReminders.run/1` down the claim → `create_keyed/3`
+  # → stamp path. Closed loans earn nothing; `competingPair` already
+  # rejected above.
+  # In-transaction reminder geometry (no notification writes): pins
+  # `approved_due_on` for live presets so the post-commit pass owes exactly
+  # the named occurrence. Closed/pending presets keep their dates — the flag
+  # is accepted but earns nothing.
+  defp force_loan_reminder_geometry!(loan_id, preset, attrs, today) do
+    reminder_state = Map.get(attrs, "reminderState")
+
+    if reminder_state != nil and preset in ~w(approved checkedOut overdue) do
+      case reminder_state do
+        "preDue" ->
+          set_approved_due!(loan_id, Date.add(today, 1))
+
+        "overdue" ->
+          set_approved_due!(loan_id, Date.add(today, -loan_due_offset!(attrs)))
+
+        "weekly" ->
+          set_approved_due!(loan_id, Date.add(today, -loan_due_offset!(attrs)))
+      end
+    else
+      :ok
+    end
+  end
+
+  # Post-commit finish for a single loan seed. Reads the committed row and,
+  # for `weekly` only, earns the delivered `overdue` history through one
+  # domain `run` (never a raw insert) before backdating that delivery so the
+  # follow-up is owed. The run lives here — not in the transaction above —
+  # because `create_keyed/3` refuses to write inside a transaction. On a
+  # post-commit failure the half-seeded loan is removed so a failed seed
+  # never leaks a row.
+  defp finish_single_loan_seed!(loan_id, preset, attrs) do
+    today = ClubCalendar.today()
+    reminder_state = Map.get(attrs, "reminderState")
+
+    if reminder_state == "weekly" and preset in ~w(approved checkedOut overdue) do
+      case earn_weekly_history!(loan_id, attrs, today) do
+        :ok -> refresh_loan_reminder_row!(loan_id, today)
+        {:error, reason} -> cleanup_half_seeded_loan!(loan_id, reason)
+      end
+    else
+      refresh_loan_reminder_row!(loan_id, today)
+    end
+  end
+
+  defp earn_weekly_history!(loan_id, attrs, today) do
+    offset = loan_due_offset!(attrs)
+    new_due = Date.add(today, -offset)
+
+    case LoanReminders.run(today) do
+      %{delivered: delivered} when delivered >= 1 ->
+        backdate_reminder_delivery(loan_id, "overdue", new_due, Date.add(today, -8))
+
+      _no_delivery ->
+        {:error, :reminder_not_delivered}
+    end
+  end
+
+  defp cleanup_half_seeded_loan!(loan_id, reason) do
+    delete_loan_reminder_ledger!(loan_id)
+
+    case Repo.get(Loan, loan_id) do
+      nil ->
+        {:error, reason}
+
+      loan ->
+        _ = Repo.delete(loan)
+        {:error, reason}
+    end
+  end
+
+  # Harness-only due-date write for reminder geometry. Mirrors the overdue
+  # preset's time-travel (not a domain command): the flag pins geometry, the
+  # spec drives the operator date-edit route live when it wants a real edit.
+  # Leaves `checked_out_at` alone — owedness reads only `approved_due_on`.
+  defp set_approved_due!(loan_id, %Date{} = new_due) do
+    loan =
+      case Repo.get(Loan, loan_id) do
+        nil -> Repo.rollback(:not_found)
+        %Loan{} = loan -> loan
+      end
+
+    new_start =
+      case loan.approved_start_on do
+        nil ->
+          nil
+
+        %Date{} = start ->
+          if Date.compare(start, new_due) == :gt, do: new_due, else: start
+      end
+
+    if new_start == nil do
+      Repo.query!(
+        "UPDATE inventory_loans SET approved_due_on = $1 WHERE id = $2",
+        [new_due, Ecto.UUID.dump!(loan_id)]
+      )
+    else
+      Repo.query!(
+        "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2 WHERE id = $3",
+        [new_start, new_due, Ecto.UUID.dump!(loan_id)]
+      )
+    end
+
+    :ok
+  end
+
+  # Harness-only delivery time-travel: moves a delivered ledger row's
+  # `delivered_at` back so weekly follow-ups pace from a previous delivery
+  # ≥ 7 club days ago. The row itself was created by the domain `run` above.
+  # Runs post-commit (plain error tuples, never `Repo.rollback/1`).
+  defp backdate_reminder_delivery(loan_id, kind, %Date{} = due_on, %Date{} = delivered_on) do
+    revision = Date.to_gregorian_days(due_on)
+
+    {:ok, delivered_at, _} =
+      "#{Date.to_iso8601(delivered_on)}T12:00:00Z" |> DateTime.from_iso8601()
+
+    delivered_at = DateTime.truncate(delivered_at, :second)
+
+    {count, _} =
+      Repo.update_all(
+        from(r in LoanReminder,
+          where:
+            r.loan_id == ^loan_id and r.kind == ^kind and r.due_on_revision == ^revision and
+              not is_nil(r.delivered_at)
+        ),
+        set: [delivered_at: delivered_at, updated_at: delivered_at]
+      )
+
+    if count == 0, do: {:error, :reminder_not_delivered}, else: :ok
+  end
+
+  # Post-commit result row: re-reads the committed loan and echoes the single
+  # occurrence `owed_occurrence/3` returns for it (`null` when no flag was
+  # given or the loan is closed). Plain maps — never `Repo.rollback/1`, the
+  # loan row is committed by now.
+  defp refresh_loan_reminder_row!(loan_id, today) do
+    loan = Repo.get!(Loan, loan_id)
+    base = loan_seed_row_outside!(loan_id, today)
+
+    case loan.approved_due_on do
+      nil ->
+        base
+
+      %Date{} = due_on ->
+        revision = Date.to_gregorian_days(due_on)
+        history = loan_reminder_history!(loan_id, revision)
+        owed = LoanReminders.owed_occurrence(due_on, today, history)
+
+        case owed do
+          nil ->
+            %{base | owedKind: nil, notificationKey: nil}
+
+          kind ->
+            %{
+              base
+              | owedKind: kind,
+                notificationKey: "inventory:loan:#{loan_id}:reminder:#{kind}:r#{revision}"
+            }
+        end
+    end
+  end
+
+  defp loan_seed_row_outside!(loan_id, today) do
+    loan = Repo.get!(Loan, loan_id)
+    starts_on = loan.approved_start_on || loan.requested_start_on
+    due_on = loan.approved_due_on || loan.requested_due_on
+
+    %{
+      loanId: loan.id,
+      status: loan.status,
+      overdue: loan_overdue?(loan, today),
+      itemId: loan.item_id,
+      slug: loan.item_slug_snapshot,
+      borrowerMemberId: loan.borrower_principal_id,
+      startsOn: Date.to_iso8601(starts_on),
+      dueOn: Date.to_iso8601(due_on),
+      containerPath: loan_member_container_path(loan),
+      decidedBy: loan.decided_by_principal_id,
+      owedKind: nil,
+      notificationKey: nil
+    }
+  end
+
+  defp loan_reminder_history!(loan_id, revision) do
+    rows =
+      Repo.all(
+        from(r in LoanReminder,
+          where:
+            r.loan_id == ^loan_id and r.due_on_revision == ^revision and
+              not is_nil(r.delivered_at),
+          select: %{kind: r.kind, delivered_at: r.delivered_at}
+        )
+      )
+
+    if rows == [] do
+      %{kinds: MapSet.new(), last_delivered_on: nil}
+    else
+      delivered_ons = Enum.map(rows, &ClubCalendar.on_date(&1.delivered_at))
+
+      %{
+        kinds: MapSet.new(rows, & &1.kind),
+        last_delivered_on: Enum.max(delivered_ons, Date)
+      }
     end
   end
 
@@ -839,6 +1073,176 @@ defmodule Dhc.E2EHarness do
        do: path
 
   defp loan_member_container_path(%Loan{}), do: nil
+
+  # ALE-288 IMPL-04: frozen `inventoryMaintenance` scenario. One scenario
+  # with a `preset` enum (`open` | `closed`). Routes through
+  # `Dhc.Inventory` only (`OperatorItemLifecycle`), never around it.
+  # Returns plain camelCase maps, never `*JSON.render/2` output. At most
+  # one open period per item (partial unique index); start rejects pending,
+  # blocked by live loans — all surfaced, never papered over.
+  def seed("inventoryMaintenance", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_maintenance!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_maintenance!(attrs) do
+    preset = Map.get(attrs, "preset")
+
+    unless preset in ~w(open closed) do
+      raise ArgumentError, "inventoryMaintenance seed requires preset open/closed"
+    end
+
+    item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
+
+    if item_ref == nil or item_ref == "" do
+      Repo.rollback(:not_found)
+    end
+
+    operator_id = Map.get(attrs, "operatorActorId")
+
+    if operator_id == nil or operator_id == "" do
+      raise ArgumentError, "inventoryMaintenance seed requires operatorActorId"
+    end
+
+    reason = Map.get(attrs, "reason")
+    end_note = if preset == "closed", do: Map.get(attrs, "endNote"), else: nil
+
+    case preset do
+      "open" ->
+        case Inventory.start_operator_item_maintenance(
+               item_ref,
+               %{"reason" => reason},
+               operator_id
+             ) do
+          {:ok, _} -> maintenance_seed_row!(item_ref)
+          {:error, reason} -> Repo.rollback(reason)
+        end
+
+      "closed" ->
+        with {:ok, _} <-
+               wrap_maintenance_call(
+                 Inventory.start_operator_item_maintenance(
+                   item_ref,
+                   %{"reason" => reason},
+                   operator_id
+                 )
+               ),
+             {:ok, _} <-
+               wrap_maintenance_call(
+                 Inventory.end_operator_item_maintenance(
+                   item_ref,
+                   %{"endNote" => end_note},
+                   operator_id
+                 )
+               ) do
+          maintenance_seed_row!(item_ref)
+        end
+    end
+  end
+
+  defp wrap_maintenance_call({:ok, item}), do: {:ok, item}
+  defp wrap_maintenance_call({:error, reason}), do: Repo.rollback(reason)
+
+  defp maintenance_seed_row!(item_ref) do
+    item =
+      case Inventory.resolve_operator_item(item_ref) do
+        {:ok, item} -> item
+        {:error, :not_found} -> Repo.rollback(:not_found)
+      end
+
+    period =
+      case Inventory.list_operator_item_maintenance_periods(item.id) do
+        [] -> Repo.rollback(:no_open_maintenance)
+        [newest | _] -> newest
+      end
+
+    %{
+      periodId: period.id,
+      itemId: item.id,
+      slug: item.slug,
+      open: period.open?,
+      reason: period.start_reason,
+      startedBy: period.started_by_principal_id,
+      endedBy: period.ended_by_principal_id
+    }
+  end
+
+  # ALE-288 IMPL-04: frozen `inventoryArchive` scenario. One scenario, no
+  # enum. Retires one item via `OperatorItemLifecycle` (ends any open
+  # period atomically, rejects pending, blocked by live loans). Catalog
+  # hides (`:not_found`), own-loan history keeps its snapshot. Already-
+  # archived is a no-op success (idempotent).
+  def seed("inventoryArchive", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_archive!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_archive!(attrs) do
+    item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
+
+    if item_ref == nil or item_ref == "" do
+      Repo.rollback(:not_found)
+    end
+
+    operator_id = Map.get(attrs, "operatorActorId")
+
+    if operator_id == nil or operator_id == "" do
+      raise ArgumentError, "inventoryArchive seed requires operatorActorId"
+    end
+
+    domain_attrs =
+      case Map.fetch(attrs, "reason") do
+        {:ok, reason} -> %{"reason" => reason}
+        :error -> %{}
+      end
+
+    case Inventory.archive_operator_item(item_ref, domain_attrs, operator_id) do
+      {:ok, _} -> archive_seed_row!(item_ref, operator_id)
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp archive_seed_row!(item_ref, operator_id) do
+    item =
+      case Inventory.resolve_operator_item(item_ref) do
+        {:ok, item} -> item
+        {:error, :not_found} -> Repo.rollback(:not_found)
+      end
+
+    catalog_hidden =
+      case MemberCatalog.resolve_catalog_item(item.slug) do
+        {:error, :not_found} -> true
+        {:ok, _} -> false
+      end
+
+    %{
+      itemId: item.id,
+      slug: item.slug,
+      archived: item.archived_at != nil,
+      archivedBy: operator_id,
+      catalogHidden: catalog_hidden,
+      historyKept: archive_history_kept?(item.id)
+    }
+  end
+
+  defp archive_history_kept?(item_id) do
+    loans = Repo.all(from(l in Loan, where: l.item_id == ^item_id))
+
+    Enum.all?(loans, fn loan ->
+      case MemberLoans.get_own_loan(loan.id, loan.borrower_principal_id) do
+        {:ok, view} ->
+          is_binary(view.item_slug) and view.item_slug != "" and is_binary(view.item_label) and
+            view.item_label != ""
+
+        {:error, _} ->
+          false
+      end
+    end)
+  end
 
   def seed("registration", attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -1097,21 +1501,115 @@ defmodule Dhc.E2EHarness do
   # permanent with no domain delete — E2E teardown breaks this deliberately
   # and narrowly: hard-deletes the loan row directly (both `competingPair`
   # entries deleted individually — no bulk pair delete) and asserts row
-  # absence. Never cascades: items, members, periods, categories, and
-  # containers are left untouched. Production retention is unaffected — no
-  # domain delete function is created to serve this.
+  # absence. Reminder ledger rows for the loan are deleted alongside
+  # (claimed-but-undelivered first, then delivered) — otherwise a re-seeded
+  # loan with the same id geometry would inherit another loan's delivered
+  # history. Notification rows are left untouched (per-user facts another
+  # spec may still assert; keyed idempotency makes leftovers harmless).
+  # Never cascades: items, members, periods, categories, and containers are
+  # left untouched. Production retention is unaffected — no domain delete
+  # function is created to serve this.
   def delete_fixture("inventoryLoan", id) when is_binary(id) do
     case Repo.get(Loan, id) do
       nil ->
         {:error, :not_found}
 
       loan ->
+        delete_loan_reminder_ledger!(id)
+
         case Repo.delete(loan) do
           {:ok, _} ->
             if Repo.get(Loan, id) == nil, do: :ok, else: {:error, :not_deleted}
 
           {:error, changeset} ->
             {:error, changeset}
+        end
+    end
+  end
+
+  defp delete_loan_reminder_ledger!(loan_id) do
+    from(r in LoanReminder, where: r.loan_id == ^loan_id and is_nil(r.delivered_at))
+    |> Repo.delete_all()
+
+    from(r in LoanReminder, where: r.loan_id == ^loan_id)
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  # Teardown for the frozen maintenance scenario. Retention says periods are
+  # permanent with no domain delete — E2E teardown breaks this deliberately
+  # and narrowly: an open period is ended via
+  # `end_operator_item_maintenance/3` with the canned note
+  # `"E2E teardown: closing open maintenance."`, attributed to the seed's
+  # `started_by` actor. Asserts `open: false`, not row absence. A closed
+  # period is a no-op success (retained history; the item stays
+  # non-deletable → archived on item cleanup). The helper never deletes
+  # period rows.
+  def delete_fixture("inventoryMaintenance", id) when is_binary(id) do
+    case Repo.get(MaintenancePeriod, id) do
+      nil ->
+        {:error, :not_found}
+
+      %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) ->
+        :ok
+
+      %MaintenancePeriod{item_id: item_id, started_by_principal_id: actor_id} ->
+        actor = actor_id || {:error, :missing_actor}
+
+        case actor do
+          {:error, _} = error ->
+            error
+
+          actor_id ->
+            case Inventory.end_operator_item_maintenance(
+                   item_id,
+                   %{
+                     "endNote" => "E2E teardown: closing open maintenance."
+                   },
+                   actor_id
+                 ) do
+              {:ok, _} ->
+                case Repo.get(MaintenancePeriod, id) do
+                  %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) -> :ok
+                  _ -> {:error, :not_closed}
+                end
+
+              {:error, _} = error ->
+                error
+            end
+        end
+    end
+  end
+
+  # Teardown for the frozen archive scenario. The only legal "un-archive"
+  # is a restore via `restore_operator_item/2`. An archived item restores
+  # (surfacing `:archived_category` / `:archived_container` /
+  # `:invalid_values` when dependencies drifted); an active item is a no-op
+  # success. Never hard-deletes: a with-history item stays under the item
+  # contract's archive path; a history-free item stays under its hard-delete
+  # path. This fixture never deletes items.
+  def delete_fixture("inventoryArchive", id) when is_binary(id) do
+    case Inventory.resolve_operator_item(id) do
+      {:error, :not_found} = error ->
+        error
+
+      {:ok, %{archived_at: nil}} ->
+        :ok
+
+      {:ok, %{archived_at: _archived, archived_by_principal_id: nil}} ->
+        {:error, :missing_actor}
+
+      {:ok, %{archived_at: _archived, archived_by_principal_id: actor_id}} ->
+        case Inventory.restore_operator_item(id, actor_id) do
+          {:ok, restored} ->
+            if restored.archived_at == nil, do: :ok, else: {:error, :not_restored}
+
+          {:error, :invalid_values, _} = error ->
+            error
+
+          {:error, _} = error ->
+            error
         end
     end
   end

@@ -39,7 +39,9 @@ defmodule Dhc.E2EHarnessLoanTest do
              :dueOn,
              :itemId,
              :loanId,
+             :notificationKey,
              :overdue,
+             :owedKind,
              :slug,
              :startsOn,
              :status
@@ -52,6 +54,8 @@ defmodule Dhc.E2EHarnessLoanTest do
     assert result.borrowerMemberId == borrower_id
     assert result.containerPath == nil
     assert result.decidedBy == nil
+    assert result.owedKind == nil
+    assert result.notificationKey == nil
 
     assert :ok = E2EHarness.delete_fixture("inventoryLoan", result.loanId)
     assert Repo.get(Dhc.Inventory.Loan, result.loanId) == nil
@@ -212,7 +216,7 @@ defmodule Dhc.E2EHarnessLoanTest do
     assert :ok = E2EHarness.delete_fixture("inventoryLoan", second.loanId)
   end
 
-  test "reminderState passthrough is accepted and ignored" do
+  test "reminderState overdue pins geometry and owedKind" do
     uniq = System.unique_integer([:positive])
     actor_id = principal_id!("loan-rem-actor-#{uniq}")
     borrower_id = principal_id!("loan-rem-borrower-#{uniq}")
@@ -229,10 +233,14 @@ defmodule Dhc.E2EHarnessLoanTest do
       })
 
     assert result.status == "checked_out"
-    assert result.overdue == false
-    assert result.startsOn == Date.to_iso8601(today)
-    refute Map.has_key?(result, :owedKind)
-    refute Map.has_key?(result, :notificationKey)
+    assert result.overdue == true
+    assert result.dueOn == today |> Date.add(-3) |> Date.to_iso8601()
+    assert result.owedKind == "overdue"
+
+    revision = Date.to_gregorian_days(Date.from_iso8601!(result.dueOn))
+
+    assert result.notificationKey ==
+             "inventory:loan:#{result.loanId}:reminder:overdue:r#{revision}"
 
     assert :ok = E2EHarness.delete_fixture("inventoryLoan", result.loanId)
   end
