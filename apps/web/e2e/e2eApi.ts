@@ -1,8 +1,4 @@
 import type {
-	InventoryCategory,
-	InventoryCategoryCreateRequest,
-	InventoryContainer,
-	InventoryContainerCreateRequest,
 	InvitationCreateInvite,
 	InvitationStatus,
 	RegistrationStatus,
@@ -127,16 +123,6 @@ export type E2EWorkshopSeedResult = Pick<
 type WorkshopSeed = {
 	attrs: E2EWorkshopSeedRequest;
 	result: E2EWorkshopSeedResult;
-};
-
-type InventoryCategorySeed = {
-	attrs: InventoryCategoryCreateRequest;
-	result: InventoryCategory;
-};
-
-type InventoryContainerSeed = {
-	attrs: InventoryContainerCreateRequest & { actorId: string };
-	result: InventoryContainer;
 };
 
 type InventoryStructureDefinitionSeed = {
@@ -344,8 +330,6 @@ type E2EScenarios = {
 	waitlist: WaitlistSeed;
 	invitation: InvitationSeed;
 	workshop: WorkshopSeed;
-	inventoryCategory: InventoryCategorySeed;
-	inventoryContainer: InventoryContainerSeed;
 	inventoryStructure: InventoryStructureSeed;
 	// Pair seeds use the same scenario name with withDuplicateLabel: true;
 	// narrow via Extract when the test needs items[]:
@@ -526,10 +510,8 @@ export async function clearOnboardingFinalizationInterruption(
 }
 
 type E2EUpdatableFixture =
-	| "inventoryCategory"
-	| "inventoryContainer"
-	| "inventoryItem"
 	| "inventoryStructure"
+	| "inventoryItem"
 	| "registration"
 	| "workshop";
 
