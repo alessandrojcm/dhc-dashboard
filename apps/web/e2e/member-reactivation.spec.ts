@@ -195,9 +195,13 @@ test.describe("Member reactivation", () => {
 		expect(amountsBody.data.annualFee.amount).toBeGreaterThan(0);
 
 		await expect(dialog.getByText("Due today")).toBeVisible();
-		await expect(
-			dialog.getByText(/for this month.*for this year/i),
-		).toBeVisible();
+		// The prorated monthly + annual lines render as sibling text nodes
+		// inside one <p> (or in separate branches for partial coverage), so
+		// assert each phrase separately scoped to the amounts block instead
+		// of requiring both phrases in a single element.
+		const amountsBlock = dialog.getByTestId("reactivation-amounts");
+		await expect(amountsBlock.getByText(/for this month/i)).toBeVisible();
+		await expect(amountsBlock.getByText(/for this year/i)).toBeVisible();
 		await expect(dialog.getByText("Then monthly")).toBeVisible();
 		await expect(dialog.getByText("Then annually")).toBeVisible();
 		await expect(
