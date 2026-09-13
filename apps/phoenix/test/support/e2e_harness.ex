@@ -10,8 +10,12 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Auth.UserRole
 
   alias Dhc.Invitations.Invitation
+  alias Dhc.Inventory
   alias Dhc.Inventory.Categories
   alias Dhc.Inventory.Containers
+  alias Dhc.Inventory.ItemPropertyValue
+  alias Dhc.Inventory.PropertyDefinition
+  alias Dhc.Inventory.PropertyOption
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
@@ -253,6 +257,157 @@ defmodule Dhc.E2EHarness do
     DhcWeb.InventoryContainersJSON.render("item.json", %{container: container}).data
   end
 
+  # ALE-288 IMPL-01: frozen `inventoryStructure` scenario. Routes through
+  # `Dhc.Inventory` only; returns plain camelCase maps, never `*JSON.render/2`
+  # output. Creates category → definitions/options in order → nested
+  # containers under the actor, atomically (any step failing rolls back).
+  def seed("inventoryStructure", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_structure!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_structure!(attrs) do
+    category_name = Map.fetch!(attrs, "categoryName")
+    definitions = Map.get(attrs, "definitions", []) || []
+    container_path = Map.get(attrs, "containerPath", []) || []
+    container_description = Map.get(attrs, "containerDescription")
+    actor_id = Map.get(attrs, "actorId")
+
+    if container_path != [] and (actor_id == nil or actor_id == "") do
+      raise ArgumentError,
+            "inventoryStructure seed requires actorId when containerPath is non-empty"
+    end
+
+    category =
+      case Inventory.create_category(%{
+             "name" => category_name,
+             "description" => Map.get(attrs, "categoryDescription")
+           }) do
+        {:ok, category} -> category
+        {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+
+    Enum.each(definitions, fn definition ->
+      seed_structure_definition!(category.id, definition)
+    end)
+
+    containers = seed_structure_containers!(container_path, container_description, actor_id)
+
+    %{
+      categoryId: category.id,
+      categoryName: category.name,
+      definitions: structure_definition_results!(category.id),
+      containers: containers
+    }
+  end
+
+  defp seed_structure_definition!(category_id, definition) when is_map(definition) do
+    label = Map.fetch!(definition, "label")
+    value_type = Map.fetch!(definition, "valueType")
+    options = Map.get(definition, "options")
+
+    if value_type == "single_select" and (options == nil or options == []) do
+      Repo.rollback({:missing_options, label})
+    end
+
+    if value_type != "single_select" and is_list(options) and options != [] do
+      Repo.rollback(:not_single_select)
+    end
+
+    definition_attrs = %{
+      "label" => label,
+      "valueType" => value_type,
+      "required" => Map.get(definition, "required", false),
+      "identifyingPosition" => Map.get(definition, "identifyingPosition")
+    }
+
+    definition_id =
+      case Inventory.create_definition(category_id, definition_attrs) do
+        {:ok, created} -> created.id
+        {:error, :not_found} -> Repo.rollback(:category_not_found)
+        {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+
+    if value_type == "single_select" do
+      options
+      |> Enum.with_index()
+      |> Enum.each(fn {option, index} ->
+        option_attrs = %{
+          "label" => Map.fetch!(option, "label"),
+          "position" => Map.get(option, "position", index)
+        }
+
+        case Inventory.create_option(definition_id, option_attrs) do
+          {:ok, _} -> :ok
+          {:error, :not_found} -> Repo.rollback(:definition_not_found)
+          {:error, :not_single_select} -> Repo.rollback(:not_single_select)
+          {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+      end)
+    end
+
+    :ok
+  end
+
+  defp seed_structure_containers!([], _description, _actor_id), do: []
+
+  defp seed_structure_containers!(path, description, actor_id) when is_list(path) do
+    {containers, _parent_id, _path_acc} =
+      Enum.reduce(path, {[], nil, []}, fn name, {acc, parent_id, path_acc} ->
+        current_path = path_acc ++ [name]
+        leaf? = length(current_path) == length(path)
+
+        container_attrs =
+          %{
+            "name" => name,
+            "description" => if(leaf?, do: description, else: nil),
+            "parent_container_id" => parent_id
+          }
+          |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+          |> Map.new()
+
+        container =
+          case Inventory.create_container(container_attrs, actor_id) do
+            {:ok, container} -> container
+            {:error, changeset} -> Repo.rollback(changeset)
+          end
+
+        result = %{
+          containerId: container.id,
+          name: container.name,
+          parentContainerId: container.parent_container_id,
+          path: current_path
+        }
+
+        {acc ++ [result], container.id, current_path}
+      end)
+
+    containers
+  end
+
+  defp structure_definition_results!(category_id) do
+    category_id
+    |> Inventory.list_definitions()
+    |> Enum.map(fn definition ->
+      %{
+        definitionId: definition.id,
+        label: definition.label,
+        valueType: definition.value_type,
+        required: definition.required,
+        identifyingPosition: definition.identifying_position,
+        options:
+          Enum.map(definition.options, fn option ->
+            %{optionId: option.id, label: option.label, position: option.position}
+          end)
+      }
+    end)
+  end
+
   def seed("registration", attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -319,6 +474,146 @@ defmodule Dhc.E2EHarness do
   def delete_fixture("inventoryCategory", id), do: Categories.delete_category(id)
   def delete_fixture("inventoryContainer", id), do: Containers.delete_container(id)
 
+  # Teardown for the frozen structure scenario. Accepts either a category id
+  # (retires options/definitions, then deletes the category) or a container
+  # id (hard-deletes that container). Containers carry no category FK, so a
+  # full teardown is multi-call leaf-first: delete containers deepest-first,
+  # then the category — matching the integration teardown order. Blocked
+  # deletions (`:still_referenced`) surface instead of cascading; callers
+  # delete items first.
+  #
+  # Domain gap (disclosed): `inventory_property_definitions.category_id` is
+  # `on_delete: :nothing`, so `Categories.delete_category/1` raises unless
+  # every definition row is gone — but the domain offers only `retire_*`
+  # (rows stay). A history-free seed therefore cannot tear down through the
+  # seam alone. After retiring, the harness hard-deletes definition/option
+  # rows **iff zero `item_property_values` reference them (active or
+  # archived)** — provably history-free, so no retained fact is destroyed.
+  # Any referencing value (even archived-only) stops the teardown with
+  # `:still_referenced` instead, preserving the retention rule.
+  def delete_fixture("inventoryStructure", id) when is_binary(id) do
+    case Inventory.get_category(id) do
+      {:ok, _} -> delete_structure_category!(id)
+      {:error, :not_found} -> Inventory.delete_container(id)
+    end
+  end
+
+  defp delete_structure_category!(category_id) do
+    with :ok <- retire_structure_definitions!(category_id),
+         :ok <- hard_delete_value_free_definitions!(category_id),
+         {:ok, _} <- Inventory.delete_category(category_id) do
+      :ok
+    end
+  end
+
+  defp retire_structure_definitions!(category_id) do
+    Enum.reduce_while(
+      Inventory.list_definitions(category_id),
+      :ok,
+      fn definition, :ok ->
+        case retire_structure_options!(definition.id) do
+          :ok ->
+            case Inventory.retire_definition(definition.id) do
+              {:ok, _} -> {:cont, :ok}
+              {:error, :not_found} -> {:cont, :ok}
+              {:error, :still_referenced, _} = blocked -> {:halt, blocked}
+            end
+
+          {:error, :still_referenced, _} = blocked ->
+            {:halt, blocked}
+        end
+      end
+    )
+  end
+
+  defp retire_structure_options!(definition_id) do
+    Enum.reduce_while(
+      Inventory.list_options(definition_id),
+      :ok,
+      fn option, :ok ->
+        case Inventory.retire_option(option.id) do
+          {:ok, _} -> {:cont, :ok}
+          {:error, :not_found} -> {:cont, :ok}
+          {:error, :still_referenced, _} = blocked -> {:halt, blocked}
+        end
+      end
+    )
+  end
+
+  defp hard_delete_value_free_definitions!(category_id) do
+    Enum.reduce_while(
+      Inventory.list_definitions(category_id),
+      :ok,
+      fn definition, :ok ->
+        case hard_delete_value_free_options!(definition.id) do
+          :ok ->
+            case hard_delete_value_free_definition!(definition.id) do
+              :ok -> {:cont, :ok}
+              {:error, _, _} = blocked -> {:halt, blocked}
+              {:error, _} = error -> {:halt, error}
+            end
+
+          {:error, _, _} = blocked ->
+            {:halt, blocked}
+
+          {:error, _} = error ->
+            {:halt, error}
+        end
+      end
+    )
+  end
+
+  defp hard_delete_value_free_options!(definition_id) do
+    Enum.reduce_while(
+      Inventory.list_options(definition_id),
+      :ok,
+      fn option, :ok ->
+        if option_values_exist?(option.id) do
+          {:halt, {:error, :still_referenced, %{active_value_count: 1}}}
+        else
+          case Repo.get(PropertyOption, option.id) do
+            nil ->
+              {:cont, :ok}
+
+            record ->
+              case Repo.delete(record) do
+                {:ok, _} -> {:cont, :ok}
+                {:error, changeset} -> {:halt, {:error, changeset}}
+              end
+          end
+        end
+      end
+    )
+  end
+
+  defp hard_delete_value_free_definition!(definition_id) do
+    if definition_values_exist?(definition_id) do
+      {:error, :still_referenced, %{active_value_count: 1}}
+    else
+      case Repo.get(PropertyDefinition, definition_id) do
+        nil -> :ok
+        record -> hard_delete_definition_record!(record)
+      end
+    end
+  end
+
+  defp hard_delete_definition_record!(record) do
+    case Repo.delete(record) do
+      {:ok, _} -> :ok
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp definition_values_exist?(definition_id) do
+    from(v in ItemPropertyValue, where: v.property_definition_id == ^definition_id)
+    |> Repo.exists?()
+  end
+
+  defp option_values_exist?(option_id) do
+    from(v in ItemPropertyValue, where: v.option_id == ^option_id)
+    |> Repo.exists?()
+  end
+
   def delete_fixture("registration", id) do
     case Repo.get(Registration, id) do
       nil -> {:error, :not_found}
@@ -348,6 +643,184 @@ defmodule Dhc.E2EHarness do
   def update_fixture("inventoryContainer", id, attrs) do
     {:ok, container} = Containers.update_container(id, attrs)
     DhcWeb.InventoryContainersJSON.render("item.json", %{container: container}).data
+  end
+
+  # Partial update for the frozen structure scenario. Accepts the seed's
+  # field names plus ids targeting existing rows: optional `categoryName` /
+  # `categoryDescription`, id-keyed `definitions` (each with `definitionId`
+  # plus `label` / `required` / `identifyingPosition` / id-keyed `options`),
+  # and id-keyed `containers` (each with `containerId` plus `name` /
+  # `description`). Container moves are excluded — `parentContainerId`
+  # changes are ignored; moves go through `Containers.move_container/2`.
+  # Domain refusals (`:type_immutable`, `:required_blocked`, conflicts)
+  # pass through as error tuples. Returns the seed result shape for the
+  # touched rows (containers echo only the ids listed in attrs).
+  def update_fixture("inventoryStructure", category_id, attrs) when is_map(attrs) do
+    with :ok <- update_structure_category!(category_id, attrs),
+         :ok <- update_structure_definitions!(attrs),
+         :ok <- update_structure_containers!(attrs) do
+      case Inventory.get_category(category_id) do
+        {:ok, category} ->
+          %{
+            categoryId: category.id,
+            categoryName: category.name,
+            definitions: structure_definition_results!(category.id),
+            containers: structure_updated_containers!(attrs)
+          }
+
+        {:error, :not_found} = error ->
+          error
+      end
+    end
+  end
+
+  defp update_structure_category!(category_id, attrs) do
+    updates =
+      %{}
+      |> maybe_put("name", attrs, "categoryName")
+      |> maybe_put("description", attrs, "categoryDescription")
+
+    if updates == %{} do
+      :ok
+    else
+      case Inventory.update_category(category_id, updates) do
+        {:ok, _} -> :ok
+        {:error, :not_found} = error -> error
+        {:error, :conflict, _} = error -> error
+        {:error, _} = error -> error
+      end
+    end
+  end
+
+  defp update_structure_definitions!(attrs) do
+    case Map.get(attrs, "definitions") do
+      nil ->
+        :ok
+
+      definitions when is_list(definitions) ->
+        Enum.reduce_while(definitions, :ok, fn definition, :ok ->
+          case update_one_structure_definition!(definition) do
+            :ok -> {:cont, :ok}
+            {:error, _, _} = error -> {:halt, error}
+            {:error, _} = error -> {:halt, error}
+          end
+        end)
+    end
+  end
+
+  defp update_one_structure_definition!(definition) when is_map(definition) do
+    definition_id = Map.fetch!(definition, "definitionId")
+
+    updates =
+      %{}
+      |> maybe_put("label", definition, "label")
+      |> maybe_put("value_type", definition, "valueType")
+      |> maybe_put("required", definition, "required")
+      |> maybe_put("identifying_position", definition, "identifyingPosition")
+
+    with :ok <- apply_definition_updates!(definition_id, updates),
+         :ok <- update_structure_options!(definition) do
+      :ok
+    end
+  end
+
+  defp apply_definition_updates!(_definition_id, updates) when updates == %{}, do: :ok
+
+  defp apply_definition_updates!(definition_id, updates) do
+    case Inventory.update_definition(definition_id, updates) do
+      {:ok, _} -> :ok
+      {:error, :not_found} = error -> error
+      {:error, :type_immutable} = error -> error
+      {:error, :required_blocked, _} = error -> error
+      {:error, :conflict, _} = error -> error
+      {:error, _} = error -> error
+    end
+  end
+
+  defp update_structure_options!(definition) do
+    case Map.get(definition, "options") do
+      nil ->
+        :ok
+
+      options when is_list(options) ->
+        Enum.reduce_while(options, :ok, fn option, :ok ->
+          option_id = Map.fetch!(option, "optionId")
+
+          updates =
+            %{}
+            |> maybe_put("label", option, "label")
+            |> maybe_put("position", option, "position")
+
+          if updates == %{} do
+            {:cont, :ok}
+          else
+            case Inventory.update_option(option_id, updates) do
+              {:ok, _} -> {:cont, :ok}
+              {:error, :not_found} = error -> {:halt, error}
+              {:error, :conflict, _} = error -> {:halt, error}
+              {:error, _} = error -> {:halt, error}
+            end
+          end
+        end)
+    end
+  end
+
+  defp update_structure_containers!(attrs) do
+    case Map.get(attrs, "containers") do
+      nil ->
+        :ok
+
+      containers when is_list(containers) ->
+        Enum.reduce_while(containers, :ok, fn container, :ok ->
+          container_id = Map.fetch!(container, "containerId")
+
+          updates =
+            %{}
+            |> maybe_put("name", container, "name")
+            |> maybe_put("description", container, "description")
+
+          if updates == %{} do
+            {:cont, :ok}
+          else
+            case Inventory.update_container(container_id, updates) do
+              {:ok, _} -> {:cont, :ok}
+              {:error, :not_found} = error -> {:halt, error}
+              {:error, _} = error -> {:halt, error}
+            end
+          end
+        end)
+    end
+  end
+
+  defp structure_updated_containers!(attrs) do
+    case Map.get(attrs, "containers") do
+      nil ->
+        []
+
+      containers when is_list(containers) ->
+        Enum.map(containers, fn container ->
+          container_id = Map.fetch!(container, "containerId")
+          {:ok, fresh} = Inventory.get_container(container_id)
+
+          %{
+            containerId: fresh.id,
+            name: fresh.name,
+            parentContainerId: fresh.parent_container_id,
+            path: structure_container_path!(fresh)
+          }
+        end)
+    end
+  end
+
+  defp structure_container_path!(container) do
+    case container.parent_container_id do
+      nil ->
+        [container.name]
+
+      parent_id ->
+        {:ok, parent} = Inventory.get_container(parent_id)
+        structure_container_path!(parent) ++ [container.name]
+    end
   end
 
   def login_cookie(email) do
