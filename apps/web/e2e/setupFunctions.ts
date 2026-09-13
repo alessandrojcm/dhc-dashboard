@@ -9,7 +9,7 @@ import {
 	MEMBERSHIP_FEE_LOOKUP_NAME,
 } from "../src/lib/server/constants";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
-import type { E2ERole, InventoryItemSeed } from "./e2eApi";
+import type { E2ERole, InventoryItemSeed, InventoryLoanSeed } from "./e2eApi";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey?.startsWith("sk_test_")) {
@@ -361,6 +361,38 @@ export async function createInventoryItem(
 		...item,
 		async cleanUp() {
 			await deleteE2EFixture("inventoryItem", item.itemId);
+		},
+	};
+}
+
+export async function createInventoryLoan(
+	attrs: InventoryLoanSeed["attrs"],
+) {
+	const data: unknown = await seedE2EScenario("inventoryLoan", attrs);
+
+	if (attrs.preset === "competingPair") {
+		// SAFETY: the harness returns the pair shape exactly when preset is
+		// "competingPair"; the single-result type cannot express that union.
+		const pair = data as InventoryLoanPairSeed["result"];
+
+		return {
+			...pair,
+			async cleanUp() {
+				for (const loan of pair.loans) {
+					await deleteE2EFixture("inventoryLoan", loan.loanId);
+				}
+			},
+		};
+	}
+
+	// SAFETY: every non-pair preset returns the flat loan row matching the
+	// declared inventoryLoan result type.
+	const loan = data as InventoryLoanSeed["result"];
+
+	return {
+		...loan,
+		async cleanUp() {
+			await deleteE2EFixture("inventoryLoan", loan.loanId);
 		},
 	};
 }

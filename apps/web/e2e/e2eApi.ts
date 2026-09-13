@@ -206,6 +206,64 @@ export type InventoryItemPairSeed = {
 	};
 };
 
+export type InventoryLoanPreset =
+	| "requested"
+	| "approved"
+	| "checkedOut"
+	| "returned"
+	| "rejected"
+	| "cancelled"
+	| "overdue"
+	| "competingPair";
+
+export type InventoryLoanSeed = {
+	attrs: {
+		preset: InventoryLoanPreset;
+		itemId?: string;
+		itemSlug?: string;
+		borrowerMemberId?: string;
+		borrowerMemberIds?: [string, string];
+		startsOn?: string;
+		dueOn?: string;
+		note?: string | null;
+		operatorActorId?: string;
+		cancelledBy?: "member" | "operator";
+		dueOffsetDays?: number;
+		// IMPL-04 passthrough: accepted by the harness and ignored until the
+		// reminder contract lands.
+		reminderState?: "preDue" | "overdue" | "weekly";
+	};
+	result: {
+		loanId: string;
+		status:
+			| "requested"
+			| "approved"
+			| "checked_out"
+			| "returned"
+			| "rejected"
+			| "cancelled";
+		overdue: boolean;
+		itemId: string;
+		slug: string;
+		borrowerMemberId: string;
+		startsOn: string;
+		dueOn: string;
+		containerPath: string | null;
+		decidedBy: string | null;
+	};
+};
+
+export type InventoryLoanPairSeed = {
+	attrs: InventoryLoanSeed["attrs"] & {
+		preset: "competingPair";
+		borrowerMemberIds: [string, string];
+	};
+	result: {
+		loans: InventoryLoanSeed["result"][];
+		itemId: string;
+	};
+};
+
 export type E2ERegistrationSeedRequest = {
 	workshopId: string;
 	memberUserId: string;
@@ -254,6 +312,10 @@ type E2EScenarios = {
 	// narrow via Extract when the test needs items[]:
 	// type PairResult = InventoryItemPairSeed["result"];
 	inventoryItem: InventoryItemSeed;
+	inventoryLoan: InventoryLoanSeed;
+	// Pair seeds use the same scenario name with preset: "competingPair";
+	// narrow via Extract when the test needs loans[]:
+	// type PairResult = InventoryLoanPairSeed["result"];
 	registration: RegistrationSeed;
 	waitlistStatus: WaitlistStatusSeed;
 	setting: SettingSeed;
