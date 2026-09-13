@@ -176,6 +176,36 @@ type InventoryStructureSeed = {
 	};
 };
 
+export type InventoryItemValue = string | number | boolean;
+
+export type InventoryItemSeed = {
+	attrs: {
+		categoryId: string;
+		containerId: string;
+		values?: Record<string, InventoryItemValue>;
+		notes?: string | null;
+		actorId: string;
+		withDuplicateLabel?: boolean;
+		archived?: boolean;
+		inMaintenance?: boolean;
+	};
+	result: {
+		itemId: string;
+		slug: string;
+		label: string;
+		categoryId: string;
+		deletable: boolean;
+	};
+};
+
+export type InventoryItemPairSeed = {
+	attrs: InventoryItemSeed["attrs"] & { withDuplicateLabel: true };
+	result: {
+		items: InventoryItemSeed["result"][];
+		deletable: boolean;
+	};
+};
+
 export type E2ERegistrationSeedRequest = {
 	workshopId: string;
 	memberUserId: string;
@@ -220,6 +250,10 @@ type E2EScenarios = {
 	inventoryCategory: InventoryCategorySeed;
 	inventoryContainer: InventoryContainerSeed;
 	inventoryStructure: InventoryStructureSeed;
+	// Pair seeds use the same scenario name with withDuplicateLabel: true;
+	// narrow via Extract when the test needs items[]:
+	// type PairResult = InventoryItemPairSeed["result"];
+	inventoryItem: InventoryItemSeed;
 	registration: RegistrationSeed;
 	waitlistStatus: WaitlistStatusSeed;
 	setting: SettingSeed;
@@ -391,6 +425,7 @@ export async function clearOnboardingFinalizationInterruption(
 type E2EUpdatableFixture =
 	| "inventoryCategory"
 	| "inventoryContainer"
+	| "inventoryItem"
 	| "inventoryStructure"
 	| "registration"
 	| "workshop";

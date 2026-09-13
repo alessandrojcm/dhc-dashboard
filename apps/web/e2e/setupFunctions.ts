@@ -9,7 +9,7 @@ import {
 	MEMBERSHIP_FEE_LOOKUP_NAME,
 } from "../src/lib/server/constants";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
-import type { E2ERole } from "./e2eApi";
+import type { E2ERole, InventoryItemSeed } from "./e2eApi";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey?.startsWith("sk_test_")) {
@@ -348,6 +348,19 @@ export async function createStripeCustomerWithSubscription(
 		paymentMethodId: paymentMethod.id,
 		async cleanUp() {
 			await stripeClient.customers.del(customer.id);
+		},
+	};
+}
+
+export async function createInventoryItem(
+	attrs: InventoryItemSeed["attrs"],
+) {
+	const item = await seedE2EScenario("inventoryItem", attrs);
+
+	return {
+		...item,
+		async cleanUp() {
+			await deleteE2EFixture("inventoryItem", item.itemId);
 		},
 	};
 }
