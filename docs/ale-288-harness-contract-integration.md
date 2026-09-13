@@ -112,10 +112,13 @@ type E2EUpdatableFixture =
 
 Why only these two:
 
-- `inventoryStructure` — category rename and container rename/move are
+- `inventoryStructure` — category rename and container rename are
   genuine PATCH-class edits the specs need for setup drift (e.g. rename
-  a container, then assert the operator viewer reflects it). Definition
-  retire is a command, not a patch — it stays out of `update_fixture`.
+  a container, then assert the operator viewer reflects it). Container
+  moves are explicitly **not** part of `update_fixture` (the structure
+  contract excludes `parentContainerId` changes — moves are the separate
+  `move_container` command). Definition retire is a command, not a patch
+  — it stays out of `update_fixture`.
 - `inventoryItem` — notes/values edits are the only generic item patch
   (the domain keeps move / maintenance / archive / reclassify as
   separate commands). The update path maps to
@@ -156,7 +159,7 @@ createInventoryStructure(params?: {
 }): Promise<{
   categoryId: string; definitionIds: string[]; optionIds: string[];
   containerIds: string[];
-  cleanUp(): Promise<void>;       // deletes containers (leaf-first) then category; surfaces dependency blocks, never force-deletes
+  cleanUp(): Promise<void>;       // retires definitions/options then deletes containers (leaf-first) then category; surfaces dependency blocks, never force-deletes
 }>;
 
 createInventoryItem(params: {
@@ -164,9 +167,10 @@ createInventoryItem(params: {
   containerId: string;            // required — placement at seed time (moves go through the live move route)
   values?: Record<string, ...>;   // default: minimal valid values for the category
   notes?: string | null;
-  label?: string;                 // default: unique "E2E Item <rand>"
-  archived?: boolean;             // default false — true routes through the archive path, not a flag
-  operatorActorId?: string;       // required when archived: true
+  actorId: string;                // required — created_by / lifecycle attribution (item contract: always required)
+  withDuplicateLabel?: boolean;   // default false — pair seed, same shape as contract flag
+  archived?: boolean;             // default false — delegates to the archive command per the item contract
+  inMaintenance?: boolean;        // default false — delegates to start-maintenance per the item contract
 }): Promise<{
   itemId: string; slug: string; label: string; categoryId: string;
   deletable: boolean;             // echo so specs know which cleanup path applies
@@ -178,18 +182,19 @@ createInventoryLoan(params: {
   itemId?: string;                // exactly one of itemId/itemSlug required
   itemSlug?: string;
   borrowerMemberId: string;       // required (single-borrower presets); ignored for competingPair — see below
-  borrowers?: [string, string];   // required iff preset === "competingPair"
+  borrowerMemberIds?: [string, string]; // required iff preset === "competingPair" (contract name, not `borrowers`)
   startsOn?: string;              // ISO date; default: club today
   dueOn?: string;                 // ISO date; default: today + 7
   dueOffsetDays?: number;         // overdue backdate; default 3
   note?: string | null;
   operatorActorId?: string;       // required for every preset past requested
+  cancelledBy?: "member" | "operator"; // only on preset "cancelled"; default "member" per contract
   reminderState?: "preDue" | "overdue" | "weekly";  // handoff 04 flag; live presets only
 }): Promise<{
   loanId: string; status: string; slug: string; borrowerMemberId: string;
   startsOn: string; dueOn: string; containerPath: string | null;
   owedKind: string | null; notificationKey: string | null;
-  loanIds?: [string, string];     // competingPair only
+  loans?: Array<{ loanId: string; status: string; slug: string; borrowerMemberId: string; startsOn: string; dueOn: string; containerPath: string | null }>; // competingPair only — pair rows, no flat loanId use
   cleanUp(): Promise<void>;       // hard-deletes loan row(s) + reminder ledger rows; leaves notifications (keyed idempotency makes leftovers harmless)
 }>;
 
