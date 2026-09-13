@@ -13,7 +13,10 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Inventory
   alias Dhc.Inventory.Categories
   alias Dhc.Inventory.Containers
+  alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemPropertyValue
+  alias Dhc.Inventory.Loan
+  alias Dhc.Inventory.MaintenancePeriod
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
   alias Dhc.MemberProfiles.MemberProfile
@@ -408,6 +411,116 @@ defmodule Dhc.E2EHarness do
     end)
   end
 
+  # ALE-288 IMPL-02: frozen `inventoryItem` scenario. Routes through
+  # `Dhc.Inventory` only; returns plain camelCase maps, never `*JSON.render/2`
+  # output. Creates one physical unit (or a duplicate-label pair) with typed
+  # values validated in-transaction, then applies the `inMaintenance` /
+  # `archived` presets in that order via `OperatorItemLifecycle` (archive
+  # atomically ends the open period). Structure ids come from the
+  # `inventoryStructure` seed — never names. `deletable` is a seed-time
+  # cleanup signal: `false` once a preset ran (maintenance history is
+  # retained; an archived row asserts archived, never absence), `true` for
+  # history-free units.
+  def seed("inventoryItem", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_item!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_item!(attrs) do
+    actor_id = Map.get(attrs, "actorId")
+
+    if actor_id == nil or actor_id == "" do
+      raise ArgumentError, "inventoryItem seed requires actorId"
+    end
+
+    category_id = Map.get(attrs, "categoryId")
+    container_id = Map.get(attrs, "containerId")
+    values = Map.get(attrs, "values", %{}) || %{}
+    notes = Map.get(attrs, "notes")
+    pair? = Map.get(attrs, "withDuplicateLabel", false) == true
+    archived? = Map.get(attrs, "archived", false) == true
+    in_maintenance? = Map.get(attrs, "inMaintenance", false) == true
+
+    count = if pair?, do: 2, else: 1
+
+    items =
+      Enum.map(1..count//1, fn _ ->
+        create_seed_item!(category_id, container_id, values, notes, actor_id)
+      end)
+
+    if in_maintenance? do
+      Enum.each(items, &start_seed_maintenance!(&1.id, actor_id))
+    end
+
+    if archived? do
+      Enum.each(items, &archive_seed_item!(&1.id, actor_id))
+    end
+
+    deletable = not (archived? or in_maintenance?)
+
+    if pair? do
+      %{items: Enum.map(items, &item_seed_row!(&1.id, deletable)), deletable: deletable}
+    else
+      [item] = items
+      item_seed_row!(item.id, deletable)
+    end
+  end
+
+  defp create_seed_item!(category_id, container_id, values, notes, actor_id) do
+    attrs = %{
+      "categoryId" => category_id,
+      "containerId" => container_id,
+      "values" => values,
+      "notes" => notes
+    }
+
+    try do
+      case Inventory.create_operator_item(attrs, actor_id) do
+        {:ok, item} -> item
+        {:error, :invalid_values, errors} -> Repo.rollback({:invalid_values, errors})
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    rescue
+      error in Ecto.InvalidChangesetError -> Repo.rollback(error.changeset)
+    end
+  end
+
+  defp start_seed_maintenance!(item_id, actor_id) do
+    case Inventory.start_operator_item_maintenance(
+           item_id,
+           %{"reason" => "E2E seed: routine check"},
+           actor_id
+         ) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp archive_seed_item!(item_id, actor_id) do
+    case Inventory.archive_operator_item(item_id, %{}, actor_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp item_seed_row!(item_id, deletable) do
+    case Inventory.resolve_operator_item(item_id) do
+      {:ok, item} ->
+        %{
+          itemId: item.id,
+          slug: item.slug,
+          label: item.label,
+          categoryId: item.category_id,
+          deletable: deletable
+        }
+
+      {:error, :not_found} ->
+        Repo.rollback(:item_not_found)
+    end
+  end
+
   def seed("registration", attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -612,6 +725,53 @@ defmodule Dhc.E2EHarness do
   defp option_values_exist?(option_id) do
     from(v in ItemPropertyValue, where: v.option_id == ^option_id)
     |> Repo.exists?()
+  end
+
+  # Teardown for the frozen item scenario. History-free items hard-delete via
+  # `delete_operator_item/2` with explicit confirmation (value rows + item
+  # row; asserts row absence). Items with retained loan or maintenance rows
+  # archive instead — `archive_operator_item/3` is idempotent, so an already
+  # archived seed is a no-op and teardown asserts `archived_at`, never row
+  # absence. A live loan blocking archival surfaces `:loan_active`; the
+  # caller closes loans first. Pair seeds delete each `items[]` entry
+  # individually. Loans, periods, categories, and containers are never
+  # deleted on the caller's behalf.
+  def delete_fixture("inventoryItem", id) when is_binary(id) do
+    case Inventory.delete_operator_item(id, %{"confirm" => true}) do
+      {:ok, _} ->
+        if Repo.get(Item, id) == nil, do: :ok, else: {:error, :not_deleted}
+
+      {:error, :has_history} ->
+        archive_seed_teardown!(id)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp archive_seed_teardown!(id) do
+    case Inventory.resolve_operator_item(id) do
+      {:error, :not_found} = error -> error
+      {:ok, item} -> archive_resolved_item!(id, item)
+    end
+  end
+
+  defp archive_resolved_item!(_id, %{created_by: nil}), do: {:error, :missing_actor}
+
+  defp archive_resolved_item!(id, %{created_by: actor_id}) do
+    with {:ok, _} <- Inventory.archive_operator_item(id, %{}, actor_id),
+         {:ok, archived} <- Inventory.resolve_operator_item(id) do
+      if archived.archived_at == nil, do: {:error, :not_archived}, else: :ok
+    end
+  end
+
+  defp item_has_history?(item_id) do
+    loans? = from(loan in Loan, where: loan.item_id == ^item_id) |> Repo.exists?()
+
+    periods? =
+      from(period in MaintenancePeriod, where: period.item_id == ^item_id) |> Repo.exists?()
+
+    loans? or periods?
   end
 
   def delete_fixture("registration", id) do
@@ -820,6 +980,56 @@ defmodule Dhc.E2EHarness do
       parent_id ->
         {:ok, parent} = Inventory.get_container(parent_id)
         structure_container_path!(parent) ++ [container.name]
+    end
+  end
+
+  # Partial update for the frozen item scenario. Accepts `notes` + `values`
+  # only, mapping to `OperatorItems.update_operator_item/3`: supplying
+  # `values` replaces the complete set, omitting it leaves stored values
+  # untouched. `containerId` / `categoryId` / preset flags are never applied
+  # (movement and reclassification are handoff 04 commands, not generic
+  # edits). Edits on an archived item (`:archived`) and value failures
+  # (`:invalid_values`) pass through. Returns the flat seed row; `deletable`
+  # reflects retained history and archive state.
+  def update_fixture("inventoryItem", id, attrs) when is_map(attrs) do
+    case Inventory.resolve_operator_item(id) do
+      {:error, :not_found} = error ->
+        error
+
+      {:ok, current} ->
+        actor_id = Map.get(attrs, "actorId") || current.created_by
+
+        if actor_id == nil do
+          {:error, :missing_actor}
+        else
+          update_seed_item!(id, attrs, actor_id)
+        end
+    end
+  end
+
+  defp update_seed_item!(id, attrs, actor_id) do
+    update_attrs =
+      %{}
+      |> maybe_put("notes", attrs, "notes")
+      |> maybe_put("values", attrs, "values")
+
+    case Inventory.update_operator_item(id, update_attrs, actor_id) do
+      {:ok, item} ->
+        deletable = not item_has_history?(item.id) and is_nil(item.archived_at)
+
+        %{
+          itemId: item.id,
+          slug: item.slug,
+          label: item.label,
+          categoryId: item.category_id,
+          deletable: deletable
+        }
+
+      {:error, :invalid_values, errors} ->
+        {:error, {:invalid_values, errors}}
+
+      {:error, _} = error ->
+        error
     end
   end
 
