@@ -1,6 +1,6 @@
-# ALE-288 harness contract 4/5: Maintenance, archive, reminders (DRAFT)
+# ALE-288 harness contract 4/5: Maintenance, archive, reminders (FROZEN)
 
-> Status: **draft for review, not final**. Contract only — no implementation.
+> Status: **FROZEN 2026-09-13 (IMPL 0/5)**. Contract only — no implementation.
 > Intended consumer: parallel implementers of the `inventoryMaintenance` /
 > `inventoryArchive` E2E scenarios plus the `reminderState` flag on the
 > `inventoryLoan` seed (`Dhc.E2EHarness.seed/2` + `E2EScenarios`).

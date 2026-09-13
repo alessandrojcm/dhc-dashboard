@@ -1,6 +1,6 @@
-# ALE-288 harness contract 1/5: Structure (DRAFT)
+# ALE-288 harness contract 1/5: Structure (FROZEN)
 
-> Status: **draft for review, not final**. Contract only — no implementation.
+> Status: **FROZEN 2026-09-13 (IMPL 0/5)**. Contract only — no implementation.
 > Intended consumer: parallel implementers of the `inventoryStructure` E2E
 > scenario (`Dhc.E2EHarness.seed/2` + `E2EScenarios["inventoryStructure"]`).
 > Post as a Linear comment on ALE-288 when agreed; then implement.

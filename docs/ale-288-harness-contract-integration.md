@@ -1,6 +1,6 @@
-# ALE-288 harness contract 5/5: TS wiring + fixtures + router (integration, DRAFT)
+# ALE-288 harness contract 5/5: TS wiring + fixtures + router (integration, FROZEN)
 
-> Status: **draft for review, not final**. Contract only — no implementation.
+> Status: **FROZEN 2026-09-13 (IMPL 0/5)**. Contract only — no implementation.
 > Intended consumer: the implementer wiring handoffs 01–04 into the runnable
 > E2E harness (`E2EScenarios` + `setupFunctions.ts` + `Dhc.E2EHarness`).
 > Post as a Linear comment on ALE-288 when agreed; then implement.
