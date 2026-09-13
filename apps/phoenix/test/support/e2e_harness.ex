@@ -11,8 +11,6 @@ defmodule Dhc.E2EHarness do
 
   alias Dhc.Invitations.Invitation
   alias Dhc.Inventory
-  alias Dhc.Inventory.Categories
-  alias Dhc.Inventory.Containers
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.Loan
@@ -252,17 +250,6 @@ defmodule Dhc.E2EHarness do
     {:ok, workshop} = Workshops.create_workshop(workshop_attrs(attrs), created_by)
     workshop = force_workshop_status(workshop, Map.get(attrs, "status", "planned"))
     workshop_dto(workshop)
-  end
-
-  def seed("inventoryCategory", attrs) do
-    {:ok, category} = Categories.create_category(attrs)
-    DhcWeb.InventoryCategoriesJSON.render("show.json", %{category: category}).data
-  end
-
-  def seed("inventoryContainer", attrs) do
-    actor_id = Map.fetch!(attrs, "actorId")
-    {:ok, container} = Containers.create_container(Map.delete(attrs, "actorId"), actor_id)
-    DhcWeb.InventoryContainersJSON.render("item.json", %{container: container}).data
   end
 
   # ALE-288 IMPL-01: frozen `inventoryStructure` scenario. Routes through
@@ -1307,9 +1294,6 @@ defmodule Dhc.E2EHarness do
     Waitlist.delete_entry(id)
   end
 
-  def delete_fixture("inventoryCategory", id), do: Categories.delete_category(id)
-  def delete_fixture("inventoryContainer", id), do: Containers.delete_container(id)
-
   # Teardown for the frozen structure scenario. Accepts either a category id
   # (retires options/definitions, then deletes the category) or a container
   # id (hard-deletes that container). Containers carry no category FK, so a
@@ -1633,16 +1617,6 @@ defmodule Dhc.E2EHarness do
     |> Registration.fixture_changeset(registration_attrs(attrs))
     |> Repo.update!()
     |> registration_dto()
-  end
-
-  def update_fixture("inventoryCategory", id, attrs) do
-    {:ok, category} = Categories.update_category(id, attrs)
-    DhcWeb.InventoryCategoriesJSON.render("show.json", %{category: category}).data
-  end
-
-  def update_fixture("inventoryContainer", id, attrs) do
-    {:ok, container} = Containers.update_container(id, attrs)
-    DhcWeb.InventoryContainersJSON.render("item.json", %{container: container}).data
   end
 
   # Partial update for the frozen structure scenario. Accepts the seed's
