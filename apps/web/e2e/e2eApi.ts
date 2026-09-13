@@ -139,6 +139,43 @@ type InventoryContainerSeed = {
 	result: InventoryContainer;
 };
 
+type InventoryStructureDefinitionSeed = {
+	label: string;
+	valueType: "text" | "decimal" | "boolean" | "single_select";
+	required?: boolean;
+	identifyingPosition?: number | null;
+	options?: Array<{ label: string; position?: number }>;
+};
+
+type InventoryStructureSeed = {
+	attrs: {
+		categoryName: string;
+		categoryDescription?: string | null;
+		definitions?: InventoryStructureDefinitionSeed[];
+		containerPath?: string[];
+		containerDescription?: string | null;
+		actorId?: string;
+	};
+	result: {
+		categoryId: string;
+		categoryName: string;
+		definitions: Array<{
+			definitionId: string;
+			label: string;
+			valueType: "text" | "decimal" | "boolean" | "single_select";
+			required: boolean;
+			identifyingPosition: number | null;
+			options: Array<{ optionId: string; label: string; position: number }>;
+		}>;
+		containers: Array<{
+			containerId: string;
+			name: string;
+			parentContainerId: string | null;
+			path: string[];
+		}>;
+	};
+};
+
 export type E2ERegistrationSeedRequest = {
 	workshopId: string;
 	memberUserId: string;
@@ -182,6 +219,7 @@ type E2EScenarios = {
 	workshop: WorkshopSeed;
 	inventoryCategory: InventoryCategorySeed;
 	inventoryContainer: InventoryContainerSeed;
+	inventoryStructure: InventoryStructureSeed;
 	registration: RegistrationSeed;
 	waitlistStatus: WaitlistStatusSeed;
 	setting: SettingSeed;
@@ -353,6 +391,7 @@ export async function clearOnboardingFinalizationInterruption(
 type E2EUpdatableFixture =
 	| "inventoryCategory"
 	| "inventoryContainer"
+	| "inventoryStructure"
 	| "registration"
 	| "workshop";
 
