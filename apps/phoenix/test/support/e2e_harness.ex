@@ -521,6 +521,325 @@ defmodule Dhc.E2EHarness do
     end
   end
 
+  # ALE-288 IMPL-03: frozen `inventoryLoan` scenario. Single scenario with a
+  # `preset` enum, never one scenario per state. Routes through
+  # `Dhc.Inventory` only (member request/cancel via `MemberLoans`,
+  # approve/reject/cancel/checkout/return via `OperatorLoans`,
+  # notification-free — exposure attaches `create_keyed/3` after return,
+  # never `Notifications.create/2` here). Returns plain camelCase maps with
+  # viewer-neutral ids, never `*JSON.render/2` output. `overdue` is derived
+  # in club-calendar days, never a stored flag; the seed fabricates elapsed
+  # time with a harness-only backdate. `reminderState` (IMPL-04) is accepted
+  # and ignored until that contract lands.
+  def seed("inventoryLoan", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_loan!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_loan!(attrs) do
+    preset = Map.get(attrs, "preset")
+
+    unless preset in ~w(requested approved checkedOut returned rejected cancelled overdue competingPair) do
+      raise ArgumentError,
+            "inventoryLoan seed requires preset requested/approved/checkedOut/returned/rejected/cancelled/overdue/competingPair"
+    end
+
+    # IMPL-04 passthrough: accepted and ignored until the reminder contract lands.
+    _ = Map.get(attrs, "reminderState")
+
+    case preset do
+      "competingPair" -> seed_loan_pair!(attrs)
+      _ -> seed_single_loan!(preset, attrs)
+    end
+  end
+
+  defp seed_single_loan!(preset, attrs) do
+    item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
+
+    if item_ref == nil or item_ref == "" do
+      Repo.rollback(:not_found)
+    end
+
+    borrower_id = Map.get(attrs, "borrowerMemberId")
+
+    if borrower_id == nil or borrower_id == "" do
+      raise ArgumentError, "inventoryLoan seed requires borrowerMemberId"
+    end
+
+    if Map.get(attrs, "borrowerMemberIds") != nil do
+      raise ArgumentError,
+            "inventoryLoan seed takes borrowerMemberId or borrowerMemberIds, never both"
+    end
+
+    operator_id = Map.get(attrs, "operatorActorId")
+    note = Map.get(attrs, "note")
+    today = Dhc.Inventory.ClubCalendar.today()
+    {starts_on, due_on} = loan_default_dates!(attrs, today)
+
+    case preset do
+      "requested" ->
+        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+        loan_seed_row!(loan_id)
+
+      "approved" ->
+        require_operator!(operator_id, preset)
+        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+        approve_seed_loan!(loan_id, note, operator_id)
+        loan_seed_row!(loan_id)
+
+      "checkedOut" ->
+        require_operator!(operator_id, preset)
+        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+        approve_seed_loan!(loan_id, note, operator_id)
+        checkout_seed_loan!(loan_id, operator_id)
+        loan_seed_row!(loan_id)
+
+      "returned" ->
+        require_operator!(operator_id, preset)
+        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+        approve_seed_loan!(loan_id, note, operator_id)
+        checkout_seed_loan!(loan_id, operator_id)
+        return_seed_loan!(loan_id, operator_id)
+        loan_seed_row!(loan_id)
+
+      "rejected" ->
+        require_operator!(operator_id, preset)
+        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+        reject_seed_loan!(loan_id, note, operator_id)
+        loan_seed_row!(loan_id)
+
+      "cancelled" ->
+        seed_cancelled_loan!(attrs, item_ref, starts_on, due_on, note, borrower_id, operator_id)
+
+      "overdue" ->
+        require_operator!(operator_id, preset)
+        offset = loan_due_offset!(attrs)
+        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+        approve_seed_loan!(loan_id, note, operator_id)
+        checkout_seed_loan!(loan_id, operator_id)
+        backdate_overdue_loan!(loan_id, offset, today)
+        loan_seed_row!(loan_id)
+    end
+  end
+
+  defp seed_cancelled_loan!(attrs, item_ref, starts_on, due_on, note, borrower_id, operator_id) do
+    cancelled_by = Map.get(attrs, "cancelledBy", "member")
+
+    unless cancelled_by in ~w(member operator) do
+      raise ArgumentError, "inventoryLoan cancelledBy must be member or operator"
+    end
+
+    case cancelled_by do
+      "member" ->
+        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+        cancel_seed_loan!(loan_id, note, borrower_id)
+        loan_seed_row!(loan_id)
+
+      "operator" ->
+        require_operator!(operator_id, "cancelled")
+        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+        approve_seed_loan!(loan_id, note, operator_id)
+        cancel_operator_seed_loan!(loan_id, note, operator_id)
+        loan_seed_row!(loan_id)
+    end
+  end
+
+  defp seed_loan_pair!(attrs) do
+    borrower_ids = Map.get(attrs, "borrowerMemberIds")
+
+    unless is_list(borrower_ids) and length(borrower_ids) == 2 and
+             Enum.all?(borrower_ids, &is_binary/1) do
+      raise ArgumentError, "inventoryLoan competingPair requires borrowerMemberIds of 2 uuids"
+    end
+
+    if Map.get(attrs, "borrowerMemberId") != nil do
+      raise ArgumentError,
+            "inventoryLoan seed takes borrowerMemberId or borrowerMemberIds, never both"
+    end
+
+    item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
+
+    if item_ref == nil or item_ref == "" do
+      Repo.rollback(:not_found)
+    end
+
+    note = Map.get(attrs, "note")
+    today = Dhc.Inventory.ClubCalendar.today()
+    {starts_on, due_on} = loan_default_dates!(attrs, today)
+    [first_borrower, second_borrower] = borrower_ids
+
+    first_id = request_seed_loan!(item_ref, starts_on, due_on, note, first_borrower)
+    second_id = request_seed_loan!(item_ref, starts_on, due_on, note, second_borrower)
+
+    first_row = loan_seed_row!(first_id)
+    second_row = loan_seed_row!(second_id)
+
+    %{loans: [first_row, second_row], itemId: first_row.itemId}
+  end
+
+  defp require_operator!(operator_id, _preset)
+       when is_binary(operator_id) and operator_id != "",
+       do: :ok
+
+  defp require_operator!(_operator_id, preset) do
+    raise ArgumentError, "inventoryLoan preset #{preset} requires operatorActorId"
+  end
+
+  defp loan_default_dates!(attrs, today) do
+    starts_on = Map.get(attrs, "startsOn") || Date.to_iso8601(today)
+
+    due_on =
+      Map.get(attrs, "dueOn") ||
+        case Date.from_iso8601(String.slice(starts_on, 0, 10)) do
+          {:ok, starts_date} -> starts_date |> Date.add(7) |> Date.to_iso8601()
+          {:error, _} -> today |> Date.add(7) |> Date.to_iso8601()
+        end
+
+    {starts_on, due_on}
+  end
+
+  defp loan_due_offset!(attrs) do
+    offset = Map.get(attrs, "dueOffsetDays", 3)
+
+    if is_integer(offset) and offset > 0 do
+      offset
+    else
+      raise ArgumentError, "inventoryLoan dueOffsetDays must be an integer > 0"
+    end
+  end
+
+  defp request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id) do
+    case Inventory.request_loan(
+           item_ref,
+           %{"startsOn" => starts_on, "dueOn" => due_on, "note" => note},
+           borrower_id
+         ) do
+      {:ok, loan} -> loan.id
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp approve_seed_loan!(loan_id, note, operator_id) do
+    case Inventory.approve_loan(loan_id, %{"note" => note}, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp reject_seed_loan!(loan_id, note, operator_id) do
+    case Inventory.reject_loan(loan_id, %{"note" => note}, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp checkout_seed_loan!(loan_id, operator_id) do
+    case Inventory.check_out_loan(loan_id, %{}, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp return_seed_loan!(loan_id, operator_id) do
+    case Inventory.return_loan(loan_id, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp cancel_seed_loan!(loan_id, note, borrower_id) do
+    case Inventory.cancel_loan(loan_id, %{"note" => note}, borrower_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp cancel_operator_seed_loan!(loan_id, note, operator_id) do
+    case Inventory.cancel_operator_loan(loan_id, %{"note" => note}, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  # Harness-only time-travel write: simulates elapsed wall-clock time the seed
+  # cannot otherwise produce, because checkout gates to a window containing
+  # today while overdue needs a due date in the past. Not a domain command.
+  defp backdate_overdue_loan!(loan_id, offset_days, today) do
+    new_due = Date.add(today, -offset_days)
+
+    loan =
+      case Repo.get(Loan, loan_id) do
+        nil -> Repo.rollback(:not_found)
+        %Loan{} = loan -> loan
+      end
+
+    new_start =
+      case loan.approved_start_on do
+        %Date{} = start ->
+          if Date.compare(start, new_due) == :gt, do: Date.add(new_due, -7), else: start
+
+        nil ->
+          Date.add(new_due, -7)
+      end
+
+    {:ok, handover_at, _offset} =
+      "#{Date.to_iso8601(new_due)}T12:00:00Z" |> DateTime.from_iso8601()
+
+    handover_at = DateTime.truncate(handover_at, :second)
+
+    Repo.query!(
+      "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2, checked_out_at = $3 WHERE id = $4",
+      [new_start, new_due, handover_at, Ecto.UUID.dump!(loan_id)]
+    )
+
+    :ok
+  end
+
+  defp loan_seed_row!(loan_id) do
+    today = Dhc.Inventory.ClubCalendar.today()
+
+    case Repo.get(Loan, loan_id) do
+      nil ->
+        Repo.rollback(:not_found)
+
+      %Loan{} = loan ->
+        starts_on = loan.approved_start_on || loan.requested_start_on
+        due_on = loan.approved_due_on || loan.requested_due_on
+
+        %{
+          loanId: loan.id,
+          status: loan.status,
+          overdue: loan_overdue?(loan, today),
+          itemId: loan.item_id,
+          slug: loan.item_slug_snapshot,
+          borrowerMemberId: loan.borrower_principal_id,
+          startsOn: Date.to_iso8601(starts_on),
+          dueOn: Date.to_iso8601(due_on),
+          containerPath: loan_member_container_path(loan),
+          decidedBy: loan.decided_by_principal_id
+        }
+    end
+  end
+
+  defp loan_overdue?(%Loan{status: "checked_out", approved_due_on: %Date{} = due_on}, today),
+    do: Date.compare(today, due_on) == :gt
+
+  defp loan_overdue?(%Loan{}, _today), do: false
+
+  # Member-visible rule (story 15/45): the approval snapshot for approved and
+  # later; null before approval so specs assert absence, even though the
+  # operator projection technically carries a snapshot.
+  defp loan_member_container_path(%Loan{
+         status: status,
+         approved_container_path_snapshot: path
+       })
+       when status in ~w(approved checked_out returned),
+       do: path
+
+  defp loan_member_container_path(%Loan{}), do: nil
+
   def seed("registration", attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -772,6 +1091,29 @@ defmodule Dhc.E2EHarness do
       from(period in MaintenancePeriod, where: period.item_id == ^item_id) |> Repo.exists?()
 
     loans? or periods?
+  end
+
+  # Teardown for the frozen loan scenario. Retention says loan records are
+  # permanent with no domain delete — E2E teardown breaks this deliberately
+  # and narrowly: hard-deletes the loan row directly (both `competingPair`
+  # entries deleted individually — no bulk pair delete) and asserts row
+  # absence. Never cascades: items, members, periods, categories, and
+  # containers are left untouched. Production retention is unaffected — no
+  # domain delete function is created to serve this.
+  def delete_fixture("inventoryLoan", id) when is_binary(id) do
+    case Repo.get(Loan, id) do
+      nil ->
+        {:error, :not_found}
+
+      loan ->
+        case Repo.delete(loan) do
+          {:ok, _} ->
+            if Repo.get(Loan, id) == nil, do: :ok, else: {:error, :not_deleted}
+
+          {:error, changeset} ->
+            {:error, changeset}
+        end
+    end
   end
 
   def delete_fixture("registration", id) do
