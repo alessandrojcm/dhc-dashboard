@@ -304,14 +304,22 @@ defmodule Dhc.E2EHarness do
     value_type = Map.fetch!(definition, "valueType")
     options = Map.get(definition, "options")
 
-    if value_type == "single_select" and (options == nil or options == []) do
-      Repo.rollback({:missing_options, label})
-    end
+    validate_structure_definition!(label, value_type, options)
+    definition_id = create_structure_definition!(category_id, definition, label, value_type)
+    seed_structure_options!(definition_id, value_type, options)
+  end
 
-    if value_type != "single_select" and is_list(options) and options != [] do
-      Repo.rollback(:not_single_select)
-    end
+  defp validate_structure_definition!(label, "single_select", options)
+       when options in [nil, []],
+       do: Repo.rollback({:missing_options, label})
 
+  defp validate_structure_definition!(_label, value_type, options)
+       when value_type != "single_select" and is_list(options) and options != [],
+       do: Repo.rollback(:not_single_select)
+
+  defp validate_structure_definition!(_label, _value_type, _options), do: :ok
+
+  defp create_structure_definition!(category_id, definition, label, value_type) do
     definition_attrs = %{
       "label" => label,
       "valueType" => value_type,
@@ -319,34 +327,39 @@ defmodule Dhc.E2EHarness do
       "identifyingPosition" => Map.get(definition, "identifyingPosition")
     }
 
-    definition_id =
-      case Inventory.create_definition(category_id, definition_attrs) do
-        {:ok, created} -> created.id
-        {:error, :not_found} -> Repo.rollback(:category_not_found)
-        {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
-        {:error, changeset} -> Repo.rollback(changeset)
-      end
-
-    if value_type == "single_select" do
-      options
-      |> Enum.with_index()
-      |> Enum.each(fn {option, index} ->
-        option_attrs = %{
-          "label" => Map.fetch!(option, "label"),
-          "position" => Map.get(option, "position", index)
-        }
-
-        case Inventory.create_option(definition_id, option_attrs) do
-          {:ok, _} -> :ok
-          {:error, :not_found} -> Repo.rollback(:definition_not_found)
-          {:error, :not_single_select} -> Repo.rollback(:not_single_select)
-          {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
-          {:error, changeset} -> Repo.rollback(changeset)
-        end
-      end)
+    case Inventory.create_definition(category_id, definition_attrs) do
+      {:ok, created} -> created.id
+      {:error, :not_found} -> Repo.rollback(:category_not_found)
+      {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
+      {:error, changeset} -> Repo.rollback(changeset)
     end
+  end
+
+  defp seed_structure_options!(_definition_id, value_type, _options)
+       when value_type != "single_select",
+       do: :ok
+
+  defp seed_structure_options!(definition_id, "single_select", options) do
+    options
+    |> Enum.with_index()
+    |> Enum.each(fn {option, index} -> seed_structure_option!(definition_id, option, index) end)
 
     :ok
+  end
+
+  defp seed_structure_option!(definition_id, option, index) do
+    option_attrs = %{
+      "label" => Map.fetch!(option, "label"),
+      "position" => Map.get(option, "position", index)
+    }
+
+    case Inventory.create_option(definition_id, option_attrs) do
+      {:ok, _} -> :ok
+      {:error, :not_found} -> Repo.rollback(:definition_not_found)
+      {:error, :not_single_select} -> Repo.rollback(:not_single_select)
+      {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
   end
 
   defp seed_structure_containers!([], _description, _actor_id), do: []
@@ -560,74 +573,117 @@ defmodule Dhc.E2EHarness do
 
   defp seed_single_loan_transaction!(preset, attrs) do
     item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
-
-    if item_ref == nil or item_ref == "" do
-      Repo.rollback(:not_found)
-    end
-
     borrower_id = Map.get(attrs, "borrowerMemberId")
 
-    if borrower_id == nil or borrower_id == "" do
-      raise ArgumentError, "inventoryLoan seed requires borrowerMemberId"
-    end
-
-    if Map.get(attrs, "borrowerMemberIds") != nil do
-      raise ArgumentError,
-            "inventoryLoan seed takes borrowerMemberId or borrowerMemberIds, never both"
-    end
+    validate_single_loan_seed!(attrs, item_ref, borrower_id)
 
     operator_id = Map.get(attrs, "operatorActorId")
     note = Map.get(attrs, "note")
     today = ClubCalendar.today()
     {starts_on, due_on} = loan_default_dates!(attrs, today)
 
-    loan_id =
-      case preset do
-        "requested" ->
-          request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+    seed = %{
+      attrs: attrs,
+      item_ref: item_ref,
+      starts_on: starts_on,
+      due_on: due_on,
+      note: note,
+      borrower_id: borrower_id,
+      operator_id: operator_id,
+      today: today
+    }
 
-        "approved" ->
-          require_operator!(operator_id, preset)
-          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-          approve_seed_loan!(loan_id, note, operator_id)
-          loan_id
-
-        "checkedOut" ->
-          require_operator!(operator_id, preset)
-          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-          approve_seed_loan!(loan_id, note, operator_id)
-          checkout_seed_loan!(loan_id, operator_id)
-          loan_id
-
-        "returned" ->
-          require_operator!(operator_id, preset)
-          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-          approve_seed_loan!(loan_id, note, operator_id)
-          checkout_seed_loan!(loan_id, operator_id)
-          return_seed_loan!(loan_id, operator_id)
-          loan_id
-
-        "rejected" ->
-          require_operator!(operator_id, preset)
-          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-          reject_seed_loan!(loan_id, note, operator_id)
-          loan_id
-
-        "cancelled" ->
-          seed_cancelled_loan!(attrs, item_ref, starts_on, due_on, note, borrower_id, operator_id)
-
-        "overdue" ->
-          require_operator!(operator_id, preset)
-          offset = loan_due_offset!(attrs)
-          loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
-          approve_seed_loan!(loan_id, note, operator_id)
-          checkout_seed_loan!(loan_id, operator_id)
-          backdate_overdue_loan!(loan_id, offset, today)
-          loan_id
-      end
+    loan_id = seed_loan_for_preset!(preset, seed)
 
     force_loan_reminder_geometry!(loan_id, preset, attrs, today)
     force_non_ready_handover!(loan_id, preset, attrs, today)
+    loan_id
+  end
+
+  defp validate_single_loan_seed!(attrs, item_ref, borrower_id) do
+    if item_ref in [nil, ""], do: Repo.rollback(:not_found)
+
+    if borrower_id in [nil, ""],
+      do: raise(ArgumentError, "inventoryLoan seed requires borrowerMemberId")
+
+    if Map.get(attrs, "borrowerMemberIds") != nil do
+      raise ArgumentError,
+            "inventoryLoan seed takes borrowerMemberId or borrowerMemberIds, never both"
+    end
+  end
+
+  defp seed_loan_for_preset!("requested", seed),
+    do:
+      request_seed_loan!(
+        seed.item_ref,
+        seed.starts_on,
+        seed.due_on,
+        seed.note,
+        seed.borrower_id
+      )
+
+  defp seed_loan_for_preset!("cancelled", seed),
+    do:
+      seed_cancelled_loan!(
+        seed.attrs,
+        seed.item_ref,
+        seed.starts_on,
+        seed.due_on,
+        seed.note,
+        seed.borrower_id,
+        seed.operator_id
+      )
+
+  defp seed_loan_for_preset!(preset, seed) do
+    require_operator!(seed.operator_id, preset)
+
+    loan_id =
+      request_seed_loan!(
+        seed.item_ref,
+        seed.starts_on,
+        seed.due_on,
+        seed.note,
+        seed.borrower_id
+      )
+
+    advance_seed_loan!(
+      preset,
+      seed.attrs,
+      loan_id,
+      seed.note,
+      seed.borrower_id,
+      seed.operator_id,
+      seed.today
+    )
+  end
+
+  defp advance_seed_loan!("approved", _attrs, loan_id, note, _borrower_id, operator_id, _today) do
+    approve_seed_loan!(loan_id, note, operator_id)
+    loan_id
+  end
+
+  defp advance_seed_loan!("checkedOut", _attrs, loan_id, note, _borrower_id, operator_id, _today) do
+    approve_seed_loan!(loan_id, note, operator_id)
+    checkout_seed_loan!(loan_id, operator_id)
+    loan_id
+  end
+
+  defp advance_seed_loan!("returned", _attrs, loan_id, note, _borrower_id, operator_id, _today) do
+    approve_seed_loan!(loan_id, note, operator_id)
+    checkout_seed_loan!(loan_id, operator_id)
+    return_seed_loan!(loan_id, operator_id)
+    loan_id
+  end
+
+  defp advance_seed_loan!("rejected", _attrs, loan_id, note, _borrower_id, operator_id, _today) do
+    reject_seed_loan!(loan_id, note, operator_id)
+    loan_id
+  end
+
+  defp advance_seed_loan!("overdue", attrs, loan_id, note, _borrower_id, operator_id, today) do
+    approve_seed_loan!(loan_id, note, operator_id)
+    checkout_seed_loan!(loan_id, operator_id)
+    backdate_overdue_loan!(loan_id, loan_due_offset!(attrs), today)
     loan_id
   end
 
@@ -653,15 +709,18 @@ defmodule Dhc.E2EHarness do
       raise ArgumentError, "inventoryLoan cancelledBy must be member or operator"
     end
 
-    case cancelled_by do
+    loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+    seed_cancelled_existing_loan!(attrs, loan_id, note, borrower_id, operator_id)
+  end
+
+  defp seed_cancelled_existing_loan!(attrs, loan_id, note, borrower_id, operator_id) do
+    case Map.get(attrs, "cancelledBy", "member") do
       "member" ->
-        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
         cancel_seed_loan!(loan_id, note, borrower_id)
         loan_id
 
       "operator" ->
         require_operator!(operator_id, "cancelled")
-        loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
         approve_seed_loan!(loan_id, note, operator_id)
         cancel_operator_seed_loan!(loan_id, note, operator_id)
         loan_id
@@ -671,8 +730,7 @@ defmodule Dhc.E2EHarness do
   defp seed_loan_pair!(attrs) do
     borrower_ids = Map.get(attrs, "borrowerMemberIds")
 
-    unless is_list(borrower_ids) and length(borrower_ids) == 2 and
-             Enum.all?(borrower_ids, &is_binary/1) do
+    unless match?([first, second] when is_binary(first) and is_binary(second), borrower_ids) do
       raise ArgumentError, "inventoryLoan competingPair requires borrowerMemberIds of 2 uuids"
     end
 
@@ -1092,56 +1150,55 @@ defmodule Dhc.E2EHarness do
 
   defp do_seed_maintenance!(attrs) do
     preset = Map.get(attrs, "preset")
-
-    unless preset in ~w(open closed) do
-      raise ArgumentError, "inventoryMaintenance seed requires preset open/closed"
-    end
-
     item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
-
-    if item_ref == nil or item_ref == "" do
-      Repo.rollback(:not_found)
-    end
-
     operator_id = Map.get(attrs, "operatorActorId")
 
-    if operator_id == nil or operator_id == "" do
-      raise ArgumentError, "inventoryMaintenance seed requires operatorActorId"
-    end
+    validate_maintenance_seed!(preset, item_ref, operator_id)
 
     reason = Map.get(attrs, "reason")
     end_note = if preset == "closed", do: Map.get(attrs, "endNote"), else: nil
 
-    case preset do
-      "open" ->
-        case Inventory.start_operator_item_maintenance(
+    seed_maintenance_preset!(preset, item_ref, reason, end_note, operator_id)
+  end
+
+  defp validate_maintenance_seed!(preset, _item_ref, _operator_id)
+       when preset not in ~w(open closed),
+       do: raise(ArgumentError, "inventoryMaintenance seed requires preset open/closed")
+
+  defp validate_maintenance_seed!(_preset, item_ref, _operator_id) when item_ref in [nil, ""],
+    do: Repo.rollback(:not_found)
+
+  defp validate_maintenance_seed!(_preset, _item_ref, operator_id)
+       when operator_id in [nil, ""],
+       do: raise(ArgumentError, "inventoryMaintenance seed requires operatorActorId")
+
+  defp validate_maintenance_seed!(_preset, _item_ref, _operator_id), do: :ok
+
+  defp seed_maintenance_preset!("open", item_ref, reason, _end_note, operator_id) do
+    case Inventory.start_operator_item_maintenance(item_ref, %{"reason" => reason}, operator_id) do
+      {:ok, _} -> maintenance_seed_row!(item_ref)
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp seed_maintenance_preset!("closed", item_ref, reason, end_note, operator_id) do
+    with {:ok, _} <-
+           wrap_maintenance_call(
+             Inventory.start_operator_item_maintenance(
                item_ref,
                %{"reason" => reason},
                operator_id
-             ) do
-          {:ok, _} -> maintenance_seed_row!(item_ref)
-          {:error, reason} -> Repo.rollback(reason)
-        end
-
-      "closed" ->
-        with {:ok, _} <-
-               wrap_maintenance_call(
-                 Inventory.start_operator_item_maintenance(
-                   item_ref,
-                   %{"reason" => reason},
-                   operator_id
-                 )
-               ),
-             {:ok, _} <-
-               wrap_maintenance_call(
-                 Inventory.end_operator_item_maintenance(
-                   item_ref,
-                   %{"endNote" => end_note},
-                   operator_id
-                 )
-               ) do
-          maintenance_seed_row!(item_ref)
-        end
+             )
+           ),
+         {:ok, _} <-
+           wrap_maintenance_call(
+             Inventory.end_operator_item_maintenance(
+               item_ref,
+               %{"endNote" => end_note},
+               operator_id
+             )
+           ) do
+      maintenance_seed_row!(item_ref)
     end
   end
 
@@ -1186,16 +1243,9 @@ defmodule Dhc.E2EHarness do
 
   defp do_seed_archive!(attrs) do
     item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
-
-    if item_ref == nil or item_ref == "" do
-      Repo.rollback(:not_found)
-    end
-
     operator_id = Map.get(attrs, "operatorActorId")
 
-    if operator_id == nil or operator_id == "" do
-      raise ArgumentError, "inventoryArchive seed requires operatorActorId"
-    end
+    validate_archive_seed!(item_ref, operator_id)
 
     domain_attrs =
       case Map.fetch(attrs, "reason") do
@@ -1208,6 +1258,14 @@ defmodule Dhc.E2EHarness do
       {:error, reason} -> Repo.rollback(reason)
     end
   end
+
+  defp validate_archive_seed!(item_ref, _operator_id) when item_ref in [nil, ""],
+    do: Repo.rollback(:not_found)
+
+  defp validate_archive_seed!(_item_ref, operator_id) when operator_id in [nil, ""],
+    do: raise(ArgumentError, "inventoryArchive seed requires operatorActorId")
+
+  defp validate_archive_seed!(_item_ref, _operator_id), do: :ok
 
   defp archive_seed_row!(item_ref, operator_id) do
     item =
@@ -1343,23 +1401,20 @@ defmodule Dhc.E2EHarness do
   end
 
   defp retire_structure_definitions!(category_id) do
-    Enum.reduce_while(
-      Inventory.list_definitions(category_id),
-      :ok,
-      fn definition, :ok ->
-        case retire_structure_options!(definition.id) do
-          :ok ->
-            case Inventory.retire_definition(definition.id) do
-              {:ok, _} -> {:cont, :ok}
-              {:error, :not_found} -> {:cont, :ok}
-              {:error, :still_referenced, _} = blocked -> {:halt, blocked}
-            end
+    Inventory.list_definitions(category_id)
+    |> Enum.reduce_while(:ok, fn definition, :ok ->
+      definition.id |> retire_structure_definition!() |> reduce_result()
+    end)
+  end
 
-          {:error, :still_referenced, _} = blocked ->
-            {:halt, blocked}
-        end
-      end
-    )
+  defp retire_structure_definition!(definition_id) do
+    with :ok <- retire_structure_options!(definition_id),
+         {:ok, _} <- Inventory.retire_definition(definition_id) do
+      :ok
+    else
+      {:error, :not_found} -> :ok
+      {:error, :still_referenced, _} = blocked -> blocked
+    end
   end
 
   defp retire_structure_options!(definition_id) do
@@ -1377,26 +1432,15 @@ defmodule Dhc.E2EHarness do
   end
 
   defp hard_delete_value_free_definitions!(category_id) do
-    Enum.reduce_while(
-      Inventory.list_definitions(category_id),
-      :ok,
-      fn definition, :ok ->
-        case hard_delete_value_free_options!(definition.id) do
-          :ok ->
-            case hard_delete_value_free_definition!(definition.id) do
-              :ok -> {:cont, :ok}
-              {:error, _, _} = blocked -> {:halt, blocked}
-              {:error, _} = error -> {:halt, error}
-            end
+    Inventory.list_definitions(category_id)
+    |> Enum.reduce_while(:ok, fn definition, :ok ->
+      definition.id |> hard_delete_value_free_definition_tree!() |> reduce_result()
+    end)
+  end
 
-          {:error, _, _} = blocked ->
-            {:halt, blocked}
-
-          {:error, _} = error ->
-            {:halt, error}
-        end
-      end
-    )
+  defp hard_delete_value_free_definition_tree!(definition_id) do
+    with :ok <- hard_delete_value_free_options!(definition_id),
+         do: hard_delete_value_free_definition!(definition_id)
   end
 
   defp hard_delete_value_free_options!(definition_id) do
@@ -1404,23 +1448,28 @@ defmodule Dhc.E2EHarness do
       Inventory.list_options(definition_id),
       :ok,
       fn option, :ok ->
-        if option_values_exist?(option.id) do
-          {:halt, {:error, :still_referenced, %{active_value_count: 1}}}
-        else
-          case Repo.get(PropertyOption, option.id) do
-            nil ->
-              {:cont, :ok}
-
-            record ->
-              case Repo.delete(record) do
-                {:ok, _} -> {:cont, :ok}
-                {:error, changeset} -> {:halt, {:error, changeset}}
-              end
-          end
-        end
+        option.id |> hard_delete_value_free_option!() |> reduce_result()
       end
     )
   end
+
+  defp hard_delete_value_free_option!(option_id) do
+    if option_values_exist?(option_id) do
+      {:error, :still_referenced, %{active_value_count: 1}}
+    else
+      case Repo.get(PropertyOption, option_id) do
+        nil -> :ok
+        record -> record |> Repo.delete() |> delete_result()
+      end
+    end
+  end
+
+  defp delete_result({:ok, _}), do: :ok
+  defp delete_result({:error, changeset}), do: {:error, changeset}
+
+  defp reduce_result(:ok), do: {:cont, :ok}
+  defp reduce_result({:error, _reason} = error), do: {:halt, error}
+  defp reduce_result({:error, _reason, _details} = error), do: {:halt, error}
 
   defp hard_delete_value_free_definition!(definition_id) do
     if definition_values_exist?(definition_id) do
@@ -1511,20 +1560,22 @@ defmodule Dhc.E2EHarness do
   # function is created to serve this.
   def delete_fixture("inventoryLoan", id) when is_binary(id) do
     case Repo.get(Loan, id) do
-      nil ->
-        {:error, :not_found}
-
-      loan ->
-        delete_loan_reminder_ledger!(id)
-
-        case Repo.delete(loan) do
-          {:ok, _} ->
-            if Repo.get(Loan, id) == nil, do: :ok, else: {:error, :not_deleted}
-
-          {:error, changeset} ->
-            {:error, changeset}
-        end
+      nil -> {:error, :not_found}
+      loan -> delete_seed_loan!(loan)
     end
+  end
+
+  defp delete_seed_loan!(loan) do
+    delete_loan_reminder_ledger!(loan.id)
+
+    case Repo.delete(loan) do
+      {:ok, _} -> ensure_absent(Loan, loan.id, :not_deleted)
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp ensure_absent(schema, id, error) do
+    if Repo.get(schema, id) == nil, do: :ok, else: {:error, error}
   end
 
   defp delete_loan_reminder_ledger!(loan_id) do
@@ -1554,31 +1605,29 @@ defmodule Dhc.E2EHarness do
       %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) ->
         :ok
 
-      %MaintenancePeriod{item_id: item_id, started_by_principal_id: actor_id} ->
-        actor = actor_id || {:error, :missing_actor}
+      %MaintenancePeriod{} = period ->
+        close_seed_maintenance!(period)
+    end
+  end
 
-        case actor do
-          {:error, _} = error ->
-            error
+  defp close_seed_maintenance!(%MaintenancePeriod{started_by_principal_id: nil}),
+    do: {:error, :missing_actor}
 
-          actor_id ->
-            case Inventory.end_operator_item_maintenance(
-                   item_id,
-                   %{
-                     "endNote" => "E2E teardown: closing open maintenance."
-                   },
-                   actor_id
-                 ) do
-              {:ok, _} ->
-                case Repo.get(MaintenancePeriod, id) do
-                  %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) -> :ok
-                  _ -> {:error, :not_closed}
-                end
+  defp close_seed_maintenance!(%MaintenancePeriod{} = period) do
+    case Inventory.end_operator_item_maintenance(
+           period.item_id,
+           %{"endNote" => "E2E teardown: closing open maintenance."},
+           period.started_by_principal_id
+         ) do
+      {:ok, _} -> ensure_maintenance_closed!(period.id)
+      {:error, _} = error -> error
+    end
+  end
 
-              {:error, _} = error ->
-                error
-            end
-        end
+  defp ensure_maintenance_closed!(id) do
+    case Repo.get(MaintenancePeriod, id) do
+      %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) -> :ok
+      _ -> {:error, :not_closed}
     end
   end
 
@@ -1601,16 +1650,16 @@ defmodule Dhc.E2EHarness do
         {:error, :missing_actor}
 
       {:ok, %{archived_at: _archived, archived_by_principal_id: actor_id}} ->
-        case Inventory.restore_operator_item(id, actor_id) do
-          {:ok, restored} ->
-            if restored.archived_at == nil, do: :ok, else: {:error, :not_restored}
+        restore_seed_archive!(id, actor_id)
+    end
+  end
 
-          {:error, :invalid_values, _} = error ->
-            error
-
-          {:error, _} = error ->
-            error
-        end
+  defp restore_seed_archive!(id, actor_id) do
+    case Inventory.restore_operator_item(id, actor_id) do
+      {:ok, %{archived_at: nil}} -> :ok
+      {:ok, _} -> {:error, :not_restored}
+      {:error, :invalid_values, _} = error -> error
+      {:error, _} = error -> error
     end
   end
 
@@ -1689,11 +1738,7 @@ defmodule Dhc.E2EHarness do
 
       definitions when is_list(definitions) ->
         Enum.reduce_while(definitions, :ok, fn definition, :ok ->
-          case update_one_structure_definition!(definition) do
-            :ok -> {:cont, :ok}
-            {:error, _, _} = error -> {:halt, error}
-            {:error, _} = error -> {:halt, error}
-          end
+          definition |> update_one_structure_definition!() |> reduce_result()
         end)
     end
   end
@@ -1709,9 +1754,7 @@ defmodule Dhc.E2EHarness do
       |> maybe_put("identifying_position", definition, "identifyingPosition")
 
     with :ok <- apply_definition_updates!(definition_id, updates),
-         :ok <- update_structure_options!(definition) do
-      :ok
-    end
+         do: update_structure_options!(definition)
   end
 
   defp apply_definition_updates!(_definition_id, updates) when updates == %{}, do: :ok
@@ -1734,24 +1777,28 @@ defmodule Dhc.E2EHarness do
 
       options when is_list(options) ->
         Enum.reduce_while(options, :ok, fn option, :ok ->
-          option_id = Map.fetch!(option, "optionId")
-
-          updates =
-            %{}
-            |> maybe_put("label", option, "label")
-            |> maybe_put("position", option, "position")
-
-          if updates == %{} do
-            {:cont, :ok}
-          else
-            case Inventory.update_option(option_id, updates) do
-              {:ok, _} -> {:cont, :ok}
-              {:error, :not_found} = error -> {:halt, error}
-              {:error, :conflict, _} = error -> {:halt, error}
-              {:error, _} = error -> {:halt, error}
-            end
-          end
+          option |> update_one_structure_option!() |> reduce_result()
         end)
+    end
+  end
+
+  defp update_one_structure_option!(option) do
+    updates =
+      %{}
+      |> maybe_put("label", option, "label")
+      |> maybe_put("position", option, "position")
+
+    apply_option_updates!(Map.fetch!(option, "optionId"), updates)
+  end
+
+  defp apply_option_updates!(_option_id, updates) when updates == %{}, do: :ok
+
+  defp apply_option_updates!(option_id, updates) do
+    case Inventory.update_option(option_id, updates) do
+      {:ok, _} -> :ok
+      {:error, :not_found} = error -> error
+      {:error, :conflict, _} = error -> error
+      {:error, _} = error -> error
     end
   end
 
@@ -1762,23 +1809,27 @@ defmodule Dhc.E2EHarness do
 
       containers when is_list(containers) ->
         Enum.reduce_while(containers, :ok, fn container, :ok ->
-          container_id = Map.fetch!(container, "containerId")
-
-          updates =
-            %{}
-            |> maybe_put("name", container, "name")
-            |> maybe_put("description", container, "description")
-
-          if updates == %{} do
-            {:cont, :ok}
-          else
-            case Inventory.update_container(container_id, updates) do
-              {:ok, _} -> {:cont, :ok}
-              {:error, :not_found} = error -> {:halt, error}
-              {:error, _} = error -> {:halt, error}
-            end
-          end
+          container |> update_one_structure_container!() |> reduce_result()
         end)
+    end
+  end
+
+  defp update_one_structure_container!(container) do
+    updates =
+      %{}
+      |> maybe_put("name", container, "name")
+      |> maybe_put("description", container, "description")
+
+    apply_container_updates!(Map.fetch!(container, "containerId"), updates)
+  end
+
+  defp apply_container_updates!(_container_id, updates) when updates == %{}, do: :ok
+
+  defp apply_container_updates!(container_id, updates) do
+    case Inventory.update_container(container_id, updates) do
+      {:ok, _} -> :ok
+      {:error, :not_found} = error -> error
+      {:error, _} = error -> error
     end
   end
 
