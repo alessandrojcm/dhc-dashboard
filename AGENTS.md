@@ -12,7 +12,7 @@ JavaScript/TypeScript linting uses the shared root Oxlint config through the `ap
 
 Phoenix `mix precommit` runs `hex.audit` before dependency-provided Mix tasks; under the pinned Mix version, running Credo or Reach first unloads the archived Hex task from the current process.
 
-Dev data can include pending direct member invitations through `mise run seed-invitations [count]`; see the Seeds section in `docs/agents/commands.md` for all seed tasks.
+Dev data can include pending direct member invitations through `mise run seed-invitations [count]` and representative inventory through `mise run seed-inventory [item-count]`; see the Seeds section in `docs/agents/commands.md` for all seed tasks.
 
 Invitation pricing tiers use backend-applied Stripe coupon IDs, not customer-facing promotion codes; see the invitation pricing tier note in `docs/agents/notes.md` for coupon configuration and E2E conventions.
 
