@@ -375,7 +375,8 @@ export async function createInventoryStructure(params: {
 	operatorActorId: string;
 }) {
 	const rand = Math.random().toString(36).slice(2, 7);
-	const categoryName = params.categoryName ?? `E2E Category ${Date.now()}-${rand}`;
+	const categoryName =
+		params.categoryName ?? `E2E Category ${Date.now()}-${rand}`;
 	const definitions = params.definitions ?? [
 		{ label: "E2E notes", valueType: "text" as const, required: true },
 	];
@@ -414,9 +415,7 @@ export async function createInventoryStructure(params: {
 	};
 }
 
-export async function createInventoryItem(
-	attrs: InventoryItemSeed["attrs"],
-) {
+export async function createInventoryItem(attrs: InventoryItemSeed["attrs"]) {
 	const item = await seedE2EScenario("inventoryItem", attrs);
 
 	return {
@@ -427,9 +426,7 @@ export async function createInventoryItem(
 	};
 }
 
-export async function createInventoryLoan(
-	attrs: InventoryLoanSeed["attrs"],
-) {
+export async function createInventoryLoan(attrs: InventoryLoanSeed["attrs"]) {
 	const data: unknown = await seedE2EScenario("inventoryLoan", attrs);
 
 	if (attrs.preset === "competingPair") {

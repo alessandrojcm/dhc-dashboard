@@ -1,5 +1,6 @@
 import {
 	DISCORD_DOCTOR_ROLES,
+	INVENTORY_ROLES,
 	WORKSHOP_ROLES,
 } from "$lib/server/roles";
 import type { NavData, NavigationGroup } from "$lib/types";
@@ -49,6 +50,23 @@ const data: NavData = {
 			title: "My Workshops",
 			url: "/dashboard/my-workshops",
 			role: new Set(["member"]), // All authenticated users have member role
+		},
+		{
+			title: "Inventory",
+			url: "/dashboard/inventory",
+			role: INVENTORY_ROLES,
+			items: [
+				{
+					title: "Categories",
+					url: "/dashboard/inventory/categories",
+					role: INVENTORY_ROLES,
+				},
+				{
+					title: "Containers",
+					url: "/dashboard/inventory/containers",
+					role: INVENTORY_ROLES,
+				},
+			],
 		},
 		{
 			title: "Equipment",
