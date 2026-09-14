@@ -1,5 +1,5 @@
 <script lang="ts">
-import { Boxes, FolderTree } from "@lucide/svelte";
+import { Boxes, FolderTree, PackageSearch } from "@lucide/svelte";
 </script>
 
 <svelte:head><title>Inventory structure | Dublin HEMA Club</title></svelte:head>
@@ -15,7 +15,17 @@ import { Boxes, FolderTree } from "@lucide/svelte";
 			item.
 		</p>
 	</header>
-	<div class="grid gap-4 sm:grid-cols-2">
+	<div class="grid gap-4 sm:grid-cols-3">
+		<a
+			href="/dashboard/inventory/items"
+			class="rounded-2xl border bg-card p-6 shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+		>
+			<PackageSearch class="mb-4 size-8 text-primary" aria-hidden="true" />
+			<h2 class="text-xl font-semibold">Items</h2>
+			<p class="mt-2 text-sm text-muted-foreground">
+				Create, find, move, maintain, archive, and restore physical units.
+			</p>
+		</a>
 		<a
 			href="/dashboard/inventory/categories"
 			class="rounded-2xl border bg-card p-6 shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

@@ -14,6 +14,7 @@ import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
+import { apiErrorMessage } from "$lib/server/api-error";
 import {
 	Archive,
 	FolderTree,
@@ -31,20 +32,6 @@ const containersQuery = createQuery(() => ({
 	...inventoryContainersIndexOptions(),
 	select: (response) => response.data.containers,
 }));
-function detail(error: unknown, fallback: string) {
-	if (typeof error === "object" && error) {
-		if ("errors" in error)
-			return (
-				(error as { errors?: { detail?: string } }).errors?.detail ?? fallback
-			);
-		if ("data" in error)
-			return (
-				(error as { data?: { errors?: { detail?: string } } }).data?.errors
-					?.detail ?? fallback
-			);
-	}
-	return fallback;
-}
 function refresh() {
 	void containersQuery.refetch();
 }
@@ -73,7 +60,7 @@ const createContainer = createMutation(() => ({
 		reset();
 		refresh();
 	},
-	onError: (e) => toast.error(detail(e, "Could not create container")),
+	onError: (e) => toast.error(apiErrorMessage(e, "Could not create container")),
 }));
 const updateContainer = createMutation(() => ({
 	...inventoryContainersUpdateMutation(),
@@ -82,7 +69,7 @@ const updateContainer = createMutation(() => ({
 		reset();
 		refresh();
 	},
-	onError: (e) => toast.error(detail(e, "Could not update container")),
+	onError: (e) => toast.error(apiErrorMessage(e, "Could not update container")),
 }));
 const archiveContainer = createMutation(() => ({
 	...inventoryContainersArchiveMutation(),
@@ -91,7 +78,7 @@ const archiveContainer = createMutation(() => ({
 		refresh();
 	},
 	onError: (e) =>
-		toast.error(detail(e, "Move its active children and items first")),
+		toast.error(apiErrorMessage(e, "Move its active children and items first")),
 }));
 const restoreContainer = createMutation(() => ({
 	...inventoryContainersRestoreMutation(),
@@ -99,7 +86,8 @@ const restoreContainer = createMutation(() => ({
 		toast.success("Container restored");
 		refresh();
 	},
-	onError: (e) => toast.error(detail(e, "Restore its parent chain first")),
+	onError: (e) =>
+		toast.error(apiErrorMessage(e, "Restore its parent chain first")),
 }));
 const deleteContainer = createMutation(() => ({
 	...inventoryContainersDeleteMutation(),
@@ -108,7 +96,9 @@ const deleteContainer = createMutation(() => ({
 		refresh();
 	},
 	onError: (e) =>
-		toast.error(detail(e, "Handle children and items explicitly first")),
+		toast.error(
+			apiErrorMessage(e, "Handle children and items explicitly first"),
+		),
 }));
 function submit(event: SubmitEvent) {
 	event.preventDefault();
@@ -145,7 +135,10 @@ function startEdit(container: InventoryContainer) {
 	{#if containersQuery.isError}<Alert variant="destructive"
 			><AlertDescription class="flex items-center justify-between"
 				><span
-					>{detail(containersQuery.error, "Could not load containers")}</span
+					>{apiErrorMessage(
+						containersQuery.error,
+						"Could not load containers",
+					)}</span
 				><Button
 					variant="outline"
 					size="sm"

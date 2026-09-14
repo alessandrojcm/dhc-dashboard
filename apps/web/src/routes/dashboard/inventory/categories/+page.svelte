@@ -20,6 +20,7 @@ import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
+import { apiErrorMessage } from "$lib/server/api-error";
 import { Plus, RefreshCw, Save, Trash2 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 
@@ -52,19 +53,6 @@ const selectedCategory = $derived(
 	categoriesQuery.data?.find((category) => category.id === selectedCategoryId),
 );
 
-function detail(error: unknown, fallback: string) {
-	if (typeof error === "object" && error) {
-		if ("errors" in error) {
-			const errors = (error as { errors?: { detail?: string } }).errors;
-			return errors?.detail ?? fallback;
-		}
-		if ("data" in error) {
-			const data = (error as { data?: { errors?: { detail?: string } } }).data;
-			return data?.errors?.detail ?? fallback;
-		}
-	}
-	return fallback;
-}
 function refreshAll() {
 	void categoriesQuery.refetch();
 	void definitionsQuery.refetch();
@@ -77,7 +65,8 @@ const categoryCreate = createMutation(() => ({
 		categoryDescription = "";
 		refreshAll();
 	},
-	onError: (error) => toast.error(detail(error, "Could not create category")),
+	onError: (error) =>
+		toast.error(apiErrorMessage(error, "Could not create category")),
 }));
 const categoryUpdate = createMutation(() => ({
 	...inventoryCategoriesUpdateMutation(),
@@ -86,7 +75,8 @@ const categoryUpdate = createMutation(() => ({
 		editingCategory = undefined;
 		refreshAll();
 	},
-	onError: (error) => toast.error(detail(error, "Could not update category")),
+	onError: (error) =>
+		toast.error(apiErrorMessage(error, "Could not update category")),
 }));
 const categoryDelete = createMutation(() => ({
 	...inventoryCategoriesDeleteMutation(),
@@ -96,7 +86,9 @@ const categoryDelete = createMutation(() => ({
 		refreshAll();
 	},
 	onError: (error) =>
-		toast.error(detail(error, "Move its items before deleting this category")),
+		toast.error(
+			apiErrorMessage(error, "Move its items before deleting this category"),
+		),
 }));
 const definitionCreate = createMutation(() => ({
 	...inventoryStructureCreateDefinitionMutation(),
@@ -105,7 +97,8 @@ const definitionCreate = createMutation(() => ({
 		resetDefinition();
 		refreshAll();
 	},
-	onError: (error) => toast.error(detail(error, "Could not create property")),
+	onError: (error) =>
+		toast.error(apiErrorMessage(error, "Could not create property")),
 }));
 const definitionUpdate = createMutation(() => ({
 	...inventoryStructureUpdateDefinitionMutation(),
@@ -114,7 +107,8 @@ const definitionUpdate = createMutation(() => ({
 		resetDefinition();
 		refreshAll();
 	},
-	onError: (error) => toast.error(detail(error, "Could not update property")),
+	onError: (error) =>
+		toast.error(apiErrorMessage(error, "Could not update property")),
 }));
 const definitionRetire = createMutation(() => ({
 	...inventoryStructureRetireDefinitionMutation(),
@@ -123,7 +117,7 @@ const definitionRetire = createMutation(() => ({
 		refreshAll();
 	},
 	onError: (error) =>
-		toast.error(detail(error, "Clear or migrate active values first")),
+		toast.error(apiErrorMessage(error, "Clear or migrate active values first")),
 }));
 const optionCreate = createMutation(() => ({
 	...inventoryStructureCreateOptionMutation(),
@@ -131,7 +125,8 @@ const optionCreate = createMutation(() => ({
 		toast.success("Option created");
 		refreshAll();
 	},
-	onError: (error) => toast.error(detail(error, "Could not create option")),
+	onError: (error) =>
+		toast.error(apiErrorMessage(error, "Could not create option")),
 }));
 const optionUpdate = createMutation(() => ({
 	...inventoryStructureUpdateOptionMutation(),
@@ -139,7 +134,8 @@ const optionUpdate = createMutation(() => ({
 		toast.success("Option updated");
 		refreshAll();
 	},
-	onError: (error) => toast.error(detail(error, "Could not update option")),
+	onError: (error) =>
+		toast.error(apiErrorMessage(error, "Could not update option")),
 }));
 const optionRetire = createMutation(() => ({
 	...inventoryStructureRetireOptionMutation(),
@@ -148,7 +144,7 @@ const optionRetire = createMutation(() => ({
 		refreshAll();
 	},
 	onError: (error) =>
-		toast.error(detail(error, "Clear or migrate active values first")),
+		toast.error(apiErrorMessage(error, "Clear or migrate active values first")),
 }));
 
 function resetDefinition() {
@@ -213,7 +209,8 @@ function submitDefinition() {
 		definitionCreate.mutate({ path: { categoryId: selectedCategoryId }, body });
 }
 function addOption(form: HTMLFormElement, definitionId: string) {
-	const input = form.elements.namedItem("label") as HTMLInputElement;
+	const input = form.elements.namedItem("label");
+	if (!(input instanceof HTMLInputElement)) return;
 	if (!input.value.trim()) return;
 	optionCreate.mutate({
 		path: { definitionId },
@@ -239,7 +236,10 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 	{#if categoriesQuery.isError}<Alert variant="destructive"
 			><AlertDescription class="flex items-center justify-between"
 				><span
-					>{detail(categoriesQuery.error, "Could not load categories")}</span
+					>{apiErrorMessage(
+						categoriesQuery.error,
+						"Could not load categories",
+					)}</span
 				><Button
 					variant="outline"
 					size="sm"

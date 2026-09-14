@@ -57,6 +57,11 @@ const data: NavData = {
 			role: INVENTORY_ROLES,
 			items: [
 				{
+					title: "Items",
+					url: "/dashboard/inventory/items",
+					role: INVENTORY_ROLES,
+				},
+				{
 					title: "Categories",
 					url: "/dashboard/inventory/categories",
 					role: INVENTORY_ROLES,

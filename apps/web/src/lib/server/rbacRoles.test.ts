@@ -17,6 +17,9 @@ describe("inventory navigation", () => {
 
 	it("governs nested inventory routes", () => {
 		expect(
+			canAccessUrl("/dashboard/inventory/items", new Set(["quartermaster"])),
+		).toBe(true);
+		expect(
 			canAccessUrl("/dashboard/inventory/categories", new Set(["admin"])),
 		).toBe(true);
 		expect(
