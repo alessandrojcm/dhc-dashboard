@@ -32,3 +32,6 @@ onlyBuiltDependencies:
   - workerd
 
 strictPeerDependencies: false
+
+patchedDependencies:
+  '@hey-api/openapi-ts@0.97.2': patches/@hey-api__openapi-ts@0.97.2.patch

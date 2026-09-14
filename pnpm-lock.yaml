@@ -8,6 +8,9 @@ overrides:
   evalite>@fastify/static: 9.3.0
   evalite>better-sqlite3: 13.0.3
 
+patchedDependencies:
+  '@hey-api/openapi-ts@0.97.2': a0fab31836bb66f216c211ff93c3fa3b99915a3c29962d896f70f6733674e8bd
+
 importers:
 
   .:
@@ -283,7 +286,7 @@ importers:
     devDependencies:
       '@hey-api/openapi-ts':
         specifier: 0.97.2
-        version: 0.97.2(typescript@5.9.3)
+        version: 0.97.2(patch_hash=a0fab31836bb66f216c211ff93c3fa3b99915a3c29962d896f70f6733674e8bd)(typescript@5.9.3)
       '@oxlint/plugins':
         specifier: 1.78.0
         version: 1.78.0
@@ -5858,7 +5861,7 @@ snapshots:
       '@types/json-schema': 7.0.15
       js-yaml: 4.1.1
 
-  '@hey-api/openapi-ts@0.97.2(typescript@5.9.3)':
+  '@hey-api/openapi-ts@0.97.2(patch_hash=a0fab31836bb66f216c211ff93c3fa3b99915a3c29962d896f70f6733674e8bd)(typescript@5.9.3)':
     dependencies:
       '@hey-api/codegen-core': 0.8.1
       '@hey-api/json-schema-ref-parser': 1.4.2
