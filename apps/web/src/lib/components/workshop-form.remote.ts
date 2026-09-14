@@ -7,7 +7,7 @@ import {
 } from "@dhc/api-client";
 import Dinero from "dinero.js";
 import { authorize } from "$lib/server/auth";
-import { apiErrorMessage } from "$lib/server/api-error";
+import { apiErrorMessage } from "$lib/api-error";
 import { apiClientOptions } from "$lib/server/api-client";
 import { WORKSHOP_ROLES } from "$lib/server/roles";
 import {

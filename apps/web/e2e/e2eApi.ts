@@ -216,6 +216,7 @@ export type InventoryLoanSeed = {
 		operatorActorId?: string;
 		cancelledBy?: "member" | "operator";
 		dueOffsetDays?: number;
+		checkoutReady?: boolean;
 		reminderState?: ReminderState;
 	};
 	result: {

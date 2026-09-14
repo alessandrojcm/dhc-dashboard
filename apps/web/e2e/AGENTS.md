@@ -12,6 +12,10 @@ pnpm --filter @dhc/web test:e2e
 
 Playwright owns the full run lifecycle. Do not manually start PostgreSQL, Phoenix, Supabase, or SvelteKit first.
 
+Run focused specs through the documented mise task (`mise run test-e2e --
+e2e/example.spec.ts`), not a direct filtered workspace invocation, so the same
+task environment and server lifecycle are used as full runs.
+
 The suite uses the real Stripe test API and rejects missing keys and all keys that
 do not start with `sk_test_`. Never run it with live-mode credentials. The Stripe
 test account must have active membership prices under the lookup keys used by the

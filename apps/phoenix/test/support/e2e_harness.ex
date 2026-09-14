@@ -627,8 +627,24 @@ defmodule Dhc.E2EHarness do
       end
 
     force_loan_reminder_geometry!(loan_id, preset, attrs, today)
+    force_non_ready_handover!(loan_id, preset, attrs, today)
     loan_id
   end
+
+  # Harness-only elapsed-time fixture for the operator queue. The request and
+  # approval still go through their public domain seams with valid dates; this
+  # final write simulates the approved window lapsing before Playwright opens
+  # the queue, yielding a real `ready_for_checkout? == false` row.
+  defp force_non_ready_handover!(loan_id, "approved", %{"checkoutReady" => false}, today) do
+    Repo.query!(
+      "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2 WHERE id = $3",
+      [Date.add(today, -8), Date.add(today, -1), Ecto.UUID.dump!(loan_id)]
+    )
+
+    :ok
+  end
+
+  defp force_non_ready_handover!(_loan_id, _preset, _attrs, _today), do: :ok
 
   defp seed_cancelled_loan!(attrs, item_ref, starts_on, due_on, note, borrower_id, operator_id) do
     cancelled_by = Map.get(attrs, "cancelledBy", "member")

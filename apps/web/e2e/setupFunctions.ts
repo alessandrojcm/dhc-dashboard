@@ -245,9 +245,7 @@ async function deleteStripeCustomersByEmail(email: string) {
 	const customers = await stripeClient.customers.list({ email, limit: 100 });
 
 	for (const customer of customers.data) {
-		if (!customer.deleted) {
-			await stripeClient.customers.del(customer.id);
-		}
+		await stripeClient.customers.del(customer.id);
 	}
 }
 

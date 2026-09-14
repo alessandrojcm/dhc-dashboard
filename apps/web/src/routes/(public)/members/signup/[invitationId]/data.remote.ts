@@ -18,7 +18,7 @@ import {
 } from "$lib/server/invitation-acceptance-proof";
 import { completeInvitationAcceptance } from "$lib/server/post-acceptance-sign-in-handoff";
 import logger from "$lib/server/services/shared/logger";
-import { apiErrorDetail } from "$lib/server/api-error";
+import { apiErrorDetail } from "$lib/api-error";
 
 const invitationAcceptanceTimeout = 60_000;
 const PaymentErrorMetadataSchema = v.object({

@@ -3,7 +3,7 @@ import { invalid } from "@sveltejs/kit";
 import * as v from "valibot";
 import { form, getRequestEvent } from "$app/server";
 import { apiClientOptions } from "$lib/server/api-client";
-import { apiErrorMessage } from "$lib/server/api-error";
+import { apiErrorMessage } from "$lib/api-error";
 
 const magicLinkSchema = v.object({
 	email: v.pipe(

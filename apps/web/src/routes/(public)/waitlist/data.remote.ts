@@ -6,7 +6,7 @@ import beginnersWaitlist, {
 } from "$lib/schemas/beginnersWaitlist";
 import { waitlistCreateEntry } from "@dhc/api-client";
 import { apiBaseUrl } from "$lib/server/api-client";
-import { apiErrorDetail } from "$lib/server/api-error";
+import { apiErrorDetail } from "$lib/api-error";
 
 /**
  * Waitlist submission form
