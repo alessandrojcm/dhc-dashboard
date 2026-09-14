@@ -11,6 +11,7 @@ import NotificationCenter from "$lib/components/notifications/NotificationCenter
 import {
 	Boxes,
 	CalendarDays,
+	ClipboardList,
 	ChevronRight,
 	GraduationCap,
 	House,
@@ -66,6 +67,7 @@ const navIcons = {
 	Containers: Boxes,
 	Categories: Boxes,
 	Items: Swords,
+	"Loan queue": ClipboardList,
 };
 
 function isActive(url: string) {

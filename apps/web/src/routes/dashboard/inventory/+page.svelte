@@ -1,5 +1,10 @@
 <script lang="ts">
-import { Boxes, FolderTree, PackageSearch } from "@lucide/svelte";
+import {
+	Boxes,
+	ClipboardList,
+	FolderTree,
+	PackageSearch,
+} from "@lucide/svelte";
 </script>
 
 <svelte:head><title>Inventory structure | Dublin HEMA Club</title></svelte:head>
@@ -15,7 +20,17 @@ import { Boxes, FolderTree, PackageSearch } from "@lucide/svelte";
 			item.
 		</p>
 	</header>
-	<div class="grid gap-4 sm:grid-cols-3">
+	<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+		<a
+			href="/dashboard/inventory/loans"
+			class="rounded-2xl border bg-card p-6 shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+		>
+			<ClipboardList class="mb-4 size-8 text-primary" aria-hidden="true" />
+			<h2 class="text-xl font-semibold">Loan queue</h2>
+			<p class="mt-2 text-sm text-muted-foreground">
+				Review requests and record handovers and returns from the shared queue.
+			</p>
+		</a>
 		<a
 			href="/dashboard/inventory/items"
 			class="rounded-2xl border bg-card p-6 shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"

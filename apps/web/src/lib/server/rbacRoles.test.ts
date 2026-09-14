@@ -26,4 +26,16 @@ describe("inventory navigation", () => {
 			canAccessUrl("/dashboard/inventory/containers", new Set(["member"])),
 		).toBe(false);
 	});
+
+	it("includes the shared loan queue for inventory operators", () => {
+		const inventory = filterNavByRoles(navData, ["president"]).navMain.find(
+			(item) => item.title === "Inventory",
+		);
+		expect(inventory?.items?.some((item) => item.title === "Loan queue")).toBe(
+			true,
+		);
+		expect(
+			canAccessUrl("/dashboard/inventory/loans", new Set(["member"])),
+		).toBe(false);
+	});
 });
