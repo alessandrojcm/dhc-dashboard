@@ -47,6 +47,7 @@ type MemberSeed = {
 		gender?: string;
 		medicalConditions?: string;
 		customerId?: string;
+		isActive?: boolean;
 	};
 	result: {
 		email: string;
@@ -133,7 +134,7 @@ type InventoryStructureDefinitionSeed = {
 	options?: Array<{ label: string; position?: number }>;
 };
 
-type InventoryStructureSeed = {
+export type InventoryStructureSeed = {
 	attrs: {
 		categoryName: string;
 		categoryDescription?: string | null;
