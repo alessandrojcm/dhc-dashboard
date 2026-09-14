@@ -216,6 +216,62 @@ defmodule Dhc.Inventory.OperatorItemListTest do
     end
   end
 
+  describe "search" do
+    test "matches every operator-visible item fact case-insensitively" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, brand} = create_definition(category.id, "Brand", "text", identifying_position: 0)
+      {:ok, size} = create_definition(category.id, "Size", "single_select")
+      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
+      {:ok, sharp} = create_definition(category.id, "Sharp", "boolean")
+      {:ok, large} = Inventory.create_option(size.id, %{"label" => "Searchable Large"})
+
+      {:ok, item} =
+        Inventory.create_operator_item(
+          %{
+            "container_id" => container_id,
+            "category_id" => category.id,
+            "notes" => "Reserved for beginners",
+            "values" => %{
+              brand.id => "Searchable Regenyei",
+              size.id => large.id,
+              weight.id => "1.75",
+              sharp.id => true
+            }
+          },
+          principal_id()
+        )
+
+      for q <- [
+            item.slug,
+            String.downcase(category.name),
+            "searchable regenyei",
+            "searchable large",
+            "1.75",
+            "true",
+            "BEGINNERS"
+          ] do
+        assert {:ok, page} = Inventory.list_operator_items(%{"q" => q})
+        assert Enum.map(page.items, & &1.id) == [item.id]
+        assert page.total_count == 1
+      end
+    end
+
+    test "matches the container name and treats blank search as no search" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, item} = create_item(container_id, category.id)
+
+      assert {:ok, container} = Inventory.get_container(container_id)
+
+      assert {:ok, by_container} = Inventory.list_operator_items(%{"q" => container.name})
+      assert Enum.map(by_container.items, & &1.id) == [item.id]
+
+      for blank <- ["", "   "] do
+        assert {:ok, page} = Inventory.list_operator_items(%{"q" => blank})
+        assert Enum.map(page.items, & &1.id) == [item.id]
+      end
+    end
+  end
+
   describe "cursor pagination" do
     test "walks forward and back with exact counts on every page" do
       %{category: category, container_id: container_id} = fixture()
@@ -269,6 +325,45 @@ defmodule Dhc.Inventory.OperatorItemListTest do
 
       assert {:error, :bad_cursor} =
                Inventory.list_operator_items(%{"limit" => "10", "cursor" => "not-a-cursor"})
+    end
+
+    test "search constrains exact counts and is bound into the cursor" do
+      %{category: category, container_id: container_id} = fixture()
+
+      for index <- 1..11 do
+        Inventory.create_operator_item(
+          %{
+            "container_id" => container_id,
+            "category_id" => category.id,
+            "notes" => "Search batch #{index}"
+          },
+          principal_id()
+        )
+      end
+
+      {:ok, _other} =
+        Inventory.create_operator_item(
+          %{
+            "container_id" => container_id,
+            "category_id" => category.id,
+            "notes" => "Different cohort"
+          },
+          principal_id()
+        )
+
+      assert {:ok, page} =
+               Inventory.list_operator_items(%{"limit" => "10", "q" => "search batch"})
+
+      assert Enum.count_until(page.items, 11) == 10
+      assert page.total_count == 11
+      assert is_binary(page.next_cursor)
+
+      assert {:error, :bad_cursor} =
+               Inventory.list_operator_items(%{
+                 "limit" => "10",
+                 "q" => "different cohort",
+                 "cursor" => page.next_cursor
+               })
     end
 
     test "rejects a limit outside the allowed set" do

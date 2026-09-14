@@ -60,6 +60,20 @@ test.describe("ALE-284 operator inventory items", () => {
 
 			const item = page.getByRole("article").filter({ hasText: "Medium" });
 			await expect(item).toContainText("Training loaner");
+
+			await page.getByLabel("Search").fill(`missing-${tag}`);
+			await expect(page.getByRole("heading", { name: "No items found" })).toBeVisible();
+
+			const searched = page.waitForResponse((response) => {
+				const url = new URL(response.url());
+				return (
+					url.pathname === "/api/inventory/items" &&
+					url.searchParams.get("q") === "Training loaner"
+				);
+			});
+			await page.getByLabel("Search").fill("  Training loaner  ");
+			await searched;
+			await expect(item).toBeVisible();
 			await item.getByRole("button", { name: "Manage" }).click();
 
 			await page

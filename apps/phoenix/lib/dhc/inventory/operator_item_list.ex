@@ -15,6 +15,8 @@ defmodule Dhc.Inventory.OperatorItemList do
       filtered set, never an estimate (ADR 0005 / spec ALE-280).
     * **Archive is opt-in.** Archived items are absent by default and
       reachable only through the explicit `archived` filter (story 54).
+    * **Search.** Case-insensitive text search over the immutable slug,
+      derived-label ingredients, Container name, and operator notes.
     * **Filters.** Category (multi-value) and typed property values
       (`definitionId:value` pairs, OR within one definition, AND across
       definitions). Absent or empty means no filter.
@@ -30,9 +32,12 @@ defmodule Dhc.Inventory.OperatorItemList do
   import Ecto.Query
 
   alias Dhc.CursorPagination
+  alias Dhc.Inventory.Container
+  alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemPropertyValue
+  alias Dhc.Inventory.PropertyOption
   alias Dhc.Repo
 
   @allowed_limits [10, 25, 50, 100]
@@ -104,6 +109,7 @@ defmodule Dhc.Inventory.OperatorItemList do
     |> filter_archived(opts.archived)
     |> filter_categories(opts.category_ids)
     |> filter_properties(opts.properties)
+    |> apply_search(opts.q)
   end
 
   defp filter_archived(query, "exclude"), do: where(query, [i], is_nil(i.archived_at))
@@ -152,6 +158,51 @@ defmodule Dhc.Inventory.OperatorItemList do
     end)
   end
 
+  defp apply_search(query, nil), do: query
+
+  defp apply_search(query, q) do
+    pattern = "%" <> escape_like(q) <> "%"
+
+    where(
+      query,
+      [i],
+      ilike(i.slug, ^pattern) or ilike(i.notes, ^pattern) or
+        exists(
+          from(c in EquipmentCategory,
+            where: c.id == parent_as(:item).category_id,
+            where: ilike(c.name, ^pattern),
+            select: 1
+          )
+        ) or
+        exists(
+          from(c in Container,
+            where: c.id == parent_as(:item).container_id,
+            where: ilike(c.name, ^pattern),
+            select: 1
+          )
+        ) or
+        exists(
+          from(v in ItemPropertyValue,
+            left_join: o in PropertyOption,
+            on: o.id == v.option_id,
+            where: v.item_id == parent_as(:item).id,
+            where:
+              ilike(v.text_value, ^pattern) or ilike(o.label, ^pattern) or
+                ilike(fragment("?::text", v.decimal_value), ^pattern) or
+                ilike(fragment("?::text", v.boolean_value), ^pattern),
+            select: 1
+          )
+        )
+    )
+  end
+
+  defp escape_like(value) do
+    value
+    |> String.replace("\\", "\\\\")
+    |> String.replace("%", "\\%")
+    |> String.replace("_", "\\_")
+  end
+
   # ── Options ─────────────────────────────────────────────────────
 
   defp parse_options(params) when is_list(params), do: parse_options(Map.new(params))
@@ -170,6 +221,7 @@ defmodule Dhc.Inventory.OperatorItemList do
          archived: archived,
          category_ids: category_ids,
          properties: properties,
+         q: blank_to_nil(take(params, ["q"])),
          cursor: blank_to_nil(take(params, ["cursor"]))
        }}
     end
@@ -283,8 +335,15 @@ defmodule Dhc.Inventory.OperatorItemList do
   end
 
   defp blank_to_nil(nil), do: nil
-  defp blank_to_nil(""), do: nil
-  defp blank_to_nil(value), do: value
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp blank_to_nil(_value), do: nil
 
   # Everything that changes the result set is bound into the cursor, so a
   # cursor cannot be replayed against a different query.
@@ -294,6 +353,7 @@ defmodule Dhc.Inventory.OperatorItemList do
       "sort" => opts.sort,
       "direction" => opts.direction,
       "archived" => opts.archived,
+      "q" => opts.q,
       "categoryIds" => Enum.sort(opts.category_ids),
       "properties" =>
         opts.properties |> Enum.sort() |> Enum.map(fn {k, v} -> [k, Enum.sort(v)] end)

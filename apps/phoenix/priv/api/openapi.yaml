@@ -3815,12 +3815,14 @@ paths:
         command can change. `totalCount` is an exact count over the same
         filtered set.
 
-        Archived Items are absent unless `archived` asks for them. Filters:
-        `categoryId` (comma-separated) and `property` (comma-separated
+        Archived Items are absent unless `archived` asks for them. Search
+        (`q`) covers the immutable slug, the derived label through its
+        Category and property-value ingredients, Container name, and operator
+        notes. Filters: `categoryId` (comma-separated) and `property` (comma-separated
         `definitionId:value` pairs, OR within one definition and AND across
         definitions). Absent or empty means no filter.
 
-        Cursors are opaque and bind to limit, direction, and every filter; a
+        Cursors are opaque and bind to limit, direction, search, and every filter; a
         cursor replayed against a different query returns `400`.
 
         This is the operator viewer: it discloses container location,
@@ -3845,7 +3847,7 @@ paths:
             type: string
           description: |
             Opaque cursor from a previous response. Binds to limit,
-            direction, and every filter; a mismatched cursor returns 400.
+            direction, search, and every filter; a mismatched cursor returns 400.
         - name: direction
           in: query
           schema:
@@ -3862,6 +3864,14 @@ paths:
           description: |
             `exclude` (default) hides archived Items, `only` returns just
             them, `include` returns both.
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: |
+            Free-text search over the immutable slug, Category name, property
+            values, Container name, and operator notes. Empty or whitespace
+            means no search.
         - name: categoryId
           in: query
           schema:

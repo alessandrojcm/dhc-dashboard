@@ -1,4 +1,5 @@
 <script lang="ts">
+import { onDestroy } from "svelte";
 import { createMutation, createQuery } from "@tanstack/svelte-query";
 import {
 	type InventoryOperatorItem,
@@ -36,6 +37,9 @@ import {
 import { toast } from "svelte-sonner";
 
 let archived = $state<"exclude" | "include" | "only">("exclude");
+let search = $state("");
+let debouncedQuery = $state("");
+let searchTimeout: ReturnType<typeof setTimeout> | undefined;
 let categoryId = $state("");
 let containerId = $state("");
 let notes = $state("");
@@ -51,7 +55,9 @@ let maintenanceEndNote = $state("");
 let archiveReason = $state("");
 
 const itemsQuery = createQuery(() => ({
-	...inventoryItemsListOptions({ query: { archived, limit: 100 } }),
+	...inventoryItemsListOptions({
+		query: { archived, limit: 100, q: debouncedQuery || undefined },
+	}),
 	select: (response) => response.data,
 }));
 const categoriesQuery = createQuery(() => ({
@@ -93,6 +99,14 @@ function refresh() {
 	void itemsQuery.refetch();
 	void maintenanceQuery.refetch();
 }
+function updateSearch(value: string) {
+	search = value;
+	clearTimeout(searchTimeout);
+	searchTimeout = setTimeout(() => {
+		debouncedQuery = value.trim();
+	}, 300);
+}
+onDestroy(() => clearTimeout(searchTimeout));
 function itemValues(item: InventoryOperatorItem): InventoryOperatorItemValues {
 	return Object.fromEntries(
 		item.values.map((value) => [
@@ -331,15 +345,27 @@ function displayValue(item: InventoryOperatorItem) {
 						{itemsQuery.data?.totalCount ?? 0} physical units
 					</p>
 				</div>
-				<div>
-					<Label for="archive-filter">Archive filter</Label><select
-						id="archive-filter"
-						class="h-10 rounded-md border bg-background px-3"
-						bind:value={archived}
-						><option value="exclude">Active</option><option value="include"
-							>All</option
-						><option value="only">Archived</option></select
-					>
+				<div class="flex flex-1 flex-wrap justify-end gap-3">
+					<div class="min-w-56 flex-1 sm:max-w-80">
+						<Label for="item-search">Search</Label>
+						<Input
+							id="item-search"
+							type="search"
+							placeholder="Slug, label, container or notes"
+							value={search}
+							oninput={(event) => updateSearch(event.currentTarget.value)}
+						/>
+					</div>
+					<div>
+						<Label for="archive-filter">Archive filter</Label><select
+							id="archive-filter"
+							class="h-10 rounded-md border bg-background px-3"
+							bind:value={archived}
+							><option value="exclude">Active</option><option value="include"
+								>All</option
+							><option value="only">Archived</option></select
+						>
+					</div>
 				</div>
 			</div>
 			{#each itemsQuery.data?.items ?? [] as item (item.id)}<article
@@ -380,7 +406,9 @@ function displayValue(item: InventoryOperatorItem) {
 				>
 					<h2 class="font-semibold">No items found</h2>
 					<p class="text-sm text-muted-foreground">
-						Create a physical unit or change the archive filter.
+						{debouncedQuery
+							? "Try another search or change the filters."
+							: "Create a physical unit or change the archive filter."}
 					</p>
 				</div>{/each}
 		</section>

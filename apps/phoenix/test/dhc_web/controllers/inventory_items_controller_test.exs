@@ -869,6 +869,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       assert params["archived"]["schema"]["enum"] == ~w(exclude include only)
       assert params["direction"]["schema"]["enum"] == ~w(asc desc)
       assert Map.has_key?(params, "cursor")
+      assert Map.has_key?(params, "q")
       assert Map.has_key?(params, "categoryId")
       assert Map.has_key?(params, "property")
 
