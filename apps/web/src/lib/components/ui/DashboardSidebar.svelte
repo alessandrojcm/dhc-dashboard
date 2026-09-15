@@ -18,6 +18,7 @@ import {
 	Menu,
 	Stethoscope,
 	Swords,
+	Tags,
 	UsersRound,
 } from "@lucide/svelte";
 import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
@@ -65,7 +66,7 @@ const navIcons = {
 	Inventory: Boxes,
 	Overview: House,
 	Containers: Boxes,
-	Categories: Boxes,
+	Categories: Tags,
 	Items: Swords,
 	"Loan queue": ClipboardList,
 };
@@ -211,30 +212,35 @@ function isActive(url: string) {
 						<Skeleton class="h-[50px]" />
 					{:then user}
 						<DropdownMenu.Trigger>
-							<Sidebar.MenuButton
-								size="lg"
-								class="data-[state=open]:bg-sidebar-accent cursor-pointer data-[state=open]:text-sidebar-accent-foreground"
-							>
-								<Avatar.Root class="h-8 w-8 border border-secondary/50">
-									<Avatar.Fallback
-										class="bg-sidebar-primary font-semibold text-sidebar-primary-foreground"
-										>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(
-											0,
-										)}</Avatar.Fallback
+							{#snippet child({ props })}
+								<Sidebar.MenuButton
+									{...props}
+									size="lg"
+									class="data-[state=open]:bg-sidebar-accent cursor-pointer data-[state=open]:text-sidebar-accent-foreground"
+								>
+									<Avatar.Root
+										class="h-8 w-8 shrink-0 border border-secondary/50"
 									>
-								</Avatar.Root>
-								<div class="flex min-w-0 flex-col space-y-1">
-									<p class="text-sm font-medium leading-none">
-										{user?.firstName}
-										{user?.lastName}
-									</p>
-									<p
-										class="truncate text-xs leading-none text-sidebar-foreground/55"
-									>
-										{user?.email}
-									</p>
-								</div>
-							</Sidebar.MenuButton>
+										<Avatar.Fallback
+											class="bg-sidebar-primary font-semibold text-sidebar-primary-foreground"
+											>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(
+												0,
+											)}</Avatar.Fallback
+										>
+									</Avatar.Root>
+									<div class="min-w-0 flex-1 space-y-1 overflow-hidden">
+										<p class="truncate text-sm font-medium leading-none">
+											{user?.firstName}
+											{user?.lastName}
+										</p>
+										<p
+											class="truncate text-xs leading-none text-sidebar-foreground/55"
+										>
+											{user?.email}
+										</p>
+									</div>
+								</Sidebar.MenuButton>
+							{/snippet}
 						</DropdownMenu.Trigger>
 
 						<DropdownMenu.Content strategy="fixed" {customAnchor} class="w-56">

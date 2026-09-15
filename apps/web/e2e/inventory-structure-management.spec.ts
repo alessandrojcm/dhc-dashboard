@@ -26,6 +26,7 @@ test.describe("ALE-283 operator inventory structure", () => {
 			).toBeVisible();
 
 			const categoryName = `E2E UI Category ${tag}`;
+			await page.getByRole("button", { name: "New category" }).click();
 			await page.getByLabel("Name").fill(categoryName);
 			await page
 				.getByLabel("Description")
@@ -49,15 +50,24 @@ test.describe("ALE-283 operator inventory structure", () => {
 			});
 			await expect(categoryButton).toBeVisible();
 			await categoryButton.click();
-			await page.getByRole("button", { name: "Edit" }).first().click();
+			await page
+				.getByRole("button", { name: `Actions for ${categoryName}` })
+				.click();
+			await page.getByRole("menuitem", { name: "Edit" }).click();
 			await expect(page.getByLabel("Name")).toHaveValue(categoryName);
 			await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+			await page.getByRole("button", { name: "Cancel" }).click();
 
-			await page.getByLabel("Label").fill("Size");
-			await page.getByLabel("Value type").selectOption("single_select");
-			await page.getByLabel("Identifying position").fill("0");
-			await page.getByText("Required", { exact: true }).click();
 			await page.getByRole("button", { name: "Add property" }).click();
+			await page.getByLabel("Label", { exact: true }).fill("Size");
+			await page.getByLabel("Value type").click();
+			await page.getByRole("option", { name: "Single select" }).click();
+			await page.getByLabel("Label position").fill("0");
+			await page.getByText("Required", { exact: true }).click();
+			await page
+				.locator("form")
+				.getByRole("button", { name: "Add property" })
+				.click();
 			await expect(page.getByRole("heading", { name: "Size" })).toBeVisible();
 
 			await page.getByLabel("New option label").fill("Medium");
@@ -72,7 +82,7 @@ test.describe("ALE-283 operator inventory structure", () => {
 				optionResponse.status(),
 				`option create response: ${await optionResponse.text()}`,
 			).toBe(201);
-			await expect(page.getByLabel("Medium label")).toHaveValue("Medium");
+			await expect(page.getByText("Medium", { exact: true })).toBeVisible();
 		} finally {
 			await operator.cleanUp();
 		}
@@ -102,7 +112,8 @@ test.describe("ALE-283 operator inventory structure", () => {
 				.filter({ hasText: `E2E Child ${tag}` })
 				.getByRole("button", { name: "Edit / move" })
 				.click();
-			await page.getByLabel("Parent").selectOption("");
+			await page.getByRole("button", { name: "Parent" }).click();
+			await page.getByRole("option", { name: "Root", exact: true }).click();
 			await page.getByRole("button", { name: "Save changes" }).click();
 			await expect(page.getByText("Container updated")).toBeVisible();
 			await expect(

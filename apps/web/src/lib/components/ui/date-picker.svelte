@@ -13,7 +13,8 @@ import * as Popover from "$lib/components/ui/popover/index.js";
 
 type Props = {
 	value: DateValue | undefined;
-	onDateChange: (date: Date) => void;
+	onDateChange?: (date: Date) => void;
+	onValueChange?: (value: DateValue | undefined) => void;
 	minValue?: DateValue;
 	maxValue?: DateValue;
 	name?: string;
@@ -26,8 +27,16 @@ const df = new DateFormatter("en-US", {
 	dateStyle: "long",
 });
 
-let { value, onDateChange, minValue, maxValue, name, id, label }: Props =
-	$props();
+let {
+	value,
+	onDateChange,
+	onValueChange,
+	minValue,
+	maxValue,
+	name,
+	id,
+	label,
+}: Props = $props();
 let open = $state(false);
 
 // DatePicker is used for calendar dates (birthdays, resume dates), not instants.
@@ -41,7 +50,7 @@ const formValue = $derived(value ? toCalendarDate(value).toString() : "");
 				<Button
 					variant="outline"
 					class={cn(
-						"w-full justify-start text-left font-normal",
+						"min-h-11 w-full justify-start text-left font-normal",
 						!value && "text-muted-foreground",
 					)}
 					{...props}
@@ -60,15 +69,17 @@ const formValue = $derived(value ? toCalendarDate(value).toString() : "");
 			<Calendar
 				bind:value
 				type="single"
+				preventDeselect
 				initialFocus
 				captionLayout="dropdown"
 				{minValue}
 				{maxValue}
 				onValueChange={(date: DateValue | undefined) => {
 					if (date) {
-						onDateChange(date.toDate(getLocalTimeZone()));
+						onDateChange?.(date.toDate(getLocalTimeZone()));
 					}
 					open = false;
+					onValueChange?.(date);
 				}}
 			/>
 		</Popover.Content>

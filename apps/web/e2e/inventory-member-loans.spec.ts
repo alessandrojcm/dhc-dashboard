@@ -12,7 +12,7 @@ import {
 // ALE-288 M4: own-loan history at explicit mobile width. Every row renders
 // the retained snapshot (never a live item read), cancel stays available
 // only before checkout, the container path is an approval entitlement, and
-// another member's loan URL answers not-found.
+// another member's loan never appears in their list.
 test.use({ viewport: { width: 375, height: 812 } });
 
 const tag = `loans-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -188,21 +188,25 @@ test.describe("ALE-288 inventory member loans", () => {
 	}) => {
 		await loginAsUser(context, borrowerEmail);
 
-		await page.goto(`/dashboard/my-loans/${loans.requestedCancel.loanId}`);
+		await page.goto("/dashboard/my-loans");
+		await page.getByRole("link", { name: makerRequestedCancel }).click();
+		let sheet = page.getByRole("dialog");
 		await expect(
-			page.getByRole("heading", { name: "Cancel this loan" }),
+			sheet.getByRole("heading", { name: "Cancel this loan" }),
 		).toBeVisible();
-		await page.getByRole("button", { name: "Cancel loan" }).click();
+		await sheet.getByRole("button", { name: "Cancel loan" }).click();
 		await expect(page.getByText("Loan cancelled")).toBeVisible();
-		await expect(page.getByText("cancelled").first()).toBeVisible();
+		await expect(sheet.getByText("cancelled").first()).toBeVisible();
 
-		await page.goto(`/dashboard/my-loans/${loans.approvedCancel.loanId}`);
+		await page.goto("/dashboard/my-loans");
+		await page.getByRole("link", { name: makerApprovedCancel }).click();
+		sheet = page.getByRole("dialog");
 		await expect(
-			page.getByRole("heading", { name: "Cancel this loan" }),
+			sheet.getByRole("heading", { name: "Cancel this loan" }),
 		).toBeVisible();
-		await page.getByRole("button", { name: "Cancel loan" }).click();
+		await sheet.getByRole("button", { name: "Cancel loan" }).click();
 		await expect(page.getByText("Loan cancelled")).toBeVisible();
-		await expect(page.getByText("cancelled").first()).toBeVisible();
+		await expect(sheet.getByText("cancelled").first()).toBeVisible();
 	});
 
 	test("checked-out loans cannot be cancelled from own-loan detail", async ({
@@ -210,16 +214,18 @@ test.describe("ALE-288 inventory member loans", () => {
 		context,
 	}) => {
 		await loginAsUser(context, borrowerEmail);
-		await page.goto(`/dashboard/my-loans/${loans.checkedOut.loanId}`);
+		await page.goto("/dashboard/my-loans");
+		await page.getByRole("link", { name: makerCheckedOut }).click();
+		const sheet = page.getByRole("dialog");
 
 		await expect(
-			page.getByText("hand it back to a quartermaster"),
+			sheet.getByText("hand it back to a quartermaster"),
 		).toBeVisible();
-		await expect(page.getByRole("button", { name: "Cancel loan" })).toHaveCount(
-			0,
-		);
 		await expect(
-			page.getByRole("heading", { name: "Cancel this loan" }),
+			sheet.getByRole("button", { name: "Cancel loan" }),
+		).toHaveCount(0);
+		await expect(
+			sheet.getByRole("heading", { name: "Cancel this loan" }),
 		).toHaveCount(0);
 	});
 
@@ -229,17 +235,21 @@ test.describe("ALE-288 inventory member loans", () => {
 	}) => {
 		await loginAsUser(context, borrowerEmail);
 
-		await page.goto(`/dashboard/my-loans/${loans.requested.loanId}`);
+		await page.goto("/dashboard/my-loans");
+		await page.getByRole("link", { name: makerRequested }).click();
+		let sheet = page.getByRole("dialog");
 		await expect(
-			page.getByRole("heading", { name: makerRequested }),
+			sheet.getByRole("heading", { name: makerRequested }),
 		).toBeVisible();
-		await expect(page.getByText(/Collect from/)).toHaveCount(0);
+		await expect(sheet.getByText(/Collect from/)).toHaveCount(0);
 
-		await page.goto(`/dashboard/my-loans/${loans.approved.loanId}`);
+		await page.goto("/dashboard/my-loans");
+		await page.getByRole("link", { name: makerApproved }).click();
+		sheet = page.getByRole("dialog");
 		await expect(
-			page.getByRole("heading", { name: makerApproved }),
+			sheet.getByRole("heading", { name: makerApproved }),
 		).toBeVisible();
-		await expect(page.getByText(/Collect from/)).toBeVisible();
+		await expect(sheet.getByText(/Collect from/)).toBeVisible();
 	});
 
 	test("archived item stays in own-loan history while leaving the catalog", async ({
@@ -253,36 +263,26 @@ test.describe("ALE-288 inventory member loans", () => {
 		await expect(page.getByRole("link", { name: makerArchived })).toBeVisible();
 		await page.getByRole("link", { name: makerArchived }).click();
 		await expect(
-			page.getByRole("heading", { name: makerArchived }),
+			page.getByRole("dialog").getByRole("heading", { name: makerArchived }),
 		).toBeVisible();
 
-		// The catalog hides it: search finds nothing and direct detail 404s.
+		// The catalog hides it, so there is no item sheet to open.
 		await page.goto("/dashboard/equipment");
 		await page.getByLabel("Search items").fill(makerArchived);
 		await page.getByLabel("Search items").press("Enter");
 		await expect(page.getByText("Nothing matches those filters")).toBeVisible();
-
-		await page.goto(`/dashboard/equipment/${loans.archived.slug}`);
-		// The query client retries failed reads with backoff, so the
-		// settled error lands after the default assertion window.
-		await expect(page.getByText("Item not found")).toBeVisible({
-			timeout: 15_000,
-		});
 	});
 
-	test("another member cannot read this member's loan by guessing its URL", async ({
+	test("another member cannot see this member's loan", async ({
 		page,
 		context,
 	}) => {
 		await loginAsUser(context, otherEmail);
-		await page.goto(`/dashboard/my-loans/${loans.requested.loanId}`);
+		await page.goto("/dashboard/my-loans");
 
-		// The query client retries failed reads with backoff, so the
-		// settled error lands after the default assertion window.
-		await expect(page.getByText("Loan not found")).toBeVisible({
-			timeout: 15_000,
-		});
-		// No borrower or operator facts leak on the forbidden page.
+		await expect(page.getByRole("link", { name: makerRequested })).toHaveCount(
+			0,
+		);
 		await expect(page.getByText(/Collect from/)).toHaveCount(0);
 		await expect(page.getByText(makerRequested)).toHaveCount(0);
 	});

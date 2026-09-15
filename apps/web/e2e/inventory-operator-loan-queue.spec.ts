@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import dayjs from "dayjs";
 import { loginAsUser } from "./auth";
 import {
 	createInventoryItem,
@@ -23,6 +24,27 @@ function isoDate(offsetDays: number) {
 	return new Date(Date.now() + offsetDays * 86_400_000)
 		.toISOString()
 		.slice(0, 10);
+}
+
+async function pickDate(
+	page: Page,
+	panel: Locator,
+	label: string,
+	iso: string,
+) {
+	const date = dayjs(iso);
+	const trigger = panel.getByRole("button", { name: label, exact: true });
+	if ((await trigger.textContent())?.includes(date.format("MMMM D, YYYY")))
+		return;
+	await trigger.click();
+	const calendar = page.locator(
+		'[data-slot="popover-content"][data-state="open"]',
+	);
+	await calendar.getByLabel("Select a year").selectOption(date.format("YYYY"));
+	await calendar.getByLabel("Select a month").selectOption(date.format("M"));
+	await calendar
+		.getByRole("button", { name: date.format("dddd, MMMM D,") })
+		.click();
 }
 
 async function seedItem(label: string) {
@@ -137,14 +159,19 @@ test.describe("ALE-286 operator loan queue", () => {
 		await loginAsUser(memberContext, memberEmail);
 		await memberPage.goto("/dashboard/inventory/loans");
 		await expect(memberPage).toHaveURL(/\/dashboard\/members\/[^/]+$/);
-		await expect(memberPage.getByRole("heading", { name: "My profile" })).toBeVisible();
+		await expect(
+			memberPage.getByRole("heading", { name: "My profile" }),
+		).toBeVisible();
 		await expect(
 			memberPage.getByRole("heading", { name: "Shared loan queue" }),
 		).toHaveCount(0);
 		await memberContext.close();
 	});
 
-	test("renders all shared queue buckets and their counts", async ({ page, context }) => {
+	test("renders loan buckets and surfaces maintenance with items", async ({
+		page,
+		context,
+	}) => {
 		const requestedLabel = `Queue request ${tag}`;
 		const approvedLabel = `Queue handover ${tag}`;
 		const returnedLabel = `Queue return ${tag}`;
@@ -166,12 +193,30 @@ test.describe("ALE-286 operator loan queue", () => {
 			["Requests", requestedLabel],
 			["Ready for handover", approvedLabel],
 			["Returns and overdue", returnedLabel],
-			["Open maintenance", maintenanceLabel],
 		] as const) {
 			const section = bucket(page, heading);
 			await expect(section.getByText(label)).toBeVisible();
 			await expect(section.getByText("1", { exact: true })).toBeVisible();
 		}
+		await expect(
+			page.getByRole("heading", { name: "Open maintenance" }),
+		).toHaveCount(0);
+
+		await page.goto("/dashboard/inventory/items");
+		const maintenanceSection = page.locator("section").filter({
+			has: page.getByRole("heading", { name: "Maintenance attention" }),
+		});
+		await maintenanceSection
+			.getByRole("button", { name: /Maintenance attention/ })
+			.click();
+		await expect(maintenanceSection.getByText(maintenanceLabel)).toBeVisible();
+		await expect(
+			maintenanceSection.getByRole("button", { name: "Manage maintenance" }),
+		).toBeVisible();
+		await maintenanceSection
+			.getByRole("button", { name: "View all 1 maintenance item" })
+			.click();
+		await expect(page.getByLabel("Availability")).toHaveText("Maintenance");
 	});
 
 	test("approves final dates and note, then checks out the refreshed handover", async ({
@@ -184,22 +229,29 @@ test.describe("ALE-286 operator loan queue", () => {
 		await page.goto("/dashboard/inventory/loans");
 
 		let panel = await openAction(page, label, "Review request");
-		await panel.getByLabel("Approved start").fill(isoDate(0));
-		await panel.getByLabel("Approved due").fill(isoDate(10));
+		await pickDate(page, panel, "Approved start", isoDate(0));
+		await pickDate(page, panel, "Approved due", isoDate(10));
 		await panel.getByLabel("Decision note").fill(`Collection agreed ${tag}`);
-		await panel.getByRole("button", { name: "Approve" }).click();
+		await panel.getByRole("button", { name: "Approve", exact: true }).click();
 		await expect(page.getByText("Loan approved")).toBeVisible();
 		await expect(bucket(page, "Requests").getByText(label)).toHaveCount(0);
-		await expect(bucket(page, "Ready for handover").getByText(label)).toBeVisible();
+		await expect(
+			bucket(page, "Ready for handover").getByText(label),
+		).toBeVisible();
 
 		panel = await openAction(page, label, "Record handover");
 		await panel.getByRole("button", { name: "Record checkout" }).click();
 		await expect(page.getByText("Checkout recorded")).toBeVisible();
-		await expect(bucket(page, "Returns and overdue").getByText(label)).toBeVisible();
+		await expect(
+			bucket(page, "Returns and overdue").getByText(label),
+		).toBeVisible();
 		expect("loanId" in loan).toBe(true);
 	});
 
-	test("rejects a request and removes it from actionable work", async ({ page, context }) => {
+	test("rejects a request and removes it from actionable work", async ({
+		page,
+		context,
+	}) => {
 		const label = `Reject request ${tag}`;
 		await seedLoan(label, { preset: "requested" });
 		await loginAsUser(context, operatorEmail);
@@ -223,17 +275,22 @@ test.describe("ALE-286 operator loan queue", () => {
 		});
 		await loginAsUser(context, operatorEmail);
 		await page.goto("/dashboard/inventory/loans");
-		await page.route("**/api/inventory/operator/loans/*/dates", async (route) => {
-			await route.fulfill({
-				status: 409,
-				contentType: "application/json",
-				body: JSON.stringify({
-					errors: { detail: "The loan changed before these dates were saved." },
-				}),
-			});
-		});
+		await page.route(
+			"**/api/inventory/operator/loans/*/dates",
+			async (route) => {
+				await route.fulfill({
+					status: 409,
+					contentType: "application/json",
+					body: JSON.stringify({
+						errors: {
+							detail: "The loan changed before these dates were saved.",
+						},
+					}),
+				});
+			},
+		);
 		const panel = await openAction(page, label, "Record handover");
-		await panel.getByLabel("Due").fill(isoDate(8));
+		await pickDate(page, panel, "Due", isoDate(8));
 		await panel.getByRole("button", { name: "Save dates" }).click();
 		await expect(
 			page.getByText("The loan changed before these dates were saved."),
@@ -253,39 +310,53 @@ test.describe("ALE-286 operator loan queue", () => {
 		await page.goto("/dashboard/inventory/loans");
 
 		await expect(
-			page.getByText("Checkout is currently blocked. Edit the dates before retrying."),
+			page.getByText(
+				"Checkout is currently blocked. Edit the dates before retrying.",
+			),
 		).toBeVisible();
 		const panel = await openAction(page, label, "Record handover");
-		await expect(panel.getByRole("button", { name: "Record checkout" })).toBeDisabled();
+		await expect(
+			panel.getByRole("button", { name: "Record checkout" }),
+		).toBeDisabled();
 	});
 
-	test("edits approved dates and cancels with an optional note", async ({ page, context }) => {
+	test("edits approved dates and cancels with an optional note", async ({
+		page,
+		context,
+	}) => {
 		const label = `Edit and cancel ${tag}`;
 		await seedLoan(label, { preset: "approved" });
 		await loginAsUser(context, operatorEmail);
 		await page.goto("/dashboard/inventory/loans");
 		let panel = await openAction(page, label, "Record handover");
-		await panel.getByLabel("Start").fill(isoDate(0));
-		await panel.getByLabel("Due").fill(isoDate(12));
+		await pickDate(page, panel, "Start", isoDate(0));
+		await pickDate(page, panel, "Due", isoDate(12));
 		await panel.getByRole("button", { name: "Save dates" }).click();
 		await expect(page.getByText("Loan dates updated")).toBeVisible();
 
 		await page.getByRole("button", { name: "Refresh" }).click();
 		panel = await openAction(page, label, "Record handover");
-		await panel.getByLabel("Cancellation note").fill(`Borrower unavailable ${tag}`);
+		await panel
+			.getByLabel("Cancellation note")
+			.fill(`Borrower unavailable ${tag}`);
 		await panel.getByRole("button", { name: "Cancel loan" }).click();
 		await expect(page.getByText("Loan cancelled")).toBeVisible();
 		await expect(page.getByText(label)).toHaveCount(0);
 	});
 
-	test("only edits the due date after checkout and records return", async ({ page, context }) => {
+	test("only edits the due date after checkout and records return", async ({
+		page,
+		context,
+	}) => {
 		const label = `Due edit and return ${tag}`;
 		await seedLoan(label, { preset: "checkedOut" });
 		await loginAsUser(context, operatorEmail);
 		await page.goto("/dashboard/inventory/loans");
 		let panel = await openAction(page, label, "Record return");
-		await expect(panel.getByLabel("Start")).toHaveCount(0);
-		await panel.getByLabel("Due date").fill(isoDate(14));
+		await expect(
+			panel.getByRole("button", { name: "Start", exact: true }),
+		).toHaveCount(0);
+		await pickDate(page, panel, "Due date", isoDate(14));
 		await panel.getByRole("button", { name: "Update due date" }).click();
 		await expect(page.getByText("Loan dates updated")).toBeVisible();
 
@@ -305,7 +376,9 @@ test.describe("ALE-286 operator loan queue", () => {
 		await seedLoan(label, { preset: "requested" });
 		await loginAsUser(context, operatorEmail);
 		await page.goto("/dashboard/inventory/loans");
-		const review = itemCard(page, label).getByRole("button", { name: "Review request" });
+		const review = itemCard(page, label).getByRole("button", {
+			name: "Review request",
+		});
 		const reviewBox = await review.boundingBox();
 		expect(reviewBox?.height).toBeGreaterThanOrEqual(44);
 
@@ -315,7 +388,9 @@ test.describe("ALE-286 operator loan queue", () => {
 		expect(panelBox?.x).toBeLessThanOrEqual(1);
 		expect(panelBox?.width).toBeGreaterThanOrEqual(373);
 		for (const name of ["Reject", "Approve"]) {
-			const box = await panel.getByRole("button", { name }).boundingBox();
+			const box = await panel
+				.getByRole("button", { name, exact: true })
+				.boundingBox();
 			expect(box?.height).toBeGreaterThanOrEqual(48);
 		}
 	});

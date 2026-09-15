@@ -24,12 +24,6 @@ test.use({ viewport: { width: 375, height: 812 } });
 
 type SeededLoan = InventoryLoanSeed["result"] & { cleanUp(): Promise<void> };
 
-function isoDate(offsetDays: number): string {
-	return new Date(Date.now() + offsetDays * 86_400_000)
-		.toISOString()
-		.slice(0, 10);
-}
-
 async function apiStatus(
 	page: Page,
 	path: string,
@@ -84,12 +78,9 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 			await loginAsUser(context, borrower.email);
 			await page.goto("/dashboard/equipment");
 			await page.getByRole("link", { name: maker }).click();
-			await expect(page).toHaveURL(
-				new RegExp(`/dashboard/equipment/${item.slug}$`),
-			);
+			await expect(page).toHaveURL(/\/dashboard\/equipment$/);
+			await expect(page.getByRole("dialog")).toBeVisible();
 
-			await page.getByLabel("Collect").fill(isoDate(0));
-			await page.getByLabel("Return").fill(isoDate(7));
 			await page.getByRole("button", { name: "Send request" }).click();
 			await expect(
 				page.getByText("Request sent. You'll receive the approved dates"),
@@ -101,7 +92,11 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 				page.getByRole("heading", { name: "Cancel this loan" }),
 			).toBeVisible();
 			await page.getByRole("button", { name: "Cancel loan" }).click();
-			await expect(page.getByText("Loan cancelled")).toBeVisible();
+			await expect(
+				page.getByText("Loan cancelled — the item is available again.", {
+					exact: true,
+				}),
+			).toBeVisible();
 			await expect(page.getByText("cancelled").first()).toBeVisible();
 		} finally {
 			for (const cleanUp of cleanups.reverse()) {
@@ -174,8 +169,11 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 
 			// The borrower learns the collection location only now.
 			await loginAsUser(context, borrower.email);
-			await page.goto(`/dashboard/my-loans/${loan.loanId}`);
-			await expect(page.getByText(/Collect from/)).toBeVisible();
+			await page.goto("/dashboard/my-loans");
+			await page.getByRole("link", { name: maker }).click();
+			await expect(
+				page.getByRole("dialog").getByText(/Collect from/),
+			).toBeVisible();
 
 			// Checkout hands the item over; the member cannot cancel anymore.
 			await loginAsUser(context, operator.email);
@@ -186,12 +184,14 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 			expect(checkedOut).toBe(200);
 
 			await loginAsUser(context, borrower.email);
-			await page.goto(`/dashboard/my-loans/${loan.loanId}`);
+			await page.goto("/dashboard/my-loans");
+			await page.getByRole("link", { name: maker }).click();
+			const checkedOutSheet = page.getByRole("dialog");
 			await expect(
-				page.getByText("hand it back to a quartermaster"),
+				checkedOutSheet.getByText("hand it back to a quartermaster"),
 			).toBeVisible();
 			await expect(
-				page.getByRole("button", { name: "Cancel loan" }),
+				checkedOutSheet.getByRole("button", { name: "Cancel loan" }),
 			).toHaveCount(0);
 
 			// Return closes custody; the record stays readable as returned.
@@ -203,8 +203,11 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 			expect(returned).toBe(200);
 
 			await loginAsUser(context, borrower.email);
-			await page.goto(`/dashboard/my-loans/${loan.loanId}`);
-			await expect(page.getByText("returned").first()).toBeVisible();
+			await page.goto("/dashboard/my-loans");
+			await page.getByRole("link", { name: maker }).click();
+			await expect(
+				page.getByRole("dialog").getByText("returned").first(),
+			).toBeVisible();
 		} finally {
 			for (const cleanUp of cleanups.reverse()) {
 				try {
@@ -281,14 +284,19 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 			expect(approved).toBe(200);
 
 			await loginAsUser(context, winner.email);
-			await page.goto(`/dashboard/my-loans/${pair.loans[0].loanId}`);
-			await expect(page.getByText(/Collect from/)).toBeVisible();
+			await page.goto("/dashboard/my-loans");
+			await page.getByRole("link", { name: maker }).click();
+			await expect(
+				page.getByRole("dialog").getByText(/Collect from/),
+			).toBeVisible();
 
 			await loginAsUser(context, loser.email);
-			await page.goto(`/dashboard/my-loans/${pair.loans[1].loanId}`);
-			await expect(page.getByText("rejected").first()).toBeVisible();
+			await page.goto("/dashboard/my-loans");
+			await page.getByRole("link", { name: maker }).click();
+			const rejectedSheet = page.getByRole("dialog");
+			await expect(rejectedSheet.getByText("rejected").first()).toBeVisible();
 			await expect(
-				page.getByText(
+				rejectedSheet.getByText(
 					"Rejected automatically: another request for this item was approved.",
 				),
 			).toBeVisible();
@@ -397,8 +405,11 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 				page.getByText("Nothing matches those filters"),
 			).toBeVisible();
 
-			await page.goto(`/dashboard/my-loans/${loan.loanId}`);
-			await expect(page.getByRole("heading", { name: maker })).toBeVisible();
+			await page.goto("/dashboard/my-loans");
+			await page.getByRole("link", { name: maker }).click();
+			await expect(
+				page.getByRole("dialog").getByRole("heading", { name: maker }),
+			).toBeVisible();
 		} finally {
 			for (const cleanUp of cleanups.reverse()) {
 				try {

@@ -30,9 +30,6 @@ const operatorNote = `E2E armoury note ${tag}`;
 let viewerEmail = "";
 let borrowerMemberId = "";
 let slugMaint = "";
-let slugPending = "";
-let slugApproved = "";
-let slugCheckedOut = "";
 const cleanups: Array<() => Promise<void>> = [];
 
 function isoDate(offsetDays: number): string {
@@ -109,7 +106,6 @@ test.describe("ALE-288 inventory member availability", () => {
 		expect(closedPeriod.open).toBe(false);
 
 		const pending = await seedItem(makerPending);
-		slugPending = pending.slug;
 		const requested = await createInventoryLoan({
 			preset: "requested",
 			itemId: pending.itemId,
@@ -118,7 +114,6 @@ test.describe("ALE-288 inventory member availability", () => {
 		cleanups.push(() => requested.cleanUp());
 
 		const approved = await seedItem(makerApproved);
-		slugApproved = approved.slug;
 		const approvedLoan = await createInventoryLoan({
 			preset: "approved",
 			itemId: approved.itemId,
@@ -128,7 +123,6 @@ test.describe("ALE-288 inventory member availability", () => {
 		cleanups.push(() => approvedLoan.cleanUp());
 
 		const checkedOut = await seedItem(makerCheckedOut);
-		slugCheckedOut = checkedOut.slug;
 		const checkedOutLoan = await createInventoryLoan({
 			preset: "checkedOut",
 			itemId: checkedOut.itemId,
@@ -162,12 +156,15 @@ test.describe("ALE-288 inventory member availability", () => {
 		await expect(card).toBeVisible();
 		await expect(card.getByText("Maintenance")).toBeVisible();
 
-		await page.goto(`/dashboard/equipment/${slugMaint}`);
-		await expect(page.getByRole("heading", { name: makerMaint })).toBeVisible();
-		await expect(page.getByText("Maintenance")).toBeVisible();
-		await expect(page.getByText("isn't requestable right now")).toBeVisible();
+		await card.click();
+		const sheet = page.getByRole("dialog");
 		await expect(
-			page.getByRole("button", { name: "Send request" }),
+			sheet.getByRole("heading", { name: makerMaint }),
+		).toBeVisible();
+		await expect(sheet.getByText("Maintenance")).toBeVisible();
+		await expect(sheet.getByText("isn't requestable right now")).toBeVisible();
+		await expect(
+			sheet.getByRole("button", { name: "Send request" }),
 		).toHaveCount(0);
 	});
 
@@ -182,11 +179,14 @@ test.describe("ALE-288 inventory member availability", () => {
 		await expect(page.getByText(operatorNote)).toHaveCount(0);
 		await expect(page.getByText(rackName)).toHaveCount(0);
 
-		await page.goto(`/dashboard/equipment/${slugMaint}`);
-		await expect(page.getByRole("heading", { name: makerMaint })).toBeVisible();
-		await expect(page.getByText(maintenanceReason)).toHaveCount(0);
-		await expect(page.getByText(operatorNote)).toHaveCount(0);
-		await expect(page.getByText(rackName)).toHaveCount(0);
+		await page.getByRole("link", { name: makerMaint }).click();
+		const sheet = page.getByRole("dialog");
+		await expect(
+			sheet.getByRole("heading", { name: makerMaint }),
+		).toBeVisible();
+		await expect(sheet.getByText(maintenanceReason)).toHaveCount(0);
+		await expect(sheet.getByText(operatorNote)).toHaveCount(0);
+		await expect(sheet.getByText(rackName)).toHaveCount(0);
 	});
 
 	test("a pending request does not make the item unavailable", async ({
@@ -200,12 +200,13 @@ test.describe("ALE-288 inventory member availability", () => {
 		await expect(card).toBeVisible();
 		await expect(card.getByText("Available")).toBeVisible();
 
-		await page.goto(`/dashboard/equipment/${slugPending}`);
+		await card.click();
+		const sheet = page.getByRole("dialog");
 		await expect(
-			page.getByRole("heading", { name: "Request this item" }),
+			sheet.getByRole("heading", { name: "Request this item" }),
 		).toBeVisible();
 		await expect(
-			page.getByRole("button", { name: "Send request" }),
+			sheet.getByRole("button", { name: "Send request" }),
 		).toBeVisible();
 	});
 
@@ -222,25 +223,21 @@ test.describe("ALE-288 inventory member availability", () => {
 			await expect(card.getByText("On loan")).toBeVisible();
 		}
 
-		await page.goto(`/dashboard/equipment/${slugApproved}`);
-		await expect(
-			page.getByRole("heading", { name: makerApproved }),
-		).toBeVisible();
-		await expect(page.getByText("On loan", { exact: true })).toBeVisible();
-		await expect(
-			page.getByRole("button", { name: "Send request" }),
-		).toHaveCount(0);
-		// Approval is the collection entitlement — members without an
-		// approved loan on this item learn nothing about its location.
-		await expect(page.getByText(rackName)).toHaveCount(0);
-
-		await page.goto(`/dashboard/equipment/${slugCheckedOut}`);
-		await expect(
-			page.getByRole("heading", { name: makerCheckedOut }),
-		).toBeVisible();
-		await expect(
-			page.getByRole("button", { name: "Send request" }),
-		).toHaveCount(0);
+		for (const maker of [makerApproved, makerCheckedOut]) {
+			await page.goto("/dashboard/equipment");
+			await page.getByLabel("Search items").fill(maker);
+			await page.getByLabel("Search items").press("Enter");
+			await page.getByRole("link", { name: maker }).click();
+			const sheet = page.getByRole("dialog");
+			await expect(sheet.getByRole("heading", { name: maker })).toBeVisible();
+			await expect(sheet.getByText("On loan", { exact: true })).toBeVisible();
+			await expect(
+				sheet.getByRole("button", { name: "Send request" }),
+			).toHaveCount(0);
+			// Approval is the collection entitlement — members without an
+			// approved loan on this item learn nothing about its location.
+			await expect(sheet.getByText(rackName)).toHaveCount(0);
+		}
 	});
 
 	test("requesting an item under maintenance is refused without a 500", async ({

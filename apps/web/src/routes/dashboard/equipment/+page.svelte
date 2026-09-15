@@ -12,7 +12,16 @@ import {
 	SelectTrigger,
 } from "$lib/components/ui/select";
 import { Skeleton } from "$lib/components/ui/skeleton";
-import { Package, Search, RefreshCw } from "@lucide/svelte";
+import * as Sheet from "$lib/components/ui/sheet";
+import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import MemberEquipmentItem from "$lib/components/inventory/MemberEquipmentItem.svelte";
+import {
+	ArrowRight,
+	Package,
+	Search,
+	RefreshCw,
+	SlidersHorizontal,
+} from "@lucide/svelte";
 import {
 	inventoryCatalogListItemsOptions,
 	inventoryCategoriesIndexOptions,
@@ -26,12 +35,23 @@ import {
 type AvailabilityFilter = "all" | "available" | "unavailable";
 
 const PAGE_SIZE = 25;
+const ALL_CATEGORIES = "all-categories";
+const availabilityOptions: Array<{
+	value: AvailabilityFilter;
+	label: string;
+}> = [
+	{ value: "all", label: "Everything" },
+	{ value: "available", label: "Available now" },
+	{ value: "unavailable", label: "Unavailable" },
+];
 
 let searchInput = $state("");
 let appliedSearch = $state<string | undefined>(undefined);
-let categoryInput = $state("");
+let categoryInput = $state(ALL_CATEGORIES);
 let availability = $state<AvailabilityFilter>("all");
 let cursor = $state<string | undefined>(undefined);
+let selectedItemSlug = $state<string | undefined>();
+let selectedItemTrigger = $state<HTMLElement | null>(null);
 
 const categoriesQuery = createQuery(() => ({
 	...inventoryCategoriesIndexOptions(),
@@ -43,7 +63,7 @@ const catalogQuery = createQuery(() => ({
 		query: {
 			limit: PAGE_SIZE,
 			q: appliedSearch,
-			categoryId: categoryInput || undefined,
+			categoryId: categoryInput === ALL_CATEGORIES ? undefined : categoryInput,
 			availability,
 			cursor,
 		},
@@ -53,8 +73,19 @@ const catalogQuery = createQuery(() => ({
 }));
 
 const items = $derived(catalogQuery.data?.items ?? []);
+const categoryOptions = $derived([
+	{ value: ALL_CATEGORIES, label: "All categories" },
+	...(categoriesQuery.data ?? []).map((category) => ({
+		value: category.id,
+		label: category.name,
+	})),
+]);
 const hasActiveFilters = $derived(
-	appliedSearch || categoryInput || availability !== "all",
+	appliedSearch || categoryInput !== ALL_CATEGORIES || availability !== "all",
+);
+const selectedCategoryLabel = $derived(
+	categoryOptions.find((option) => option.value === categoryInput)?.label ??
+		"Category",
 );
 
 function applySearch() {
@@ -70,7 +101,7 @@ function onFilterChange() {
 function clearFilters() {
 	searchInput = "";
 	appliedSearch = undefined;
-	categoryInput = "";
+	categoryInput = ALL_CATEGORIES;
 	availability = "all";
 	cursor = undefined;
 }
@@ -93,96 +124,89 @@ function availabilityLabel(reason: string): string {
 	<title>Browse equipment | Dublin HEMA Club</title>
 </svelte:head>
 
-<div class="mx-auto max-w-md px-4 pt-5 pb-10 sm:max-w-2xl sm:px-5">
-	<header class="mb-5">
-		<p class="text-xs font-bold tracking-[0.14em] text-primary uppercase">
-			Member inventory
-		</p>
-		<h1 class="font-heading text-2xl font-bold sm:text-3xl">
-			Find the right kit
-		</h1>
-		<p class="mt-1 text-sm text-muted-foreground">
-			Browse lendable equipment. Storage appears only when a request is
-			approved.
-		</p>
-	</header>
+<div class="inventory-page max-w-6xl">
+	<InventoryPageHeader
+		eyebrow="Member inventory"
+		title="Find the right kit"
+		icon={Package}
+	/>
 
-	<form
-		class="relative mb-3"
-		onsubmit={(e) => {
-			e.preventDefault();
-			applySearch();
-		}}
-	>
-		<Label for="equipment-search" class="sr-only">Search items</Label>
-		<Search
-			class="absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
-		/>
-		<Input
-			id="equipment-search"
-			class="h-12 pl-11 text-base"
-			placeholder="Search swords, masks, size…"
-			bind:value={searchInput}
-		/>
-	</form>
+	<section class="inventory-panel p-3 sm:p-4" aria-label="Equipment filters">
+		<form
+			class="relative"
+			onsubmit={(e) => {
+				e.preventDefault();
+				applySearch();
+			}}
+		>
+			<Label for="equipment-search" class="sr-only">Search items</Label>
+			<Search
+				class="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-muted-foreground"
+				aria-hidden="true"
+			/>
+			<Input
+				id="equipment-search"
+				class="h-12 border-0 bg-muted/60 pl-11 text-base shadow-none focus-visible:bg-background"
+				placeholder="Search swords, masks, size…"
+				bind:value={searchInput}
+			/>
+		</form>
 
-	<div class="mb-3 grid grid-cols-2 gap-2">
-		<div class="space-y-1">
-			<Label class="text-xs font-medium">Category</Label>
-			<Select
-				type="single"
-				bind:value={categoryInput}
-				onValueChange={onFilterChange}
-			>
-				<SelectTrigger class="min-h-11">
-					{categoryInput
-						? (categoriesQuery.data?.find((c) => c.id === categoryInput)
-								?.name ?? "Category")
-						: "All categories"}
-				</SelectTrigger>
-				<SelectContent>
-					<SelectItem value="">All categories</SelectItem>
-					{#each categoriesQuery.data ?? [] as category (category.id)}
-						<SelectItem value={category.id}>{category.name}</SelectItem>
-					{/each}
-				</SelectContent>
-			</Select>
-		</div>
-		<div class="space-y-1">
-			<Label class="text-xs font-medium">Availability</Label>
-			<Select
-				type="single"
-				bind:value={availability}
-				onValueChange={() => onFilterChange()}
-			>
-				<SelectTrigger class="min-h-11">
-					{availability === "all"
-						? "Everything"
-						: availability === "available"
-							? "Available now"
-							: "Unavailable"}
-				</SelectTrigger>
-				<SelectContent>
-					<SelectItem value="all">Everything</SelectItem>
-					<SelectItem value="available">Available now</SelectItem>
-					<SelectItem value="unavailable">Unavailable</SelectItem>
-				</SelectContent>
-			</Select>
-		</div>
-	</div>
-
-	{#if hasActiveFilters}
-		<div class="mb-4">
+		<div
+			class="mt-3 grid grid-cols-2 gap-3 border-t pt-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+		>
+			<div class="min-w-0 space-y-1.5">
+				<Label class="text-xs font-medium">Category</Label>
+				<Select
+					type="single"
+					items={categoryOptions}
+					bind:value={categoryInput}
+					onValueChange={onFilterChange}
+				>
+					<SelectTrigger class="min-h-11 w-full">
+						{selectedCategoryLabel}
+					</SelectTrigger>
+					<SelectContent>
+						{#each categoryOptions as option (option.value)}
+							<SelectItem value={option.value} label={option.label}
+								>{option.label}</SelectItem
+							>
+						{/each}
+					</SelectContent>
+				</Select>
+			</div>
+			<div class="min-w-0 space-y-1.5">
+				<Label class="text-xs font-medium">Availability</Label>
+				<Select
+					type="single"
+					items={availabilityOptions}
+					bind:value={availability}
+					onValueChange={onFilterChange}
+				>
+					<SelectTrigger class="min-h-11 w-full">
+						{availabilityOptions.find((option) => option.value === availability)
+							?.label}
+					</SelectTrigger>
+					<SelectContent>
+						{#each availabilityOptions as option (option.value)}
+							<SelectItem value={option.value} label={option.label}
+								>{option.label}</SelectItem
+							>
+						{/each}
+					</SelectContent>
+				</Select>
+			</div>
 			<Button
 				variant="outline"
-				size="sm"
-				class="min-h-10"
+				class="col-span-2 min-h-11 sm:col-span-1"
+				disabled={!hasActiveFilters}
 				onclick={clearFilters}
 			>
+				<SlidersHorizontal class="size-4" aria-hidden="true" />
 				Clear filters
 			</Button>
 		</div>
-	{/if}
+	</section>
 
 	{#if catalogQuery.isPending}
 		<div class="space-y-3" aria-label="Loading equipment">
@@ -233,23 +257,23 @@ function availabilityLabel(reason: string): string {
 					? "Try a different search or clear the filters."
 					: "Check back once the quartermasters add kit."}
 			</p>
-			{#if hasActiveFilters}
-				<Button variant="outline" class="mt-4 min-h-11" onclick={clearFilters}>
-					Clear filters
-				</Button>
-			{/if}
 		</div>
 	{:else}
-		<p class="mb-2 text-sm text-muted-foreground" aria-live="polite">
+		<p class="text-sm font-semibold text-foreground/70" aria-live="polite">
 			{catalogQuery.data?.totalCount} item{catalogQuery.data?.totalCount === 1
 				? ""
 				: "s"}{catalogQuery.isFetching ? " · updating…" : ""}
 		</p>
-		<div class="space-y-3">
+		<div class="grid gap-3 md:grid-cols-2">
 			{#each items as item (item.id)}
 				<a
-					href="/dashboard/equipment/{item.slug}"
-					class="block rounded-2xl border border-border bg-card p-4 shadow-sm transition-colors hover:bg-muted/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					href="/dashboard/equipment"
+					class="inventory-card group block p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:p-5"
+					onclick={(event) => {
+						event.preventDefault();
+						selectedItemTrigger = event.currentTarget;
+						selectedItemSlug = item.slug;
+					}}
 				>
 					<div class="flex gap-3">
 						<div
@@ -258,8 +282,8 @@ function availabilityLabel(reason: string): string {
 							<Package class="size-6" aria-hidden="true" />
 						</div>
 						<div class="min-w-0 flex-1">
-							<div class="flex items-start justify-between gap-2">
-								<h2 class="font-semibold">{item.label}</h2>
+							<div class="flex items-start justify-between gap-3">
+								<h2 class="font-semibold leading-snug">{item.label}</h2>
 								<Badge
 									variant={item.availability.available
 										? "secondary"
@@ -272,9 +296,20 @@ function availabilityLabel(reason: string): string {
 							<p class="mt-1 text-sm text-muted-foreground">
 								{item.category?.name ?? "Uncategorized"}
 							</p>
-							<p class="mt-2 font-mono text-xs text-muted-foreground">
-								ID {item.slug}
-							</p>
+							<div
+								class="mt-3 flex items-center justify-between gap-3 border-t pt-3"
+							>
+								<p class="font-mono text-xs text-muted-foreground">
+									ID {item.slug}
+								</p>
+								<span
+									class="flex items-center gap-1 text-sm font-semibold text-primary"
+									>View item <ArrowRight
+										class="size-4 transition-transform group-hover:translate-x-0.5"
+										aria-hidden="true"
+									/></span
+								>
+							</div>
 						</div>
 					</div>
 				</a>
@@ -313,3 +348,34 @@ function availabilityLabel(reason: string): string {
 		{/if}
 	{/if}
 </div>
+
+{#if selectedItemSlug}
+	<Sheet.Root
+		open
+		onOpenChange={(open) => {
+			if (!open) selectedItemSlug = undefined;
+		}}
+		onOpenChangeComplete={(open) => {
+			if (!open) selectedItemTrigger?.focus();
+		}}
+	>
+		<Sheet.Content
+			side="bottom"
+			class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[40rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none sm:border-t-0 sm:border-l sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right"
+		>
+			<Sheet.Header class="sr-only">
+				<Sheet.Title>Equipment details</Sheet.Title>
+				<Sheet.Description>
+					Review equipment details and choose request dates.
+				</Sheet.Description>
+			</Sheet.Header>
+			<div
+				class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6"
+			>
+				{#key selectedItemSlug}
+					<MemberEquipmentItem slug={selectedItemSlug} />
+				{/key}
+			</div>
+		</Sheet.Content>
+	</Sheet.Root>
+{/if}

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { loginAsUser } from "./auth";
+import { gotoHydrated } from "./hydration";
 import {
 	createInventoryStructure,
 	createMember,
@@ -17,7 +18,7 @@ test.describe("ALE-284 operator inventory items", () => {
 			email: createUniqueEmail("inventory-item-operator"),
 			roles: new Set(["member", "quartermaster"]),
 		});
-		const first = await createInventoryStructure({
+		await createInventoryStructure({
 			categoryName: `Blades ${tag}`,
 			definitions: [
 				{
@@ -31,7 +32,7 @@ test.describe("ALE-284 operator inventory items", () => {
 			containerPath: [`Cage ${tag}`, `Rack ${tag}`],
 			operatorActorId: operator.memberId,
 		});
-		const second = await createInventoryStructure({
+		await createInventoryStructure({
 			categoryName: `Masks ${tag}`,
 			definitions: [
 				{
@@ -45,69 +46,74 @@ test.describe("ALE-284 operator inventory items", () => {
 			operatorActorId: operator.memberId,
 		});
 
-		try {
-			await loginAsUser(context, operator.email);
-			await page.goto("/dashboard/inventory/items");
-			await expect(page.getByRole("heading", { name: "Items" })).toBeVisible();
+		await loginAsUser(context, operator.email);
+		await gotoHydrated(page, "/dashboard/inventory/items");
+		await expect(page.getByRole("heading", { name: "Items" })).toBeVisible();
 
-			await page.getByLabel("Category").selectOption(first.categoryId);
-			await page
-				.getByLabel("Container")
-				.selectOption(first.containerIds.at(-1));
-			await page.getByLabel("Size").selectOption(first.optionIds[0]);
-			await page.getByLabel("Notes").fill("Training loaner");
-			await page.getByRole("button", { name: "Add item" }).click();
+		await page.getByRole("button", { name: "New item" }).click();
+		await page.getByLabel("Category").click();
+		await page.getByRole("option", { name: `Blades ${tag}` }).click();
+		await page.getByLabel("Container").click();
+		await page.getByRole("option", { name: `Rack ${tag}` }).click();
+		await page.getByLabel("Size").click();
+		await page.getByRole("option", { name: "Medium" }).click();
+		await page.getByLabel("Notes").fill("Training loaner");
+		await page.getByRole("button", { name: "Add item" }).click();
 
-			const item = page.getByRole("article").filter({ hasText: "Medium" });
-			await expect(item).toContainText("Training loaner");
+		const item = page.getByRole("article").filter({ hasText: "Medium" });
+		await expect(item).toContainText("Training loaner");
 
-			await page.getByLabel("Search").fill(`missing-${tag}`);
-			await expect(page.getByRole("heading", { name: "No items found" })).toBeVisible();
+		await page.getByLabel("Search").fill(`missing-${tag}`);
+		await expect(
+			page.getByRole("heading", { name: "The register is empty" }),
+		).toBeVisible();
 
-			const searched = page.waitForResponse((response) => {
-				const url = new URL(response.url());
-				return (
-					url.pathname === "/api/inventory/items" &&
-					url.searchParams.get("q") === "Training loaner"
-				);
-			});
-			await page.getByLabel("Search").fill("  Training loaner  ");
-			await searched;
-			await expect(item).toBeVisible();
-			await item.getByRole("button", { name: "Manage" }).click();
+		const searched = page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return (
+				url.pathname === "/api/inventory/items" &&
+				url.searchParams.get("q") === "Training loaner"
+			);
+		});
+		await page.getByLabel("Search").fill("  Training loaner  ");
+		await searched;
+		await expect(item).toBeVisible();
+		await item.getByRole("button", { name: "Manage" }).click();
 
-			await page
-				.getByLabel("Move to container")
-				.selectOption(second.containerIds[0]);
-			await page.getByRole("button", { name: "Move item" }).click();
-			await expect(page.getByText(`Cupboard ${tag}`)).toBeVisible();
+		await page.getByRole("tab", { name: "Placement" }).click();
+		await page.getByLabel("Move to container").click();
+		await page.getByRole("option", { name: `Cupboard ${tag}` }).click();
+		await page.getByRole("button", { name: "Move item" }).click();
+		await expect(page.getByText(`Cupboard ${tag}`)).toBeVisible();
 
-			await page.getByLabel("Maintenance reason").fill("Inspect strap");
-			await page.getByRole("button", { name: "Start maintenance" }).click();
-			await expect(
-				page.getByRole("button", { name: "End maintenance" }),
-			).toBeVisible();
-			await expect(page.getByText("Inspect strap")).toBeVisible();
+		await page.getByRole("tab", { name: "Maintenance" }).click();
+		await page.getByLabel("Maintenance reason").fill("Inspect strap");
+		await page.getByRole("button", { name: "Start maintenance" }).click();
+		await expect(
+			page.getByRole("button", { name: "End maintenance" }),
+		).toBeVisible();
+		await expect(page.getByText("Inspect strap")).toBeVisible();
 
-			await page.getByLabel("Maintenance end note").fill("Strap secure");
-			await page.getByRole("button", { name: "End maintenance" }).click();
-			await expect(page.getByText("Strap secure")).toBeVisible();
+		await page.getByLabel("Maintenance end note").fill("Strap secure");
+		await page.getByRole("button", { name: "End maintenance" }).click();
+		await expect(page.getByText("Strap secure")).toBeVisible();
 
-			await page.getByLabel("New category").selectOption(second.categoryId);
-			await page.getByLabel("Colour").fill("Black");
-			await page.getByRole("button", { name: "Change category" }).click();
-			await expect(
-				page.getByRole("heading", { name: /Masks.*Black/ }),
-			).toBeVisible();
+		await page.getByRole("tab", { name: "Placement" }).click();
+		await page.getByLabel("New category").click();
+		await page.getByRole("option", { name: `Masks ${tag}` }).click();
+		await page.getByLabel("Colour").fill("Black");
+		await page.getByRole("button", { name: "Change category" }).click();
+		await expect(
+			page.getByRole("dialog").getByRole("heading", { name: /Masks.*Black/ }),
+		).toBeVisible();
 
-			await page.getByRole("button", { name: "Archive item" }).click();
-			await expect(page.getByText("Archived", { exact: true })).toBeVisible();
-			await page.getByRole("button", { name: "Restore item" }).click();
-			await expect(page.getByText("Available", { exact: true })).toBeVisible();
-		} finally {
-			await second.cleanUp();
-			await first.cleanUp();
-			await operator.cleanUp();
-		}
+		await page.getByRole("tab", { name: "Details" }).click();
+		await page.getByRole("button", { name: "Archive item" }).click();
+		await expect(page.getByText("Archived", { exact: true })).toBeVisible();
+		await page.getByRole("button", { name: "Restore item" }).click();
+		await expect(page.getByText("Available", { exact: true })).toBeVisible();
+
+		// No fixture cleanup: this lifecycle intentionally retains item, structure,
+		// and actor references. The E2E run owns a disposable database.
 	});
 });

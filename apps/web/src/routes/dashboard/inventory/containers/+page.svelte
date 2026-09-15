@@ -14,10 +14,14 @@ import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
+import * as Select from "$lib/components/ui/select";
+import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import {
 	Archive,
 	FolderTree,
+	Pencil,
+	Plus,
 	RefreshCw,
 	RotateCcw,
 	Trash2,
@@ -32,6 +36,19 @@ const containersQuery = createQuery(() => ({
 	select: (response) => response.data.containers,
 }));
 const containers = $derived(containersQuery.data ?? []);
+const hierarchyRows = $derived.by(() => {
+	const rows: Array<{ container: InventoryContainer; depth: number }> = [];
+	const append = (parentId: string | null, depth: number) => {
+		for (const container of containers
+			.filter((candidate) => candidate.parentContainerId === parentId)
+			.toSorted((a, b) => a.name.localeCompare(b.name))) {
+			rows.push({ container, depth });
+			append(container.id, depth + 1);
+		}
+	};
+	append(null, 0);
+	return rows;
+});
 
 function descendantsOf(id: string): Set<string> {
 	const result = new SvelteSet<string>();
@@ -57,6 +74,10 @@ const parentOptions = $derived(
 			candidate.id !== editing?.id &&
 			!excludedParentIds?.has(candidate.id),
 	),
+);
+const selectedParentLabel = $derived(
+	parentOptions.find((candidate) => candidate.id === draft.parentId)?.name ??
+		"Root",
 );
 function refresh() {
 	void containersQuery.refetch();
@@ -139,17 +160,15 @@ function startEdit(container: InventoryContainer) {
 <svelte:head>
 	<title>Inventory containers | Dublin HEMA Club</title>
 </svelte:head>
-<div class="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
-	<header>
-		<p class="text-xs font-bold tracking-[0.14em] text-primary uppercase">
-			Operator inventory
-		</p>
-		<h1 class="font-heading text-3xl font-bold">Containers</h1>
-		<p class="mt-2 text-sm text-muted-foreground">
-			A flat viewer rebuilt as a hierarchy. Children and items are always
-			handled explicitly before archive or delete.
-		</p>
-	</header>
+<div
+	class="inventory-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:overflow-hidden"
+>
+	<InventoryPageHeader
+		eyebrow="Operator inventory"
+		title="Containers"
+		icon={FolderTree}
+		class="xl:items-center xl:pb-3"
+	/>
 	{#if containersQuery.isError}
 		<Alert variant="destructive">
 			<AlertDescription class="flex items-center justify-between">
@@ -166,47 +185,81 @@ function startEdit(container: InventoryContainer) {
 			</AlertDescription>
 		</Alert>
 	{/if}
-	<div class="grid gap-6 lg:grid-cols-[22rem_1fr]">
-		<form class="space-y-4 rounded-2xl border bg-card p-5" onsubmit={submit}>
-			<h2 class="text-lg font-semibold">
-				{editing ? "Edit container" : "Add container"}
-			</h2>
-			<div>
+	<div
+		class="grid min-h-0 items-start gap-6 lg:grid-cols-[21rem_minmax(0,1fr)] xl:flex-1 xl:items-stretch"
+	>
+		<form
+			class="inventory-panel space-y-5 p-5 lg:sticky lg:top-6 xl:static xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:[scrollbar-gutter:stable]"
+			onsubmit={submit}
+		>
+			<div class="flex items-center gap-3 border-b pb-4">
+				<div
+					class="grid size-10 place-items-center rounded-xl bg-secondary/20 text-primary"
+				>
+					{#if editing}<Pencil class="size-5" aria-hidden="true" />{:else}<Plus
+							class="size-5"
+							aria-hidden="true"
+						/>{/if}
+				</div>
+				<div>
+					<p class="text-xs font-bold tracking-wide text-primary uppercase">
+						{editing ? "Selected location" : "New location"}
+					</p>
+					<h2 class="text-lg font-semibold">
+						{editing ? "Edit container" : "Add container"}
+					</h2>
+				</div>
+			</div>
+			<div class="space-y-2">
 				<Label for="container-name">Name</Label>
 				<Input
 					id="container-name"
+					class="h-11"
 					maxlength={100}
+					placeholder="e.g. Main equipment room"
 					required
 					bind:value={draft.name}
 				/>
 			</div>
-			<div>
+			<div class="space-y-2">
 				<Label for="container-description">Description</Label>
 				<Input
 					id="container-description"
+					class="h-11"
 					maxlength={500}
+					placeholder="Optional location note"
 					bind:value={draft.description}
 				/>
 			</div>
-			<div>
+			<div class="space-y-2">
 				<Label for="container-parent">Parent</Label>
-				<select
-					id="container-parent"
-					class="h-10 w-full rounded-md border bg-background px-3"
-					bind:value={draft.parentId}
-				>
-					<option value="">Root</option>
-					{#each parentOptions as candidate (candidate.id)}
-						<option value={candidate.id}>{candidate.name}</option>
-					{/each}
-				</select>
+				<Select.Root type="single" bind:value={draft.parentId}>
+					<Select.Trigger
+						id="container-parent"
+						class="w-full data-[size=default]:h-11"
+					>
+						{selectedParentLabel}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="" label="Root">Root</Select.Item>
+						{#each parentOptions as candidate (candidate.id)}
+							<Select.Item value={candidate.id} label={candidate.name}
+								>{candidate.name}</Select.Item
+							>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+				<p class="text-xs leading-relaxed text-muted-foreground">
+					Choose Root for a top-level room or area.
+				</p>
 			</div>
-			<div class="flex gap-2">
-				<Button type="submit" disabled={isSaving}>
+			<div class="flex gap-2 border-t pt-4">
+				<Button class="flex-1" type="submit" disabled={isSaving}>
 					{editing ? "Save changes" : "Add container"}
 				</Button>
 				{#if editing}
 					<Button
+						class="flex-1"
 						type="button"
 						variant="outline"
 						disabled={isSaving}
@@ -217,84 +270,110 @@ function startEdit(container: InventoryContainer) {
 				{/if}
 			</div>
 		</form>
-		<section class="space-y-3">
-			<h2 class="text-lg font-semibold">Storage hierarchy</h2>
-			{#each containers as container (container.id)}
-				<article
-					class="rounded-2xl border bg-card p-4 shadow-sm {container.archivedAt
-						? 'opacity-65'
-						: ''}"
+		<section
+			class="min-w-0 space-y-3 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1 xl:[scrollbar-gutter:stable]"
+		>
+			<div
+				class="sticky top-0 z-10 flex items-end justify-between gap-3 border-b bg-background/95 pb-3 backdrop-blur-sm"
+			>
+				<div>
+					<p
+						class="text-xs font-semibold uppercase tracking-[0.16em] text-primary"
+					>
+						Storage map
+					</p>
+					<h2 class="mt-1 font-heading text-xl font-bold">Storage hierarchy</h2>
+					<p class="text-sm text-muted-foreground">
+						{containers.length} location{containers.length === 1 ? "" : "s"} · indented
+						by parent
+					</p>
+				</div>
+			</div>
+			{#each hierarchyRows as { container, depth } (container.id)}
+				<div
+					class="relative"
+					style:padding-left={`${Math.min(depth, 4) * 1.25}rem`}
 				>
-					<div class="flex flex-wrap items-start justify-between gap-3">
-						<div class="flex gap-3">
-							<div
-								class="grid size-10 place-items-center rounded-lg bg-secondary/20 text-primary"
-							>
-								<FolderTree class="size-5" aria-hidden="true" />
-							</div>
-							<div>
-								<div class="flex flex-wrap items-center gap-2">
-									<h3 class="font-semibold">{container.name}</h3>
-									{#if container.archivedAt}
-										<Badge variant="outline">Archived</Badge>
+					{#if depth > 0}<span
+							class="absolute top-0 bottom-0 left-2 border-l border-dashed border-primary/30"
+							aria-hidden="true"
+						></span>{/if}
+					<article
+						class="inventory-card p-4 transition-colors hover:border-primary/30 {container.archivedAt
+							? 'opacity-65'
+							: ''}"
+					>
+						<div class="flex flex-wrap items-start justify-between gap-3">
+							<div class="flex gap-3">
+								<div
+									class="grid size-10 place-items-center rounded-lg bg-secondary/20 text-primary"
+								>
+									<FolderTree class="size-5" aria-hidden="true" />
+								</div>
+								<div>
+									<div class="flex flex-wrap items-center gap-2">
+										<h3 class="font-semibold">{container.name}</h3>
+										{#if container.archivedAt}
+											<Badge variant="outline">Archived</Badge>
+										{/if}
+									</div>
+									<p class="text-sm text-muted-foreground">
+										{container.parentContainer
+											? `Inside ${container.parentContainer.name}`
+											: "Root container"} · {container.itemCount} direct items
+									</p>
+									{#if container.description}
+										<p class="mt-1 text-sm">
+											{container.description}
+										</p>
 									{/if}
 								</div>
-								<p class="text-sm text-muted-foreground">
-									{container.parentContainer
-										? `Inside ${container.parentContainer.name}`
-										: "Root container"} · {container.itemCount} direct items
-								</p>
-								{#if container.description}
-									<p class="mt-1 text-sm">
-										{container.description}
-									</p>
+							</div>
+							<div class="flex flex-wrap gap-2">
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={isSaving}
+									onclick={() => startEdit(container)}
+								>
+									<Pencil />Edit / move
+								</Button>
+								{#if container.archivedAt}
+									<Button
+										size="sm"
+										variant="outline"
+										disabled={restoreContainer.isPending}
+										onclick={() =>
+											restoreContainer.mutate({ path: { id: container.id } })}
+									>
+										<RotateCcw />Restore
+									</Button>
+								{:else}
+									<Button
+										size="sm"
+										variant="outline"
+										disabled={archiveContainer.isPending}
+										onclick={() =>
+											archiveContainer.mutate({ path: { id: container.id } })}
+									>
+										<Archive />Archive
+									</Button>
+									<Button
+										size="sm"
+										variant="ghost"
+										class="text-destructive"
+										disabled={deleteContainer.isPending}
+										aria-label="Delete {container.name}"
+										onclick={() =>
+											deleteContainer.mutate({ path: { id: container.id } })}
+									>
+										<Trash2 />
+									</Button>
 								{/if}
 							</div>
 						</div>
-						<div class="flex flex-wrap gap-2">
-							<Button
-								size="sm"
-								variant="outline"
-								disabled={isSaving}
-								onclick={() => startEdit(container)}
-							>
-								Edit / move
-							</Button>
-							{#if container.archivedAt}
-								<Button
-									size="sm"
-									variant="outline"
-									disabled={restoreContainer.isPending}
-									onclick={() =>
-										restoreContainer.mutate({ path: { id: container.id } })}
-								>
-									<RotateCcw />Restore
-								</Button>
-							{:else}
-								<Button
-									size="sm"
-									variant="outline"
-									disabled={archiveContainer.isPending}
-									onclick={() =>
-										archiveContainer.mutate({ path: { id: container.id } })}
-								>
-									<Archive />Archive
-								</Button>
-								<Button
-									size="sm"
-									variant="ghost"
-									class="text-destructive"
-									disabled={deleteContainer.isPending}
-									aria-label="Delete {container.name}"
-									onclick={() =>
-										deleteContainer.mutate({ path: { id: container.id } })}
-								>
-									<Trash2 />
-								</Button>
-							{/if}
-						</div>
-					</div>
-				</article>
+					</article>
+				</div>
 			{:else}
 				<div class="rounded-2xl border bg-card p-10 text-center">
 					<FolderTree class="mx-auto mb-3 size-10 text-muted-foreground" />

@@ -21,16 +21,7 @@ const makerDuplicate = `Duplicate Sabre ${tag}`;
 const requestNote = `E2E Thursday sparring ${tag}`;
 
 let borrowerEmail = "";
-let slugRequest = "";
-let slugValidation = "";
-let slugDuplicate = "";
 const cleanups: Array<() => Promise<void>> = [];
-
-function isoDate(offsetDays: number): string {
-	return new Date(Date.now() + offsetDays * 86_400_000)
-		.toISOString()
-		.slice(0, 10);
-}
 
 test.describe("ALE-288 inventory member request", () => {
 	test.beforeAll(async () => {
@@ -70,7 +61,6 @@ test.describe("ALE-288 inventory member request", () => {
 			actorId: operator.memberId,
 		});
 		cleanups.push(() => requestItem.cleanUp());
-		slugRequest = requestItem.slug;
 
 		const validationItem = await createInventoryItem({
 			categoryId: structure.categoryId,
@@ -79,7 +69,6 @@ test.describe("ALE-288 inventory member request", () => {
 			actorId: operator.memberId,
 		});
 		cleanups.push(() => validationItem.cleanUp());
-		slugValidation = validationItem.slug;
 
 		const duplicateItem = await createInventoryItem({
 			categoryId: structure.categoryId,
@@ -88,7 +77,6 @@ test.describe("ALE-288 inventory member request", () => {
 			actorId: operator.memberId,
 		});
 		cleanups.push(() => duplicateItem.cleanUp());
-		slugDuplicate = duplicateItem.slug;
 		// SAFETY: the requested preset returns the flat loan row matching
 		// the declared inventoryLoan result type (mirrors the wrapper).
 		const pending = (await createInventoryLoan({
@@ -120,15 +108,12 @@ test.describe("ALE-288 inventory member request", () => {
 		await loginAsUser(context, borrowerEmail);
 		await page.goto("/dashboard/equipment");
 		await page.getByRole("link", { name: makerRequest }).click();
-		await expect(page).toHaveURL(
-			new RegExp(`/dashboard/equipment/${slugRequest}$`),
-		);
+		await expect(page).toHaveURL(/\/dashboard\/equipment$/);
+		const sheet = page.getByRole("dialog");
 		await expect(
-			page.getByRole("heading", { name: "Request this item" }),
+			sheet.getByRole("heading", { name: "Request this item" }),
 		).toBeVisible();
 
-		await page.getByLabel("Collect").fill(isoDate(0));
-		await page.getByLabel("Return").fill(isoDate(7));
 		await page.getByLabel(/Note/).fill(requestNote);
 		await page.getByRole("button", { name: "Send request" }).click();
 
@@ -136,9 +121,7 @@ test.describe("ALE-288 inventory member request", () => {
 			page.getByText("Request sent. You'll receive the approved dates"),
 		).toBeVisible();
 		// Still the same item view — the form confirms inline, no redirect.
-		await expect(page).toHaveURL(
-			new RegExp(`/dashboard/equipment/${slugRequest}$`),
-		);
+		await expect(page).toHaveURL(/\/dashboard\/equipment$/);
 
 		await page
 			.locator("p", { hasText: "Request sent" })
@@ -148,42 +131,31 @@ test.describe("ALE-288 inventory member request", () => {
 		await expect(page.getByRole("link", { name: makerRequest })).toBeVisible();
 	});
 
-	test("past dates and due-before-start show user-visible validation errors", async ({
+	test("request dates use constrained calendar controls", async ({
 		page,
 		context,
 	}) => {
 		await loginAsUser(context, borrowerEmail);
-		await page.goto(`/dashboard/equipment/${slugValidation}`);
+		await page.goto("/dashboard/equipment");
+		await page.getByLabel("Search items").fill(makerValidation);
+		await page.getByLabel("Search items").press("Enter");
+		await page.getByRole("link", { name: makerValidation }).click();
 		await expect(
-			page.getByRole("heading", { name: "Request this item" }),
+			page
+				.getByRole("dialog")
+				.getByRole("heading", { name: "Request this item" }),
 		).toBeVisible();
 
-		// The form carries native `min` guards; drop them so the server-side
-		// date rule is what answers — that is the error the UI must show.
-		await page
-			.getByLabel("Collect")
-			.evaluate((el) => el.removeAttribute("min"));
-		await page.getByLabel("Return").evaluate((el) => el.removeAttribute("min"));
-
-		await page.getByLabel("Collect").fill(isoDate(-2));
-		await page.getByLabel("Return").fill(isoDate(7));
-		await page.getByRole("button", { name: "Send request" }).click();
-		const invalidResponse = await page.waitForResponse(
-			(resp) =>
-				resp.url().includes("/requests") && resp.request().method() === "POST",
-		);
-		expect(invalidResponse.status()).toBe(422);
-		// Scoped to the request form: the toast echoes the same message.
-		const requestForm = page.locator("form");
+		await expect(page.locator('input[type="date"]')).toHaveCount(0);
+		await page.getByRole("button", { name: "Collect" }).click();
+		await expect(page.getByLabel("Select a month")).toBeVisible();
+		await expect(page.getByLabel("Select a year")).toBeVisible();
+		await page.keyboard.press("Escape");
+		await page.getByRole("button", { name: "Return" }).click();
 		await expect(
-			requestForm.getByText("startsOn and dueOn must be dates today or later"),
-		).toBeVisible();
-
-		await page.getByLabel("Collect").fill(isoDate(5));
-		await page.getByLabel("Return").fill(isoDate(2));
-		await page.getByRole("button", { name: "Send request" }).click();
-		await expect(
-			requestForm.getByText("startsOn and dueOn must be dates today or later"),
+			page
+				.locator('[data-slot="popover-content"][data-state="open"]')
+				.getByLabel("Select a month"),
 		).toBeVisible();
 	});
 
@@ -192,13 +164,16 @@ test.describe("ALE-288 inventory member request", () => {
 		context,
 	}) => {
 		await loginAsUser(context, borrowerEmail);
-		await page.goto(`/dashboard/equipment/${slugDuplicate}`);
+		await page.goto("/dashboard/equipment");
+		await page.getByLabel("Search items").fill(makerDuplicate);
+		await page.getByLabel("Search items").press("Enter");
+		await page.getByRole("link", { name: makerDuplicate }).click();
 		await expect(
-			page.getByRole("heading", { name: "Request this item" }),
+			page
+				.getByRole("dialog")
+				.getByRole("heading", { name: "Request this item" }),
 		).toBeVisible();
 
-		await page.getByLabel("Collect").fill(isoDate(0));
-		await page.getByLabel("Return").fill(isoDate(7));
 		const [response] = await Promise.all([
 			page.waitForResponse(
 				(resp) =>
