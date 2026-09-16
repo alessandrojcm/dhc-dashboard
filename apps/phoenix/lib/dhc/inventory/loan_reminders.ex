@@ -144,7 +144,7 @@ defmodule Dhc.Inventory.LoanReminders do
   The same pass, as of an explicit club-calendar day.
 
   `today` is a parameter for the same reason
-  `Dhc.Inventory.OperatorLoans.operator_view/2` takes one: the schedule is a
+  `Dhc.Inventory.LoanProjection.operator_view/2` takes one: the schedule is a
   function of a loan's due date and one calendar day, and a pass that read the
   clock per loan could straddle midnight mid-list. It also lets the rules be
   exercised across weeks of a loan's life without rewriting its due date, which

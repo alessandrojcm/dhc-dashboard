@@ -16,14 +16,11 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
   target paths never write `inventory_history` or the legacy
   `out_for_maintenance` flag.
 
-  Concurrency note: the races run on real independent connections through
-  `Ecto.Adapters.SQL.Sandbox.unboxed_run/2`, so Postgres settles them
-  rather than test-process ordering. That commits outside the test-owner
-  transaction, so each race builds its fixture and deletes its rows
-  explicitly (docs/agents/critical-patterns.md, "Real PostgreSQL
-  Concurrency Tests"). Each asserts the invariant that must hold under
-  *any* interleaving: exactly one winner, and the loser gets a domain
-  conflict rather than a server error.
+  Since GH-508 the availability-changing commands here are a facade over
+  `Dhc.Inventory.AvailabilityCommands`, so this file keeps only the item
+  contract — signatures, return shapes, and the item-specific rules such as
+  delete and restore gating. Concurrency, lock order, and the partial-index
+  backstops are proven once in `Dhc.Inventory.AvailabilityCommandsTest`.
   """
 
   use Dhc.DataCase, async: false
@@ -31,7 +28,6 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
   alias Dhc.Repo
-  alias Ecto.Adapters.SQL.Sandbox
 
   describe "movement" do
     test "moves an item to another active container" do
@@ -787,194 +783,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
   # Real races commit outside the test-owner transaction, so each of these
   # runs `unboxed_run` and cleans up its own committed rows
   # (docs/agents/critical-patterns.md, "Real PostgreSQL Concurrency Tests").
-  describe "concurrency" do
-    test "two maintenance starts produce exactly one open period" do
-      committed(fn %{item: item} ->
-        results =
-          race(fn label ->
-            Inventory.start_operator_item_maintenance(
-              item.id,
-              %{"reason" => label},
-              principal_id()
-            )
-          end)
-
-        assert Enum.count(results, &match?({:ok, _}, &1)) == 1
-        assert Enum.count(results, &match?({:error, :maintenance_open}, &1)) == 1
-        assert [%{open?: true}] = Inventory.list_operator_item_maintenance_periods(item.id)
-      end)
-    end
-
-    test "two archives produce one archived item and no duplicate rejection" do
-      committed(fn %{item: item} ->
-        results =
-          race(fn _label -> Inventory.archive_operator_item(item.id, %{}, principal_id()) end)
-
-        # Archive is idempotent, so both succeed; neither errors out.
-        assert Enum.all?(results, &match?({:ok, _}, &1))
-        assert {:ok, %{archived_at: %DateTime{}}} = Inventory.resolve_operator_item(item.id)
-      end)
-    end
-
-    test "a maintenance start racing an archive never leaves an archived item in maintenance" do
-      committed(fn %{item: item} ->
-        [start_result, archive_result] =
-          race([
-            fn ->
-              Inventory.start_operator_item_maintenance(
-                item.id,
-                %{"reason" => "Servicing"},
-                principal_id()
-              )
-            end,
-            fn ->
-              Inventory.archive_operator_item(item.id, %{"reason" => "Retired"}, principal_id())
-            end
-          ])
-
-        # Either order is legal; the loser gets a domain conflict, never a raise.
-        assert match?({:ok, _}, start_result) or match?({:error, :archived}, start_result)
-        assert match?({:ok, _}, archive_result)
-
-        assert {:ok, %{archived_at: %DateTime{}}} = Inventory.resolve_operator_item(item.id)
-        refute Enum.any?(Inventory.list_operator_item_maintenance_periods(item.id), & &1.open?)
-      end)
-    end
-
-    test "a move racing an archive never moves an archived item" do
-      committed(fn %{item: item, container_id: container_id, destination: destination} ->
-        [move_result, archive_result] =
-          race([
-            fn ->
-              Inventory.move_operator_item(
-                item.id,
-                %{"container_id" => destination.id},
-                principal_id()
-              )
-            end,
-            fn -> Inventory.archive_operator_item(item.id, %{}, principal_id()) end
-          ])
-
-        assert match?({:ok, _}, archive_result)
-        assert match?({:ok, _}, move_result) or match?({:error, :archived}, move_result)
-
-        assert {:ok, resolved} = Inventory.resolve_operator_item(item.id)
-        assert resolved.container_id in [container_id, destination.id]
-        assert resolved.archived_at
-      end)
-    end
-
-    test "an approval racing a move leaves the item either moved or reserved, never both silently" do
-      committed(fn %{item: item, container_id: container_id, destination: destination} ->
-        loan_id = create_loan!(item, principal_id(), "requested")
-
-        [move_result, _approval] =
-          race([
-            fn ->
-              Inventory.move_operator_item(
-                item.id,
-                %{"container_id" => destination.id},
-                principal_id()
-              )
-            end,
-            fn -> approve_loan!(loan_id) end
-          ])
-
-        # A move either wins before the approval or reports the live loan.
-        assert match?({:ok, _}, move_result) or match?({:error, :loan_active}, move_result)
-
-        assert {:ok, resolved} = Inventory.resolve_operator_item(item.id)
-        assert resolved.container_id in [container_id, destination.id]
-      end)
-    end
-
-    test "an approval racing a maintenance start never puts a reserved item into maintenance" do
-      committed(fn %{item: item} ->
-        loan_id = create_loan!(item, principal_id(), "requested")
-
-        [start_result, _approval] =
-          race([
-            fn ->
-              Inventory.start_operator_item_maintenance(
-                item.id,
-                %{"reason" => "Servicing"},
-                principal_id()
-              )
-            end,
-            fn -> approve_loan!(loan_id) end
-          ])
-
-        case start_result do
-          # Maintenance won: it must have rejected the pending request first,
-          # so no approved loan can coexist with the open period.
-          {:ok, _} ->
-            assert loan_status(loan_id) in ["rejected", "approved"]
-
-            if loan_status(loan_id) == "approved" do
-              flunk("an approved loan coexists with an open maintenance period")
-            end
-
-          {:error, :loan_active} ->
-            assert loan_status(loan_id) == "approved"
-            assert Inventory.list_operator_item_maintenance_periods(item.id) == []
-        end
-      end)
-    end
-
-    test "an approval racing an archive never archives a reserved item" do
-      committed(fn %{item: item} ->
-        loan_id = create_loan!(item, principal_id(), "requested")
-
-        [archive_result, _approval] =
-          race([
-            fn -> Inventory.archive_operator_item(item.id, %{}, principal_id()) end,
-            fn -> approve_loan!(loan_id) end
-          ])
-
-        assert {:ok, resolved} = Inventory.resolve_operator_item(item.id)
-
-        case archive_result do
-          {:ok, _} ->
-            refute loan_status(loan_id) == "approved"
-            assert resolved.archived_at
-
-          {:error, :loan_active} ->
-            assert loan_status(loan_id) == "approved"
-            refute resolved.archived_at
-        end
-      end)
-    end
-  end
-
   describe "database backstops" do
-    test "the partial unique index rejects a second open period" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, item} = create_item(container_id, category.id)
-      operator = principal_id()
-
-      {:ok, _} =
-        Inventory.start_operator_item_maintenance(item.id, %{"reason" => "first"}, operator)
-
-      assert_raise Postgrex.Error, fn -> insert_open_period!(item.id, operator) end
-    end
-
-    test "an out-of-seam open period surfaces as a domain conflict, not a raise" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, item} = create_item(container_id, category.id)
-
-      # Something wrote a period without going through the seam, so the item
-      # lock never saw it. The index catches it and the command must still
-      # return a domain conflict rather than a Postgrex error.
-      insert_open_period!(item.id, principal_id())
-
-      assert {:error, :maintenance_open} =
-               Inventory.start_operator_item_maintenance(
-                 item.id,
-                 %{"reason" => "second"},
-                 principal_id()
-               )
-    end
-
     test "target lifecycle paths have no history table to write" do
       %{category: category, container_id: container_id} = fixture()
       destination = create_container!()
@@ -1008,81 +817,6 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
 
   defp fixture do
     %{category: create_category!(), container_id: create_container!().id}
-  end
-
-  # ── Real-concurrency helpers ───────────────────────────────────
-
-  # Builds the fixture outside the sandbox so competing connections can see
-  # it, runs `fun`, then removes every committed row it created. Sandbox
-  # rollback cannot undo `unboxed_run` work
-  # (docs/agents/critical-patterns.md).
-  defp committed(fun) do
-    context =
-      outside_sandbox(fn ->
-        category = create_category!()
-        container = create_container!()
-        destination = create_container!()
-        {:ok, item} = create_item(container.id, category.id)
-
-        %{
-          category: category,
-          container_id: container.id,
-          destination: destination,
-          item: item
-        }
-      end)
-
-    on_exit(fn -> outside_sandbox(fn -> cleanup_committed(context) end) end)
-
-    outside_sandbox(fn -> fun.(context) end)
-  end
-
-  defp cleanup_committed(context) do
-    item_id = Ecto.UUID.dump!(context.item.id)
-
-    Repo.query!("DELETE FROM inventory_loans WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_maintenance_periods WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_item_property_values WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_items WHERE id = $1", [item_id])
-
-    for container_id <- [context.container_id, context.destination.id] do
-      Repo.query!("DELETE FROM containers WHERE id = $1", [Ecto.UUID.dump!(container_id)])
-    end
-
-    Repo.query!("DELETE FROM equipment_categories WHERE id = $1", [
-      Ecto.UUID.dump!(context.category.id)
-    ])
-  end
-
-  # Runs the given operations at genuinely the same time on separate
-  # connections, so the interlocks are settled by Postgres rather than by
-  # test-process ordering.
-  defp race(fun) when is_function(fun, 1), do: race([fn -> fun.("a") end, fn -> fun.("b") end])
-
-  defp race(funs) when is_list(funs) do
-    funs
-    |> Task.async_stream(fn fun -> outside_sandbox(fun) end,
-      max_concurrency: length(funs),
-      ordered: true,
-      timeout: :infinity
-    )
-    |> Enum.map(fn {:ok, result} -> result end)
-  end
-
-  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
-
-  # Stands in for the ALE-286 approval command: reserves the item the way a
-  # real approval would, so the interlocks race against a committed change.
-  defp approve_loan!(loan_id) do
-    Repo.query!(
-      """
-      UPDATE inventory_loans
-      SET status = 'approved', decided_at = NOW(),
-          approved_start_on = requested_start_on, approved_due_on = requested_due_on
-      WHERE id = $1
-      """,
-      [Ecto.UUID.dump!(loan_id)]
-    )
   end
 
   defp create_item(container_id, category_id) do
@@ -1178,18 +912,6 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       decided_by: decided_by && Ecto.UUID.load!(decided_by),
       decision_note: decision_note
     }
-  end
-
-  defp insert_open_period!(item_id, principal_id) do
-    Repo.query!(
-      """
-      INSERT INTO inventory_maintenance_periods (
-        item_id, started_at, started_by_principal_id, start_reason, created_at, updated_at
-      )
-      VALUES ($1, NOW(), $2, 'backstop', NOW(), NOW())
-      """,
-      [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(principal_id)]
-    )
   end
 
   defp maintenance_periods(item_id), do: Inventory.list_operator_item_maintenance_periods(item_id)

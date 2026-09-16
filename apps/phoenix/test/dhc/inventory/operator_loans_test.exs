@@ -13,17 +13,14 @@ defmodule Dhc.Inventory.OperatorLoansTest do
   Requests are created through the real member command
   (`Dhc.Inventory.request_loan/3`), so the two halves of the lifecycle are
   proven to compose rather than being stitched together by SQL fixtures.
-  Direct SQL appears only to prove the backstop the seam cannot express (the
-  partial unique index `inventory_loans_one_active_allocation_per_item`) and
-  to age a loan past its due date, which no command may do.
+  Direct SQL appears only to age a loan past its due date, which no command
+  may do.
 
-  Concurrency note: the races run on real independent connections through
-  `Ecto.Adapters.SQL.Sandbox.unboxed_run/2`, so Postgres settles them rather
-  than test-process ordering. That commits outside the test-owner
-  transaction, so each race builds its fixture and deletes its rows
-  explicitly (docs/agents/critical-patterns.md, "Real PostgreSQL Concurrency
-  Tests"). Each asserts what must hold under *any* interleaving: exactly one
-  winner, and the loser gets a domain conflict rather than a server error.
+  Since GH-508 every command here is a facade over
+  `Dhc.Inventory.AvailabilityCommands`, so this file keeps only what is
+  specific to the operator contract — signatures, return shapes, and the
+  operator rules. Concurrency, lock order, and the database backstops are
+  proven once in `Dhc.Inventory.AvailabilityCommandsTest`.
 
   Notifications are deliberately absent — ALE-287 owns the keyed seam and is
   a hard prerequisite before these commands are exposed (ALE-296 scope note).
@@ -35,7 +32,6 @@ defmodule Dhc.Inventory.OperatorLoansTest do
   alias Dhc.Inventory
   alias Dhc.Inventory.ClubCalendar
   alias Dhc.Repo
-  alias Ecto.Adapters.SQL.Sandbox
 
   describe "approve" do
     test "reserves the item and carries the requested dates forward" do
@@ -521,179 +517,6 @@ defmodule Dhc.Inventory.OperatorLoansTest do
       assert {:error, :not_found} = Inventory.get_operator_loan("not-a-uuid")
     end
   end
-
-  describe "concurrency" do
-    test "two approvals of competing requests reserve the item exactly once" do
-      committed(fn %{item: item} ->
-        {:ok, first} = request(item, principal_id())
-        {:ok, second} = request(item, principal_id())
-
-        results =
-          race([
-            fn -> Inventory.approve_loan(first.id, %{}, principal_id()) end,
-            fn -> Inventory.approve_loan(second.id, %{}, principal_id()) end
-          ])
-
-        # Exactly one approval allocates; the loser sees a domain conflict,
-        # never a Postgrex error from the active-allocation index.
-        assert Enum.count(results, &match?({:ok, _}, &1)) == 1
-
-        assert Enum.count(results, fn
-                 {:error, reason} -> reason in [:already_allocated, :not_pending]
-                 _other -> false
-               end) == 1
-
-        assert active_allocation_count(item) == 1
-      end)
-    end
-
-    test "an approval racing a maintenance start leaves the item in one state" do
-      committed(fn %{item: item} ->
-        {:ok, request} = request(item, principal_id())
-
-        [approval, maintenance] =
-          race([
-            fn -> Inventory.approve_loan(request.id, %{}, principal_id()) end,
-            fn ->
-              Inventory.start_operator_item_maintenance(
-                item.id,
-                %{"reason" => "Servicing"},
-                principal_id()
-              )
-            end
-          ])
-
-        # Both orders are legal, but they cannot both take the item: either
-        # maintenance blocks on the reservation, or the approval finds the
-        # request already rejected by maintenance.
-        case {approval, maintenance} do
-          {{:ok, _}, {:error, :loan_active}} ->
-            assert active_allocation_count(item) == 1
-
-          {{:error, reason}, {:ok, _}} ->
-            assert reason in [:not_pending, :maintenance_open]
-            assert active_allocation_count(item) == 0
-        end
-      end)
-    end
-
-    test "an approval racing the member's cancellation settles without deadlock" do
-      committed(fn %{item: item} ->
-        member = principal_id()
-        {:ok, request} = request(item, member)
-
-        # Both commands lock the item before the loan, so they queue rather
-        # than deadlock (docs/agents/critical-patterns.md, lock order).
-        [approval, cancellation] =
-          race([
-            fn -> Inventory.approve_loan(request.id, %{}, principal_id()) end,
-            fn -> Inventory.cancel_loan(request.id, %{}, member) end
-          ])
-
-        assert match?({:ok, _}, approval) or match?({:error, :not_pending}, approval)
-        assert match?({:ok, _}, cancellation) or match?({:error, :not_cancellable}, cancellation)
-
-        # Whoever won, the loan may not be both cancelled and holding the item.
-        assert {:ok, final} = Inventory.get_operator_loan(request.id)
-        assert final.status in ~w(approved cancelled)
-
-        expected = if final.status == "approved", do: 1, else: 0
-        assert active_allocation_count(item) == expected
-      end)
-    end
-
-    test "two checkouts of one approved loan hand it over once" do
-      committed(fn %{item: item} ->
-        {:ok, request} = request(item, principal_id())
-        {:ok, _} = Inventory.approve_loan(request.id, %{}, principal_id())
-
-        results = race([fn -> check_out(request.id) end, fn -> check_out(request.id) end])
-
-        assert Enum.count(results, &match?({:ok, _}, &1)) == 1
-        assert Enum.count(results, &match?({:error, :not_approved}, &1)) == 1
-      end)
-    end
-  end
-
-  # ── Backstop ────────────────────────────────────────────────────
-
-  describe "database backstops" do
-    test "the active-allocation index refuses a second live claim written outside the seam" do
-      %{item: item} = fixture()
-      {:ok, request} = request(item, principal_id())
-      assert {:ok, _} = Inventory.approve_loan(request.id, %{}, principal_id())
-
-      # Proves the seam is not the only thing keeping allocation
-      # exactly-once: a writer bypassing it still fails at the database.
-      assert_raise Postgrex.Error, fn ->
-        Repo.query!(
-          """
-          INSERT INTO inventory_loans (
-            item_id, borrower_principal_id, status,
-            requested_start_on, requested_due_on,
-            approved_start_on, approved_due_on,
-            item_slug_snapshot, item_label_snapshot, created_at, updated_at
-          )
-          VALUES ($1, $2, 'approved', CURRENT_DATE, CURRENT_DATE + 7,
-                  CURRENT_DATE, CURRENT_DATE + 7, $3, $3, NOW(), NOW())
-          """,
-          [Ecto.UUID.dump!(item.id), Ecto.UUID.dump!(principal_id()), item.slug]
-        )
-      end
-    end
-  end
-
-  # ── Real-concurrency helpers ───────────────────────────────────
-
-  # Builds the fixture outside the sandbox so competing connections can see
-  # it, runs `fun`, then removes every committed row it created. Sandbox
-  # rollback cannot undo `unboxed_run` work.
-  defp committed(fun) do
-    context =
-      outside_sandbox(fn ->
-        category = create_category!()
-        container = create_container!()
-        {:ok, item} = create_operator_item(container.id, category.id)
-
-        %{category: category, container_id: container.id, item: item}
-      end)
-
-    on_exit(fn -> outside_sandbox(fn -> cleanup_committed(context) end) end)
-
-    outside_sandbox(fn -> fun.(context) end)
-  end
-
-  defp cleanup_committed(context) do
-    item_id = Ecto.UUID.dump!(context.item.id)
-
-    Repo.query!("DELETE FROM inventory_loans WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_maintenance_periods WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_item_property_values WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_items WHERE id = $1", [item_id])
-
-    Repo.query!("DELETE FROM containers WHERE id = $1", [
-      Ecto.UUID.dump!(context.container_id)
-    ])
-
-    Repo.query!("DELETE FROM equipment_categories WHERE id = $1", [
-      Ecto.UUID.dump!(context.category.id)
-    ])
-  end
-
-  # Runs the given operations at genuinely the same time on separate
-  # connections, so the interlocks are settled by Postgres rather than by
-  # test-process ordering.
-  defp race(funs) when is_list(funs) do
-    funs
-    |> Task.async_stream(fn fun -> outside_sandbox(fun) end,
-      max_concurrency: length(funs),
-      ordered: true,
-      timeout: :infinity
-    )
-    |> Enum.map(fn {:ok, result} -> result end)
-  end
-
-  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
 
   # ── Assertions on raw rows ──────────────────────────────────────
 

@@ -17,13 +17,10 @@ defmodule Dhc.Inventory.MemberLoansTest do
   they are applied here as SQL fixtures — the same convention
   `operator_item_lifecycle_test.exs` uses for loan rows.
 
-  Concurrency note: the races run on real independent connections through
-  `Ecto.Adapters.SQL.Sandbox.unboxed_run/2`, so Postgres settles them rather
-  than test-process ordering. That commits outside the test-owner
-  transaction, so each race builds its fixture and deletes its rows
-  explicitly (docs/agents/critical-patterns.md, "Real PostgreSQL Concurrency
-  Tests"). Each asserts what must hold under *any* interleaving: the loser
-  gets a domain conflict, never a server error.
+  Since GH-508 `request_loan/3` and `cancel_loan/3` are a facade over
+  `Dhc.Inventory.AvailabilityCommands`, so this file keeps only the member
+  contract. Concurrency, lock order, and the database backstops are proven
+  once in `Dhc.Inventory.AvailabilityCommandsTest`.
   """
 
   use Dhc.DataCase, async: false
@@ -32,7 +29,6 @@ defmodule Dhc.Inventory.MemberLoansTest do
   alias Dhc.Inventory
   alias Dhc.Inventory.ClubCalendar
   alias Dhc.Repo
-  alias Ecto.Adapters.SQL.Sandbox
 
   describe "request dates" do
     test "accepts today or later with due on or after start" do
@@ -441,209 +437,6 @@ defmodule Dhc.Inventory.MemberLoansTest do
       assert {:ok, closed} = Inventory.get_own_loan(loan_id, member)
       assert closed.overdue? == false
     end
-  end
-
-  describe "concurrency" do
-    test "two requests from the same member leave exactly one pending row" do
-      committed(fn %{item: item} ->
-        member = principal_id()
-
-        results = race(fn _label -> request(item, member) end)
-
-        assert Enum.count(results, &match?({:ok, _}, &1)) == 1
-        # The loser sees a domain conflict, not a Postgrex error from the
-        # partial unique index.
-        assert Enum.count(results, &match?({:error, :duplicate_request}, &1)) == 1
-        assert pending_count(item, member) == 1
-      end)
-    end
-
-    test "competing requests from different members both commit" do
-      committed(fn %{item: item} ->
-        first = principal_id()
-        second = principal_id()
-
-        results =
-          race([fn -> request(item, first) end, fn -> request(item, second) end])
-
-        # No queue and no entitlement: both requests are legal (story 34).
-        assert Enum.all?(results, &match?({:ok, _}, &1))
-        assert pending_count(item) == 2
-      end)
-    end
-
-    test "a request racing an approval never joins a reserved item" do
-      committed(fn %{item: item} ->
-        holder = principal_id()
-        loan_id = create_loan!(item, holder, "requested")
-
-        [request_result, _approval] =
-          race([fn -> request(item, principal_id()) end, fn -> approve_loan!(loan_id) end])
-
-        # Either the request wins the lock first, or it reports the item as
-        # unavailable — never an exception, and never a second live claim.
-        assert match?({:ok, _}, request_result) or
-                 match?({:error, :item_unavailable}, request_result)
-
-        assert active_allocation_count(item) == 1
-      end)
-    end
-
-    # Cancellation releases the item, so it is an availability-changing
-    # command and takes the item lock first, in the same order as request and
-    # every operator command. Opposite lock orders would deadlock rather than
-    # queue, so this asserts the shared protocol, not just the outcome.
-    test "a cancellation racing an approval settles without deadlock or a lost item" do
-      committed(fn %{item: item} ->
-        member = principal_id()
-        loan_id = create_loan!(item, member, "requested")
-
-        [cancel_result, _approval] =
-          race([
-            fn -> Inventory.cancel_loan(loan_id, %{}, member) end,
-            fn -> approve_loan!(loan_id) end
-          ])
-
-        # Either order is legal; neither may raise.
-        assert match?({:ok, _}, cancel_result) or
-                 match?({:error, :not_cancellable}, cancel_result)
-
-        # The loan cannot end up both cancelled and holding the item.
-        assert loan_status(loan_id) in ~w(cancelled approved)
-
-        if loan_status(loan_id) == "cancelled" do
-          assert active_allocation_count(item) == 0
-        end
-      end)
-    end
-
-    test "a request racing a maintenance start never lands on a serviced item" do
-      committed(fn %{item: item} ->
-        member = principal_id()
-
-        [request_result, maintenance_result] =
-          race([
-            fn -> request(item, member) end,
-            fn ->
-              Inventory.start_operator_item_maintenance(
-                item.id,
-                %{"reason" => "Servicing"},
-                principal_id()
-              )
-            end
-          ])
-
-        assert match?({:ok, _}, maintenance_result)
-
-        assert match?({:ok, _}, request_result) or
-                 match?({:error, :item_unavailable}, request_result)
-
-        # Maintenance rejects pending requests atomically (ALE-294), so a
-        # request that won the race must not still be pending afterwards.
-        assert pending_count(item, member) == 0
-      end)
-    end
-  end
-
-  # ── Real-concurrency helpers ───────────────────────────────────
-
-  # Builds the fixture outside the sandbox so competing connections can see
-  # it, runs `fun`, then removes every committed row it created. Sandbox
-  # rollback cannot undo `unboxed_run` work.
-  defp committed(fun) do
-    context =
-      outside_sandbox(fn ->
-        category = create_category!()
-        container = create_container!()
-        {:ok, item} = create_operator_item(container.id, category.id)
-
-        %{category: category, container_id: container.id, item: item}
-      end)
-
-    on_exit(fn -> outside_sandbox(fn -> cleanup_committed(context) end) end)
-
-    outside_sandbox(fn -> fun.(context) end)
-  end
-
-  defp cleanup_committed(context) do
-    item_id = Ecto.UUID.dump!(context.item.id)
-
-    Repo.query!("DELETE FROM inventory_loans WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_maintenance_periods WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_item_property_values WHERE item_id = $1", [item_id])
-    Repo.query!("DELETE FROM inventory_items WHERE id = $1", [item_id])
-
-    Repo.query!("DELETE FROM containers WHERE id = $1", [
-      Ecto.UUID.dump!(context.container_id)
-    ])
-
-    Repo.query!("DELETE FROM equipment_categories WHERE id = $1", [
-      Ecto.UUID.dump!(context.category.id)
-    ])
-  end
-
-  # Runs the given operations at genuinely the same time on separate
-  # connections, so the interlocks are settled by Postgres rather than by
-  # test-process ordering.
-  defp race(fun) when is_function(fun, 1), do: race([fn -> fun.("a") end, fn -> fun.("b") end])
-
-  defp race(funs) when is_list(funs) do
-    funs
-    |> Task.async_stream(fn fun -> outside_sandbox(fun) end,
-      max_concurrency: length(funs),
-      ordered: true,
-      timeout: :infinity
-    )
-    |> Enum.map(fn {:ok, result} -> result end)
-  end
-
-  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
-
-  # Stands in for the ALE-286 approval command: reserves the item the way a
-  # real approval would, so the request races a committed change.
-  defp approve_loan!(loan_id) do
-    Repo.query!(
-      """
-      UPDATE inventory_loans
-      SET status = 'approved', decided_at = NOW(),
-          approved_start_on = requested_start_on, approved_due_on = requested_due_on
-      WHERE id = $1
-      """,
-      [Ecto.UUID.dump!(loan_id)]
-    )
-  end
-
-  defp pending_count(item, borrower_id \\ nil) do
-    {sql, params} =
-      if borrower_id do
-        {"SELECT count(*) FROM inventory_loans WHERE item_id = $1 AND status = 'requested' AND borrower_principal_id = $2",
-         [Ecto.UUID.dump!(item.id), Ecto.UUID.dump!(borrower_id)]}
-      else
-        {"SELECT count(*) FROM inventory_loans WHERE item_id = $1 AND status = 'requested'",
-         [Ecto.UUID.dump!(item.id)]}
-      end
-
-    %{rows: [[count]]} = Repo.query!(sql, params)
-    count
-  end
-
-  defp loan_status(loan_id) do
-    %{rows: [[status]]} =
-      Repo.query!("SELECT status FROM inventory_loans WHERE id = $1", [
-        Ecto.UUID.dump!(loan_id)
-      ])
-
-    status
-  end
-
-  defp active_allocation_count(item) do
-    %{rows: [[count]]} =
-      Repo.query!(
-        "SELECT count(*) FROM inventory_loans WHERE item_id = $1 AND status IN ('approved', 'checked_out')",
-        [Ecto.UUID.dump!(item.id)]
-      )
-
-    count
   end
 
   # ── Fixtures ────────────────────────────────────────────────────

@@ -51,16 +51,18 @@ defmodule Dhc.Inventory.OperatorLoanQueue do
   Overdue derives from the approved due date in
   `Dhc.Inventory.ClubCalendar.today/0` — the same rule as ALE-296, reached
   through the same projection rather than re-derived. Rows *are*
-  `Dhc.Inventory.OperatorLoans.operator_view/2`, so a queue row and the
-  operator detail read can never disagree about status, overdue, or dates.
+  `Dhc.Inventory.LoanProjection.operator_view/2`, so a queue row, the
+  operator detail read, and an operator command outcome can never disagree
+  about status, overdue, or dates.
   Availability comes from `Dhc.Inventory.ItemProjection` in batch, so the
   queue cannot drift from the catalog and no bucket becomes N+1.
 
   `ready_for_checkout?` is advisory, not authoritative: the queue reads
   without locks, so a fact can move under it between the read and the tap.
-  `Dhc.Inventory.OperatorLoans.check_out_loan/3` re-decides everything under
-  the item lock, which is what makes a stale `true` safe — the command
-  refuses it.
+  `Dhc.Inventory.AvailabilityCommands` re-decides everything under the item
+  lock, which is what makes a stale `true` safe — the command refuses it.
+  Both sides evaluate the same `Dhc.Inventory.LoanPolicy` predicates (GH-508),
+  so the advisory value can be stale but never computed by a different rule.
 
   ## Operator-only, by construction
 
@@ -78,21 +80,14 @@ defmodule Dhc.Inventory.OperatorLoanQueue do
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.Loan
+  alias Dhc.Inventory.LoanPolicy
+  alias Dhc.Inventory.LoanProjection
   alias Dhc.Inventory.MaintenancePeriod
-  alias Dhc.Inventory.OperatorLoans
   alias Dhc.Repo
 
   # Everything an operator can still act on. The closed statuses
   # (`rejected`, `cancelled`, `returned`) are finished work.
   @open_statuses ~w(requested approved checked_out)
-
-  # Availability statuses that stop a handover. `:on_loan` does not: for an
-  # approved loan, the loan holding the item *is this one*. Archive and
-  # maintenance are both already refused while a loan is active
-  # (`OperatorItemLifecycle`), so this is a defence against a write outside
-  # the seam rather than an ordinary path — and it is the same fact
-  # `check_out_loan/3` refuses with `:maintenance_open`.
-  @handover_blocking_statuses [:maintenance, :archived]
 
   @typedoc """
   One bucket: its rows and a count derived from exactly those rows.
@@ -102,10 +97,10 @@ defmodule Dhc.Inventory.OperatorLoanQueue do
   @typedoc """
   One loan in a queue bucket.
 
-  `Dhc.Inventory.OperatorLoans.operator_view/2` verbatim, so a queue row and
+  `Dhc.Inventory.LoanProjection.operator_view/2` verbatim, so a queue row and
   the operator detail read are the same projection.
   """
-  @type loan_row :: OperatorLoans.operator_loan()
+  @type loan_row :: LoanProjection.operator_loan()
 
   @typedoc """
   One loan in the handovers bucket.
@@ -206,26 +201,14 @@ defmodule Dhc.Inventory.OperatorLoanQueue do
 
   defp handover_due?(%Loan{}, _today), do: false
 
-  # Exactly the gate `check_out_loan/3` applies: the approved window contains
-  # today, and nothing other than this loan holds the item.
+  # The same predicates the checkout command applies under the item lock
+  # (`Dhc.Inventory.LoanPolicy`): the approved window contains today, and
+  # nothing other than this loan holds the item. Advisory here — the command
+  # re-decides under the lock — but computed by one rule, so it can be stale
+  # without ever being *different*.
   defp ready_for_checkout?(%Loan{} = loan, today, availabilities) do
-    within_window?(loan, today) and not blocked?(loan, availabilities)
-  end
-
-  defp within_window?(
-         %Loan{approved_start_on: %Date{} = starts_on, approved_due_on: %Date{} = due_on},
-         today
-       ) do
-    Date.compare(today, starts_on) != :lt and Date.compare(today, due_on) != :gt
-  end
-
-  defp within_window?(%Loan{}, _today), do: false
-
-  defp blocked?(%Loan{item_id: item_id}, availabilities) do
-    case Map.get(availabilities, item_id) do
-      %{status: status} -> status in @handover_blocking_statuses
-      nil -> false
-    end
+    LoanPolicy.within_window?(loan, today) and
+      not LoanPolicy.handover_blocked?(Map.get(availabilities, loan.item_id))
   end
 
   # Batched through the shared projection, so a bucket costs a fixed number of
@@ -307,5 +290,5 @@ defmodule Dhc.Inventory.OperatorLoanQueue do
   # queue cannot disagree with `get_operator_loan/1` about status, overdue, or
   # dates. `today` is resolved once for the whole queue, so every row is
   # judged against the same club-calendar day.
-  defp view(%Loan{} = loan, today), do: OperatorLoans.operator_view(loan, today)
+  defp view(%Loan{} = loan, today), do: LoanProjection.operator_view(loan, today)
 end

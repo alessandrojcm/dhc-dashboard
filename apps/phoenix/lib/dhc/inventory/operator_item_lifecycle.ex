@@ -25,39 +25,34 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
     * **Delete.** Only for history-free items, and only with explicit
       confirmation.
 
-  ## Serialization
+  ## Where the work happens
 
-  Every command runs in one outer transaction that first takes `FOR UPDATE`
-  on the item row, so all interlocks (movement, maintenance, archive) queue
-  behind each other per item. A loser sees a domain conflict tuple
-  (`{:error, :loan_active}`, `{:error, :maintenance_open}`, …) and never a
-  server error or an `Ecto` exception. Loan rows read for an interlock are
-  locked `FOR UPDATE` in the same transaction so an approval racing the
-  interlock cannot commit underneath the check.
+  Since GH-508 every availability-changing command here — move, start and
+  end maintenance, archive, restore — is a **facade** over one
+  `Dhc.Inventory.AvailabilityCommands.execute/2` call as an `{:operator, id}`
+  actor. That boundary owns the transaction, takes the item `FOR UPDATE`
+  first so every interlock queues per item, locks the live loan rows under it,
+  translates the one-open-period index into `:maintenance_open`, and projects
+  the result through `Dhc.Inventory.ItemProjection`. A loser sees a domain
+  conflict tuple (`{:error, :loan_active}`, `{:error, :maintenance_open}`, …)
+  and never an `Ecto` exception. Nothing about a transition is decided here.
+
+  Delete is not a transition — it destroys a history-free row — and the
+  period listing is a read, so both stay in this module.
 
   Availability itself is never stored — see `Dhc.Inventory.ItemProjection`.
-  The loan commands are ALE-286; the viewer contract is ALE-284c.
   """
 
   import Ecto.Query
 
+  alias Dhc.Inventory.AvailabilityCommands
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemGuards
-  alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.ItemValues
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.MaintenancePeriod
   alias Dhc.Repo
-
-  import ItemGuards,
-    only: [
-      lock_item: 1,
-      lock_active_item: 1,
-      item_query: 1,
-      require_active_container: 1,
-      require_active_container_chain: 1
-    ]
 
   @type item :: Item.t()
   @type value_errors :: %{String.t() => ItemValues.error_reason()}
@@ -77,11 +72,6 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
           open?: boolean()
         }
 
-  @default_archive_note "Ended automatically because the item was archived."
-  @maintenance_rejection_note "Rejected automatically: the item went into maintenance."
-  @archive_rejection_note "Rejected automatically: the item was archived."
-  @max_reason_length 1000
-
   # ── Movement ────────────────────────────────────────────────────
 
   @doc """
@@ -99,22 +89,8 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
           | {:error, :archived_container}
           | {:error, :loan_active}
   def move_operator_item(slug_or_id, attrs, actor_id)
-      when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id) do
-    Repo.transaction(fn -> locked_move(slug_or_id, attrs, actor_id) end) |> unwrap()
-  end
-
-  defp locked_move(slug_or_id, attrs, actor_id) do
-    with {:ok, %Item{} = item} <- lock_active_item(slug_or_id),
-         {:ok, container_id} <- require_active_container(take_container_id(attrs)),
-         :ok <- refuse_active_loan(item.id) do
-      item
-      |> Ecto.Changeset.change(%{container_id: container_id, updated_by: actor_id})
-      |> Repo.update!()
-      |> ItemProjection.project()
-    else
-      {:error, reason} -> Repo.rollback(reason)
-    end
-  end
+      when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id),
+      do: command(actor_id, {:move_item, slug_or_id, attrs})
 
   # ── Maintenance ─────────────────────────────────────────────────
 
@@ -135,26 +111,8 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
           | {:error, :maintenance_open}
           | {:error, :loan_active}
   def start_operator_item_maintenance(slug_or_id, attrs, actor_id)
-      when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id) do
-    Repo.transaction(fn -> locked_start_maintenance(slug_or_id, attrs, actor_id) end) |> unwrap()
-  end
-
-  defp locked_start_maintenance(slug_or_id, attrs, actor_id) do
-    with {:ok, %Item{} = item} <- lock_active_item(slug_or_id),
-         {:ok, reason} <- require_reason(attrs),
-         :ok <- refuse_open_maintenance(item.id),
-         :ok <- refuse_active_loan(item.id),
-         {:ok, _period} <- insert_period(item.id, reason, actor_id) do
-      reject_pending_requests(item.id, actor_id, @maintenance_rejection_note)
-
-      item
-      |> Ecto.Changeset.change(%{updated_by: actor_id})
-      |> Repo.update!()
-      |> ItemProjection.project()
-    else
-      {:error, reason} -> Repo.rollback(reason)
-    end
-  end
+      when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id),
+      do: command(actor_id, {:open_maintenance, slug_or_id, attrs})
 
   @doc """
   Close the item's open maintenance period, optionally with a note.
@@ -168,31 +126,15 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
           | {:error, :archived}
           | {:error, :no_open_maintenance}
   def end_operator_item_maintenance(slug_or_id, attrs, actor_id)
-      when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id) do
-    Repo.transaction(fn -> locked_end_maintenance(slug_or_id, attrs, actor_id) end) |> unwrap()
-  end
-
-  defp locked_end_maintenance(slug_or_id, attrs, actor_id) do
-    with {:ok, %Item{} = item} <- lock_active_item(slug_or_id),
-         {:ok, note} <- optional_text(take_end_note(attrs)),
-         {:ok, %MaintenancePeriod{} = period} <- lock_open_period(item.id) do
-      close_period!(period, note, actor_id)
-
-      item
-      |> Ecto.Changeset.change(%{updated_by: actor_id})
-      |> Repo.update!()
-      |> ItemProjection.project()
-    else
-      {:error, reason} -> Repo.rollback(reason)
-    end
-  end
+      when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id),
+      do: command(actor_id, {:close_maintenance, slug_or_id, attrs})
 
   @doc """
   Retained maintenance periods of one item, newest first.
   """
   @spec list_operator_item_maintenance_periods(String.t()) :: [maintenance_period()]
   def list_operator_item_maintenance_periods(slug_or_id) when is_binary(slug_or_id) do
-    case Repo.one(item_query(slug_or_id)) do
+    case Repo.one(ItemGuards.item_query(slug_or_id)) do
       nil -> []
       %Item{id: item_id} -> list_periods(item_id)
     end
@@ -237,54 +179,8 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
           | {:error, :not_found}
           | {:error, :loan_active}
   def archive_operator_item(slug_or_id, attrs, actor_id)
-      when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id) do
-    Repo.transaction(fn -> locked_archive(slug_or_id, attrs, actor_id) end) |> unwrap()
-  end
-
-  defp locked_archive(slug_or_id, attrs, actor_id) do
-    case lock_item(slug_or_id) do
-      {:error, reason} ->
-        Repo.rollback(reason)
-
-      {:ok, %Item{archived_at: archived_at} = item} when not is_nil(archived_at) ->
-        ItemProjection.project(item)
-
-      {:ok, %Item{} = item} ->
-        archive_active_item(item, attrs, actor_id)
-    end
-  end
-
-  defp archive_active_item(%Item{} = item, attrs, actor_id) do
-    with {:ok, reason} <- optional_text(take_reason(attrs)),
-         :ok <- refuse_active_loan(item.id) do
-      reject_pending_requests(item.id, actor_id, @archive_rejection_note)
-      close_open_period_for_archive(item.id, reason, actor_id)
-
-      item
-      |> Ecto.Changeset.change(%{
-        archived_at: DateTime.utc_now(),
-        archived_by_principal_id: actor_id,
-        updated_by: actor_id
-      })
-      |> Repo.update!()
-      |> ItemProjection.project()
-    else
-      {:error, reason} -> Repo.rollback(reason)
-    end
-  end
-
-  defp close_open_period_for_archive(item_id, reason, actor_id) do
-    case lock_open_period(item_id) do
-      {:ok, %MaintenancePeriod{} = period} ->
-        close_period!(period, archive_end_note(reason), actor_id)
-
-      {:error, :no_open_maintenance} ->
-        :ok
-    end
-  end
-
-  defp archive_end_note(nil), do: @default_archive_note
-  defp archive_end_note(reason), do: "Archived: " <> reason
+      when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id),
+      do: command(actor_id, {:retire_item, slug_or_id, attrs})
 
   @doc """
   Restore an archived item to circulation.
@@ -303,70 +199,8 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
           | {:error, :archived_container}
           | {:error, :invalid_values, value_errors()}
   def restore_operator_item(slug_or_id, actor_id)
-      when is_binary(slug_or_id) and is_binary(actor_id) do
-    Repo.transaction(fn -> locked_restore(slug_or_id, actor_id) end) |> unwrap()
-  end
-
-  defp locked_restore(slug_or_id, actor_id) do
-    case lock_item(slug_or_id) do
-      {:error, reason} ->
-        Repo.rollback(reason)
-
-      {:ok, %Item{archived_at: nil} = item} ->
-        ItemProjection.project(item)
-
-      {:ok, %Item{} = item} ->
-        restore_archived_item(item, actor_id)
-    end
-  end
-
-  defp restore_archived_item(%Item{} = item, actor_id) do
-    with :ok <- require_active_category_of(item.category_id),
-         :ok <- require_active_container_chain(item.container_id),
-         :ok <- require_retained_values_valid(item) do
-      item
-      |> Ecto.Changeset.change(%{
-        archived_at: nil,
-        archived_by_principal_id: nil,
-        updated_by: actor_id
-      })
-      |> Repo.update!()
-      |> ItemProjection.project()
-    else
-      {:error, reason} -> Repo.rollback(reason)
-      {:error, reason, info} -> Repo.rollback({reason, info})
-    end
-  end
-
-  # Revalidate the stored values against the category's live definitions, so
-  # a restore cannot resurrect an item that today's schema would reject.
-  defp require_retained_values_valid(%Item{} = item) do
-    definitions = ItemValues.load_definitions(item.category_id)
-
-    case ItemValues.validate(definitions, stored_values_as_supplied(item.id)) do
-      {:ok, _rows} -> :ok
-      {:error, errors} -> {:error, :invalid_values, errors}
-    end
-  end
-
-  # Re-present stored rows in the shape `validate/2` expects, so restore
-  # applies exactly the same rules as create and edit.
-  defp stored_values_as_supplied(item_id) do
-    from(v in ItemPropertyValue, where: v.item_id == ^item_id)
-    |> Repo.all()
-    |> Map.new(&{&1.property_definition_id, supplied_value(&1)})
-  end
-
-  defp supplied_value(%ItemPropertyValue{option_id: option_id}) when not is_nil(option_id),
-    do: option_id
-
-  defp supplied_value(%ItemPropertyValue{boolean_value: boolean}) when is_boolean(boolean),
-    do: boolean
-
-  defp supplied_value(%ItemPropertyValue{decimal_value: decimal}) when not is_nil(decimal),
-    do: decimal
-
-  defp supplied_value(%ItemPropertyValue{text_value: text}), do: text
+      when is_binary(slug_or_id) and is_binary(actor_id),
+      do: command(actor_id, {:reactivate_item, slug_or_id, %{}})
 
   # ── Delete ──────────────────────────────────────────────────────
 
@@ -388,7 +222,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
 
   defp locked_delete(slug_or_id, attrs) do
     with :ok <- require_confirmation(attrs),
-         {:ok, %Item{} = item} <- lock_item(slug_or_id),
+         {:ok, %Item{} = item} <- ItemGuards.lock_item(slug_or_id),
          :ok <- refuse_history(item.id) do
       from(v in ItemPropertyValue, where: v.item_id == ^item.id) |> Repo.delete_all()
       Repo.delete!(item)
@@ -418,115 +252,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
     end
   end
 
-  # ── Loan interlocks ─────────────────────────────────────────────
-
-  # Locks the item's live loan rows before deciding, so a concurrent
-  # approval either commits first (and is seen) or waits behind this
-  # transaction.
-  defp refuse_active_loan(item_id) do
-    active? =
-      from(l in Loan,
-        where: l.item_id == ^item_id,
-        where: l.status in ^ItemProjection.active_loan_statuses(),
-        order_by: [asc: l.id],
-        lock: "FOR UPDATE"
-      )
-      |> Repo.all()
-      |> Enum.any?()
-
-    if active?, do: {:error, :loan_active}, else: :ok
-  end
-
-  defp reject_pending_requests(item_id, actor_id, note) do
-    now = DateTime.utc_now()
-
-    from(l in Loan, where: l.item_id == ^item_id, where: l.status == "requested")
-    |> Repo.update_all(
-      set: [
-        status: "rejected",
-        decided_at: now,
-        decided_by_principal_id: actor_id,
-        decision_note: note,
-        updated_at: now
-      ]
-    )
-
-    :ok
-  end
-
-  # ── Maintenance helpers ─────────────────────────────────────────
-
-  defp refuse_open_maintenance(item_id) do
-    case lock_open_period(item_id) do
-      {:ok, %MaintenancePeriod{}} -> {:error, :maintenance_open}
-      {:error, :no_open_maintenance} -> :ok
-    end
-  end
-
-  defp lock_open_period(item_id) do
-    query =
-      from(p in MaintenancePeriod,
-        where: p.item_id == ^item_id,
-        where: is_nil(p.ended_at),
-        lock: "FOR UPDATE"
-      )
-
-    case Repo.one(query) do
-      nil -> {:error, :no_open_maintenance}
-      %MaintenancePeriod{} = period -> {:ok, period}
-    end
-  end
-
-  # The item lock already serializes command-against-command, so the partial
-  # unique index is the backstop for anything that writes outside this seam.
-  # Translate it rather than letting Postgrex raise: the ticket requires a
-  # domain conflict, never a server error, on a race.
-  defp insert_period(item_id, reason, actor_id) do
-    %MaintenancePeriod{}
-    |> Ecto.Changeset.change(%{
-      item_id: item_id,
-      started_at: DateTime.utc_now(),
-      started_by_principal_id: actor_id,
-      start_reason: reason
-    })
-    |> Ecto.Changeset.unique_constraint(:item_id,
-      name: :inventory_maintenance_periods_one_open_per_item
-    )
-    |> Repo.insert()
-    |> case do
-      {:ok, %MaintenancePeriod{} = period} -> {:ok, period}
-      {:error, %Ecto.Changeset{}} -> {:error, :maintenance_open}
-    end
-  end
-
-  defp close_period!(%MaintenancePeriod{} = period, note, actor_id) do
-    period
-    |> Ecto.Changeset.change(%{
-      ended_at: DateTime.utc_now(),
-      ended_by_principal_id: actor_id,
-      end_note: note
-    })
-    |> Repo.update!()
-  end
-
-  # A restore needs the category itself to still be live; an archived or
-  # missing category cannot host an active item either way.
-  defp require_active_category_of(category_id) do
-    case ItemGuards.require_active_category(category_id) do
-      {:ok, _id} -> :ok
-      {:error, _reason} -> {:error, :archived_category}
-    end
-  end
-
   # ── Attribute normalization ─────────────────────────────────────
-
-  defp take_container_id(attrs),
-    do: take_first(attrs, ["containerId", "container_id", :containerId, :container_id])
-
-  defp take_reason(attrs), do: take_first(attrs, ["reason", :reason])
-
-  defp take_end_note(attrs),
-    do: take_first(attrs, ["endNote", "end_note", :endNote, :end_note])
 
   defp take_confirm(attrs), do: take_first(attrs, ["confirm", :confirm])
 
@@ -540,31 +266,18 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
     end
   end
 
-  # An item leaves circulation with a reason or not at all.
-  defp require_reason(attrs) do
-    case optional_text(take_reason(attrs)) do
-      {:ok, nil} -> {:error, :reason_required}
-      {:ok, reason} -> {:ok, reason}
-      {:error, _invalid} -> {:error, :reason_required}
-    end
-  end
-
-  # Blank text is absence, matching the item seam's notes rule; non-textual
-  # input is rejected rather than silently coerced.
-  defp optional_text(nil), do: {:ok, nil}
-
-  defp optional_text(text) when is_binary(text) do
-    case String.trim(text) do
-      "" -> {:ok, nil}
-      trimmed -> {:ok, String.slice(trimmed, 0, @max_reason_length)}
-    end
-  end
-
-  defp optional_text(_other), do: {:error, :invalid_text}
-
   # ── Result translation ──────────────────────────────────────────
 
+  # The boundary reports restore's value errors as one tagged reason; this
+  # seam's contract is the three-tuple, so translate at the edge.
+  defp command(actor_id, command) do
+    case AvailabilityCommands.execute({:operator, actor_id}, command) do
+      {:ok, {:item, %Item{} = item}} -> {:ok, item}
+      {:error, {:invalid_values, errors}} -> {:error, :invalid_values, errors}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp unwrap({:ok, %Item{} = item}), do: {:ok, item}
-  defp unwrap({:error, {:invalid_values, errors}}), do: {:error, :invalid_values, errors}
   defp unwrap({:error, reason}), do: {:error, reason}
 end

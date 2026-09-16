@@ -72,6 +72,7 @@
 | 0020 | Short-lived Discord Join Grant | Accepted |
 | 0021 | Swoosh Is the Email Transport Seam | Accepted |
 | 0022 | Code-Authored Templates Synced to Resend-Hosted Templates | Accepted |
+| 0023 | One Transaction Boundary for Availability-Changing Inventory Commands | Accepted |
 
 ## Architecture (Target State)
 

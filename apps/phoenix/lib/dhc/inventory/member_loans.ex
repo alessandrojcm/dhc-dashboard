@@ -37,37 +37,35 @@ defmodule Dhc.Inventory.MemberLoans do
       their notes, and item snapshots so an archived item does not rot the
       record (story 56).
 
-  ## Serialization
+  ## Where the work happens
 
-  A request locks the item `FOR UPDATE` first, so it queues behind every
-  other availability-changing command (approval, maintenance start,
-  archive). A request that loses a race sees a domain conflict rather than
-  an exception, and the pending-request index is translated the same way, so
-  a second concurrent request from the same member cannot surface as a
-  `Postgrex.Error`.
+  Since GH-508 the two commands here are a **facade**: each is one
+  `Dhc.Inventory.AvailabilityCommands.execute/2` call as a `{:member, id}`
+  actor. That boundary owns the transaction, locks the item `FOR UPDATE`
+  before the loan (the reverse order deadlocks against approval), re-reads
+  the loan under it, derives availability, applies the club-calendar date
+  policy, translates the pending-request index into `:duplicate_request`, and
+  builds the member projection. Nothing about a transition is decided here.
+  The reads — own history and own loan — stay in this module.
 
   ## Notifications
 
-  None yet, on purpose. Operators should learn about new requests and member
+  None, on purpose. Operators should learn about new requests and member
   cancellations (ALE-275), but the keyed, idempotent notification seam is
-  ALE-287, which the spec makes a hard prerequisite for exposed loan
-  commands. Wiring the current non-keyed creation path here would create the
-  duplicate-notification problem ALE-287 exists to prevent. The transitions
-  this slice writes are durable rows, so ALE-287 can attach notifications to
-  them without reshaping the commands.
+  ALE-287; wiring the non-keyed creation path here would create the
+  duplicate-notification problem it exists to prevent. The transitions this
+  slice writes are durable rows, so notifications can attach to them later
+  without reshaping the commands.
   """
 
   import Ecto.Query
 
   alias Dhc.CursorPagination
+  alias Dhc.Inventory.AvailabilityCommands
   alias Dhc.Inventory.ClubCalendar
-  alias Dhc.Inventory.Item
-  alias Dhc.Inventory.ItemGuards
-  alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.Loan
+  alias Dhc.Inventory.LoanProjection
   alias Dhc.Repo
-
-  @max_note_length 1000
 
   @allowed_limits [10, 25, 50, 100]
   @default_limit 25
@@ -77,39 +75,18 @@ defmodule Dhc.Inventory.MemberLoans do
   # no transition can change underneath a cursor.
   @sort_specs %{"createdAt" => %{field: :created_at, type: :utc_datetime_usec}}
 
-  # Statuses a member may still walk away from. After checkout the member
-  # holds the item, so only an operator return closes the loan.
-  @member_cancellable ~w(requested approved)
-
   @open_statuses ~w(requested approved checked_out)
   @closed_statuses ~w(rejected cancelled returned)
 
   @typedoc """
-  One loan as its borrower sees it.
+  One loan as its borrower sees it — `Dhc.Inventory.LoanProjection.member_loan/0`.
 
-  `item` is the retained snapshot (slug and label captured at request time),
-  not a live item read, so history stays readable after archival.
-  `containerPath` is present only once the loan is approved — that is the
+  `item_*` are the retained snapshot (slug and label captured at request
+  time), not a live item read, so history stays readable after archival.
+  `container_path` is present only once the loan is approved — that is the
   one flow entitled to the item's location (story 15).
   """
-  @type member_loan :: %{
-          id: String.t(),
-          item_id: String.t(),
-          status: String.t(),
-          overdue?: boolean(),
-          requested_start_on: Date.t(),
-          requested_due_on: Date.t(),
-          approved_start_on: Date.t() | nil,
-          approved_due_on: Date.t() | nil,
-          checked_out_at: DateTime.t() | nil,
-          returned_at: DateTime.t() | nil,
-          request_note: String.t() | nil,
-          decision_note: String.t() | nil,
-          item_slug: String.t(),
-          item_label: String.t(),
-          container_path: String.t() | nil,
-          created_at: DateTime.t()
-        }
+  @type member_loan :: LoanProjection.member_loan()
 
   @type request_error ::
           :not_found
@@ -139,74 +116,8 @@ defmodule Dhc.Inventory.MemberLoans do
   @spec request_loan(String.t(), map(), String.t()) ::
           {:ok, member_loan()} | {:error, request_error()}
   def request_loan(slug_or_id, attrs, borrower_id)
-      when is_binary(slug_or_id) and is_map(attrs) and is_binary(borrower_id) do
-    Repo.transaction(fn -> locked_request(slug_or_id, attrs, borrower_id) end) |> unwrap()
-  end
-
-  defp locked_request(slug_or_id, attrs, borrower_id) do
-    with {:ok, %Item{} = item} <- lock_requestable_item(slug_or_id),
-         {:ok, starts_on, due_on} <- parse_dates(attrs),
-         {:ok, note} <- optional_note(take(attrs, ["note", :note])),
-         :ok <- require_available(item),
-         {:ok, %Loan{} = loan} <- insert_request(item, borrower_id, starts_on, due_on, note) do
-      member_view(loan)
-    else
-      {:error, reason} -> Repo.rollback(reason)
-    end
-  end
-
-  # An archived item is reported as absent, not as archived: a member has no
-  # business learning that an item they cannot see was retired.
-  defp lock_requestable_item(slug_or_id) do
-    case ItemGuards.lock_item(slug_or_id) do
-      {:ok, %Item{slug: nil}} -> {:error, :not_found}
-      {:ok, %Item{archived_at: at}} when not is_nil(at) -> {:error, :not_found}
-      other -> other
-    end
-  end
-
-  # Availability comes from the shared projection, so "requestable" can never
-  # drift from what the catalog showed the member — and the refusal reason
-  # stays generic whatever made the item unavailable.
-  defp require_available(%Item{} = item) do
-    case ItemProjection.availability(item) do
-      %{available?: true} -> :ok
-      %{available?: false} -> {:error, :item_unavailable}
-    end
-  end
-
-  # The item lock serializes request-against-request within this seam, so the
-  # partial unique index is the backstop for anything writing outside it.
-  # Translate it rather than letting Postgrex raise (`Repo.insert` + `case`,
-  # never `insert!`): a race must be a domain conflict, not a 500.
-  defp insert_request(%Item{} = item, borrower_id, starts_on, due_on, note) do
-    %Loan{}
-    |> Ecto.Changeset.change(%{
-      item_id: item.id,
-      borrower_principal_id: borrower_id,
-      status: "requested",
-      requested_start_on: starts_on,
-      requested_due_on: due_on,
-      request_note: note,
-      # Captured now so the borrower's history survives archival, and so a
-      # later label change does not rewrite what they asked for.
-      item_slug_snapshot: item.slug,
-      item_label_snapshot: snapshot_label(item)
-    })
-    |> Ecto.Changeset.unique_constraint(:item_id,
-      name: :inventory_loans_one_pending_request_per_item_borrower
-    )
-    |> Repo.insert()
-    |> case do
-      {:ok, %Loan{} = loan} -> {:ok, loan}
-      {:error, %Ecto.Changeset{}} -> {:error, :duplicate_request}
-    end
-  end
-
-  defp snapshot_label(%Item{} = item) do
-    %Item{label: label, slug: slug} = ItemProjection.project(item)
-    label || slug
-  end
+      when is_binary(slug_or_id) and is_map(attrs) and is_binary(borrower_id),
+      do: command(borrower_id, {:request_loan, slug_or_id, attrs})
 
   # ── Cancel ──────────────────────────────────────────────────────
 
@@ -224,87 +135,13 @@ defmodule Dhc.Inventory.MemberLoans do
           | {:error, :not_cancellable}
           | {:error, :invalid_note}
   def cancel_loan(loan_id, attrs, borrower_id)
-      when is_binary(loan_id) and is_map(attrs) and is_binary(borrower_id) do
-    Repo.transaction(fn -> locked_cancel(loan_id, attrs, borrower_id) end) |> unwrap()
-  end
+      when is_binary(loan_id) and is_map(attrs) and is_binary(borrower_id),
+      do: command(borrower_id, {:cancel_request, loan_id, attrs})
 
-  defp locked_cancel(loan_id, attrs, borrower_id) do
-    with {:ok, %Loan{} = loan} <- lock_own_loan(loan_id, borrower_id),
-         {:ok, note} <- optional_note(take(attrs, ["note", :note])),
-         {:ok, %Loan{} = loan} <- apply_cancellation(loan, note, borrower_id) do
-      member_view(loan)
-    else
-      {:error, reason} -> Repo.rollback(reason)
-    end
-  end
-
-  # Cancellation releases the item, so it is an availability-changing command
-  # and must serialize on the item like every other one — see
-  # `Dhc.Inventory.OperatorItemLifecycle`, where each command takes the item
-  # `FOR UPDATE` first.
-  #
-  # The lock **order** matters as much as the lock: request (and every
-  # operator command) locks the item before the loan, so cancelling in the
-  # opposite order would let a cancel holding the loan row wait on the item
-  # while an approval holding the item waits on the loan — a deadlock rather
-  # than a queue. Locking the item first puts this command in the same queue
-  # as the ALE-286 approval and checkout commands.
-  #
-  # The item id is read unlocked first purely to know *which* item to lock;
-  # ownership and status are then re-resolved under the item lock, so nothing
-  # is decided from the unlocked read.
-  defp lock_own_loan(loan_id, borrower_id) do
-    with {:ok, id} <- cast_id(loan_id),
-         {:ok, item_id} <- own_loan_item_id(id, borrower_id),
-         {:ok, _item} <- ItemGuards.lock_item(item_id) do
-      fetch_own_loan(id, borrower_id)
-    end
-  end
-
-  defp own_loan_item_id(id, borrower_id) do
-    query =
-      from(l in Loan,
-        where: l.id == ^id,
-        where: l.borrower_principal_id == ^borrower_id,
-        select: l.item_id
-      )
-
-    case Repo.one(query) do
-      nil -> {:error, :not_found}
-      item_id -> {:ok, item_id}
-    end
-  end
-
-  defp apply_cancellation(%Loan{status: "cancelled"} = loan, _note, _borrower_id), do: {:ok, loan}
-
-  defp apply_cancellation(%Loan{status: status} = loan, note, borrower_id)
-       when status in @member_cancellable do
-    {:ok,
-     loan
-     |> Ecto.Changeset.change(%{
-       status: "cancelled",
-       decided_at: DateTime.utc_now(),
-       decided_by_principal_id: borrower_id,
-       decision_note: note
-     })
-     |> Repo.update!()}
-  end
-
-  defp apply_cancellation(%Loan{}, _note, _borrower_id), do: {:error, :not_cancellable}
-
-  # Re-read under the item lock, itself `FOR UPDATE`, so the status the
-  # cancellation decision uses cannot change between the check and the write.
-  defp fetch_own_loan(id, borrower_id) do
-    query =
-      from(l in Loan,
-        where: l.id == ^id,
-        where: l.borrower_principal_id == ^borrower_id,
-        lock: "FOR UPDATE"
-      )
-
-    case Repo.one(query) do
-      nil -> {:error, :not_found}
-      %Loan{} = loan -> {:ok, loan}
+  defp command(borrower_id, command) do
+    case AvailabilityCommands.execute({:member, borrower_id}, command) do
+      {:ok, {:loan, view}} -> {:ok, view}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -468,104 +305,17 @@ defmodule Dhc.Inventory.MemberLoans do
 
   # ── Member view ─────────────────────────────────────────────────
 
+  # Every row goes through the shared projection so a list row, a detail
+  # read, and a command outcome cannot disagree; `today` is resolved once per
+  # page so every row is judged against the same club-calendar day.
   defp member_views([]), do: []
 
   defp member_views(loans) do
     today = ClubCalendar.today()
-    Enum.map(loans, &member_view(&1, today))
+    Enum.map(loans, &LoanProjection.member_view(&1, today))
   end
 
-  defp member_view(%Loan{} = loan), do: member_view(loan, ClubCalendar.today())
-
-  defp member_view(%Loan{} = loan, today) do
-    %{
-      id: loan.id,
-      item_id: loan.item_id,
-      status: loan.status,
-      overdue?: overdue?(loan, today),
-      requested_start_on: loan.requested_start_on,
-      requested_due_on: loan.requested_due_on,
-      approved_start_on: loan.approved_start_on,
-      approved_due_on: loan.approved_due_on,
-      checked_out_at: loan.checked_out_at,
-      returned_at: loan.returned_at,
-      request_note: loan.request_note,
-      decision_note: loan.decision_note,
-      item_slug: loan.item_slug_snapshot,
-      item_label: loan.item_label_snapshot,
-      container_path: container_path(loan),
-      created_at: loan.created_at
-    }
-  end
-
-  # Overdue is derived, never a stored state (story 41): a checked-out loan
-  # past its approved due date is late, and moving the due date forward makes
-  # it not late again with no transition to undo.
-  defp overdue?(%Loan{status: "checked_out", approved_due_on: %Date{} = due_on}, today),
-    do: Date.compare(today, due_on) == :gt
-
-  defp overdue?(%Loan{}, _today), do: false
-
-  # The container path is the borrower's collection entitlement, and only
-  # once the loan is approved (story 15). Before approval there is no
-  # entitlement, so the location stays hidden even though the row may
-  # already carry a snapshot.
-  defp container_path(%Loan{status: status, approved_container_path_snapshot: path})
-       when status in ~w(approved checked_out returned),
-       do: path
-
-  defp container_path(%Loan{}), do: nil
-
-  # ── Dates ───────────────────────────────────────────────────────
-
-  # Both dates must be today or later in the club's calendar, with due on or
-  # after start. A malformed or missing date is the same domain error as a
-  # nonsensical one: the member has to fix the dates either way.
-  defp parse_dates(attrs) do
-    with {:ok, starts_on} <-
-           cast_date(take(attrs, ["startsOn", "starts_on", :startsOn, :starts_on])),
-         {:ok, due_on} <- cast_date(take(attrs, ["dueOn", "due_on", :dueOn, :due_on])),
-         :ok <- require_ordered(starts_on, due_on),
-         :ok <- require_not_past(starts_on) do
-      {:ok, starts_on, due_on}
-    end
-  end
-
-  defp cast_date(%Date{} = date), do: {:ok, date}
-
-  defp cast_date(value) when is_binary(value) do
-    case Date.from_iso8601(String.trim(value)) do
-      {:ok, date} -> {:ok, date}
-      {:error, _reason} -> {:error, :invalid_dates}
-    end
-  end
-
-  defp cast_date(_value), do: {:error, :invalid_dates}
-
-  defp require_ordered(starts_on, due_on) do
-    if Date.compare(due_on, starts_on) == :lt, do: {:error, :invalid_dates}, else: :ok
-  end
-
-  defp require_not_past(starts_on) do
-    if Date.compare(starts_on, ClubCalendar.today()) == :lt,
-      do: {:error, :invalid_dates},
-      else: :ok
-  end
-
-  # ── Notes ───────────────────────────────────────────────────────
-
-  # Blank is absence, matching the item seam's notes rule; anything
-  # non-textual is rejected rather than silently coerced.
-  defp optional_note(nil), do: {:ok, nil}
-
-  defp optional_note(note) when is_binary(note) do
-    case String.trim(note) do
-      "" -> {:ok, nil}
-      trimmed -> {:ok, String.slice(trimmed, 0, @max_note_length)}
-    end
-  end
-
-  defp optional_note(_note), do: {:error, :invalid_note}
+  defp member_view(%Loan{} = loan), do: LoanProjection.member_view(loan, ClubCalendar.today())
 
   # ── Helpers ─────────────────────────────────────────────────────
 
@@ -585,7 +335,4 @@ defmodule Dhc.Inventory.MemberLoans do
       {:present, value} -> value
     end
   end
-
-  defp unwrap({:ok, view}), do: {:ok, view}
-  defp unwrap({:error, reason}), do: {:error, reason}
 end

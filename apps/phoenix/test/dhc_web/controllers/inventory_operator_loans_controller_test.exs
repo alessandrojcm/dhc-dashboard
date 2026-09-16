@@ -155,6 +155,33 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       assert %{"errors" => %{"code" => "not_pending"}} = json_response(conn, 409)
     end
 
+    test "a retried approval leaves one durable outcome and at most one notification", %{
+      conn: conn
+    } do
+      %{item: item} = fixture()
+      {:ok, request} = request(item)
+
+      # A client that lost the first response retries. The command is not
+      # idempotent (the allocation is attributable to the first call), so the
+      # retry is a 409; the durable row and the keyed notification from the
+      # first call are untouched and not duplicated.
+      first =
+        conn
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/operator/loans/#{request.id}/approve", %{})
+
+      retry =
+        conn
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/operator/loans/#{request.id}/approve", %{})
+
+      assert %{"data" => %{"status" => "approved"}} = json_response(first, 200)
+      assert %{"errors" => %{"code" => "not_pending"}} = json_response(retry, 409)
+
+      assert {:ok, %{status: "approved"}} = Inventory.get_operator_loan(request.id)
+      assert [%{notification_key: "inventory:loan:" <> _}] = Repo.all(Notification)
+    end
+
     test "answers 422 for inverted dates", %{conn: conn} do
       %{item: item} = fixture()
       {:ok, request} = request(item)
