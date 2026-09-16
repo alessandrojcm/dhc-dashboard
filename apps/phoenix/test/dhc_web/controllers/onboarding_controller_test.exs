@@ -178,9 +178,9 @@ defmodule DhcWeb.OnboardingControllerTest do
     refute Map.has_key?(json_response(safe, 200)["data"], "continuationId")
 
     resumed_credentials =
-      conn()
-      |> put_req_header("x-onboarding-continuation", continuation_id)
-      |> post("/api/onboarding/acceptance", %{
+      safe
+      |> recycle()
+      |> post("/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => invitation.id,
         "email" => invitation.email,
         "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
@@ -189,7 +189,8 @@ defmodule DhcWeb.OnboardingControllerTest do
     assert %{"data" => %{"state" => "discordVerified"}} =
              json_response(resumed_credentials, 200)
 
-    assert get_resp_header(resumed_credentials, "x-onboarding-continuation") == [continuation_id]
+    refute Map.has_key?(json_response(resumed_credentials, 200)["data"], "continuationId")
+    assert resumed_credentials.resp_cookies["_dhc_onboarding_acceptance"]
 
     replay =
       callback
@@ -290,7 +291,7 @@ defmodule DhcWeb.OnboardingControllerTest do
     {started, continuation_id} = start_acceptance_conn(conn, invitation)
 
     {:ok, _} =
-      Dhc.Onboarding.verify_discord(continuation_id, %{
+      Dhc.Onboarding.Acceptance.verify_discord(continuation_id, %{
         "sub" => "cancel-subject",
         "preferred_username" => "cancelled"
       })
@@ -385,7 +386,7 @@ defmodule DhcWeb.OnboardingControllerTest do
     {started, continuation_id} = start_acceptance_conn(conn, invitation)
 
     assert {:error, :collision} =
-             Dhc.Onboarding.verify_discord(continuation_id, %{
+             Dhc.Onboarding.Acceptance.verify_discord(continuation_id, %{
                "sub" => "discord-request-success",
                "preferred_username" => "must-not-identify-owner"
              })
@@ -437,21 +438,20 @@ defmodule DhcWeb.OnboardingControllerTest do
     }
     |> Repo.insert!()
 
-    {:ok, state} =
-      Dhc.Onboarding.start_acceptance(
+    {:ok, handle, _view} =
+      Dhc.Onboarding.Acceptance.open(
         invitation.id,
         invitation.email,
         Date.to_iso8601(invitation.date_of_birth)
       )
 
     assert {:ok, %{state: "discordVerified"}} =
-             Dhc.Onboarding.verify_discord(state.continuation_id, %{
+             Dhc.Onboarding.Acceptance.verify_discord(handle, %{
                "sub" => "retired-discord-subject"
              })
 
-    assert Repo.get_by!(InvitationAcceptanceDiscordSubjectClaim,
-             continuation_id: state.continuation_id
-           ).provider_subject == "retired-discord-subject"
+    assert Repo.get_by!(InvitationAcceptanceDiscordSubjectClaim, continuation_id: handle).provider_subject ==
+             "retired-discord-subject"
 
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
   end
@@ -460,15 +460,15 @@ defmodule DhcWeb.OnboardingControllerTest do
     first = invitation_fixture()
     second = invitation_fixture()
 
-    {:ok, first_state} =
-      Dhc.Onboarding.start_acceptance(
+    {:ok, first_handle, _view} =
+      Dhc.Onboarding.Acceptance.open(
         first.id,
         first.email,
         Date.to_iso8601(first.date_of_birth)
       )
 
-    {:ok, second_state} =
-      Dhc.Onboarding.start_acceptance(
+    {:ok, second_handle, _view} =
+      Dhc.Onboarding.Acceptance.open(
         second.id,
         second.email,
         Date.to_iso8601(second.date_of_birth)
@@ -477,20 +477,16 @@ defmodule DhcWeb.OnboardingControllerTest do
     claims = %{"sub" => "one-subject", "preferred_username" => "same-account"}
 
     assert {:ok, %{state: "discordVerified"}} =
-             Dhc.Onboarding.verify_discord(first_state.continuation_id, claims)
+             Dhc.Onboarding.Acceptance.verify_discord(first_handle, claims)
 
     assert {:error, :collision} =
-             Dhc.Onboarding.verify_discord(second_state.continuation_id, claims)
+             Dhc.Onboarding.Acceptance.verify_discord(second_handle, claims)
 
     assert Repo.aggregate(InvitationAcceptanceDiscordSubjectClaim, :count) == 1
 
-    assert Repo.get!(
-             InvitationAcceptanceDiscordContinuation,
-             first_state.continuation_id
-           ).status == "verified"
+    assert Repo.get!(InvitationAcceptanceDiscordContinuation, first_handle).status == "verified"
 
-    second_continuation =
-      Repo.get!(InvitationAcceptanceDiscordContinuation, second_state.continuation_id)
+    second_continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, second_handle)
 
     assert second_continuation.status == "collision"
     assert second_continuation.provider_subject == nil
@@ -502,7 +498,7 @@ defmodule DhcWeb.OnboardingControllerTest do
              subject_fingerprint: fingerprint
            } = Repo.one!(InvitationAcceptanceDiscordCollisionAuditEvent)
 
-    assert continuation_id == second_state.continuation_id
+    assert continuation_id == second_handle
     assert fingerprint == second_continuation.subject_fingerprint
   end
 
@@ -540,9 +536,9 @@ defmodule DhcWeb.OnboardingControllerTest do
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
 
     unavailable =
-      conn()
-      |> put_req_header("x-onboarding-continuation", continuation_id)
-      |> get("/api/onboarding/acceptance")
+      callback
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance")
 
     assert %{"data" => %{"state" => "discordUnavailable"}} =
              json_response(unavailable, 200)
@@ -606,7 +602,7 @@ defmodule DhcWeb.OnboardingControllerTest do
     {started, continuation_id} = start_acceptance_conn(conn, invitation)
 
     {:ok, _safe_state} =
-      Dhc.Onboarding.verify_discord(continuation_id, %{
+      Dhc.Onboarding.Acceptance.verify_discord(continuation_id, %{
         "sub" => "expiring-subject",
         "preferred_username" => "must-be-zeroized"
       })

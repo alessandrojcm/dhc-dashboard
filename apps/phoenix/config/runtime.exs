@@ -179,10 +179,6 @@ if config_env() == :prod do
     config :dhc, :stripe_membership_lookup_keys, stripe_membership_lookup_keys
   end
 
-  config :dhc,
-         :invitation_verification_token_salt,
-         System.get_env("INVITATION_VERIFICATION_TOKEN_SALT", "invitation-verification-v1")
-
   config :dhc, :app_url, app_url
   config :dhc, :auth_session_domain, System.fetch_env!("AUTH_SESSION_DOMAIN")
   config :dhc, :auth_session_secure, true

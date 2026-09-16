@@ -4,7 +4,7 @@ defmodule Dhc.OnboardingConcurrencyTest do
   import Ecto.Query
 
   alias Dhc.Invitations.Invitation
-  alias Dhc.Onboarding
+  alias Dhc.Onboarding.Acceptance
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -50,7 +50,7 @@ defmodule Dhc.OnboardingConcurrencyTest do
             %{rows: [[backend_pid]]} = Repo.query!("SELECT pg_backend_pid()")
             send(test_process, {:database_backend, label, backend_pid})
 
-            Onboarding.start_acceptance(
+            Acceptance.open(
               invitation.id,
               invitation.email,
               Date.to_iso8601(invitation.date_of_birth)
@@ -69,7 +69,7 @@ defmodule Dhc.OnboardingConcurrencyTest do
 
     results = Enum.map(starts, &Task.await/1)
 
-    assert 1 == Enum.count(results, &match?({:ok, _state}, &1))
+    assert 1 == Enum.count(results, &match?({:ok, _handle, _view}, &1))
     assert 1 == Enum.count(results, &match?({:error, :missing_browser_proof}, &1))
 
     unboxed(fn ->

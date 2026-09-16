@@ -151,7 +151,7 @@ defmodule DhcWeb.AuthSessionController do
     expected_state = oauth_state(session_params)
 
     case {Plug.Crypto.secure_compare(to_string(expected_state), state),
-          Dhc.Onboarding.acceptance_state(continuation_id)} do
+          Dhc.Onboarding.Acceptance.view(continuation_id)} do
       {true, {:ok, %{state: safe_state}}}
       when safe_state in ["discordVerified", "discordCollision"] ->
         {:ok, continuation_id}
@@ -177,7 +177,7 @@ defmodule DhcWeb.AuthSessionController do
 
   defp complete_discord_callback_failure(conn, {:invitation_acceptance, continuation_id}, params) do
     outcome = if params["error"] == "access_denied", do: :cancelled, else: :failed
-    _ = Dhc.Onboarding.fail_discord(continuation_id, outcome)
+    _ = Dhc.Onboarding.Acceptance.fail_discord(continuation_id, outcome)
     acceptance_resume(conn, continuation_id)
   end
 
@@ -255,7 +255,7 @@ defmodule DhcWeb.AuthSessionController do
   end
 
   defp complete_discord_auth(conn, {:invitation_acceptance, continuation_id}, claims, token) do
-    case Dhc.Onboarding.verify_discord(continuation_id, claims, token) do
+    case Dhc.Onboarding.Acceptance.verify_discord(continuation_id, claims, token) do
       {:ok, _safe_state} -> acceptance_resume(conn, continuation_id)
       {:error, :collision} -> acceptance_resume(conn, continuation_id)
       {:error, _} -> acceptance_failure(conn, continuation_id)
@@ -440,7 +440,7 @@ defmodule DhcWeb.AuthSessionController do
   end
 
   defp discord_authorize_failure(conn, {:invitation_acceptance, continuation_id}) do
-    _ = Dhc.Onboarding.fail_discord(continuation_id, :failed)
+    _ = Dhc.Onboarding.Acceptance.fail_discord(continuation_id, :failed)
     acceptance_resume(conn, continuation_id)
   end
 
@@ -458,7 +458,7 @@ defmodule DhcWeb.AuthSessionController do
   defp acceptance_resume(conn, continuation_id) do
     app_url = Application.fetch_env!(:dhc, :app_url)
 
-    case Dhc.Onboarding.acceptance_oauth_resume_path(continuation_id) do
+    case Dhc.Onboarding.Acceptance.resume_path(continuation_id) do
       {:ok, path} -> redirect(conn, external: app_url <> path)
       {:error, _} -> redirect(conn, external: app_url <> "/members/signup/restart")
     end

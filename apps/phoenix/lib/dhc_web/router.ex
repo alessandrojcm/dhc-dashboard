@@ -104,12 +104,6 @@ defmodule DhcWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :index
-    get "/onboarding/acceptance", OnboardingController, :show_acceptance
-    post "/onboarding/acceptance", OnboardingController, :start_acceptance
-    post "/onboarding/acceptance/continue", OnboardingController, :continue_acceptance
-    post "/onboarding/acceptance/payment", OnboardingController, :submit_payment
-    post "/onboarding/acceptance/retry", OnboardingController, :retry_acceptance
-    post "/onboarding/acceptance/discord/cancel", OnboardingController, :cancel_discord
 
     get "/onboarding/invitation-acceptance",
         OnboardingController,
@@ -131,7 +125,6 @@ defmodule DhcWeb.Router do
     get "/invitations/:id", InvitationsController, :show
     get "/invitations/:id/pricing", InvitationsController, :pricing
     post "/invitations/:id/verify", InvitationsController, :verify
-    post "/invitations/:id/accept", InvitationsController, :accept
     get "/waitlist/status", WaitlistController, :index
     post "/waitlist/entries", WaitlistController, :create
     post "/webhooks/stripe", StripeWebhooksController, :create

@@ -29,10 +29,6 @@ defmodule DhcWeb.InvitationsJSON do
     %{data: %{verified: true}}
   end
 
-  def render("accept.json", %{result: %{member_id: member_id}}) do
-    %{data: %{accepted: true, memberId: member_id}}
-  end
-
   def render("resend.json", %{invitation_resend: invitation_resend}) do
     %{data: render_invitation_resend(invitation_resend)}
   end

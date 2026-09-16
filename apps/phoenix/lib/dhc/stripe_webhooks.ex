@@ -80,7 +80,7 @@ defmodule Dhc.StripeWebhooks do
       event_id: Map.get(object, "id", "unknown")
     )
 
-    :ok = Dhc.Onboarding.reconcile_stripe_event(object)
+    :ok = Dhc.Onboarding.Acceptance.reconcile_stripe_event(object)
 
     cond do
       event_type in [

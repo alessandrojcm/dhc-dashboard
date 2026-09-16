@@ -24,7 +24,6 @@ defmodule Dhc.Invitations do
   alias Dhc.Waitlist.WaitlistEntry
 
   @invite_email_template "inviteMember"
-  @verification_token_max_age_seconds 15 * 60
 
   # ── List (cursor pagination) ─────────────────────────────────────────
   # The dashboard invitations table reads only `pending` and `expired` rows,
@@ -99,66 +98,6 @@ defmodule Dhc.Invitations do
     else
       _ -> {:error, :invalid_credentials}
     end
-  end
-
-  @doc """
-  Issues a legacy opaque signed token for compatibility and rejection tests.
-  """
-  @spec issue_verification_token(String.t(), String.t(), Date.t()) :: {:ok, String.t()}
-  def issue_verification_token(invitation_id, email, %Date{} = date_of_birth) do
-    token =
-      Phoenix.Token.sign(DhcWeb.Endpoint, verification_token_salt(), %{
-        "invitation_id" => invitation_id,
-        "email" => normalize_email(email),
-        "date_of_birth" => Date.to_iso8601(date_of_birth)
-      })
-
-    {:ok, token}
-  end
-
-  @doc false
-  def verify_acceptance_token(token, invitation_id) do
-    with {:ok, claims} <- verify_token(token),
-         do: token_matches_invitation(claims, invitation_id)
-  end
-
-  @doc false
-  def convert(
-        invitation_id,
-        attempt_id,
-        next_of_kin_name,
-        next_of_kin_phone,
-        customer_id
-      ) do
-    do_convert(
-      invitation_id,
-      attempt_id,
-      next_of_kin_name,
-      next_of_kin_phone,
-      customer_id,
-      nil,
-      nil
-    )
-  end
-
-  @doc false
-  def convert(
-        invitation_id,
-        attempt_id,
-        continuation_id,
-        next_of_kin_name,
-        next_of_kin_phone,
-        customer_id
-      ) do
-    do_convert(
-      invitation_id,
-      attempt_id,
-      next_of_kin_name,
-      next_of_kin_phone,
-      customer_id,
-      continuation_id,
-      nil
-    )
   end
 
   @doc false
@@ -545,25 +484,6 @@ defmodule Dhc.Invitations do
 
     Repo.exists?(query)
   end
-
-  defp verify_token(token) when is_binary(token) do
-    Phoenix.Token.verify(DhcWeb.Endpoint, verification_token_salt(), token,
-      max_age: @verification_token_max_age_seconds
-    )
-    |> case do
-      {:ok, claims} -> {:ok, claims}
-      {:error, _reason} -> {:error, :invalid_token}
-    end
-  end
-
-  defp verify_token(_token), do: {:error, :invalid_token}
-
-  defp verification_token_salt do
-    Application.fetch_env!(:dhc, :invitation_verification_token_salt)
-  end
-
-  defp token_matches_invitation(%{"invitation_id" => invitation_id}, invitation_id), do: :ok
-  defp token_matches_invitation(_claims, _invitation_id), do: {:error, :invalid_token}
 
   defp normalize_email(email) when is_binary(email) do
     email

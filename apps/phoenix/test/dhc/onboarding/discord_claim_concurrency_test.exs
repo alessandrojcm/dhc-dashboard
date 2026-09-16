@@ -17,7 +17,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
   }
 
   alias Dhc.MemberProfiles.MemberProfile
-  alias Dhc.Onboarding
+  alias Dhc.Onboarding.Acceptance
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordCollisionAuditEvent
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -53,11 +53,11 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     end)
   end
 
-  test "the first request owns Stripe progression while its duplicate observes in-progress state" do
+  test "the first submission owns Stripe progression while its duplicate observes in-progress state" do
     assert_single_stripe_progression(:first)
   end
 
-  test "the second request owns Stripe progression while the first observes in-progress state" do
+  test "the second submission owns Stripe progression while the first observes in-progress state" do
     assert_single_stripe_progression(:second)
   end
 
@@ -80,12 +80,12 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
 
     first =
       ready_task(task_supervisor, test_process, :first, fn ->
-        Onboarding.verify_discord(first_id, claims)
+        Acceptance.verify_discord(first_id, claims)
       end)
 
     second =
       ready_task(task_supervisor, test_process, :second, fn ->
-        Onboarding.verify_discord(second_id, claims)
+        Acceptance.verify_discord(second_id, claims)
       end)
 
     assert_receive {:ready, :first, first_pid}
@@ -142,7 +142,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
 
     acceptance_task =
       ready_task(task_supervisor, test_process, :acceptance, fn ->
-        Onboarding.verify_discord(acceptance.continuation_id, claims)
+        Acceptance.verify_discord(acceptance.continuation_id, claims)
       end)
 
     link_task =
@@ -223,7 +223,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
         subject_lock_race(task_supervisor, test_process, subject, order, %{
           promotion: fn -> Auth.sign_in_with_discord(%{"sub" => subject}) end,
           claim: fn ->
-            Onboarding.verify_discord(acceptance.continuation_id, %{"sub" => subject})
+            Acceptance.verify_discord(acceptance.continuation_id, %{"sub" => subject})
           end
         })
 
@@ -490,6 +490,70 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     end)
   end
 
+  test "a webhook-triggered recovery racing a synchronous submission converts exactly once" do
+    task_supervisor = start_supervised!(Task.Supervisor)
+    test_process = self()
+    acceptance = unboxed(&verified_acceptance_fixture/0)
+
+    on_exit(fn ->
+      unboxed(fn ->
+        delete_acceptances([acceptance.invitation_id])
+        delete_member(acceptance.principal_id)
+      end)
+    end)
+
+    submission =
+      ready_task(task_supervisor, test_process, :submission, fn ->
+        Process.put(:acceptance_label, :submission)
+
+        Acceptance.submit_payment(acceptance.continuation_id, %{
+          next_of_kin_name: "Next of Kin",
+          next_of_kin_phone: "+353810000001",
+          confirmation_token: "ctok_webhook_race"
+        })
+      end)
+
+    assert_receive {:ready, :submission, submission_pid}
+    send(submission_pid, :go)
+
+    # The browser submission is now inside Stripe holding the lease.
+    assert_receive {:stripe_progression_started, :submission, stripe_pid}
+
+    attempt_id =
+      unboxed(fn ->
+        attempt =
+          Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: acceptance.invitation_id)
+
+        assert :ok = Acceptance.reconcile_stripe_event(%{"customer" => "cus_concurrency"})
+        attempt.id
+      end)
+
+    # The webhook's recovery is delivered while the lease is active: it must
+    # neither call Stripe nor convert, and must be retried later.
+    assert {:error, :operation_in_progress} = unboxed(fn -> Acceptance.recover(attempt_id) end)
+    refute_received {:stripe_progression_started, _label, _pid}
+
+    send(stripe_pid, :release_stripe_progression)
+    assert {:ok, %{state: "accepted"}} = Task.await(submission)
+
+    # The retried recovery finds the finished acceptance and converts nothing.
+    assert {:ok, %{state: "accepted"}} = unboxed(fn -> Acceptance.recover(attempt_id) end)
+    refute_received {:stripe_progression_started, _label, _pid}
+
+    principal_id = acceptance.principal_id
+
+    unboxed(fn ->
+      assert Repo.get!(InvitationAcceptanceAttempt, attempt_id).status == "completed"
+      assert Repo.aggregate(from(p in Principal, where: p.id == ^principal_id), :count) == 1
+      assert Repo.aggregate(from(m in MemberProfile, where: m.id == ^principal_id), :count) == 1
+
+      assert Repo.aggregate(
+               from(i in ExternalIdentity, where: i.principal_id == ^principal_id),
+               :count
+             ) == 1
+    end)
+  end
+
   test "concurrent recovery deliveries converge on one completed Discord-bound acceptance" do
     task_supervisor = start_supervised!(Task.Supervisor)
     test_process = self()
@@ -499,7 +563,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
         acceptance = acceptance_fixture()
 
         {:ok, %{state: "discordVerified"}} =
-          Onboarding.verify_discord(acceptance.continuation_id, %{
+          Acceptance.verify_discord(acceptance.continuation_id, %{
             "sub" => unique_subject("recovery-race"),
             "preferred_username" => "recovery-race-member"
           })
@@ -543,7 +607,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     recoveries =
       for label <- [:first_recovery, :second_recovery] do
         ready_task(task_supervisor, test_process, label, fn ->
-          Onboarding.recover_acceptance(attempt_id)
+          Acceptance.recover(attempt_id)
         end)
       end
 
@@ -592,7 +656,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
 
     callback_task =
       ready_task(task_supervisor, test_process, :callback, fn ->
-        Onboarding.verify_discord(acceptance.continuation_id, %{
+        Acceptance.verify_discord(acceptance.continuation_id, %{
           "sub" => unique_subject("callback-restart"),
           "preferred_username" => "callback-restart"
         })
@@ -600,7 +664,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
 
     restart_task =
       ready_task(task_supervisor, test_process, :restart, fn ->
-        Onboarding.start_acceptance(
+        Acceptance.open(
           invitation.id,
           invitation.email,
           Date.to_iso8601(invitation.date_of_birth),
@@ -615,9 +679,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
 
     assert {:ok, %{state: "discordVerified"}} = Task.await(callback_task)
 
-    assert {:ok, %{continuation_id: continuation_id, view: %{state: restart_state}}} =
-             Task.await(restart_task)
-
+    assert {:ok, continuation_id, %{state: restart_state}} = Task.await(restart_task)
     assert continuation_id == acceptance.continuation_id
     assert restart_state in ["awaiting_oauth", "discordVerified"]
 
@@ -717,7 +779,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
         subject = unique_subject("claim-permanent-conflict")
 
         {:ok, _state} =
-          Onboarding.verify_discord(acceptance.continuation_id, %{"sub" => subject})
+          Acceptance.verify_discord(acceptance.continuation_id, %{"sub" => subject})
 
         %{acceptance: acceptance, member: member, subject: subject}
       end)
@@ -762,7 +824,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
         |> Repo.insert!()
 
         {:error, :collision} =
-          Onboarding.verify_discord(acceptance.continuation_id, %{"sub" => subject})
+          Acceptance.verify_discord(acceptance.continuation_id, %{"sub" => subject})
 
         %{
           acceptance: acceptance,
@@ -817,13 +879,11 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
             Process.put(:acceptance_label, label)
 
             result =
-              Onboarding.accept(
-                acceptance.invitation_id,
-                acceptance.continuation_id,
-                "Next of Kin",
-                "+353810000001",
-                %{confirmation_token: "ctok_concurrency"}
-              )
+              Acceptance.submit_payment(acceptance.continuation_id, %{
+                next_of_kin_name: "Next of Kin",
+                next_of_kin_phone: "+353810000001",
+                confirmation_token: "ctok_concurrency_#{label}"
+              })
 
             send(test_process, {:acceptance_finished, label, result})
             result
@@ -860,11 +920,13 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     owner_result = Task.await(tasks[owner_label].task)
     duplicate_result = Task.await(tasks[duplicate_label].task)
 
-    assert duplicate_outcome == {:returned, {:error, :acceptance_in_progress}}
+    # The duplicate observes the durable in-progress state and never reaches Stripe.
+    assert {:returned, {:ok, %{state: "paymentPending", retry_allowed: false}}} =
+             duplicate_outcome
+
     assert additional_progression == nil
-    assert {:ok, %{member_id: member_id}} = owner_result
-    assert member_id == acceptance.principal_id
-    assert duplicate_result == {:error, :acceptance_in_progress}
+    assert {:ok, %{state: "accepted"}} = owner_result
+    assert {:ok, %{state: "paymentPending"}} = duplicate_result
     refute_received {:cancel_membership, _stripe_state}
 
     unboxed(fn ->
@@ -880,11 +942,12 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     subject = unique_subject("stripe-progression")
 
     assert {:ok, %{state: "discordVerified"}} =
-             Onboarding.verify_discord(acceptance.continuation_id, %{
+             Acceptance.verify_discord(acceptance.continuation_id, %{
                "sub" => subject,
                "preferred_username" => "stripe-progression"
              })
 
+    assert {:ok, %{state: "paymentReady"}} = Acceptance.consume_proof(acceptance.continuation_id)
     invitation = Repo.get!(Invitation, acceptance.invitation_id)
 
     Map.put(acceptance, :principal_id, invitation.prospective_principal_id)
@@ -893,14 +956,14 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
   defp acceptance_fixture do
     invitation = invitation_fixture()
 
-    {:ok, state} =
-      Onboarding.start_acceptance(
+    {:ok, handle, _view} =
+      Acceptance.open(
         invitation.id,
         invitation.email,
         Date.to_iso8601(invitation.date_of_birth)
       )
 
-    %{invitation_id: invitation.id, continuation_id: state.continuation_id}
+    %{invitation_id: invitation.id, continuation_id: handle}
   end
 
   defp invitation_fixture do
