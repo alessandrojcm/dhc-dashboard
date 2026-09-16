@@ -1,7 +1,9 @@
 defmodule DhcWeb.OnboardingController do
   use DhcWeb, :controller
 
-  alias Dhc.Onboarding
+  require Logger
+
+  alias Dhc.Onboarding.Acceptance
 
   @acceptance_cookie "_dhc_onboarding_acceptance"
   @acceptance_max_age 15 * 60
@@ -11,22 +13,16 @@ defmodule DhcWeb.OnboardingController do
         "email" => email,
         "dateOfBirth" => date_of_birth
       }) do
-    protected_continuation_id = acceptance_id_from_cookie(conn)
-
-    case Onboarding.start_acceptance(id, email, date_of_birth, protected_continuation_id) do
-      {:ok, %{continuation_id: continuation_id, view: state}} ->
+    case Acceptance.open(id, email, date_of_birth, acceptance_handle(conn)) do
+      {:ok, handle, view} ->
         conn
-        |> put_resp_cookie(
-          @acceptance_cookie,
-          continuation_id,
-          acceptance_cookie_opts()
-        )
-        |> render_state(state)
+        |> put_resp_cookie(@acceptance_cookie, handle, acceptance_cookie_opts())
+        |> render_view(view)
 
       {:error, :missing_browser_proof} ->
         restart_verification(conn, :conflict)
 
-      {:error, _} ->
+      {:error, _reason} ->
         restart_verification(conn, :unprocessable_entity)
     end
   end
@@ -34,71 +30,36 @@ defmodule DhcWeb.OnboardingController do
   def verify_invitation_acceptance(conn, _params),
     do: restart_verification(conn, :unprocessable_entity)
 
-  def start_acceptance(conn, %{
-        "invitationId" => id,
-        "email" => email,
-        "dateOfBirth" => date_of_birth
-      }) do
-    case Onboarding.start_acceptance(id, email, date_of_birth, continuation_id(conn)) do
-      {:ok, %{continuation_id: continuation_id, view: state}} ->
-        conn
-        |> put_resp_header("x-onboarding-continuation", continuation_id)
-        |> render_legacy_state(state)
-
-      {:error, :missing_browser_proof} ->
-        legacy_restart_verification(conn, :conflict)
-
-      {:error, _reason} ->
-        legacy_restart_verification(conn, :unprocessable_entity)
-    end
-  end
-
-  def start_acceptance(conn, _params),
-    do: legacy_restart_verification(conn, :unprocessable_entity)
-
-  def show_acceptance(conn, _params) do
-    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
-         {:ok, state} <- Onboarding.acceptance_state(continuation_id) do
-      render_legacy_state(conn, state)
-    else
-      _ -> legacy_restart_verification(conn)
-    end
-  end
-
   def show_invitation_acceptance(conn, _params) do
-    with continuation_id when is_binary(continuation_id) <- acceptance_id_from_cookie(conn),
-         {:ok, state} <- Onboarding.acceptance_state(continuation_id) do
-      render_state(conn, state)
-    else
-      _ -> restart_verification(conn, :conflict)
+    case Acceptance.view(acceptance_handle(conn)) do
+      {:ok, view} -> render_view(conn, view)
+      {:error, _reason} -> restart_verification(conn, :conflict)
     end
   end
 
   def start_discord(conn, _params) do
-    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
-         {:ok, %{state: state}} when state in ["awaiting_oauth", "awaitingDiscord"] <-
-           Onboarding.acceptance_state(continuation_id) do
-      DhcWeb.AuthSessionController.request_acceptance_discord(conn, continuation_id)
-    else
-      _ -> restart_verification(conn, :conflict)
+    handle = acceptance_handle(conn)
+
+    case Acceptance.view(handle) do
+      {:ok, %{state: "awaiting_oauth"}} ->
+        DhcWeb.AuthSessionController.request_acceptance_discord(conn, handle)
+
+      _other ->
+        restart_verification(conn, :conflict)
     end
   end
 
   def cancel_discord(conn, _params) do
-    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
-         {:ok, state} <- Onboarding.cancel_discord(continuation_id) do
-      render_legacy_state(conn, state)
-    else
-      _ -> restart_verification(conn, :conflict)
+    case Acceptance.cancel_discord(acceptance_handle(conn)) do
+      {:ok, view} -> render_view(conn, view)
+      {:error, _reason} -> restart_verification(conn, :conflict)
     end
   end
 
   def continue_acceptance(conn, _params) do
-    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
-         {:ok, state} <- Onboarding.continue_acceptance(continuation_id) do
-      render_state(conn, state)
-    else
-      _ -> current_or_restart(conn)
+    case Acceptance.consume_proof(acceptance_handle(conn)) do
+      {:ok, view} -> render_view(conn, view)
+      {:error, _reason} -> current_or_restart(conn)
     end
   end
 
@@ -109,10 +70,9 @@ defmodule DhcWeb.OnboardingController do
           "nextOfKinPhone" => next_of_kin_phone
         } = params
       ) do
-    continuation_id = continuation_id(conn)
     mandate_context = Map.get(params, "mandateContext", %{})
 
-    attrs = %{
+    input = %{
       next_of_kin_name: next_of_kin_name,
       next_of_kin_phone: next_of_kin_phone,
       confirmation_token: Map.get(params, "stripeConfirmationToken"),
@@ -128,9 +88,9 @@ defmodule DhcWeb.OnboardingController do
       }
     }
 
-    case Onboarding.submit_payment(continuation_id, attrs) do
-      {:ok, state} ->
-        render_state(conn, state)
+    case Acceptance.submit_payment(acceptance_handle(conn), input) do
+      {:ok, view} ->
+        render_view(conn, view)
 
       {:error, {:payment_failed, _reason}} ->
         current_or_restart(conn, :payment_required)
@@ -153,37 +113,58 @@ defmodule DhcWeb.OnboardingController do
     do: error_detail(conn, :unprocessable_entity, "Invalid payment details")
 
   def retry_acceptance(conn, _params) do
-    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
-         {:ok, state} <- Onboarding.retry_acceptance(continuation_id) do
-      render_state(conn, state)
-    else
-      _ -> current_or_restart(conn)
+    case Acceptance.retry(acceptance_handle(conn)) do
+      {:ok, view} -> render_view(conn, view)
+      {:error, _reason} -> current_or_restart(conn)
     end
   end
 
-  defp render_state(conn, state) do
-    data =
-      %{state: state.state}
-      |> maybe_put(:expiresAt, state[:expires_at] && DateTime.to_iso8601(state.expires_at))
-      |> maybe_put(:invitationEmail, state[:invitation_email])
-      |> maybe_put(:discord, state[:discord])
-      |> maybe_put(:payment, state[:payment])
-      |> maybe_put(:discordVerified, state[:discord_verified])
-      |> maybe_put(:retryAllowed, state[:retry_allowed])
-      |> maybe_put(:complimentary, state[:complimentary])
+  def preview_pricing(conn, params) do
+    case Acceptance.preview_pricing(acceptance_handle(conn), Map.get(params, "code")) do
+      {:ok, pricing} ->
+        json(conn, %{data: pricing})
 
-    json(conn, %{data: data})
+      {:error, :invalid_continuation} ->
+        current_or_restart(conn)
+
+      # ADR-0019: invalid coupon candidates use the normal 422 error shape.
+      {:error, :invalid_promotion_code} ->
+        error_detail(conn, :unprocessable_entity, "Invalid or inactive promotion code")
+
+      {:error, :forever_amount_coupon} ->
+        error_detail(
+          conn,
+          :unprocessable_entity,
+          "Forever coupons can only be percentage-based, not amount-based"
+        )
+
+      {:error, :membership_not_required} ->
+        error_detail(
+          conn,
+          :unprocessable_entity,
+          "Invitation does not require Membership pricing"
+        )
+
+      {:error, reason} ->
+        Logger.error("[onboarding] Failed to calculate invitation pricing",
+          reason: inspect(reason)
+        )
+
+        error_detail(conn, :internal_server_error, "Failed to get pricing details")
+    end
   end
 
-  defp render_legacy_state(conn, state) do
-    state =
-      Map.update(state, :state, "restartVerification", fn
-        "awaiting_oauth" -> "awaitingDiscord"
-        "restart_verification" -> "restartVerification"
-        value -> value
-      end)
+  defp render_view(conn, view) do
+    data =
+      %{state: view.state}
+      |> maybe_put(:expiresAt, view[:expires_at] && DateTime.to_iso8601(view.expires_at))
+      |> maybe_put(:invitationEmail, view[:invitation_email])
+      |> maybe_put(:discord, view[:discord])
+      |> maybe_put(:discordVerified, view[:discord_verified])
+      |> maybe_put(:retryAllowed, view[:retry_allowed])
+      |> maybe_put(:complimentary, view[:complimentary])
 
-    render_state(conn, state)
+    json(conn, %{data: data})
   end
 
   defp maybe_put(map, _key, nil), do: map
@@ -195,21 +176,10 @@ defmodule DhcWeb.OnboardingController do
     |> json(%{data: %{state: "restart_verification"}})
   end
 
-  defp legacy_restart_verification(conn, status \\ :conflict) do
-    conn
-    |> put_status(status)
-    |> json(%{data: %{state: "restartVerification"}})
-  end
-
-  defp acceptance_id_from_cookie(conn) do
+  defp acceptance_handle(conn) do
     conn
     |> fetch_cookies(signed: [@acceptance_cookie])
     |> then(& &1.cookies[@acceptance_cookie])
-  end
-
-  defp continuation_id(conn) do
-    acceptance_id_from_cookie(conn) ||
-      get_req_header(conn, "x-onboarding-continuation") |> List.first()
   end
 
   defp acceptance_cookie_opts do
@@ -224,11 +194,9 @@ defmodule DhcWeb.OnboardingController do
   end
 
   defp current_or_restart(conn, status \\ :conflict) do
-    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
-         {:ok, state} <- Onboarding.acceptance_state(continuation_id) do
-      conn |> put_status(status) |> render_state(state)
-    else
-      _ -> restart_verification(conn, :conflict)
+    case Acceptance.view(acceptance_handle(conn)) do
+      {:ok, view} -> conn |> put_status(status) |> render_view(view)
+      {:error, _reason} -> restart_verification(conn, :conflict)
     end
   end
 

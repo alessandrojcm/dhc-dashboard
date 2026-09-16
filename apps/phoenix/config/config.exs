@@ -30,7 +30,6 @@ config :dhc,
 # Salt namespace for short-lived public invitation verification tokens. The
 # Endpoint secret_key_base remains the signing secret; this salt is configurable
 # so deployments can rotate the token namespace without code changes.
-config :dhc, :invitation_verification_token_salt, "invitation-verification-v1"
 
 config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
 config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live

@@ -225,14 +225,11 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 				</p>
 			</div>
 			<svelte:boundary>
-				{#if page.params.invitationId}
-					<PricingDisplay
-						invitationId={page.params.invitationId ?? ""}
-						bind:currentCoupon
-						{nextMonthlyBillingDate}
-						{nextAnnualBillingDate}
-					/>
-				{/if}
+				<PricingDisplay
+					bind:currentCoupon
+					{nextMonthlyBillingDate}
+					{nextAnnualBillingDate}
+				/>
 				{#snippet failed(error, reset)}
 					<Alert.Root variant="destructive" class="w-full mb-4">
 						<Alert.Title>Error loading pricing information</Alert.Title>

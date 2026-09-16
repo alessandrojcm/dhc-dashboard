@@ -8,11 +8,11 @@ defmodule Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker do
 
   require Logger
 
-  alias Dhc.Onboarding
+  alias Dhc.Onboarding.Acceptance
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    case Onboarding.expire_discord_continuations() do
+    case Acceptance.expire_continuations() do
       {:ok, _expired_count} ->
         :ok
 

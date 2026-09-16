@@ -6,7 +6,12 @@ defmodule Dhc.Onboarding.StripeAdapter.Test do
   @impl true
   def preview_membership(discount_reference) do
     send(test_pid(), {:preview_membership, discount_reference})
-    {:ok, %{proratedPrice: %{amount: 0}}}
+
+    Application.get_env(
+      :dhc,
+      :onboarding_stripe_preview_result,
+      {:ok, %{proratedPrice: %{amount: 0}}}
+    )
   end
 
   @impl true

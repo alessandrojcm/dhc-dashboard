@@ -21,16 +21,8 @@ defmodule DhcWeb.InvitationsJSON do
     %{data: render_public_invitation(invitation)}
   end
 
-  def render("pricing.json", %{pricing: pricing}) do
-    %{data: pricing}
-  end
-
   def render("verify.json", _assigns) do
     %{data: %{verified: true}}
-  end
-
-  def render("accept.json", %{result: %{member_id: member_id}}) do
-    %{data: %{accepted: true, memberId: member_id}}
   end
 
   def render("resend.json", %{invitation_resend: invitation_resend}) do

@@ -535,60 +535,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /invitations/{id}/pricing:
-    get:
-      operationId: invitations.pricing
-      tags:
-        - Invitations
-      summary: Read public invitation pricing
-      description: |
-        Returns the signup pricing preview for a pending invitation. When a
-        promotion code is supplied, Stripe validates it and applies it to the
-        invoice previews before the DTO is returned.
-
-        Under ADR 0010, no `user_profiles` row exists at pricing
-        time. The endpoint lazily creates a Stripe Customer on first preview
-        and persists the customer id on the invitation row so acceptance can
-        reuse it; subsequent pricing calls reuse the same customer.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: code
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Optional Stripe promotion code entered by the invitee.
-      responses:
-        "200":
-          description: Invitation signup pricing
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InvitationPricingResponse"
-        "400":
-          description: Invalid or inactive promotion code
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: Invitation not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Pricing calculation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /invitations/{id}/verify:
     post:
       operationId: invitations.verify
@@ -630,124 +576,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-
-  /invitations/{id}/accept:
-    post:
-      operationId: invitations.accept
-      tags:
-        - Invitations
-      summary: Accept a verified invitation
-      description: |
-        Atomically materializes a Discord-verified invitation into a Principal,
-        External Identity, and Member record set in one Phoenix-owned
-        transaction (ADRs 0010 and 0014). The protected Continuation header must
-        identify the verified Continuation bound to this Invitation and its
-        active Acceptance Attempt. Only this endpoint may transition an
-        invitation to accepted.
-
-        On success the transaction has created, all together: the
-        Authentication Principal (id = invitation.user_id, authoritative
-        email = invitation email), the UserProfile, the MemberProfile, the
-        `member` role, the invitation flip to `accepted`,
-        `user_profile.is_active = true`, and the waitlist `joined` update.
-
-        Acceptance is registration, not login. It does **not** establish a
-        Session or send a magic link — the new Member signs in through the
-        normal magic-link (or Discord) login path. Failed or replayed
-        acceptance leaves no partial record set. The Invitation status,
-        Acceptance Attempt, one-time Discord Claim, and consumed Continuation
-        provide the replay defense.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: x-onboarding-continuation
-          in: header
-          required: true
-          description: Opaque verified Continuation retained only in the SvelteKit HTTP-only browser session.
-          schema: { type: string, format: uuid }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/InvitationAcceptRequest"
-      responses:
-        "200":
-          description: Invitation accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InvitationAcceptResponse"
-        "400":
-          description: Invalid request body
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "409":
-          description: Discord verification is missing, expired, or mismatched, or this Acceptance is already progressing
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "422":
-          description: Invitation or acceptance payload cannot be accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Invitation acceptance failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
-  /onboarding/acceptance:
-    post:
-      operationId: onboarding.startAcceptance
-      tags: [Onboarding]
-      summary: Verify Invitation credentials through the legacy continuation-header transport
-      description: |
-        Compatibility endpoint for clients that still transport the opaque
-        Continuation identifier in the x-onboarding-continuation header. New
-        browser flows must use /onboarding/invitation-acceptance/verify so the
-        proof remains in a signed HttpOnly cookie.
-      security: []
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/OnboardingStartAcceptanceRequest"
-      responses:
-        "200":
-          description: Safe protected acceptance state
-          headers:
-            x-onboarding-continuation:
-              description: Opaque proof for the SvelteKit protected HTTP-only browser session; never expose to browser JavaScript or URLs.
-              schema: { type: string, format: uuid }
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
-        "422":
-          description: Malformed or invalid Invitation credentials; safe restart state
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
-        "409":
-          description: A live flow exists but this browser has no valid proof
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
 
   /onboarding/invitation-acceptance/verify:
     post:
@@ -983,6 +811,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance/pricing:
+    get:
+      operationId: onboarding.previewPricing
+      tags: [Onboarding]
+      summary: Read the signup pricing preview for the current acceptance session
+      description: |
+        Returns the membership pricing preview for the Invitation behind the
+        browser's acceptance proof. The proof is the only workflow authority:
+        the Invitation id is never accepted as input. Pricing is available only
+        to a `paymentReady` session — after its Discord proof has been consumed
+        and before payment submission begins (ADR 0019). When a promotion code
+        is supplied, Stripe validates it and applies it to the invoice previews
+        for standard invitations; tiered invitations resolve their discount
+        server-side and ignore the code. This read creates no Stripe state.
+      security:
+        - onboardingContinuation: []
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional Stripe promotion code entered by the invitee.
+      responses:
+        "200":
+          description: Invitation signup pricing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationPricingResponse"
+        "409":
+          description: Session is not paymentReady (proof missing, not yet consumed, payment already started, or ended); current safe state is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Invalid or inactive promotion code, or the Invitation does not require Membership pricing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Pricing calculation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /waitlist/status:
     get:
@@ -4876,45 +4753,6 @@ components:
             verified:
               type: boolean
               description: Always true when credentials verify successfully.
-    InvitationAcceptRequest:
-      type: object
-      required:
-        - nextOfKinName
-        - nextOfKinPhone
-        - stripeConfirmationToken
-      properties:
-        nextOfKinName:
-          type: string
-          minLength: 1
-        nextOfKinPhone:
-          type: string
-          minLength: 1
-        stripeConfirmationToken:
-          type: string
-          minLength: 1
-        couponCode:
-          type: string
-        mandateContext:
-          type: object
-          additionalProperties: true
-          description: Client mandate context needed for Stripe confirmation.
-    InvitationAcceptResponse:
-      type: object
-      required:
-        - data
-      properties:
-        data:
-          type: object
-          required:
-            - accepted
-            - memberId
-          properties:
-            accepted:
-              type: boolean
-              description: Always true when the invitation is accepted successfully.
-            memberId:
-              type: string
-              format: uuid
     WaitlistStatusResponse:
       type: object
       required:

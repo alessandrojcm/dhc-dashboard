@@ -8,7 +8,7 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
   alias Dhc.Discord.Workers.GuildJoinWorker
   alias Dhc.Discord.Workers.JoinGrantCleanupWorker
   alias Dhc.Invitations.Invitation
-  alias Dhc.Onboarding
+  alias Dhc.Onboarding.Acceptance
 
   setup do
     start_supervised!({TestAdapter, owner: self()})
@@ -102,30 +102,30 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
       }
       |> Repo.insert!()
 
-    {:ok, started} =
-      Onboarding.start_acceptance(
+    {:ok, handle, _view} =
+      Acceptance.open(
         invitation.id,
         invitation.email,
         Date.to_iso8601(invitation.date_of_birth)
       )
 
-    {:ok, _state} =
-      Onboarding.verify_discord(
-        started.continuation_id,
+    {:ok, _view} =
+      Acceptance.verify_discord(
+        handle,
         %{"sub" => discord_user_id, "preferred_username" => "new-member"},
         %{"access_token" => "short-lived-access-token", "expires_in" => 604_800}
       )
 
-    {:ok, %{state: "paymentReady"}} = Onboarding.continue_acceptance(started.continuation_id)
+    {:ok, %{state: "paymentReady"}} = Acceptance.consume_proof(handle)
 
     {:ok, %{state: "accepted"}} =
-      Onboarding.submit_payment(started.continuation_id, %{
+      Acceptance.submit_payment(handle, %{
         next_of_kin_name: "Grace Hopper",
         next_of_kin_phone: "+353810000099",
         confirmation_token: "ctok_guild_join"
       })
 
-    {Repo.get_by!(JoinGrant, continuation_id: started.continuation_id), discord_user_id}
+    {Repo.get_by!(JoinGrant, continuation_id: handle), discord_user_id}
   end
 
   defp restore_env(key, nil), do: Application.delete_env(:dhc, key)

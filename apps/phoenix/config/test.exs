@@ -62,7 +62,6 @@ config :dhc, :stripe_secret_key, stripe_secret_key || "sk_test_stub_key"
 config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
 config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verification"
-config :dhc, :invitation_verification_token_salt, "invitation-verification-test"
 
 config :dhc,
        :invitation_acceptance_subject_fingerprint_secret,

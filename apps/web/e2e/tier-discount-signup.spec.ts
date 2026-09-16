@@ -1,9 +1,4 @@
-import {
-	expect,
-	test,
-	type APIRequestContext,
-	type Page,
-} from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { MEMBERSHIP_FEE_LOOKUP_NAME } from "../src/lib/server/constants";
 import {
 	routeSuccessfulDiscordAcceptance,
@@ -217,12 +212,12 @@ async function fillNextOfKinAndPayment(page: Page, invitation: InvitedUser) {
 	);
 }
 
-async function fetchPricing(
-	request: APIRequestContext,
-	invitationId: string,
-): Promise<PricingDTO["data"]> {
-	const response = await request.get(
-		`${API_BASE_URL}/invitations/${invitationId}/pricing`,
+// Pricing is bound to the acceptance session: the request must carry the
+// browser's `_dhc_onboarding_acceptance` cookie, so it goes through the page's
+// request context after the Discord step has been completed.
+async function fetchPricing(page: Page): Promise<PricingDTO["data"]> {
+	const response = await page.request.get(
+		`${API_BASE_URL}/onboarding/invitation-acceptance/pricing`,
 	);
 	expect(response.status()).toBe(200);
 	return v.parse(PricingSchema, await response.json()).data;
@@ -258,12 +253,12 @@ test.describe.configure({ timeout: 90_000 });
 
 test("a student tier invitation completes signup with a discounted monthly fee", async ({
 	page,
-	request,
 }) => {
 	const invitation = await setupInvitedUser({ pricingTier: "student" });
 
 	try {
-		const pricing = await fetchPricing(request, invitation.invitationId);
+		await walkToPayment(page, invitation);
+		const pricing = await fetchPricing(page);
 
 		const fullFeeCents = pricing.monthlyFee.amount;
 		const discountedFee = pricing.discountedMonthlyFee;
@@ -272,8 +267,6 @@ test("a student tier invitation completes signup with a discounted monthly fee",
 		}
 		const discountedFeeCents = discountedFee.amount;
 		expect(discountedFeeCents).toBeLessThan(fullFeeCents);
-
-		await walkToPayment(page, invitation);
 
 		const monthlyRow = pricingRow(page, "Then monthly");
 		const [shownDiscounted, shownOriginal] = currencyValues(
@@ -341,16 +334,14 @@ test("a student tier invitation completes signup with a discounted monthly fee",
 
 test("a coach tier invitation completes signup with complimentary membership", async ({
 	page,
-	request,
 }) => {
 	const invitation = await setupInvitedUser({ pricingTier: "coach" });
 
 	try {
-		const pricing = await fetchPricing(request, invitation.invitationId);
+		await walkToPayment(page, invitation, false);
+		const pricing = await fetchPricing(page);
 		expect(pricing.proratedPrice.amount).toBe(0);
 		expect(pricing.discountPercentage).toBe(100);
-
-		await walkToPayment(page, invitation, false);
 
 		await expect(page.getByText("Due today", { exact: true })).toHaveCount(0);
 		await expect(page.getByText("Have a promotional code?")).toHaveCount(0);
