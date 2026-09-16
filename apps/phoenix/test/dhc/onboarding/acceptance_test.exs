@@ -410,14 +410,59 @@ defmodule Dhc.Onboarding.AcceptanceTest do
     end
   end
 
-  test "resume_path/1 returns the dashboard resume route only for a known handle" do
-    invitation = insert_invitation!()
-    {:ok, handle, _view} = open(invitation)
+  describe "resume_path/1" do
+    test "returns the dashboard resume route only for a known handle" do
+      invitation = insert_invitation!()
+      {:ok, handle, _view} = open(invitation)
 
-    assert {:ok, "/members/signup/" <> rest} = Acceptance.resume_path(handle)
-    assert rest == "#{invitation.id}/resume"
-    assert {:error, :invalid_continuation} = Acceptance.resume_path(Ecto.UUID.generate())
-    assert {:error, :invalid_continuation} = Acceptance.resume_path("junk")
+      assert {:ok, "/members/signup/" <> rest} = Acceptance.resume_path(handle)
+      assert rest == "#{invitation.id}/resume"
+      assert {:error, :invalid_continuation} = Acceptance.resume_path(Ecto.UUID.generate())
+      assert {:error, :invalid_continuation} = Acceptance.resume_path("junk")
+      assert {:error, :invalid_continuation} = Acceptance.resume_path(nil)
+    end
+
+    test "still resolves after the OAuth callback ended the session" do
+      invitation = insert_invitation!()
+      {:ok, handle, _view} = open(invitation)
+      {:ok, %{state: "discordUnavailable"}} = Acceptance.fail_discord(handle, :failed)
+
+      assert {:ok, "/members/signup/#{invitation.id}/resume"} == Acceptance.resume_path(handle)
+    end
+
+    test "a Continuation that ended underneath the callback still lands on its own Invitation" do
+      invitation = insert_invitation!()
+      {:ok, handle, _view} = verified(invitation, "superseded-resume")
+
+      expire_continuation!(handle)
+      assert {:error, :restart_verification} = Acceptance.view(handle)
+
+      assert {:ok, "/members/signup/#{invitation.id}/resume"} == Acceptance.resume_path(handle)
+    end
+
+    test "a stray Continuation whose Attempt was consumed by another proof resolves through the graph" do
+      invitation = insert_invitation!()
+      {:ok, handle, _view} = ready(invitation, "stray-resume")
+      attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
+      # The composite FK (attempt_id, invitation_id) forbids re-pointing a
+      # Continuation at another Invitation, so the malformed shape the database
+      # admits is a second Continuation on an Attempt bound to a different
+      # proof. It resolves to its own Invitation and nowhere else, and the
+      # dashboard page it lands on then reads restart.
+      stray =
+        Repo.insert!(%InvitationAcceptanceDiscordContinuation{
+          invitation_id: invitation.id,
+          attempt_id: attempt.id,
+          status: "cancelled",
+          concluded_at: seconds_ago(1),
+          expires_at: DateTime.add(DateTime.utc_now(), 60, :second) |> DateTime.truncate(:second)
+        })
+
+      assert {:ok, "/members/signup/#{invitation.id}/resume"} == Acceptance.resume_path(stray.id)
+      assert {:error, :restart_verification} = Acceptance.view(stray.id)
+      assert {:ok, %{state: "paymentReady"}} = Acceptance.view(handle)
+    end
   end
 
   # ── Proof consumption ────────────────────────────────────────────────
@@ -473,32 +518,72 @@ defmodule Dhc.Onboarding.AcceptanceTest do
 
     test "is read-only and passes a standard invitation's coupon to the adapter" do
       invitation = insert_invitation!()
+      {:ok, handle, _subject} = ready(invitation, "pricing-standard")
 
-      assert {:ok, %{proratedPrice: %{amount: 0}}} = Onboarding.pricing(invitation.id, "WELCOME")
+      assert {:ok, %{proratedPrice: %{amount: 0}}} = Acceptance.preview_pricing(handle, "WELCOME")
       assert_received {:preview_membership, "WELCOME"}
-      refute Repo.exists?(InvitationAcceptanceAttempt)
+      assert {:ok, %{state: "paymentReady"}} = Acceptance.view(handle)
+      refute_received {:prepare_payment, _}
     end
 
     test "a student tier resolves its coupon and ignores the user-supplied code" do
       invitation = insert_invitation!(pricing_tier: "student")
+      {:ok, handle, _subject} = ready(invitation, "pricing-student")
 
-      assert {:ok, _pricing} = Acceptance.preview_pricing(invitation.id, "USER-SUPPLIED")
+      assert {:ok, _pricing} = Acceptance.preview_pricing(handle, "USER-SUPPLIED")
       assert_received {:preview_membership, {:coupon, "DHC_STUDENT_TIER", [:monthly]}}
     end
 
     test "a coach tier is complimentary without touching Stripe" do
       invitation = insert_invitation!(pricing_tier: "coach")
+      {:ok, handle, _subject} = ready(invitation, "pricing-coach")
 
-      assert {:ok, %{complimentary: true}} = Acceptance.preview_pricing(invitation.id)
+      assert {:ok, %{complimentary: true}} = Acceptance.preview_pricing(handle)
       refute_received {:preview_membership, _}
     end
 
-    test "unknown, expired, or malformed invitations are not found" do
-      expired = insert_invitation!(expires_at: seconds_ago(1))
+    test "is available only in paymentReady: neither before proof consumption nor once payment started" do
+      unconsumed = insert_invitation!()
+      {:ok, unconsumed_handle, _subject} = verified(unconsumed, "pricing-unconsumed")
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing(unconsumed_handle)
 
-      assert {:error, :not_found} = Acceptance.preview_pricing(expired.id)
-      assert {:error, :not_found} = Acceptance.preview_pricing(Ecto.UUID.generate())
-      assert {:error, :not_found} = Acceptance.preview_pricing("nope")
+      stalled = insert_invitation!()
+      {:ok, stalled_handle, _subject} = ready(stalled, "pricing-stalled")
+      Application.put_env(:dhc, :onboarding_stripe_result, {:error, {:http_error, :timeout}})
+
+      assert {:error, {:provider_unavailable, _}} =
+               Acceptance.submit_payment(stalled_handle, @payment)
+
+      flush_stripe_messages()
+      assert {:ok, %{state: "paymentPending"}} = Acceptance.view(stalled_handle)
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing(stalled_handle)
+      refute_received {:preview_membership, _}
+    end
+
+    test "an Invitation id is not a handle and a session before Discord cannot be priced" do
+      invitation = insert_invitation!()
+      {:ok, handle, _view} = open(invitation)
+
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing(invitation.id)
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing(handle)
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing(Ecto.UUID.generate())
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing("nope")
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing(nil)
+      refute_received {:preview_membership, _}
+    end
+
+    test "an expired or cancelled session cannot be priced" do
+      expired = insert_invitation!()
+      {:ok, expired_handle, _} = verified(expired, "pricing-expired")
+      expire_continuation!(expired_handle)
+
+      cancelled = insert_invitation!()
+      {:ok, cancelled_handle, _} = verified(cancelled, "pricing-cancelled")
+      {:ok, _view} = Acceptance.cancel_discord(cancelled_handle)
+
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing(expired_handle)
+      assert {:error, :invalid_continuation} = Acceptance.preview_pricing(cancelled_handle)
+      refute_received {:preview_membership, _}
     end
   end
 

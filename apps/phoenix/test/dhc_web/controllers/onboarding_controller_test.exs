@@ -667,6 +667,69 @@ defmodule DhcWeb.OnboardingControllerTest do
              json_response(malformed_proof, 409)
   end
 
+  test "pricing is served only to the browser whose session is paymentReady", %{
+    conn: conn
+  } do
+    invitation = invitation_fixture()
+    {started, continuation_id} = start_acceptance_conn(conn, invitation)
+
+    # The public Invitation id is not workflow authority.
+    assert get(conn(), "/api/invitations/#{invitation.id}/pricing").status == 404
+
+    assert %{"data" => %{"state" => "restart_verification"}} =
+             get(conn(), "/api/onboarding/invitation-acceptance/pricing") |> json_response(409)
+
+    # Before Discord the session reads back its current state instead of pricing.
+    assert %{"data" => %{"state" => "awaiting_oauth"}} =
+             started
+             |> recycle()
+             |> get("/api/onboarding/invitation-acceptance/pricing")
+             |> json_response(409)
+
+    {:ok, _} =
+      Dhc.Onboarding.Acceptance.verify_discord(continuation_id, %{
+        "sub" => "pricing-subject",
+        "preferred_username" => "pricing"
+      })
+
+    assert %{"data" => %{"state" => "discordVerified"}} =
+             started
+             |> recycle()
+             |> get("/api/onboarding/invitation-acceptance/pricing")
+             |> json_response(409)
+
+    assert %{"data" => %{"state" => "paymentReady"}} =
+             started
+             |> recycle()
+             |> post("/api/onboarding/invitation-acceptance/continue")
+             |> json_response(200)
+
+    priced =
+      started
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance/pricing", %{"code" => "WELCOME"})
+
+    assert %{"data" => %{"proratedPrice" => %{"amount" => 0}}} = json_response(priced, 200)
+    assert_received {:preview_membership, "WELCOME"}
+
+    # ADR-0019: an invalid coupon candidate is a 422, not a 4xx of its own.
+    Application.put_env(
+      :dhc,
+      :onboarding_stripe_preview_result,
+      {:error, :invalid_promotion_code}
+    )
+
+    on_exit(fn -> Application.delete_env(:dhc, :onboarding_stripe_preview_result) end)
+
+    rejected =
+      started
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance/pricing", %{"code" => "BOGUS"})
+
+    assert %{"errors" => %{"detail" => "Invalid or inactive promotion code"}} =
+             json_response(rejected, 422)
+  end
+
   test "expired, replay-ineligible, and converted Invitations return the same safe state", %{
     conn: conn
   } do

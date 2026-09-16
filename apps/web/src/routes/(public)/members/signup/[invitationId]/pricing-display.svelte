@@ -14,11 +14,9 @@ dayjs.extend(advancedFormat);
 
 let {
 	currentCoupon = $bindable(""),
-	invitationId,
 	nextMonthlyBillingDate,
 	nextAnnualBillingDate,
 }: {
-	invitationId: string;
 	currentCoupon: string | undefined;
 	nextMonthlyBillingDate: Date;
 	nextAnnualBillingDate: Date;
@@ -33,7 +31,7 @@ async function handleApplyCoupon() {
 
 	try {
 		const code = couponCode.trim();
-		await getPricingDetail({ invitationId, code });
+		await getPricingDetail({ code });
 		currentCoupon = code;
 	} catch (error) {
 		applyCouponError =
@@ -44,7 +42,7 @@ async function handleApplyCoupon() {
 }
 </script>
 
-{#await getPricingDetail({ invitationId, code: currentCoupon })}
+{#await getPricingDetail({ code: currentCoupon })}
 	<!-- Loading state -->
 	<Card.Root class="bg-muted">
 		<Card.Content class="py-8">

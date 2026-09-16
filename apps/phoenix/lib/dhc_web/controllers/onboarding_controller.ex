@@ -1,6 +1,8 @@
 defmodule DhcWeb.OnboardingController do
   use DhcWeb, :controller
 
+  require Logger
+
   alias Dhc.Onboarding.Acceptance
 
   @acceptance_cookie "_dhc_onboarding_acceptance"
@@ -114,6 +116,41 @@ defmodule DhcWeb.OnboardingController do
     case Acceptance.retry(acceptance_handle(conn)) do
       {:ok, view} -> render_view(conn, view)
       {:error, _reason} -> current_or_restart(conn)
+    end
+  end
+
+  def preview_pricing(conn, params) do
+    case Acceptance.preview_pricing(acceptance_handle(conn), Map.get(params, "code")) do
+      {:ok, pricing} ->
+        json(conn, %{data: pricing})
+
+      {:error, :invalid_continuation} ->
+        current_or_restart(conn)
+
+      # ADR-0019: invalid coupon candidates use the normal 422 error shape.
+      {:error, :invalid_promotion_code} ->
+        error_detail(conn, :unprocessable_entity, "Invalid or inactive promotion code")
+
+      {:error, :forever_amount_coupon} ->
+        error_detail(
+          conn,
+          :unprocessable_entity,
+          "Forever coupons can only be percentage-based, not amount-based"
+        )
+
+      {:error, :membership_not_required} ->
+        error_detail(
+          conn,
+          :unprocessable_entity,
+          "Invitation does not require Membership pricing"
+        )
+
+      {:error, reason} ->
+        Logger.error("[onboarding] Failed to calculate invitation pricing",
+          reason: inspect(reason)
+        )
+
+        error_detail(conn, :internal_server_error, "Failed to get pricing details")
     end
   end
 

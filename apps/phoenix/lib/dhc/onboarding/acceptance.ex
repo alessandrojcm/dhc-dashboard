@@ -14,6 +14,14 @@ defmodule Dhc.Onboarding.Acceptance do
   transactions with a durable operation lease recorded first and re-validated
   afterwards, and synchronous payment submission, explicit retry, and Oban
   recovery all converge on the same private progression path.
+
+  The browser-facing surface is: `open/4`, `view/1`, the three OAuth-callback
+  outcomes `verify_discord/3` / `fail_discord/2` / `cancel_discord/1`,
+  `resume_path/1` (the callback's redirect target), `consume_proof/1`,
+  `preview_pricing/2`, `submit_payment/2`, and `retry/1`. Every one of them
+  takes the handle and resolves it through the locked graph. The background
+  surface (`recover/1`, `reconcile_stripe_event/1`, `expire_continuations/0`)
+  is keyed by Attempt or Stripe identity because no browser is involved.
   """
 
   import Ecto.Query
@@ -129,8 +137,17 @@ defmodule Dhc.Onboarding.Acceptance do
     end
   end
 
-  @doc "Records a Discord OAuth failure or provider-side cancellation before any subject was bound."
-  @spec fail_discord(handle(), :cancelled | :failed) ::
+  @doc """
+  Records a Discord OAuth failure or provider-side cancellation before any
+  subject was bound.
+
+  This is the third outcome of the OAuth callback next to `verify_discord/3`
+  (claims arrived) and `cancel_discord/1` (the browser gave up): the provider
+  answered without claims, so the session ends as `discordUnavailable`
+  (`:failed`) or restart (`:cancelled`) under the same locks, and the Attempt is
+  declined so the Invitation can open a fresh session.
+  """
+  @spec fail_discord(handle() | nil, :cancelled | :failed) ::
           {:ok, view()} | {:error, :invalid_continuation}
   def fail_discord(handle, outcome) when outcome in [:cancelled, :failed] do
     with_locked(handle, :invalid_continuation, fn locked ->
@@ -160,16 +177,21 @@ defmodule Dhc.Onboarding.Acceptance do
     end)
   end
 
-  @doc "The dashboard path the OAuth callback returns the browser to."
-  @spec resume_path(handle()) :: {:ok, String.t()} | {:error, :invalid_continuation}
+  @doc """
+  The dashboard path the OAuth callback redirects the browser to.
+
+  The callback is the one browser-facing operation that answers with a
+  redirect instead of a view, and the dashboard keys that page by the public
+  Invitation URL the browser came from. The Invitation is resolved through the
+  locked, relationship-checked graph so a Continuation whose rows no longer
+  agree cannot steer the browser to another Invitation. Terminal sessions still
+  resolve: the callback lands on the resume page after a failure too.
+  """
+  @spec resume_path(handle() | nil) :: {:ok, String.t()} | {:error, :invalid_continuation}
   def resume_path(handle) do
-    with {:ok, continuation_id} <- cast_uuid(handle),
-         %InvitationAcceptanceDiscordContinuation{invitation_id: invitation_id} <-
-           Repo.get(InvitationAcceptanceDiscordContinuation, continuation_id) do
-      {:ok, "/members/signup/#{invitation_id}/resume"}
-    else
-      _ -> {:error, :invalid_continuation}
-    end
+    with_locked(handle, :invalid_continuation, fn %Locked{invitation: invitation} ->
+      "/members/signup/#{invitation.id}/resume"
+    end)
   end
 
   @doc """
@@ -202,17 +224,37 @@ defmodule Dhc.Onboarding.Acceptance do
   end
 
   @doc """
-  Read-only pricing preview. The Invitation's pricing tier decides the
-  discount; a user-supplied coupon only applies to standard invitations.
+  Read-only pricing preview for the session's Invitation.
+
+  The handle is the only authority: pricing is available only to the
+  `paymentReady` session, i.e. after its Discord proof was consumed and before
+  payment started (ADR-0019). The Invitation's pricing tier decides the
+  discount; a user-supplied coupon only applies to standard invitations. Stripe
+  is consulted outside the lock and nothing is written.
   """
-  @spec preview_pricing(String.t(), String.t() | nil) :: {:ok, map()} | {:error, term()}
-  def preview_pricing(invitation_id, coupon_candidate \\ nil) do
-    with {:ok, invitation_id} <- cast_uuid(invitation_id),
-         %Invitation{} = invitation <- pending_unexpired_invitation(invitation_id) do
+  @spec preview_pricing(handle() | nil, String.t() | nil) ::
+          {:ok, map()} | {:error, :invalid_continuation | term()}
+  def preview_pricing(handle, coupon_candidate \\ nil) do
+    with {:ok, invitation} <- priceable_invitation(handle) do
       preview_tier_pricing(invitation, coupon_candidate)
-    else
-      _ -> {:error, :not_found}
     end
+  end
+
+  defp priceable_invitation(handle) do
+    with_locked(handle, :invalid_continuation, fn locked ->
+      ensure!(priceable?(locked), :invalid_continuation)
+      locked.invitation
+    end)
+  end
+
+  # ADR-0019 protected pricing contract: only the `paymentReady` session (the
+  # consumed proof whose Attempt has not started payment) may preview pricing.
+  # A consumed proof keeps its Attempt past wall-clock expiry, as in
+  # `submit_payment/2`, so expiry is not part of this fence.
+  defp priceable?(%Locked{} = locked) do
+    locked.invitation.status == "pending" and locked.continuation.status == "verified" and
+      Locked.active_claim?(locked) and Locked.consumed?(locked) and
+      Locked.payment_ready?(locked.attempt)
   end
 
   defp preview_tier_pricing(%Invitation{pricing_tier: "coach"}, _coupon),
@@ -1322,16 +1364,6 @@ defmodule Dhc.Onboarding.Acceptance do
     %{"attempt_id" => attempt_id}
     |> AcceptanceRecoveryWorker.new(schedule_in: delay, replace: [scheduled: [:scheduled_at]])
     |> Oban.insert!()
-  end
-
-  defp pending_unexpired_invitation(invitation_id) do
-    now = now()
-
-    Repo.one(
-      from(i in Invitation,
-        where: i.id == ^invitation_id and i.status == "pending" and i.expires_at > ^now
-      )
-    )
   end
 
   # Runs `fun` against the locked graph for a handle inside one transaction.

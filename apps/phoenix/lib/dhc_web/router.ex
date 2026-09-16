@@ -116,6 +116,7 @@ defmodule DhcWeb.Router do
     post "/onboarding/invitation-acceptance/continue", OnboardingController, :continue_acceptance
     post "/onboarding/invitation-acceptance/payment", OnboardingController, :submit_payment
     post "/onboarding/invitation-acceptance/retry", OnboardingController, :retry_acceptance
+    get "/onboarding/invitation-acceptance/pricing", OnboardingController, :preview_pricing
 
     post "/onboarding/invitation-acceptance/discord/cancel",
          OnboardingController,
@@ -123,7 +124,6 @@ defmodule DhcWeb.Router do
 
     get "/options", MembersController, :options
     get "/invitations/:id", InvitationsController, :show
-    get "/invitations/:id/pricing", InvitationsController, :pricing
     post "/invitations/:id/verify", InvitationsController, :verify
     get "/waitlist/status", WaitlistController, :index
     post "/waitlist/entries", WaitlistController, :create

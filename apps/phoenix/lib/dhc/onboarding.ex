@@ -1,7 +1,7 @@
 defmodule Dhc.Onboarding do
   @moduledoc """
-  Owns the conversion side of Onboarding: Invitation issue, credential
-  verification, read-only pricing, and durable Invitation Acceptance.
+  Owns the conversion side of Onboarding: Invitation issue and credential
+  verification.
 
   The browser-facing acceptance session lives behind an opaque handle in
   `Dhc.Onboarding.Acceptance`; controllers and workers call that module
@@ -13,7 +13,6 @@ defmodule Dhc.Onboarding do
 
   alias Dhc.Invitations
   alias Dhc.Invitations.BulkInviteWorker
-  alias Dhc.Onboarding.Acceptance
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Repo
 
@@ -37,10 +36,6 @@ defmodule Dhc.Onboarding do
   def issue_invitations(invites, user) when is_list(invites) and invites != [] do
     Oban.insert(BulkInviteWorker.new(%{"invites" => invites, "user" => user}))
   end
-
-  @spec pricing(String.t(), String.t() | nil) :: {:ok, map()} | {:error, term()}
-  def pricing(invitation_id, coupon_code \\ nil),
-    do: Acceptance.preview_pricing(invitation_id, coupon_code)
 
   defp protected_acceptance_started?(invitation_id) do
     case Ecto.UUID.cast(invitation_id) do

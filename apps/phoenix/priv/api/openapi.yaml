@@ -535,60 +535,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /invitations/{id}/pricing:
-    get:
-      operationId: invitations.pricing
-      tags:
-        - Invitations
-      summary: Read public invitation pricing
-      description: |
-        Returns the signup pricing preview for a pending invitation. When a
-        promotion code is supplied, Stripe validates it and applies it to the
-        invoice previews before the DTO is returned.
-
-        Under ADR 0010, no `user_profiles` row exists at pricing
-        time. The endpoint lazily creates a Stripe Customer on first preview
-        and persists the customer id on the invitation row so acceptance can
-        reuse it; subsequent pricing calls reuse the same customer.
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-        - name: code
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Optional Stripe promotion code entered by the invitee.
-      responses:
-        "200":
-          description: Invitation signup pricing
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/InvitationPricingResponse"
-        "400":
-          description: Invalid or inactive promotion code
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "404":
-          description: Invitation not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "500":
-          description: Pricing calculation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /invitations/{id}/verify:
     post:
       operationId: invitations.verify
@@ -865,6 +811,55 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance/pricing:
+    get:
+      operationId: onboarding.previewPricing
+      tags: [Onboarding]
+      summary: Read the signup pricing preview for the current acceptance session
+      description: |
+        Returns the membership pricing preview for the Invitation behind the
+        browser's acceptance proof. The proof is the only workflow authority:
+        the Invitation id is never accepted as input. Pricing is available only
+        to a `paymentReady` session — after its Discord proof has been consumed
+        and before payment submission begins (ADR 0019). When a promotion code
+        is supplied, Stripe validates it and applies it to the invoice previews
+        for standard invitations; tiered invitations resolve their discount
+        server-side and ignore the code. This read creates no Stripe state.
+      security:
+        - onboardingContinuation: []
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional Stripe promotion code entered by the invitee.
+      responses:
+        "200":
+          description: Invitation signup pricing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationPricingResponse"
+        "409":
+          description: Session is not paymentReady (proof missing, not yet consumed, payment already started, or ended); current safe state is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Invalid or inactive promotion code, or the Invitation does not require Membership pricing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Pricing calculation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /waitlist/status:
     get:

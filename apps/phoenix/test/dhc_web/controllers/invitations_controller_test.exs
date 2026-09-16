@@ -3,13 +3,8 @@ defmodule DhcWeb.InvitationsControllerTest do
 
   use Oban.Testing, repo: Dhc.Repo
 
-  import Ecto.Query
-
-  alias Dhc.Auth.Principal
   alias Dhc.Invitations.Invitation
-  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
-  alias Dhc.UserProfiles.UserProfile
 
   defmodule Verifier do
     @invitation_admin_roles ~w(admin president committee_coordinator)
