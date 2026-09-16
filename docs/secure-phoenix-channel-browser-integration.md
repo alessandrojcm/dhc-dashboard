@@ -70,7 +70,7 @@ Add one public frontend variable:
 PUBLIC_PHOENIX_SOCKET_URL=ws://localhost:4000/socket
 
 # Production
-PUBLIC_PHOENIX_SOCKET_URL=wss://dhc-dashboard.fly.dev/socket
+PUBLIC_PHOENIX_SOCKET_URL=wss://api.dublinhemaclub.com/socket
 ```
 
 Keep `PUBLIC_API_BASE_URL` unchanged for HTTP. A separate socket URL avoids incorrectly appending `/socket` to the current `/api` base and makes the cross-origin deployment explicit. The value is public routing configuration, not a secret. Continue to configure server-side Supabase verification with `SUPABASE_URL` and `SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY`; never expose a service-role key to the browser.

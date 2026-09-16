@@ -20,6 +20,7 @@ import { env } from "$env/dynamic/public";
 import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 import { Bell } from "@lucide/svelte";
 import { connectNotificationRealtime } from "./notification-realtime.svelte";
+import WebPushToggle from "./WebPushToggle.svelte";
 import * as v from "valibot";
 
 // Initialize dayjs plugins
@@ -258,6 +259,10 @@ function formatTime(timestamp: string): string {
 					{/if}
 				{/if}
 			</div>
+
+			<!-- ALE-299: opt this browser into Web Push for the same notifications. -->
+			<DropdownMenu.Separator />
+			<WebPushToggle />
 		</DropdownMenu.Group>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

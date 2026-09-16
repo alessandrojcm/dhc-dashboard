@@ -240,6 +240,12 @@ defmodule DhcWeb.Router do
     get "/notifications", NotificationsController, :index
     post "/notifications/read-all", NotificationsController, :mark_all_read
     patch "/notifications/:id/read", NotificationsController, :mark_read
+    # ALE-299: Web Push registration for the notification centre. Any
+    # authenticated member may read the public VAPID key and manage the
+    # subscriptions of the browser they are calling from.
+    get "/notifications/push/config", NotificationsPushController, :config
+    post "/notifications/push/subscriptions", NotificationsPushController, :subscribe
+    post "/notifications/push/unsubscribe", NotificationsPushController, :unsubscribe
     get "/workshops", WorkshopsController, :list
     post "/workshops/:id/interest", WorkshopsController, :toggle_interest
 

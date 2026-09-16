@@ -63,6 +63,23 @@ if cors_allowed_origins != [] do
   config :dhc, :cors_allowed_origins, cors_allowed_origins
 end
 
+# ALE-299: Web Push (VAPID). Optional in every environment: when any of the
+# three is absent the notification centre reports push as unavailable and no
+# delivery job is enqueued. Generate a pair with `mix web_push_ex.vapid`; the
+# private key is a secret and is read only by `web_push_ex` at send time.
+# Tests use the fixed throwaway pair in config/test.exs instead.
+web_push_vapid =
+  [
+    public_key: System.get_env("WEB_PUSH_VAPID_PUBLIC_KEY"),
+    private_key: System.get_env("WEB_PUSH_VAPID_PRIVATE_KEY"),
+    subject: System.get_env("WEB_PUSH_VAPID_SUBJECT")
+  ]
+  |> Enum.reject(fn {_key, value} -> is_nil(value) or String.trim(value) == "" end)
+
+if config_env() != :test and length(web_push_vapid) == 3 do
+  config :web_push_ex, :vapid, web_push_vapid
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

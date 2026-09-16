@@ -8,6 +8,7 @@ defmodule Dhc.Notifications do
   alias Dhc.CursorPagination
   alias Dhc.Notifications.Broadcaster
   alias Dhc.Notifications.Notification
+  alias Dhc.Notifications.WebPush
   alias Dhc.Repo
 
   @allowed_limits [10, 25, 50]
@@ -141,7 +142,7 @@ defmodule Dhc.Notifications do
       {1, [%Notification{} = notification]} ->
         # Best-effort, exactly as in `create/2`: the row is already durable, and
         # only a genuinely new row rings the recipient's bell.
-        _ = Broadcaster.notification_created(notification)
+        signal_created(notification)
         {:ok, :created}
     end
   end
@@ -150,11 +151,22 @@ defmodule Dhc.Notifications do
     # Best-effort: the row is already durably committed by Repo.transact/2.
     # A broadcast failure is logged inside the broadcaster but does not
     # change the successful database result returned to callers.
-    _ = Broadcaster.notification_created(notification)
+    signal_created(notification)
     :ok
   end
 
   defp after_commit_signal({:error, _operation, reason, _changes}), do: {:error, reason}
+
+  # The two post-commit channels for a new row: the realtime invalidation
+  # signal for open dashboards and (ALE-299) an Oban job that pushes to the
+  # recipient's browsers for closed ones. Both are best-effort by contract —
+  # each logs and returns rather than raising — so the committed row is the
+  # only outcome a caller can observe.
+  defp signal_created(%Notification{} = notification) do
+    _ = Broadcaster.notification_created(notification)
+    _ = WebPush.enqueue_delivery(notification)
+    :ok
+  end
 
   defp notification_changeset(principal_id, body) do
     changeset =

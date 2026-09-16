@@ -90,6 +90,10 @@ defmodule Dhc.MixProject do
       # adapters per environment: Resend in prod, Mailpit over HTTP in dev,
       # Swoosh.Adapters.Test in tests. Needs >= 1.26 for Swoosh.Adapters.Mailpit.
       {:swoosh, "~> 1.26"},
+      # ALE-299: RFC 8291 (aes128gcm) payload encryption + RFC 8292 VAPID for
+      # Web Push. Deliberately a "build the request" library: it returns
+      # endpoint/headers/body and Req (the sanctioned HTTP client) sends it.
+      {:web_push_ex, "~> 0.2.0"},
       # Fakerer: maintained fork of elixirs/faker. OTP app stays `:faker`,
       # Hex package is `:fakerer`. Dev-only (used by seeding mix tasks).
       # NOT `runtime: false`: seed tasks call `Mix.Task.run("app.start")`,

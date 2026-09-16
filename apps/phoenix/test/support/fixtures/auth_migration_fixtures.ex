@@ -118,6 +118,10 @@ defmodule Dhc.AuthMigrationFixtures do
   ALE-289, so there is no history table to recreate.)
   """
   def restore_pre_m2_schema! do
+    # ALE-299 Web Push subscriptions reference `principals.id`; a pre-M2
+    # backup predates them.
+    repo().query!("DROP TABLE IF EXISTS notification_push_subscriptions", [])
+
     # ALE-282 target tables reference `principals.id` with restrictive FKs.
     # A genuine pre-M2 backup predates them, so drop them in reverse
     # dependency order (no CASCADE — the order is explicit).

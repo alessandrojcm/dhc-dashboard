@@ -65,7 +65,16 @@ config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
 config :dhc, Oban,
   repo: Dhc.Repo,
   prefix: "public",
-  queues: [default: 10, emails: 5, discord: 5, announcements: 5, stripe: 5, invitations: 5],
+  queues: [
+    default: 10,
+    emails: 5,
+    discord: 5,
+    announcements: 5,
+    stripe: 5,
+    invitations: 5,
+    # ALE-299: Web Push fan-out, one job per committed notification.
+    notifications: 5
+  ],
   plugins: [
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
     Oban.Plugins.Lifeline,

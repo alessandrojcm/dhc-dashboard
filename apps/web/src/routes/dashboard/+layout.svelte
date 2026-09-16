@@ -4,11 +4,17 @@ import { SidebarProvider } from "$lib/components/ui/sidebar";
 import DashboardSidebar from "$lib/components/ui/DashboardSidebar.svelte";
 import { page } from "$app/state";
 import * as Breadcrumb from "$lib/components/ui/breadcrumb";
-import { createQuery } from "@tanstack/svelte-query";
+import { createMutation, createQuery } from "@tanstack/svelte-query";
 import { goto } from "$app/navigation";
 import { invalidateAll, invalidate } from "$app/navigation";
 import { resolve } from "$app/paths";
-import { membersMeOptions, authSessionDeleteSession } from "@dhc/api-client";
+import {
+	membersMeOptions,
+	authSessionDeleteSession,
+	notificationsPushUnsubscribeMutation,
+} from "@dhc/api-client";
+import { browserPushManager } from "$lib/notifications/web-push/browser";
+import { forgetPushSubscription } from "$lib/notifications/web-push/workflow";
 import type { Snippet } from "svelte";
 
 let { children, data }: { data: LayoutData; children: Snippet } = $props();
@@ -33,7 +39,28 @@ const userDataQuery = createQuery(() => ({
  * client sends the cookie with `credentials: 'include'`; no Supabase
  * `auth.signOut()` call remains.
  */
+const unsubscribePush = createMutation(() =>
+	notificationsPushUnsubscribeMutation(),
+);
+
 async function logout() {
+	// ALE-299: drop this browser's Web Push subscription first, while the
+	// session cookie can still authorise removing the server row. Otherwise a
+	// shared device keeps receiving the departing member's notifications until
+	// the next member opens the notification centre. Best-effort.
+	try {
+		await forgetPushSubscription({
+			browser: await browserPushManager(),
+			server: {
+				unregister: async (endpoint) => {
+					await unsubscribePush.mutateAsync({ body: { endpoint } });
+					return true;
+				},
+			},
+		});
+	} catch {
+		// Never block sign-out on push cleanup.
+	}
 	try {
 		await authSessionDeleteSession();
 	} catch {

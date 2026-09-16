@@ -1286,6 +1286,120 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /notifications/push/config:
+    get:
+      operationId: notificationsPush.config
+      tags:
+        - Notifications
+      summary: Web Push availability and application server key
+      description: |
+        ALE-299. Tells the browser whether Web Push is configured on this
+        deployment and, if so, the VAPID **public** key to pass as
+        `applicationServerKey` to `PushManager.subscribe`. When `enabled` is
+        false the key is `null` and the notification centre explains that push
+        is unavailable rather than prompting for permission.
+
+        The VAPID private key is never exposed by any endpoint.
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: Push configuration for the browser
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsPushConfigResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /notifications/push/subscriptions:
+    post:
+      operationId: notificationsPush.subscribe
+      tags:
+        - Notifications
+      summary: Register this browser for Web Push
+      description: |
+        ALE-299. Stores the browser's `PushSubscription` for the authenticated
+        principal. One row per browser installation: the push-service
+        `endpoint` is the identity, so re-registering the same endpoint
+        refreshes its keys in place, and an endpoint last registered under a
+        different principal (a shared device) is reassigned to the caller.
+        A member with several devices registers each one independently.
+
+        The response discloses only the stored row's `id` and `createdAt` —
+        never the endpoint or encryption keys.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationsPushSubscribeRequest"
+      responses:
+        "201":
+          description: Subscription stored (created or refreshed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsPushSubscriptionResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Malformed subscription (non-https endpoint, bad keys)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsPushValidationError"
+
+  /notifications/push/unsubscribe:
+    post:
+      operationId: notificationsPush.unsubscribe
+      tags:
+        - Notifications
+      summary: Remove this browser's Web Push subscription
+      description: |
+        ALE-299. Deletes the caller's stored subscription for the given
+        endpoint. Scoped to the authenticated principal, so a member cannot
+        silence another member's device; idempotent because the browser may
+        already have dropped its side. `removed` reports whether a row was
+        deleted.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationsPushUnsubscribeRequest"
+      responses:
+        "200":
+          description: Outcome of the removal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsPushUnsubscribeResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Missing endpoint
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsPushValidationError"
+
   /notifications/{id}/read:
     patch:
       operationId: notifications.markRead
@@ -7418,6 +7532,118 @@ components:
             updatedCount:
               type: integer
               minimum: 0
+    NotificationsPushConfigResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - enabled
+            - vapidPublicKey
+          properties:
+            enabled:
+              type: boolean
+              description: Whether this deployment can send Web Push.
+            vapidPublicKey:
+              type: string
+              nullable: true
+              description: |
+                Base64url VAPID public key for `applicationServerKey`; `null`
+                when `enabled` is false.
+    NotificationsPushSubscribeRequest:
+      type: object
+      description: |
+        The browser's `PushSubscription.toJSON()` plus an optional user-agent
+        label. Keys are base64url without padding, exactly as the browser
+        serialises them.
+      required:
+        - endpoint
+        - keys
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          maxLength: 2048
+          description: Push-service endpoint URL; must be `https`.
+        expirationTime:
+          type: number
+          nullable: true
+          description: Passed through by `PushSubscription.toJSON()`; ignored.
+        keys:
+          type: object
+          required:
+            - p256dh
+            - auth
+          properties:
+            p256dh:
+              type: string
+              description: Browser ECDH public key (uncompressed P-256 point).
+            auth:
+              type: string
+              description: Browser auth secret (16 bytes).
+        userAgent:
+          type: string
+          maxLength: 512
+          nullable: true
+          description: Optional label for the registering browser.
+    NotificationsPushSubscriptionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - createdAt
+          properties:
+            id:
+              type: string
+              format: uuid
+            createdAt:
+              type: string
+              format: date-time
+    NotificationsPushUnsubscribeRequest:
+      type: object
+      required:
+        - endpoint
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          maxLength: 2048
+    NotificationsPushUnsubscribeResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - removed
+          properties:
+            removed:
+              type: boolean
+    NotificationsPushValidationError:
+      type: object
+      required:
+        - errors
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+          properties:
+            detail:
+              type: string
+            fields:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
     Notification:
       type: object
       required:
