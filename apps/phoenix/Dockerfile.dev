@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1
+
+# Development image for Phoenix and its native dependency compilation. The
+# source tree is mounted by Docker Compose, while Mix's build artifacts live
+# outside that mount so dependency compilation remains cached between starts.
+ARG BASE_IMAGE="debian:bookworm-20250520-slim"
+
+FROM ${BASE_IMAGE}
+
+LABEL maintainer="Dublin HEMA Club"
+LABEL description="Development environment for the DHC Phoenix API"
+
+WORKDIR /workspace
+
+RUN apt-get update \
+    && apt-get -y --no-install-recommends install \
+        autoconf \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        libncurses-dev \
+        libssl-dev \
+        locales \
+        m4 \
+        perl \
+        unzip \
+    && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
+    && locale-gen \
+    && rm -rf /var/lib/apt/lists/*
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ENV LANG="en_US.UTF-8" \
+    LANGUAGE="en_US:en" \
+    LC_ALL="en_US.UTF-8" \
+    MISE_DATA_DIR="/mise" \
+    MISE_CONFIG_DIR="/mise" \
+    MISE_CACHE_DIR="/mise/cache" \
+    MISE_INSTALL_PATH="/usr/local/bin/mise" \
+    MISE_YES="1" \
+    MISE_GITHUB_ATTESTATIONS="true" \
+    MIX_ENV="dev" \
+    MIX_DEPS_PATH="/mix/deps" \
+    MIX_BUILD_PATH="/mix/_build" \
+    PATH="/mise/shims:${PATH}"
+
+RUN curl https://mise.run | sh
+
+# The root configuration pins the BEAM versions shared by local development
+# and production builds. Node, pnpm, and fnox are not needed in this image.
+COPY .mise.toml ./
+RUN mise trust -a \
+    && mise install erlang elixir \
+    && mix local.hex --force \
+    && mix local.rebar --force
+
+# Fetch and compile dependencies before application source to keep this layer
+# reusable while iterating. Build paths are deliberately outside /workspace:
+# Docker Compose mounts the Phoenix source directory at that location.
+COPY apps/phoenix/mix.exs apps/phoenix/mix.lock ./apps/phoenix/
+COPY apps/phoenix/config/config.exs apps/phoenix/config/dev.exs ./apps/phoenix/config/
+WORKDIR /workspace/apps/phoenix
+RUN mix deps.get \
+    && mix deps.compile
+
+COPY apps/phoenix ./
+RUN mix compile
+
+EXPOSE 4000
+
+# Docker Compose supplies the service hostnames; each value can be overridden
+# for `docker run` or a non-standard local stack.
+ENV PHX_BIND_ADDRESS="0.0.0.0" \
+    POSTGRES_HOST="db" \
+    POSTGRES_PORT="5432" \
+    POSTGRES_PASSWORD="postgres" \
+    MAILPIT_HTTP_URL="http://mailpit:8025"
+
+CMD ["mix", "phx.server"]

@@ -13,6 +13,21 @@ mise run phx-server
 
 The local tasks connect to the local Supabase Postgres instance on `localhost:54322`.
 
+### Docker development server
+
+To run Phoenix, PostgreSQL, and Mailpit entirely in Docker with source
+hot-reloading, start the opt-in `phoenix` Compose profile from the repository
+root:
+
+```bash
+docker compose --profile phoenix up --build phoenix
+```
+
+Phoenix is available at `http://127.0.0.1:4000`. The service bind-mounts
+`apps/phoenix`; Mix dependencies and build artifacts remain in the image so the
+mount does not discard the cached dependency compilation. Stop it with
+`docker compose --profile phoenix down`.
+
 ## Production deployment model
 
 Production uses:

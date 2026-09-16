@@ -16,3 +16,8 @@ coverage
 playwright-report
 test-results
 tmp
+
+# Dockerfile.remote is tooling-only: Namespace checks the target repository out
+# after image creation, so no repository content is needed in its build context.
+# Individual COPY directives in other Dockerfiles still opt in to the files they
+# require.

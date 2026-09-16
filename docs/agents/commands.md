@@ -127,11 +127,19 @@ mise run phx-setup          # deps.get + ecto.create + ecto.migrate
 mise run phx-server         # Start dev server (hot-reload) on :4000
 mise run phx-console        # Start server inside IEx interactive shell
 
+# Docker alternative (Phoenix + PostgreSQL + Mailpit; source hot-reloads)
+docker compose --profile phoenix up --build phoenix
+
 # Database
 mise run phx-migrate        # Run pending migrations
 mise run phx-rollback       # Rollback last migration
 mise run phx-gen-migration NAME  # Generate a new migration
 ```
+
+The Compose `phoenix` profile uses `apps/phoenix/Dockerfile.dev`, bind-mounts
+the Phoenix source, and leaves Mix dependencies/build artifacts in the image so
+the source mount does not erase the dependency cache. It publishes Phoenix at
+`http://127.0.0.1:4000`; stop it with `docker compose --profile phoenix down`.
 
 ### One-off Discord roster export and assignment review
 
