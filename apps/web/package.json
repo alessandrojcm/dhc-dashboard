@@ -30,6 +30,7 @@
 		"@tanstack/svelte-query": "^6.0.6",
 		"@tanstack/svelte-query-devtools": "^6.0.0",
 		"@tanstack/table-core": "^8.21.3",
+		"@xstate/svelte": "^5.0.0",
 		"ai": "5.0.92",
 		"country-codes-list": "^2.0.0",
 		"d3-array": "^3.2.4",
@@ -41,7 +42,8 @@
 		"ollama-ai-provider-v2": "^1.5.3",
 		"phoenix": "^1.8.9",
 		"posthog-js": "^1.357.0",
-		"svelte-radix": "^3.0.0"
+		"svelte-radix": "^3.0.0",
+		"xstate": "^5.33.0"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.38.0",

@@ -3,7 +3,10 @@ import { error, isHttpError } from "@sveltejs/kit";
 import * as Sentry from "@sentry/sveltekit";
 import * as v from "valibot";
 import { onboardingPreviewPricing } from "@dhc/api-client";
-import { invitationAcceptanceApiOptions } from "$lib/server/invitation-acceptance-proof";
+import {
+	invitationAcceptanceRequestOptions,
+	sveltekitAcceptanceCookies,
+} from "$lib/server/invitation-acceptance";
 import type { PlanPricing } from "$lib/types";
 import { apiErrorDetail } from "$lib/api-error";
 
@@ -33,13 +36,15 @@ const planPricingSchema = v.object({
 /**
  * Pricing follows the acceptance session, not the invitation id: Phoenix
  * resolves the invitation from the signed acceptance cookie relayed by
- * `invitationAcceptanceApiOptions`.
+ * `invitationAcceptanceRequestOptions`.
  */
 export const getPricingDetail = query(pricingSchema, async ({ code }) => {
 	const event = getRequestEvent();
 	try {
 		const response = await onboardingPreviewPricing({
-			...invitationAcceptanceApiOptions(event.cookies),
+			...invitationAcceptanceRequestOptions(
+				sveltekitAcceptanceCookies(event.cookies).readProof(),
+			),
 			query: code ? { code } : undefined,
 		});
 

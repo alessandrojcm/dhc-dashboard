@@ -1,0 +1,32 @@
+# Forbid running XState actors in SvelteKit server code.
+#
+# Server modules (`src/lib/server/**`, `*.server.ts`, `*.remote.ts`,
+# `+server.ts`) are shared across requests. A `createActor`/`useMachine` there
+# is either a module-scope actor (state leaks between users' requests) or a
+# per-request actor that hydration would restart with its invocations. Server
+# decisions use XState's pure `initialTransition`/`transition` instead (ADR
+# 0024, `src/lib/server/invitation-acceptance/decision.ts`); actors belong to
+# browser components via `@xstate/svelte`'s `useMachine`.
+id: no-xstate-actor-in-server-code
+language: TypeScript
+severity: error
+files:
+  - apps/web/src/lib/server/**/*.ts
+  - apps/web/src/**/*.server.ts
+  - apps/web/src/**/*.remote.ts
+  - apps/web/src/**/+server.ts
+ignores:
+  - apps/web/src/**/*.test.ts
+rule:
+  any:
+    - pattern: createActor($$$ARGS)
+    - pattern: useMachine($$$ARGS)
+    - pattern: useActor($$$ARGS)
+message: |
+  Do not create or start an XState actor in SvelteKit server code. Server
+  modules are shared across requests; decide with the pure `initialTransition`
+  / `transition` functions and return the outcome (see
+  src/lib/server/invitation-acceptance/decision.ts). Actors are created per
+  browser component with `useMachine`.
+note: |
+  ADR 0024 — XState models frontend Invitation Acceptance orchestration.

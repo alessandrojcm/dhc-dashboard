@@ -10,6 +10,7 @@
 - **Table**: `@tanstack/table-core` `^8.21.x`, integrated through the custom Svelte 5 adapter in `src/lib/components/ui/data-table/`. The adapter supplies rune-based table state and rendering helpers, and imports shared table types directly from `table-core`; `@tanstack/svelte-table` is not required. Treat adoption of the official Svelte adapter as a deliberate v9 migration rather than adding its v8 package alongside the custom adapter.
 - **Payments**: Stripe
 - **Validation**: Valibot
+- **Workflow state machines**: XState v5 (`xstate`, `@xstate/svelte`), used only for Invitation Acceptance (ADR 0024): pure `initialTransition`/`transition` on the server, per-component `useMachine` actors in the browser. Never a module-scope actor.
 - **Forms**: Superforms
 - **Deployment**: Cloudflare (adapter-cloudflare + Hyperdrive)
 - **Monitoring**: Sentry

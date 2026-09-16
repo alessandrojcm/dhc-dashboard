@@ -63,6 +63,9 @@ importers:
       '@tanstack/table-core':
         specifier: ^8.21.3
         version: 8.21.3
+      '@xstate/svelte':
+        specifier: ^5.0.0
+        version: 5.0.0(svelte@5.56.8(@typescript-eslint/types@8.67.0))(xstate@5.33.0)
       ai:
         specifier: 5.0.92
         version: 5.0.92(zod@4.4.3)
@@ -99,6 +102,9 @@ importers:
       svelte-radix:
         specifier: ^3.0.0
         version: 3.0.2(svelte@5.56.8(@typescript-eslint/types@8.67.0))
+      xstate:
+        specifier: ^5.33.0
+        version: 5.33.0
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: ^1.38.0
@@ -2762,6 +2768,15 @@ packages:
     resolution: {integrity: sha512-Xfe6rpCTxSxfbswi/W/Pz7zp1WWSNn4A0eW4mLkQUewCrXXtMj31lCg+iQyTkh/CkusZSq9eDflu7tjEDXUY6g==}
     engines: {node: '>=v14.0.0', npm: '>=7.0.0'}
 
+  '@xstate/svelte@5.0.0':
+    resolution: {integrity: sha512-VZABqXXwKIpnEDIoz5Vb7P1C+4rIivxG8u3eNqCKW048cVg7eHBXc4lr+icwXQitSJG/fJSmfgvSGYjn9ouuRQ==}
+    peerDependencies:
+      svelte: ^3.24.1 || ^4 || ^5
+      xstate: ^5.20.0
+    peerDependenciesMeta:
+      xstate:
+        optional: true
+
   abbrev@4.0.0:
     resolution: {integrity: sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -5336,6 +5351,9 @@ packages:
     resolution: {integrity: sha512-g/eziiSUNBSsdDJtCLB8bdYEUMj4jR7AGeUo96p/3dTafgjHhpF4RiCFPiRILwjQoDXx5MqkBr4fwWtR3Ky4Wg==}
     engines: {node: '>=20'}
 
+  xstate@5.33.0:
+    resolution: {integrity: sha512-C58ZnDXlP5WNiiGVMxHTlKpUBtC46HN+H4o2po9Lvglt2pmPzqaqunXRmrvU4NIDvMbjVvaqqL4pGbgFSiYhgw==}
+
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
 
@@ -7679,6 +7697,12 @@ snapshots:
       tinyrainbow: 3.1.1
 
   '@vladfrangu/async_event_emitter@2.4.7': {}
+
+  '@xstate/svelte@5.0.0(svelte@5.56.8(@typescript-eslint/types@8.67.0))(xstate@5.33.0)':
+    dependencies:
+      svelte: 5.56.8(@typescript-eslint/types@8.67.0)
+    optionalDependencies:
+      xstate: 5.33.0
 
   abbrev@4.0.0: {}
 
@@ -10364,6 +10388,8 @@ snapshots:
     dependencies:
       is-wsl: 3.1.1
       powershell-utils: 0.1.0
+
+  xstate@5.33.0: {}
 
   yallist@3.1.1: {}
 
