@@ -10,6 +10,8 @@ Invitation Acceptance is owned by `Dhc.Onboarding.Acceptance` (GH-507) behind an
 
 JavaScript/TypeScript linting uses the shared root Oxlint config through the `apps/web` and `packages/api-client` workspace scripts; formatting uses Oxfmt from `apps/web`. Root `pnpm` and mise tasks delegate to those workspace scripts.
 
+Frontend authorization (GH-510) is one boundary: `apps/web/src/lib/server/authorization/` exposes `authorizationFor(session)` → `{ can, decide, require, navigation }` and the hook adapter `guardRoute`, all over typed capabilities. Role sets, ownership predicates, and route/nav rules are private to that directory; feature code must not intersect roles or import role constants. To gate something new, add the capability in `capabilities.ts` and reference it from the nav definition, the protected-route rules (SvelteKit route ids, segment-aware), and the route load — the boundary tests assert those three agree. It is advisory UX policy; Phoenix stays authoritative. See the authorization row in `docs/agents/where-to-look.md`.
+
 Phoenix `mix precommit` runs `hex.audit` before dependency-provided Mix tasks; under the pinned Mix version, running Credo or Reach first unloads the archived Hex task from the current process.
 
 Dev data can include pending direct member invitations through `mise run seed-invitations [count]` and representative inventory through `mise run seed-inventory [item-count]`; see the Seeds section in `docs/agents/commands.md` for all seed tasks.

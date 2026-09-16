@@ -1,49 +1,29 @@
 import { membersOptions, membersShow } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
-import { error, type ServerLoadEvent } from "@sveltejs/kit";
+import { error } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
-import {
-	getRolesFromSession,
-	MEMBERS_ADMIN_ROLES,
-	MEMBERSHIP_MINTING_ROLES,
-} from "$lib/server/roles";
+import { authorizationFor } from "$lib/server/authorization";
 import { SocialMediaConsent as SocialMediaConsentValues } from "$lib/types";
 import type { PageServerLoad } from "./$types";
 import * as v from "valibot";
 
-/**
- * ALE-164: the self-vs-admin check no longer reads the Supabase `user.id` —
- * the Phoenix session projection carries the principal id directly as
- * `session.principal.id`. Self-access is granted when the requested
- * `memberId` matches the session principal.
- */
-async function canUpdateSettings(event: ServerLoadEvent): Promise<boolean> {
-	const { session } = await event.locals.safeGetSession();
-	if (!session) error(401, "Unauthorized");
-	const roles = getRolesFromSession(session);
-	if (roles.intersection(MEMBERS_ADMIN_ROLES).size > 0) {
-		return true;
-	}
-	// Self-access: the requested member id matches the signed-in principal.
-	return event.params.memberId === session.principal.id;
-}
-
 export const load: PageServerLoad = async (event) => {
 	const { params, locals, cookies, depends } = event;
 	const { session } = await locals.safeGetSession();
-
-	if (!session) {
-		return error(401, "Unauthorized");
-	}
+	const access = authorizationFor(session);
+	// GH-510: contextual "self or member administrator" rule. Ownership is an
+	// explicit input (the requested member id); a non-owner without the
+	// capability receives a concealed 404, an anonymous request a 401.
+	const member = { ownerPrincipalId: params.memberId };
+	access.require("members.profile.read", member);
 	depends(`member:detail:${params.memberId}`);
 
 	try {
-		const canUpdate = await canUpdateSettings(event);
-		const roles = getRolesFromSession(session);
+		const canUpdate = access.can("members.profile.update", member);
 		// ALE-252: reactivation mints new charges, so gate the UI on the same
 		// four billing-authority roles the `:membership_minting_api` pipeline
 		// enforces server-side (403 for everyone else, incl. self-service).
-		const canReactivate = roles.intersection(MEMBERSHIP_MINTING_ROLES).size > 0;
+		const canReactivate = access.can("membership.reactivate");
 		const apiOptions = apiClientOptions(cookies);
 		const [memberResponse, optionsResponse] = await Promise.all([
 			membersShow({
@@ -55,12 +35,6 @@ export const load: PageServerLoad = async (event) => {
 		]);
 		const memberProfile = memberResponse.data.data;
 		const options = optionsResponse.data.data;
-
-		// Self-access fallback: a non-admin may view only their own profile.
-		// ALE-164: `session.principal.id` replaces the Supabase `user.id`.
-		if (!canUpdate && params.memberId !== session.principal.id) {
-			return error(404, "Member not found");
-		}
 
 		const preferredWeaponResult = v.safeParse(
 			v.array(v.string()),

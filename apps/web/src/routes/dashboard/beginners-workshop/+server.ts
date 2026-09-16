@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/sveltekit";
 import { waitlistUpdateStatus } from "@dhc/api-client";
 import { json } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
-import { allowedToggleRoles, getRolesFromSession } from "$lib/server/roles";
+import { authorizationFor } from "$lib/server/authorization";
 import type { RequestHandler } from "./$types";
 import * as v from "valibot";
 
@@ -10,8 +10,13 @@ const ToggleWaitlistSchema = v.object({ isOpen: v.boolean() });
 
 export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 	try {
+		// GH-510: the JSON endpoint maps the decision onto its own response
+		// shape instead of throwing, so the status stays on `decide()`.
 		const { session } = await locals.safeGetSession();
-		if (!session) {
+		const decision = authorizationFor(session).decide(
+			"beginners.waitlist.toggle",
+		);
+		if (!decision.allowed && decision.status === 401) {
 			return json({ success: false }, { status: 401 });
 		}
 		const body = v.safeParse(ToggleWaitlistSchema, await request.json());
@@ -21,11 +26,8 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 				{ status: 400 },
 			);
 		}
-		const roles = getRolesFromSession(session);
-		const canToggleWaitlist = roles.intersection(allowedToggleRoles).size > 0;
-
-		if (!canToggleWaitlist) {
-			return json({ success: false }, { status: 403 });
+		if (!decision.allowed) {
+			return json({ success: false }, { status: decision.status });
 		}
 
 		const response = await waitlistUpdateStatus({

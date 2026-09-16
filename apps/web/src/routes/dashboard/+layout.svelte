@@ -12,7 +12,6 @@ import { membersMeOptions, authSessionDeleteSession } from "@dhc/api-client";
 import type { Snippet } from "svelte";
 
 let { children, data }: { data: LayoutData; children: Snippet } = $props();
-let roles = $derived.by(() => new Set(data.roles));
 let paths = $derived.by(() => page.url.pathname.split("/"));
 const userDataQuery = createQuery(() => ({
 	...membersMeOptions(),
@@ -97,7 +96,6 @@ function getBreadcrumbLabel(item: string, index: number): string {
 >
 <SidebarProvider class="min-h-svh bg-background">
 	<DashboardSidebar
-		{roles}
 		{logout}
 		userData={userDataQuery.promise}
 		navData={data.navData}

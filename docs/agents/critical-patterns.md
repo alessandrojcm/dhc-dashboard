@@ -64,7 +64,7 @@ Choose one client/server boundary for each operation:
 - Do not add a `.remote.ts` wrapper that only duplicates an existing generated Phoenix mutation.
 - Use `query(...)` for intentional server-only reads. Phoenix API reads use generated query options as described under "TanStack Query with the Phoenix API".
 
-All remote functions that accept input use a Valibot schema. Authenticated handlers obtain the request with `getRequestEvent()` and authorize through `authorize()` or `locals.safeGetSession()`. Phoenix calls forward request cookies through `apiClientOptions(event.cookies)`. Domain mutations belong in Phoenix contexts; remote functions must not access Kysely or `executeWithRLS` directly.
+All remote functions that accept input use a Valibot schema. Authenticated handlers obtain the request with `getRequestEvent()` and authorize through `authorize(locals, <capability>)` or `authorizationFor(session).require(<capability>)` from `$lib/server/authorization` (never by intersecting role sets). Phoenix calls forward request cookies through `apiClientOptions(event.cookies)`. Domain mutations belong in Phoenix contexts; remote functions must not access Kysely or `executeWithRLS` directly.
 
 ## Remote Forms
 

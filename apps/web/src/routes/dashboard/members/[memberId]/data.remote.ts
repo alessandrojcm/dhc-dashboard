@@ -4,27 +4,9 @@ import * as v from "valibot";
 import formSchema, {
 	memberProfileClientSchema,
 } from "$lib/schemas/membersSignup";
-import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
+import { authorizationFor } from "$lib/server/authorization";
 import { apiClientOptions } from "$lib/server/api-client";
-import { error, invalid } from "@sveltejs/kit";
-
-/**
- * ALE-164: the self-vs-admin check no longer reads the Supabase `user.id` —
- * the Phoenix session projection carries the principal id directly as
- * `session.principal.id`. Self-access is granted when the requested
- * `memberId` matches the session principal.
- */
-async function canUpdateSettings() {
-	const event = getRequestEvent();
-	const { session } = await event.locals.safeGetSession();
-	if (!session) error(401, "Unauthorized");
-	const roles = getRolesFromSession(session);
-	if (roles.intersection(MEMBERS_ADMIN_ROLES).size > 0) {
-		return true;
-	}
-	// Self-access: the requested member id matches the signed-in principal.
-	return event.params.memberId === session.principal.id;
-}
+import { invalid } from "@sveltejs/kit";
 
 export const updateProfile = form(
 	memberProfileClientSchema,
@@ -33,15 +15,13 @@ export const updateProfile = form(
 		const memberId = event.params.memberId;
 		if (!memberId) throw new Error("Member ID is required");
 
-		const canUpdate = await canUpdateSettings();
-		if (!canUpdate) {
-			throw new Error("Unauthorized");
-		}
-
+		// GH-510: same contextual rule as the profile page load — the owner or
+		// a member administrator may update; anyone else gets the decision's
+		// status (401 anonymous, 404 concealed).
 		const { session } = await event.locals.safeGetSession();
-		if (!session) {
-			throw new Error("Unauthorized");
-		}
+		authorizationFor(session).require("members.profile.update", {
+			ownerPrincipalId: memberId,
+		});
 
 		// Transform client data (string dateOfBirth) to server types (Date) for complex schema validation
 		const transformedData = {

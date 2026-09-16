@@ -30,7 +30,7 @@ type Props = {
 	className?: string | undefined | null;
 	logout: () => void;
 	userData: Promise<Partial<UserData>>;
-	roles: Set<string>;
+	/** Navigation already filtered by `authorizationFor(session).navigation()`. */
 	navData: NavData;
 };
 
@@ -51,7 +51,6 @@ let {
 	collapsible = "offcanvas",
 	userData,
 	logout,
-	roles,
 	navData: data,
 	...restProps
 }: ComponentProps<typeof Sidebar.Root> & Props = $props();
@@ -136,65 +135,59 @@ function isActive(url: string) {
 		</Sidebar.Group>
 		<!-- We create a Sidebar.Group for each parent. -->
 		{#each data.navMain as group (group.title)}
-			{#if group.role.intersection(roles).size > 0}
-				<Sidebar.Group class="py-2">
-					{#if group?.items}
-						<Sidebar.GroupLabel class="gap-2 text-sidebar-foreground/55">
-							{@const GroupIcon =
-								navIcons[group.title as keyof typeof navIcons] ?? Boxes}
-							<GroupIcon class="size-3.5" />{group.title}
-						</Sidebar.GroupLabel>
-						<Sidebar.GroupContent>
-							<Sidebar.Menu>
-								{#each group.items as item (item.title)}
-									{#if item.role.intersection(roles).size > 0}
-										<Sidebar.MenuItem>
-											{@const ItemIcon =
-												navIcons[item.title as keyof typeof navIcons] ??
-												ChevronRight}
-											<Sidebar.MenuButton
-												isActive={isActive(item.url)}
-												tooltipContent={item.title}
-											>
-												{#snippet child({ props })}
-													<a
-														class={props.class}
-														href={item.url}
-														onclick={toggleSidebar}
-														aria-current={isActive(item.url)
-															? "page"
-															: undefined}
-													>
-														<ItemIcon /><span>{item.title}</span>
-													</a>
-												{/snippet}
-											</Sidebar.MenuButton>
-										</Sidebar.MenuItem>
-									{/if}
-								{/each}
-							</Sidebar.Menu>
-						</Sidebar.GroupContent>
-					{:else}
+			<Sidebar.Group class="py-2">
+				{#if group?.items}
+					<Sidebar.GroupLabel class="gap-2 text-sidebar-foreground/55">
 						{@const GroupIcon =
-							navIcons[group.title as keyof typeof navIcons] ?? ChevronRight}
-						<Sidebar.MenuButton
-							isActive={isActive(group.url)}
-							tooltipContent={group.title}
-						>
-							{#snippet child({ props })}
-								<a
-									class={props.class}
-									href={group.url}
-									onclick={toggleSidebar}
-									aria-current={isActive(group.url) ? "page" : undefined}
-								>
-									<GroupIcon /><span>{group.title}</span>
-								</a>
-							{/snippet}
-						</Sidebar.MenuButton>
-					{/if}
-				</Sidebar.Group>
-			{/if}
+							navIcons[group.title as keyof typeof navIcons] ?? Boxes}
+						<GroupIcon class="size-3.5" />{group.title}
+					</Sidebar.GroupLabel>
+					<Sidebar.GroupContent>
+						<Sidebar.Menu>
+							{#each group.items as item (item.title)}
+								<Sidebar.MenuItem>
+									{@const ItemIcon =
+										navIcons[item.title as keyof typeof navIcons] ??
+										ChevronRight}
+									<Sidebar.MenuButton
+										isActive={isActive(item.url)}
+										tooltipContent={item.title}
+									>
+										{#snippet child({ props })}
+											<a
+												class={props.class}
+												href={item.url}
+												onclick={toggleSidebar}
+												aria-current={isActive(item.url) ? "page" : undefined}
+											>
+												<ItemIcon /><span>{item.title}</span>
+											</a>
+										{/snippet}
+									</Sidebar.MenuButton>
+								</Sidebar.MenuItem>
+							{/each}
+						</Sidebar.Menu>
+					</Sidebar.GroupContent>
+				{:else}
+					{@const GroupIcon =
+						navIcons[group.title as keyof typeof navIcons] ?? ChevronRight}
+					<Sidebar.MenuButton
+						isActive={isActive(group.url)}
+						tooltipContent={group.title}
+					>
+						{#snippet child({ props })}
+							<a
+								class={props.class}
+								href={group.url}
+								onclick={toggleSidebar}
+								aria-current={isActive(group.url) ? "page" : undefined}
+							>
+								<GroupIcon /><span>{group.title}</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				{/if}
+			</Sidebar.Group>
 		{/each}
 	</Sidebar.Content>
 	<Sidebar.Footer class="m-2 mb-4 border-t border-sidebar-border pt-3">

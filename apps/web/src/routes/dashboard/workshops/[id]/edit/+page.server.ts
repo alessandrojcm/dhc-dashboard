@@ -2,11 +2,10 @@ import { error } from "@sveltejs/kit";
 import { workshopsShow } from "@dhc/api-client";
 import { authorize } from "$lib/server/auth";
 import { apiClientOptions } from "$lib/server/api-client";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, cookies, params }) => {
-	await authorize(locals, WORKSHOP_ROLES);
+	await authorize(locals, "workshops.manage");
 	const {
 		data,
 		error: apiError,

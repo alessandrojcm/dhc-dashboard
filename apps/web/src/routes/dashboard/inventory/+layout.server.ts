@@ -1,17 +1,11 @@
-import { error } from "@sveltejs/kit";
-import { getRolesFromSession, INVENTORY_ROLES } from "$lib/server/roles";
+import { authorizationFor } from "$lib/server/authorization";
 import type { LayoutServerLoad } from "./$types";
 
 export const load: LayoutServerLoad = async ({ locals }) => {
 	const { session } = await locals.safeGetSession();
-	const roles = getRolesFromSession(session);
-
-	if (roles.intersection(INVENTORY_ROLES).size === 0) {
-		error(
-			403,
-			"Inventory administration is restricted to inventory operators.",
-		);
-	}
+	// GH-510: same rule as the "Inventory" navigation entry and the request
+	// hook; here it surfaces as a 403 rather than the hook's redirect.
+	authorizationFor(session).require("inventory.manage");
 
 	return {};
 };

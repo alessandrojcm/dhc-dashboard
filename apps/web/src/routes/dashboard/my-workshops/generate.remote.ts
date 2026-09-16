@@ -1,7 +1,6 @@
 import { command, getRequestEvent } from "$app/server";
 import * as v from "valibot";
 import { authorize } from "$lib/server/auth";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
 import {
 	generateWorkshopData,
 	coerceToCreateWorkshopSchema,
@@ -17,7 +16,7 @@ export const generateWorkshop = command(
 	}),
 	async ({ prompt }) => {
 		const { locals, request } = getRequestEvent();
-		await authorize(locals, WORKSHOP_ROLES);
+		await authorize(locals, "workshops.manage");
 
 		try {
 			const result = await generateWorkshopData(prompt, request.signal);

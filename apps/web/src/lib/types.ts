@@ -17,14 +17,12 @@ export type NavigationItem = {
 	title: string;
 	url: Pathname;
 	isActive?: boolean;
-	role: Set<string>;
 };
 
 export type NavigationGroup = {
 	title: string;
 	url: Pathname;
 	items?: NavigationItem[];
-	role: Set<string>;
 };
 
 export type NavData = {
