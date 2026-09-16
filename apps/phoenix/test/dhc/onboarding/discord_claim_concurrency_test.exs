@@ -517,7 +517,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     send(submission_pid, :go)
 
     # The browser submission is now inside Stripe holding the lease.
-    assert_receive {:stripe_progression_started, :submission, stripe_pid}
+    assert_receive {:stripe_progression_started, :submission, stripe_pid}, 5_000
 
     attempt_id =
       unboxed(fn ->
@@ -896,7 +896,10 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     duplicate_label = if owner_label == :first, do: :second, else: :first
     send(tasks[owner_label].pid, :go)
 
-    assert_receive {:stripe_progression_started, ^owner_label, owner_pid}
+    # The owner records its submission, prepares payment, and creates the
+    # customer before reaching the blocked Stripe call; give a slow CI database
+    # room for those round trips. The ordering, not the latency, is under test.
+    assert_receive {:stripe_progression_started, ^owner_label, owner_pid}, 5_000
 
     send(tasks[duplicate_label].pid, :go)
 
@@ -904,14 +907,14 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
       receive do
         {:acceptance_finished, ^duplicate_label, result} -> {:returned, result}
       after
-        250 -> :blocked
+        2_000 -> :blocked
       end
 
     additional_progression =
       receive do
         {:stripe_progression_started, ^duplicate_label, duplicate_pid} -> duplicate_pid
       after
-        100 -> nil
+        250 -> nil
       end
 
     send(owner_pid, :release_stripe_progression)
