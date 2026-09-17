@@ -252,7 +252,12 @@ defmodule Dhc.Notifications.WebPush do
 
   # The server will POST to this URL on the member's behalf, so it must look
   # like a push service: https, a real DNS name (never an IP literal or a
-  # local/internal name), no credentials. Redirects are refused at send time
+  # local/internal name), no credentials. A single trailing root dot is
+  # stripped before those checks so `localhost.` / `127.0.0.1.` / `db.internal.`
+  # cannot evade the exact-name, IP-literal, or suffix match; a leftover
+  # trailing dot or empty host after the strip is rejected as malformed. A
+  # public hostname with one trailing dot is accepted after that normalisation
+  # (the stored URL keeps the dotted form). Redirects are refused at send time
   # (`HttpSender`), so a public host cannot bounce the request inward either.
   defp validate_https_endpoint(changeset) do
     Ecto.Changeset.validate_change(changeset, :endpoint, fn :endpoint, endpoint ->
@@ -262,19 +267,39 @@ defmodule Dhc.Notifications.WebPush do
 
   defp endpoint_errors({:ok, %URI{scheme: "https", host: host, userinfo: nil}})
        when is_binary(host) and host != "" do
-    if public_hostname?(host), do: [], else: [endpoint: "must be a public push service"]
+    case normalize_endpoint_host(host) do
+      {:ok, hostname} ->
+        if public_hostname?(hostname), do: [], else: [endpoint: "must be a public push service"]
+
+      :error ->
+        [endpoint: "must be an https URL"]
+    end
   end
 
   defp endpoint_errors(_uri), do: [endpoint: "must be an https URL"]
 
   @local_suffixes [".local", ".localhost", ".internal", ".lan", ".home", ".arpa"]
 
-  defp public_hostname?(host) do
-    lowered = String.downcase(host)
+  # One trailing root label only. `"."` becomes empty and `host..` still ends
+  # in `.`; both are malformed. The caller must run every subsequent check on
+  # this stripped host — in particular IP-literal detection.
+  defp normalize_endpoint_host(host) do
+    lowered =
+      host
+      |> String.downcase()
+      |> String.replace_suffix(".", "")
 
-    not (ip_literal?(lowered) or lowered == "localhost" or
-           not String.contains?(lowered, ".") or
-           Enum.any?(@local_suffixes, &String.ends_with?(lowered, &1)))
+    cond do
+      lowered == "" -> :error
+      String.ends_with?(lowered, ".") -> :error
+      true -> {:ok, lowered}
+    end
+  end
+
+  defp public_hostname?(host) do
+    not (ip_literal?(host) or host == "localhost" or
+           not String.contains?(host, ".") or
+           Enum.any?(@local_suffixes, &String.ends_with?(host, &1)))
   end
 
   defp ip_literal?(host) do

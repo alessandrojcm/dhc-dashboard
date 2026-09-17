@@ -223,3 +223,61 @@ test("an unconfirmed existing subscription can still be turned off from the cent
 	);
 	expect(existing.unsubscribe).toHaveBeenCalledTimes(1);
 });
+
+test("a failed server unregister still turns the switch off and warns", async () => {
+	const existing = subscription("https://push.example/existing");
+	const d = deps(
+		{
+			server: {
+				config: vi.fn(async () => ({ enabled: true, vapidPublicKey: vapid })),
+				register: vi.fn(async () => true),
+				unregister: vi.fn(async () => false),
+			},
+		},
+		{
+			getSubscription: vi.fn(async () => existing),
+			subscribe: vi.fn(),
+		},
+	);
+	const screen = await render(WebPushToggle, { deps: d });
+
+	await userEvent.click(
+		screen.getByRole("switch", { name: /push notifications/i }),
+	);
+
+	await expect
+		.element(screen.getByRole("switch", { name: /push notifications/i }))
+		.toHaveAttribute("aria-checked", "false");
+	await expect
+		.element(screen.getByText(/couldn't remove this device from the server/i))
+		.toBeVisible();
+});
+
+test("a failed subscription lookup while turning off shows the error, not off", async () => {
+	const existing = subscription("https://push.example/existing");
+	const d = deps(
+		{},
+		{
+			getSubscription: vi
+				.fn()
+				.mockResolvedValueOnce(existing)
+				.mockRejectedValueOnce(new Error("push manager unavailable")),
+			subscribe: vi.fn(),
+		},
+	);
+	const screen = await render(WebPushToggle, { deps: d });
+
+	await userEvent.click(
+		screen.getByRole("switch", { name: /push notifications/i }),
+	);
+
+	await expect
+		.element(screen.getByText(/couldn't turn off push notifications/i))
+		.toBeVisible();
+	await expect
+		.element(screen.getByRole("button", { name: /try again/i }))
+		.toBeVisible();
+	await expect
+		.element(screen.getByRole("switch", { name: /push notifications/i }))
+		.not.toBeInTheDocument();
+});

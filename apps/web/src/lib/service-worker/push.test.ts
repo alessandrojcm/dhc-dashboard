@@ -50,6 +50,21 @@ describe("parsePushPayload", () => {
 			parsePushPayload(JSON.stringify({ body: "x", url: "/inventory/loans" }))
 				.url,
 		).toBe("/inventory/loans");
+		// WHATWG treats `\` as `/`, so `/\evil.example` becomes `//evil.example`.
+		expect(
+			parsePushPayload(JSON.stringify({ body: "x", url: "/\\evil.example" }))
+				.url,
+		).toBe("/dashboard");
+		expect(
+			parsePushPayload(JSON.stringify({ body: "x", url: "/\\\\evil.example" }))
+				.url,
+		).toBe("/dashboard");
+		// Percent-encoded backslashes stay encoded and therefore same-origin.
+		expect(
+			parsePushPayload(
+				JSON.stringify({ body: "x", url: "/%5C%5Cevil.example" }),
+			).url,
+		).toBe("/%5C%5Cevil.example");
 	});
 });
 
@@ -88,5 +103,30 @@ describe("resolveClickTarget", () => {
 				"/",
 			),
 		).toEqual({ action: "open", url: "https://dashboard.example/" });
+	});
+
+	it("refuses to open another origin even if a backslash path reaches the resolver", () => {
+		expect(resolveClickTarget([], origin, "/\\evil.example")).toEqual({
+			action: "open",
+			url: "https://dashboard.example/dashboard",
+		});
+		expect(resolveClickTarget([], origin, "/\\\\evil.example")).toEqual({
+			action: "open",
+			url: "https://dashboard.example/dashboard",
+		});
+	});
+
+	it("keeps a percent-encoded backslash on this origin", () => {
+		expect(resolveClickTarget([], origin, "/%5C%5Cevil.example")).toEqual({
+			action: "open",
+			url: "https://dashboard.example/%5C%5Cevil.example",
+		});
+	});
+
+	it("resolves a legitimate dashboard path with query and hash", () => {
+		expect(resolveClickTarget([], origin, "/dashboard/loans?x=1#y")).toEqual({
+			action: "open",
+			url: "https://dashboard.example/dashboard/loans?x=1#y",
+		});
 	});
 });

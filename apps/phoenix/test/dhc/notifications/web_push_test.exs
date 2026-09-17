@@ -165,6 +165,32 @@ defmodule Dhc.Notifications.WebPushTest do
       assert Repo.all(PushSubscription) == []
     end
 
+    test "rejects a trailing-dot host that would evade the public-hostname checks" do
+      # Resolvers treat the trailing root label as the same name, so these must
+      # be stripped (then rejected) rather than compared as written.
+      for endpoint <- [
+            "https://localhost./push",
+            "https://127.0.0.1./push",
+            "https://db.internal./push"
+          ] do
+        assert {:error, %Ecto.Changeset{} = changeset} =
+                 WebPush.subscribe(@member_id, subscription_attrs(endpoint)),
+               endpoint
+
+        assert %{endpoint: _} = errors_on(changeset), endpoint
+      end
+
+      assert Repo.all(PushSubscription) == []
+    end
+
+    test "accepts a public push endpoint after stripping one trailing root dot" do
+      assert {:ok, %PushSubscription{endpoint: "https://push.example./one"}} =
+               WebPush.subscribe(
+                 @member_id,
+                 subscription_attrs("https://push.example./one")
+               )
+    end
+
     test "rejects an unknown principal without a constraint exception" do
       assert {:error, %Ecto.Changeset{} = changeset} =
                WebPush.subscribe(

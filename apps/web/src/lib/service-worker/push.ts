@@ -59,10 +59,17 @@ export function parsePushPayload(text: string | null): PushDisplay {
 	};
 }
 
-// Only a path is honoured: `//host` and `scheme://host` are rejected so a
-// payload can never make the worker open another origin.
+// Only a path is honoured: `//host`, `scheme://host`, and a backslash
+// (WHATWG treats `\` as `/`, so `/\evil.example` becomes `//evil.example`)
+// are rejected so a payload can never make the worker open another origin.
 export function sameOriginPath(value: string): string {
-	if (!value.startsWith("/") || value.startsWith("//")) return DEFAULT_URL;
+	if (
+		!value.startsWith("/") ||
+		value.startsWith("//") ||
+		value.includes("\\")
+	) {
+		return DEFAULT_URL;
+	}
 	return value;
 }
 
@@ -81,7 +88,11 @@ export function resolveClickTarget<C extends FocusableClient>(
 	origin: string,
 	path: string,
 ): ClickTarget<C> {
-	const url = new URL(path, origin).toString();
+	const resolved = new URL(path, origin);
+	const url =
+		resolved.origin === origin
+			? resolved.toString()
+			: new URL(DEFAULT_URL, origin).toString();
 	const open = clients.find(
 		(client) => client.url.startsWith(origin) && Boolean(client.focus),
 	);

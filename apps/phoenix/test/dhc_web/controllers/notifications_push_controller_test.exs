@@ -12,34 +12,27 @@ defmodule DhcWeb.NotificationsPushControllerTest do
 
   alias Dhc.Notifications.PushSubscription
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
   @user_id "11111111-1111-1111-1111-111111111111"
   @other_user_id "22222222-2222-2222-2222-222222222222"
-
-  defmodule Verifier do
-    def verify("user-token") do
-      {:ok,
-       %{sub: "11111111-1111-1111-1111-111111111111", email: "u@example.com", roles: [], raw: %{}}}
-    end
-
-    def verify("other-user-token") do
-      {:ok,
-       %{sub: "22222222-2222-2222-2222-222222222222", email: "o@example.com", roles: [], raw: %{}}}
-    end
-
-    def verify(_token), do: {:error, :invalid_token}
-  end
 
   setup do
     Dhc.AuthFixtures.principal_fixture(%{id: @user_id})
     Dhc.AuthFixtures.principal_fixture(%{id: @other_user_id})
 
-    original_verifier = Application.get_env(:dhc, :auth_verifier)
     original_vapid = Application.get_env(:web_push_ex, :vapid)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+
+    original_verifier =
+      OpenApiVerifier.install(
+        tokens: %{
+          "user-token" => %{sub: @user_id, email: "u@example.com", roles: []},
+          "other-user-token" => %{sub: @other_user_id, email: "o@example.com", roles: []}
+        }
+      )
 
     on_exit(fn ->
-      Application.put_env(:dhc, :auth_verifier, original_verifier)
+      OpenApiVerifier.restore(original_verifier)
       Application.put_env(:web_push_ex, :vapid, original_vapid)
     end)
 
@@ -137,6 +130,30 @@ defmodule DhcWeb.NotificationsPushControllerTest do
       assert %{"errors" => %{"fields" => %{"p256dh" => _, "auth" => _}}} =
                json_response(conn, 422)
     end
+
+    test "does not log the subscription endpoint or keys" do
+      filter = Application.get_env(:phoenix, :filter_parameters)
+
+      # Extended the Phoenix 1.8 default rather than replacing it.
+      for name <- ["password", "token", "endpoint", "p256dh", "auth", "keys"] do
+        assert filter_includes?(filter, name), name
+      end
+
+      body = browser_subscription("https://push.example/unique-secret-endpoint")
+      filtered = Phoenix.Logger.filter_values(body)
+
+      # The nested `keys` map is discarded wholesale; endpoint is redacted too.
+      assert filtered["endpoint"] == "[FILTERED]"
+      assert filtered["keys"] == "[FILTERED]"
+      refute inspect(filtered) =~ "https://push.example/unique-secret-endpoint"
+      refute inspect(filtered) =~ get_in(body, ["keys", "p256dh"])
+      refute inspect(filtered) =~ get_in(body, ["keys", "auth"])
+
+      # Those nested names are themselves filter terms, so they redact even
+      # if they appear outside the `keys` map.
+      assert Phoenix.Logger.filter_values(%{"p256dh" => "secret-p256dh", "auth" => "secret-auth"}) ==
+               %{"p256dh" => "[FILTERED]", "auth" => "[FILTERED]"}
+    end
   end
 
   describe "POST /api/notifications/push/unsubscribe" do
@@ -188,6 +205,13 @@ defmodule DhcWeb.NotificationsPushControllerTest do
 
   defp as_user(conn), do: put_req_header(conn, "authorization", "Bearer user-token")
   defp as_other_user(conn), do: put_req_header(conn, "authorization", "Bearer other-user-token")
+
+  # After Phoenix.start the list is compiled to a binary pattern; match the
+  # same way `Phoenix.Logger` does so this stays valid either side of compile.
+  defp filter_includes?({:compiled, key_match, _value_match}, name),
+    do: String.contains?(name, key_match)
+
+  defp filter_includes?(names, name) when is_list(names), do: name in names
 
   defp browser_subscription(endpoint) do
     {public, _private} = :crypto.generate_key(:ecdh, :prime256v1)

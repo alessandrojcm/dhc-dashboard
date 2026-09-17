@@ -169,7 +169,10 @@ const explanation = $derived.by(() => {
 		case "denied":
 			return "Notifications are blocked for this site. Allow them in your browser's site settings to turn push notifications back on.";
 		case "off":
-			return "Get notified on this device even when the dashboard is closed.";
+			return (
+				status.warning ??
+				"Get notified on this device even when the dashboard is closed."
+			);
 		case "on":
 			return "This device gets notifications even when the dashboard is closed.";
 		case "error":

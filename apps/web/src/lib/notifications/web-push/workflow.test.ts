@@ -346,8 +346,55 @@ describe("disablePush", () => {
 
 		// The member asked for silence on this device; a dead row server-side
 		// is cleaned up by the push service's 410 on the next delivery.
-		expect(status).toEqual({ kind: "off", vapidPublicKey: vapid });
+		expect(status).toEqual({
+			kind: "off",
+			vapidPublicKey: vapid,
+			warning:
+				"Couldn't remove this device from the server. This device will stay quiet.",
+		});
 		expect(existing.unsubscribe).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports an error when the browser cannot drop its subscription", async () => {
+		const existing = fakeSubscription("https://push.example/existing");
+		existing.unsubscribe.mockImplementation(async () => false);
+
+		const status = await disablePush({
+			browser: fakeBrowser(existing),
+			server: fakeServer(),
+			vapidPublicKey: vapid,
+		});
+
+		expect(status).toEqual({
+			kind: "error",
+			message: "Couldn't turn off push notifications in this browser.",
+			vapidPublicKey: vapid,
+			subscribed: true,
+		});
+	});
+
+	it("reports an error when the browser subscription cannot be read", async () => {
+		const server = fakeServer();
+		const browser: PushBrowser = {
+			getSubscription: vi.fn(async () => {
+				throw new Error("push manager unavailable");
+			}),
+			subscribe: vi.fn(),
+		};
+
+		const status = await disablePush({
+			browser,
+			server,
+			vapidPublicKey: vapid,
+		});
+
+		expect(status).toEqual({
+			kind: "error",
+			message: "Couldn't turn off push notifications in this browser.",
+			vapidPublicKey: vapid,
+			subscribed: true,
+		});
+		expect(server.unregister).not.toHaveBeenCalled();
 	});
 });
 

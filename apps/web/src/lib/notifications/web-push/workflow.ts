@@ -64,7 +64,7 @@ export type PushStatus =
 	| { kind: "ios-install-required" }
 	| { kind: "unsupported" }
 	| { kind: "denied" }
-	| { kind: "off"; vapidPublicKey: string }
+	| { kind: "off"; vapidPublicKey: string; warning?: string }
 	| { kind: "on"; vapidPublicKey: string }
 	| {
 			kind: "error";
@@ -196,27 +196,73 @@ export async function disablePush(input: {
 	server: PushServer;
 	vapidPublicKey: string;
 }): Promise<PushStatus> {
-	await forgetPushSubscription(input);
+	const { browserGone, serverUnregistered } =
+		await forgetPushSubscription(input);
+
+	if (!browserGone) {
+		return {
+			kind: "error",
+			message: "Couldn't turn off push notifications in this browser.",
+			vapidPublicKey: input.vapidPublicKey,
+			subscribed: true,
+		};
+	}
+
+	if (!serverUnregistered) {
+		return {
+			kind: "off",
+			vapidPublicKey: input.vapidPublicKey,
+			warning:
+				"Couldn't remove this device from the server. This device will stay quiet.",
+		};
+	}
+
 	return { kind: "off", vapidPublicKey: input.vapidPublicKey };
 }
+
+export type ForgetPushResult = {
+	/** True when this browser no longer holds a subscription. */
+	browserGone: boolean;
+	/** True when the server row is gone, or there was nothing to remove. */
+	serverUnregistered: boolean;
+};
 
 /**
  * Drops this browser's subscription on both sides, best-effort. Used by the
  * toggle's "off" and by sign-out: a shared device must stop receiving the
  * departing member's notifications, and the server row can only be removed
  * while their session cookie is still valid.
+ *
+ * `off` is only honest when the browser subscription is gone (unsubscribe
+ * succeeded, or there was none). A failed server unregister still leaves
+ * the device quiet (the stale row dies on the next 404/410). A failed
+ * `getSubscription` or `unsubscribe` does not — those are not proof gone.
  */
 export async function forgetPushSubscription(input: {
 	browser: PushBrowser | null;
 	server: Pick<PushServer, "unregister">;
-}): Promise<void> {
-	if (!input.browser) return;
-	const existing = await input.browser.getSubscription().catch(() => null);
-	if (!existing) return;
+}): Promise<ForgetPushResult> {
+	if (!input.browser) {
+		return { browserGone: true, serverUnregistered: true };
+	}
+
+	let existing: BrowserSubscription | null;
+	try {
+		existing = await input.browser.getSubscription();
+	} catch {
+		// A lookup failure is not proof the subscription is gone.
+		return { browserGone: false, serverUnregistered: false };
+	}
+	if (!existing) {
+		return { browserGone: true, serverUnregistered: true };
+	}
 
 	// Server first, while we still hold the endpoint that names the row. If it
 	// fails the row goes stale and the push service's 404/410 removes it on the
 	// next delivery; the member's device goes quiet either way.
-	await input.server.unregister(existing.endpoint).catch(() => false);
-	await existing.unsubscribe().catch(() => false);
+	const serverUnregistered = await input.server
+		.unregister(existing.endpoint)
+		.catch(() => false);
+	const unsubscribed = await existing.unsubscribe().catch(() => false);
+	return { browserGone: unsubscribed, serverUnregistered };
 }

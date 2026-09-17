@@ -237,6 +237,18 @@ config :sentry,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# Phoenix 1.8 defaults to ["password", "token"]. Extend that list so Web Push
+# subscription material (endpoint URL, p256dh/auth, nested keys) cannot land
+# in Plug.Logger / router debug "Parameters:" lines.
+config :phoenix, :filter_parameters, [
+  "password",
+  "token",
+  "endpoint",
+  "p256dh",
+  "auth",
+  "keys"
+]
+
 # OpenTelemetry: route spans to Sentry's span processor and sampler.
 # See lib/dhc/application.ex for the instrumentation setup calls.
 config :opentelemetry,
