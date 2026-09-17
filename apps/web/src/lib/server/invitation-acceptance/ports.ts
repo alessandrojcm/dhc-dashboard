@@ -1,4 +1,5 @@
 import type { AcceptanceApiResult } from "$lib/invitation-acceptance/vocabulary";
+import type { PlanPricing } from "$lib/types";
 
 /**
  * Ports for the Invitation Acceptance workflow (GH-509, "remote but owned").
@@ -35,6 +36,11 @@ export type VerificationResult = {
 	issuedProof: AcceptanceProof | undefined;
 };
 
+/** Pricing is a different 200 body; every other Phoenix answer is an acceptance result. */
+export type PricingApiResult =
+	| { kind: "pricing"; pricing: PlanPricing }
+	| AcceptanceApiResult;
+
 export interface InvitationAcceptanceApi {
 	verify(
 		proof: AcceptanceProof | undefined,
@@ -48,6 +54,10 @@ export interface InvitationAcceptanceApi {
 	): Promise<AcceptanceApiResult>;
 	retry(proof: AcceptanceProof): Promise<AcceptanceApiResult>;
 	cancelDiscord(proof: AcceptanceProof): Promise<AcceptanceApiResult>;
+	previewPricing(
+		proof: AcceptanceProof,
+		code?: string,
+	): Promise<PricingApiResult>;
 }
 
 /**

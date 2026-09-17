@@ -35,16 +35,19 @@ export type {
 	InvitationAcceptanceDeps,
 	InvitationCredentials,
 	PaymentSubmission,
+	PricingApiResult,
 } from "./ports";
 export {
 	continueToPayment,
 	paymentMessages,
+	previewPricing,
 	readInvitationPage,
 	restartDiscordVerification,
 	resumeInvitationAcceptance,
 	submitInvitationPayment,
 	verifyInvitationCredentials,
 	type PaymentOutcome,
+	type PricingOutcome,
 	type RestartOutcome,
 	type VerificationOutcome,
 } from "./workflow";

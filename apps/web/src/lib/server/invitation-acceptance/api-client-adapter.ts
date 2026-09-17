@@ -1,6 +1,7 @@
 import {
 	onboardingCancelDiscord,
 	onboardingContinueAcceptance,
+	onboardingPreviewPricing,
 	onboardingRetryAcceptance,
 	onboardingShowInvitationAcceptance,
 	onboardingSubmitPayment,
@@ -15,7 +16,11 @@ import {
 } from "$lib/invitation-acceptance/vocabulary";
 import { apiBaseUrl } from "$lib/server/api-client";
 import { acceptanceProofCookie, issuedProofFrom } from "./cookie-store";
-import type { AcceptanceProof, InvitationAcceptanceApi } from "./ports";
+import type {
+	AcceptanceProof,
+	InvitationAcceptanceApi,
+	PricingApiResult,
+} from "./ports";
 
 /**
  * Production adapter: the generated `@dhc/api-client` operations behind the
@@ -27,8 +32,8 @@ const paymentTimeoutMs = 60_000;
 
 /**
  * Request options that attach the opaque handle to one trusted Phoenix call.
- * Also used by the Discord OAuth start endpoint and the pricing query, which
- * are transport-only and need no workflow decision.
+ * Also used by the Discord OAuth start endpoint, which is transport-only and
+ * needs no workflow decision.
  */
 export function invitationAcceptanceRequestOptions(
 	proof: AcceptanceProof | undefined,
@@ -68,6 +73,14 @@ export function interpretAcceptanceResponse(
 		return { kind: "view", httpStatus, view };
 	}
 
+	if (httpStatus !== undefined && httpStatus < 400) {
+		return {
+			kind: "unexpected_response",
+			httpStatus,
+			detail: apiErrorDetail(response.error),
+		};
+	}
+
 	if (httpStatus !== undefined) {
 		return {
 			kind: "rejected",
@@ -85,6 +98,42 @@ export function interpretAcceptanceResponse(
 	};
 }
 
+const dineroAmountSchema = v.object({
+	amount: v.number(),
+	currency: v.literal("EUR"),
+	precision: v.number(),
+});
+
+const planPricingSchema = v.object({
+	complimentary: v.optional(v.boolean()),
+	proratedPrice: dineroAmountSchema,
+	proratedMonthlyPrice: dineroAmountSchema,
+	proratedAnnualPrice: dineroAmountSchema,
+	monthlyFee: dineroAmountSchema,
+	annualFee: dineroAmountSchema,
+	discountedMonthlyFee: v.optional(dineroAmountSchema),
+	discountedAnnualFee: v.optional(dineroAmountSchema),
+	coupon: v.optional(v.string()),
+	discountPercentage: v.optional(v.number()),
+});
+
+const planPricingResponseSchema = v.object({
+	data: planPricingSchema,
+});
+
+export function interpretPricingResponse(
+	response: ClientResponse,
+): PricingApiResult {
+	const httpStatus = response.response?.status;
+	if (httpStatus !== undefined && httpStatus < 400) {
+		const parsed = v.safeParse(planPricingResponseSchema, response.data);
+		if (parsed.success) {
+			return { kind: "pricing", pricing: parsed.output.data };
+		}
+	}
+	return interpretAcceptanceResponse(response);
+}
+
 async function guarded(
 	call: () => Promise<ClientResponse>,
 ): Promise<AcceptanceApiResult> {
@@ -92,6 +141,16 @@ async function guarded(
 		return interpretAcceptanceResponse(await call());
 	} catch (error) {
 		return interpretAcceptanceResponse({ error });
+	}
+}
+
+async function guardedPricing(
+	call: () => Promise<ClientResponse>,
+): Promise<PricingApiResult> {
+	try {
+		return interpretPricingResponse(await call());
+	} catch (error) {
+		return interpretPricingResponse({ error });
 	}
 }
 
@@ -141,6 +200,13 @@ export function apiClientAcceptanceApi(): InvitationAcceptanceApi {
 		cancelDiscord: (proof) =>
 			guarded(() =>
 				onboardingCancelDiscord(invitationAcceptanceRequestOptions(proof)),
+			),
+		previewPricing: (proof, code) =>
+			guardedPricing(() =>
+				onboardingPreviewPricing({
+					...invitationAcceptanceRequestOptions(proof),
+					query: code ? { code } : undefined,
+				}),
 			),
 	};
 }

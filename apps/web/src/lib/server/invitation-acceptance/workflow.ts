@@ -1,4 +1,5 @@
 import type { AcceptanceApiResult } from "$lib/invitation-acceptance/vocabulary";
+import type { PlanPricing } from "$lib/types";
 import {
 	decideInvitationRoute,
 	type InvitationRouteOutcome,
@@ -48,6 +49,10 @@ export type RestartOutcome = Extract<
 	InvitationRouteOutcome,
 	{ type: "RESTART_VERIFICATION" }
 >;
+
+export type PricingOutcome =
+	| { type: "PRICING"; pricing: PlanPricing; effects: RouteEffect[] }
+	| InvitationRouteOutcome;
 
 export const paymentMessages = {
 	expired: "Invitation verification has expired. Please verify again.",
@@ -164,7 +169,29 @@ function paymentFailureMessage(result: AcceptanceApiResult): string {
 			return result.httpStatus === 402
 				? paymentMessages.rejected
 				: paymentMessages.failed;
+		case "unexpected_response":
+			return paymentMessages.failed;
 	}
+}
+
+/**
+ * Handle-bound pricing preview. A `restartVerification` answer is the same
+ * outcome the page and every other command produce — including clearing the
+ * stale proof — so a later retry is not stuck on a dead handle.
+ */
+export async function previewPricing(
+	deps: InvitationAcceptanceDeps,
+	code?: string,
+): Promise<PricingOutcome> {
+	const proof = deps.cookies.readProof();
+	if (!proof) return decideInvitationRoute({ hasAcceptanceProof: false });
+
+	const result = await deps.api.previewPricing(proof, code);
+	if (result.kind === "pricing") {
+		return { type: "PRICING", pricing: result.pricing, effects: [] };
+	}
+
+	return decideInvitationRoute({ hasAcceptanceProof: true, result });
 }
 
 /**

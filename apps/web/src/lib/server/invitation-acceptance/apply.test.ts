@@ -195,6 +195,23 @@ describe("applyInvitationRouteOutcome", () => {
 
 		expect(thrown).toMatchObject({ status: 400, body: { message: "bad" } });
 	});
+
+	it("an unparseable success from Phoenix becomes a 502", () => {
+		const store = recordingCookieStore({ proof: "proof" });
+
+		const thrown = capture(() =>
+			applyInvitationRouteOutcome(
+				decideInvitationRoute({
+					hasAcceptanceProof: true,
+					result: { kind: "unexpected_response", httpStatus: 200 },
+				}),
+				{ cookies: store.cookies, invitationId: "inv", mode: "render" },
+			),
+		);
+
+		expect(isHttpError(thrown)).toBe(true);
+		expect(thrown).toMatchObject({ status: 502 });
+	});
 });
 
 describe("SvelteKit acceptance cookie adapter", () => {

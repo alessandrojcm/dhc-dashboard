@@ -12,7 +12,7 @@ import {
 import { PUBLIC_STRIPE_KEY } from "$env/static/public";
 import { toast } from "svelte-sonner";
 import { tick } from "svelte";
-import { fromPromise } from "xstate";
+import { fromPromise, type AnyActorRef } from "xstate";
 import { useMachine } from "@xstate/svelte";
 import * as Alert from "$lib/components/ui/alert";
 import PhoneInput from "$lib/components/ui/phone-input.svelte";
@@ -29,7 +29,17 @@ import {
 	type PaymentMachineState,
 } from "$lib/invitation-acceptance/payment-machine";
 
-const { data }: { data: PageServerData } = $props();
+const {
+	data,
+	onActor,
+	submit: submitOverride,
+}: {
+	data: PageServerData;
+	/** Test-only: observe the component-scoped actor. */
+	onActor?: (actor: AnyActorRef) => void;
+	/** Test-only: replace the remote form's `submit()` (false = validation failed). */
+	submit?: () => Promise<boolean>;
+} = $props();
 let currentCoupon = $state("");
 
 // Machine input is fixed for the component's lifetime: a complimentary
@@ -85,7 +95,6 @@ const paymentElementOptions: StripePaymentElementOptions = {
 	},
 };
 
-// Initialize form with empty values
 initForm(processPayment, () => ({
 	nextOfKin: "",
 	nextOfKinNumber: "",
@@ -93,7 +102,7 @@ initForm(processPayment, () => ({
 	couponCode: "",
 }));
 
-const { snapshot, send } = useMachine(
+const { snapshot, send, actorRef } = useMachine(
 	paymentMachine.provide({
 		actors: {
 			loadPaymentElement: fromPromise(async () => {
@@ -162,6 +171,7 @@ const { snapshot, send } = useMachine(
 	}),
 	{ input: { complimentary } },
 );
+onActor?.(actorRef);
 
 // SAFETY: `paymentMachine` is flat (no nested or parallel states), so its
 // snapshot value is always one of `paymentMachineStates`.
@@ -183,7 +193,15 @@ const enhancedForm = processPayment.enhance(async ({ submit }) => {
 	}
 
 	try {
-		await submit();
+		const submitted = await (submitOverride ?? submit)();
+		if (submitted === false) {
+			send({
+				type: "SUBMISSION_FAILED",
+				message: "Please check the form and try again.",
+				recoverable: true,
+			});
+			return;
+		}
 	} catch (error) {
 		send({
 			type: "SUBMISSION_FAILED",

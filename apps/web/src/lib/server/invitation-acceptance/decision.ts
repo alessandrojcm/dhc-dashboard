@@ -104,6 +104,8 @@ export const invitationDecisionMachine = setup({
 				(result.kind === "rejected" && result.httpStatus >= 500)
 			);
 		},
+		unexpectedResponse: ({ event }) =>
+			resultOf(event).kind === "unexpected_response",
 		rejected: ({ event }) => resultOf(event).kind === "rejected",
 	},
 	actions: {
@@ -137,6 +139,11 @@ export const invitationDecisionMachine = setup({
 						actions: assign({ result: ({ event }) => event.result }),
 					},
 					{ guard: "restartVerification", target: "restartVerification" },
+					{
+						guard: "unexpectedResponse",
+						target: "rejected",
+						actions: assign({ result: ({ event }) => event.result }),
+					},
 					{
 						guard: "unavailable",
 						target: "unavailable",
@@ -203,6 +210,13 @@ export const invitationDecisionMachine = setup({
 			type: "final",
 			output: ({ context }) => {
 				const result = context.result;
+				if (result?.kind === "unexpected_response") {
+					return {
+						type: "REJECTED" as const,
+						httpStatus: 502,
+						detail: result.detail,
+					};
+				}
 				return {
 					type: "REJECTED" as const,
 					httpStatus: result?.kind === "rejected" ? result.httpStatus : 500,

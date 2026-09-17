@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	continueToPayment,
+	previewPricing,
 	readInvitationPage,
 	restartDiscordVerification,
 	resumeInvitationAcceptance,
@@ -33,6 +34,7 @@ describe("Invitation Acceptance workflow", () => {
 			["initial page", readInvitationPage],
 			["resume", resumeInvitationAcceptance],
 			["continue to payment", continueToPayment],
+			["pricing", previewPricing],
 		])(
 			"%s restarts, clears proof, and never calls Phoenix",
 			async (_l, run) => {
@@ -67,6 +69,7 @@ describe("Invitation Acceptance workflow", () => {
 			["initial page", readInvitationPage, "show"],
 			["resume", resumeInvitationAcceptance, "show"],
 			["continue to payment", continueToPayment, "continueAcceptance"],
+			["pricing", previewPricing, "previewPricing"],
 		] as const)(
 			"%s yields the same restart outcome",
 			async (_label, run, op) => {
@@ -455,6 +458,40 @@ describe("Invitation Acceptance workflow", () => {
 			expect(outcome.type).toBe("RESTART_VERIFICATION");
 			expect(calls).toEqual([]);
 		});
+	});
+
+	it("pricing success returns the preview and never touches cookies", async () => {
+		const pricing = {
+			proratedPrice: { amount: 3300, currency: "EUR" as const, precision: 2 },
+			proratedMonthlyPrice: {
+				amount: 1500,
+				currency: "EUR" as const,
+				precision: 2,
+			},
+			proratedAnnualPrice: {
+				amount: 1800,
+				currency: "EUR" as const,
+				precision: 2,
+			},
+			monthlyFee: { amount: 4200, currency: "EUR" as const, precision: 2 },
+			annualFee: { amount: 36000, currency: "EUR" as const, precision: 2 },
+		};
+		const { api, calls } = inMemoryAcceptanceApi({
+			previewPricing: { kind: "pricing", pricing },
+		});
+		const store = recordingCookieStore({ proof: "proof" });
+
+		const outcome = await previewPricing(
+			{ api, cookies: store.cookies },
+			"SAVE",
+		);
+
+		expect(outcome).toEqual({ type: "PRICING", pricing, effects: [] });
+		expect(calls).toEqual([
+			{ op: "previewPricing", proof: "proof", payload: { code: "SAVE" } },
+		]);
+		expect(store.effects).toEqual([]);
+		expect(store.proof).toBe("proof");
 	});
 
 	it("continue to payment shows paymentReady", async () => {

@@ -96,4 +96,10 @@ export function normalizeAcceptanceStatus(
 export type AcceptanceApiResult =
 	| { kind: "view"; httpStatus: number; view: AcceptanceView }
 	| { kind: "rejected"; httpStatus: number; detail?: string }
-	| { kind: "unavailable"; reason: "timeout" | "network"; detail?: string };
+	| { kind: "unavailable"; reason: "timeout" | "network"; detail?: string }
+	| {
+			/** A 2xx body that is not a safe view we can interpret. */
+			kind: "unexpected_response";
+			httpStatus: number;
+			detail?: string;
+	  };

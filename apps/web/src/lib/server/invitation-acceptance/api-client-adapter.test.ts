@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { interpretAcceptanceResponse } from "./api-client-adapter";
+import {
+	interpretAcceptanceResponse,
+	interpretPricingResponse,
+} from "./api-client-adapter";
 
 const response = (status: number) => new Response(null, { status });
 
@@ -36,7 +39,11 @@ describe("interpretAcceptanceResponse", () => {
 				data: { data: { state: "somethingNew" } },
 				response: response(200),
 			}),
-		).toEqual({ kind: "rejected", httpStatus: 200, detail: undefined });
+		).toEqual({
+			kind: "unexpected_response",
+			httpStatus: 200,
+			detail: undefined,
+		});
 	});
 
 	it("reads the Error schema detail on a rejection", () => {
@@ -70,6 +77,38 @@ describe("interpretAcceptanceResponse", () => {
 			kind: "unavailable",
 			reason: "network",
 			detail: "fetch failed",
+		});
+	});
+});
+
+describe("interpretPricingResponse", () => {
+	it("reads a 200 pricing preview", () => {
+		const pricing = {
+			proratedPrice: { amount: 3300, currency: "EUR", precision: 2 },
+			proratedMonthlyPrice: { amount: 1500, currency: "EUR", precision: 2 },
+			proratedAnnualPrice: { amount: 1800, currency: "EUR", precision: 2 },
+			monthlyFee: { amount: 4200, currency: "EUR", precision: 2 },
+			annualFee: { amount: 36000, currency: "EUR", precision: 2 },
+		};
+
+		expect(
+			interpretPricingResponse({
+				data: { data: pricing },
+				response: response(200),
+			}),
+		).toEqual({ kind: "pricing", pricing });
+	});
+
+	it("treats a 409 restart_verification body as an acceptance view", () => {
+		expect(
+			interpretPricingResponse({
+				error: { data: { state: "restart_verification" } },
+				response: response(409),
+			}),
+		).toEqual({
+			kind: "view",
+			httpStatus: 409,
+			view: { state: "restartVerification" },
 		});
 	});
 });

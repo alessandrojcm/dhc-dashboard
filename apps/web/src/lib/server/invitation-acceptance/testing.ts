@@ -9,6 +9,7 @@ import type {
 	InvitationAcceptanceApi,
 	InvitationCredentials,
 	PaymentSubmission,
+	PricingApiResult,
 	VerificationResult,
 } from "./ports";
 
@@ -23,7 +24,7 @@ export type AcceptanceApiOperation = keyof InvitationAcceptanceApi;
 export type RecordedApiCall = {
 	op: AcceptanceApiOperation;
 	proof: AcceptanceProof | undefined;
-	payload?: InvitationCredentials | PaymentSubmission;
+	payload?: InvitationCredentials | PaymentSubmission | { code?: string };
 };
 
 type OneOrMany<T> = T | T[];
@@ -35,6 +36,7 @@ type Script = {
 	submitPayment?: OneOrMany<AcceptanceApiResult>;
 	retry?: OneOrMany<AcceptanceApiResult>;
 	cancelDiscord?: OneOrMany<AcceptanceApiResult>;
+	previewPricing?: OneOrMany<PricingApiResult>;
 };
 
 function queue<T>(answers: OneOrMany<T> | undefined): T[] {
@@ -51,6 +53,7 @@ export function inMemoryAcceptanceApi(script: Script = {}) {
 		submitPayment: queue(script.submitPayment),
 		retry: queue(script.retry),
 		cancelDiscord: queue(script.cancelDiscord),
+		previewPricing: queue(script.previewPricing),
 	};
 
 	function take<T>(answers: T[], call: RecordedApiCall): T {
@@ -77,6 +80,11 @@ export function inMemoryAcceptanceApi(script: Script = {}) {
 		retry: async (proof) => take(queues.retry, { op: "retry", proof }),
 		cancelDiscord: async (proof) =>
 			take(queues.cancelDiscord, { op: "cancelDiscord", proof }),
+		previewPricing: async (proof, code) => {
+			const call: RecordedApiCall = { op: "previewPricing", proof };
+			if (code !== undefined) call.payload = { code };
+			return take(queues.previewPricing, call);
+		},
 	};
 
 	return { api, calls };

@@ -127,6 +127,20 @@ describe("decideInvitationRoute", () => {
 		});
 	});
 
+	it("maps an unparseable success to a 502 rejection without clearing the proof", () => {
+		const outcome = decideInvitationRoute({
+			hasAcceptanceProof: true,
+			result: { kind: "unexpected_response", httpStatus: 200 },
+		});
+
+		expect(outcome).toEqual({
+			type: "REJECTED",
+			httpStatus: 502,
+			detail: undefined,
+			effects: [],
+		});
+	});
+
 	it("is a pure function: two identical decisions are independent", () => {
 		const input = {
 			hasAcceptanceProof: true,
