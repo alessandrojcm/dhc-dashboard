@@ -36,7 +36,10 @@ declare global {
 		interface PageData {
 			session: PhoenixSessionProjection | null;
 		}
-		// interface PageState {}
+		interface PageState {
+			selectedSlug?: string;
+			selectedLoanId?: string;
+		}
 		// interface Platform {}
 	}
 }

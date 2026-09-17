@@ -5,8 +5,13 @@ import {
 	useQueryClient,
 } from "@tanstack/svelte-query";
 import {
+	inventoryCatalogListItemsQueryKey,
 	inventoryCatalogRequestLoanMutation,
 	inventoryCatalogShowItemOptions,
+	inventoryCatalogShowItemQueryKey,
+	inventoryMemberLoansListQueryKey,
+	type InventoryCatalogRequestLoanData,
+	type InventoryCatalogRequestLoanResponse,
 	type InventoryOperatorItemValue,
 } from "@dhc/api-client";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
@@ -27,7 +32,16 @@ import {
 import { toast } from "svelte-sonner";
 import { getLocalTimeZone, parseDate, today } from "@internationalized/date";
 
-let { slug }: { slug: string } = $props();
+let {
+	slug,
+	requestLoan,
+}: {
+	slug: string;
+	/** Test-only: stub the request mutation so browser tests skip the shared ky client. */
+	requestLoan?: (
+		vars: Pick<InventoryCatalogRequestLoanData, "body" | "path">,
+	) => Promise<InventoryCatalogRequestLoanResponse>;
+} = $props();
 
 const queryClient = useQueryClient();
 const itemQuery = createQuery(() => ({
@@ -46,28 +60,40 @@ let requestSent = $state(false);
 const startsOnValue = $derived(parseDate(startsOn));
 const dueOnValue = $derived(parseDate(dueOn));
 
-const requestMutation = createMutation(() => ({
-	...inventoryCatalogRequestLoanMutation(),
-	onSuccess: () => {
-		requestSent = true;
-		queryClient.invalidateQueries({
-			queryKey: ["inventoryCatalogShowItem"],
-		});
-		toast.success("Request sent — you'll hear back once reviewed.");
-	},
-	onError: (error) => {
-		// SAFETY: Phoenix renders loan conflicts as `{ errors: { detail, code } }`;
-		// only the stable `code` field is read to choose member-facing feedback.
-		const code = (error.errors as { code?: string } | undefined)?.code;
-		if (code === "duplicate_request") {
-			toast.error("You already have a pending request for this item.");
-		} else if (code === "item_unavailable") {
-			toast.error("This item can't be requested right now.");
-		} else {
-			toast.error(error.errors?.detail ?? "Couldn't send the request.");
-		}
-	},
-}));
+const requestMutation = createMutation(() => {
+	const options = inventoryCatalogRequestLoanMutation();
+	if (requestLoan) options.mutationFn = requestLoan;
+	return {
+		...options,
+		onSuccess: () => {
+			requestSent = true;
+			queryClient.invalidateQueries({
+				queryKey: inventoryCatalogShowItemQueryKey({
+					path: { slugOrId: slug },
+				}),
+			});
+			queryClient.invalidateQueries({
+				queryKey: inventoryCatalogListItemsQueryKey(),
+			});
+			queryClient.invalidateQueries({
+				queryKey: inventoryMemberLoansListQueryKey(),
+			});
+			toast.success("Request sent — you'll hear back once reviewed.");
+		},
+		onError: (error) => {
+			// SAFETY: Phoenix renders loan conflicts as `{ errors: { detail, code } }`;
+			// only the stable `code` field is read to choose member-facing feedback.
+			const code = (error.errors as { code?: string } | undefined)?.code;
+			if (code === "duplicate_request") {
+				toast.error("You already have a pending request for this item.");
+			} else if (code === "item_unavailable") {
+				toast.error("This item can't be requested right now.");
+			} else {
+				toast.error(error.errors?.detail ?? "Couldn't send the request.");
+			}
+		},
+	};
+});
 
 function renderValue(value: InventoryOperatorItemValue): string | null {
 	switch (value.valueType) {

@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { isHttpError, isRedirect } from "@sveltejs/kit";
+import { getClient } from "@dhc/api-client";
 import {
 	authorizationFor,
 	CAPABILITIES,
@@ -6,6 +8,8 @@ import {
 	type Capability,
 	type PhoenixSessionProjection,
 } from "$lib/server/authorization";
+import { navigation } from "./navigation";
+import { governingRule, protectedRoutes } from "./routes";
 
 /**
  * GH-510: behavioural tests for the frontend authorization boundary.
@@ -283,77 +287,211 @@ describe("authorizationFor — navigation", () => {
 	});
 });
 
-/** Navigation title → governing capability (the observable contract). */
+/** Navigation title → governing capability, taken from the real definition. */
 const NAV_CAPABILITY = new Map<string, Capability>(
-	Object.entries({
-		"Beginners Workshop": "beginners.workshop.read",
-		Members: "members.directory.read",
-		"Discord Doctor": "discord.doctor.use",
-		Workshops: "workshops.manage",
-		"My Workshops": "workshops.own.read",
-		Inventory: "inventory.manage",
-		Equipment: "inventory.catalog.read",
-		"My Loans": "inventory.loans.own.read",
-	} satisfies Record<string, Capability>),
+	navigation.map((group) => [group.title, group.requires]),
 );
 
+type PageLoadParams = { memberId?: string };
+
+type PageLoadEvent = {
+	locals: {
+		session: PhoenixSessionProjection | null;
+		safeGetSession: () => Promise<{
+			session: PhoenixSessionProjection | null;
+		}>;
+	};
+	params: PageLoadParams;
+	url: URL;
+	cookies: { get: (name: string) => string | undefined };
+	depends: (dep: string) => void;
+};
+
+type PageServerModule = {
+	load?: (event: PageLoadEvent) => void | Promise<void>;
+};
+
+const pageServers = import.meta.glob<PageServerModule>(
+	"../../../routes/dashboard/**/+page.server.ts",
+	{ eager: true },
+);
+const layoutServers = import.meta.glob<PageServerModule>(
+	"../../../routes/dashboard/**/+layout.server.ts",
+	{ eager: true },
+);
+
+function routeIdFromGlob(path: string, kind: "page" | "layout"): string {
+	const marker = "/routes";
+	const index = path.lastIndexOf(marker);
+	const suffix = kind === "page" ? "/+page.server.ts" : "/+layout.server.ts";
+	return path.slice(index + marker.length).replace(suffix, "");
+}
+
+function modulesByRouteId(
+	modules: Record<string, PageServerModule>,
+	kind: "page" | "layout",
+): Map<string, PageServerModule> {
+	return new Map(
+		Object.entries(modules).map(([path, mod]) => [
+			routeIdFromGlob(path, kind),
+			mod,
+		]),
+	);
+}
+
+const pages = modulesByRouteId(pageServers, "page");
+const layouts = modulesByRouteId(layoutServers, "layout");
+
+function pageLoadAt(
+	prefix: string,
+):
+	| { routeId: string; load: NonNullable<PageServerModule["load"]> }
+	| undefined {
+	const exact = pages.get(prefix);
+	if (exact?.load) return { routeId: prefix, load: exact.load };
+	for (const [routeId, mod] of pages) {
+		if (mod.load && routeId.startsWith(`${prefix}/[[`)) {
+			return { routeId, load: mod.load };
+		}
+	}
+	return undefined;
+}
+
 /**
- * Protected route table: SvelteKit route id → governing capability and the
- * resource context derived from params. The hook and the route-local
- * `require()` must agree on every row.
+ * The page `load` for a protected-route prefix, or the layout `load` that
+ * sits on that prefix (inventory). Does not walk up to `/dashboard` — that
+ * layout only checks for a session and would hide a missing capability load.
  */
-const PROTECTED_ROUTES: Array<{
-	id: string;
-	params?: Record<string, string>;
-	requires: Capability;
-	resource?: { ownerPrincipalId: string };
-}> = [
-	{ id: "/dashboard/beginners-workshop", requires: "beginners.workshop.read" },
-	{ id: "/dashboard/members", requires: "members.directory.read" },
-	{ id: "/dashboard/members/directory", requires: "members.directory.read" },
-	{ id: "/dashboard/members/invitations", requires: "members.directory.read" },
-	{
-		id: "/dashboard/members/[memberId]",
-		params: { memberId: OTHER },
-		requires: "members.profile.read",
-		resource: { ownerPrincipalId: OTHER },
-	},
-	{
-		id: "/dashboard/members/[memberId]",
-		params: { memberId: SELF },
-		requires: "members.profile.read",
-		resource: { ownerPrincipalId: SELF },
-	},
-	{ id: "/dashboard/discord-doctor", requires: "discord.doctor.use" },
-	{ id: "/dashboard/workshops", requires: "workshops.manage" },
-	{ id: "/dashboard/workshops/create", requires: "workshops.manage" },
-	{ id: "/dashboard/workshops/[id]/attendees", requires: "workshops.manage" },
-	{ id: "/dashboard/my-workshops", requires: "workshops.own.read" },
-	{ id: "/dashboard/inventory", requires: "inventory.manage" },
-	{ id: "/dashboard/inventory/items", requires: "inventory.manage" },
-	{ id: "/dashboard/inventory/categories", requires: "inventory.manage" },
-	{ id: "/dashboard/inventory/containers", requires: "inventory.manage" },
-	{ id: "/dashboard/inventory/loans", requires: "inventory.manage" },
-	{ id: "/dashboard/equipment", requires: "inventory.catalog.read" },
-	{ id: "/dashboard/my-loans", requires: "inventory.loans.own.read" },
-];
+function governingLoad(
+	prefix: string,
+):
+	| { routeId: string; load: NonNullable<PageServerModule["load"]> }
+	| undefined {
+	const page = pageLoadAt(prefix);
+	if (page) return page;
+	const layout = layouts.get(prefix);
+	if (layout?.load) return { routeId: prefix, load: layout.load };
+	return undefined;
+}
+
+function paramSetsFor(routeId: string): PageLoadParams[] {
+	if (!routeId.includes("[memberId]")) return [{}];
+	return [{ memberId: SELF }, { memberId: OTHER }];
+}
+
+function loadEvent(
+	session: PhoenixSessionProjection | null,
+	params: PageLoadParams,
+): PageLoadEvent {
+	return {
+		locals: {
+			session,
+			safeGetSession: async () => ({ session }),
+		},
+		params,
+		url: new URL("http://localhost/dashboard"),
+		cookies: { get: () => undefined },
+		depends: () => {},
+	};
+}
+
+function isCapabilityDenial(cause: unknown): boolean {
+	if (isRedirect(cause)) return true;
+	if (!isHttpError(cause)) return false;
+	if (cause.status === 401 || cause.status === 403) return true;
+	// require() conceals missing profile access as 404 "Not found".
+	// The member-detail load maps a stubbed TypeError to 404 "Member not
+	// found" after require() has already passed — that is not a denial.
+	return cause.status === 404 && cause.body.message === "Not found";
+}
+
+async function expectLoadDenies(
+	load: NonNullable<PageServerModule["load"]>,
+	event: PageLoadEvent,
+	label: string,
+) {
+	let denied = false;
+	try {
+		await load(event);
+	} catch (cause) {
+		expect(isCapabilityDenial(cause), label).toBe(true);
+		denied = true;
+	}
+	expect(denied, label).toBe(true);
+}
+
+async function expectLoadAllows(
+	load: NonNullable<PageServerModule["load"]>,
+	event: PageLoadEvent,
+	label: string,
+) {
+	try {
+		await load(event);
+	} catch (cause) {
+		// Stubbed ky throws TypeError. A concealed_resource 404 must fail.
+		expect(isCapabilityDenial(cause), label).toBe(false);
+	}
+}
 
 describe("guardRoute — request-hook gating", () => {
-	it("agrees with route-local require() for every protected route and role", () => {
-		for (const route of PROTECTED_ROUTES) {
-			for (const role of EVERY_ROLE) {
-				const s = session(role);
-				const access = authorizationFor(s);
-				const outcome = guardRoute(s, {
-					id: route.id,
-					params: route.params ?? {},
-				});
-				const allowed = access.can(route.requires, route.resource);
+	it("nav entries and protected-route rules name the same capability", () => {
+		const entries = navigation.flatMap((group) => [
+			{ title: group.title, url: group.url, requires: group.requires },
+			...(group.items ?? []).map((item) => ({
+				title: item.title,
+				url: item.url,
+				requires: item.requires,
+			})),
+		]);
+		for (const entry of entries) {
+			const rule = governingRule(entry.url);
+			expect(rule, `no protected-route rule for ${entry.title}`).toBeDefined();
+			expect(rule?.requires, entry.title).toBe(entry.requires);
+		}
+	});
+
+	it("each protected-route rule has a governing load that agrees with the hook", async () => {
+		const client = getClient();
+		const previous = client.getConfig();
+		client.setConfig({
+			retry: 0,
+			kyOptions: {
+				timeout: 1,
+				fetch: async () => {
+					throw new TypeError("Failed to fetch");
+				},
+			},
+		});
+		try {
+			for (const rule of protectedRoutes) {
+				const governing = governingLoad(rule.prefix);
 				expect(
-					outcome.kind,
-					`${role} on ${route.id} ${JSON.stringify(route.params ?? {})}`,
-				).toBe(allowed ? "allow" : "redirect");
+					governing,
+					`no page or layout load for ${rule.prefix}`,
+				).toBeDefined();
+				if (!governing) continue;
+
+				const { routeId, load } = governing;
+				for (const params of paramSetsFor(rule.prefix)) {
+					for (const role of EVERY_ROLE) {
+						const s = session(role);
+						const outcome = guardRoute(s, { id: routeId, params });
+						const label = `${role} load on ${routeId} ${JSON.stringify(params)}`;
+						if (outcome.kind === "allow") {
+							await expectLoadAllows(load, loadEvent(s, params), label);
+						} else {
+							await expectLoadDenies(load, loadEvent(s, params), label);
+						}
+					}
+					await expectLoadDenies(
+						load,
+						loadEvent(null, params),
+						`anonymous load on ${routeId}`,
+					);
+				}
 			}
+		} finally {
+			client.setConfig(previous);
 		}
 	});
 

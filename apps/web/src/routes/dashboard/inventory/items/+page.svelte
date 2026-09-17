@@ -1,6 +1,12 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
-import { createMutation, createQuery } from "@tanstack/svelte-query";
+import { page } from "$app/state";
+import {
+	createMutation,
+	createQuery,
+	keepPreviousData,
+	useQueryClient,
+} from "@tanstack/svelte-query";
 import {
 	type InventoryOperatorItem,
 	type InventoryOperatorItemValues,
@@ -16,13 +22,13 @@ import {
 	inventoryItemsListOptions,
 	inventoryItemsMoveMutation,
 	inventoryItemsRestoreMutation,
+	inventoryItemsShowOptions,
 	inventoryItemsStartMaintenanceMutation,
 	inventoryItemsUpdateMutation,
 	inventoryStructureListDefinitionsOptions,
 } from "@dhc/api-client";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import * as AlertDialog from "$lib/components/ui/alert-dialog";
-import * as Accordion from "$lib/components/ui/accordion";
 import { Badge } from "$lib/components/ui/badge";
 import { Button, buttonVariants } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
@@ -43,15 +49,20 @@ import {
 	RotateCcw,
 	Tags,
 	Trash2,
-	Wrench,
 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
+
+const PAGE_SIZE = 25;
 
 let archived = $state<"exclude" | "include" | "only">("exclude");
 let availability = $state<"all" | "maintenance">("all");
 let search = $state("");
 let debouncedQuery = $state("");
 let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+let cursor = $state<string | undefined>(undefined);
+let slugLookup = $state(page.url.searchParams.get("slug") ?? "");
+let lookedUpSlug = $state<string | undefined>(undefined);
+const queryClient = useQueryClient();
 let categoryId = $state("");
 let containerId = $state("");
 let notes = $state("");
@@ -84,8 +95,14 @@ const archiveOptions = [
 
 const itemsQuery = createQuery(() => ({
 	...inventoryItemsListOptions({
-		query: { archived, limit: 100, q: debouncedQuery || undefined },
+		query: {
+			archived,
+			limit: PAGE_SIZE,
+			q: debouncedQuery || undefined,
+			cursor,
+		},
 	}),
+	placeholderData: keepPreviousData,
 	select: (response) => response.data,
 }));
 const categoriesQuery = createQuery(() => ({
@@ -153,8 +170,28 @@ function updateSearch(value: string) {
 	clearTimeout(searchTimeout);
 	searchTimeout = setTimeout(() => {
 		debouncedQuery = value.trim();
+		cursor = undefined;
 	}, 300);
 }
+async function lookupSlug(slug: string) {
+	const trimmed = slug.trim();
+	if (!trimmed) return;
+	try {
+		const response = await queryClient.fetchQuery(
+			inventoryItemsShowOptions({ path: { slugOrId: trimmed } }),
+		);
+		choose(response.data);
+	} catch (cause) {
+		toast.error(apiErrorMessage(cause, "No item matches that slug"));
+	}
+}
+$effect(() => {
+	const slug = page.url.searchParams.get("slug")?.trim();
+	if (!slug || slug === lookedUpSlug) return;
+	lookedUpSlug = slug;
+	slugLookup = slug;
+	void lookupSlug(slug);
+});
 onDestroy(() => clearTimeout(searchTimeout));
 function itemValues(item: InventoryOperatorItem): InventoryOperatorItemValues {
 	return Object.fromEntries(
@@ -206,7 +243,13 @@ function apiErrorHandler(fallback: string) {
 }
 const createItem = createMutation(() => ({
 	...inventoryItemsCreateMutation(),
-	...commandOptions("Item created", "Could not create item", resetCreate),
+	onSuccess: (response) => {
+		toast.success("Item created");
+		choose(response.data, "details");
+		resetCreate();
+		refresh();
+	},
+	onError: apiErrorHandler("Could not create item"),
 }));
 const updateItem = createMutation(() => ({
 	...inventoryItemsUpdateMutation(),
@@ -378,84 +421,6 @@ function displayValue(item: InventoryOperatorItem) {
 			actions={createAction}
 			class="xl:pb-3"
 		/>
-		{#if itemsQuery.data && maintenanceItems.length > 0}
-			<section
-				class="rounded-2xl border border-secondary/60 bg-secondary/10 px-4 shadow-sm sm:px-5"
-			>
-				<Accordion.Root type="single">
-					<Accordion.Item value="maintenance" class="border-0">
-						<Accordion.Trigger
-							level={2}
-							class="items-center py-4 hover:no-underline sm:py-5"
-						>
-							<div class="flex min-w-0 items-start gap-3">
-								<div
-									class="grid size-11 shrink-0 place-items-center rounded-xl bg-secondary/25 text-foreground"
-								>
-									<Wrench class="size-5" aria-hidden="true" />
-								</div>
-								<div class="min-w-0 flex-1">
-									<div class="flex flex-wrap items-center gap-2">
-										<span class="font-heading text-xl font-bold">
-											Maintenance attention
-										</span>
-										<Badge variant="secondary"
-											>{maintenanceItems.length} open</Badge
-										>
-									</div>
-									<span
-										class="mt-1 block text-sm font-normal text-muted-foreground"
-									>
-										These items are out of circulation and need an operator
-										decision.
-									</span>
-								</div>
-							</div>
-						</Accordion.Trigger>
-						<Accordion.Content>
-							<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-								{#each maintenanceItems.slice(0, 3) as item (item.id)}
-									<article class="rounded-xl border bg-background/90 p-3">
-										<div class="flex items-start justify-between gap-3">
-											<div class="min-w-0">
-												<h3 class="font-semibold leading-snug">{item.label}</h3>
-												<p class="mt-1 font-mono text-xs text-muted-foreground">
-													{item.slug}
-												</p>
-											</div>
-											<Button
-												size="sm"
-												onclick={(event) =>
-													openManagement(
-														item,
-														"maintenance",
-														event.currentTarget,
-													)}
-											>
-												Manage maintenance
-											</Button>
-										</div>
-									</article>
-								{/each}
-							</div>
-							<div
-								class="mt-4 flex justify-end border-t border-secondary/40 pt-4"
-							>
-								<Button
-									variant="outline"
-									onclick={() => (availability = "maintenance")}
-								>
-									View all {maintenanceItems.length} maintenance {maintenanceItems.length ===
-									1
-										? "item"
-										: "items"}
-								</Button>
-							</div>
-						</Accordion.Content>
-					</Accordion.Item>
-				</Accordion.Root>
-			</section>
-		{/if}
 		{#if itemsQuery.isError}<Alert variant="destructive"
 				><AlertDescription class="flex items-center justify-between"
 					><span
@@ -682,6 +647,29 @@ function displayValue(item: InventoryOperatorItem) {
 								oninput={(event) => updateSearch(event.currentTarget.value)}
 							/>
 						</div>
+						<form
+							class="min-w-48 flex-1 sm:max-w-64"
+							onsubmit={(event) => {
+								event.preventDefault();
+								void lookupSlug(slugLookup);
+							}}
+						>
+							<Label for="item-slug-lookup" class="mb-2 text-xs font-semibold"
+								>Find by slug</Label
+							>
+							<div class="flex gap-2">
+								<Input
+									id="item-slug-lookup"
+									data-testid="find-by-slug"
+									class="h-11 border-border bg-background shadow-xs"
+									placeholder="item-000001"
+									bind:value={slugLookup}
+								/>
+								<Button type="submit" variant="outline" class="h-11">
+									Find
+								</Button>
+							</div>
+						</form>
 						<div>
 							<Label
 								for="availability-filter"
@@ -717,6 +705,7 @@ function displayValue(item: InventoryOperatorItem) {
 								type="single"
 								items={archiveOptions}
 								bind:value={archived}
+								onValueChange={() => (cursor = undefined)}
 							>
 								<Select.Trigger
 									id="archive-filter"
@@ -785,6 +774,38 @@ function displayValue(item: InventoryOperatorItem) {
 									: "Create a physical unit or change the archive filter."}
 							</p>
 						</div>{/each}
+					{#if cursor || itemsQuery.data?.nextCursor}
+						<div class="flex items-center justify-between gap-2">
+							{#if itemsQuery.data?.previousCursor}
+								<Button
+									variant="outline"
+									size="sm"
+									class="min-h-11"
+									data-testid="items-previous-page"
+									onclick={() => {
+										cursor = itemsQuery.data?.previousCursor ?? undefined;
+									}}
+								>
+									Previous
+								</Button>
+							{:else}
+								<span></span>
+							{/if}
+							{#if itemsQuery.data?.nextCursor}
+								<Button
+									variant="outline"
+									size="sm"
+									class="min-h-11"
+									data-testid="items-next-page"
+									onclick={() => {
+										cursor = itemsQuery.data?.nextCursor ?? undefined;
+									}}
+								>
+									Next
+								</Button>
+							{/if}
+						</div>
+					{/if}
 				</div>
 			</section>
 		</div>

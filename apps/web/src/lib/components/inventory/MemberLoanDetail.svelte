@@ -13,6 +13,7 @@ import { Skeleton } from "$lib/components/ui/skeleton";
 import { CalendarDays, MapPin, RefreshCw, TriangleAlert } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import {
+	inventoryCatalogShowItemQueryKey,
 	inventoryMemberLoansCancelMutation,
 	inventoryMemberLoansListQueryKey,
 	inventoryMemberLoansShowOptions,
@@ -43,12 +44,20 @@ const cancelMutation = createMutation(() => ({
 	...inventoryMemberLoansCancelMutation(),
 	onSuccess: () => {
 		cancelNote = "";
+		const itemSlug = loanQuery.data?.itemSlug;
 		queryClient.invalidateQueries({
 			queryKey: inventoryMemberLoansShowQueryKey({ path: { loanId } }),
 		});
 		queryClient.invalidateQueries({
 			queryKey: inventoryMemberLoansListQueryKey(),
 		});
+		if (itemSlug) {
+			queryClient.invalidateQueries({
+				queryKey: inventoryCatalogShowItemQueryKey({
+					path: { slugOrId: itemSlug },
+				}),
+			});
+		}
 		toast.success("Loan cancelled — the item is available again.");
 	},
 	onError: (error) => {

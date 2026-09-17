@@ -15,6 +15,7 @@ import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import DatePicker from "$lib/components/ui/date-picker.svelte";
 import { Label } from "$lib/components/ui/label";
+import * as Sheet from "$lib/components/ui/sheet";
 import { Textarea } from "$lib/components/ui/textarea";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
 import { apiErrorMessage } from "$lib/api-error";
@@ -28,11 +29,13 @@ import {
 	RefreshCw,
 	TriangleAlert,
 	UserRound,
+	Wrench,
 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { parseDate } from "@internationalized/date";
 
 let selected = $state<InventoryOperatorLoan | undefined>();
+let selectedTrigger = $state<HTMLElement | null>(null);
 let selectedReadyForCheckout = $state(false);
 let startsOn = $state("");
 let dueOn = $state("");
@@ -103,9 +106,14 @@ function shortPrincipal(id: string) {
 	return id.slice(0, 8);
 }
 
-function pending(...mutations: Array<{ isPending: boolean }>) {
-	return mutations.some((mutation) => mutation.isPending);
-}
+const busy = $derived(
+	approve.isPending ||
+		reject.isPending ||
+		cancel.isPending ||
+		checkout.isPending ||
+		returnLoan.isPending ||
+		editDates.isPending,
+);
 </script>
 
 {#snippet loanCard(
@@ -168,7 +176,10 @@ function pending(...mutations: Array<{ isPending: boolean }>) {
 		<div class="mt-4">
 			<Button
 				class="min-h-11 w-full justify-between"
-				onclick={() => choose(loan, readyForCheckout)}
+				onclick={(event) => {
+					selectedTrigger = event.currentTarget;
+					choose(loan, readyForCheckout);
+				}}
 			>
 				{kind === "request"
 					? "Review request"
@@ -244,7 +255,7 @@ function pending(...mutations: Array<{ isPending: boolean }>) {
 			<div class="h-48 animate-pulse rounded-2xl bg-muted"></div>
 		</div>
 	{:else if queueQuery.data}
-		<div class="grid items-start gap-4 xl:grid-cols-3">
+		<div class="grid items-start gap-4 lg:grid-cols-2">
 			<section class="inventory-panel space-y-3 p-4 sm:p-5">
 				{@render bucket(
 					"Requests",
@@ -296,202 +307,257 @@ function pending(...mutations: Array<{ isPending: boolean }>) {
 						No returns due.
 					</p>{/each}
 			</section>
+			<section
+				class="inventory-panel space-y-3 p-4 sm:p-5"
+				data-testid="open-maintenance-bucket"
+			>
+				{@render bucket(
+					"Open maintenance",
+					"Items out of circulation until an operator closes the period.",
+					queueQuery.data.openMaintenance.count,
+					Wrench,
+				)}
+				{#each queueQuery.data.openMaintenance.rows as row (row.id)}
+					<article class="inventory-card p-4">
+						<div class="flex items-start gap-3">
+							<div
+								class="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"
+							>
+								<Wrench class="size-5" aria-hidden="true" />
+							</div>
+							<div class="min-w-0">
+								<h3 class="font-semibold leading-snug">{row.itemLabel}</h3>
+								<Badge variant="outline" class="mt-1 font-mono text-[0.7rem]"
+									>{row.itemSlug}</Badge
+								>
+								<p class="mt-2 text-sm text-muted-foreground">
+									{row.startReason ?? "Open maintenance"}
+								</p>
+							</div>
+						</div>
+						<div class="mt-4">
+							<Button
+								class="min-h-11 w-full justify-between"
+								href={row.itemSlug
+									? `/dashboard/inventory/items?slug=${encodeURIComponent(row.itemSlug)}`
+									: "/dashboard/inventory/items"}
+							>
+								Open item<ArrowRight class="size-4" aria-hidden="true" />
+							</Button>
+						</div>
+					</article>
+				{:else}
+					<p class="py-8 text-center text-sm text-muted-foreground">
+						No items in maintenance.
+					</p>
+				{/each}
+			</section>
 		</div>
 	{/if}
 
-	{#if selected}
-		<button
-			type="button"
-			class="fixed inset-0 z-40 cursor-default bg-foreground/25 backdrop-blur-[1px]"
-			aria-label="Close loan action panel"
-			onclick={() => (selected = undefined)}
-		></button>
-		<section
-			class="fixed inset-x-0 bottom-0 z-50 max-h-[88svh] overflow-y-auto rounded-t-3xl border border-b-0 bg-background p-5 shadow-2xl sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-[28rem] sm:rounded-3xl sm:border"
+	<Sheet.Root
+		open={Boolean(selected)}
+		onOpenChange={(open) => {
+			if (!open) selected = undefined;
+		}}
+		onOpenChangeComplete={(open) => {
+			if (!open) selectedTrigger?.focus();
+		}}
+	>
+		<Sheet.Content
+			side="bottom"
+			data-testid="loan-action-panel"
 			aria-label="Loan action panel"
+			class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[28rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none sm:border-t-0 sm:border-l sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right"
 		>
-			<div class="mb-5 flex items-start justify-between gap-3">
-				<div>
+			{#if selected}
+				<Sheet.Header
+					class="shrink-0 border-b bg-primary/7 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pr-16 pb-5 text-left sm:px-6 sm:pt-6"
+				>
 					<p class="text-xs font-bold tracking-wide text-primary uppercase">
 						{selected.status.replace("_", " ")}
 					</p>
-					<h2 class="font-heading text-2xl font-bold">{selected.itemLabel}</h2>
-					<p class="mt-1 text-sm text-muted-foreground">
+					<Sheet.Title class="font-heading text-2xl font-bold">
+						{selected.itemLabel}
+					</Sheet.Title>
+					<Sheet.Description class="mt-1 text-sm text-muted-foreground">
 						Borrower {shortPrincipal(selected.borrowerPrincipalId)}
-					</p>
-				</div>
-				<Button
-					variant="outline"
-					size="sm"
-					onclick={() => (selected = undefined)}>Close</Button
+					</Sheet.Description>
+				</Sheet.Header>
+				<div
+					class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-5 sm:p-6"
 				>
-			</div>
-			<div
-				class="mb-5 grid grid-cols-2 gap-3 rounded-xl bg-muted/50 p-3 text-sm"
-			>
-				<div>
-					<span class="block text-xs text-muted-foreground">Start</span
-					>{formatDate(selected.approvedStartOn ?? selected.requestedStartOn)}
-				</div>
-				<div>
-					<span class="block text-xs text-muted-foreground">Due</span
-					>{formatDate(selected.approvedDueOn ?? selected.requestedDueOn)}
-				</div>
-				{#if selected.containerPath}<div class="col-span-2">
-						<span class="block text-xs text-muted-foreground">Container</span
-						>{selected.containerPath}
-					</div>{/if}
-			</div>
+					<div
+						class="mb-5 grid grid-cols-2 gap-3 rounded-xl bg-muted/50 p-3 text-sm"
+					>
+						<div>
+							<span class="block text-xs text-muted-foreground">Start</span
+							>{formatDate(
+								selected.approvedStartOn ?? selected.requestedStartOn,
+							)}
+						</div>
+						<div>
+							<span class="block text-xs text-muted-foreground">Due</span
+							>{formatDate(selected.approvedDueOn ?? selected.requestedDueOn)}
+						</div>
+						{#if selected.containerPath}<div class="col-span-2">
+								<span class="block text-xs text-muted-foreground"
+									>Container</span
+								>{selected.containerPath}
+							</div>{/if}
+					</div>
 
-			{#if selected.status === "requested"}
-				<div class="space-y-4">
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<div class="min-w-0 space-y-1">
-							<Label for="approve-start">Approved start</Label><DatePicker
-								id="approve-start"
-								label="Approved start"
-								value={dateValue(startsOn)}
-								onValueChange={(value) => {
-									if (value) {
-										startsOn = value.toString();
-										if (dueOn < startsOn) dueOn = startsOn;
-									}
-								}}
-							/>
+					{#if selected.status === "requested"}
+						<div class="space-y-4">
+							<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<div class="min-w-0 space-y-1">
+									<Label for="approve-start">Approved start</Label><DatePicker
+										id="approve-start"
+										label="Approved start"
+										value={dateValue(startsOn)}
+										onValueChange={(value) => {
+											if (value) {
+												startsOn = value.toString();
+												if (dueOn < startsOn) dueOn = startsOn;
+											}
+										}}
+									/>
+								</div>
+								<div class="min-w-0 space-y-1">
+									<Label for="approve-due">Approved due</Label><DatePicker
+										id="approve-due"
+										label="Approved due"
+										value={dateValue(dueOn)}
+										minValue={dateValue(startsOn)}
+										onValueChange={(value) => {
+											if (value) dueOn = value.toString();
+										}}
+									/>
+								</div>
+							</div>
+							<div>
+								<Label for="decision-note">Decision note</Label><Textarea
+									id="decision-note"
+									bind:value={note}
+									placeholder="Optional context for the member"
+								/>
+							</div>
+							<div class="grid grid-cols-2 gap-2">
+								<Button
+									variant="destructive"
+									class="min-h-12"
+									disabled={busy}
+									onclick={() =>
+										reject.mutate({
+											path: { loanId: selected!.id },
+											body: { note: note.trim() || undefined },
+										})}>Reject</Button
+								><Button
+									class="min-h-12"
+									disabled={!startsOn || !dueOn || busy}
+									onclick={() =>
+										approve.mutate({
+											path: { loanId: selected!.id },
+											body: { startsOn, dueOn, note: note.trim() || undefined },
+										})}>Approve</Button
+								>
+							</div>
 						</div>
-						<div class="min-w-0 space-y-1">
-							<Label for="approve-due">Approved due</Label><DatePicker
-								id="approve-due"
-								label="Approved due"
-								value={dateValue(dueOn)}
-								minValue={dateValue(startsOn)}
-								onValueChange={(value) => {
-									if (value) dueOn = value.toString();
-								}}
-							/>
+					{:else if selected.status === "approved"}
+						<div class="space-y-4">
+							<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+								<div class="min-w-0 space-y-1">
+									<Label for="edit-start">Start</Label><DatePicker
+										id="edit-start"
+										label="Start"
+										value={dateValue(startsOn)}
+										onValueChange={(value) => {
+											if (value) {
+												startsOn = value.toString();
+												if (dueOn < startsOn) dueOn = startsOn;
+											}
+										}}
+									/>
+								</div>
+								<div class="min-w-0 space-y-1">
+									<Label for="edit-due">Due</Label><DatePicker
+										id="edit-due"
+										label="Due"
+										value={dateValue(dueOn)}
+										minValue={dateValue(startsOn)}
+										onValueChange={(value) => {
+											if (value) dueOn = value.toString();
+										}}
+									/>
+								</div>
+							</div>
+							<Button
+								variant="outline"
+								class="w-full min-h-11"
+								disabled={busy}
+								onclick={() =>
+									editDates.mutate({
+										path: { loanId: selected!.id },
+										body: { startsOn, dueOn },
+									})}><CalendarClock />Save dates</Button
+							>
+							<div>
+								<Label for="cancel-note">Cancellation note</Label><Textarea
+									id="cancel-note"
+									bind:value={note}
+								/>
+							</div>
+							<div class="grid grid-cols-2 gap-2">
+								<Button
+									variant="destructive"
+									class="min-h-12"
+									disabled={busy}
+									onclick={() =>
+										cancel.mutate({
+											path: { loanId: selected!.id },
+											body: { note: note.trim() || undefined },
+										})}>Cancel loan</Button
+								><Button
+									class="min-h-12"
+									disabled={busy || !selectedReadyForCheckout}
+									onclick={() =>
+										checkout.mutate({ path: { loanId: selected!.id } })}
+									>Record checkout</Button
+								>
+							</div>
 						</div>
-					</div>
-					<div>
-						<Label for="decision-note">Decision note</Label><Textarea
-							id="decision-note"
-							bind:value={note}
-							placeholder="Optional context for the member"
-						/>
-					</div>
-					<div class="grid grid-cols-2 gap-2">
-						<Button
-							variant="destructive"
-							class="min-h-12"
-							disabled={pending(approve, reject)}
-							onclick={() =>
-								reject.mutate({
-									path: { loanId: selected!.id },
-									body: { note: note.trim() || undefined },
-								})}>Reject</Button
-						><Button
-							class="min-h-12"
-							disabled={!startsOn || !dueOn || pending(approve, reject)}
-							onclick={() =>
-								approve.mutate({
-									path: { loanId: selected!.id },
-									body: { startsOn, dueOn, note: note.trim() || undefined },
-								})}>Approve</Button
-						>
-					</div>
-				</div>
-			{:else if selected.status === "approved"}
-				<div class="space-y-4">
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-						<div class="min-w-0 space-y-1">
-							<Label for="edit-start">Start</Label><DatePicker
-								id="edit-start"
-								label="Start"
-								value={dateValue(startsOn)}
-								onValueChange={(value) => {
-									if (value) {
-										startsOn = value.toString();
-										if (dueOn < startsOn) dueOn = startsOn;
-									}
-								}}
-							/>
+					{:else if selected.status === "checked_out"}
+						<div class="space-y-4">
+							<div class="min-w-0 space-y-1">
+								<Label for="return-due">Due date</Label><DatePicker
+									id="return-due"
+									label="Due date"
+									value={dateValue(dueOn)}
+									onValueChange={(value) => {
+										if (value) dueOn = value.toString();
+									}}
+								/>
+							</div>
+							<Button
+								variant="outline"
+								class="w-full min-h-11"
+								disabled={busy}
+								onclick={() =>
+									editDates.mutate({
+										path: { loanId: selected!.id },
+										body: { dueOn },
+									})}><CalendarClock />Update due date</Button
+							><Button
+								class="w-full min-h-12"
+								disabled={busy}
+								onclick={() =>
+									returnLoan.mutate({ path: { loanId: selected!.id } })}
+								>Record return</Button
+							>
 						</div>
-						<div class="min-w-0 space-y-1">
-							<Label for="edit-due">Due</Label><DatePicker
-								id="edit-due"
-								label="Due"
-								value={dateValue(dueOn)}
-								minValue={dateValue(startsOn)}
-								onValueChange={(value) => {
-									if (value) dueOn = value.toString();
-								}}
-							/>
-						</div>
-					</div>
-					<Button
-						variant="outline"
-						class="w-full min-h-11"
-						disabled={editDates.isPending}
-						onclick={() =>
-							editDates.mutate({
-								path: { loanId: selected!.id },
-								body: { startsOn, dueOn },
-							})}><CalendarClock />Save dates</Button
-					>
-					<div>
-						<Label for="cancel-note">Cancellation note</Label><Textarea
-							id="cancel-note"
-							bind:value={note}
-						/>
-					</div>
-					<div class="grid grid-cols-2 gap-2">
-						<Button
-							variant="destructive"
-							class="min-h-12"
-							disabled={pending(cancel, checkout)}
-							onclick={() =>
-								cancel.mutate({
-									path: { loanId: selected!.id },
-									body: { note: note.trim() || undefined },
-								})}>Cancel loan</Button
-						><Button
-							class="min-h-12"
-							disabled={pending(cancel, checkout) || !selectedReadyForCheckout}
-							onclick={() =>
-								checkout.mutate({ path: { loanId: selected!.id } })}
-							>Record checkout</Button
-						>
-					</div>
-				</div>
-			{:else if selected.status === "checked_out"}
-				<div class="space-y-4">
-					<div class="min-w-0 space-y-1">
-						<Label for="return-due">Due date</Label><DatePicker
-							id="return-due"
-							label="Due date"
-							value={dateValue(dueOn)}
-							onValueChange={(value) => {
-								if (value) dueOn = value.toString();
-							}}
-						/>
-					</div>
-					<Button
-						variant="outline"
-						class="w-full min-h-11"
-						disabled={editDates.isPending}
-						onclick={() =>
-							editDates.mutate({
-								path: { loanId: selected!.id },
-								body: { dueOn },
-							})}><CalendarClock />Update due date</Button
-					><Button
-						class="w-full min-h-12"
-						disabled={returnLoan.isPending}
-						onclick={() =>
-							returnLoan.mutate({ path: { loanId: selected!.id } })}
-						>Record return</Button
-					>
+					{/if}
 				</div>
 			{/if}
-		</section>
-	{/if}
+		</Sheet.Content>
+	</Sheet.Root>
 </div>

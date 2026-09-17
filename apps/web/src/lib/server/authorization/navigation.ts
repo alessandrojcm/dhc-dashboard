@@ -16,7 +16,7 @@ type NavigationGroupDefinition = Omit<NavigationGroup, "items"> & {
 };
 type NavigationDefinition = NavigationGroupDefinition[];
 
-const navigation: NavigationDefinition = [
+export const navigation: NavigationDefinition = [
 	{
 		title: "Beginners Workshop",
 		url: "/dashboard/beginners-workshop",

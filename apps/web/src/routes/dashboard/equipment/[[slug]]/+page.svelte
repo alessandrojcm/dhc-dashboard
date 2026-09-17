@@ -1,4 +1,6 @@
 <script lang="ts">
+import { pushState, replaceState } from "$app/navigation";
+import { page } from "$app/state";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
@@ -15,6 +17,15 @@ import { Skeleton } from "$lib/components/ui/skeleton";
 import * as Sheet from "$lib/components/ui/sheet";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
 import MemberEquipmentItem from "$lib/components/inventory/MemberEquipmentItem.svelte";
+import CatalogPropertyFilters from "$lib/components/inventory/CatalogPropertyFilters.svelte";
+import {
+	encodePropertyFilter,
+	propertyFilterEntries,
+} from "$lib/inventory/property-filter";
+import {
+	isModifiedClick,
+	sheetSelection,
+} from "$lib/inventory/sheet-selection";
 import {
 	ArrowRight,
 	Package,
@@ -25,6 +36,7 @@ import {
 import {
 	inventoryCatalogListItemsOptions,
 	inventoryCategoriesIndexOptions,
+	inventoryStructureListDefinitionsOptions,
 } from "@dhc/api-client";
 
 // ALE-288 member browse (ALE-280 story 58): the browse half of the
@@ -34,6 +46,7 @@ import {
 
 type AvailabilityFilter = "all" | "available" | "unavailable";
 
+const LIST_PATH = "/dashboard/equipment";
 const PAGE_SIZE = 25;
 const ALL_CATEGORIES = "all-categories";
 const availabilityOptions: Array<{
@@ -49,14 +62,30 @@ let searchInput = $state("");
 let appliedSearch = $state<string | undefined>(undefined);
 let categoryInput = $state(ALL_CATEGORIES);
 let availability = $state<AvailabilityFilter>("all");
+let propertyValues = $state<Record<string, string>>({});
 let cursor = $state<string | undefined>(undefined);
-let selectedItemSlug = $state<string | undefined>();
 let selectedItemTrigger = $state<HTMLElement | null>(null);
+
+const selectedItemSlug = $derived(
+	sheetSelection(page.url.pathname, LIST_PATH, page.state.selectedSlug),
+);
 
 const categoriesQuery = createQuery(() => ({
 	...inventoryCategoriesIndexOptions(),
 	select: (response) => response.data.categories,
 }));
+
+const definitionsQuery = createQuery(() => ({
+	...inventoryStructureListDefinitionsOptions({
+		path: { categoryId: categoryInput },
+	}),
+	enabled: categoryInput !== ALL_CATEGORIES,
+	select: (response) => response.data.definitions,
+}));
+
+const propertyFilter = $derived(
+	encodePropertyFilter(propertyFilterEntries(propertyValues)),
+);
 
 const catalogQuery = createQuery(() => ({
 	...inventoryCatalogListItemsOptions({
@@ -65,6 +94,7 @@ const catalogQuery = createQuery(() => ({
 			q: appliedSearch,
 			categoryId: categoryInput === ALL_CATEGORIES ? undefined : categoryInput,
 			availability,
+			property: propertyFilter,
 			cursor,
 		},
 	}),
@@ -81,7 +111,10 @@ const categoryOptions = $derived([
 	})),
 ]);
 const hasActiveFilters = $derived(
-	appliedSearch || categoryInput !== ALL_CATEGORIES || availability !== "all",
+	appliedSearch ||
+		categoryInput !== ALL_CATEGORIES ||
+		availability !== "all" ||
+		Boolean(propertyFilter),
 );
 const selectedCategoryLabel = $derived(
 	categoryOptions.find((option) => option.value === categoryInput)?.label ??
@@ -98,12 +131,33 @@ function onFilterChange() {
 	cursor = undefined;
 }
 
+function onCategoryChange() {
+	propertyValues = {};
+	cursor = undefined;
+}
+
 function clearFilters() {
 	searchInput = "";
 	appliedSearch = undefined;
 	categoryInput = ALL_CATEGORIES;
 	availability = "all";
+	propertyValues = {};
 	cursor = undefined;
+}
+
+function openItem(slug: string, trigger: HTMLElement) {
+	selectedItemTrigger = trigger;
+	pushState(`${LIST_PATH}/${slug}`, { selectedSlug: slug });
+}
+
+function closeSheet() {
+	if (page.state.selectedSlug) {
+		history.back();
+		return;
+	}
+	if (selectedItemSlug) {
+		replaceState(LIST_PATH, {});
+	}
 }
 
 function availabilityLabel(reason: string): string {
@@ -161,7 +215,7 @@ function availabilityLabel(reason: string): string {
 					type="single"
 					items={categoryOptions}
 					bind:value={categoryInput}
-					onValueChange={onFilterChange}
+					onValueChange={onCategoryChange}
 				>
 					<SelectTrigger class="min-h-11 w-full">
 						{selectedCategoryLabel}
@@ -206,6 +260,14 @@ function availabilityLabel(reason: string): string {
 				Clear filters
 			</Button>
 		</div>
+
+		{#if categoryInput !== ALL_CATEGORIES}
+			<CatalogPropertyFilters
+				definitions={definitionsQuery.data ?? []}
+				bind:values={propertyValues}
+				onChange={onFilterChange}
+			/>
+		{/if}
 	</section>
 
 	{#if catalogQuery.isPending}
@@ -267,12 +329,12 @@ function availabilityLabel(reason: string): string {
 		<div class="grid gap-3 md:grid-cols-2">
 			{#each items as item (item.id)}
 				<a
-					href="/dashboard/equipment"
+					href="{LIST_PATH}/{item.slug}"
 					class="inventory-card group block p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:p-5"
 					onclick={(event) => {
+						if (isModifiedClick(event)) return;
 						event.preventDefault();
-						selectedItemTrigger = event.currentTarget;
-						selectedItemSlug = item.slug;
+						openItem(item.slug, event.currentTarget);
 					}}
 				>
 					<div class="flex gap-3">
@@ -349,33 +411,33 @@ function availabilityLabel(reason: string): string {
 	{/if}
 </div>
 
-{#if selectedItemSlug}
-	<Sheet.Root
-		open
-		onOpenChange={(open) => {
-			if (!open) selectedItemSlug = undefined;
-		}}
-		onOpenChangeComplete={(open) => {
-			if (!open) selectedItemTrigger?.focus();
-		}}
+<Sheet.Root
+	open={Boolean(selectedItemSlug)}
+	onOpenChange={(open) => {
+		if (!open) closeSheet();
+	}}
+	onOpenChangeComplete={(open) => {
+		if (!open) selectedItemTrigger?.focus();
+	}}
+>
+	<Sheet.Content
+		side="bottom"
+		class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[40rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none sm:border-t-0 sm:border-l sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right"
 	>
-		<Sheet.Content
-			side="bottom"
-			class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[40rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none sm:border-t-0 sm:border-l sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right"
+		<Sheet.Header class="sr-only">
+			<Sheet.Title>Equipment details</Sheet.Title>
+			<Sheet.Description>
+				Review equipment details and choose request dates.
+			</Sheet.Description>
+		</Sheet.Header>
+		<div
+			class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6"
 		>
-			<Sheet.Header class="sr-only">
-				<Sheet.Title>Equipment details</Sheet.Title>
-				<Sheet.Description>
-					Review equipment details and choose request dates.
-				</Sheet.Description>
-			</Sheet.Header>
-			<div
-				class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6"
-			>
+			{#if selectedItemSlug}
 				{#key selectedItemSlug}
 					<MemberEquipmentItem slug={selectedItemSlug} />
 				{/key}
-			</div>
-		</Sheet.Content>
-	</Sheet.Root>
-{/if}
+			{/if}
+		</div>
+	</Sheet.Content>
+</Sheet.Root>

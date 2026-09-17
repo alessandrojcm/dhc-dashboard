@@ -1,4 +1,6 @@
 <script lang="ts">
+import { pushState, replaceState } from "$app/navigation";
+import { page } from "$app/state";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
@@ -8,6 +10,10 @@ import * as Sheet from "$lib/components/ui/sheet";
 import * as Tabs from "$lib/components/ui/tabs";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
 import MemberLoanDetail from "$lib/components/inventory/MemberLoanDetail.svelte";
+import {
+	isModifiedClick,
+	sheetSelection,
+} from "$lib/inventory/sheet-selection";
 import {
 	ArrowRight,
 	CalendarCheck2,
@@ -28,10 +34,15 @@ import {
 
 type StatusFilter = "all" | "open" | "closed";
 
+const LIST_PATH = "/dashboard/my-loans";
+
 let status = $state<StatusFilter>("all");
 let cursor = $state<string | undefined>(undefined);
-let selectedLoanId = $state<string | undefined>();
 let selectedLoanTrigger = $state<HTMLElement | null>(null);
+
+const selectedLoanId = $derived(
+	sheetSelection(page.url.pathname, LIST_PATH, page.state.selectedLoanId),
+);
 
 const loansQuery = createQuery(() => ({
 	...inventoryMemberLoansListOptions({
@@ -46,6 +57,21 @@ const loans = $derived(loansQuery.data?.loans ?? []);
 function onStatusChange(value: StatusFilter) {
 	status = value;
 	cursor = undefined;
+}
+
+function openLoan(id: string, trigger: HTMLElement) {
+	selectedLoanTrigger = trigger;
+	pushState(`${LIST_PATH}/${id}`, { selectedLoanId: id });
+}
+
+function closeSheet() {
+	if (page.state.selectedLoanId) {
+		history.back();
+		return;
+	}
+	if (selectedLoanId) {
+		replaceState(LIST_PATH, {});
+	}
 }
 
 function statusLabel(loan: InventoryMemberLoan): string {
@@ -179,12 +205,12 @@ function formatDate(iso: string | null): string {
 				<div class="grid gap-3 md:grid-cols-2">
 					{#each loans as loan (loan.id)}
 						<a
-							href="/dashboard/my-loans"
+							href="{LIST_PATH}/{loan.id}"
 							class="inventory-card group block p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 							onclick={(event) => {
+								if (isModifiedClick(event)) return;
 								event.preventDefault();
-								selectedLoanTrigger = event.currentTarget;
-								selectedLoanId = loan.id;
+								openLoan(loan.id, event.currentTarget);
 							}}
 						>
 							<div class="flex items-start justify-between gap-2">
@@ -261,33 +287,33 @@ function formatDate(iso: string | null): string {
 	</Tabs.Root>
 </div>
 
-{#if selectedLoanId}
-	<Sheet.Root
-		open
-		onOpenChange={(open) => {
-			if (!open) selectedLoanId = undefined;
-		}}
-		onOpenChangeComplete={(open) => {
-			if (!open) selectedLoanTrigger?.focus();
-		}}
+<Sheet.Root
+	open={Boolean(selectedLoanId)}
+	onOpenChange={(open) => {
+		if (!open) closeSheet();
+	}}
+	onOpenChangeComplete={(open) => {
+		if (!open) selectedLoanTrigger?.focus();
+	}}
+>
+	<Sheet.Content
+		side="bottom"
+		class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[40rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none sm:border-t-0 sm:border-l sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right"
 	>
-		<Sheet.Content
-			side="bottom"
-			class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[40rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none sm:border-t-0 sm:border-l sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right"
+		<Sheet.Header class="sr-only">
+			<Sheet.Title>Loan details</Sheet.Title>
+			<Sheet.Description>
+				Review this loan and its collection or return status.
+			</Sheet.Description>
+		</Sheet.Header>
+		<div
+			class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6"
 		>
-			<Sheet.Header class="sr-only">
-				<Sheet.Title>Loan details</Sheet.Title>
-				<Sheet.Description>
-					Review this loan and its collection or return status.
-				</Sheet.Description>
-			</Sheet.Header>
-			<div
-				class="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6"
-			>
+			{#if selectedLoanId}
 				{#key selectedLoanId}
 					<MemberLoanDetail loanId={selectedLoanId} />
 				{/key}
-			</div>
-		</Sheet.Content>
-	</Sheet.Root>
-{/if}
+			{/if}
+		</div>
+	</Sheet.Content>
+</Sheet.Root>

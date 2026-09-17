@@ -27,6 +27,8 @@ export function routePrefix(prefix: string): RouteMatcher {
 export type DenyBehaviour = "redirect-to-own-profile";
 
 export type ProtectedRoute = {
+	/** Route-id prefix this rule governs; also the key used to find its load. */
+	prefix: string;
 	match: RouteMatcher;
 	requires: Capability;
 	/** Derives explicit resource context from the matched route's params. */
@@ -34,58 +36,54 @@ export type ProtectedRoute = {
 	onDeny: DenyBehaviour;
 };
 
-type ProtectedRouteDefinition = ProtectedRoute[];
+function protect(
+	prefix: string,
+	rest: Omit<ProtectedRoute, "prefix" | "match">,
+): ProtectedRoute {
+	return { prefix, match: routePrefix(prefix), ...rest };
+}
 
-const protectedRoutes: ProtectedRouteDefinition = [
-	{
-		match: routePrefix("/dashboard/beginners-workshop"),
+export const protectedRoutes: ProtectedRoute[] = [
+	protect("/dashboard/beginners-workshop", {
 		requires: "beginners.workshop.read",
 		onDeny: "redirect-to-own-profile",
-	},
-	{
+	}),
+	protect("/dashboard/members/[memberId]", {
 		// Contextual: a member may open their own profile (and anything nested
 		// under it). Listed before the directory prefix so it governs the
 		// `[memberId]` subtree.
-		match: routePrefix("/dashboard/members/[memberId]"),
 		requires: "members.profile.read",
 		resource: (params) => ({ ownerPrincipalId: params.memberId }),
 		onDeny: "redirect-to-own-profile",
-	},
-	{
-		match: routePrefix("/dashboard/members"),
+	}),
+	protect("/dashboard/members", {
 		requires: "members.directory.read",
 		onDeny: "redirect-to-own-profile",
-	},
-	{
-		match: routePrefix("/dashboard/discord-doctor"),
+	}),
+	protect("/dashboard/discord-doctor", {
 		requires: "discord.doctor.use",
 		onDeny: "redirect-to-own-profile",
-	},
-	{
-		match: routePrefix("/dashboard/workshops"),
+	}),
+	protect("/dashboard/workshops", {
 		requires: "workshops.manage",
 		onDeny: "redirect-to-own-profile",
-	},
-	{
-		match: routePrefix("/dashboard/my-workshops"),
+	}),
+	protect("/dashboard/my-workshops", {
 		requires: "workshops.own.read",
 		onDeny: "redirect-to-own-profile",
-	},
-	{
-		match: routePrefix("/dashboard/inventory"),
+	}),
+	protect("/dashboard/inventory", {
 		requires: "inventory.manage",
 		onDeny: "redirect-to-own-profile",
-	},
-	{
-		match: routePrefix("/dashboard/equipment"),
+	}),
+	protect("/dashboard/equipment", {
 		requires: "inventory.catalog.read",
 		onDeny: "redirect-to-own-profile",
-	},
-	{
-		match: routePrefix("/dashboard/my-loans"),
+	}),
+	protect("/dashboard/my-loans", {
 		requires: "inventory.loans.own.read",
 		onDeny: "redirect-to-own-profile",
-	},
+	}),
 ];
 
 /** The first rule governing `routeId`, or `undefined` when it is ungated. */
