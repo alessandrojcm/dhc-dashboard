@@ -6,6 +6,7 @@ import { enhancedImages } from "@sveltejs/enhanced-img";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import mkcert from "vite-plugin-mkcert";
 import { playwright } from "@vitest/browser-playwright";
+import adapter from "@sveltejs/adapter-cloudflare";
 
 export default defineConfig(({ command }) => ({
 	envDir: "../..",
@@ -23,7 +24,27 @@ export default defineConfig(({ command }) => ({
 			},
 			adapter: "cloudflare",
 		}),
-		sveltekit(),
+		sveltekit({
+			adapter: adapter(),
+			compilerOptions: {
+				experimental: {
+					async: true,
+				},
+			},
+			experimental: {
+				remoteFunctions: true,
+				instrumentation: {
+					server: true,
+				},
+				tracing: {
+					server: true,
+				},
+			},
+			alias: {
+				$database: "./src/database.types.ts",
+				$assets: "./src/assets",
+			},
+		}),
 		enhancedImages(),
 		tailwindcss(),
 		sentryVitePlugin({
