@@ -318,6 +318,20 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
       assert json_response(again, 200)["data"]["status"] == "cancelled"
     end
 
+    test "422s a cancel note longer than 1000 characters", %{conn: conn} do
+      %{item: item} = fixture()
+      loan_id = create_loan!(item, @actor_id, "requested")
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/inventory/loans/mine/#{loan_id}/cancel", %{
+          "note" => String.duplicate("a", 1001)
+        })
+
+      assert %{"errors" => %{"code" => "invalid_note"}} = json_response(conn, 422)
+    end
+
     test "answers 409 once the loan is checked out or closed", %{conn: conn} do
       %{item: item} = fixture()
       checked_out = create_loan!(item, @actor_id, "checked_out")

@@ -1377,14 +1377,14 @@ defmodule Dhc.E2EHarness do
   # delete items first.
   #
   # Domain gap (disclosed): `inventory_property_definitions.category_id` is
-  # `on_delete: :nothing`, so `Categories.delete_category/1` raises unless
-  # every definition row is gone — but the domain offers only `retire_*`
-  # (rows stay). A history-free seed therefore cannot tear down through the
-  # seam alone. After retiring, the harness hard-deletes definition/option
-  # rows **iff zero `item_property_values` reference them (active or
-  # archived)** — provably history-free, so no retained fact is destroyed.
-  # Any referencing value (even archived-only) stops the teardown with
-  # `:still_referenced` instead, preserving the retention rule.
+  # `on_delete: :nothing`. `Categories.delete_category/1` returns
+  # `:still_referenced` when definition rows remain — but the domain offers
+  # only `retire_*` (rows stay). A history-free seed therefore cannot tear
+  # down through the seam alone. After retiring, the harness hard-deletes
+  # definition/option rows **iff zero `item_property_values` reference them
+  # (active or archived)** — provably history-free, so no retained fact is
+  # destroyed. Any referencing value (even archived-only) stops the teardown
+  # with `:still_referenced` instead, preserving the retention rule.
   def delete_fixture("inventoryStructure", id) when is_binary(id) do
     case Inventory.get_category(id) do
       {:ok, _} -> delete_structure_category!(id)

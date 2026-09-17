@@ -104,10 +104,26 @@ defmodule Dhc.Inventory.Categories do
     if category_item_count(id) > 0 do
       {:error, :still_referenced}
     else
-      case Repo.delete(category) do
+      case category
+           |> Ecto.Changeset.change()
+           |> Ecto.Changeset.no_assoc_constraint(:property_definitions,
+             name: :inventory_property_definitions_category_id_fkey
+           )
+           |> Repo.delete() do
         {:ok, deleted} -> {:ok, deleted}
-        {:error, _changeset} -> {:error, :not_found}
+        {:error, %Ecto.Changeset{} = changeset} -> translate_delete_error(changeset)
       end
+    end
+  end
+
+  defp translate_delete_error(%Ecto.Changeset{errors: errors}) do
+    if Enum.any?(errors, fn
+         {:property_definitions, _} -> true
+         _other -> false
+       end) do
+      {:error, :still_referenced}
+    else
+      {:error, :not_found}
     end
   end
 

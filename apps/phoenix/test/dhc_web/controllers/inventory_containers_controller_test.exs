@@ -342,6 +342,19 @@ defmodule DhcWeb.InventoryContainersControllerTest do
       assert %{"errors" => %{"detail" => _detail}} = json_response(conn, 422)
     end
 
+    test "returns 422 when parentContainerId is not a UUID", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> post("/api/inventory/containers", %{
+          "name" => "Orphan",
+          "parentContainerId" => "not-a-uuid"
+        })
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
+      assert detail =~ "parent_container_id" or detail =~ "is invalid"
+    end
+
     test "returns 403 for non-write roles", %{conn: conn} do
       conn =
         conn

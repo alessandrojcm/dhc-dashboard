@@ -185,6 +185,19 @@ defmodule Dhc.InventoryTest do
       assert Repo.get(EquipmentCategory, category.id)
     end
 
+    test "returns {:error, :still_referenced} when a definition references it" do
+      category = insert_category(name: "Has definition")
+
+      assert {:ok, _definition} =
+               Inventory.create_definition(category.id, %{
+                 "label" => "Size",
+                 "value_type" => "text"
+               })
+
+      assert {:error, :still_referenced} = Inventory.delete_category(category.id)
+      assert Repo.get(EquipmentCategory, category.id)
+    end
+
     test "deletes once the referencing item is gone" do
       category = insert_category(name: "Now Free")
       container_id = insert_container!()

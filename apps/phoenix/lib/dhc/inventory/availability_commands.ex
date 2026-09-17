@@ -57,7 +57,9 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   foreign keys are the backstop for anything writing outside this seam, and
   `persist/1` turns each into a stable domain reason (`:already_allocated`,
   `:duplicate_request`, `:maintenance_open`, `:unknown_actor`) rather than a
-  `Postgrex.Error`.
+  `Postgrex.Error`. Competing pending requests closed by an approval, a
+  maintenance open, or an archive are written one row at a time through
+  `persist/1` as well — never a bulk `update_all`.
 
   ## Actors
 
@@ -276,8 +278,9 @@ defmodule Dhc.Inventory.AvailabilityCommands do
            {:ok, starts_on, due_on} <- approval_dates(loan, attrs),
            :ok <- require_available(item),
            {:ok, %Loan{} = approved} <-
-             persist(approval_changeset(loan, item, starts_on, due_on, note, actor)) do
-        reject_pending_requests(item.id, actor, @competing_request_note, except: approved.id)
+             persist(approval_changeset(loan, item, starts_on, due_on, note, actor)),
+           :ok <-
+             reject_pending_requests(item.id, actor, @competing_request_note, except: approved.id) do
         operator_outcome(approved)
       end
     end)
@@ -353,8 +356,8 @@ defmodule Dhc.Inventory.AvailabilityCommands do
       with {:ok, reason} <- require_reason(attrs),
            :ok <- refuse_open_maintenance(item.id),
            :ok <- refuse_active_loan(item.id),
-           {:ok, %MaintenancePeriod{}} <- persist(period_changeset(item.id, reason, actor)) do
-        reject_pending_requests(item.id, actor, @maintenance_rejection_note)
+           {:ok, %MaintenancePeriod{}} <- persist(period_changeset(item.id, reason, actor)),
+           :ok <- reject_pending_requests(item.id, actor, @maintenance_rejection_note) do
         touch_item(item, actor)
       end
     end)
@@ -382,8 +385,8 @@ defmodule Dhc.Inventory.AvailabilityCommands do
         with {:ok, reason} <- optional_text(take(attrs, @reason_keys), :invalid_text),
              :ok <- refuse_active_loan(item.id),
              :ok <- close_open_period_for_archive(item.id, reason, actor),
-             {:ok, %Item{} = archived} <- persist(archive_changeset(item, actor)) do
-          reject_pending_requests(item.id, actor, @archive_rejection_note)
+             {:ok, %Item{} = archived} <- persist(archive_changeset(item, actor)),
+             :ok <- reject_pending_requests(item.id, actor, @archive_rejection_note) do
           item_outcome(archived)
         end
     end)
@@ -599,21 +602,20 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   # left pending for a second decision. This is a system rejection, and
   # story 49 gives it no notification.
   defp reject_pending_requests(item_id, actor, note, opts \\ []) do
-    now = DateTime.utc_now()
-
-    from(l in Loan, where: l.item_id == ^item_id, where: l.status == "requested")
-    |> exclude_loan(Keyword.get(opts, :except))
-    |> Repo.update_all(
-      set: [
-        status: "rejected",
-        decided_at: now,
-        decided_by_principal_id: actor,
-        decision_note: note,
-        updated_at: now
-      ]
+    from(l in Loan,
+      where: l.item_id == ^item_id,
+      where: l.status == "requested",
+      order_by: [asc: l.id],
+      lock: "FOR UPDATE"
     )
-
-    :ok
+    |> exclude_loan(Keyword.get(opts, :except))
+    |> Repo.all()
+    |> Enum.reduce_while(:ok, fn loan, :ok ->
+      case persist(decision_changeset(loan, "rejected", note, actor)) do
+        {:ok, _rejected} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp exclude_loan(query, nil), do: query
@@ -958,10 +960,17 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   # report `:invalid_note` and the item seams `:invalid_text`.
   defp optional_text(nil, _error), do: {:ok, nil}
 
-  defp optional_text(text, _error) when is_binary(text) do
+  defp optional_text(text, error) when is_binary(text) do
     case String.trim(text) do
-      "" -> {:ok, nil}
-      trimmed -> {:ok, String.slice(trimmed, 0, @max_text_length)}
+      "" ->
+        {:ok, nil}
+
+      trimmed ->
+        if String.length(trimmed) > @max_text_length do
+          {:error, error}
+        else
+          {:ok, trimmed}
+        end
     end
   end
 

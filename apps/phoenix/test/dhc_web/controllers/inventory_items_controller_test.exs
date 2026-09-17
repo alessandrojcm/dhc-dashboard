@@ -400,11 +400,42 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
       assert json_response(unknown, 404)
     end
+
+    test "422s notes longer than 1000 characters", %{conn: conn} do
+      %{category: category, container_id: container_id} = fixture()
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/items", %{
+          "containerId" => container_id,
+          "categoryId" => category.id,
+          "notes" => String.duplicate("a", 1001)
+        })
+
+      assert %{"errors" => errors} = json_response(conn, 422)
+      assert errors["notes"]
+    end
   end
 
   # ── Generic edit is narrow by construction ──────────────────────
 
   describe "update" do
+    test "422s notes longer than 1000 characters", %{conn: conn} do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, item} = create_item(container_id, category.id)
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> patch("/api/inventory/items/#{item.slug}", %{
+          "notes" => String.duplicate("a", 1001)
+        })
+
+      assert %{"errors" => errors} = json_response(conn, 422)
+      assert errors["notes"]
+    end
+
     test "edits notes and values", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
       {:ok, brand} = definition(category.id, "Brand", "text")

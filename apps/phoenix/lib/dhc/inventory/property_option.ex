@@ -25,7 +25,7 @@ defmodule Dhc.Inventory.PropertyOption do
   @doc false
   def changeset(option, attrs) do
     option
-    |> Ecto.Changeset.cast(attrs, [:property_definition_id, :label, :position])
+    |> Ecto.Changeset.cast(attrs, [:label, :position])
     |> Ecto.Changeset.validate_required([:property_definition_id, :label])
     |> Ecto.Changeset.validate_length(:label, min: 1, max: 100)
     |> Ecto.Changeset.validate_number(:position,
@@ -34,6 +34,9 @@ defmodule Dhc.Inventory.PropertyOption do
     )
     |> Ecto.Changeset.unique_constraint(:label,
       name: :inventory_property_options_definition_label_unique
+    )
+    |> Ecto.Changeset.foreign_key_constraint(:property_definition_id,
+      name: :inventory_property_options_property_definition_id_fkey
     )
   end
 end

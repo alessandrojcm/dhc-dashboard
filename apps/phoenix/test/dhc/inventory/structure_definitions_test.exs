@@ -14,6 +14,7 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
   alias Dhc.Repo
+  alias Ecto.Adapters.SQL.Sandbox
 
   describe "definitions" do
     test "operator can create, rename, require, reorder, and retire" do
@@ -123,6 +124,42 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
                Inventory.update_definition(definition.id, %{"required" => true})
 
       assert required.required == true
+    end
+
+    test "make-required gates a string true the same as a boolean true" do
+      category = insert_category()
+
+      assert {:ok, definition} =
+               Inventory.create_definition(category.id, %{
+                 "label" => "Size",
+                 "value_type" => "text"
+               })
+
+      container_id = insert_container!()
+      {:ok, empty_item} = insert_item(container_id, category.id)
+
+      assert {:error, :required_blocked, %{item_ids: ids}} =
+               Inventory.update_definition(definition.id, %{"required" => "true"})
+
+      assert ids == [empty_item]
+    end
+
+    test "an explicit null identifying position clears the field" do
+      category = insert_category()
+
+      assert {:ok, definition} =
+               Inventory.create_definition(category.id, %{
+                 "label" => "Size",
+                 "value_type" => "text",
+                 "identifying_position" => 0
+               })
+
+      assert definition.identifying_position == 0
+
+      assert {:ok, cleared} =
+               Inventory.update_definition(definition.id, %{"identifyingPosition" => nil})
+
+      assert cleared.identifying_position == nil
     end
 
     test "empty text is absence while boolean false stays a real value" do
@@ -239,6 +276,59 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
                Inventory.create_option(definition.id, %{"label" => "Nope"})
     end
 
+    test "create_option waits on the definition lock and refuses a flipped type" do
+      {definition_id, category_id} =
+        outside_sandbox(fn ->
+          category = insert_category()
+
+          {:ok, definition} =
+            Inventory.create_definition(category.id, %{
+              "label" => "Guard",
+              "value_type" => "single_select"
+            })
+
+          {definition.id, category.id}
+        end)
+
+      on_exit(fn ->
+        outside_sandbox(fn ->
+          Repo.query!(
+            "DELETE FROM inventory_property_options WHERE property_definition_id = $1",
+            [Ecto.UUID.dump!(definition_id)]
+          )
+
+          Repo.query!("DELETE FROM inventory_property_definitions WHERE id = $1", [
+            Ecto.UUID.dump!(definition_id)
+          ])
+
+          Repo.query!("DELETE FROM equipment_categories WHERE id = $1", [
+            Ecto.UUID.dump!(category_id)
+          ])
+        end)
+      end)
+
+      parent = self()
+      holder = Task.async(fn -> hold_definition_and_flip_type(definition_id, parent) end)
+      assert_receive :locked, 5_000
+
+      create =
+        Task.async(fn ->
+          outside_sandbox(fn ->
+            Inventory.create_option(definition_id, %{"label" => "Large"})
+          end)
+        end)
+
+      try do
+        :ok = outside_sandbox(fn -> wait_for_lock_waiter("%inventory_property_definitions%") end)
+        assert Task.yield(create, 1_000) == nil
+      after
+        send(holder.pid, :release)
+      end
+
+      assert {:ok, _} = Task.await(holder, 5_000)
+      assert {:error, :not_single_select} = Task.await(create, :infinity)
+    end
+
     test "retired options fail the make-required gate but stay displayable" do
       category = insert_category()
 
@@ -352,5 +442,58 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
       "INSERT INTO inventory_item_property_values (item_id, property_definition_id, option_id, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
       [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(definition_id), Ecto.UUID.dump!(option_id)]
     )
+  end
+
+  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
+
+  defp hold_definition_and_flip_type(definition_id, parent) do
+    outside_sandbox(fn ->
+      Repo.transaction(fn ->
+        Repo.query!("SELECT id FROM inventory_property_definitions WHERE id = $1 FOR UPDATE", [
+          Ecto.UUID.dump!(definition_id)
+        ])
+
+        send(parent, :locked)
+        receive do: (:release -> :ok)
+
+        Repo.query!(
+          "UPDATE inventory_property_definitions SET value_type = 'text' WHERE id = $1",
+          [
+            Ecto.UUID.dump!(definition_id)
+          ]
+        )
+      end)
+    end)
+  end
+
+  defp wait_for_lock_waiter(query_pattern) when is_binary(query_pattern) do
+    Repo.query!(
+      """
+      DO $$
+      DECLARE attempts int := 0;
+      BEGIN
+        LOOP
+          EXIT WHEN EXISTS (
+            SELECT 1
+            FROM pg_locks blocked
+            JOIN pg_stat_activity a ON a.pid = blocked.pid
+            WHERE NOT blocked.granted
+              AND blocked.pid <> pg_backend_pid()
+              AND a.query ILIKE '#{query_pattern}'
+          );
+          attempts := attempts + 1;
+          IF attempts > 500 THEN
+            RAISE EXCEPTION 'no backend queued behind the held lock';
+          END IF;
+          PERFORM pg_sleep(0.01);
+          PERFORM pg_stat_clear_snapshot();
+        END LOOP;
+      END
+      $$
+      """,
+      []
+    )
+
+    :ok
   end
 end

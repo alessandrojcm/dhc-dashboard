@@ -102,7 +102,7 @@ defmodule DhcWeb.InventoryStructureController do
         conflict(conn, "A definition with that label already exists")
 
       {:error, changeset} ->
-        unprocessable(conn, changeset)
+        unprocessable_code(conn, changeset_detail(changeset), "invalid_attributes")
     end
   end
 
@@ -235,12 +235,13 @@ defmodule DhcWeb.InventoryStructureController do
   end
 
   defp unprocessable(conn, %Ecto.Changeset{} = changeset) do
-    detail =
-      changeset
-      |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-      |> render_error_detail()
+    unprocessable_detail(conn, changeset_detail(changeset))
+  end
 
-    unprocessable_detail(conn, detail)
+  defp changeset_detail(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
+    |> render_error_detail()
   end
 
   defp unprocessable_code(conn, detail, code, extra \\ %{}) do

@@ -541,6 +541,30 @@ defmodule Dhc.Inventory.OperatorItemsTest do
                Inventory.update_operator_item(item.id, %{"notes" => "  "}, principal_id())
     end
 
+    test "rejects notes longer than 1000 characters as a changeset" do
+      %{category: category, container_id: container_id} = fixture()
+      too_long = String.duplicate("a", 1001)
+
+      assert {:error, %Ecto.Changeset{} = create_changeset} =
+               Inventory.create_operator_item(
+                 %{
+                   "container_id" => container_id,
+                   "category_id" => category.id,
+                   "notes" => too_long
+                 },
+                 principal_id()
+               )
+
+      assert {"should be at most %{count} character(s)", _} = create_changeset.errors[:notes]
+
+      {:ok, item} = create_item(container_id, category.id)
+
+      assert {:error, %Ecto.Changeset{} = edit_changeset} =
+               Inventory.update_operator_item(item.id, %{"notes" => too_long}, principal_id())
+
+      assert {"should be at most %{count} character(s)", _} = edit_changeset.errors[:notes]
+    end
+
     test "is not a movement command: containerId in an edit is ignored" do
       %{category: category, container_id: container_id} = fixture()
       other_container = create_container!()

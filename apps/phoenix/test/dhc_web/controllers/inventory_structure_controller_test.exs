@@ -317,6 +317,53 @@ defmodule DhcWeb.InventoryStructureControllerTest do
 
       assert item_ids == [empty_item]
     end
+
+    test "clears identifyingPosition when the client sends null", %{conn: conn} do
+      category = insert_category!()
+
+      assert {:ok, definition} =
+               Inventory.create_definition(category.id, %{
+                 "label" => "Size",
+                 "valueType" => "text",
+                 "identifyingPosition" => 0
+               })
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> patch("/api/inventory/definitions/#{to_uuid(definition.id)}", %{
+          "identifyingPosition" => nil
+        })
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["identifyingPosition"] == nil
+    end
+
+    test "renders invalid_attributes for a changeset failure", %{conn: conn} do
+      category = insert_category!()
+
+      assert {:ok, definition} =
+               Inventory.create_definition(category.id, %{
+                 "label" => "Size",
+                 "valueType" => "text"
+               })
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> patch("/api/inventory/definitions/#{to_uuid(definition.id)}", %{
+          "label" => ""
+        })
+
+      assert %{
+               "errors" => %{
+                 "code" => "invalid_attributes",
+                 "detail" => detail
+               }
+             } = json_response(conn, 422)
+
+      assert detail =~ "label"
+    end
   end
 
   describe "definitions retire" do
@@ -606,7 +653,7 @@ defmodule DhcWeb.InventoryStructureControllerTest do
                "array"
 
       assert get_in(update_error, ["properties", "errors", "properties", "code", "enum"]) ==
-               ["type_immutable", "required_blocked"]
+               ["type_immutable", "required_blocked", "invalid_attributes"]
 
       assert get_in(retire_error, ["properties", "errors", "required"]) ==
                ["detail", "code", "activeValueCount"]

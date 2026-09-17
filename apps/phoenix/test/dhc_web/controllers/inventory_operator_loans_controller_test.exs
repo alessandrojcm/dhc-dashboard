@@ -220,6 +220,20 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       [row] = Repo.all(Notification)
       assert row.notification_key == "inventory:loan:#{request.id}:rejected"
     end
+
+    test "422s a reject note longer than 1000 characters", %{conn: conn} do
+      %{item: item} = fixture()
+      {:ok, request} = request(item)
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> post("/api/inventory/operator/loans/#{request.id}/reject", %{
+          "note" => String.duplicate("a", 1001)
+        })
+
+      assert %{"errors" => %{"code" => "invalid_note"}} = json_response(conn, 422)
+    end
   end
 
   describe "cancel" do

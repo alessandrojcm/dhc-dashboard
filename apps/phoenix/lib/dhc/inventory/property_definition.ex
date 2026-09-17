@@ -33,7 +33,6 @@ defmodule Dhc.Inventory.PropertyDefinition do
   def changeset(definition, attrs) do
     definition
     |> Ecto.Changeset.cast(attrs, [
-      :category_id,
       :label,
       :value_type,
       :required,
@@ -51,6 +50,9 @@ defmodule Dhc.Inventory.PropertyDefinition do
     )
     |> Ecto.Changeset.unique_constraint(:identifying_position,
       name: :inventory_property_definitions_category_identifying_position_unique
+    )
+    |> Ecto.Changeset.foreign_key_constraint(:category_id,
+      name: :inventory_property_definitions_category_id_fkey
     )
   end
 

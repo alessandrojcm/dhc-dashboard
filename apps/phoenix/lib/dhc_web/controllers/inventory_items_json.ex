@@ -41,7 +41,7 @@ defmodule DhcWeb.InventoryItemsJSON do
   def render("error.json", assigns) do
     errors =
       assigns
-      |> Map.take([:detail, :code, :valueErrors])
+      |> Map.take([:detail, :code, :valueErrors, :notes, :values])
       |> Enum.reject(fn {_key, value} -> is_nil(value) end)
       |> Map.new()
       |> render_value_errors()

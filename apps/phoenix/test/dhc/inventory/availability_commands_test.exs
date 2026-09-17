@@ -109,6 +109,12 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
                  {:member, principal_id()},
                  {:request_loan, item.slug, Map.put(dates(), "note", 42)}
                )
+
+      assert {:error, :invalid_note} =
+               AvailabilityCommands.execute(
+                 {:member, principal_id()},
+                 {:request_loan, item.slug, Map.put(dates(), "note", String.duplicate("a", 1001))}
+               )
     end
 
     test "translates the pending-request index into a stable domain error" do

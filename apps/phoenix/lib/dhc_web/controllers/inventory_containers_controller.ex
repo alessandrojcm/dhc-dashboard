@@ -119,6 +119,9 @@ defmodule DhcWeb.InventoryContainersController do
 
       {:error, :archived_parent} ->
         unprocessable_detail(conn, "parentContainerId must refer to an active container")
+
+      {:error, changeset} ->
+        unprocessable(conn, changeset)
     end
   end
 

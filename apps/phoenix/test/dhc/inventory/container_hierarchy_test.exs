@@ -54,6 +54,49 @@ defmodule Dhc.Inventory.ContainerHierarchyTest do
       assert {:error, :circular_parent} = Inventory.move_container(destination.id, grandchild.id)
     end
 
+    test "the deferred cycle trigger is translated when the app-side check is skipped" do
+      root = create_container!("Root")
+      child = create_container!("Child", root.id)
+
+      previous = Application.get_env(:dhc, Dhc.Inventory.Containers, [])
+
+      Application.put_env(
+        :dhc,
+        Dhc.Inventory.Containers,
+        Keyword.put(previous, :skip_cycle_check, true)
+      )
+
+      on_exit(fn -> Application.put_env(:dhc, Dhc.Inventory.Containers, previous) end)
+
+      assert {:error, :circular_parent} = Inventory.move_container(root.id, child.id)
+      assert {:ok, %Container{parent_container_id: nil}} = Inventory.get_container(root.id)
+    end
+
+    test "moving under a parent with a same-named sibling is a domain error" do
+      parent = create_container!("Parent")
+      create_container!("Masks", parent.id)
+      other = create_container!("Masks")
+
+      assert {:error, changeset} = Inventory.move_container(other.id, parent.id)
+      assert {"has already been taken", _} = changeset |> errors() |> Keyword.fetch!(:name)
+    end
+
+    test "rejects a non-UUID parent with the schema's invalid-id changeset error" do
+      movable = create_container!("Movable")
+
+      assert {:error, changeset} = Inventory.move_container(movable.id, "not-a-uuid")
+      assert {"is invalid", _} = changeset |> errors() |> Keyword.fetch!(:parent_container_id)
+
+      assert {:error, create_changeset} =
+               Inventory.create_container(
+                 %{"name" => "Child", "parentContainerId" => "not-a-uuid"},
+                 principal_id()
+               )
+
+      assert {"is invalid", _} =
+               create_changeset |> errors() |> Keyword.fetch!(:parent_container_id)
+    end
+
     test "cannot move or create an active container beneath an archived parent" do
       archived_parent = create_container!("Archived parent")
       movable = create_container!("Movable")

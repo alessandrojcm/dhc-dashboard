@@ -49,12 +49,7 @@ defmodule Dhc.Inventory.Containers do
   def create_container(attrs, actor_id) when is_map(attrs) and is_binary(actor_id) do
     normalized = normalize_container_attrs(attrs)
 
-    Repo.transaction(fn ->
-      case parent_is_active(normalized) do
-        :ok -> insert_created_container(actor_id, normalized)
-        :archived_parent -> Repo.rollback(archived_parent_changeset(actor_id, normalized))
-      end
-    end)
+    Repo.transaction(fn -> insert_created_container(actor_id, normalized) end)
   end
 
   @spec update_container(String.t(), map()) ::
@@ -75,7 +70,9 @@ defmodule Dhc.Inventory.Containers do
   end
 
   @spec move_container(String.t(), String.t() | nil) ::
-          {:ok, container()} | {:error, :not_found | :circular_parent | :archived_parent}
+          {:ok, container()}
+          | {:error, :not_found | :circular_parent | :archived_parent}
+          | {:error, Ecto.Changeset.t()}
   def move_container(id, parent_container_id) when is_binary(id) do
     Repo.transaction(fn ->
       locked_move_container(id, normalize_parent_id(parent_container_id))
@@ -278,11 +275,23 @@ defmodule Dhc.Inventory.Containers do
   defp normalize_parent_id(value), do: value
 
   defp insert_created_container(actor_id, normalized) do
-    case %Container{created_by: actor_id}
-         |> container_changeset(normalized)
-         |> Repo.insert() do
-      {:ok, container} -> populate_flat_aggregates(container)
-      {:error, changeset} -> Repo.rollback(changeset)
+    changeset = %Container{created_by: actor_id} |> container_changeset(normalized)
+
+    cond do
+      invalid_parent_id?(Map.get(normalized, "parent_container_id")) ->
+        Repo.rollback(invalid_parent_changeset(%Container{created_by: actor_id}))
+
+      not changeset.valid? ->
+        Repo.rollback(changeset)
+
+      parent_is_active(normalized) == :archived_parent ->
+        Repo.rollback(archived_parent_changeset(actor_id, normalized))
+
+      true ->
+        case Repo.insert(changeset) do
+          {:ok, container} -> populate_flat_aggregates(container)
+          {:error, failed} -> Repo.rollback(failed)
+        end
     end
   end
 
@@ -305,9 +314,23 @@ defmodule Dhc.Inventory.Containers do
     |> Ecto.Changeset.add_error(:parent_container_id, "must refer to an active container")
   end
 
-  defp cycle?(container_id, proposed) when proposed == container_id, do: true
-
   defp cycle?(container_id, proposed) do
+    if skip_cycle_check?() do
+      false
+    else
+      detect_cycle?(container_id, proposed)
+    end
+  end
+
+  defp skip_cycle_check? do
+    :dhc
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:skip_cycle_check, false)
+  end
+
+  defp detect_cycle?(container_id, proposed) when proposed == container_id, do: true
+
+  defp detect_cycle?(container_id, proposed) do
     parent_map = container_parent_map()
 
     Stream.unfold(proposed, fn
@@ -333,23 +356,85 @@ defmodule Dhc.Inventory.Containers do
         Repo.rollback(:not_found)
 
       %Container{} = container ->
-        cond do
-          parent_id == container.parent_container_id ->
-            populate_flat_aggregates(container)
-
-          parent_id != nil and not parent_chain_active?(parent_id) ->
-            Repo.rollback(:archived_parent)
-
-          parent_id != nil and cycle?(id, parent_id) ->
-            Repo.rollback(:circular_parent)
-
-          true ->
-            container
-            |> Ecto.Changeset.change(parent_container_id: parent_id)
-            |> Repo.update!()
-            |> populate_flat_aggregates()
-        end
+        apply_locked_move(container, parent_id)
     end
+  end
+
+  defp apply_locked_move(%Container{} = container, parent_id) do
+    changeset = move_changeset(container, parent_id)
+
+    cond do
+      parent_id == container.parent_container_id ->
+        populate_flat_aggregates(container)
+
+      invalid_parent_id?(parent_id) ->
+        Repo.rollback(invalid_parent_changeset(container))
+
+      not changeset.valid? ->
+        Repo.rollback(changeset)
+
+      parent_id != nil and not parent_chain_active?(parent_id) ->
+        Repo.rollback(:archived_parent)
+
+      parent_id != nil and cycle?(container.id, parent_id) ->
+        Repo.rollback(:circular_parent)
+
+      true ->
+        persist_moved_container(changeset)
+    end
+  end
+
+  defp invalid_parent_id?(nil), do: false
+
+  defp invalid_parent_id?(parent_id) when is_binary(parent_id) do
+    match?(:error, Ecto.UUID.cast(parent_id))
+  end
+
+  defp invalid_parent_id?(_parent_id), do: true
+
+  defp invalid_parent_changeset(%Container{} = container) do
+    container
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.add_error(:parent_container_id, "is invalid")
+  end
+
+  defp move_changeset(%Container{} = container, parent_id) do
+    container
+    |> Ecto.Changeset.cast(%{"parent_container_id" => parent_id}, [:parent_container_id])
+    |> Ecto.Changeset.unique_constraint(:name, name: :containers_root_name_unique)
+    |> Ecto.Changeset.unique_constraint(:name, name: :containers_sibling_name_unique)
+    |> Ecto.Changeset.check_constraint(:parent_container_id, name: :containers_parent_acyclic)
+    |> Ecto.Changeset.foreign_key_constraint(:parent_container_id,
+      name: :containers_parent_container_id_fkey
+    )
+  end
+
+  defp persist_moved_container(%Ecto.Changeset{} = changeset) do
+    # The acyclic trigger is DEFERRABLE INITIALLY DEFERRED, so without this
+    # it would fire at COMMIT — after Repo.update/1 already returned :ok —
+    # and escape as a Postgrex.Error. Immediate checking makes the
+    # check_constraint/3 translation on the changeset actually run.
+    Repo.query!("SET CONSTRAINTS containers_parent_acyclic IMMEDIATE")
+
+    case Repo.update(changeset) do
+      {:ok, updated} -> populate_flat_aggregates(updated)
+      {:error, failed} -> Repo.rollback(translate_move_write_error(failed))
+    end
+  end
+
+  defp translate_move_write_error(%Ecto.Changeset{} = changeset) do
+    if cycle_constraint?(changeset), do: :circular_parent, else: changeset
+  end
+
+  defp cycle_constraint?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:parent_container_id, {_msg, meta}} ->
+        Keyword.get(meta, :constraint) == :check and
+          Keyword.get(meta, :constraint_name) == "containers_parent_acyclic"
+
+      _other ->
+        false
+    end)
   end
 
   defp translate_move_result({:ok, %Container{} = container}), do: {:ok, container}
@@ -369,10 +454,7 @@ defmodule Dhc.Inventory.Containers do
         if active_dependants?(container.id) do
           Repo.rollback(:active_dependants)
         else
-          container
-          |> Ecto.Changeset.change(archived_at: DateTime.utc_now())
-          |> Repo.update!()
-          |> populate_flat_aggregates()
+          persist_container_stamp(container, archived_at: DateTime.utc_now())
         end
     end
   end
@@ -390,13 +472,17 @@ defmodule Dhc.Inventory.Containers do
 
       %Container{} = container ->
         if parent_chain_active?(container.parent_container_id) do
-          container
-          |> Ecto.Changeset.change(archived_at: nil)
-          |> Repo.update!()
-          |> populate_flat_aggregates()
+          persist_container_stamp(container, archived_at: nil)
         else
           Repo.rollback(:archived_parent)
         end
+    end
+  end
+
+  defp persist_container_stamp(%Container{} = container, changes) do
+    case container |> Ecto.Changeset.change(changes) |> Repo.update() do
+      {:ok, updated} -> populate_flat_aggregates(updated)
+      {:error, _failed} -> Repo.rollback(:not_found)
     end
   end
 

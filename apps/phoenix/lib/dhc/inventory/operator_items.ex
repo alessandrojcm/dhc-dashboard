@@ -100,14 +100,19 @@ defmodule Dhc.Inventory.OperatorItems do
   end
 
   defp insert_row(container_id, category_id, notes, actor_id) do
-    %Item{created_by: actor_id, slug: mint_slug()}
-    |> Ecto.Changeset.change(%{
-      container_id: container_id,
-      category_id: category_id,
-      notes: notes
-    })
-    |> Ecto.Changeset.validate_length(:notes, max: 1000)
-    |> Repo.insert!()
+    changeset =
+      %Item{created_by: actor_id, slug: mint_slug()}
+      |> Ecto.Changeset.change(%{
+        container_id: container_id,
+        category_id: category_id,
+        notes: notes
+      })
+      |> Ecto.Changeset.validate_length(:notes, max: 1000)
+
+    case Repo.insert(changeset) do
+      {:ok, item} -> item
+      {:error, failed} -> Repo.rollback(failed)
+    end
   end
 
   # ── Edit ────────────────────────────────────────────────────────
@@ -147,8 +152,7 @@ defmodule Dhc.Inventory.OperatorItems do
       |> apply_notes(notes)
       |> Ecto.Changeset.put_change(:updated_by, actor_id)
       |> Ecto.Changeset.validate_length(:notes, max: 1000)
-      |> Repo.update!()
-      |> ItemProjection.project()
+      |> persist_item_edit()
     else
       {:error, reason} -> Repo.rollback(reason)
       {:error, reason, info} -> Repo.rollback({reason, info})
@@ -167,6 +171,13 @@ defmodule Dhc.Inventory.OperatorItems do
 
   defp maybe_replace_values(_item_id, %{values: nil}, _rows), do: :ok
   defp maybe_replace_values(item_id, _attrs, rows), do: ItemValues.replace_all(item_id, rows)
+
+  defp persist_item_edit(%Ecto.Changeset{} = changeset) do
+    case Repo.update(changeset) do
+      {:ok, item} -> ItemProjection.project(item)
+      {:error, failed} -> Repo.rollback(failed)
+    end
+  end
 
   # `:skip` keeps an omitted `notes` untouched; a supplied one always applies.
   defp apply_notes(%Item{} = item, :skip), do: Ecto.Changeset.change(item, %{})
@@ -196,6 +207,7 @@ defmodule Dhc.Inventory.OperatorItems do
           | {:error, :archived}
           | {:error, :archived_category}
           | {:error, :invalid_values, value_errors()}
+          | {:error, Ecto.Changeset.t()}
   def change_operator_item_category(slug_or_id, attrs, actor_id)
       when is_binary(slug_or_id) and is_map(attrs) and is_binary(actor_id) do
     attrs = normalize_attrs(attrs)
@@ -213,8 +225,7 @@ defmodule Dhc.Inventory.OperatorItems do
 
       item
       |> Ecto.Changeset.change(%{category_id: category_id, updated_by: actor_id})
-      |> Repo.update!()
-      |> ItemProjection.project()
+      |> persist_item_edit()
     else
       {:error, reason} -> Repo.rollback(reason)
       {:error, reason, info} -> Repo.rollback({reason, info})

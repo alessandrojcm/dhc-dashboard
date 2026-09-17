@@ -31,6 +31,8 @@ defmodule Dhc.Inventory.EquipmentCategory do
     # column — set via `inspect/2` query disables / or assigned directly.
     field :item_count, :integer, virtual: true
 
+    has_many :property_definitions, Dhc.Inventory.PropertyDefinition, foreign_key: :category_id
+
     # Production Supabase uses `created_at`/`updated_at` (see the baseline
     # migration `20260512000010_create_inventory.exs`). Use the `timestamps/1`
     # macro with `inserted_at: :created_at` so inserts auto-populate both

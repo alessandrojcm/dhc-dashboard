@@ -66,12 +66,8 @@ defmodule Dhc.Inventory.Structure do
         {:error, :not_found}
 
       %EquipmentCategory{} ->
-        normalized =
-          normalize_definition_attrs(attrs)
-          |> Map.put("category_id", category_id)
-
-        %PropertyDefinition{}
-        |> PropertyDefinition.changeset(normalized)
+        %PropertyDefinition{category_id: category_id}
+        |> PropertyDefinition.changeset(normalize_definition_attrs(attrs))
         |> Repo.insert()
         |> handle_definition_result()
     end
@@ -97,21 +93,21 @@ defmodule Dhc.Inventory.Structure do
   end
 
   defp apply_definition_update(%PropertyDefinition{} = definition, attrs) do
-    normalized = normalize_definition_attrs(attrs)
+    changeset = PropertyDefinition.changeset(definition, normalize_definition_attrs(attrs))
 
-    with :ok <- check_type_immutable(definition, normalized),
-         :ok <- check_required_gate(definition, normalized) do
-      persist_definition_update(definition, normalized)
+    with :ok <- check_type_immutable(definition, changeset),
+         :ok <- check_required_gate(definition, changeset) do
+      persist_definition_update(changeset)
     else
       {:error, reason} -> Repo.rollback(reason)
       {:error, reason, info} -> Repo.rollback({reason, info})
     end
   end
 
-  defp persist_definition_update(%PropertyDefinition{} = definition, normalized) do
-    case definition |> PropertyDefinition.changeset(normalized) |> Repo.update() do
+  defp persist_definition_update(%Ecto.Changeset{} = changeset) do
+    case Repo.update(changeset) do
       {:ok, updated} -> attach_options(updated)
-      {:error, changeset} -> Repo.rollback(map_conflict(changeset))
+      {:error, failed} -> Repo.rollback(map_conflict(failed))
     end
   end
 
@@ -161,10 +157,12 @@ defmodule Dhc.Inventory.Structure do
   end
 
   defp stamp_retire_definition(%PropertyDefinition{} = definition) do
-    definition
-    |> Ecto.Changeset.change(%{retired_at: DateTime.utc_now()})
-    |> Repo.update!()
-    |> attach_options()
+    case definition
+         |> Ecto.Changeset.change(%{retired_at: DateTime.utc_now()})
+         |> Repo.update() do
+      {:ok, updated} -> attach_options(updated)
+      {:error, _failed} -> Repo.rollback(:not_found)
+    end
   end
 
   defp translate_retire_result({:ok, %PropertyDefinition{} = definition}), do: {:ok, definition}
@@ -202,24 +200,53 @@ defmodule Dhc.Inventory.Structure do
           | {:error, Ecto.Changeset.t()}
   def create_option(definition_id, attrs)
       when is_binary(definition_id) and is_map(attrs) do
-    case Repo.get(PropertyDefinition, definition_id) do
+    Repo.transaction(fn -> locked_create_option(definition_id, attrs) end)
+    |> translate_option_write()
+  end
+
+  defp locked_create_option(definition_id, attrs) do
+    case lock_definition_for_share(definition_id) do
       nil ->
-        {:error, :not_found}
+        Repo.rollback(:not_found)
 
       %PropertyDefinition{value_type: value_type} when value_type != "single_select" ->
-        {:error, :not_single_select}
+        Repo.rollback(:not_single_select)
 
       %PropertyDefinition{id: id} ->
-        normalized =
-          normalize_option_attrs(attrs)
-          |> Map.put("property_definition_id", id)
-
-        %PropertyOption{}
-        |> PropertyOption.changeset(normalized)
-        |> Repo.insert()
-        |> handle_option_result()
+        persist_created_option(id, attrs)
     end
   end
+
+  defp lock_definition_for_share(definition_id) do
+    from(d in PropertyDefinition,
+      where: d.id == ^definition_id,
+      lock: "FOR SHARE"
+    )
+    |> Repo.one()
+  end
+
+  defp persist_created_option(definition_id, attrs) do
+    case %PropertyOption{property_definition_id: definition_id}
+         |> PropertyOption.changeset(normalize_option_attrs(attrs))
+         |> Repo.insert() do
+      {:ok, option} -> option
+      {:error, changeset} -> Repo.rollback(map_option_conflict(changeset))
+    end
+  end
+
+  defp map_option_conflict(%Ecto.Changeset{} = changeset) do
+    if conflict?(changeset, [:label]), do: {:conflict, changeset}, else: changeset
+  end
+
+  defp translate_option_write({:ok, %PropertyOption{} = option}), do: {:ok, option}
+  defp translate_option_write({:error, :not_found}), do: {:error, :not_found}
+  defp translate_option_write({:error, :not_single_select}), do: {:error, :not_single_select}
+
+  defp translate_option_write({:error, {:conflict, changeset}}),
+    do: {:error, :conflict, changeset}
+
+  defp translate_option_write({:error, %Ecto.Changeset{} = changeset}),
+    do: {:error, changeset}
 
   @spec update_option(String.t(), map()) ::
           {:ok, option()}
@@ -267,9 +294,12 @@ defmodule Dhc.Inventory.Structure do
   end
 
   defp stamp_retire_option(%PropertyOption{} = option) do
-    option
-    |> Ecto.Changeset.change(%{retired_at: DateTime.utc_now()})
-    |> Repo.update!()
+    case option
+         |> Ecto.Changeset.change(%{retired_at: DateTime.utc_now()})
+         |> Repo.update() do
+      {:ok, updated} -> updated
+      {:error, _failed} -> Repo.rollback(:not_found)
+    end
   end
 
   defp translate_option_retire_result({:ok, %PropertyOption{} = option}), do: {:ok, option}
@@ -280,23 +310,26 @@ defmodule Dhc.Inventory.Structure do
 
   # ── Gates ───────────────────────────────────────────────────────
 
-  defp check_type_immutable(%PropertyDefinition{} = definition, normalized) do
-    case Map.fetch(normalized, "value_type") do
-      {:ok, next} when next != definition.value_type ->
+  defp check_type_immutable(%PropertyDefinition{} = definition, changeset) do
+    case Ecto.Changeset.get_change(changeset, :value_type) do
+      nil ->
+        :ok
+
+      next when next == definition.value_type ->
+        :ok
+
+      _next ->
         if definition_used?(definition.id) do
           {:error, :type_immutable}
         else
           :ok
         end
-
-      _ ->
-        :ok
     end
   end
 
-  defp check_required_gate(%PropertyDefinition{} = definition, normalized) do
-    case Map.fetch(normalized, "required") do
-      {:ok, true} when definition.required != true ->
+  defp check_required_gate(%PropertyDefinition{} = definition, changeset) do
+    case Ecto.Changeset.get_change(changeset, :required) do
+      true when definition.required != true ->
         effective = %{definition | required: true}
 
         case invalid_item_ids_for_required(effective) do
@@ -304,7 +337,7 @@ defmodule Dhc.Inventory.Structure do
           ids -> {:error, :required_blocked, %{item_ids: ids}}
         end
 
-      _ ->
+      _other ->
         :ok
     end
   end
@@ -489,21 +522,25 @@ defmodule Dhc.Inventory.Structure do
   # ── Attr normalization ──────────────────────────────────────────
 
   defp normalize_definition_attrs(attrs) when is_map(attrs) do
-    %{
-      "label" => take_first(attrs, ["label", :label]),
-      "value_type" => take_first(attrs, ["valueType", "value_type", :valueType, :value_type]),
-      "required" => take_first(attrs, ["required", :required]),
-      "identifying_position" =>
-        take_first(attrs, [
-          "identifyingPosition",
-          "identifying_position",
-          :identifyingPosition,
-          :identifying_position
-        ])
-    }
+    [
+      {"label", ["label", :label]},
+      {"value_type", ["valueType", "value_type", :valueType, :value_type]},
+      {"required", ["required", :required]},
+      {"identifying_position",
+       [
+         "identifyingPosition",
+         "identifying_position",
+         :identifyingPosition,
+         :identifying_position
+       ]}
+    ]
+    |> Enum.reduce(%{}, fn {dest, sources}, acc ->
+      case take_present(attrs, sources) do
+        :absent -> acc
+        {:present, value} -> Map.put(acc, dest, value)
+      end
+    end)
     |> normalize_identifying_position()
-    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-    |> Map.new()
   end
 
   defp normalize_identifying_position(map) do
@@ -524,15 +561,15 @@ defmodule Dhc.Inventory.Structure do
   end
 
   defp take_first(attrs, keys) do
-    Enum.find_value(keys, nil, fn key ->
-      case Map.fetch(attrs, key) do
-        {:ok, value} -> {:ok, value}
-        :error -> nil
-      end
-    end)
-    |> case do
-      {:ok, value} -> value
-      nil -> nil
+    case take_present(attrs, keys) do
+      {:present, value} -> value
+      :absent -> nil
     end
+  end
+
+  defp take_present(attrs, keys) do
+    Enum.find_value(keys, :absent, fn key ->
+      if is_map_key(attrs, key), do: {:present, Map.get(attrs, key)}, else: nil
+    end)
   end
 end

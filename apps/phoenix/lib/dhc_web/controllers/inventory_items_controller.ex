@@ -205,10 +205,15 @@ defmodule DhcWeb.InventoryItemsController do
   end
 
   defp respond({:error, %Ecto.Changeset{} = changeset}, conn, _status) do
-    render_error(conn, :unprocessable_entity, %{
-      detail: changeset_detail(changeset),
-      code: "invalid_values"
-    })
+    field_errors =
+      changeset
+      |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
+
+    render_error(
+      conn,
+      :unprocessable_entity,
+      Map.merge(%{detail: changeset_detail(changeset), code: "invalid_values"}, field_errors)
+    )
   end
 
   defp list_error_detail(:invalid_limit), do: "limit must be one of 10, 25, 50, 100"

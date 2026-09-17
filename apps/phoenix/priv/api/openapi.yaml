@@ -9149,9 +9149,9 @@ components:
       required:
         - errors
       description: |
-        422 extras for definition update: `type_immutable` or
+        422 extras for definition update: `type_immutable`,
         `required_blocked` with the active item ids that still lack a
-        valid value.
+        valid value, or `invalid_attributes` for a changeset failure.
       properties:
         errors:
           type: object
@@ -9166,6 +9166,7 @@ components:
               enum:
                 - type_immutable
                 - required_blocked
+                - invalid_attributes
             itemIds:
               type: array
               items:
