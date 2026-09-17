@@ -4,6 +4,7 @@ defmodule Dhc.Inventory.Containers do
   import Ecto.Query
 
   alias Dhc.Inventory.Container
+  alias Dhc.Inventory.ItemGuards
   alias Dhc.Repo
 
   @type container :: Container.t()
@@ -48,16 +49,12 @@ defmodule Dhc.Inventory.Containers do
   def create_container(attrs, actor_id) when is_map(attrs) and is_binary(actor_id) do
     normalized = normalize_container_attrs(attrs)
 
-    case parent_is_active(normalized) do
-      :ok ->
-        %Container{created_by: actor_id}
-        |> container_changeset(normalized)
-        |> Repo.insert()
-        |> handle_container_insert()
-
-      :archived_parent ->
-        {:error, archived_parent_changeset(actor_id, normalized)}
-    end
+    Repo.transaction(fn ->
+      case parent_is_active(normalized) do
+        :ok -> insert_created_container(actor_id, normalized)
+        :archived_parent -> Repo.rollback(archived_parent_changeset(actor_id, normalized))
+      end
+    end)
   end
 
   @spec update_container(String.t(), map()) ::
@@ -280,10 +277,25 @@ defmodule Dhc.Inventory.Containers do
   defp normalize_parent_id(value) when is_binary(value), do: value
   defp normalize_parent_id(value), do: value
 
+  defp insert_created_container(actor_id, normalized) do
+    case %Container{created_by: actor_id}
+         |> container_changeset(normalized)
+         |> Repo.insert() do
+      {:ok, container} -> populate_flat_aggregates(container)
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
   defp parent_is_active(normalized) do
     case Map.get(normalized, "parent_container_id") do
-      nil -> :ok
-      parent_id -> if parent_chain_active?(parent_id), do: :ok, else: :archived_parent
+      nil ->
+        :ok
+
+      parent_id ->
+        case ItemGuards.require_active_container_chain(parent_id) do
+          :ok -> :ok
+          {:error, _reason} -> :archived_parent
+        end
     end
   end
 
@@ -460,35 +472,7 @@ defmodule Dhc.Inventory.Containers do
     )
   end
 
-  defp parent_chain_active?(nil), do: true
-
-  defp parent_chain_active?(parent_id) do
-    %{rows: [[active?]]} =
-      Repo.query!(
-        """
-        WITH RECURSIVE ancestors AS (
-          SELECT id, parent_container_id, archived_at FROM containers WHERE id = $1
-          UNION ALL
-          SELECT parent.id, parent.parent_container_id, parent.archived_at
-          FROM containers parent
-          JOIN ancestors child ON child.parent_container_id = parent.id
-        )
-        SELECT EXISTS (SELECT 1 FROM ancestors)
-          AND NOT EXISTS (SELECT 1 FROM ancestors WHERE archived_at IS NOT NULL)
-        """,
-        [Ecto.UUID.dump!(parent_id)]
-      )
-
-    active?
-  end
-
-  defp handle_container_insert({:ok, %Container{} = container}) do
-    {:ok, populate_flat_aggregates(container)}
-  end
-
-  defp handle_container_insert({:error, %Ecto.Changeset{} = changeset}) do
-    {:error, changeset}
-  end
+  defp parent_chain_active?(parent_id), do: ItemGuards.container_chain_active?(parent_id)
 
   defp handle_container_update({:ok, %Container{} = container}, id) do
     case Repo.get(Container, id) do

@@ -46,7 +46,8 @@ defmodule DhcWeb.InventoryItemsController do
     loan_active: "An approved or checked-out loan holds this item",
     maintenance_open: "The item already has an open maintenance period",
     no_open_maintenance: "The item has no open maintenance period",
-    has_history: "The item has loan or maintenance history — archive it instead"
+    has_history: "The item has loan or maintenance history — archive it instead",
+    retry_exhausted: "The item's container kept changing; try restore again"
   }
 
   @validation_codes %{

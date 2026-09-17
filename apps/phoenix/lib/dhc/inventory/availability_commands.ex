@@ -27,8 +27,17 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   inside one `Repo.transaction/1`; a domain reason rolls the transaction back
   and becomes `{:error, reason}`.
 
-  **Lock order is part of the contract.** Every command locks the **item**
-  `FOR UPDATE` first and only then the dependent rows (the loan, the open
+  **Lock order is part of the contract.** Commands that depend on a
+  container lock that container chain `FOR SHARE` **before** the item
+  `FOR UPDATE` — a move locks the destination chain first; a restore
+  locks the item's current chain first. That matches container archive,
+  which locks the container (and its subtree) before any item row.
+  Reversing either pair deadlocks. A restore peeks the item only to
+  learn which chain to share-lock; if the locked row sits in a different
+  container, the transaction rolls back and retries from a fresh peek
+  rather than locking a new chain while holding the item.
+
+  After the item lock come the dependent rows (the loan, the open
   maintenance period, the item's live loans). A command that locked the loan
   first would deadlock against one holding the item and wanting the loan.
   Loan commands are reached by *loan* id, so `with_locked_item/2` reads the
@@ -139,6 +148,7 @@ defmodule Dhc.Inventory.AvailabilityCommands do
           | :no_open_maintenance
           | :loan_active
           | :unknown_actor
+          | :retry_exhausted
           | {:invalid_values, %{String.t() => ItemValues.error_reason()}}
 
   @member_commands ~w(request_loan cancel_request)a
@@ -149,6 +159,7 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   )a
 
   @max_text_length 1000
+  @restore_attempts 3
 
   @competing_request_note "Rejected automatically: another request for this item was approved."
   @maintenance_rejection_note "Rejected automatically: the item went into maintenance."
@@ -197,6 +208,12 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   for the actor's role or a domain reason; never raises on a race.
   """
   @spec execute(actor(), command()) :: {:ok, outcome()} | {:error, reason()}
+  def execute(actor, {:reactivate_item, subject, attrs}) when is_map(attrs) do
+    with :ok <- authorize(actor, :reactivate_item) do
+      restore_transact(actor, subject, attrs, restore_attempts())
+    end
+  end
+
   def execute(actor, {name, subject, attrs}) when is_atom(name) and is_map(attrs) do
     with :ok <- authorize(actor, name) do
       transact(fn -> run(actor, name, subject, attrs) end)
@@ -322,17 +339,10 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   # reclassify or re-value an item. Allowed in maintenance; blocked while a
   # loan holds custody.
   defp run({:operator, actor}, :move_item, subject, attrs) do
-    with_locked_item({:active_item, subject}, fn %{item: item} ->
-      with {:ok, container_id} <-
-             ItemGuards.require_active_container(take(attrs, @container_keys)),
-           :ok <- refuse_active_loan(item.id),
-           {:ok, %Item{} = moved} <-
-             persist(
-               Ecto.Changeset.change(item, %{container_id: container_id, updated_by: actor})
-             ) do
-        item_outcome(moved)
-      end
-    end)
+    with {:ok, container_id} <-
+           ItemGuards.require_active_container(take(attrs, @container_keys)) do
+      move_locked(subject, container_id, actor)
+    end
   end
 
   # An item leaves circulation with a reason or not at all. Pending requests
@@ -384,13 +394,40 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   # validate — because the ALE-283 gates only consider *active* items, so an
   # archived one can drift out of validity while retired.
   defp run({:operator, actor}, :reactivate_item, subject, _attrs) do
+    with {:ok, preview} <- peek_item(subject),
+         :ok <- lock_preview_container(preview) do
+      restore_locked(subject, actor, preview.container_id)
+    end
+  end
+
+  # ── Shared command bodies ───────────────────────────────────────
+
+  # Destination chain is already share-locked; the item lock comes second.
+  defp move_locked(subject, container_id, actor) do
+    with_locked_item({:active_item, subject}, fn %{item: item} ->
+      with :ok <- refuse_active_loan(item.id),
+           {:ok, %Item{} = moved} <-
+             persist(
+               Ecto.Changeset.change(item, %{container_id: container_id, updated_by: actor})
+             ) do
+        item_outcome(moved)
+      end
+    end)
+  end
+
+  # The peeked chain is already share-locked. If the locked item still
+  # sits in that container, re-read the chain without taking new locks.
+  # A different container means a concurrent move; roll back and retry
+  # from the peek rather than locking D while holding the item.
+  defp restore_locked(subject, actor, peeked_container_id) do
     with_locked_item({:item, subject}, fn
       %{item: %Item{archived_at: nil} = item} ->
         item_outcome(item)
 
       %{item: item} ->
-        with :ok <- require_active_category(item.category_id),
-             :ok <- ItemGuards.require_active_container_chain(item.container_id),
+        with :ok <- require_same_container(item.container_id, peeked_container_id),
+             :ok <- require_active_category(item.category_id),
+             :ok <- verify_held_container_chain(item.container_id),
              :ok <- require_retained_values_valid(item),
              {:ok, %Item{} = restored} <- persist(restore_changeset(item, actor)) do
           item_outcome(restored)
@@ -398,7 +435,14 @@ defmodule Dhc.Inventory.AvailabilityCommands do
     end)
   end
 
-  # ── Shared command bodies ───────────────────────────────────────
+  defp require_same_container(actual, peeked) when actual == peeked, do: :ok
+  defp require_same_container(_actual, _peeked), do: {:error, :container_moved}
+
+  defp verify_held_container_chain(container_id) do
+    if ItemGuards.container_chain_active?(container_id),
+      do: :ok,
+      else: {:error, :archived_container}
+  end
 
   defp member_cancellation(%Loan{status: "cancelled"} = loan, _note, _borrower), do: {:ok, loan}
 
@@ -446,6 +490,20 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   end
 
   defp with_locked_item(_subject, _fun), do: {:error, :not_found}
+
+  # Unlocked read used only to learn which container chain to share-lock
+  # before the item. Nothing is decided from this row.
+  defp peek_item(slug_or_id) when is_binary(slug_or_id) do
+    case slug_or_id |> ItemGuards.item_query() |> Repo.one() do
+      nil -> {:error, :not_found}
+      %Item{} = item -> {:ok, item}
+    end
+  end
+
+  defp peek_item(_slug_or_id), do: {:error, :not_found}
+
+  defp lock_preview_container(%Item{container_id: container_id}),
+    do: ItemGuards.require_active_container_chain(container_id)
 
   defp discover_loan_item(id, scope) do
     case id |> loan_query(scope) |> select([l], l.item_id) |> Repo.one() do
@@ -945,5 +1003,25 @@ defmodule Dhc.Inventory.AvailabilityCommands do
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  defp restore_attempts do
+    :dhc
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:restore_attempts, @restore_attempts)
+  end
+
+  defp restore_transact(_actor, _subject, _attrs, remaining) when remaining < 1 do
+    {:error, :retry_exhausted}
+  end
+
+  defp restore_transact(actor, subject, attrs, remaining) do
+    case transact(fn -> run(actor, :reactivate_item, subject, attrs) end) do
+      {:error, :container_moved} ->
+        restore_transact(actor, subject, attrs, remaining - 1)
+
+      other ->
+        other
+    end
   end
 end

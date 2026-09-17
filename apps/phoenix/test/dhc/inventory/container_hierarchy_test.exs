@@ -10,6 +10,7 @@ defmodule Dhc.Inventory.ContainerHierarchyTest do
   alias Dhc.Inventory
   alias Dhc.Inventory.Container
   alias Dhc.Repo
+  alias Ecto.Adapters.SQL.Sandbox
 
   describe "container hierarchy" do
     test "enforces case-insensitive sibling names while allowing the same name elsewhere" do
@@ -112,9 +113,152 @@ defmodule Dhc.Inventory.ContainerHierarchyTest do
 
       assert {:error, :still_referenced} = Inventory.delete_container(parent.id)
     end
+
+    test "creating under a parent racing an archive of that parent never raises" do
+      start_principal_tracker()
+
+      parent =
+        outside_sandbox(fn ->
+          create_container!("Race parent #{System.unique_integer([:positive])}")
+        end)
+
+      on_exit(fn ->
+        outside_sandbox(fn ->
+          Repo.query!("DELETE FROM containers WHERE id = $1 OR parent_container_id = $1", [
+            Ecto.UUID.dump!(parent.id)
+          ])
+
+          cleanup_principals()
+        end)
+      end)
+
+      results =
+        hold_lock_then(
+          "SELECT id FROM containers WHERE id = $1 FOR UPDATE",
+          [Ecto.UUID.dump!(parent.id)],
+          [
+            fn ->
+              Inventory.create_container(
+                %{
+                  "name" => "Race child #{System.unique_integer([:positive])}",
+                  "parentContainerId" => parent.id
+                },
+                principal_id()
+              )
+            end,
+            fn -> Inventory.archive_container(parent.id) end
+          ]
+        )
+
+      assert Enum.all?(results, fn
+               {:ok, _} -> true
+               {:error, :active_dependants} -> true
+               {:error, %Ecto.Changeset{}} -> true
+               _other -> false
+             end)
+
+      outside_sandbox(fn ->
+        {:ok, fresh} = Inventory.get_container(parent.id)
+        children = fresh.child_containers || []
+
+        if fresh.archived_at != nil do
+          assert children == []
+        end
+      end)
+    end
   end
 
+  @principals_agent __MODULE__.CommittedPrincipals
+
   defp errors(changeset), do: changeset.errors
+
+  defp hold_lock_then(sql, params, funs) do
+    parent = self()
+    holder = Task.async(fn -> hold_row_lock(sql, params, parent) end)
+
+    assert_receive :locked, 5_000
+
+    tasks = Enum.map(funs, fn fun -> Task.async(fn -> outside_sandbox(fun) end) end)
+
+    try do
+      :ok = outside_sandbox(fn -> wait_for_lock_waiter() end)
+
+      Enum.each(tasks, fn task ->
+        assert Task.yield(task, 200) == nil
+      end)
+    after
+      send(holder.pid, :release)
+    end
+
+    assert {:ok, _} = Task.await(holder, 5_000)
+    Enum.map(tasks, &Task.await(&1, :infinity))
+  end
+
+  defp hold_row_lock(sql, params, parent) do
+    outside_sandbox(fn ->
+      Repo.transaction(fn ->
+        Repo.query!(sql, params)
+        send(parent, :locked)
+        receive do: (:release -> :ok)
+      end)
+    end)
+  end
+
+  defp wait_for_lock_waiter do
+    Repo.query!(
+      """
+      DO $$
+      DECLARE attempts int := 0;
+      BEGIN
+        LOOP
+          EXIT WHEN EXISTS (
+            SELECT 1
+            FROM pg_locks blocked
+            JOIN pg_stat_activity a ON a.pid = blocked.pid
+            WHERE NOT blocked.granted
+              AND blocked.pid <> pg_backend_pid()
+          );
+          attempts := attempts + 1;
+          IF attempts > 500 THEN
+            RAISE EXCEPTION 'no backend queued behind the held lock';
+          END IF;
+          PERFORM pg_sleep(0.01);
+          PERFORM pg_stat_clear_snapshot();
+        END LOOP;
+      END
+      $$
+      """,
+      []
+    )
+
+    :ok
+  end
+
+  defp start_principal_tracker do
+    case Process.whereis(@principals_agent) do
+      nil -> {:ok, _pid} = Agent.start_link(fn -> [] end, name: @principals_agent)
+      _pid -> Agent.update(@principals_agent, fn _ids -> [] end)
+    end
+  end
+
+  defp track_principal(id) do
+    case Process.whereis(@principals_agent) do
+      nil -> :ok
+      _pid -> Agent.update(@principals_agent, &[id | &1])
+    end
+  end
+
+  defp cleanup_principals do
+    ids =
+      case Process.whereis(@principals_agent) do
+        nil -> []
+        _pid -> Agent.get(@principals_agent, & &1)
+      end
+
+    if ids != [] do
+      Repo.query!("DELETE FROM principals WHERE id = ANY($1::uuid[])", [ids])
+    end
+  end
 
   defp create_container!(name, parent_id \\ nil) do
     attrs = %{"name" => name}
@@ -124,14 +268,16 @@ defmodule Dhc.Inventory.ContainerHierarchyTest do
   end
 
   defp principal_id do
-    id = Ecto.UUID.generate()
+    id =
+      %Principal{id: Ecto.UUID.generate()}
+      |> Principal.email_changeset(%{
+        email: "container-#{System.unique_integer([:positive])}@example.com"
+      })
+      |> Repo.insert!()
+      |> Map.fetch!(:id)
 
-    %Principal{id: id}
-    |> Principal.email_changeset(%{
-      email: "container-#{System.unique_integer([:positive])}@example.com"
-    })
-    |> Repo.insert!()
-    |> Map.fetch!(:id)
+    track_principal(id)
+    id
   end
 
   defp insert_category! do
@@ -168,4 +314,6 @@ defmodule Dhc.Inventory.ContainerHierarchyTest do
       Ecto.UUID.dump!(item_id)
     ])
   end
+
+  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
 end

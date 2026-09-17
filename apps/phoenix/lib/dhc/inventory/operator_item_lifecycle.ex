@@ -197,6 +197,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
           | {:error, :not_found}
           | {:error, :archived_category}
           | {:error, :archived_container}
+          | {:error, :retry_exhausted}
           | {:error, :invalid_values, value_errors()}
   def restore_operator_item(slug_or_id, actor_id)
       when is_binary(slug_or_id) and is_binary(actor_id),

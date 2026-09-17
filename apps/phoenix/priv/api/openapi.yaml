@@ -4670,6 +4670,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: |
+            A concurrent move kept rewriting the item's container until
+            restore gave up. Retry the command.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemConflictError"
         "422":
           description: |
             The category or container chain is archived, or retained values
@@ -9603,7 +9611,8 @@ components:
         409 interlock conflicts on an operator item command. Each is a domain
         conflict a losing racer receives instead of a server error: the item
         is archived and read-only, a loan holds it, a maintenance period is
-        already open or absent, or loan/maintenance history forbids deletion.
+        already open or absent, loan/maintenance history forbids deletion, or
+        restore gave up after the item's container kept moving.
       properties:
         errors:
           type: object
@@ -9621,6 +9630,7 @@ components:
                 - maintenance_open
                 - no_open_maintenance
                 - has_history
+                - retry_exhausted
     InventoryOperatorItemValidationError:
       type: object
       required:

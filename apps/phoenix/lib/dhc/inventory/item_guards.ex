@@ -15,6 +15,15 @@ defmodule Dhc.Inventory.ItemGuards do
     * Containers and categories lock `FOR SHARE`, because the caller only
       needs them to stay active for the rest of the transaction — archiving
       one concurrently must wait, not silently win.
+
+  **Lock order:** when a command needs both a container and an item, the
+  container chain is share-locked first (root down to the subject), then
+  the item `FOR UPDATE`. Container archive takes the container
+  `FOR UPDATE` before any item row; sharing that container-before-item
+  order is what prevents a move or restore from deadlocking against an
+  archive. The ancestor query always finishes by locking the real
+  `containers` rows `FOR SHARE`, so a concurrent archive waits rather
+  than committing under the check.
   """
 
   import Ecto.Query
@@ -61,7 +70,11 @@ defmodule Dhc.Inventory.ItemGuards do
   end
 
   @doc """
-  Resolve a container id and require it to be active.
+  Resolve a container id and require its whole ancestor chain to be active.
+
+  Locks the chain `FOR SHARE` from the root down so a concurrent archive
+  waits. A missing destination is `:not_found`; an archived destination or
+  ancestor is `:archived_container`.
   """
   @spec require_active_container(String.t() | nil) ::
           {:ok, String.t()} | {:error, :not_found} | {:error, :archived_container}
@@ -70,22 +83,7 @@ defmodule Dhc.Inventory.ItemGuards do
   def require_active_container(container_id) do
     case Ecto.UUID.cast(container_id) do
       :error -> {:error, :not_found}
-      {:ok, id} -> check_container(id)
-    end
-  end
-
-  defp check_container(id) do
-    query =
-      from(c in "containers",
-        where: c.id == type(^id, :binary_id),
-        select: %{archived_at: c.archived_at},
-        lock: "FOR SHARE"
-      )
-
-    case Repo.one(query) do
-      nil -> {:error, :not_found}
-      %{archived_at: nil} -> {:ok, id}
-      %{archived_at: _archived} -> {:error, :archived_container}
+      {:ok, id} -> lock_active_chain(id)
     end
   end
 
@@ -94,35 +92,97 @@ defmodule Dhc.Inventory.ItemGuards do
 
   Restoring an item into an archived ancestor would put an active item inside
   retired storage, so the whole chain is checked, not just the direct parent.
-  A missing container is reported as archived: either way the chain cannot
-  host an active item.
+  The chain is share-locked for the rest of the transaction. A missing
+  container is reported as archived: either way the chain cannot host an
+  active item.
   """
   @spec require_active_container_chain(String.t() | nil) :: :ok | {:error, :archived_container}
   def require_active_container_chain(nil), do: {:error, :archived_container}
 
   def require_active_container_chain(container_id) do
-    result =
+    case Ecto.UUID.cast(container_id) do
+      :error ->
+        {:error, :archived_container}
+
+      {:ok, id} ->
+        case lock_active_chain(id) do
+          {:ok, _id} -> :ok
+          {:error, :not_found} -> {:error, :archived_container}
+          {:error, :archived_container} = error -> error
+        end
+    end
+  end
+
+  @doc """
+  Whether every container from `container_id` up to the root exists and is
+  active. Unlocked — callers that need the chain to stay active must use
+  `require_active_container_chain/1` inside a transaction.
+  """
+  @spec container_chain_active?(String.t() | nil) :: boolean()
+  def container_chain_active?(nil), do: true
+
+  def container_chain_active?(container_id) when is_binary(container_id) do
+    case Ecto.UUID.cast(container_id) do
+      :error ->
+        false
+
+      {:ok, id} ->
+        chain = ancestor_chain(id)
+        chain != [] and Enum.all?(chain, &is_nil(&1.archived_at))
+    end
+  end
+
+  # Root-first so the lock order matches container archive (target, then
+  # dependants walking the tree). Locking dest-then-parent would deadlock
+  # against an archive of that parent.
+  defp lock_active_chain(id) do
+    case ancestor_chain(id) do
+      [] ->
+        {:error, :not_found}
+
+      chain ->
+        locked = lock_chain_for_share(Enum.map(chain, & &1.id))
+
+        cond do
+          length(locked) != length(chain) -> {:error, :not_found}
+          Enum.any?(locked, & &1.archived_at) -> {:error, :archived_container}
+          true -> {:ok, id}
+        end
+    end
+  end
+
+  defp ancestor_chain(container_id) do
+    %{rows: rows} =
       Repo.query!(
         """
         WITH RECURSIVE chain AS (
-          SELECT id, parent_container_id, archived_at
+          SELECT id, parent_container_id, archived_at, 0 AS depth
           FROM containers
           WHERE id = $1
           UNION ALL
-          SELECT parent.id, parent.parent_container_id, parent.archived_at
+          SELECT parent.id, parent.parent_container_id, parent.archived_at, child.depth + 1
           FROM containers parent
           JOIN chain child ON child.parent_container_id = parent.id
         )
-        SELECT count(*) FILTER (WHERE archived_at IS NOT NULL), count(*)
-        FROM chain
+        SELECT id, archived_at FROM chain ORDER BY depth DESC
         """,
         [Ecto.UUID.dump!(container_id)]
       )
 
-    case result.rows do
-      [[0, total]] when total > 0 -> :ok
-      _archived_or_missing -> {:error, :archived_container}
-    end
+    Enum.map(rows, fn [id, archived_at] ->
+      %{id: Ecto.UUID.load!(id), archived_at: archived_at}
+    end)
+  end
+
+  defp lock_chain_for_share(ids) do
+    Enum.flat_map(ids, fn id ->
+      from(c in "containers",
+        where: c.id == type(^id, :binary_id),
+        select: %{id: c.id, archived_at: c.archived_at},
+        lock: "FOR SHARE"
+      )
+      |> Repo.all()
+    end)
   end
 
   @doc """

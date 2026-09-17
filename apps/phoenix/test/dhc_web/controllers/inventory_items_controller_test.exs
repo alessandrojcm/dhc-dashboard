@@ -687,6 +687,30 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       assert %{"errors" => %{"code" => "archived_category"}} = json_response(conn, 422)
     end
 
+    test "409s a restore whose retry budget is exhausted", %{conn: conn} do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, item} = create_item(container_id, category.id)
+      assert {:ok, _} = Inventory.archive_operator_item(item.slug, %{}, @actor_id)
+
+      previous = Application.get_env(:dhc, Dhc.Inventory.AvailabilityCommands)
+      Application.put_env(:dhc, Dhc.Inventory.AvailabilityCommands, restore_attempts: 0)
+
+      on_exit(fn ->
+        if previous do
+          Application.put_env(:dhc, Dhc.Inventory.AvailabilityCommands, previous)
+        else
+          Application.delete_env(:dhc, Dhc.Inventory.AvailabilityCommands)
+        end
+      end)
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> post("/api/inventory/items/#{item.slug}/restore")
+
+      assert %{"errors" => %{"code" => "retry_exhausted"}} = json_response(conn, 409)
+    end
+
     test "closes an open maintenance period with the archive reason", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
@@ -838,7 +862,8 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       validation = get_in(spec, ["components", "schemas", "InventoryOperatorItemValidationError"])
 
       assert get_in(conflict, ["properties", "errors", "properties", "code", "enum"]) ==
-               ~w(archived loan_active maintenance_open no_open_maintenance has_history)
+               ~w(archived loan_active maintenance_open no_open_maintenance has_history
+                  retry_exhausted)
 
       assert get_in(validation, ["properties", "errors", "properties", "code", "enum"]) ==
                ~w(invalid_values invalid_notes archived_category archived_container

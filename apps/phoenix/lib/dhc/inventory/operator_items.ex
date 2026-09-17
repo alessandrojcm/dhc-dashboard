@@ -117,9 +117,9 @@ defmodule Dhc.Inventory.OperatorItems do
 
   This is never a movement, maintenance, archive, or loan command: a
   supplied `containerId` is ignored, and the category only changes through
-  `change_operator_item_category/3`. Omitting `values` leaves the stored
-  values untouched; supplying it replaces the complete set, so an omitted
-  definition becomes absent.
+  `change_operator_item_category/3`. Omitting `values`, or supplying
+  `nil`, leaves the stored values untouched; supplying a map replaces the
+  complete set, so an omitted definition becomes absent.
   """
   @spec update_operator_item(String.t(), map(), String.t()) ::
           {:ok, item()}
@@ -158,6 +158,9 @@ defmodule Dhc.Inventory.OperatorItems do
   # An edit that omits `values` must still validate nothing: the stored set
   # is already valid and stays untouched.
   defp validate_edit_values(_definitions, _item, %{values: nil}), do: {:ok, nil}
+
+  defp validate_edit_values(_definitions, _item, %{values: :malformed}),
+    do: invalid_values_object()
 
   defp validate_edit_values(definitions, _item, %{values: values}),
     do: validate_values(definitions, values)
@@ -231,11 +234,22 @@ defmodule Dhc.Inventory.OperatorItems do
     Repo.one(ItemGuards.item_query(slug_or_id))
   end
 
+  defp validate_values(_definitions, :malformed), do: invalid_values_object()
+
   defp validate_values(definitions, values) do
     case ItemValues.validate(definitions, values) do
       {:ok, rows} -> {:ok, rows}
       {:error, errors} -> {:error, :invalid_values, errors}
     end
+  end
+
+  defp invalid_values_object do
+    changeset =
+      %Item{}
+      |> Ecto.Changeset.change(%{})
+      |> Ecto.Changeset.add_error(:values, "must be an object")
+
+    {:error, changeset}
   end
 
   # ── Attr normalization ──────────────────────────────────────────
@@ -256,15 +270,15 @@ defmodule Dhc.Inventory.OperatorItems do
     |> normalize_values_key()
   end
 
-  # `values` distinguishes "omitted" (leave stored values alone) from
-  # "supplied" (replace the complete set), so absent stays absent while a
-  # supplied nil normalizes to the empty set.
+  # `values` distinguishes "leave stored values alone" (omitted or explicit
+  # nil) from "replace the complete set" (a map). A non-map payload is kept
+  # as `:malformed` so validation can reject it instead of wiping rows.
   defp normalize_values_key(attrs) do
     case Map.fetch(attrs, :values) do
       :error -> Map.put(attrs, :values, nil)
-      {:ok, nil} -> Map.put(attrs, :values, %{})
+      {:ok, nil} -> Map.put(attrs, :values, nil)
       {:ok, values} when is_map(values) -> attrs
-      {:ok, _other} -> Map.put(attrs, :values, %{})
+      {:ok, _other} -> Map.put(attrs, :values, :malformed)
     end
   end
 

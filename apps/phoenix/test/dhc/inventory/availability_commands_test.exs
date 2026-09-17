@@ -755,6 +755,100 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
         assert active_allocation_count(item) == 0
       end)
     end
+
+    test "moving into a container racing an archive of that container never raises" do
+      committed(fn %{item: item, destination: destination} ->
+        {:ok, child} =
+          Inventory.create_container(
+            %{
+              "name" => "Move race child #{System.unique_integer([:positive])}",
+              "parentContainerId" => destination.id
+            },
+            principal_id()
+          )
+
+        {:ok, _} = move(item, child.id)
+
+        results =
+          hold_lock_then(
+            "SELECT id FROM containers WHERE id = $1 FOR UPDATE",
+            [Ecto.UUID.dump!(destination.id)],
+            [
+              fn -> move(item, destination.id) end,
+              fn -> Inventory.archive_container(destination.id) end
+            ]
+          )
+
+        assert Enum.all?(results, &domain_outcome?/1)
+      end)
+    end
+
+    test "restoring an item racing an archive of its container never raises" do
+      committed(fn %{item: item, container_id: container_id} ->
+        {:ok, _} = retire(item)
+
+        results =
+          hold_lock_then(
+            "SELECT id FROM containers WHERE id = $1 FOR UPDATE",
+            [Ecto.UUID.dump!(container_id)],
+            [
+              fn -> reactivate(item) end,
+              fn -> Inventory.archive_container(container_id) end
+            ]
+          )
+
+        assert Enum.all?(results, &domain_outcome?/1)
+
+        {:ok, resolved} = Inventory.resolve_operator_item(item.id)
+        {:ok, container} = Inventory.get_container(container_id)
+        refute resolved.archived_at == nil and container.archived_at != nil
+      end)
+    end
+
+    test "restore retries when the item's container changed after the unlocked peek" do
+      committed(fn %{item: item, destination: destination} ->
+        {:ok, _} = retire(item)
+        parent = self()
+
+        item_holder =
+          Task.async(fn -> rewire_item_container(item.id, destination.id, parent) end)
+
+        assert_receive :item_locked, 5_000
+
+        restore = Task.async(fn -> outside_sandbox(fn -> reactivate(item) end) end)
+        :ok = wait_for_lock_waiter("%inventory_items%")
+        send(item_holder.pid, :rewire)
+        assert_receive :rewired, 5_000
+
+        dest_holder =
+          Task.async(fn -> hold_archive_locks(destination.id, item.id, parent) end)
+
+        assert_receive :dest_locked, 5_000
+        send(item_holder.pid, :release)
+        assert {:ok, _} = Task.await(item_holder, 5_000)
+
+        :ok = wait_for_lock_waiter("%containers%")
+        assert Task.yield(restore, 200) == nil
+
+        # Archive-of-D's next lock is the item. If restore held the item
+        # while requesting D, this deadlocks; if it released first, dest
+        # acquires the item and restore stays queued on D.
+        send(dest_holder.pid, :lock_item)
+        assert_receive :dest_has_item, 5_000
+        assert Task.yield(restore, 200) == nil
+
+        send(dest_holder.pid, :release)
+        assert {:ok, _} = Task.await(dest_holder, 5_000)
+
+        assert {:ok, {:item, restored}} = Task.await(restore, 5_000)
+        assert restored.container_id == destination.id
+        assert restored.archived_at == nil
+
+        {:ok, resolved} = Inventory.resolve_operator_item(item.id)
+        assert resolved.container_id == destination.id
+        assert resolved.archived_at == nil
+      end)
+    end
   end
 
   describe "database backstops" do
@@ -862,7 +956,11 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
 
   # ── Real-concurrency helpers ───────────────────────────────────
 
+  @principals_agent __MODULE__.CommittedPrincipals
+
   defp committed(fun) do
+    start_principal_tracker()
+
     context =
       outside_sandbox(fn ->
         category = create_category!()
@@ -893,34 +991,151 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
     Repo.query!("DELETE FROM inventory_item_property_values WHERE item_id = $1", [item_id])
     Repo.query!("DELETE FROM inventory_items WHERE id = $1", [item_id])
 
-    Repo.query!("DELETE FROM containers WHERE id = ANY($1)", [
-      Enum.map([context.container_id, context.destination.id], &Ecto.UUID.dump!/1)
-    ])
+    container_ids = Enum.map([context.container_id, context.destination.id], &Ecto.UUID.dump!/1)
+
+    Repo.query!(
+      """
+      WITH RECURSIVE subtree AS (
+        SELECT id FROM containers WHERE id = ANY($1)
+        UNION ALL
+        SELECT child.id
+        FROM containers child
+        JOIN subtree parent ON parent.id = child.parent_container_id
+      )
+      DELETE FROM containers WHERE id IN (SELECT id FROM subtree)
+      """,
+      [container_ids]
+    )
 
     Repo.query!("DELETE FROM equipment_categories WHERE id = $1", [
       Ecto.UUID.dump!(context.category.id)
     ])
+
+    cleanup_principals()
   end
 
   defp race(funs) when is_list(funs) do
-    funs
-    |> Task.async_stream(fn fun -> outside_sandbox(fun) end,
-      max_concurrency: length(funs),
-      ordered: true,
-      timeout: :infinity
-    )
-    |> Enum.map(fn {:ok, result} -> result end)
+    parent = self()
+
+    tasks =
+      Enum.map(funs, fn fun ->
+        Task.async(fn ->
+          send(parent, {:ready, self()})
+
+          receive do
+            :go -> outside_sandbox(fun)
+          end
+        end)
+      end)
+
+    expected = MapSet.new(Enum.map(tasks, & &1.pid))
+
+    received =
+      Enum.map(tasks, fn _task ->
+        assert_receive {:ready, pid}, 5_000
+        pid
+      end)
+
+    assert MapSet.new(received) == expected
+    Enum.each(tasks, fn task -> send(task.pid, :go) end)
+    Enum.map(tasks, &Task.await(&1, :infinity))
   end
+
+  defp domain_outcome?({:ok, _}), do: true
+  defp domain_outcome?({:error, reason}) when is_atom(reason), do: true
+  defp domain_outcome?({:error, %Ecto.Changeset{}}), do: true
+  defp domain_outcome?(_other), do: false
 
   defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
 
+  # Hold a row lock, start the competing commands, prove they are queued
+  # behind it, then release. Without the held lock a ready/go barrier can
+  # let one command finish before the other opens its transaction.
+  defp hold_lock_then(sql, params, funs) do
+    parent = self()
+    holder = Task.async(fn -> hold_row_lock(sql, params, parent) end)
+
+    assert_receive :locked, 5_000
+
+    tasks = Enum.map(funs, fn fun -> Task.async(fn -> outside_sandbox(fun) end) end)
+
+    try do
+      :ok = wait_for_lock_waiter("%")
+
+      Enum.each(tasks, fn task ->
+        assert Task.yield(task, 200) == nil
+      end)
+    after
+      send(holder.pid, :release)
+    end
+
+    assert {:ok, _} = Task.await(holder, 5_000)
+    Enum.map(tasks, &Task.await(&1, :infinity))
+  end
+
+  defp hold_row_lock(sql, params, parent) do
+    outside_sandbox(fn ->
+      Repo.transaction(fn ->
+        Repo.query!(sql, params)
+        send(parent, :locked)
+        receive do: (:release -> :ok)
+      end)
+    end)
+  end
+
+  defp rewire_item_container(item_id, destination_id, parent) do
+    outside_sandbox(fn ->
+      Repo.transaction(fn ->
+        Repo.query!("SELECT id FROM inventory_items WHERE id = $1 FOR UPDATE", [
+          Ecto.UUID.dump!(item_id)
+        ])
+
+        send(parent, :item_locked)
+        receive do: (:rewire -> :ok)
+
+        Repo.query!("UPDATE inventory_items SET container_id = $1 WHERE id = $2", [
+          Ecto.UUID.dump!(destination_id),
+          Ecto.UUID.dump!(item_id)
+        ])
+
+        send(parent, :rewired)
+        receive do: (:release -> :ok)
+      end)
+    end)
+  end
+
+  # Archive locks the container first, then the item beneath it. Holding
+  # both in that order is how we detect a restore that inverted them.
+  # The container lock is `FOR NO KEY UPDATE` so it can be taken while
+  # the rewire still holds an inbound FK KEY SHARE on D.
+  defp hold_archive_locks(destination_id, item_id, parent) do
+    outside_sandbox(fn ->
+      Repo.transaction(fn ->
+        # `FOR UPDATE` would wait on the rewire's inbound FK KEY SHARE.
+        # `FOR NO KEY UPDATE` still conflicts with restore's FOR SHARE.
+        Repo.query!("SELECT id FROM containers WHERE id = $1 FOR NO KEY UPDATE", [
+          Ecto.UUID.dump!(destination_id)
+        ])
+
+        send(parent, :dest_locked)
+        receive do: (:lock_item -> :ok)
+
+        Repo.query!("SELECT id FROM inventory_items WHERE id = $1 FOR UPDATE", [
+          Ecto.UUID.dump!(item_id)
+        ])
+
+        send(parent, :dest_has_item)
+        receive do: (:release -> :ok)
+      end)
+    end)
+  end
+
   # Blocks — inside Postgres, not the test process — until some other
-  # backend is waiting on a row lock for an `inventory_items ... FOR UPDATE`
-  # read, i.e. the racing command has passed its unlocked read and is queued
-  # behind the held item lock. A backend's wait state is only observable
-  # from `pg_stat_activity`, so the wait lives in one SQL statement with its
-  # own cap rather than in an Elixir sleep loop.
-  defp wait_for_lock_waiter do
+  # backend is waiting on an ungranted lock whose `query` matches the
+  # LIKE pattern. A backend's wait state is only observable from
+  # `pg_locks` / `pg_stat_activity`, so the wait lives in one SQL
+  # statement with its own cap rather than in an Elixir sleep loop.
+  defp wait_for_lock_waiter(query_pattern \\ "%inventory_items%") when is_binary(query_pattern) do
     Repo.query!(
       """
       DO $$
@@ -928,15 +1143,16 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
       BEGIN
         LOOP
           EXIT WHEN EXISTS (
-            SELECT 1 FROM pg_stat_activity
-            WHERE wait_event_type = 'Lock'
-              AND pid <> pg_backend_pid()
-              AND query ILIKE '%inventory_items%'
-              AND query ILIKE '%FOR UPDATE%'
+            SELECT 1
+            FROM pg_locks blocked
+            JOIN pg_stat_activity a ON a.pid = blocked.pid
+            WHERE NOT blocked.granted
+              AND blocked.pid <> pg_backend_pid()
+              AND a.query ILIKE '#{query_pattern}'
           );
           attempts := attempts + 1;
           IF attempts > 500 THEN
-            RAISE EXCEPTION 'no backend queued behind the item lock';
+            RAISE EXCEPTION 'no backend queued behind the held lock';
           END IF;
           PERFORM pg_sleep(0.01);
           -- Activity stats are snapshotted per transaction; refresh them or
@@ -950,6 +1166,32 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
     )
 
     :ok
+  end
+
+  defp start_principal_tracker do
+    case Process.whereis(@principals_agent) do
+      nil -> {:ok, _pid} = Agent.start_link(fn -> [] end, name: @principals_agent)
+      _pid -> Agent.update(@principals_agent, fn _ids -> [] end)
+    end
+  end
+
+  defp track_principal(id) do
+    case Process.whereis(@principals_agent) do
+      nil -> :ok
+      _pid -> Agent.update(@principals_agent, &[id | &1])
+    end
+  end
+
+  defp cleanup_principals do
+    ids =
+      case Process.whereis(@principals_agent) do
+        nil -> []
+        _pid -> Agent.get(@principals_agent, & &1)
+      end
+
+    if ids != [] do
+      Repo.query!("DELETE FROM principals WHERE id = ANY($1::uuid[])", [ids])
+    end
   end
 
   # ── Raw-row helpers ─────────────────────────────────────────────
@@ -1089,11 +1331,15 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
   end
 
   defp principal_id do
-    %Principal{id: Ecto.UUID.generate()}
-    |> Principal.email_changeset(%{
-      email: "availability-#{System.unique_integer([:positive])}@example.com"
-    })
-    |> Repo.insert!()
-    |> Map.fetch!(:id)
+    id =
+      %Principal{id: Ecto.UUID.generate()}
+      |> Principal.email_changeset(%{
+        email: "availability-#{System.unique_integer([:positive])}@example.com"
+      })
+      |> Repo.insert!()
+      |> Map.fetch!(:id)
+
+    track_principal(id)
+    id
   end
 end

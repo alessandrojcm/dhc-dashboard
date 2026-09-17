@@ -400,6 +400,58 @@ defmodule Dhc.Inventory.OperatorItemsTest do
       assert definition_id == brand.id
     end
 
+    test "leaves values untouched when the edit supplies explicit nil" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, brand} = create_definition(category.id, "Brand", "text")
+
+      {:ok, item} =
+        Inventory.create_operator_item(
+          %{
+            "container_id" => container_id,
+            "category_id" => category.id,
+            "values" => %{brand.id => "Regenyei"}
+          },
+          principal_id()
+        )
+
+      assert {:ok, edited} =
+               Inventory.update_operator_item(item.id, %{"values" => nil}, principal_id())
+
+      assert [%{definition_id: definition_id, text: "Regenyei"}] = edited.values
+      assert definition_id == brand.id
+      assert value_row_count(item.id) == 1
+    end
+
+    test "rejects a non-object values payload and leaves stored values intact" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, brand} = create_definition(category.id, "Brand", "text")
+
+      {:ok, item} =
+        Inventory.create_operator_item(
+          %{
+            "container_id" => container_id,
+            "category_id" => category.id,
+            "values" => %{brand.id => "Regenyei"}
+          },
+          principal_id()
+        )
+
+      assert {:error, string_changeset} =
+               Inventory.update_operator_item(item.id, %{"values" => "oops"}, principal_id())
+
+      assert {"must be an object", _} = string_changeset.errors[:values]
+
+      assert {:error, list_changeset} =
+               Inventory.update_operator_item(item.id, %{"values" => []}, principal_id())
+
+      assert {"must be an object", _} = list_changeset.errors[:values]
+
+      assert {:ok, unchanged} = Inventory.resolve_operator_item(item.id)
+      assert [%{definition_id: definition_id, text: "Regenyei"}] = unchanged.values
+      assert definition_id == brand.id
+      assert value_row_count(item.id) == 1
+    end
+
     test "clearing text to empty removes the value row" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, brand} = create_definition(category.id, "Brand", "text")
