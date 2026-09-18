@@ -153,14 +153,10 @@ defmodule Dhc.Inventory.ItemProjection do
   """
   @spec availability(Item.t()) :: availability()
   def availability(%Item{archived_at: archived_at}) when not is_nil(archived_at),
-    do: unavailable(:archived)
+    do: availability_from(true, false, false)
 
   def availability(%Item{id: item_id}) do
-    cond do
-      open_maintenance?(item_id) -> unavailable(:maintenance)
-      active_loan?(item_id) -> unavailable(:on_loan)
-      true -> %{available?: true, status: :available}
-    end
+    availability_from(false, open_maintenance?(item_id), active_loan?(item_id))
   end
 
   @doc """
@@ -183,16 +179,16 @@ defmodule Dhc.Inventory.ItemProjection do
 
   # Same precedence as `availability/1`, decided from pre-fetched sets rather
   # than a query per item.
-  defp batched_availability(%Item{archived_at: archived_at}, _maintenance?, _opts)
-       when not is_nil(archived_at),
-       do: unavailable(:archived)
+  defp batched_availability(%Item{archived_at: archived_at}, maintenance?, on_loan: on_loan?) do
+    availability_from(not is_nil(archived_at), maintenance?, on_loan?)
+  end
 
-  defp batched_availability(%Item{}, true, _opts), do: unavailable(:maintenance)
-
-  defp batched_availability(%Item{}, false, on_loan: true), do: unavailable(:on_loan)
-
-  defp batched_availability(%Item{}, false, on_loan: false),
-    do: %{available?: true, status: :available}
+  # Archived → maintenance → loan → available. One function so the single-item
+  # and batched reads cannot drift.
+  defp availability_from(true, _maintenance?, _on_loan?), do: unavailable(:archived)
+  defp availability_from(false, true, _on_loan?), do: unavailable(:maintenance)
+  defp availability_from(false, false, true), do: unavailable(:on_loan)
+  defp availability_from(false, false, false), do: %{available?: true, status: :available}
 
   defp open_maintenance_ids(item_ids) do
     from(p in MaintenancePeriod,
@@ -250,14 +246,20 @@ defmodule Dhc.Inventory.ItemProjection do
 
   defp unavailable(status), do: %{available?: false, status: status}
 
-  defp render_value(%{value_type: "text", text: text}), do: text
-  defp render_value(%{value_type: "decimal", decimal: nil}), do: nil
-  defp render_value(%{value_type: "decimal", decimal: decimal}), do: Decimal.to_string(decimal)
-  defp render_value(%{value_type: "boolean", boolean: true}), do: "Yes"
-  defp render_value(%{value_type: "boolean", boolean: false}), do: "No"
-  defp render_value(%{value_type: "boolean"}), do: nil
-  defp render_value(%{value_type: "single_select", option_label: label}), do: label
-  defp render_value(_value), do: nil
+  @doc """
+  Render one typed value the way the derived label does.
+
+  Search indexes this same vocabulary so a label token is a search token.
+  """
+  @spec render_value(ItemValues.value_view() | map()) :: String.t() | nil
+  def render_value(%{value_type: "text", text: text}), do: text
+  def render_value(%{value_type: "decimal", decimal: nil}), do: nil
+  def render_value(%{value_type: "decimal", decimal: decimal}), do: Decimal.to_string(decimal)
+  def render_value(%{value_type: "boolean", boolean: true}), do: "Yes"
+  def render_value(%{value_type: "boolean", boolean: false}), do: "No"
+  def render_value(%{value_type: "boolean"}), do: nil
+  def render_value(%{value_type: "single_select", option_label: label}), do: label
+  def render_value(_value), do: nil
 
   defp container_summary(nil), do: nil
 

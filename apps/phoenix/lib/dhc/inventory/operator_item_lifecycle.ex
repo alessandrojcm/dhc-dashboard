@@ -48,6 +48,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
   alias Dhc.Inventory.AvailabilityCommands
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemGuards
+  alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.ItemValues
   alias Dhc.Inventory.Loan
@@ -225,9 +226,12 @@ defmodule Dhc.Inventory.OperatorItemLifecycle do
     with :ok <- require_confirmation(attrs),
          {:ok, %Item{} = item} <- ItemGuards.lock_item(slug_or_id),
          :ok <- refuse_history(item.id) do
+      # Project before destroying values so the delete response still carries
+      # the viewer shape (`label` is required on the wire).
+      projected = ItemProjection.project(item)
       from(v in ItemPropertyValue, where: v.item_id == ^item.id) |> Repo.delete_all()
       Repo.delete!(item)
-      %Item{item | availability: %{available?: false, status: :archived}}
+      projected
     else
       {:error, reason} -> Repo.rollback(reason)
     end

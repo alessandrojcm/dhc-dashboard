@@ -784,6 +784,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
       assert %{"data" => payload} = json_response(conn, 200)
       assert payload["id"] == item.id
+      assert_operator_item_schema(payload)
 
       assert {:error, :not_found} = Inventory.resolve_operator_item(item.slug)
     end
@@ -1020,5 +1021,22 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       {:ok, spec} -> spec
       {:error, error} -> flunk("failed to parse OpenAPI spec: #{inspect(error)}")
     end
+  end
+
+  # The delete response is the same InventoryOperatorItem viewer as show —
+  # including required `label`. Project the item before destroying values
+  # so this cannot silently emit `label: nil`.
+  defp assert_operator_item_schema(payload) when is_map(payload) do
+    required =
+      get_in(load_openapi_spec!(), ["components", "schemas", "InventoryOperatorItem", "required"])
+
+    assert is_list(required)
+
+    for key <- required do
+      assert Map.has_key?(payload, key), "delete response missing required #{key}"
+    end
+
+    assert is_binary(payload["label"]) and payload["label"] != ""
+    assert payload["availability"]["status"] in ~w(available maintenance on_loan archived)
   end
 end

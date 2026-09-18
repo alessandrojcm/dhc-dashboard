@@ -214,6 +214,26 @@ defmodule Dhc.Inventory.OperatorItemListTest do
       assert {:error, :invalid_property} =
                Inventory.list_operator_items(%{"property" => "not-a-pair"})
     end
+
+    test "compares decimal property values numerically so 1 matches stored 1.0" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
+      {:ok, match} = create_item(container_id, category.id, %{weight.id => "1.0"})
+      {:ok, _other} = create_item(container_id, category.id, %{weight.id => "2.0"})
+
+      assert {:ok, page} = Inventory.list_operator_items(%{"property" => "#{weight.id}:1"})
+      assert Enum.map(page.items, & &1.id) == [match.id]
+      assert page.total_count == 1
+    end
+
+    test "rejects a malformed decimal for a decimal definition" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
+      {:ok, _item} = create_item(container_id, category.id, %{weight.id => "1.0"})
+
+      assert {:error, :invalid_property} =
+               Inventory.list_operator_items(%{"property" => "#{weight.id}:not-a-number"})
+    end
   end
 
   describe "search" do
@@ -247,7 +267,7 @@ defmodule Dhc.Inventory.OperatorItemListTest do
             "searchable regenyei",
             "searchable large",
             "1.75",
-            "true",
+            "Yes",
             "BEGINNERS"
           ] do
         assert {:ok, page} = Inventory.list_operator_items(%{"q" => q})
@@ -269,6 +289,68 @@ defmodule Dhc.Inventory.OperatorItemListTest do
         assert {:ok, page} = Inventory.list_operator_items(%{"q" => blank})
         assert Enum.map(page.items, & &1.id) == [item.id]
       end
+    end
+
+    test "matches a multi-word query that spans category and a property value" do
+      %{container_id: container_id} = fixture()
+      {:ok, category} = Inventory.create_category(%{"name" => "Longsword"})
+      {:ok, brand} = create_definition(category.id, "Brand", "text", identifying_position: 0)
+      {:ok, match} = create_item(container_id, category.id, %{brand.id => "Regenyei"})
+      {:ok, _other} = create_item(container_id, category.id, %{brand.id => "Darkwood"})
+
+      assert {:ok, page} = Inventory.list_operator_items(%{"q" => "Longsword Regenyei"})
+      assert Enum.map(page.items, & &1.id) == [match.id]
+      assert page.total_count == 1
+    end
+
+    test "matches a partial word via prefix fallback" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, brand} = create_definition(category.id, "Brand", "text", identifying_position: 0)
+      {:ok, item} = create_item(container_id, category.id, %{brand.id => "Regenyei"})
+
+      assert {:ok, page} = Inventory.list_operator_items(%{"q" => "Regen"})
+      assert Enum.map(page.items, & &1.id) == [item.id]
+      assert page.total_count == 1
+    end
+
+    test "returns no rows when the query matches nothing" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, _item} = create_item(container_id, category.id)
+
+      assert {:ok, page} = Inventory.list_operator_items(%{"q" => "CompletelyUnknownBrandxyz"})
+      assert page.items == []
+      assert page.total_count == 0
+    end
+
+    test "does not match a later prefix alone when an earlier term is absent" do
+      %{container_id: container_id} = fixture()
+      {:ok, category} = Inventory.create_category(%{"name" => "Longsword"})
+      {:ok, brand} = create_definition(category.id, "Brand", "text", identifying_position: 0)
+      {:ok, _item} = create_item(container_id, category.id, %{brand.id => "Regenyei"})
+
+      assert {:ok, page} = Inventory.list_operator_items(%{"q" => "Rapier Regen"})
+      assert page.items == []
+      assert page.total_count == 0
+    end
+
+    test "does not raise on quotes, operators, stop words, or punctuation-only queries" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, _item} = create_item(container_id, category.id)
+
+      for q <- ["\"foo", "a & b | !c", "the", "!!!"] do
+        assert {:ok, _page} = Inventory.list_operator_items(%{"q" => q})
+      end
+    end
+
+    test "matches a boolean identifying value via the derived-label vocabulary" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, sharp} = create_definition(category.id, "Sharp", "boolean", identifying_position: 0)
+      {:ok, yes} = create_item(container_id, category.id, %{sharp.id => true})
+      {:ok, _no} = create_item(container_id, category.id, %{sharp.id => false})
+
+      assert {:ok, page} = Inventory.list_operator_items(%{"q" => "Yes"})
+      assert Enum.map(page.items, & &1.id) == [yes.id]
+      assert page.total_count == 1
     end
   end
 

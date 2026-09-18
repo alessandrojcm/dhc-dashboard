@@ -130,6 +130,20 @@ defmodule Mix.Tasks.Gen.ControllersTest do
     assert Controllers.operation_id_to_action("widgets.renew") == "renew"
   end
 
+  test "operation_id_to_action snake_cases a camelCase action segment" do
+    assert Controllers.operation_id_to_action("inventoryItems.listMaintenance") ==
+             "list_maintenance"
+
+    assert Controllers.operation_id_to_action("inventoryItems.changeCategory") ==
+             "change_category"
+
+    assert Controllers.operation_id_to_action("inventoryItems.startMaintenance") ==
+             "start_maintenance"
+
+    assert Controllers.operation_id_to_action("inventoryItems.endMaintenance") ==
+             "end_maintenance"
+  end
+
   test "operation_id_to_action returns the full id if no dot separator" do
     assert Controllers.operation_id_to_action("health") == "health"
   end
@@ -598,18 +612,35 @@ defmodule Mix.Tasks.Gen.ControllersTest do
       refute content =~ ~r/conn, "[^"]*\{slugOrId\}/
     end
 
-    test "an unresolvable parameter ref is dropped rather than crashing", %{
+    test "an unresolvable parameter ref raises naming the operation and the ref", %{
       ref_param_spec: spec
     } do
-      # A spec whose component parameters were stripped (or a dangling ref)
-      # must degrade to the `id` default instead of raising.
       stripped = put_in(spec.components.parameters, nil)
 
-      content = controller_module_text!(stripped, "Refs")
-
-      assert content =~ ~S|def show(conn, %{"id" => id})|
-      assert contract_test_text!(stripped, "Refs") =~ ~S|get(conn, "/api/refs/{slugOrId}")|
+      assert_raise Mix.Error, ~r/Unresolved parameter \$ref.*SlugOrId.*refs\.show/s, fn ->
+        controller_module_text!(stripped, "Refs")
+      end
     end
+  end
+
+  # Compile-time drift guard: a router action the generator would emit
+  # (`listMaintenance` → `:list_maintenance`) must exist on the controller.
+  test "every inventory router action exists as a controller function" do
+    for %{plug: controller, plug_opts: action, path: path} <- DhcWeb.Router.__routes__(),
+        is_atom(controller),
+        inventory_controller?(controller) do
+      Code.ensure_loaded!(controller)
+
+      assert function_exported?(controller, action, 2),
+             "#{inspect(controller)}.#{action}/2 is routed at #{path} but is not defined"
+    end
+  end
+
+  defp inventory_controller?(module) do
+    module
+    |> Module.split()
+    |> List.last()
+    |> String.starts_with?("Inventory")
   end
 
   # ── Helpers ──────────────────────────────────────────────────────────

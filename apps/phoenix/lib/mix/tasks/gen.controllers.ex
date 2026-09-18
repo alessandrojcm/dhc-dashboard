@@ -688,8 +688,8 @@ defmodule Mix.Tasks.Gen.Controllers do
   """
   def operation_id_to_action(operation_id) when is_binary(operation_id) do
     case String.split(operation_id, ".", parts: 2) do
-      [_tag, action] -> action
-      _ -> operation_id
+      [_tag, action] -> Macro.underscore(action)
+      _ -> Macro.underscore(operation_id)
     end
   end
 
@@ -936,27 +936,40 @@ defmodule Mix.Tasks.Gen.Controllers do
   end
 
   # The `in: :path` parameters of an operation, with any
-  # `$ref: "#/components/parameters/X"` entries dereferenced first. A ref that
-  # cannot be resolved is dropped rather than crashing the generator, so a
-  # partial or dangling spec still scaffolds (falling back to the `id`
-  # default and leaving the placeholder in the contract test path).
+  # `$ref: "#/components/parameters/X"` entries dereferenced first. A ref
+  # that cannot be resolved raises naming the operation and the ref — a
+  # silent drop used to emit `%{"id" => id}` and literal `{slugOrId}` paths.
   defp path_parameters(op, spec) do
     (op.operation.parameters || [])
-    |> Enum.map(&resolve_parameter(&1, spec))
+    |> Enum.map(&resolve_parameter(&1, spec, op))
     |> Enum.filter(&match?(%OpenApiSpex.Parameter{in: :path}, &1))
   end
 
   # ── Component reference helpers ──────────────────────────────────────
 
-  defp resolve_parameter(parameter_or_ref, spec) do
-    case parameter_or_ref do
-      %OpenApiSpex.Reference{"$ref": "#/components/parameters/" <> name} ->
-        component_parameters(spec)[name]
+  defp resolve_parameter(%OpenApiSpex.Reference{"$ref": ref} = reference, spec, op) do
+    case dereference_parameter(reference, spec) do
+      %OpenApiSpex.Parameter{} = param ->
+        param
 
-      other ->
-        other
+      _missing ->
+        Mix.raise("Unresolved parameter $ref #{inspect(ref)} on operation #{operation_label(op)}")
     end
   end
+
+  defp resolve_parameter(other, _spec, _op), do: other
+
+  defp dereference_parameter(
+         %OpenApiSpex.Reference{"$ref": "#/components/parameters/" <> name},
+         spec
+       ) do
+    component_parameters(spec)[name]
+  end
+
+  defp dereference_parameter(_reference, _spec), do: nil
+
+  defp operation_label(%{operation_id: id}) when is_binary(id), do: id
+  defp operation_label(%{path: path, method: method}), do: "#{method} #{path}"
 
   defp component_parameters(%OpenApiSpex.OpenApi{components: %{parameters: params}})
        when is_map(params),

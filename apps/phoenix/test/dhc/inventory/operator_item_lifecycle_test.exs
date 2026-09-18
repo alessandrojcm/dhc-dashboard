@@ -554,6 +554,8 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
 
       assert {:ok, deleted} = Inventory.delete_operator_item(item.id, %{"confirm" => true})
       assert deleted.id == item.id
+      assert deleted.label == "#{category.name} · #{item.slug}"
+      assert [%{text: "Regenyei"}] = deleted.values
 
       assert {:error, :not_found} = Inventory.resolve_operator_item(item.id)
       assert value_row_count(item.id) == 0

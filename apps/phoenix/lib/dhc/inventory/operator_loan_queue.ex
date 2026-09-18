@@ -35,9 +35,14 @@ defmodule Dhc.Inventory.OperatorLoanQueue do
   `rows`. The queue reads *all* open loans in one query and partitions them
   in memory, so there is no second aggregate query that could count a
   different set than the operator is looking at. That also means the queue is
-  deliberately unpaginated: a count that excluded rows beyond a page would be
-  the exact disagreement this shape exists to prevent, and the open-loan set
-  is bounded by the club's physical items.
+  deliberately unpaginated: it is a duty-officer working list rendered in
+  full, and a count that excluded rows beyond a page would be the exact
+  disagreement this shape exists to prevent. The `requested` bucket is *not*
+  bounded by physical items — competing pending requests coexist on one item
+  (story 34); the only cap today is one pending request per item per member
+  (`inventory_loans_one_pending_request_per_item_borrower`). If `requested`
+  ever grows beyond a screen, the answer is a request cap / per-item
+  competing-request limit, not pagination.
 
   ## No ownership
 

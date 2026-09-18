@@ -9,7 +9,7 @@ defmodule DhcWeb.InventoryItemsController do
     * DELETE /inventory/items/:slugOrId                       — delete, write roles.
     * POST   /inventory/items/:slugOrId/category              — reclassify, write roles.
     * POST   /inventory/items/:slugOrId/move                  — move, write roles.
-    * GET    /inventory/items/:slugOrId/maintenance           — periods, write roles.
+    * GET    /inventory/items/:slugOrId/maintenance           — list periods, write roles.
     * POST   /inventory/items/:slugOrId/maintenance/start     — start, write roles.
     * POST   /inventory/items/:slugOrId/maintenance/end       — end, write roles.
     * POST   /inventory/items/:slugOrId/archive               — archive, write roles.
@@ -124,7 +124,7 @@ defmodule DhcWeb.InventoryItemsController do
   @doc """
   GET /inventory/items/:slugOrId/maintenance
   """
-  def maintenance(conn, %{"slugOrId" => slug_or_id}) do
+  def list_maintenance(conn, %{"slugOrId" => slug_or_id}) do
     case Inventory.resolve_operator_item(slug_or_id) do
       {:ok, _item} ->
         periods = Inventory.list_operator_item_maintenance_periods(slug_or_id)

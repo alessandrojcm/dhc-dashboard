@@ -8797,6 +8797,7 @@ components:
         - parentContainerId
         - parentContainer
         - itemCount
+        - archivedAt
         - createdAt
         - updatedAt
       properties:
@@ -8931,6 +8932,7 @@ components:
         - childContainers
         - items
         - itemCount
+        - archivedAt
         - createdAt
         - updatedAt
       properties:

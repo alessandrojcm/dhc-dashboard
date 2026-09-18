@@ -339,7 +339,7 @@ defmodule DhcWeb.Router do
 
     get "/inventory/items/:slugOrId/maintenance",
         InventoryItemsController,
-        :maintenance
+        :list_maintenance
 
     post "/inventory/items/:slugOrId/maintenance/start",
          InventoryItemsController,

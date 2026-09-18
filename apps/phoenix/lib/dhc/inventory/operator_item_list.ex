@@ -32,12 +32,10 @@ defmodule Dhc.Inventory.OperatorItemList do
   import Ecto.Query
 
   alias Dhc.CursorPagination
-  alias Dhc.Inventory.Container
-  alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemPropertyValue
-  alias Dhc.Inventory.PropertyOption
+  alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Repo
 
   @allowed_limits [10, 25, 50, 100]
@@ -145,6 +143,7 @@ defmodule Dhc.Inventory.OperatorItemList do
   # A supplied value may name an option id, a boolean, a decimal, or text,
   # and the operator filtering by "Large" should not have to know which
   # column stores it. Text compares case-insensitively like the search does.
+  # Decimals compare numerically so a stored `1.0` matches a filter of `1`.
   defp property_value_match(values) do
     Enum.reduce(values, dynamic(false), fn value, acc ->
       dynamic(
@@ -153,54 +152,135 @@ defmodule Dhc.Inventory.OperatorItemList do
           fragment("?::text = ?", v.option_id, ^value) or
           fragment("lower(?) = lower(?)", v.text_value, ^value) or
           fragment("?::text = ?", v.boolean_value, ^value) or
-          fragment("?::text = ?", v.decimal_value, ^value)
+          ^decimal_value_match(value)
       )
     end)
   end
 
+  defp decimal_value_match(value) do
+    case Decimal.cast(value) do
+      {:ok, decimal} -> dynamic([v], v.decimal_value == ^decimal)
+      :error -> dynamic(false)
+    end
+  end
+
+  # Correlated per-row expression; promote to an indexed generated
+  # column if list/count profiling shows this slowing the page.
   defp apply_search(query, nil), do: query
 
   defp apply_search(query, q) do
-    pattern = "%" <> escape_like(q) <> "%"
+    case search_parts(q) do
+      :none -> query
+      {websearch, prefix} -> constrain_search(query, websearch, prefix)
+    end
+  end
+
+  defp search_parts(q) do
+    tokens =
+      q
+      |> String.replace(~r/-+/, " ")
+      |> String.split()
+      |> Enum.map(&sanitize_search_token/1)
+      |> Enum.reject(&(&1 == ""))
+
+    case tokens do
+      [] ->
+        :none
+
+      [only] ->
+        {"", only}
+
+      many ->
+        {head, [last]} = Enum.split(many, -1)
+        {Enum.join(head, " "), last}
+    end
+  end
+
+  # `to_tsquery` is syntax-sensitive; only alphanumerics and dots reach
+  # the prefix path. Quotes, operators, and punctuation cannot 500.
+  defp sanitize_search_token(token) do
+    Regex.replace(~r/[^[:alnum:].]+/u, token, "")
+  end
+
+  defp constrain_search(query, websearch, last) do
+    yes = ItemProjection.render_value(%{value_type: "boolean", boolean: true})
+    no = ItemProjection.render_value(%{value_type: "boolean", boolean: false})
 
     where(
       query,
       [i],
-      ilike(i.slug, ^pattern) or ilike(i.notes, ^pattern) or
-        exists(
-          from(c in EquipmentCategory,
-            where: c.id == parent_as(:item).category_id,
-            where: ilike(c.name, ^pattern),
-            select: 1
+      fragment(
+        """
+        to_tsvector(
+          'english',
+          concat_ws(
+            ' ',
+            replace(?, '-', ' '),
+            replace(?, '-', ' '),
+            (SELECT name FROM equipment_categories WHERE id = ?),
+            (
+              WITH RECURSIVE ancestors AS (
+                SELECT id, parent_container_id, name, 0 AS depth
+                FROM containers
+                WHERE id = ?
+                UNION ALL
+                SELECT parent.id, parent.parent_container_id, parent.name, child.depth + 1
+                FROM containers parent
+                JOIN ancestors child ON child.parent_container_id = parent.id
+              )
+              SELECT string_agg(name, ' ' ORDER BY depth DESC) FROM ancestors
+            ),
+            (
+              SELECT string_agg(
+                concat_ws(
+                  ' ',
+                  v.text_value,
+                  o.label,
+                  v.decimal_value::text,
+                  CASE v.boolean_value WHEN true THEN ? WHEN false THEN ? END
+                ),
+                ' '
+              )
+              FROM inventory_item_property_values v
+              LEFT JOIN inventory_property_options o ON o.id = v.option_id
+              WHERE v.item_id = ?
+            )
           )
-        ) or
-        exists(
-          from(c in Container,
-            where: c.id == parent_as(:item).container_id,
-            where: ilike(c.name, ^pattern),
-            select: 1
-          )
-        ) or
-        exists(
-          from(v in ItemPropertyValue,
-            left_join: o in PropertyOption,
-            on: o.id == v.option_id,
-            where: v.item_id == parent_as(:item).id,
-            where:
-              ilike(v.text_value, ^pattern) or ilike(o.label, ^pattern) or
-                ilike(fragment("?::text", v.decimal_value), ^pattern) or
-                ilike(fragment("?::text", v.boolean_value), ^pattern),
-            select: 1
-          )
+        ) @@ (
+          CASE
+            WHEN ? = '' THEN COALESCE(
+              (
+                SELECT to_tsquery('english', string_agg(match[1] || ':*', ' & '))
+                FROM regexp_matches(to_tsvector('english', ?)::text, '''([^'']+)''', 'g') AS match
+              ),
+              ''::tsquery
+            )
+            WHEN ? = '' THEN websearch_to_tsquery('english', ?)
+            ELSE websearch_to_tsquery('english', ?) && COALESCE(
+              (
+                SELECT to_tsquery('english', string_agg(match[1] || ':*', ' & '))
+                FROM regexp_matches(to_tsvector('english', ?)::text, '''([^'']+)''', 'g') AS match
+              ),
+              ''::tsquery
+            )
+          END
         )
+        """,
+        i.slug,
+        i.notes,
+        i.category_id,
+        i.container_id,
+        ^yes,
+        ^no,
+        i.id,
+        ^websearch,
+        ^last,
+        ^last,
+        ^websearch,
+        ^websearch,
+        ^last
+      )
     )
-  end
-
-  defp escape_like(value) do
-    value
-    |> String.replace("\\", "\\\\")
-    |> String.replace("%", "\\%")
-    |> String.replace("_", "\\_")
   end
 
   # ── Options ─────────────────────────────────────────────────────
@@ -276,6 +356,7 @@ defmodule Dhc.Inventory.OperatorItemList do
         _missing_value -> {:halt, {:error, :invalid_property}}
       end
     end)
+    |> validate_decimal_properties()
   end
 
   defp parse_properties(_raw), do: {:error, :invalid_property}
@@ -285,6 +366,32 @@ defmodule Dhc.Inventory.OperatorItemList do
       {:ok, id} -> {:cont, {:ok, Map.update(acc, id, [value], &(&1 ++ [value]))}}
       :error -> {:halt, {:error, :invalid_property}}
     end
+  end
+
+  # A decimal definition compared as text would make `1` miss stored `1.0`.
+  # A value that cannot be a decimal is a 400, like a malformed category id —
+  # looking up the type first is what lets option UUIDs on other definitions
+  # keep working.
+  defp validate_decimal_properties({:error, reason}), do: {:error, reason}
+
+  defp validate_decimal_properties({:ok, properties}) do
+    types = definition_types(Map.keys(properties))
+
+    Enum.reduce_while(properties, {:ok, properties}, fn {id, values}, {:ok, acc} ->
+      if Map.get(types, id) == "decimal" and Enum.any?(values, &(Decimal.cast(&1) == :error)) do
+        {:halt, {:error, :invalid_property}}
+      else
+        {:cont, {:ok, acc}}
+      end
+    end)
+  end
+
+  defp definition_types([]), do: %{}
+
+  defp definition_types(ids) do
+    from(d in PropertyDefinition, where: d.id in ^ids, select: {d.id, d.value_type})
+    |> Repo.all()
+    |> Map.new()
   end
 
   # Category ids bind to a UUID column, so a malformed entry has to fail here
