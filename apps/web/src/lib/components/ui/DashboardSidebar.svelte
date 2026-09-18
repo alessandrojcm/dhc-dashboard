@@ -8,19 +8,8 @@ import { Button } from "$lib/components/ui/button";
 import type { NavData, UserData } from "$lib/types";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 import NotificationCenter from "$lib/components/notifications/NotificationCenter.svelte";
-import {
-	Boxes,
-	CalendarDays,
-	ClipboardList,
-	ChevronRight,
-	GraduationCap,
-	House,
-	Menu,
-	Stethoscope,
-	Swords,
-	Tags,
-	UsersRound,
-} from "@lucide/svelte";
+import { House, Menu } from "@lucide/svelte";
+import { navIconFor } from "$lib/components/ui/nav-icons";
 import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
 import { browser } from "$app/environment";
 import { resolve } from "$app/paths";
@@ -55,20 +44,6 @@ let {
 	...restProps
 }: ComponentProps<typeof Sidebar.Root> & Props = $props();
 let customAnchor = $state<HTMLElement>(null!);
-
-const navIcons = {
-	"Beginners Workshop": GraduationCap,
-	Members: UsersRound,
-	"Discord Doctor": Stethoscope,
-	Workshops: CalendarDays,
-	"My Workshops": Swords,
-	Inventory: Boxes,
-	Overview: House,
-	Containers: Boxes,
-	Categories: Tags,
-	Items: Swords,
-	"Loan queue": ClipboardList,
-};
 
 function isActive(url: string) {
 	return url === "/dashboard"
@@ -138,17 +113,14 @@ function isActive(url: string) {
 			<Sidebar.Group class="py-2">
 				{#if group?.items}
 					<Sidebar.GroupLabel class="gap-2 text-sidebar-foreground/55">
-						{@const GroupIcon =
-							navIcons[group.title as keyof typeof navIcons] ?? Boxes}
+						{@const GroupIcon = navIconFor(group.url)}
 						<GroupIcon class="size-3.5" />{group.title}
 					</Sidebar.GroupLabel>
 					<Sidebar.GroupContent>
 						<Sidebar.Menu>
 							{#each group.items as item (item.title)}
 								<Sidebar.MenuItem>
-									{@const ItemIcon =
-										navIcons[item.title as keyof typeof navIcons] ??
-										ChevronRight}
+									{@const ItemIcon = navIconFor(item.url)}
 									<Sidebar.MenuButton
 										isActive={isActive(item.url)}
 										tooltipContent={item.title}
@@ -169,8 +141,7 @@ function isActive(url: string) {
 						</Sidebar.Menu>
 					</Sidebar.GroupContent>
 				{:else}
-					{@const GroupIcon =
-						navIcons[group.title as keyof typeof navIcons] ?? ChevronRight}
+					{@const GroupIcon = navIconFor(group.url)}
 					<Sidebar.MenuButton
 						isActive={isActive(group.url)}
 						tooltipContent={group.title}

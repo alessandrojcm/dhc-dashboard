@@ -43,6 +43,19 @@ export const navigation: NavigationDefinition = [
 		requires: "workshops.own.read",
 	},
 	{
+		// Member catalog browse (ALE-288). Member self-service entries sit
+		// together; the operator-only Inventory group closes the list.
+		title: "Equipment",
+		url: "/dashboard/equipment",
+		requires: "inventory.catalog.read",
+	},
+	{
+		// Own-loan history (ALE-288)
+		title: "My Loans",
+		url: "/dashboard/my-loans",
+		requires: "inventory.loans.own.read",
+	},
+	{
 		title: "Inventory",
 		url: "/dashboard/inventory",
 		requires: "inventory.manage",
@@ -68,18 +81,6 @@ export const navigation: NavigationDefinition = [
 				requires: "inventory.manage",
 			},
 		],
-	},
-	{
-		// Member catalog browse (ALE-288)
-		title: "Equipment",
-		url: "/dashboard/equipment",
-		requires: "inventory.catalog.read",
-	},
-	{
-		// Own-loan history (ALE-288)
-		title: "My Loans",
-		url: "/dashboard/my-loans",
-		requires: "inventory.loans.own.read",
 	},
 ];
 
