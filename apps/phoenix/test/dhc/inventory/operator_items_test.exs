@@ -15,7 +15,7 @@ defmodule Dhc.Inventory.OperatorItemsTest do
   alias Dhc.Inventory
   alias Dhc.Repo
 
-  import Dhc.ConcurrencyHelpers, only: [outside_sandbox: 1, hold_row_lock: 3]
+  import Dhc.ConcurrencyHelpers, only: [outside_sandbox: 1, hold_lock_then: 3]
 
   describe "slug and resolution" do
     test "mints an immutable human-readable slug and resolves by slug or id" do
@@ -270,56 +270,41 @@ defmodule Dhc.Inventory.OperatorItemsTest do
         end)
       end)
 
-      # Hold FOR SHARE on the option — the same lock create takes while
-      # validating. Create is compatible and must commit the value before
-      # retire starts: overlapping the two lets retire's gate miss the
-      # uncommitted row (see ItemValues.options_by_definition/1).
-      parent = self()
+      # Queue both behind FOR UPDATE on the option so they overlap for
+      # real: create takes FOR SHARE while validating, retire takes
+      # FOR UPDATE. One valid serialisation is create-then-still-referenced;
+      # the other is retire-then-retired_option. {:ok, item} + {:ok, retired}
+      # would mean retire's gate missed the uncommitted value row.
+      [created, retired] =
+        hold_lock_then(
+          "SELECT id FROM inventory_property_options WHERE id = $1 FOR UPDATE",
+          [Ecto.UUID.dump!(option_id)],
+          [
+            fn ->
+              Inventory.create_operator_item(
+                %{
+                  "container_id" => container_id,
+                  "category_id" => category_id,
+                  "values" => %{size_id => option_id}
+                },
+                actor_id
+              )
+            end,
+            fn -> Inventory.retire_option(option_id) end
+          ]
+        )
 
-      holder =
-        Task.async(fn ->
-          hold_row_lock(
-            "SELECT id FROM inventory_property_options WHERE id = $1 FOR SHARE",
-            [Ecto.UUID.dump!(option_id)],
-            parent
-          )
-        end)
+      case {created, retired} do
+        {{:ok, item}, {:error, :still_referenced, _info}} ->
+          assert [%{option_id: ^option_id, option_label: "Large"}] = item.values
 
-      assert_receive :locked, 5_000
+        {{:error, :invalid_values, errors}, {:ok, option}} ->
+          assert errors[size_id] == :retired_option
+          assert option.retired_at != nil
 
-      try do
-        assert {:ok, item} =
-                 outside_sandbox(fn ->
-                   Inventory.create_operator_item(
-                     %{
-                       "container_id" => container_id,
-                       "category_id" => category_id,
-                       "values" => %{size_id => option_id}
-                     },
-                     actor_id
-                   )
-                 end)
-
-        assert [%{option_id: ^option_id, option_label: "Large"}] = item.values
-
-        assert %{rows: [[1]]} =
-                 outside_sandbox(fn ->
-                   Repo.query!(
-                     "SELECT count(*) FROM inventory_item_property_values WHERE option_id = $1",
-                     [Ecto.UUID.dump!(option_id)]
-                   )
-                 end)
-
-        # Create committed first with the option stored. Retirement must
-        # see that committed reference — {:ok, _} here would mean the
-        # option retired out from under an active value.
-        assert {:error, :still_referenced, _} =
-                 outside_sandbox(fn -> Inventory.retire_option(option_id) end)
-      after
-        send(holder.pid, :release)
+        other ->
+          flunk("unexpected create/retire interleaving: #{inspect(other)}")
       end
-
-      assert {:ok, _} = Task.await(holder, 5_000)
     end
 
     test "rejects a value for a retired definition" do

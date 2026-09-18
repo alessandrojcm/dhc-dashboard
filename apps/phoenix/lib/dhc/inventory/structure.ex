@@ -24,6 +24,7 @@ defmodule Dhc.Inventory.Structure do
 
   alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.ItemPropertyValue
+  alias Dhc.Inventory.Locks
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
   alias Dhc.Repo
@@ -99,7 +100,7 @@ defmodule Dhc.Inventory.Structure do
   end
 
   defp locked_update_definition(id, attrs) do
-    case Repo.get(PropertyDefinition, id, lock: "FOR UPDATE") do
+    case Locks.get_for_update(PropertyDefinition, id) do
       nil -> Repo.rollback(:not_found)
       %PropertyDefinition{} = definition -> apply_definition_update(definition, attrs)
     end
@@ -147,7 +148,7 @@ defmodule Dhc.Inventory.Structure do
   end
 
   defp locked_retire_definition(id) do
-    case Repo.get(PropertyDefinition, id, lock: "FOR UPDATE") do
+    case Locks.get_for_update(PropertyDefinition, id) do
       nil ->
         Repo.rollback(:not_found)
 
@@ -254,6 +255,7 @@ defmodule Dhc.Inventory.Structure do
   defp translate_option_write({:ok, %PropertyOption{} = option}), do: {:ok, option}
   defp translate_option_write({:error, :not_found}), do: {:error, :not_found}
   defp translate_option_write({:error, :not_single_select}), do: {:error, :not_single_select}
+  defp translate_option_write({:error, :retired_option}), do: {:error, :retired_option}
 
   defp translate_option_write({:error, {:conflict, changeset}}),
     do: {:error, :conflict, changeset}
@@ -264,18 +266,33 @@ defmodule Dhc.Inventory.Structure do
   @spec update_option(String.t(), map()) ::
           {:ok, option()}
           | {:error, :not_found}
+          | {:error, :retired_option}
           | {:error, :conflict, Ecto.Changeset.t()}
           | {:error, Ecto.Changeset.t()}
   def update_option(id, attrs) when is_binary(id) and is_map(attrs) do
-    case Repo.get(PropertyOption, id) do
+    Repo.transaction(fn -> locked_update_option(id, attrs) end)
+    |> translate_option_write()
+  end
+
+  defp locked_update_option(id, attrs) do
+    case Locks.get_for_update(PropertyOption, id) do
       nil ->
-        {:error, :not_found}
+        Repo.rollback(:not_found)
+
+      %PropertyOption{retired_at: retired_at} when not is_nil(retired_at) ->
+        Repo.rollback(:retired_option)
 
       %PropertyOption{} = option ->
-        option
-        |> PropertyOption.changeset(normalize_option_attrs(attrs))
-        |> Repo.update()
-        |> handle_option_result()
+        persist_option_update(option, attrs)
+    end
+  end
+
+  defp persist_option_update(%PropertyOption{} = option, attrs) do
+    case option
+         |> PropertyOption.changeset(normalize_option_attrs(attrs))
+         |> Repo.update() do
+      {:ok, updated} -> updated
+      {:error, changeset} -> Repo.rollback(map_option_conflict(changeset))
     end
   end
 
@@ -289,7 +306,7 @@ defmodule Dhc.Inventory.Structure do
   end
 
   defp locked_retire_option(id) do
-    case Repo.get(PropertyOption, id, lock: "FOR UPDATE") do
+    case Locks.get_for_update(PropertyOption, id) do
       nil -> Repo.rollback(:not_found)
       %PropertyOption{retired_at: retired_at} = option when not is_nil(retired_at) -> option
       %PropertyOption{} = option -> gate_retire_option(option)
@@ -501,14 +518,6 @@ defmodule Dhc.Inventory.Structure do
 
   defp handle_definition_result({:error, %Ecto.Changeset{} = changeset}) do
     if conflict?(changeset, [:label, :identifying_position]),
-      do: {:error, :conflict, changeset},
-      else: {:error, changeset}
-  end
-
-  defp handle_option_result({:ok, %PropertyOption{} = option}), do: {:ok, option}
-
-  defp handle_option_result({:error, %Ecto.Changeset{} = changeset}) do
-    if conflict?(changeset, [:label]),
       do: {:error, :conflict, changeset},
       else: {:error, changeset}
   end

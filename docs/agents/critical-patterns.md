@@ -149,6 +149,8 @@ When a write validates against rows another command may evolve, share-lock **eve
 
 Applies to any future slice that validates item data against definitions/options; extend the lock set when you add a new dependency to a validation path.
 
+**`lock:` is a query option, never a Repo option.** `Repo.get(Schema, id, lock: "FOR UPDATE")` (likewise `get_by/one/all(..., lock:)`) compiles, runs, and silently takes **no lock** — `Ecto.Repo` ignores the unknown option. Seven inventory paths shipped that way and were only caught by reading the logged SQL. Lock a single row with `Dhc.Inventory.Locks.get_for_update/2` (a `from(... lock: "FOR UPDATE")` + `Repo.one/1`) or put `lock:` inside the `from`. `test/dhc/inventory/locks_test.exs` walks the `lib` AST and fails the build if a Repo-option `lock:` reappears.
+
 ## Stripe List Requests Must Expand Nested Objects
 
 Stripe list endpoints return nested objects as **bare ID strings** unless the request passes an `expand[]` param. Reading fields off an unexpanded value silently returns nothing and triggers whatever fallback exists downstream — e.g. the stripe-sync job stored every member's `last_payment_date` as their subscription's original `start_date` for months because `latest_invoice.status_transitions.paid_at` was never present (`expand[]=data.latest_invoice` was missing from `/v1/subscriptions`). Regression coverage: `test/dhc/stripe_sync/last_payment_sync_test.exs` (deterministic Bypass gate) and `test/dhc/stripe_sync/workers/worker_integration_test.exs` (real-sandbox contract test using `backdate_start_date` so `start_date ≠ paid_at`; needs its `@moduletag timeout: 600_000` — one list page against api.stripe.com can take tens of seconds).

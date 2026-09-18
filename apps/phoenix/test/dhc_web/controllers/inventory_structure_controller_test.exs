@@ -463,6 +463,31 @@ defmodule DhcWeb.InventoryStructureControllerTest do
                }
              } = json_response(conn, 422)
     end
+
+    test "rejects updating a retired option", %{conn: conn} do
+      category = insert_category!()
+
+      assert {:ok, definition} =
+               Inventory.create_definition(category.id, %{
+                 "label" => "Guard",
+                 "valueType" => "single_select"
+               })
+
+      assert {:ok, option} = Inventory.create_option(definition.id, %{"label" => "Large"})
+      assert {:ok, _} = Inventory.retire_option(option.id)
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> patch("/api/inventory/options/#{to_uuid(option.id)}", %{"label" => "X-Large"})
+
+      assert %{
+               "errors" => %{
+                 "detail" => "a retired option cannot be updated",
+                 "code" => "retired_option"
+               }
+             } = json_response(conn, 422)
+    end
   end
 
   # ── Containers: dedicated commands ──────────────────────────────

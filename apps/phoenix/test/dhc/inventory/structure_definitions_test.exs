@@ -262,6 +262,62 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
 
       assert {:ok, retired} = Inventory.retire_option(option.id)
       assert retired.retired_at != nil
+
+      assert {:error, :retired_option} =
+               Inventory.update_option(option.id, %{"label" => "Nope"})
+    end
+
+    test "update_option waits on the option lock and refuses a concurrent retirement" do
+      {option_id, definition_id, category_id} =
+        outside_sandbox(fn ->
+          category = insert_category()
+
+          {:ok, definition} =
+            Inventory.create_definition(category.id, %{
+              "label" => "Guard",
+              "value_type" => "single_select"
+            })
+
+          {:ok, option} = Inventory.create_option(definition.id, %{"label" => "Large"})
+          {option.id, definition.id, category.id}
+        end)
+
+      on_exit(fn ->
+        outside_sandbox(fn ->
+          Repo.query!("DELETE FROM inventory_property_options WHERE id = $1", [
+            Ecto.UUID.dump!(option_id)
+          ])
+
+          Repo.query!("DELETE FROM inventory_property_definitions WHERE id = $1", [
+            Ecto.UUID.dump!(definition_id)
+          ])
+
+          Repo.query!("DELETE FROM equipment_categories WHERE id = $1", [
+            Ecto.UUID.dump!(category_id)
+          ])
+        end)
+      end)
+
+      parent = self()
+      holder = Task.async(fn -> hold_option_and_retire(option_id, parent) end)
+      assert_receive :locked, 5_000
+
+      update =
+        Task.async(fn ->
+          outside_sandbox(fn ->
+            Inventory.update_option(option_id, %{"label" => "X-Large"})
+          end)
+        end)
+
+      try do
+        :ok = outside_sandbox(fn -> wait_for_lock_waiter("%inventory_property_options%") end)
+        assert Task.yield(update, 1_000) == nil
+      after
+        send(holder.pid, :release)
+      end
+
+      assert {:ok, _} = Task.await(holder, 5_000)
+      assert {:error, :retired_option} = Task.await(update, :infinity)
     end
 
     test "options require a single-select definition" do
@@ -460,6 +516,24 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
           [
             Ecto.UUID.dump!(definition_id)
           ]
+        )
+      end)
+    end)
+  end
+
+  defp hold_option_and_retire(option_id, parent) do
+    outside_sandbox(fn ->
+      Repo.transaction(fn ->
+        Repo.query!("SELECT id FROM inventory_property_options WHERE id = $1 FOR UPDATE", [
+          Ecto.UUID.dump!(option_id)
+        ])
+
+        send(parent, :locked)
+        receive do: (:release -> :ok)
+
+        Repo.query!(
+          "UPDATE inventory_property_options SET retired_at = NOW() WHERE id = $1",
+          [Ecto.UUID.dump!(option_id)]
         )
       end)
     end)

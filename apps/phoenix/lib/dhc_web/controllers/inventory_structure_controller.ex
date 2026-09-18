@@ -182,6 +182,9 @@ defmodule DhcWeb.InventoryStructureController do
       {:error, :not_found} ->
         not_found(conn, "Option not found")
 
+      {:error, :retired_option} ->
+        unprocessable_code(conn, "a retired option cannot be updated", "retired_option")
+
       {:error, :conflict, _changeset} ->
         conflict(conn, "An option with that label already exists")
 

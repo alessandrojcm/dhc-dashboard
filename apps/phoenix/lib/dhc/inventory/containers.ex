@@ -5,6 +5,7 @@ defmodule Dhc.Inventory.Containers do
 
   alias Dhc.Inventory.Container
   alias Dhc.Inventory.ItemGuards
+  alias Dhc.Inventory.Locks
   alias Dhc.Repo
 
   @type container :: Container.t()
@@ -102,7 +103,7 @@ defmodule Dhc.Inventory.Containers do
   end
 
   defp locked_delete_container(id) do
-    case Repo.get(Container, id, lock: "FOR UPDATE") do
+    case Locks.get_for_update(Container, id) do
       nil -> Repo.rollback(:not_found)
       %Container{} = container -> delete_unreferenced_container(container)
     end
@@ -351,7 +352,7 @@ defmodule Dhc.Inventory.Containers do
   end
 
   defp locked_move_container(id, parent_id) do
-    case Repo.get(Container, id, lock: "FOR UPDATE") do
+    case Locks.get_for_update(Container, id) do
       nil ->
         Repo.rollback(:not_found)
 
@@ -441,7 +442,7 @@ defmodule Dhc.Inventory.Containers do
   defp translate_move_result({:error, reason}), do: {:error, reason}
 
   defp locked_archive_container(id) do
-    case Repo.get(Container, id, lock: "FOR UPDATE") do
+    case Locks.get_for_update(Container, id) do
       nil ->
         Repo.rollback(:not_found)
 
@@ -463,7 +464,7 @@ defmodule Dhc.Inventory.Containers do
   defp translate_archive_result({:error, reason}), do: {:error, reason}
 
   defp locked_restore_container(id) do
-    case Repo.get(Container, id, lock: "FOR UPDATE") do
+    case Locks.get_for_update(Container, id) do
       nil ->
         Repo.rollback(:not_found)
 
