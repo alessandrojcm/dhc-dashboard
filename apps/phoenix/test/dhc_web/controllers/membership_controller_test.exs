@@ -389,6 +389,55 @@ defmodule DhcWeb.MembershipControllerTest do
       assert_member_active("cus_happy")
     end
 
+    test "reactivates when a canceled subscription retains stale pause collection", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member =
+        insert_member(
+          is_active: false,
+          customer_id: "cus_canceled_while_paused",
+          subscription_paused_until: DateTime.utc_now() |> DateTime.add(30, :day)
+        )
+
+      start_date = Date.utc_today()
+
+      expect_reactivation_choreography(bypass, %{
+        customer_id: "cus_canceled_while_paused",
+        payment_method_id: "pm_sepa_saved",
+        monthly_price_id: "price_monthly",
+        annual_price_id: "price_annual",
+        monthly_subscription_id: "sub_monthly_reactivated",
+        annual_subscription_id: "sub_annual_reactivated",
+        payment_intent_status: "succeeded",
+        idempotency_prefix: idempotency_prefix(member.auth_user_id, start_date),
+        start_date: start_date,
+        existing_subscriptions: [
+          canceled_paused_membership_subscription(
+            "standard_membership_fee",
+            "sub_monthly_canceled"
+          ),
+          lapsed_membership_subscription(
+            "annual_membership_fee_revised",
+            "sub_annual_canceled"
+          )
+        ]
+      })
+
+      conn = post_reactivate(conn, member.auth_user_id, start_date)
+
+      assert %{
+               "data" => %{
+                 "paymentState" => "succeeded",
+                 "monthlySubscriptionId" => "sub_monthly_reactivated",
+                 "annualSubscriptionId" => "sub_annual_reactivated"
+               }
+             } = json_response(conn, 200)
+
+      assert_member_active("cus_canceled_while_paused")
+      assert_member_unpaused(member.auth_user_id)
+    end
+
     test "confirms the first invoice WITHOUT mandate_data (mandate is reused)", %{
       conn: conn,
       bypass: bypass
@@ -1292,6 +1341,13 @@ defmodule DhcWeb.MembershipControllerTest do
     assert profile.is_active, "reactivation must restore member access"
   end
 
+  defp assert_member_unpaused(member_id) do
+    member = Dhc.Repo.get!(Dhc.MemberProfiles.MemberProfile, member_id)
+
+    assert is_nil(member.subscription_paused_until),
+           "reactivation must clear the stale local pause projection"
+  end
+
   defp stripe_bypass(_context) do
     bypass = Bypass.open()
     original_url = Application.get_env(:dhc, :stripe_api_url)
@@ -1392,7 +1448,7 @@ defmodule DhcWeb.MembershipControllerTest do
   # Every mutating call's Idempotency-Key header is asserted to carry the
   # deterministic `membership-reactivate:<member>:<date>` namespace.
   defp expect_reactivation_choreography(bypass, opts) do
-    expect_subscription_list(bypass, opts.customer_id, [])
+    expect_subscription_list(bypass, opts.customer_id, Map.get(opts, :existing_subscriptions, []))
     expect_saved_sepa_method(bypass, opts.customer_id, opts.payment_method_id)
     expect_membership_prices(bypass, opts.monthly_price_id, opts.annual_price_id)
 
@@ -1731,6 +1787,19 @@ defmodule DhcWeb.MembershipControllerTest do
       "id" => subscription_id,
       "status" => "canceled",
       "pause_collection" => nil,
+      "items" => %{
+        "data" => [
+          %{"price" => %{"lookup_key" => lookup_key}}
+        ]
+      }
+    }
+  end
+
+  defp canceled_paused_membership_subscription(lookup_key, subscription_id) do
+    %{
+      "id" => subscription_id,
+      "status" => "canceled",
+      "pause_collection" => %{"behavior" => "void"},
       "items" => %{
         "data" => [
           %{"price" => %{"lookup_key" => lookup_key}}
