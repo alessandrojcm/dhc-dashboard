@@ -139,7 +139,12 @@ defmodule DhcWeb.E2EHarnessController do
   end
 
   defp still_referenced_errors(details) when is_map(details) do
-    count = Map.get(details, :active_value_count) || Map.get(details, "active_value_count")
+    count =
+      case details do
+        %{active_value_count: value} -> value
+        %{"active_value_count" => value} -> value
+        _other -> nil
+      end
 
     if is_integer(count) do
       %{detail: "still_referenced", activeValueCount: count}

@@ -5,29 +5,9 @@ defmodule DhcWeb.InvitationsControllerTest do
 
   alias Dhc.Invitations.Invitation
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
-  defmodule Verifier do
-    @invitation_admin_roles ~w(admin president committee_coordinator)
-
-    Enum.each(@invitation_admin_roles, fn role ->
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: Ecto.UUID.generate(),
-           email: "admin@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end)
-
-    def verify("member-token") do
-      {:ok,
-       %{sub: Ecto.UUID.generate(), email: "member@example.com", roles: ["member"], raw: %{}}}
-    end
-
-    def verify(_token), do: {:error, :invalid_token}
-  end
+  @invitation_admin_roles ~w(admin president committee_coordinator)
 
   setup do
     original = %{
@@ -39,14 +19,24 @@ defmodule DhcWeb.InvitationsControllerTest do
       onboarding_test_pid: Application.get_env(:dhc, :onboarding_test_pid)
     }
 
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    OpenApiVerifier.install(
+      generate_sub: true,
+      roles: @invitation_admin_roles,
+      role_email: "admin@example.com",
+      tokens: %{
+        "member-token" => %{email: "member@example.com", roles: ["member"]}
+      }
+    )
+
     Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Test)
     Application.put_env(:dhc, :onboarding_stripe_customer_result, {:ok, "cus_accept"})
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
     Application.put_env(:dhc, :onboarding_test_pid, self())
 
     on_exit(fn ->
-      Enum.each(original, fn
+      OpenApiVerifier.restore(original.auth_verifier)
+
+      Enum.each(Map.delete(original, :auth_verifier), fn
         {key, nil} -> Application.delete_env(:dhc, key)
         {key, value} -> Application.put_env(:dhc, key, value)
       end)

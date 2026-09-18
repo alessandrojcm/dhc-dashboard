@@ -27,7 +27,14 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
   alias Dhc.Inventory.AvailabilityCommands
   alias Dhc.Inventory.ClubCalendar
   alias Dhc.Repo
-  alias Ecto.Adapters.SQL.Sandbox
+
+  import Dhc.ConcurrencyHelpers,
+    only: [
+      hold_lock_then: 3,
+      outside_sandbox: 1,
+      wait_for_lock_waiter: 0,
+      wait_for_lock_waiter: 1
+    ]
 
   # ── Actor authorization ─────────────────────────────────────────
 
@@ -772,7 +779,7 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
         assert_receive :locked, 5_000
         approval = Task.async(fn -> outside_sandbox(fn -> approve(loan.id) end) end)
         # Give the approval time to run its unlocked read and block on the item.
-        :ok = wait_for_lock_waiter()
+        :ok = wait_for_lock_waiter("%inventory_items%")
         send(holder.pid, :release)
 
         assert {:ok, _} = Task.await(holder, 5_000)
@@ -1071,43 +1078,6 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
   defp domain_outcome?({:error, %Ecto.Changeset{}}), do: true
   defp domain_outcome?(_other), do: false
 
-  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
-
-  # Hold a row lock, start the competing commands, prove they are queued
-  # behind it, then release. Without the held lock a ready/go barrier can
-  # let one command finish before the other opens its transaction.
-  defp hold_lock_then(sql, params, funs) do
-    parent = self()
-    holder = Task.async(fn -> hold_row_lock(sql, params, parent) end)
-
-    assert_receive :locked, 5_000
-
-    tasks = Enum.map(funs, fn fun -> Task.async(fn -> outside_sandbox(fun) end) end)
-
-    try do
-      :ok = wait_for_lock_waiter("%")
-
-      Enum.each(tasks, fn task ->
-        assert Task.yield(task, 200) == nil
-      end)
-    after
-      send(holder.pid, :release)
-    end
-
-    assert {:ok, _} = Task.await(holder, 5_000)
-    Enum.map(tasks, &Task.await(&1, :infinity))
-  end
-
-  defp hold_row_lock(sql, params, parent) do
-    outside_sandbox(fn ->
-      Repo.transaction(fn ->
-        Repo.query!(sql, params)
-        send(parent, :locked)
-        receive do: (:release -> :ok)
-      end)
-    end)
-  end
-
   defp rewire_item_container(item_id, destination_id, parent) do
     outside_sandbox(fn ->
       Repo.transaction(fn ->
@@ -1153,44 +1123,6 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
         receive do: (:release -> :ok)
       end)
     end)
-  end
-
-  # Blocks — inside Postgres, not the test process — until some other
-  # backend is waiting on an ungranted lock whose `query` matches the
-  # LIKE pattern. A backend's wait state is only observable from
-  # `pg_locks` / `pg_stat_activity`, so the wait lives in one SQL
-  # statement with its own cap rather than in an Elixir sleep loop.
-  defp wait_for_lock_waiter(query_pattern \\ "%inventory_items%") when is_binary(query_pattern) do
-    Repo.query!(
-      """
-      DO $$
-      DECLARE attempts int := 0;
-      BEGIN
-        LOOP
-          EXIT WHEN EXISTS (
-            SELECT 1
-            FROM pg_locks blocked
-            JOIN pg_stat_activity a ON a.pid = blocked.pid
-            WHERE NOT blocked.granted
-              AND blocked.pid <> pg_backend_pid()
-              AND a.query ILIKE '#{query_pattern}'
-          );
-          attempts := attempts + 1;
-          IF attempts > 500 THEN
-            RAISE EXCEPTION 'no backend queued behind the held lock';
-          END IF;
-          PERFORM pg_sleep(0.01);
-          -- Activity stats are snapshotted per transaction; refresh them or
-          -- the loop would never observe the waiter arriving.
-          PERFORM pg_stat_clear_snapshot();
-        END LOOP;
-      END
-      $$
-      """,
-      []
-    )
-
-    :ok
   end
 
   defp start_principal_tracker do

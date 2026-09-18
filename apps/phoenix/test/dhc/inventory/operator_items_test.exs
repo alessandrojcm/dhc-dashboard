@@ -15,6 +15,8 @@ defmodule Dhc.Inventory.OperatorItemsTest do
   alias Dhc.Inventory
   alias Dhc.Repo
 
+  import Dhc.ConcurrencyHelpers, only: [outside_sandbox: 1, hold_row_lock: 3]
+
   describe "slug and resolution" do
     test "mints an immutable human-readable slug and resolves by slug or id" do
       %{category: category, container_id: container_id} = fixture()
@@ -246,42 +248,78 @@ defmodule Dhc.Inventory.OperatorItemsTest do
     end
 
     test "a concurrent option retirement cannot land between validation and insert" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, size} = create_definition(category.id, "Size", "single_select")
-      {:ok, option} = Inventory.create_option(size.id, %{"label" => "Large"})
-      actor = principal_id()
+      {category_id, container_id, size_id, option_id, actor_id} =
+        outside_sandbox(fn ->
+          category = create_category!()
+          actor = principal_id()
 
-      # `Structure.retire_option/1` locks the option FOR UPDATE. The create
-      # path share-locks the same row while validating, so the retirement must
-      # wait for the create to commit rather than slipping in behind it.
-      task =
-        Task.async(fn ->
-          Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), self())
-          Inventory.retire_option(option.id)
+          {:ok, container} =
+            Inventory.create_container(
+              %{"name" => "Race container #{System.unique_integer([:positive])}"},
+              actor
+            )
+
+          {:ok, size} = create_definition(category.id, "Size", "single_select")
+          {:ok, option} = Inventory.create_option(size.id, %{"label" => "Large"})
+          {category.id, container.id, size.id, option.id, actor}
         end)
 
-      result =
-        Inventory.create_operator_item(
-          %{
-            "container_id" => container_id,
-            "category_id" => category.id,
-            "values" => %{size.id => option.id}
-          },
-          actor
-        )
+      on_exit(fn ->
+        outside_sandbox(fn ->
+          cleanup_option_race(category_id, container_id, size_id, actor_id)
+        end)
+      end)
 
-      Task.await(task)
+      # Hold FOR SHARE on the option — the same lock create takes while
+      # validating. Create is compatible and must commit the value before
+      # retire starts: overlapping the two lets retire's gate miss the
+      # uncommitted row (see ItemValues.options_by_definition/1).
+      parent = self()
 
-      # Either the create wins (and stores a then-live option) or it is
-      # rejected — never a committed active value pointing at a retired option.
-      case result do
-        {:ok, item} ->
-          assert [%{option_id: stored, option_label: "Large"}] = item.values
-          assert stored == option.id
+      holder =
+        Task.async(fn ->
+          hold_row_lock(
+            "SELECT id FROM inventory_property_options WHERE id = $1 FOR SHARE",
+            [Ecto.UUID.dump!(option_id)],
+            parent
+          )
+        end)
 
-        {:error, :invalid_values, errors} ->
-          assert errors[size.id] in [:retired_option, :unknown_option]
+      assert_receive :locked, 5_000
+
+      try do
+        assert {:ok, item} =
+                 outside_sandbox(fn ->
+                   Inventory.create_operator_item(
+                     %{
+                       "container_id" => container_id,
+                       "category_id" => category_id,
+                       "values" => %{size_id => option_id}
+                     },
+                     actor_id
+                   )
+                 end)
+
+        assert [%{option_id: ^option_id, option_label: "Large"}] = item.values
+
+        assert %{rows: [[1]]} =
+                 outside_sandbox(fn ->
+                   Repo.query!(
+                     "SELECT count(*) FROM inventory_item_property_values WHERE option_id = $1",
+                     [Ecto.UUID.dump!(option_id)]
+                   )
+                 end)
+
+        # Create committed first with the option stored. Retirement must
+        # see that committed reference — {:ok, _} here would mean the
+        # option retired out from under an active value.
+        assert {:error, :still_referenced, _} =
+                 outside_sandbox(fn -> Inventory.retire_option(option_id) end)
+      after
+        send(holder.pid, :release)
       end
+
+      assert {:ok, _} = Task.await(holder, 5_000)
     end
 
     test "rejects a value for a retired definition" do
@@ -791,6 +829,28 @@ defmodule Dhc.Inventory.OperatorItemsTest do
     })
     |> Repo.insert!()
     |> Map.fetch!(:id)
+  end
+
+  defp cleanup_option_race(category_id, container_id, size_id, actor_id) do
+    dumped_size = Ecto.UUID.dump!(size_id)
+    dumped_category = Ecto.UUID.dump!(category_id)
+
+    Repo.query!(
+      "DELETE FROM inventory_item_property_values WHERE property_definition_id = $1",
+      [dumped_size]
+    )
+
+    Repo.query!("DELETE FROM inventory_items WHERE category_id = $1", [dumped_category])
+
+    Repo.query!("DELETE FROM inventory_property_options WHERE property_definition_id = $1", [
+      dumped_size
+    ])
+
+    Repo.query!("DELETE FROM inventory_property_definitions WHERE id = $1", [dumped_size])
+
+    Repo.query!("DELETE FROM containers WHERE id = $1", [Ecto.UUID.dump!(container_id)])
+    Repo.query!("DELETE FROM equipment_categories WHERE id = $1", [dumped_category])
+    Repo.query!("DELETE FROM principals WHERE id = $1", [Ecto.UUID.dump!(actor_id)])
   end
 
   defp archive_item!(item_id) do

@@ -15,6 +15,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
   import Ecto.Query
 
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
   # Inventory write roles — mirrors the `:inventory_admin_api` pipeline and the
   # existing SvelteKit `INVENTORY_ROLES`.
@@ -22,28 +23,14 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
   # Reads are any authenticated member.
   @read_roles ~w(member quartermaster admin president)
 
-  defmodule Verifier do
-    for role <- ~w(quartermaster admin president member) do
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: Ecto.UUID.generate(),
-           email: "#{unquote(role)}@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end
-
-    def verify("bad-token"), do: {:error, :invalid_token}
-    def verify(_token), do: {:error, :invalid_token}
-  end
-
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        generate_sub: true,
+        roles: ~w(quartermaster admin president member)
+      )
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
   end
 
   defp auth_conn(conn, role), do: put_req_header(conn, "authorization", "Bearer #{role}-token")

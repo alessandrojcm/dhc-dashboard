@@ -21,34 +21,20 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
   alias Dhc.Notifications.Notification
   alias Dhc.Notifications.Workers.KeyedCreateWorker
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
   @actor_id "44444444-4444-4444-4444-444444444444"
 
-  defmodule Verifier do
-    @actor_id "44444444-4444-4444-4444-444444444444"
-
-    for role <- ~w(member quartermaster admin president) do
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: @actor_id,
-           email: "#{unquote(role)}@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end
-
-    def verify(_token), do: {:error, :invalid_token}
-  end
-
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        actor_id: @actor_id,
+        roles: ~w(member quartermaster admin president)
+      )
 
     {:ok, _} = Dhc.Auth.register_principal_with_id(@actor_id, %{email: "loans@example.com"})
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
 
     :ok
   end

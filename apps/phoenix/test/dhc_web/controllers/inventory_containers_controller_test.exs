@@ -14,8 +14,9 @@ defmodule DhcWeb.InventoryContainersControllerTest do
   use DhcWeb.ConnCase, async: false
 
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
-  # A fixed Supabase user id the test Verifier always returns as `sub`. We
+  # A fixed Supabase user id the test verifier always returns as `sub`. We
   # insert a matching `auth.users` row in `setup` so the NOT-NULL
   # `containers.created_by` FK is satisfied for `create_container`.
   @actor_id "11111111-1111-1111-1111-111111111111"
@@ -26,34 +27,18 @@ defmodule DhcWeb.InventoryContainersControllerTest do
   # Reads are any authenticated member.
   @read_roles ~w(member quartermaster admin president)
 
-  defmodule Verifier do
-    @actor_id "11111111-1111-1111-1111-111111111111"
-
-    for role <- ~w(quartermaster admin president member) do
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: @actor_id,
-           email: "#{unquote(role)}@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end
-
-    def verify("bad-token"), do: {:error, :invalid_token}
-    def verify(_token), do: {:error, :invalid_token}
-  end
-
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        actor_id: @actor_id,
+        roles: ~w(quartermaster admin president member)
+      )
 
     # Stand up the auth.users row the JWT `sub` resolves to. All roles share
     # the same synthetic user; RBAC is about the JWT role list, not the user.
     insert_user!(@actor_id, "inv-actor@example.com")
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
 
     :ok
   end

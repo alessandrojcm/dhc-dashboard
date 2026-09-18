@@ -326,7 +326,7 @@ defmodule Dhc.Inventory.OperatorLoansTest do
       late = create_item!()
       {:ok, late_request} = request(late, principal_id(), today, Date.add(today, 1))
       assert {:ok, _} = Inventory.approve_loan(late_request.id, %{}, principal_id())
-      set_approved_dates!(late_request.id, Date.add(today, -5), Date.add(today, -2))
+      age_approved_dates!(late_request.id, Date.add(today, -5), Date.add(today, -2))
 
       assert {:error, :outside_window} = check_out(late_request.id)
     end
@@ -392,7 +392,7 @@ defmodule Dhc.Inventory.OperatorLoansTest do
 
       assert edited.approved_start_on == moved
 
-      set_approved_dates!(request.id, today, Date.add(today, 3))
+      age_approved_dates!(request.id, today, Date.add(today, 3))
       assert {:ok, _} = check_out(request.id)
 
       assert {:error, :start_immutable} =
@@ -426,7 +426,7 @@ defmodule Dhc.Inventory.OperatorLoansTest do
       # The approved start may legitimately predate the handover, so
       # `dueOn >= startsOn` is not enough: the due date may not precede the
       # moment the member actually took the item (ALE-273).
-      set_approved_dates!(request.id, Date.add(today, -5), Date.add(today, 7))
+      age_approved_dates!(request.id, Date.add(today, -5), Date.add(today, 7))
 
       assert {:error, :invalid_dates} =
                Inventory.edit_loan_dates(
@@ -478,7 +478,7 @@ defmodule Dhc.Inventory.OperatorLoansTest do
       assert out.overdue? == false
 
       # Ageing the row is the one thing no command may do, so it is SQL.
-      set_approved_dates!(request.id, Date.add(today, -10), Date.add(today, -1))
+      age_approved_dates!(request.id, Date.add(today, -10), Date.add(today, -1))
 
       assert {:ok, late} = Inventory.get_operator_loan(request.id)
       assert late.overdue? == true
@@ -496,7 +496,7 @@ defmodule Dhc.Inventory.OperatorLoansTest do
       assert pushed.status == "checked_out"
 
       # A closed loan is never overdue, however late it was.
-      set_approved_dates!(request.id, Date.add(today, -10), Date.add(today, -1))
+      age_approved_dates!(request.id, Date.add(today, -10), Date.add(today, -1))
       assert {:ok, returned} = Inventory.return_loan(request.id, principal_id())
       assert returned.overdue? == false
     end
@@ -518,8 +518,8 @@ defmodule Dhc.Inventory.OperatorLoansTest do
     end
   end
 
-  # ── Assertions on raw rows ──────────────────────────────────────
-
+  # Assertion reads against the partial indexes the commands translate.
+  # They are not fixture writes.
   defp pending_count(item) do
     %{rows: [[count]]} =
       Repo.query!(
@@ -540,10 +540,10 @@ defmodule Dhc.Inventory.OperatorLoansTest do
     count
   end
 
-  # Ages or shifts a loan's approved dates. No command may move a date into
-  # the past for an already-approved loan the way these tests need, so the
-  # fixture writes the row directly.
-  defp set_approved_dates!(loan_id, starts_on, due_on) do
+  # Ages or shifts a loan's approved dates. No public command may move a
+  # date into the past for an already-approved loan the way overdue tests
+  # need, so the fixture writes the row directly.
+  defp age_approved_dates!(loan_id, starts_on, due_on) do
     Repo.query!(
       "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2 WHERE id = $3",
       [starts_on, due_on, Ecto.UUID.dump!(loan_id)]

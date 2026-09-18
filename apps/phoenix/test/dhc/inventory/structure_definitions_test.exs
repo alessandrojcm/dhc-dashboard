@@ -14,7 +14,8 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
   alias Dhc.Repo
-  alias Ecto.Adapters.SQL.Sandbox
+
+  import Dhc.ConcurrencyHelpers, only: [outside_sandbox: 1, wait_for_lock_waiter: 1]
 
   describe "definitions" do
     test "operator can create, rename, require, reorder, and retire" do
@@ -444,8 +445,6 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
     )
   end
 
-  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
-
   defp hold_definition_and_flip_type(definition_id, parent) do
     outside_sandbox(fn ->
       Repo.transaction(fn ->
@@ -464,36 +463,5 @@ defmodule Dhc.Inventory.StructureDefinitionsTest do
         )
       end)
     end)
-  end
-
-  defp wait_for_lock_waiter(query_pattern) when is_binary(query_pattern) do
-    Repo.query!(
-      """
-      DO $$
-      DECLARE attempts int := 0;
-      BEGIN
-        LOOP
-          EXIT WHEN EXISTS (
-            SELECT 1
-            FROM pg_locks blocked
-            JOIN pg_stat_activity a ON a.pid = blocked.pid
-            WHERE NOT blocked.granted
-              AND blocked.pid <> pg_backend_pid()
-              AND a.query ILIKE '#{query_pattern}'
-          );
-          attempts := attempts + 1;
-          IF attempts > 500 THEN
-            RAISE EXCEPTION 'no backend queued behind the held lock';
-          END IF;
-          PERFORM pg_sleep(0.01);
-          PERFORM pg_stat_clear_snapshot();
-        END LOOP;
-      END
-      $$
-      """,
-      []
-    )
-
-    :ok
   end
 end

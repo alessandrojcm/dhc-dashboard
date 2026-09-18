@@ -10,11 +10,11 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
   dependencies and still-valid required values, and that availability is
   only ever a projection.
 
-  Loan rows are inserted directly: the loan commands themselves are
-  ALE-286. Direct SQL otherwise appears only for the backstops the seam
-  cannot express (the partial unique index on open periods) and to prove
-  target paths never write `inventory_history` or the legacy
-  `out_for_maintenance` flag.
+  Loan fixtures go through `Dhc.Inventory.request_loan/3` and the
+  operator transitions. Direct SQL otherwise appears only for states the
+  seam cannot express (stripping a value from an archived item, aging a
+  category into archive without a public command) and to prove target
+  paths never write `inventory_history`.
 
   Since GH-508 the availability-changing commands here are a facade over
   `Dhc.Inventory.AvailabilityCommands`, so this file keeps only the item
@@ -27,6 +27,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
 
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
+  alias Dhc.Inventory.ClubCalendar
   alias Dhc.Repo
 
   describe "movement" do
@@ -78,7 +79,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       destination = create_container!()
       {:ok, item} = create_item(container_id, category.id)
 
-      loan_id = create_loan!(item, principal_id(), "approved")
+      loan_id = loan_in_state!(item, principal_id(), "approved")
 
       assert {:error, :loan_active} =
                Inventory.move_operator_item(
@@ -87,7 +88,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
                  principal_id()
                )
 
-      set_loan_status!(loan_id, "checked_out")
+      check_out_loan!(loan_id)
 
       assert {:error, :loan_active} =
                Inventory.move_operator_item(
@@ -105,8 +106,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       destination = create_container!()
       {:ok, item} = create_item(container_id, category.id)
 
-      loan_id = create_loan!(item, principal_id(), "checked_out")
-      set_loan_status!(loan_id, "returned")
+      loan_id = loan_in_state!(item, principal_id(), "returned")
 
       assert {:ok, moved} =
                Inventory.move_operator_item(
@@ -123,7 +123,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       destination = create_container!()
       {:ok, item} = create_item(container_id, category.id)
 
-      loan_id = create_loan!(item, principal_id(), "requested")
+      loan_id = loan_in_state!(item, principal_id(), "requested")
 
       assert {:ok, _moved} =
                Inventory.move_operator_item(
@@ -268,8 +268,8 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
 
-      first = create_loan!(item, principal_id(), "requested")
-      second = create_loan!(item, principal_id(), "requested")
+      first = loan_in_state!(item, principal_id(), "requested")
+      second = loan_in_state!(item, principal_id(), "requested")
       operator = principal_id()
 
       assert {:ok, _} =
@@ -293,8 +293,8 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
 
-      pending = create_loan!(item, principal_id(), "requested")
-      loan_id = create_loan!(item, principal_id(), "approved")
+      pending = insert_loan_in_state!(item, principal_id(), "requested")
+      loan_id = insert_loan_in_state!(item, principal_id(), "approved")
 
       assert {:error, :loan_active} =
                Inventory.start_operator_item_maintenance(
@@ -303,7 +303,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
                  principal_id()
                )
 
-      set_loan_status!(loan_id, "checked_out")
+      check_out_loan!(loan_id)
 
       assert {:error, :loan_active} =
                Inventory.start_operator_item_maintenance(
@@ -443,8 +443,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
     test "archives an item that has loan history instead of deleting it" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
-      loan_id = create_loan!(item, principal_id(), "checked_out")
-      set_loan_status!(loan_id, "returned")
+      loan_id = loan_in_state!(item, principal_id(), "returned")
       operator = principal_id()
 
       assert {:ok, archived} = Inventory.archive_operator_item(item.id, %{}, operator)
@@ -461,7 +460,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
     test "rejects pending requests" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
-      pending = create_loan!(item, principal_id(), "requested")
+      pending = loan_in_state!(item, principal_id(), "requested")
       operator = principal_id()
 
       assert {:ok, _} = Inventory.archive_operator_item(item.id, %{}, operator)
@@ -474,13 +473,13 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
     test "is blocked by an approved or checked-out loan and writes nothing" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
-      pending = create_loan!(item, principal_id(), "requested")
-      loan_id = create_loan!(item, principal_id(), "approved")
+      pending = insert_loan_in_state!(item, principal_id(), "requested")
+      loan_id = insert_loan_in_state!(item, principal_id(), "approved")
 
       assert {:error, :loan_active} =
                Inventory.archive_operator_item(item.id, %{}, principal_id())
 
-      set_loan_status!(loan_id, "checked_out")
+      check_out_loan!(loan_id)
 
       assert {:error, :loan_active} =
                Inventory.archive_operator_item(item.id, %{}, principal_id())
@@ -576,8 +575,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
     test "refuses an item with loan history" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
-      loan_id = create_loan!(item, principal_id(), "checked_out")
-      set_loan_status!(loan_id, "returned")
+      loan_id = loan_in_state!(item, principal_id(), "returned")
 
       assert {:error, :has_history} =
                Inventory.delete_operator_item(item.id, %{"confirm" => true})
@@ -623,7 +621,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
       {:ok, _} = Inventory.archive_operator_item(item.id, %{}, principal_id())
-      archive_category!(category.id)
+      age_category_into_archive!(category.id)
 
       assert {:error, :archived_category} =
                Inventory.restore_operator_item(item.id, principal_id())
@@ -674,9 +672,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       # Strip the value while archived, then make the definition required:
       # story 19's gate only considers active items, so the archived one can
       # fall out of validity.
-      Repo.query!("DELETE FROM inventory_item_property_values WHERE item_id = $1", [
-        Ecto.UUID.dump!(item.id)
-      ])
+      strip_archived_item_values!(item.id)
 
       {:ok, _} = Inventory.update_definition(brand.id, %{"required" => true})
 
@@ -739,17 +735,17 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
       assert {:ok, %{availability: %{available?: true, status: :available}}} =
                Inventory.resolve_operator_item(item.id)
 
-      loan_id = create_loan!(item, principal_id(), "approved")
+      loan_id = loan_in_state!(item, principal_id(), "approved")
 
       assert {:ok, %{availability: %{available?: false, status: :on_loan}}} =
                Inventory.resolve_operator_item(item.id)
 
-      set_loan_status!(loan_id, "checked_out")
+      check_out_loan!(loan_id)
 
       assert {:ok, %{availability: %{available?: false, status: :on_loan}}} =
                Inventory.resolve_operator_item(item.id)
 
-      set_loan_status!(loan_id, "returned")
+      return_loan!(loan_id)
 
       assert {:ok, %{availability: %{available?: true, status: :available}}} =
                Inventory.resolve_operator_item(item.id)
@@ -758,7 +754,7 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
     test "a pending request never makes an item unavailable" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
-      _pending = create_loan!(item, principal_id(), "requested")
+      _pending = loan_in_state!(item, principal_id(), "requested")
 
       assert {:ok, %{availability: %{available?: true}}} =
                Inventory.resolve_operator_item(item.id)
@@ -860,18 +856,48 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
     |> Map.fetch!(:id)
   end
 
-  # Loan rows are fixtures here: the lifecycle commands are ALE-286.
-  defp create_loan!(item, borrower_id, status) do
+  defp loan_in_state!(item, borrower_id, state) do
+    today = ClubCalendar.today()
+
+    {:ok, loan} =
+      Inventory.request_loan(
+        item.slug,
+        %{"startsOn" => Date.to_iso8601(today), "dueOn" => Date.to_iso8601(Date.add(today, 7))},
+        borrower_id
+      )
+
+    loan_id = loan.id
+
+    if state in ~w(approved checked_out returned), do: approve_loan!(loan_id)
+    if state in ~w(checked_out returned), do: check_out_loan!(loan_id)
+    if state == "returned", do: return_loan!(loan_id)
+
+    loan_id
+  end
+
+  # Approval through the public seam rejects every competing pending
+  # request. The two "writes nothing" tests need a still-pending sibling
+  # beside an approved loan, which that command cannot leave behind.
+  defp insert_loan_in_state!(item, borrower_id, status) do
     %{rows: [[loan_id]]} =
       Repo.query!(
         """
         INSERT INTO inventory_loans (
           item_id, borrower_principal_id, status,
           requested_start_on, requested_due_on,
+          approved_start_on, approved_due_on,
           item_slug_snapshot, item_label_snapshot,
           created_at, updated_at
         )
-        VALUES ($1, $2, $3, CURRENT_DATE, CURRENT_DATE + 7, $4, $5, NOW(), NOW())
+        VALUES (
+          $1, $2, $3,
+          CURRENT_DATE, CURRENT_DATE + 7,
+          CASE WHEN $3 IN ('approved', 'checked_out', 'returned')
+            THEN CURRENT_DATE END,
+          CASE WHEN $3 IN ('approved', 'checked_out', 'returned')
+            THEN CURRENT_DATE + 7 END,
+          $4, $5, NOW(), NOW()
+        )
         RETURNING id
         """,
         [
@@ -886,41 +912,51 @@ defmodule Dhc.Inventory.OperatorItemLifecycleTest do
     Ecto.UUID.load!(loan_id)
   end
 
-  defp set_loan_status!(loan_id, status) do
-    Repo.query!("UPDATE inventory_loans SET status = $1 WHERE id = $2", [
-      status,
-      Ecto.UUID.dump!(loan_id)
-    ])
+  defp approve_loan!(loan_id) do
+    {:ok, _} = Inventory.approve_loan(loan_id, %{}, principal_id())
+    loan_id
+  end
+
+  defp check_out_loan!(loan_id) do
+    {:ok, _} = Inventory.check_out_loan(loan_id, %{}, principal_id())
+    loan_id
+  end
+
+  defp return_loan!(loan_id) do
+    {:ok, _} = Inventory.return_loan(loan_id, principal_id())
+    loan_id
   end
 
   defp loan_status(loan_id) do
-    %{rows: [[status]]} =
-      Repo.query!("SELECT status FROM inventory_loans WHERE id = $1", [
-        Ecto.UUID.dump!(loan_id)
-      ])
-
-    status
+    {:ok, view} = Inventory.get_operator_loan(loan_id)
+    view.status
   end
 
   defp loan_decision(loan_id) do
-    %{rows: [[decided_at, decided_by, decision_note]]} =
-      Repo.query!(
-        "SELECT decided_at, decided_by_principal_id, decision_note FROM inventory_loans WHERE id = $1",
-        [Ecto.UUID.dump!(loan_id)]
-      )
+    {:ok, view} = Inventory.get_operator_loan(loan_id)
 
     %{
-      decided_at: decided_at,
-      decided_by: decided_by && Ecto.UUID.load!(decided_by),
-      decision_note: decision_note
+      decided_at: view.decided_at,
+      decided_by: view.decided_by_principal_id,
+      decision_note: view.decision_note
     }
   end
 
   defp maintenance_periods(item_id), do: Inventory.list_operator_item_maintenance_periods(item_id)
 
-  defp archive_category!(category_id) do
+  # There is no public category-archive command. Restore's archived-category
+  # gate still has to be proven, so the fixture writes the column directly.
+  defp age_category_into_archive!(category_id) do
     Repo.query!("UPDATE equipment_categories SET archived_at = NOW() WHERE id = $1", [
       Ecto.UUID.dump!(category_id)
+    ])
+  end
+
+  # Edit refuses an archived item, so no public command can strip a value
+  # after archive — which is exactly the invalid state restore must reject.
+  defp strip_archived_item_values!(item_id) do
+    Repo.query!("DELETE FROM inventory_item_property_values WHERE item_id = $1", [
+      Ecto.UUID.dump!(item_id)
     ])
   end
 

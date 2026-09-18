@@ -10,7 +10,8 @@ defmodule Dhc.Inventory.ContainerHierarchyTest do
   alias Dhc.Inventory
   alias Dhc.Inventory.Container
   alias Dhc.Repo
-  alias Ecto.Adapters.SQL.Sandbox
+
+  import Dhc.ConcurrencyHelpers, only: [hold_lock_then: 3, outside_sandbox: 1]
 
   describe "container hierarchy" do
     test "enforces case-insensitive sibling names while allowing the same name elsewhere" do
@@ -215,68 +216,6 @@ defmodule Dhc.Inventory.ContainerHierarchyTest do
 
   defp errors(changeset), do: changeset.errors
 
-  defp hold_lock_then(sql, params, funs) do
-    parent = self()
-    holder = Task.async(fn -> hold_row_lock(sql, params, parent) end)
-
-    assert_receive :locked, 5_000
-
-    tasks = Enum.map(funs, fn fun -> Task.async(fn -> outside_sandbox(fun) end) end)
-
-    try do
-      :ok = outside_sandbox(fn -> wait_for_lock_waiter() end)
-
-      Enum.each(tasks, fn task ->
-        assert Task.yield(task, 200) == nil
-      end)
-    after
-      send(holder.pid, :release)
-    end
-
-    assert {:ok, _} = Task.await(holder, 5_000)
-    Enum.map(tasks, &Task.await(&1, :infinity))
-  end
-
-  defp hold_row_lock(sql, params, parent) do
-    outside_sandbox(fn ->
-      Repo.transaction(fn ->
-        Repo.query!(sql, params)
-        send(parent, :locked)
-        receive do: (:release -> :ok)
-      end)
-    end)
-  end
-
-  defp wait_for_lock_waiter do
-    Repo.query!(
-      """
-      DO $$
-      DECLARE attempts int := 0;
-      BEGIN
-        LOOP
-          EXIT WHEN EXISTS (
-            SELECT 1
-            FROM pg_locks blocked
-            JOIN pg_stat_activity a ON a.pid = blocked.pid
-            WHERE NOT blocked.granted
-              AND blocked.pid <> pg_backend_pid()
-          );
-          attempts := attempts + 1;
-          IF attempts > 500 THEN
-            RAISE EXCEPTION 'no backend queued behind the held lock';
-          END IF;
-          PERFORM pg_sleep(0.01);
-          PERFORM pg_stat_clear_snapshot();
-        END LOOP;
-      END
-      $$
-      """,
-      []
-    )
-
-    :ok
-  end
-
   defp start_principal_tracker do
     case Process.whereis(@principals_agent) do
       nil -> {:ok, _pid} = Agent.start_link(fn -> [] end, name: @principals_agent)
@@ -357,6 +296,4 @@ defmodule Dhc.Inventory.ContainerHierarchyTest do
       Ecto.UUID.dump!(item_id)
     ])
   end
-
-  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
 end

@@ -14,6 +14,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.WorkshopFixtures
+  alias DhcWeb.OpenApiVerifier
+  alias DhcWeb.WorkshopStripeClient
 
   @member_user_id "11111111-1111-1111-1111-111111111111"
   @other_user_id "22222222-2222-2222-2222-222222222222"
@@ -24,166 +26,24 @@ defmodule DhcWeb.WorkshopsControllerTest do
   @allowed_roles ~w(workshop_coordinator president admin)
   @rejected_roles ~w(beginners_coordinator member committee_coordinator coach treasurer)
 
-  # The test-only session adapter maps each deterministic bearer token to this
-  # legacy claim shape so the controller suite can exercise role boundaries.
-  defmodule Verifier do
-    for role <-
-          ~w(workshop_coordinator president admin beginners_coordinator member committee_coordinator coach treasurer) do
-      def verify(unquote("#{role}-token")) do
-        sub =
-          case unquote(role) do
-            "member" -> "11111111-1111-1111-1111-111111111111"
-            _ -> "33333333-3333-3333-3333-333333333333"
-          end
+  setup do
+    original_stripe = Application.get_env(:dhc, :workshop_stripe_client)
 
-        {:ok,
-         %{
-           sub: sub,
-           email: "#{unquote(role)}@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end
-
-    def verify("bad-token"), do: {:error, :invalid_token}
-    def verify(_token), do: {:error, :invalid_token}
-  end
-
-  defmodule StripeClient do
-    def request(%{method: :get, url: url}), do: request(method: :get, url: url)
-
-    def request(%{method: method, url: url, body: body}),
-      do: request(method: method, url: url, body: body)
-
-    def request(method: :post, url: "/v1/checkout/sessions", body: body) do
-      Application.put_env(:dhc, :last_workshop_checkout_request, body)
-
-      Application.put_env(
-        :dhc,
-        :workshop_payment_attempt_id,
-        form_value(body, :"metadata[payment_attempt_id]")
+    original =
+      OpenApiVerifier.install(
+        actor_id: @coordinator_user_id,
+        roles:
+          ~w(workshop_coordinator president admin beginners_coordinator member committee_coordinator coach treasurer),
+        role_subs: %{"member" => @member_user_id}
       )
 
-      case Application.get_env(:dhc, :workshop_stripe_checkout_create_response, :ok) do
-        :ok ->
-          {:ok,
-           %{
-             "id" => "cs_test_external",
-             "client_secret" => "cs_test_external_secret",
-             "url" => nil
-           }}
-
-        other ->
-          other
-      end
-    end
-
-    def request(method: :get, url: "/v1/checkout/sessions/" <> checkout_session_id) do
-      case Application.get_env(:dhc, :workshop_stripe_checkout_retrieve_response) do
-        nil ->
-          {:ok,
-           %{
-             "id" => checkout_session_id,
-             "status" => "complete",
-             "payment_status" => "paid",
-             "amount_total" => 2500,
-             "currency" => "eur",
-             "payment_intent" => "pi_external",
-             "metadata" => %{
-               "type" => "workshop_registration",
-               "actor_type" => "external",
-               "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_workshop_id),
-               "payment_attempt_id" => Application.fetch_env!(:dhc, :workshop_payment_attempt_id)
-             },
-             "customer_details" => %{
-               "email" => " Guest@Example.com ",
-               "name" => "Grace Hopper",
-               "phone" => "+353123456"
-             }
-           }}
-
-        other ->
-          other
-      end
-    end
-
-    def request(method: :post, url: "/v1/payment_intents", body: body) do
-      Application.put_env(:dhc, :last_workshop_stripe_request, {:create_payment_intent, body})
-
-      case Application.get_env(:dhc, :workshop_stripe_create_response, :ok) do
-        :ok ->
-          {:ok,
-           %{
-             "id" => "pi_test_member",
-             "client_secret" => "pi_test_member_secret",
-             "amount" => form_value(body, :amount),
-             "currency" => form_value(body, :currency),
-             "status" => "requires_payment_method",
-             "metadata" => %{}
-           }}
-
-        other ->
-          other
-      end
-    end
-
-    def request(method: :get, url: "/v1/payment_intents/" <> payment_intent_id) do
-      case Application.get_env(:dhc, :workshop_stripe_retrieve_response) do
-        nil ->
-          {:ok,
-           %{
-             "id" => payment_intent_id,
-             "status" => "succeeded",
-             "amount" => 1000,
-             "currency" => "eur",
-             "metadata" => %{
-               "type" => "workshop_registration",
-               "actor_type" => "member",
-               "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_workshop_id),
-               "user_id" => "11111111-1111-1111-1111-111111111111"
-             }
-           }}
-
-        other ->
-          other
-      end
-    end
-
-    def request(method: :post, url: "/v1/refunds", body: body) do
-      Application.put_env(:dhc, :last_workshop_stripe_refund_request, body)
-
-      case Application.get_env(:dhc, :workshop_stripe_refund_response, :ok) do
-        :ok -> {:ok, %{"id" => "re_test_member"}}
-        other -> other
-      end
-    end
-
-    def request(method: :post, url: "/v1/payment_intents/" <> _id, body: body) do
-      Application.put_env(:dhc, :last_workshop_payment_intent_update, body)
-      {:ok, %{"id" => "pi_external"}}
-    end
-
-    defp form_value(body, key) do
-      body
-      |> Enum.find_value(fn
-        {^key, value} -> value
-        _ -> nil
-      end)
-    end
-  end
-
-  setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    original_stripe = Application.get_env(:dhc, :workshop_stripe_client)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
-    Application.put_env(:dhc, :workshop_stripe_client, StripeClient)
+    Application.put_env(:dhc, :workshop_stripe_client, WorkshopStripeClient)
     insert_auth_user_and_profile(@member_user_id, "Current", "Member")
     insert_auth_user_and_profile(@other_user_id, "Other", "Member")
     insert_auth_user_and_profile(@coordinator_user_id, "Workshop", "Coordinator")
 
     on_exit(fn ->
-      Application.put_env(:dhc, :auth_verifier, original)
+      OpenApiVerifier.restore(original)
       Application.put_env(:dhc, :workshop_stripe_client, original_stripe)
       Application.delete_env(:dhc, :workshop_stripe_create_response)
       Application.delete_env(:dhc, :workshop_stripe_retrieve_response)

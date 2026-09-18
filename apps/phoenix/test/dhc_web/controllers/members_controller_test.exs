@@ -3,53 +3,28 @@ defmodule DhcWeb.MembersControllerTest do
 
   alias Dhc.Auth.ExternalIdentity
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
-  defmodule Verifier do
-    @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
-
-    Enum.each(@members_admin_roles, fn role ->
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: Ecto.UUID.generate(),
-           email: "admin@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end)
-
-    # A token carrying no roles proves the insurance-form endpoint is
-    # authenticated-only (no committee role required), mirroring the
-    # `settings` SELECT RLS policy.
-    def verify("member-token") do
-      {:ok,
-       %{
-         sub: Ecto.UUID.generate(),
-         email: "member@example.com",
-         roles: [],
-         raw: %{}
-       }}
-    end
-
-    def verify("self-token") do
-      {:ok,
-       %{
-         sub: "11111111-1111-1111-1111-111111111111",
-         email: "self@example.com",
-         roles: ["member"],
-         raw: %{}
-       }}
-    end
-
-    def verify(_token), do: {:error, :invalid_token}
-  end
+  @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
 
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        generate_sub: true,
+        roles: @members_admin_roles,
+        role_email: "admin@example.com",
+        tokens: %{
+          # No roles: proves the insurance-form endpoint is authenticated-only.
+          "member-token" => %{email: "member@example.com", roles: []},
+          "self-token" => %{
+            sub: "11111111-1111-1111-1111-111111111111",
+            email: "self@example.com",
+            roles: ["member"]
+          }
+        }
+      )
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
   end
 
   describe "insurance_form" do

@@ -13,37 +13,22 @@ defmodule DhcWeb.InventoryStructureControllerTest do
   use DhcWeb.ConnCase, async: false
 
   alias Dhc.Inventory
+  alias DhcWeb.OpenApiVerifier
 
   @actor_id "11111111-1111-1111-1111-111111111111"
   @write_roles ~w(quartermaster admin president)
   @read_roles ~w(member quartermaster admin president)
 
-  defmodule Verifier do
-    @actor_id "11111111-1111-1111-1111-111111111111"
-
-    for role <- ~w(quartermaster admin president member) do
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: @actor_id,
-           email: "#{unquote(role)}@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end
-
-    def verify("bad-token"), do: {:error, :invalid_token}
-    def verify(_token), do: {:error, :invalid_token}
-  end
-
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        actor_id: @actor_id,
+        roles: ~w(quartermaster admin president member)
+      )
 
     insert_principal!(@actor_id, "inv-structure-actor@example.com")
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
 
     :ok
   end

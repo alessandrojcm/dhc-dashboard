@@ -310,7 +310,14 @@ defmodule Dhc.Inventory.MemberCatalogTest do
       %{category: category, container_id: container_id} = fixture()
       other = create_category!()
 
-      {:ok, free} = create_item(container_id, category.id)
+      # Allowed limits start at 10; seed enough matching rows that the
+      # first page carries a cursor the mismatch replay can refuse.
+      available_ids =
+        for _ <- 1..11 do
+          {:ok, item} = create_item(container_id, category.id)
+          item.id
+        end
+
       {:ok, _other_free} = create_item(container_id, other.id)
       {:ok, busy} = create_item(container_id, category.id)
       create_loan!(busy, principal_id(), "approved")
@@ -322,27 +329,32 @@ defmodule Dhc.Inventory.MemberCatalogTest do
                  "limit" => "10"
                })
 
-      assert Enum.map(page.items, & &1.id) == [free.id]
-      assert page.total_count == 1
+      assert Enum.count_until(page.items, 11) == 10
+      assert Enum.all?(page.items, &(&1.id in available_ids))
+      assert page.total_count == 11
+      assert is_binary(page.next_cursor)
 
-      # A cursor from the available-only query cannot be replayed as
-      # unavailable or unfiltered.
-      if page.next_cursor do
-        for replay <- [%{"availability" => "unavailable"}, %{}] do
-          assert {:error, :bad_cursor} =
-                   Inventory.list_catalog_items(
-                     Map.merge(replay, %{"limit" => "10", "cursor" => page.next_cursor})
-                   )
-        end
-      else
-        assert {:ok, replayed} =
-                 Inventory.list_catalog_items(%{
-                   "availability" => "unavailable",
-                   "categoryId" => category.id
-                 })
-
-        assert Enum.map(replayed.items, & &1.id) == [busy.id]
+      # A cursor from the available-only query cannot be replayed once the
+      # availability filter changes — that is the binding this test exists
+      # to prove. The unfiltered replay is the same mismatch.
+      for replay <- [%{"availability" => "unavailable"}, %{}] do
+        assert {:error, :bad_cursor} =
+                 Inventory.list_catalog_items(
+                   Map.merge(replay, %{
+                     "categoryId" => category.id,
+                     "limit" => "10",
+                     "cursor" => page.next_cursor
+                   })
+                 )
       end
+
+      assert {:ok, replayed} =
+               Inventory.list_catalog_items(%{
+                 "availability" => "unavailable",
+                 "categoryId" => category.id
+               })
+
+      assert Enum.map(replayed.items, & &1.id) == [busy.id]
     end
   end
 

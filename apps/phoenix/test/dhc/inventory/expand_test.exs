@@ -15,6 +15,8 @@ defmodule Dhc.Inventory.ExpandTest do
 
   describe "no target command is reachable" do
     test "public seam exposes no target lifecycle functions" do
+      Code.ensure_loaded!(Inventory)
+
       for fun <- [
             :create_loan,
             :approve_loan,
@@ -52,11 +54,11 @@ defmodule Dhc.Inventory.ExpandTest do
         Ecto.UUID.dump!(item_a)
       ])
 
-      assert_raise Postgrex.Error, ~r/duplicate key|unique/i, fn ->
+      assert_constraint!("inventory_items_slug_index", fn ->
         Repo.query!("UPDATE inventory_items SET slug = 'item-000001' WHERE id = $1", [
           Ecto.UUID.dump!(item_b)
         ])
-      end
+      end)
     end
 
     test "archive columns exist on categories and containers" do
@@ -69,34 +71,34 @@ defmodule Dhc.Inventory.ExpandTest do
       definition_id = insert_definition!(category.id, "Size")
 
       # Case-insensitive label uniqueness per category.
-      assert_raise Postgrex.Error, ~r/duplicate key|unique/i, fn ->
+      assert_constraint!("inventory_property_definitions_category_label_unique", fn ->
         insert_definition!(category.id, "size")
-      end
+      end)
 
       option_id = insert_option!(definition_id, "Large")
 
-      assert_raise Postgrex.Error, ~r/duplicate key|unique/i, fn ->
+      assert_constraint!("inventory_property_options_definition_label_unique", fn ->
         insert_option!(definition_id, "LARGE")
-      end
+      end)
 
       container_id = insert_container!()
       {:ok, item_id} = insert_item(container_id, category.id)
 
       # Empty insert violates the exactly-one check.
-      assert_raise Postgrex.Error, ~r/exactly_one/i, fn ->
+      assert_constraint!("inventory_item_property_values_exactly_one_check", fn ->
         Repo.query!(
           "INSERT INTO inventory_item_property_values (item_id, property_definition_id, created_at, updated_at) VALUES ($1, $2, NOW(), NOW())",
           [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(definition_id)]
         )
-      end
+      end)
 
       # Two values set also violates it.
-      assert_raise Postgrex.Error, ~r/exactly_one/i, fn ->
+      assert_constraint!("inventory_item_property_values_exactly_one_check", fn ->
         Repo.query!(
           "INSERT INTO inventory_item_property_values (item_id, property_definition_id, text_value, boolean_value, created_at, updated_at) VALUES ($1, $2, 'x', TRUE, NOW(), NOW())",
           [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(definition_id)]
         )
-      end
+      end)
 
       # Exactly one value is fine.
       assert %Postgrex.Result{} =
@@ -118,9 +120,9 @@ defmodule Dhc.Inventory.ExpandTest do
 
       insert_maintenance!(item_id, principal_id, "Blade wobble")
 
-      assert_raise Postgrex.Error, ~r/one_open_per_item/i, fn ->
+      assert_constraint!("inventory_maintenance_periods_one_open_per_item", fn ->
         insert_maintenance!(item_id, principal_id, "Second fault")
-      end
+      end)
     end
 
     test "loans enforce status, pending-request, and single-allocation guards" do
@@ -133,17 +135,17 @@ defmodule Dhc.Inventory.ExpandTest do
       insert_loan!(item_id, borrower_a, "requested")
 
       # One pending request per item/borrower.
-      assert_raise Postgrex.Error, ~r/one_pending_request/i, fn ->
+      assert_constraint!("inventory_loans_one_pending_request_per_item_borrower", fn ->
         insert_loan!(item_id, borrower_a, "requested")
-      end
+      end)
 
       # A second borrower may still request (no queue until approval).
       insert_loan!(item_id, borrower_b, "requested")
 
       # Unknown status fails the status check.
-      assert_raise Postgrex.Error, ~r/status_check/i, fn ->
+      assert_constraint!("inventory_loans_status_check", fn ->
         insert_loan!(item_id, borrower_a, "lost")
-      end
+      end)
     end
 
     test "reminder ledger is keyed by loan, recipient, kind, and revision" do
@@ -155,9 +157,9 @@ defmodule Dhc.Inventory.ExpandTest do
 
       insert_reminder!(loan_id, borrower, "pre_due", 0)
 
-      assert_raise Postgrex.Error, ~r/ledger_key_unique/i, fn ->
+      assert_constraint!("inventory_loan_reminders_ledger_key_unique", fn ->
         insert_reminder!(loan_id, borrower, "pre_due", 0)
-      end
+      end)
 
       # A due-date revision is a new ledger key (no stale retry).
       insert_reminder!(loan_id, borrower, "pre_due", 1)
@@ -179,9 +181,9 @@ defmodule Dhc.Inventory.ExpandTest do
       # then numbered weekly repeats. An arbitrary kind would silently create a
       # reminder no pass ever delivers or supersedes.
       for invalid <- ["due_soon", "overdue_week_0", "overdue_weekly", "OVERDUE", ""] do
-        assert_raise Postgrex.Error, ~r/kind_check/i, fn ->
+        assert_constraint!("inventory_loan_reminders_kind_check", fn ->
           insert_reminder!(loan_id, borrower, invalid, 0)
-        end
+        end)
       end
     end
 
@@ -190,11 +192,11 @@ defmodule Dhc.Inventory.ExpandTest do
       definition_id = insert_definition!(category.id, "Brand")
 
       # Category with a definition reference cannot be deleted.
-      assert_raise Postgrex.Error, ~r/violates foreign key|restrict/i, fn ->
+      assert_constraint!("inventory_property_definitions_category_id_fkey", fn ->
         Repo.query!("DELETE FROM equipment_categories WHERE id = $1", [
           Ecto.UUID.dump!(category.id)
         ])
-      end
+      end)
 
       container_id = insert_container!()
       {:ok, item_id} = insert_item(container_id, category.id)
@@ -202,9 +204,9 @@ defmodule Dhc.Inventory.ExpandTest do
       insert_maintenance!(item_id, principal_id, "Faulty guard")
 
       # Item with a maintenance fact cannot be deleted.
-      assert_raise Postgrex.Error, ~r/violates foreign key|restrict/i, fn ->
+      assert_constraint!("inventory_maintenance_periods_item_id_fkey", fn ->
         Repo.query!("DELETE FROM inventory_items WHERE id = $1", [Ecto.UUID.dump!(item_id)])
-      end
+      end)
 
       assert definition_id != nil
     end
@@ -219,14 +221,14 @@ defmodule Dhc.Inventory.ExpandTest do
       container_id = insert_container!()
       {:ok, item_id} = insert_item(container_id, category.id)
 
-      assert_raise Postgrex.Error, ~r/value_type_match|check/i, fn ->
+      assert_constraint!("inventory_item_property_values_value_type_match", fn ->
         Repo.query!(
           "INSERT INTO inventory_item_property_values (item_id, property_definition_id, boolean_value, created_at, updated_at) VALUES ($1, $2, TRUE, NOW(), NOW())",
           [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(text_id)]
         )
-      end
+      end)
 
-      assert_raise Postgrex.Error, ~r/option_membership|check|foreign key/i, fn ->
+      assert_constraint!("inventory_item_property_values_option_membership", fn ->
         Repo.query!(
           "INSERT INTO inventory_item_property_values (item_id, property_definition_id, option_id, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
           [
@@ -235,7 +237,7 @@ defmodule Dhc.Inventory.ExpandTest do
             Ecto.UUID.dump!(other_option)
           ]
         )
-      end
+      end)
 
       assert %Postgrex.Result{} =
                Repo.query!(
@@ -247,19 +249,19 @@ defmodule Dhc.Inventory.ExpandTest do
                  ]
                )
 
-      assert_raise Postgrex.Error, ~r/value_type_match|check/i, fn ->
+      assert_constraint!("inventory_item_property_values_value_type_match", fn ->
         Repo.query!(
           "UPDATE inventory_property_definitions SET value_type = 'text' WHERE id = $1",
           [Ecto.UUID.dump!(select_id)]
         )
-      end
+      end)
 
-      assert_raise Postgrex.Error, ~r/option_membership|check/i, fn ->
+      assert_constraint!("inventory_item_property_values_option_membership", fn ->
         Repo.query!(
           "UPDATE inventory_property_options SET property_definition_id = $1 WHERE id = $2",
           [Ecto.UUID.dump!(other_id), Ecto.UUID.dump!(option_id)]
         )
-      end
+      end)
     end
 
     test "slug is NOT NULL: legacy unslugged rows are wiped, not preserved" do
@@ -276,7 +278,7 @@ defmodule Dhc.Inventory.ExpandTest do
 
       assert is_binary(slug)
 
-      assert_raise Postgrex.Error, ~r/null value in column "slug"/, fn ->
+      assert_not_null!("slug", fn ->
         Repo.query!(
           "INSERT INTO inventory_items (id, container_id, category_id, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
           [
@@ -285,11 +287,32 @@ defmodule Dhc.Inventory.ExpandTest do
             Ecto.UUID.dump!(category.id)
           ]
         )
-      end
+      end)
     end
   end
 
   # ── Helpers ────────────────────────────────────────────────────────────
+
+  # A constraint error aborts the sandbox transaction. Running the failing
+  # statement in a nested `Repo.transaction/1` makes it a savepoint rollback
+  # so later assertions in the same test still execute.
+  defp assert_constraint!(name, fun) when is_binary(name) do
+    error =
+      assert_raise Postgrex.Error, fn ->
+        Repo.transaction(fun)
+      end
+
+    assert %Postgrex.Error{postgres: %{constraint: ^name}} = error
+  end
+
+  defp assert_not_null!(column, fun) when is_binary(column) do
+    error =
+      assert_raise Postgrex.Error, fn ->
+        Repo.transaction(fun)
+      end
+
+    assert %Postgrex.Error{postgres: %{code: :not_null_violation, column: ^column}} = error
+  end
 
   defp table_columns(table) do
     %{rows: rows} =

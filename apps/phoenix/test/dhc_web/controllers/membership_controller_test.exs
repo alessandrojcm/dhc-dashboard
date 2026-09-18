@@ -11,36 +11,22 @@ defmodule DhcWeb.MembershipControllerTest do
   # Authenticated committee roles that must NOT mint charges.
   @non_minting_committee_roles ~w(sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
 
-  defmodule Verifier do
-    def verify("member-token") do
-      # No roles: proves reactivation is committee-only — unlike pause/resume
-      # there is no self-service fallback, because the command mints charges.
-      ok([], "member@example.com")
-    end
-
-    def verify(token) do
-      case Regex.run(~r/\A([a-z_]+)-token\z/, token) do
-        [_, role] -> ok([role], "committee@example.com")
-        _ -> {:error, :invalid_token}
-      end
-    end
-
-    defp ok(roles, email) do
-      {:ok,
-       %{
-         sub: Ecto.UUID.generate(),
-         email: email,
-         roles: roles,
-         raw: %{}
-       }}
-    end
-  end
+  alias DhcWeb.OpenApiVerifier
 
   setup do
-    original_verifier = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original_verifier =
+      OpenApiVerifier.install(
+        generate_sub: true,
+        accept_any_role: true,
+        role_email: "committee@example.com",
+        tokens: %{
+          # No roles: proves reactivation is committee-only — unlike pause/resume
+          # there is no self-service fallback, because the command mints charges.
+          "member-token" => %{email: "member@example.com", roles: []}
+        }
+      )
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original_verifier) end)
+    on_exit(fn -> OpenApiVerifier.restore(original_verifier) end)
   end
 
   describe "reactivate authorization" do

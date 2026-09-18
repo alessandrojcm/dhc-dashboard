@@ -3,42 +3,24 @@ defmodule DhcWeb.NotificationsControllerTest do
 
   alias Dhc.Notifications.Notification
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
   @user_id "11111111-1111-1111-1111-111111111111"
   @other_user_id "22222222-2222-2222-2222-222222222222"
-
-  defmodule Verifier do
-    def verify("user-token") do
-      {:ok,
-       %{
-         sub: "11111111-1111-1111-1111-111111111111",
-         email: "user@example.com",
-         roles: [],
-         raw: %{}
-       }}
-    end
-
-    def verify("other-user-token") do
-      {:ok,
-       %{
-         sub: "22222222-2222-2222-2222-222222222222",
-         email: "other@example.com",
-         roles: [],
-         raw: %{}
-       }}
-    end
-
-    def verify(_token), do: {:error, :invalid_token}
-  end
 
   setup do
     Dhc.AuthFixtures.principal_fixture(%{id: @user_id})
     Dhc.AuthFixtures.principal_fixture(%{id: @other_user_id})
 
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        tokens: %{
+          "user-token" => %{sub: @user_id, email: "user@example.com", roles: []},
+          "other-user-token" => %{sub: @other_user_id, email: "other@example.com", roles: []}
+        }
+      )
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
   end
 
   describe "list" do
