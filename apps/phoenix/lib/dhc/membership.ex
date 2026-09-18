@@ -39,6 +39,11 @@ defmodule Dhc.Membership do
   # (`trialing`) — same coverage rule the Stripe sync applies (ALE-250).
   @covering_statuses ["active", "trialing"]
 
+  # Stripe returns terminal subscription history when listed with
+  # `status=all`. A canceled subscription can retain stale pause_collection
+  # data, but it is immutable and must be replaced rather than resumed.
+  @terminal_statuses ["canceled", "incomplete_expired"]
+
   @max_start_date_days_ahead 366
 
   @doc """
@@ -110,16 +115,17 @@ defmodule Dhc.Membership do
 
   # Restores dashboard access immediately after a successful reactivation
   # (ALE-252). The Stripe sync stays authoritative and will reconcile this
-  # flag on later runs; writing it here means the operator sees the member as
-  # active without waiting for the daily cron or a webhook round-trip.
+  # state on later runs; clearing a stale pause marker before restoring access
+  # means the operator sees the member as active without waiting for the daily
+  # cron or a webhook round-trip.
   defp restore_member_access(member_id, profile_id) do
-    case Auth.apply_member_access(profile_id, true) do
-      :ok ->
-        :ok
-
+    with {:ok, _member} <- write_pause_until(member_id, nil),
+         :ok <- Auth.apply_member_access(profile_id, true) do
+      :ok
+    else
       {:error, reason} ->
         Logger.error(
-          "[membership] Failed to restore member access after reactivation for profile #{profile_id}",
+          "[membership] Failed to restore local membership state after reactivation for profile #{profile_id}",
           member_id: member_id,
           reason: inspect(reason)
         )
@@ -343,6 +349,7 @@ defmodule Dhc.Membership do
 
   defp paused_membership_subscription?(subscription) do
     membership_price_subscription?(subscription) and
+      Map.get(subscription, "status") not in @terminal_statuses and
       not is_nil(Map.get(subscription, "pause_collection"))
   end
 
