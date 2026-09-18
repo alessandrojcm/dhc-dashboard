@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 import { loginAsUser } from "./auth";
-import { API_BASE_URL, seedE2EScenario } from "./e2eApi";
+import {
+	addClubDays,
+	API_BASE_URL,
+	fetchE2EStatus,
+	seedE2EScenario,
+} from "./e2eApi";
 import {
 	createInventoryItem,
 	createInventoryLoan,
@@ -30,16 +35,16 @@ const operatorNote = `E2E armoury note ${tag}`;
 let viewerEmail = "";
 let borrowerMemberId = "";
 let slugMaint = "";
+let clubToday = "";
 const cleanups: Array<() => Promise<void>> = [];
 
 function isoDate(offsetDays: number): string {
-	return new Date(Date.now() + offsetDays * 86_400_000)
-		.toISOString()
-		.slice(0, 10);
+	return addClubDays(clubToday, offsetDays);
 }
 
 test.describe("ALE-288 inventory member availability", () => {
 	test.beforeAll(async () => {
+		clubToday = (await fetchE2EStatus()).today;
 		const operator = await createMember({
 			email: createUniqueEmail("inv-avail-op"),
 			roles: new Set(["member", "quartermaster"]),

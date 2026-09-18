@@ -108,7 +108,7 @@ test.describe("ALE-288 inventory member request", () => {
 		await loginAsUser(context, borrowerEmail);
 		await page.goto("/dashboard/equipment");
 		await page.getByRole("link", { name: makerRequest }).click();
-		await expect(page).toHaveURL(/\/dashboard\/equipment$/);
+		await expect(page).toHaveURL(/\/dashboard\/equipment\/[^/]+$/);
 		const sheet = page.getByRole("dialog");
 		await expect(
 			sheet.getByRole("heading", { name: "Request this item" }),
@@ -121,7 +121,7 @@ test.describe("ALE-288 inventory member request", () => {
 			page.getByText("Request sent. You'll receive the approved dates"),
 		).toBeVisible();
 		// Still the same item view — the form confirms inline, no redirect.
-		await expect(page).toHaveURL(/\/dashboard\/equipment$/);
+		await expect(page).toHaveURL(/\/dashboard\/equipment\/[^/]+$/);
 
 		await page
 			.locator("p", { hasText: "Request sent" })

@@ -28,6 +28,7 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
+  alias Dhc.Notifications.Notification
   alias Dhc.Repo
   alias Dhc.Settings.Setting
   alias Dhc.Waitlist
@@ -69,6 +70,45 @@ defmodule Dhc.E2EHarness do
 
   def start_onboarding_isolation_probe,
     do: Dhc.Onboarding.StripeAdapter.E2E.start_probe()
+
+  @doc """
+  Club-calendar today plus the latest `schema_migrations` version.
+
+  Loan dates are Europe/Dublin days (`ClubCalendar.today/0`). Specs must use
+  this date rather than `Date.now().toISOString().slice(0, 10)`, which can
+  cross a UTC midnight into yesterday. Schema version is the cutover smoke
+  check that the disposable database actually ran migrations.
+  """
+  def status do
+    %{
+      today: Date.to_iso8601(ClubCalendar.today()),
+      schemaVersion: schema_version()
+    }
+  end
+
+  @doc """
+  Drive one `LoanReminders.run/1` pass and report owedness + keyed rows.
+
+  When `attrs` includes `"loanId"`, `reminderNotificationCount` is the number
+  of notification rows whose key is `inventory:loan:<id>:reminder:%` — the
+  S5 idempotency assertion (one pass delivers, a second pass does not add
+  another row).
+  """
+  def run_loan_reminders(attrs \\ %{}) do
+    today = ClubCalendar.today()
+    pass = LoanReminders.run(today)
+    due = LoanReminders.due(today)
+
+    %{
+      today: Date.to_iso8601(today),
+      delivered: pass.delivered,
+      failed: pass.failed,
+      considered: pass.considered,
+      owed: due.owed,
+      pending: due.pending,
+      reminderNotificationCount: reminder_notification_count(Map.get(attrs, "loanId"))
+    }
+  end
 
   def invitation_acceptance_assertion(invitation_id) do
     invitation = Repo.get!(Invitation, invitation_id)
@@ -878,30 +918,9 @@ defmodule Dhc.E2EHarness do
   end
 
   defp loan_seed_row!(loan_id) do
-    today = ClubCalendar.today()
-
     case Repo.get(Loan, loan_id) do
-      nil ->
-        Repo.rollback(:not_found)
-
-      %Loan{} = loan ->
-        starts_on = loan.approved_start_on || loan.requested_start_on
-        due_on = loan.approved_due_on || loan.requested_due_on
-
-        %{
-          loanId: loan.id,
-          status: loan.status,
-          overdue: loan_overdue?(loan, today),
-          itemId: loan.item_id,
-          slug: loan.item_slug_snapshot,
-          borrowerMemberId: loan.borrower_principal_id,
-          startsOn: Date.to_iso8601(starts_on),
-          dueOn: Date.to_iso8601(due_on),
-          containerPath: loan_member_container_path(loan),
-          decidedBy: loan.decided_by_principal_id,
-          owedKind: nil,
-          notificationKey: nil
-        }
+      nil -> Repo.rollback(:not_found)
+      %Loan{} = loan -> project_loan_seed_row(loan, ClubCalendar.today())
     end
   end
 
@@ -1075,7 +1094,10 @@ defmodule Dhc.E2EHarness do
   end
 
   defp loan_seed_row_outside!(loan_id, today) do
-    loan = Repo.get!(Loan, loan_id)
+    project_loan_seed_row(Repo.get!(Loan, loan_id), today)
+  end
+
+  defp project_loan_seed_row(%Loan{} = loan, today) do
     starts_on = loan.approved_start_on || loan.requested_start_on
     due_on = loan.approved_due_on || loan.requested_due_on
 
@@ -1093,6 +1115,22 @@ defmodule Dhc.E2EHarness do
       owedKind: nil,
       notificationKey: nil
     }
+  end
+
+  defp schema_version do
+    %{rows: [[version]]} = Repo.query!("SELECT MAX(version) FROM schema_migrations", [])
+    version
+  end
+
+  defp reminder_notification_count(nil), do: nil
+
+  defp reminder_notification_count(loan_id) when is_binary(loan_id) do
+    prefix = "inventory:loan:#{loan_id}:reminder:"
+
+    Repo.aggregate(
+      from(n in Notification, where: like(n.notification_key, ^"#{prefix}%")),
+      :count
+    )
   end
 
   defp loan_reminder_history!(loan_id, revision) do

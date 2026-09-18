@@ -2,8 +2,10 @@ import { test, expect, type Page } from "@playwright/test";
 import { loginAsUser } from "./auth";
 import {
 	API_BASE_URL,
+	fetchE2EStatus,
 	type InventoryLoanPairSeed,
 	type InventoryLoanSeed,
+	runLoanReminders,
 } from "./e2eApi";
 import {
 	createInventoryItem,
@@ -78,7 +80,7 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 			await loginAsUser(context, borrower.email);
 			await page.goto("/dashboard/equipment");
 			await page.getByRole("link", { name: maker }).click();
-			await expect(page).toHaveURL(/\/dashboard\/equipment$/);
+			await expect(page).toHaveURL(/\/dashboard\/equipment\/[^/]+$/);
 			await expect(page.getByRole("dialog")).toBeVisible();
 
 			await page.getByRole("button", { name: "Send request" }).click();
@@ -506,6 +508,80 @@ test.describe("ALE-288 inventory cutover smoke", () => {
 			await expect(
 				page.getByRole("heading", { name: "Find the right kit" }),
 			).toHaveCount(0);
+		} finally {
+			for (const cleanUp of cleanups.reverse()) {
+				try {
+					await cleanUp();
+				} catch {
+					/* best-effort: per-run database is disposable */
+				}
+			}
+		}
+	});
+
+	test("schema version is present and reminder reconciliation is idempotent", async () => {
+		const status = await fetchE2EStatus();
+		expect(status.schemaVersion).toEqual(expect.any(Number));
+		expect(status.schemaVersion).toBeGreaterThan(0);
+		expect(status.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+		const tag = `smoke-remind-${Date.now().toString(36)}`;
+		const maker = `Smoke Reminder Feder ${tag}`;
+		const cleanups: Array<() => Promise<void>> = [];
+		try {
+			const operator = await createMember({
+				email: createUniqueEmail("inv-smoke-remind-op"),
+				roles: new Set(["member", "quartermaster"]),
+			});
+			cleanups.push(() => operator.cleanUp());
+			const borrower = await createMember({
+				email: createUniqueEmail("inv-smoke-remind-member"),
+			});
+			cleanups.push(() => borrower.cleanUp());
+
+			const structure = await createInventoryStructure({
+				categoryName: `E2E Smoke Remind ${tag}`,
+				definitions: [
+					{
+						label: "Maker",
+						valueType: "text",
+						required: true,
+						identifyingPosition: 0,
+					},
+				],
+				containerPath: [`E2E Smoke Cage ${tag}`, `E2E Smoke Rack ${tag}`],
+				operatorActorId: operator.memberId,
+			});
+			cleanups.push(() => structure.cleanUp());
+			const makerDef = structure.definitionIds[0];
+			const leaf = structure.containerIds[structure.containerIds.length - 1];
+			const item = await createInventoryItem({
+				categoryId: structure.categoryId,
+				containerId: leaf,
+				values: { [makerDef]: maker },
+				actorId: operator.memberId,
+			});
+			cleanups.push(() => item.cleanUp());
+			// SAFETY: every non-pair preset returns the flat loan row matching
+			// the declared inventoryLoan result type (mirrors the wrapper).
+			const loan = (await createInventoryLoan({
+				preset: "approved",
+				itemId: item.itemId,
+				borrowerMemberId: borrower.memberId,
+				operatorActorId: operator.memberId,
+				reminderState: "preDue",
+			})) as SeededLoan;
+			expect(loan.owedKind).toBe("pre_due");
+			expect(loan.notificationKey).toContain(
+				`inventory:loan:${loan.loanId}:reminder:pre_due:`,
+			);
+			cleanups.push(() => loan.cleanUp());
+
+			const first = await runLoanReminders({ loanId: loan.loanId });
+			expect(first.reminderNotificationCount).toBe(1);
+
+			const second = await runLoanReminders({ loanId: loan.loanId });
+			expect(second.reminderNotificationCount).toBe(1);
 		} finally {
 			for (const cleanUp of cleanups.reverse()) {
 				try {

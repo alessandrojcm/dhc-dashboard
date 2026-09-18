@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import dayjs from "dayjs";
 import { loginAsUser } from "./auth";
+import { addClubDays, fetchE2EStatus } from "./e2eApi";
 import {
 	createInventoryItem,
 	createInventoryLoan,
@@ -19,11 +20,10 @@ let borrowerId = "";
 let categoryId = "";
 let containerId = "";
 let makerDefinitionId = "";
+let clubToday = "";
 
 function isoDate(offsetDays: number) {
-	return new Date(Date.now() + offsetDays * 86_400_000)
-		.toISOString()
-		.slice(0, 10);
+	return addClubDays(clubToday, offsetDays);
 }
 
 async function pickDate(
@@ -88,11 +88,12 @@ function itemCard(page: Page, label: string): Locator {
 
 async function openAction(page: Page, label: string, action: string) {
 	await itemCard(page, label).getByRole("button", { name: action }).click();
-	return page.getByRole("region", { name: "Loan action panel" });
+	return page.getByRole("dialog").and(page.getByTestId("loan-action-panel"));
 }
 
 test.describe("ALE-286 operator loan queue", () => {
 	test.beforeAll(async () => {
+		clubToday = (await fetchE2EStatus()).today;
 		const operator = await createMember({
 			email: createUniqueEmail("operator-loan-queue"),
 			roles: new Set(["member", "quartermaster"]),
@@ -198,25 +199,15 @@ test.describe("ALE-286 operator loan queue", () => {
 			await expect(section.getByText(label)).toBeVisible();
 			await expect(section.getByText("1", { exact: true })).toBeVisible();
 		}
+		const maintenanceBucket = page.getByTestId("open-maintenance-bucket");
 		await expect(
-			page.getByRole("heading", { name: "Open maintenance" }),
-		).toHaveCount(0);
-
-		await page.goto("/dashboard/inventory/items");
-		const maintenanceSection = page.locator("section").filter({
-			has: page.getByRole("heading", { name: "Maintenance attention" }),
-		});
-		await maintenanceSection
-			.getByRole("button", { name: /Maintenance attention/ })
-			.click();
-		await expect(maintenanceSection.getByText(maintenanceLabel)).toBeVisible();
-		await expect(
-			maintenanceSection.getByRole("button", { name: "Manage maintenance" }),
+			maintenanceBucket.getByRole("heading", { name: "Open maintenance" }),
 		).toBeVisible();
-		await maintenanceSection
-			.getByRole("button", { name: "View all 1 maintenance item" })
-			.click();
-		await expect(page.getByLabel("Availability")).toHaveText("Maintenance");
+		await expect(maintenanceBucket.getByText(maintenanceLabel)).toBeVisible();
+		await expect(
+			maintenanceBucket.getByText("1", { exact: true }),
+		).toBeVisible();
+		await expect(maintenanceBucket.getByText("Open item")).toBeVisible();
 	});
 
 	test("approves final dates and note, then checks out the refreshed handover", async ({

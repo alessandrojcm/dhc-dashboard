@@ -91,6 +91,9 @@ defmodule DhcWeb.Router do
           E2EHarnessController,
           :invitation_acceptance_assertion
 
+      get "/status", E2EHarnessController, :status
+      post "/loan-reminders/run", E2EHarnessController, :run_loan_reminders
+
       post "/onboarding/clear-finalization-interruption",
            E2EHarnessController,
            :clear_finalization_interruption

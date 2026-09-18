@@ -154,12 +154,12 @@ Conventions shared by all four wrappers (matching `createMember` /
 createInventoryStructure(params?: {
   categoryName?: string;          // default: unique "E2E Category <rand>"
   definitions?: Array<...>;       // default: one required text definition; shape per handoff 01
-  containerPath?: string[];       // default: ["E2E Cage", "Rack <rand>"]
+  containerPath?: string[];       // default: ["E2E Cage <rand>", "Rack <rand>"] — root names are globally unique
   operatorActorId: string;        // required — container creation actor
 }): Promise<{
   categoryId: string; definitionIds: string[]; optionIds: string[];
   containerIds: string[];
-  cleanUp(): Promise<void>;       // retires definitions/options then deletes containers (leaf-first) then category; surfaces dependency blocks, never force-deletes
+  cleanUp(): Promise<void>;       // containers deepest-first, then category (retires then hard-deletes value-free definitions/options); surfaces dependency blocks, never force-deletes
 }>;
 
 createInventoryItem(params: {

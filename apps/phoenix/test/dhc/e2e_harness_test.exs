@@ -3,8 +3,22 @@ defmodule Dhc.E2EHarnessTest do
 
   alias Dhc.Auth.Principal
   alias Dhc.E2EHarness
+  alias Dhc.Inventory.ClubCalendar
   alias Dhc.Invitations.Invitation
   alias Dhc.Repo
+
+  test "status returns club today and a positive integer schema version" do
+    status = E2EHarness.status()
+
+    assert %{today: today, schemaVersion: version} = status
+    assert today == Date.to_iso8601(ClubCalendar.today())
+    assert is_integer(version)
+    assert version > 0
+
+    # Wire shape: MAX(version) is a SQL integer, so JSON must keep a number.
+    assert %{"today" => ^today, "schemaVersion" => ^version} =
+             status |> Jason.encode!() |> Jason.decode!()
+  end
 
   test "deleting a member fixture detaches Invitations created by its Principal" do
     member =

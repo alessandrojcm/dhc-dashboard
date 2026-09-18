@@ -284,19 +284,24 @@ type InventoryItemPairSeed = {
 // in E2EScenarios:
 type E2EScenarios = {
   // …existing…
-  inventoryItem: InventoryItemSeed;
-  // pair seeds use the same scenario name with withDuplicateLabel: true;
-  // narrow via Extract when the test needs items[]:
-  // type PairResult = InventoryItemPairSeed["result"];
+  inventoryItem: InventoryItemSeed | InventoryItemPairSeed;
+  // pair seeds use the same scenario name with withDuplicateLabel: true
+  // and return `{ items, deletable }` only. Discriminate on `items`.
 };
+
+function isInventoryItemPair(
+  result: InventoryItemSeed["result"] | InventoryItemPairSeed["result"],
+): result is InventoryItemPairSeed["result"] {
+  return "items" in result;
+}
 ```
 
 `E2EFixtureType` gains `"inventoryItem"` automatically via
 `Exclude<E2EScenarioName, …>`; `E2EUpdatableFixture` gains it explicitly
-(notes/values edits only). `setupFunctions.ts` gets a
-`createInventoryItem()` helper in the implementing ticket (not this
-contract). Pair creation is the same helper with
-`{ withDuplicateLabel: true }` — no second helper.
+(notes/values edits only). `setupFunctions.ts` `createInventoryItem()`
+overloads on `withDuplicateLabel: true` and `cleanUp` deletes each
+`items[]` entry individually (no bulk pair delete). Pair creation is
+the same helper — no second helper.
 
 ## Example payloads
 

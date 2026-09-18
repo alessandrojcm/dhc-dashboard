@@ -8,9 +8,14 @@ import {
 	ANNUAL_FEE_LOOKUP,
 	MEMBERSHIP_FEE_LOOKUP_NAME,
 } from "../src/lib/server/constants";
-import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
+import {
+	deleteE2EFixture,
+	isInventoryItemPair,
+	seedE2EScenario,
+} from "./e2eApi";
 import type {
 	E2ERole,
+	InventoryItemPairSeed,
 	InventoryItemSeed,
 	InventoryLoanPairSeed,
 	InventoryLoanSeed,
@@ -378,7 +383,10 @@ export async function createInventoryStructure(params: {
 	const definitions = params.definitions ?? [
 		{ label: "E2E notes", valueType: "text" as const, required: true },
 	];
-	const containerPath = params.containerPath ?? ["E2E Cage", `Rack ${rand}`];
+	const containerPath = params.containerPath ?? [
+		`E2E Cage ${rand}`,
+		`Rack ${rand}`,
+	];
 
 	const seeded = await seedE2EScenario("inventoryStructure", {
 		categoryName,
@@ -413,13 +421,30 @@ export async function createInventoryStructure(params: {
 	};
 }
 
+export async function createInventoryItem(
+	attrs: InventoryItemPairSeed["attrs"],
+): Promise<InventoryItemPairSeed["result"] & { cleanUp(): Promise<void> }>;
+export async function createInventoryItem(
+	attrs: InventoryItemSeed["attrs"],
+): Promise<InventoryItemSeed["result"] & { cleanUp(): Promise<void> }>;
 export async function createInventoryItem(attrs: InventoryItemSeed["attrs"]) {
-	const item = await seedE2EScenario("inventoryItem", attrs);
+	const seeded = await seedE2EScenario("inventoryItem", attrs);
+
+	if (isInventoryItemPair(seeded)) {
+		return {
+			...seeded,
+			async cleanUp() {
+				for (const item of seeded.items) {
+					await deleteE2EFixture("inventoryItem", item.itemId);
+				}
+			},
+		};
+	}
 
 	return {
-		...item,
+		...seeded,
 		async cleanUp() {
-			await deleteE2EFixture("inventoryItem", item.itemId);
+			await deleteE2EFixture("inventoryItem", seeded.itemId);
 		},
 	};
 }

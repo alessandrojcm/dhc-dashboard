@@ -165,22 +165,33 @@ fallbacks. Concretely, the implementer maps:
 The scenario needs both, with retire-vs-delete semantics inherited from the
 domain (seed teardown must not cascade):
 
-- `delete_fixture("inventoryStructure", categoryId)`:
-  - Deletes leaf-first: options → definitions → containers (deepest child
-    first) → category. Each step uses the hard-delete path
-    (`Containers.delete_container/1`, `Categories.delete_category/1`;
-    definitions/options have no hard delete — see below).
+- `delete_fixture("inventoryStructure", id)`:
+  - Accepts either a **category id** or a **container id**. Containers
+    carry no category FK, so a full teardown is multi-call (the wrapper
+    does this; a single category-id call does not delete containers).
+  - **Container id** → `Containers.delete_container/1` for that one
+    container. Callers delete deepest-child first (the seed returns
+    containers root→leaf; `createInventoryStructure.cleanUp` reverses
+    that list). Blocked by items or remaining children
+    (`:still_referenced`).
+  - **Category id** → retire live options then definitions
+    (`Structure.retire_option/1`, `retire_definition/1`), then
+    **hard-delete** those rows iff zero `item_property_values`
+    reference them (active or archived). `inventory_property_definitions.category_id`
+    is `on_delete: :nothing`, so a history-free seed cannot tear the
+    category down through retire-only — leftover definition rows would
+    409. History-bearing definitions/options stay and surface
+    `:still_referenced`. Then `Categories.delete_category/1`.
+  - Wrapper order is therefore **containers deepest-first, then the
+    category** (which owns option/definition teardown). That order is
+    safe: containers do not FK the category. Prefer this over
+    options→definitions→containers→category when calling the helper
+    yourself.
   - **Blocked deletions surface, never cascade**: `:still_referenced`
     (category with items, container with items/children, definition/option
     with active values) returns a harness 409 with the blocking count where
     the domain provides it (`activeValueCount`). The fixture helper does not
     delete items on the caller's behalf — the test must delete items first.
-  - Definitions/options have only `retire_*` (no hard delete). Deleting a
-    structure fixture with definitions means **retiring** them
-    (`Structure.retire_definition/1`, `retire_option/1`), which is itself
-    blocked while active values reference them. Retired rows stay in the DB
-    (displayable in history) — teardown asserts absence from
-    `list_definitions/1` current forms, not row absence.
   - Net: `delete_fixture` on a structure with item/loan history is expected
     to 409; that is the test telling you to clean up items first (or assert
     the 409 deliberately for archive-rule specs).

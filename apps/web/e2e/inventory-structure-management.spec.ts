@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { loginAsUser } from "./auth";
+import { deleteE2EFixture } from "./e2eApi";
 import {
 	createInventoryStructure,
 	createMember,
@@ -17,6 +18,7 @@ test.describe("ALE-283 operator inventory structure", () => {
 			email: createUniqueEmail("inventory-structure-operator"),
 			roles: new Set(["member", "quartermaster"]),
 		});
+		let categoryId: string | undefined;
 		try {
 			await loginAsUser(context, operator.email);
 			await page.goto("/dashboard/inventory/categories");
@@ -43,8 +45,11 @@ test.describe("ALE-283 operator inventory structure", () => {
 			expect(response).not.toBeNull();
 			expect(
 				response!.status(),
-				`category create response: ${await response!.text()}`,
+				`category create status ${response!.status()}`,
 			).toBe(201);
+			// SAFETY: InventoryCategoriesJSON renders `{ data: { id, name, … } }`.
+			const created = (await response!.json()) as { data: { id: string } };
+			categoryId = created.data.id;
 			const categoryButton = page.getByRole("button", {
 				name: `${categoryName} 0 items`,
 			});
@@ -84,7 +89,18 @@ test.describe("ALE-283 operator inventory structure", () => {
 			).toBe(201);
 			await expect(page.getByText("Medium", { exact: true })).toBeVisible();
 		} finally {
-			await operator.cleanUp();
+			if (categoryId) {
+				try {
+					await deleteE2EFixture("inventoryStructure", categoryId);
+				} catch {
+					/* best-effort: per-run database is disposable */
+				}
+			}
+			try {
+				await operator.cleanUp();
+			} catch {
+				/* best-effort: per-run database is disposable */
+			}
 		}
 	});
 
@@ -130,9 +146,17 @@ test.describe("ALE-283 operator inventory structure", () => {
 				page.getByRole("heading", { name: "My profile" }),
 			).toBeVisible();
 		} finally {
-			await structure.cleanUp();
-			await member.cleanUp();
-			await operator.cleanUp();
+			for (const cleanUp of [
+				() => structure.cleanUp(),
+				() => member.cleanUp(),
+				() => operator.cleanUp(),
+			]) {
+				try {
+					await cleanUp();
+				} catch {
+					/* best-effort: per-run database is disposable */
+				}
+			}
 		}
 	});
 });

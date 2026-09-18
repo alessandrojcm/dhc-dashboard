@@ -333,10 +333,10 @@ type E2EScenarios = {
 	invitation: InvitationSeed;
 	workshop: WorkshopSeed;
 	inventoryStructure: InventoryStructureSeed;
-	// Pair seeds use the same scenario name with withDuplicateLabel: true;
-	// narrow via Extract when the test needs items[]:
-	// type PairResult = InventoryItemPairSeed["result"];
-	inventoryItem: InventoryItemSeed;
+	// Pair seeds use the same scenario name with withDuplicateLabel: true
+	// and return `{ items, deletable }` (no flat itemId). Discriminate on
+	// `items` — see `isInventoryItemPair`.
+	inventoryItem: InventoryItemSeed | InventoryItemPairSeed;
 	inventoryLoan: InventoryLoanSeed;
 	// Pair seeds use the same scenario name with preset: "competingPair";
 	// narrow via Extract when the test needs loans[]:
@@ -406,6 +406,70 @@ async function harnessRequest<T>(
 	return payload;
 }
 
+export function isInventoryItemPair(
+	result: InventoryItemSeed["result"] | InventoryItemPairSeed["result"],
+): result is InventoryItemPairSeed["result"] {
+	return "items" in result;
+}
+
+const e2eStatusSchema = v.object({
+	today: v.pipe(v.string(), v.regex(/^\d{4}-\d{2}-\d{2}$/)),
+	schemaVersion: v.pipe(v.number(), v.integer(), v.minValue(1)),
+});
+
+export type E2EStatus = v.InferOutput<typeof e2eStatusSchema>;
+
+export type LoanReminderRunResult = {
+	today: string;
+	delivered: number;
+	failed: number;
+	considered: number;
+	owed: number;
+	pending: number;
+	reminderNotificationCount: number | null;
+};
+
+/** Club-calendar today + latest schema_migrations version. */
+export async function fetchE2EStatus(): Promise<E2EStatus> {
+	const response = await harnessRequest<{ data: unknown }>(
+		"/status",
+		{},
+		"GET",
+	);
+	return v.parse(e2eStatusSchema, response.data);
+}
+
+/**
+ * Add calendar days to a harness ISO date (`YYYY-MM-DD`) without a TZ shift.
+ * Do not derive date-only fixtures from `Date.now().toISOString()`.
+ */
+export function addClubDays(isoDate: string, days: number): string {
+	const [year, month, day] = isoDate.split("-").map(Number);
+	const utc = new Date(Date.UTC(year, month - 1, day + days));
+	return utc.toISOString().slice(0, 10);
+}
+
+/** Drive one `LoanReminders.run/1` pass. Pass `loanId` to count keyed rows. */
+export async function runLoanReminders(
+	attrs: {
+		loanId?: string;
+	} = {},
+): Promise<LoanReminderRunResult> {
+	const response = await fetchE2EHarness("/loan-reminders/run", {
+		method: "POST",
+		body: JSON.stringify({ attrs }),
+	});
+
+	if (!response.ok) {
+		throw new Error(
+			`E2E harness /loan-reminders/run failed (${response.status}): ${await response.text()}`,
+		);
+	}
+
+	const payload: { data: LoanReminderRunResult } = await response.json();
+	return payload.data;
+}
+
 export async function resetE2EState() {
 	return harnessRequest<{ data: { reset: true } }>("/reset", {});
 }
@@ -452,7 +516,17 @@ export async function seedE2EScenario<S extends E2EScenarioName>(
 }
 
 export async function deleteE2EFixture(type: E2EFixtureType, id: string) {
-	await harnessRequest(`/fixtures/${type}/${id}`, {});
+	const path = `/fixtures/${type}/${id}`;
+	const response = await fetchE2EHarness(path, {
+		method: "POST",
+		body: JSON.stringify({}),
+	});
+
+	if (!response.ok) {
+		throw new Error(
+			`E2E harness ${path} failed (${response.status}): ${await response.text()}`,
+		);
+	}
 }
 
 export async function auditInvitationAcceptance(id: string) {
