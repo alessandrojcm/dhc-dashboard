@@ -56,7 +56,7 @@ validation boundary.
 
 Use `seedE2EScenario()`, `updateE2EFixture()`, and `deleteE2EFixture()` for harness-only setup and cleanup. The harness intentionally has no generic query or raw database client; add a named scenario backed by a Phoenix context when a test needs a new fixture shape.
 
-- `mise run check` (svelte-check) only covers `apps/web/src/` — it does not typecheck `e2e/` helpers, so verify e2e type changes (e.g. harness union edits) with a direct `tsc --noEmit` over the touched file or your editor.
+- `mise run check` runs svelte-check over `apps/web/src/` **and** `pnpm check:e2e` (`tsc -p e2e/tsconfig.json --noEmit`) over this directory, so harness union edits and spec type errors fail the check like any other type error. `e2e/tsconfig.json` inherits the SvelteKit compiler options and only replaces `include`; do not add e2e globs to the root `tsconfig.json`.
 
 Authentication uses Phoenix `_dhc_session` cookies. `loginAsUser()` calls the protected E2E login endpoint and forwards the signed cookie to the browser context. Do not create Supabase auth cookies. Inactive principals cannot authenticate: always log in as an active operator fixture and treat inactive members as targets of admin actions, never as the signed-in user.
 

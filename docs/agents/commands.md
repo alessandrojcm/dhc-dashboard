@@ -37,7 +37,7 @@ mise run test-unit          # Vitest
 mise run test-browser       # Vitest Browser Mode component tests in Chromium
 STRIPE_SECRET_KEY=sk_test_... mise run test-e2e
                             # Playwright + real Stripe test mode; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
-mise run check              # Svelte type check (NOT raw tsc)
+mise run check              # svelte-check over src/ + tsc over e2e/ (pnpm check:e2e); NOT raw tsc on src
 
 # Lint & format
 mise run lint               # Oxlint (web Svelte/JS/TS + API client TS)
