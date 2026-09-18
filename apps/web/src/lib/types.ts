@@ -1,6 +1,5 @@
 import type { WorkshopCalendarItem } from "@dhc/api-client";
 import type { Pathname } from "$app/types";
-import type { Database } from "../database.types.ts";
 
 // Removed Schedule-X import - using vkurko/calendar now
 
@@ -28,18 +27,6 @@ export type NavigationGroup = {
 export type NavData = {
 	navMain: NavigationGroup[];
 };
-export type FetchAndCountResult<
-	T extends keyof (Database["public"]["Tables"] | Database["public"]["Views"]),
-> = {
-	data: (
-		| Database["public"]["Tables"]
-		| Database["public"]["Views"]
-	)[T]["Row"][];
-	count: number;
-};
-
-export type MutationPayload<T extends keyof Database["public"]["Tables"]> =
-	Database["public"]["Tables"][T]["Update"];
 
 export enum SocialMediaConsent {
 	no = "no",
@@ -79,26 +66,3 @@ export type WorkshopCalendarEvent = {
 	userId: string;
 	handleEdit?: (workshop: WorkshopCalendarItem) => void;
 };
-
-export type ClubActivity =
-	Database["public"]["Tables"]["club_activities"]["Row"];
-
-export type ClubActivityInsert =
-	Database["public"]["Tables"]["club_activities"]["Insert"];
-export type ClubActivityUpdate =
-	Database["public"]["Tables"]["club_activities"]["Update"];
-
-export type ClubActivityWithInterest = ClubActivity & {
-	interest_count?: { interest_count: number }[];
-	user_interest?: { user_id: string }[];
-	attendee_count?: { id: string; member_user_id: string; status: string }[];
-};
-
-export type ClubActivityWithRegistrations =
-	Database["public"]["Tables"]["club_activities"]["Row"] &
-		Omit<ClubActivityWithInterest, "attendee_count"> & {
-			user_registrations: {
-				member_user_id: number | null;
-				status: Database["public"]["Enums"]["registration_status"];
-			}[];
-		};

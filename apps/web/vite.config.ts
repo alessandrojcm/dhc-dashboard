@@ -41,7 +41,6 @@ export default defineConfig(({ command }) => ({
 				},
 			},
 			alias: {
-				$database: "./src/database.types.ts",
 				$assets: "./src/assets",
 			},
 		}),

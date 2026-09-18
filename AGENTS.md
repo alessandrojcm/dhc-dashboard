@@ -58,4 +58,4 @@ The operator loan queue (`Dhc.Inventory.OperatorLoanQueue`, ALE-297) is a lock-f
 
 ## See also
 
-`CONTEXT.md`, `docs/adr/`, `supabase/AGENTS.md`, `e2e/AGENTS.md`
+`CONTEXT.md`, `docs/adr/`, `apps/web/e2e/AGENTS.md`

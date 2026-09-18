@@ -1,10 +1,10 @@
 # Tech Stack
 
-## Active (SvelteKit + Supabase)
+## Active (SvelteKit + Phoenix API)
 
 - **Frontend**: SvelteKit 2.x, Svelte 5 (runes), Tailwind CSS, shadcn-svelte
-- **Backend**: Supabase (Postgres + Auth + Edge Functions)
-- **ORM**: Kysely (mutations), Supabase client (queries)
+- **Backend**: Phoenix JSON API (see below); the SvelteKit app talks to it only through the generated `@dhc/api-client` (`packages/api-client`, generated from `apps/phoenix/priv/api/openapi.yaml`)
+- **Types**: every API shape comes from `@dhc/api-client`. The Supabase-generated `apps/web/src/database.types.ts` and the `$database` Vite alias were deleted after the Phoenix migration; do not reintroduce a database-schema type file — add the shape to the OpenAPI contract and regenerate (`mise run api-gen`).
 - **State**: TanStack Query (`createQuery(() => ({}))` thunk pattern)
 - **Charts**: LayerChart 2.2 on Svelte 5. The shared tooltip adapter reads `getChartContext().tooltip`; `getTooltipContext()` was removed in LayerChart 2.x and must not be reintroduced.
 - **Table**: `@tanstack/table-core` `^8.21.x`, integrated through the custom Svelte 5 adapter in `src/lib/components/ui/data-table/`. The adapter supplies rune-based table state and rendering helpers, and imports shared table types directly from `table-core`; `@tanstack/svelte-table` is not required. Treat adoption of the official Svelte adapter as a deliberate v9 migration rather than adding its v8 package alongside the custom adapter.
@@ -40,6 +40,6 @@
 
 ## Experimental Features (SvelteKit)
 
-- **Remote Functions**: `remoteFunctions: true` in svelte.config.js
+- **Remote Functions**: `remoteFunctions: true` in the SvelteKit config (now inside `apps/web/vite.config.ts`; `svelte.config.js` is gone)
 - **Async Components**: `async: true` compiler option
 - Uses `.remote.ts` files for server functions callable from client

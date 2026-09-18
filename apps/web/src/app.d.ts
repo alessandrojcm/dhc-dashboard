@@ -1,5 +1,4 @@
 /// <reference types="@sveltejs/kit" />
-import type { SupabaseClient, Database } from "./database.types";
 import { Env } from "../worker-configuration";
 import type { PhoenixSessionProjection } from "./lib/server/auth";
 // See https://svelte.dev/docs/kit/types#app.d.ts
@@ -43,13 +42,6 @@ declare global {
 		// interface Platform {}
 	}
 }
-
-// ALE-164: the Supabase browser client is still constructed during the
-// transition (the notification realtime bridge and E2E fixtures use it), but
-// it is no longer the auth seam. `locals.supabase` is intentionally removed
-// from `App.Locals`; the Supabase client is only referenced where its callers
-// still own it (e.g. E2E helpers), not as a request-local dependency.
-export type { SupabaseClient, Database };
 
 declare module "$env/static/public" {
 	export const PUBLIC_SUPABASE_URL: string;
