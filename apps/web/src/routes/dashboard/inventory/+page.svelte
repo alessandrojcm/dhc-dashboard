@@ -7,9 +7,9 @@ import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.s
 
 <div class="inventory-page">
 	<InventoryPageHeader
-		eyebrow="Operator inventory"
+		eyebrow="Quartermaster"
 		title="Inventory workspace"
-		description="Start with the next physical action, or open the registers that define and locate every piece of club equipment."
+		description="Start with the loan queue, or open the pages that track club gear and where it's stored."
 		icon={PackageSearch}
 	/>
 	<div class="grid gap-4 sm:grid-cols-2">
@@ -30,7 +30,7 @@ import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.s
 			<PackageSearch class="mb-4 size-8 text-primary" aria-hidden="true" />
 			<h2 class="text-xl font-semibold">Items</h2>
 			<p class="mt-2 text-sm text-muted-foreground">
-				Create, find, move, maintain, archive, and restore physical units.
+				Create, find, move, maintain, archive, and restore items.
 			</p>
 		</a>
 		<a

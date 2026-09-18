@@ -210,7 +210,7 @@ function formatDate(iso: string | null): string {
 
 		{#if loan.decisionNote}
 			<article class="rounded-2xl border border-border bg-card p-4 text-sm">
-				<h2 class="font-semibold">Operator note</h2>
+				<h2 class="font-semibold">Quartermaster note</h2>
 				<p class="mt-1 text-muted-foreground">{loan.decisionNote}</p>
 			</article>
 		{/if}

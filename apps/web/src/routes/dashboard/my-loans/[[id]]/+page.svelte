@@ -109,7 +109,7 @@ function formatDate(iso: string | null): string {
 
 <div class="inventory-page max-w-5xl">
 	<InventoryPageHeader
-		eyebrow="Member inventory"
+		eyebrow="Club gear"
 		title="My loans"
 		description="Keep track of requests, collection dates, and returned equipment. You can cancel any time before checkout."
 		icon={ClipboardList}

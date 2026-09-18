@@ -180,7 +180,7 @@ function availabilityLabel(reason: string): string {
 
 <div class="inventory-page max-w-6xl">
 	<InventoryPageHeader
-		eyebrow="Member inventory"
+		eyebrow="Club gear"
 		title="Find the right kit"
 		icon={Package}
 	/>
@@ -362,7 +362,7 @@ function availabilityLabel(reason: string): string {
 								class="mt-3 flex items-center justify-between gap-3 border-t pt-3"
 							>
 								<p class="font-mono text-xs text-muted-foreground">
-									ID {item.slug}
+									{item.slug}
 								</p>
 								<span
 									class="flex items-center gap-1 text-sm font-semibold text-primary"

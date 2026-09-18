@@ -182,7 +182,7 @@ async function lookupSlug(slug: string) {
 		);
 		choose(response.data);
 	} catch (cause) {
-		toast.error(apiErrorMessage(cause, "No item matches that slug"));
+		toast.error(apiErrorMessage(cause, "No item matches that code"));
 	}
 }
 $effect(() => {
@@ -415,7 +415,7 @@ function displayValue(item: InventoryOperatorItem) {
 		class="inventory-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:space-y-4 xl:overflow-hidden xl:py-4"
 	>
 		<InventoryPageHeader
-			eyebrow="Operator inventory"
+			eyebrow="Quartermaster"
 			title="Items"
 			icon={PackageSearch}
 			actions={createAction}
@@ -464,10 +464,10 @@ function displayValue(item: InventoryOperatorItem) {
 								<p
 									class="text-[0.68rem] font-bold tracking-[0.16em] text-primary uppercase"
 								>
-									New inventory unit
+									New item
 								</p>
 								<Sheet.Title class="font-heading text-2xl font-bold">
-									Add physical item
+									Add item
 								</Sheet.Title>
 								<Sheet.Description class="mt-1 text-sm leading-relaxed">
 									The label and permanent item code are generated for you.
@@ -482,7 +482,7 @@ function displayValue(item: InventoryOperatorItem) {
 						<fieldset
 							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm sm:p-6"
 						>
-							<legend class="sr-only">Classify and place</legend>
+							<legend class="sr-only">What and where</legend>
 							<div class="flex items-start gap-3 border-b pb-4">
 								<span
 									class="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-sm font-bold text-secondary-foreground"
@@ -490,10 +490,10 @@ function displayValue(item: InventoryOperatorItem) {
 								>
 								<div>
 									<h3 class="font-heading text-lg font-bold">
-										Classify and place
+										What and where
 									</h3>
 									<p class="mt-0.5 text-sm text-muted-foreground">
-										Choose what the item is and where operators can find it.
+										Choose what it is and where it's stored.
 									</p>
 								</div>
 							</div>
@@ -571,7 +571,7 @@ function displayValue(item: InventoryOperatorItem) {
 						<fieldset
 							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm sm:p-6"
 						>
-							<legend class="sr-only">Describe the unit</legend>
+							<legend class="sr-only">Details</legend>
 							<div class="flex items-start gap-3 border-b pb-4">
 								<span
 									class="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-sm font-bold text-secondary-foreground"
@@ -579,10 +579,10 @@ function displayValue(item: InventoryOperatorItem) {
 								>
 								<div>
 									<h3 class="font-heading text-lg font-bold">
-										Describe the unit
+										Details
 									</h3>
 									<p class="mt-0.5 text-sm text-muted-foreground">
-										Record identifying properties and useful operator notes.
+										Record size, condition, and any notes.
 									</p>
 								</div>
 							</div>
@@ -603,7 +603,7 @@ function displayValue(item: InventoryOperatorItem) {
 									/>Notes</Label
 								><Textarea id="item-notes" bind:value={notes} />
 								<p class="mt-1.5 text-xs text-muted-foreground">
-									Optional condition or identification details for operators.
+									Optional notes for whoever handles this next.
 								</p>
 							</div>
 						</fieldset>
@@ -628,9 +628,9 @@ function displayValue(item: InventoryOperatorItem) {
 					class="inventory-panel flex flex-wrap items-end justify-between gap-4 p-4"
 				>
 					<div>
-						<h2 class="text-lg font-semibold">Item register</h2>
+						<h2 class="text-lg font-semibold">All items</h2>
 						<p class="text-sm text-muted-foreground">
-							{itemsQuery.data?.totalCount ?? 0} physical units
+							{itemsQuery.data?.totalCount ?? 0} items
 						</p>
 					</div>
 					<div class="flex flex-1 flex-wrap items-end justify-end gap-3">
@@ -642,7 +642,7 @@ function displayValue(item: InventoryOperatorItem) {
 								id="item-search"
 								type="search"
 								class="h-11 border-border bg-background shadow-xs"
-								placeholder="Slug, label, container or notes"
+								placeholder="Code, name, location or notes"
 								value={search}
 								oninput={(event) => updateSearch(event.currentTarget.value)}
 							/>
@@ -655,7 +655,7 @@ function displayValue(item: InventoryOperatorItem) {
 							}}
 						>
 							<Label for="item-slug-lookup" class="mb-2 text-xs font-semibold"
-								>Find by slug</Label
+								>Find by code</Label
 							>
 							<div class="flex gap-2">
 								<Input
@@ -767,11 +767,11 @@ function displayValue(item: InventoryOperatorItem) {
 						</article>{:else}<div
 							class="rounded-2xl border bg-card p-10 text-center"
 						>
-							<h2 class="font-semibold">The register is empty</h2>
+							<h2 class="font-semibold">No items found</h2>
 							<p class="text-sm text-muted-foreground">
 								{debouncedQuery
 									? "Try another search or change the filters."
-									: "Create a physical unit or change the archive filter."}
+									: "Add an item or change the archive filter."}
 							</p>
 						</div>{/each}
 					{#if cursor || itemsQuery.data?.nextCursor}
@@ -877,9 +877,9 @@ function displayValue(item: InventoryOperatorItem) {
 								class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
 							>
 								<div class="border-b pb-4">
-									<h3 class="font-heading text-lg font-bold">Current facts</h3>
+									<h3 class="font-heading text-lg font-bold">Details</h3>
 									<p class="mt-1 text-sm text-muted-foreground">
-										Update identifying properties and operator notes.
+										Update properties and notes.
 									</p>
 								</div>
 								{@render fields(
@@ -897,10 +897,12 @@ function displayValue(item: InventoryOperatorItem) {
 								class="space-y-4 rounded-2xl border bg-card p-5 shadow-sm"
 							>
 								<div>
-									<h3 class="font-heading text-lg font-bold">Lifecycle</h3>
+									<h3 class="font-heading text-lg font-bold">
+										Archive or delete
+									</h3>
 									<p class="mt-1 text-sm text-muted-foreground">
-										Archive items you need to retain. Delete only unused
-										records.
+										Archive items you still need a record of. Delete only items
+										with no history.
 									</p>
 								</div>
 								{#if selected.archivedAt}
@@ -976,7 +978,7 @@ function displayValue(item: InventoryOperatorItem) {
 							<div class="border-b pb-4">
 								<h3 class="font-heading text-lg font-bold">Move item</h3>
 								<p class="mt-1 text-sm text-muted-foreground">
-									Change where operators can find this physical unit.
+									Move it to a different container.
 								</p>
 							</div>
 							<div>
@@ -1027,7 +1029,7 @@ function displayValue(item: InventoryOperatorItem) {
 							<div class="border-b pb-4">
 								<h3 class="font-heading text-lg font-bold">Change category</h3>
 								<p class="mt-1 text-sm text-muted-foreground">
-									Reclassifying replaces the category-specific facts below.
+									Changing category replaces the details below.
 								</p>
 							</div>
 							<div>

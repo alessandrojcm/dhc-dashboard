@@ -227,7 +227,7 @@ function availabilityLabel(reason: string): string {
 						<Check class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
 						<span>
 							Request sent. You'll receive the approved dates and collection
-							location if an operator approves it — track it under
+							location if a quartermaster approves it — track it under
 							<a class="font-semibold underline" href="/dashboard/my-loans">
 								My loans
 							</a>.

@@ -183,7 +183,7 @@ test.describe("ALE-288 inventory member browse", () => {
 		const card = page.getByRole("link", { name: makerA1 });
 		await expect(card).toBeVisible();
 		await expect(card.getByText(categoryA, { exact: true })).toBeVisible();
-		await expect(card.getByText(`ID ${slugA1}`)).toBeVisible();
+		await expect(card.getByText(slugA1)).toBeVisible();
 		await expect(card.getByText("Available")).toBeVisible();
 		// Archived items never appear, even unfiltered.
 		await expect(page.getByRole("link", { name: makerX1 })).toHaveCount(0);

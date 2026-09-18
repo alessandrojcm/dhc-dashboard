@@ -327,7 +327,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 	class="inventory-page inventory-categories-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:overflow-hidden"
 >
 	<InventoryPageHeader
-		eyebrow="Operator inventory"
+		eyebrow="Quartermaster"
 		title="Categories and properties"
 		icon={Tags}
 		actions={categoryAction}
@@ -361,8 +361,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 			aria-hidden="true"
 		></span>
 		<span
-			><strong class="font-semibold text-foreground">{totalItemCount}</strong> physical
-			items</span
+			><strong class="font-semibold text-foreground">{totalItemCount}</strong> items</span
 		>
 		{#if selectedCategory}
 			<span
@@ -555,8 +554,8 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 									{editingDefinition ? "Edit property" : "Add a property"}
 								</h3>
 								<p class="mt-1 text-sm text-muted-foreground">
-									Properties become the structured facts operators record for
-									every item in this category.
+									Properties are the details quartermasters fill in for every
+									item in this category.
 								</p>
 							</div>
 							<div class="xl:col-span-4">
@@ -873,8 +872,8 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							Choose a category
 						</h2>
 						<p class="mt-2 text-sm leading-relaxed text-muted-foreground">
-							Select a category from the library to shape its item labels,
-							required facts, and allowed options.
+							Select a category to edit its labels, required details, and
+							options.
 						</p>
 					</div>
 				</div>
@@ -951,8 +950,8 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							bind:value={categoryDescription}
 						/>
 						<p class="mt-2 text-xs leading-relaxed text-muted-foreground">
-							Use a stable description that helps future operators classify
-							equipment consistently.
+							A short description of what belongs here, so gear is categorised
+							the same way next time.
 						</p>
 					</div>
 				</div>

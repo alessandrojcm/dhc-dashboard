@@ -164,7 +164,7 @@ function startEdit(container: InventoryContainer) {
 	class="inventory-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:overflow-hidden"
 >
 	<InventoryPageHeader
-		eyebrow="Operator inventory"
+		eyebrow="Quartermaster"
 		title="Containers"
 		icon={FolderTree}
 		class="xl:items-center xl:pb-3"

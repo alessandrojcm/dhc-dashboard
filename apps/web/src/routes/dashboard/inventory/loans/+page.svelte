@@ -230,7 +230,7 @@ const busy = $derived(
 		>
 	{/snippet}
 	<InventoryPageHeader
-		eyebrow="Operator inventory"
+		eyebrow="Quartermaster"
 		title="Shared loan queue"
 		icon={ClipboardList}
 		actions={refreshAction}
@@ -313,7 +313,7 @@ const busy = $derived(
 			>
 				{@render bucket(
 					"Open maintenance",
-					"Items out of circulation until an operator closes the period.",
+					"Items out of circulation until a quartermaster ends maintenance.",
 					queueQuery.data.openMaintenance.count,
 					Wrench,
 				)}

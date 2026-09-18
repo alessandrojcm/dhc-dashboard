@@ -49,6 +49,7 @@ The operator loan queue (`Dhc.Inventory.OperatorLoanQueue`, ALE-297) is a lock-f
 - Notes: [docs/agents/notes.md](docs/agents/notes.md)
 - Visual previews: [docs/agents/visual-previews.md](docs/agents/visual-previews.md)
 - Frontend design system: [design-system/dublin-hema-club/MASTER.md](design-system/dublin-hema-club/MASTER.md)
+- Inventory UI copy: [design-system/dublin-hema-club/pages/inventory.md](design-system/dublin-hema-club/pages/inventory.md)
 
 ## Agent skills
 

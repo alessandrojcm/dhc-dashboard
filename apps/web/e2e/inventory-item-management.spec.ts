@@ -48,7 +48,9 @@ test.describe("ALE-284 operator inventory items", () => {
 
 		await loginAsUser(context, operator.email);
 		await gotoHydrated(page, "/dashboard/inventory/items");
-		await expect(page.getByRole("heading", { name: "Items" })).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "Items", exact: true }),
+		).toBeVisible();
 
 		await page.getByRole("button", { name: "New item" }).click();
 		await page.getByLabel("Category").click();
@@ -74,7 +76,7 @@ test.describe("ALE-284 operator inventory items", () => {
 
 		await page.getByLabel("Search").fill(`missing-${tag}`);
 		await expect(
-			page.getByRole("heading", { name: "The register is empty" }),
+			page.getByRole("heading", { name: "No items found" }),
 		).toBeVisible();
 
 		const searched = page.waitForResponse((response) => {
