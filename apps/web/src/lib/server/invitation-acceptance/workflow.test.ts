@@ -98,6 +98,26 @@ describe("Invitation Acceptance workflow", () => {
 
 			expect(outcome).toMatchObject({
 				type: "PAYMENT_FAILED",
+				message: "Invitation verification has expired. Please verify again.",
+				recoverable: false,
+				effects: [{ type: "clearAcceptanceProof" }],
+			});
+		});
+
+		it("a declined payment that Phoenix already concluded (402 + restartVerification) says the payment failed, not that verification expired", async () => {
+			// Phoenix runs cleanup synchronously on a terminal Stripe decline, so
+			// the safe view is already `restartVerification`; the 402 status is
+			// the only thing that tells a decline apart from a dead handle.
+			const { api } = inMemoryAcceptanceApi({
+				submitPayment: acceptanceView("restartVerification", {}, 402),
+			});
+			const { cookies } = recordingCookieStore({ proof: "proof" });
+
+			const outcome = await submitInvitationPayment({ api, cookies }, payment);
+
+			expect(outcome).toEqual({
+				type: "PAYMENT_FAILED",
+				message: "Payment could not be completed",
 				recoverable: false,
 				effects: [{ type: "clearAcceptanceProof" }],
 			});

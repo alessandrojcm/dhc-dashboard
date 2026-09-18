@@ -178,8 +178,13 @@ onActor?.(actorRef);
 const machineState = $derived($snapshot.value as PaymentMachineState);
 const failure = $derived($snapshot.context.failure);
 
+// Toast every failure, not only recoverable ones. A terminal failure clears
+// the acceptance proof, and the form's refresh then re-renders this page as
+// step 1 — unmounting the inline alert almost immediately. The toast lives in
+// the layout, so it is what the invitee actually gets to read.
 $effect(() => {
-	if (machineState === "failed" && failure) toast.error(failure.message);
+	if ((machineState === "failed" || machineState === "expired") && failure)
+		toast.error(failure.message);
 });
 
 // Every submission goes through the machine: a native submit (Enter in a

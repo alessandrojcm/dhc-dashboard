@@ -35,7 +35,7 @@ const presentation = $derived(paymentSubmitPresentation[state]);
 
 {#if state === "expired"}
 	<Alert.Root variant="destructive" class="mb-4 w-full">
-		<Alert.Title>Verification expired</Alert.Title>
+		<Alert.Title>Verify again to continue</Alert.Title>
 		<Alert.Description>
 			{failure?.message ??
 				"Invitation verification has expired. Please verify again."}

@@ -54,6 +54,9 @@ export type PricingOutcome =
 	| { type: "PRICING"; pricing: PlanPricing; effects: RouteEffect[] }
 	| InvitationRouteOutcome;
 
+/** Phoenix answers a terminally declined payment with 402, whatever the safe view says. */
+const PAYMENT_DECLINED_HTTP_STATUS = 402;
+
 export const paymentMessages = {
 	expired: "Invitation verification has expired. Please verify again.",
 	rejected: "Payment could not be completed",
@@ -129,9 +132,18 @@ export async function submitInvitationPayment(
 		case "REDIRECT_TO_SUCCESS":
 			return outcome;
 		case "RESTART_VERIFICATION":
+			// Phoenix concludes a terminally declined payment synchronously: the
+			// Continuation is already `failed`, so the safe view is
+			// `restartVerification`, but it answers 402 (not 409) precisely so
+			// the invitee is told the payment was declined rather than that
+			// their verification expired.
 			return {
 				type: "PAYMENT_FAILED",
-				message: paymentMessages.expired,
+				message:
+					result.kind === "view" &&
+					result.httpStatus === PAYMENT_DECLINED_HTTP_STATUS
+						? paymentMessages.rejected
+						: paymentMessages.expired,
 				recoverable: false,
 				effects: outcome.effects,
 			};
@@ -162,11 +174,12 @@ function paymentFailureMessage(result: AcceptanceApiResult): string {
 				: paymentMessages.unavailable;
 		case "rejected":
 			if (result.detail) return result.detail;
-			if (result.httpStatus === 402) return paymentMessages.rejected;
+			if (result.httpStatus === PAYMENT_DECLINED_HTTP_STATUS)
+				return paymentMessages.rejected;
 			if (result.httpStatus >= 500) return paymentMessages.unavailable;
 			return paymentMessages.failed;
 		case "view":
-			return result.httpStatus === 402
+			return result.httpStatus === PAYMENT_DECLINED_HTTP_STATUS
 				? paymentMessages.rejected
 				: paymentMessages.failed;
 		case "unexpected_response":
