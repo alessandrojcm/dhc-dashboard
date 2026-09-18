@@ -184,7 +184,7 @@ mise run phx-reach          # Reach architecture policy checks (.reach.exs)
 mise run phx-precommit      # Full check: audit + credo + reach arch + compile + unlock + format + test
 
 # Testing
-mise run phx-test           # Run all Phoenix tests (excludes :integration tests)
+mise run phx-test           # Generate the TS API client, then run all Phoenix tests (excludes :integration)
 
 # For specific test files, run directly:
 cd apps/phoenix && mix test test/some_test.exs

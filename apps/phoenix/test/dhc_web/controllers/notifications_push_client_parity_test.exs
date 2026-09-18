@@ -18,17 +18,9 @@ defmodule DhcWeb.NotificationsPushClientParityTest do
   @expected_operation_count 3
 
   setup_all do
-    generated = Path.join(@client_root, "src/client")
-
-    if File.dir?(generated) do
-      {:ok, generated: generated, public: Path.join(@client_root, "src/index.ts")}
-    else
-      {:ok, skip: "generated client absent — run `mise run api-gen`"}
-    end
-  end
-
-  setup context do
-    if context[:skip], do: {:ok, skip: true}, else: :ok
+    # ExUnit 1.20 only skips via `@tag skip:`, evaluated before setup.
+    # A `skip:` context key does not skip; require! raises instead of KeyError.
+    DhcWeb.ClientParity.require!(@client_root)
   end
 
   @tag :parity
