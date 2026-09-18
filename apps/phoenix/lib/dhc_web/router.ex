@@ -49,7 +49,7 @@ defmodule DhcWeb.Router do
   # categories are any authenticated member — the existing Svelte category
   # list view is member-readable; writes require the inventory write roles.
   pipeline :inventory_admin_api do
-    plug DhcWeb.Plugs.RequireSession, roles: ~w(quartermaster admin president)
+    plug DhcWeb.Plugs.RequireSession, roles: Dhc.Auth.inventory_operator_roles()
   end
 
   pipeline :authenticated_api do

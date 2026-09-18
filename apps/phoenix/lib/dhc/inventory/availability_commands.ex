@@ -319,9 +319,14 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   end
 
   # The start is immutable once the item has changed hands; the due date
-  # stays editable in both live states (ALE-279).
+  # stays editable in both live states (ALE-279). The previous due date
+  # and the persist stamp ride on the operator view under keys the JSON
+  # renderer does not emit, so the HTTP layer can tell a restatement
+  # from a move without a second unlocked read.
   defp run({:operator, _actor}, :edit_loan_dates, subject, attrs) do
     with_locked_item({:loan, subject, :any}, fn %{loan: loan} ->
+      previous_due_on = loan.approved_due_on
+
       with :ok <- require_editable(loan),
            {:ok, starts_on, due_on} <- edited_dates(loan, attrs),
            {:ok, %Loan{} = edited} <-
@@ -330,8 +335,14 @@ defmodule Dhc.Inventory.AvailabilityCommands do
                  approved_start_on: starts_on,
                  approved_due_on: due_on
                })
-             ) do
-        operator_outcome(edited)
+             ),
+           {:ok, {:loan, view}} <- operator_outcome(edited) do
+        {:ok,
+         {:loan,
+          Map.merge(view, %{
+            previous_due_on: previous_due_on,
+            due_edit_at: edited.updated_at
+          })}}
       end
     end)
   end

@@ -22,12 +22,16 @@ defmodule DhcWeb.InventoryCatalogController do
   availability gates it. Reading and cancelling an existing loan is
   `DhcWeb.InventoryMemberLoansController`.
 
-  The controller only maps `Dhc.Inventory` result tuples onto status codes.
+  The controller only maps `Dhc.Inventory` result tuples onto status codes
+  and enqueues keyed operator notifications after a successful request.
   Unavailability and duplicate requests become `409` with a machine-readable
-  code that stays generic; nothing surfaces as a server error.
+  code that stays generic. Enqueue failure is a `500` before the client is
+  told the request succeeded.
   """
 
   use DhcWeb, :controller
+
+  require Logger
 
   alias Dhc.Inventory
 
@@ -73,13 +77,37 @@ defmodule DhcWeb.InventoryCatalogController do
   def request_loan(conn, %{"slugOrId" => slug_or_id} = params) do
     slug_or_id
     |> Inventory.request_loan(params, actor_id(conn))
+    |> notify(:requested)
     |> respond_loan(conn, :created)
   end
 
   # ── Result mapping ──────────────────────────────────────────────
 
+  defp notify({:ok, loan} = ok, kind) do
+    case Inventory.notify_loan_transition(loan, kind) do
+      {:ok, :enqueued} ->
+        ok
+
+      :ok ->
+        ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[inventory] loan notification enqueue failed loan_id=#{loan.id} kind=#{kind} reason=#{inspect(reason)}"
+        )
+
+        {:error, :notification_enqueue_failed}
+    end
+  end
+
+  defp notify(error, _kind), do: error
+
   defp respond_loan({:ok, loan}, conn, status) do
     conn |> put_status(status) |> put_view(@view) |> render(:loan, loan: loan)
+  end
+
+  defp respond_loan({:error, :notification_enqueue_failed}, conn, _status) do
+    render_error(conn, :internal_server_error, %{detail: "Failed to enqueue notification"})
   end
 
   defp respond_loan({:error, :not_found}, conn, _status), do: not_found(conn)

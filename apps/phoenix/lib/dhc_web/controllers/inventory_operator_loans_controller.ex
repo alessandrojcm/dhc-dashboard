@@ -16,7 +16,11 @@ defmodule DhcWeb.InventoryOperatorLoansController do
   the `:inventory_admin_api` pipeline.
 
   The controller maps `Dhc.Inventory` result tuples onto status codes and
-  fires keyed notifications *after* a successful write. Interlock
+  enqueues keyed notifications *after* a successful write. The command
+  has already committed; `Dhc.Notifications.Workers.KeyedCreateWorker`
+  (queue `:notifications`) calls `create_keyed/3` with retries so a
+  failed create cannot permanently lose the row. Enqueue failure is a
+  `500` before the client is told the transition succeeded. Interlock
   conflicts become `409` with a typed `code`; validation failures become
   `422`.
   """
@@ -115,22 +119,32 @@ defmodule DhcWeb.InventoryOperatorLoansController do
 
   defp notify({:ok, loan} = ok, kind) do
     case Inventory.notify_loan_transition(loan, kind) do
-      {:ok, _outcome} -> :ok
-      :ok -> :ok
-      {:error, reason} -> log_notify_failure(loan, kind, reason)
-    end
+      {:ok, :enqueued} ->
+        ok
 
-    ok
+      :ok ->
+        ok
+
+      {:error, reason} ->
+        log_notify_failure(loan, kind, reason)
+        {:error, :notification_enqueue_failed}
+    end
   end
 
   defp notify(error, _kind), do: error
 
-  # Story 48: only a due-date write is news. The request names the date;
-  # a restatement of the same day is absorbed by the revisioned key, and
-  # a later distinct date is a new event. Nothing is decided from an
-  # unlocked pre-read of the loan.
-  defp notify_if_due_requested(result, params) do
-    if due_requested?(params), do: notify(result, :dates_changed), else: result
+  # Story 48: only a moved due date is news. The command result carries
+  # the previous due date from under the item lock; a restatement of the
+  # same day does not enqueue. Nothing is decided from an unlocked
+  # pre-read of the loan.
+  defp notify_if_due_requested({:ok, loan} = ok, params) do
+    if due_moved?(loan, params), do: notify(ok, :dates_changed), else: ok
+  end
+
+  defp notify_if_due_requested(error, _params), do: error
+
+  defp due_moved?(loan, params) when is_map(params) do
+    due_requested?(params) and Map.get(loan, :previous_due_on) != loan.approved_due_on
   end
 
   defp due_requested?(params) when is_map(params) do
@@ -139,12 +153,16 @@ defmodule DhcWeb.InventoryOperatorLoansController do
 
   defp log_notify_failure(loan, kind, reason) do
     Logger.warning(
-      "[inventory] loan notification failed loan_id=#{loan.id} kind=#{kind} reason=#{inspect(reason)}"
+      "[inventory] loan notification enqueue failed loan_id=#{loan.id} kind=#{kind} reason=#{inspect(reason)}"
     )
   end
 
   defp respond({:ok, loan}, conn) do
     conn |> put_view(@view) |> render(:show, loan: loan)
+  end
+
+  defp respond({:error, :notification_enqueue_failed}, conn) do
+    render_error(conn, :internal_server_error, %{detail: "Failed to enqueue notification"})
   end
 
   defp respond({:error, :not_found}, conn), do: not_found(conn)

@@ -14,9 +14,12 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
   """
 
   use DhcWeb.ConnCase, async: false
+  use Oban.Testing, repo: Dhc.Repo
 
   alias Dhc.Inventory
   alias Dhc.Inventory.ClubCalendar
+  alias Dhc.Notifications.Notification
+  alias Dhc.Notifications.Workers.KeyedCreateWorker
   alias Dhc.Repo
 
   @actor_id "44444444-4444-4444-4444-444444444444"
@@ -318,6 +321,25 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
       assert json_response(again, 200)["data"]["status"] == "cancelled"
     end
 
+    test "notifies inventory operators of a member cancellation", %{conn: conn} do
+      operator = grant_operator!()
+      %{item: item} = fixture()
+      loan_id = create_loan!(item, @actor_id, "requested")
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/inventory/loans/mine/#{loan_id}/cancel", %{})
+
+      assert %{"data" => loan} = json_response(conn, 200)
+      assert loan["status"] == "cancelled"
+      deliver_loan_notifications()
+
+      [row] = Repo.all(Notification)
+      assert row.principal_id == operator
+      assert row.notification_key == "inventory:loan:#{loan_id}:member_cancelled"
+    end
+
     test "422s a cancel note longer than 1000 characters", %{conn: conn} do
       %{item: item} = fixture()
       loan_id = create_loan!(item, @actor_id, "requested")
@@ -459,5 +481,21 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
       "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2 WHERE id = $3",
       [starts_on, due_on, Ecto.UUID.dump!(loan_id)]
     )
+  end
+
+  defp grant_operator! do
+    %{principal_id: id} = Dhc.MemberFixtures.member_fixture(%{is_active: true})
+
+    Repo.insert_all("user_roles", [
+      [principal_id: Ecto.UUID.dump!(id), role: "president"]
+    ])
+
+    id
+  end
+
+  defp deliver_loan_notifications do
+    for job <- all_enqueued(worker: KeyedCreateWorker) do
+      assert :ok = perform_job(KeyedCreateWorker, job.args)
+    end
   end
 end

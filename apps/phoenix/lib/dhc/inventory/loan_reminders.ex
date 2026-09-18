@@ -53,10 +53,14 @@ defmodule Dhc.Inventory.LoanReminders do
        `inventory_loan_reminders_ledger_key_unique`. A concurrent pass — two
        nodes, an Oban retry, an overlapping tick — loses the insert and skips
        the reminder, so the claim, not a lock, is what serializes delivery.
-    2. **Notify.** Call `Dhc.Notifications.create_keyed/3` with the ledger key
-       as the notification key. Idempotent in its own right, so a crash between
-       the claim and the stamp cannot produce a second notification when the
-       row is retried.
+    2. **Notify.** Re-read the loan `FOR UPDATE` and insert the keyed
+       notification row *in that same transaction* (via
+       `create_keyed_in_transaction/3`), then stamp the claim. Signalling
+       (broadcast + Web Push) happens after the transaction commits. A
+       concurrent return or due-date edit cannot sneak in between the
+       recheck and the insert. The key is still the ledger key, so a crash
+       between the claim and the stamp cannot produce a second notification
+       when the row is retried.
     3. **Stamp.** Set `delivered_at`. An unstamped claim is a reminder awaiting
        repair; the next pass retries it and the keyed seam absorbs the repeat.
 
@@ -89,17 +93,17 @@ defmodule Dhc.Inventory.LoanReminders do
 
   ## Recipients
 
-  The borrower, who is the one who has to act. Operator-facing overdue
-  notification (story 50) belongs to the exposure ticket that also wires
-  transition notifications (ALE-286c) and would be added here as a second
-  recipient per occurrence — the ledger is already keyed by
-  `recipient_principal_id` for exactly that, so it needs no reshaping.
+  The borrower, who is the one who has to act, plus every inventory
+  operator on an overdue occurrence (story 50). Operators share the
+  borrower's notification key — one event, many recipients — and the
+  same lock-and-recheck that skips a closed or restamped loan.
   """
 
   import Ecto.Query
 
   alias Dhc.Inventory.ClubCalendar
   alias Dhc.Inventory.Loan
+  alias Dhc.Inventory.LoanNotifications
   alias Dhc.Inventory.LoanReminder
   alias Dhc.Notifications
   alias Dhc.Repo
@@ -152,7 +156,7 @@ defmodule Dhc.Inventory.LoanReminders do
   """
   @spec run(Date.t()) :: pass()
   def run(%Date{} = today) do
-    release_closed_claims()
+    reconcile_claims()
     owed = owed_reminders(today)
 
     {delivered, failed} =
@@ -313,6 +317,8 @@ defmodule Dhc.Inventory.LoanReminders do
   # ── Delivery ────────────────────────────────────────────────────
 
   defp deliver(reminder) do
+    interrupt_delivery()
+
     case claim(reminder) do
       {:ok, id} ->
         notify_and_stamp(reminder, id)
@@ -368,12 +374,20 @@ defmodule Dhc.Inventory.LoanReminders do
   # the tick for every healthy loan behind it. Translated to a counted failure
   # instead, matching how the loan commands translate their own constraints
   # rather than surfacing a `Postgrex.Error`.
+  # Nested transaction so a constraint error is a savepoint rollback, not
+  # an aborted caller transaction. The rescue still translates the error
+  # into a counted failure for the pass.
   defp insert_claim(entry) do
-    Repo.insert_all(LoanReminder, [entry],
-      on_conflict: :nothing,
-      conflict_target: [:loan_id, :recipient_principal_id, :kind, :due_on_revision],
-      returning: [:id]
-    )
+    case Repo.transaction(fn ->
+           Repo.insert_all(LoanReminder, [entry],
+             on_conflict: :nothing,
+             conflict_target: [:loan_id, :recipient_principal_id, :kind, :due_on_revision],
+             returning: [:id]
+           )
+         end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
   rescue
     error in [Postgrex.Error, Ecto.ConstraintError] -> {:error, error}
   end
@@ -395,43 +409,100 @@ defmodule Dhc.Inventory.LoanReminders do
     end
   end
 
-  # `create_keyed/3` is idempotent on the same key, so a reminder retried after
-  # a crash resolves to the notification that already exists instead of a
-  # second unread row (AC 1). The stamp lands only after the notification is
-  # durable, so the ledger can never claim a delivery that did not happen.
+  # The notification row is inserted under the same FOR UPDATE that
+  # re-reads the loan, then stamped in that transaction. `create_keyed/3`
+  # cannot do this — it signals after its own commit — so we insert with
+  # `create_keyed_in_transaction/3` and call `signal_created/1` only after
+  # this transaction returns `{:ok, _}`. A concurrent return or due-date
+  # edit cannot commit between the recheck and the insert.
   defp notify_and_stamp(reminder, ledger_id) do
-    if live?(reminder.loan_id) do
-      case Notifications.create_keyed(
-             reminder.borrower_principal_id,
-             notification_key(reminder),
-             body(reminder)
-           ) do
-        {:ok, _created_or_already} ->
-          stamp(ledger_id)
-          :delivered
+    case persist_delivery(reminder, ledger_id) do
+      {:ok, :skipped} ->
+        :skipped
 
-        {:error, reason} ->
-          # The claim stays, unstamped, so the next pass retries it. Losing the
-          # tick for every other loan because one recipient no longer resolves
-          # would be worse than a delayed reminder.
-          Logger.error(
-            "[loan-reminders] Delivery failed for loan #{reminder.loan_id} kind #{reminder.kind}: #{inspect(reason)}"
-          )
+      {:ok, {:delivered, created}} ->
+        Enum.each(created, &Notifications.signal_created/1)
+        :delivered
 
-          {:error, reason}
-      end
-    else
-      # The loan closed between this pass's read and its delivery. A returned
-      # item must not still be chased (story 51), so the claim is released
-      # rather than stamped — a closed loan is never reconsidered, and leaving
-      # it would report phantom repair work forever.
-      release(ledger_id)
-      :skipped
+      {:error, reason} ->
+        Logger.error(
+          "[loan-reminders] Delivery failed for loan #{reminder.loan_id} kind #{reminder.kind}: #{inspect(reason)}"
+        )
+
+        {:error, reason}
     end
   end
 
-  defp live?(loan_id) do
-    Repo.exists?(from l in Loan, where: l.id == ^loan_id and l.status in ^@live_statuses)
+  defp persist_delivery(reminder, ledger_id) do
+    Repo.transaction(fn ->
+      reminder
+      |> locked_loan_state()
+      |> persist_if_current(reminder, ledger_id)
+    end)
+  end
+
+  defp persist_if_current(:skip, _reminder, ledger_id) do
+    release(ledger_id)
+    :skipped
+  end
+
+  defp persist_if_current(:proceed, reminder, ledger_id) do
+    interrupt_delivery(:after_recheck)
+    stamp_if_still_current(locked_loan_state(reminder), reminder, ledger_id)
+  end
+
+  defp stamp_if_still_current(:skip, _reminder, ledger_id) do
+    release(ledger_id)
+    :skipped
+  end
+
+  defp stamp_if_still_current(:proceed, reminder, ledger_id) do
+    created = insert_reminder_notifications!(reminder)
+    stamp(ledger_id)
+    {:delivered, created}
+  end
+
+  defp locked_loan_state(reminder) do
+    loan =
+      from(l in Loan, where: l.id == ^reminder.loan_id, lock: "FOR UPDATE")
+      |> Repo.one()
+
+    cond do
+      is_nil(loan) or loan.status not in @live_statuses -> :skip
+      revision(loan.approved_due_on) != revision(reminder.approved_due_on) -> :skip
+      true -> :proceed
+    end
+  end
+
+  defp insert_reminder_notifications!(reminder) do
+    key = notification_key(reminder)
+
+    borrower = insert_keyed_row!(reminder.borrower_principal_id, key, body(reminder))
+
+    operators =
+      if reminder.kind == "pre_due" do
+        []
+      else
+        operator_body = operator_overdue_body(reminder)
+
+        reminder
+        |> operator_ids()
+        |> Enum.flat_map(&insert_keyed_row!(&1, key, operator_body))
+      end
+
+    borrower ++ operators
+  end
+
+  defp insert_keyed_row!(principal_id, key, body) do
+    case Notifications.create_keyed_in_transaction(principal_id, key, body) do
+      {:ok, :created, notification} -> [notification]
+      {:ok, :already_created} -> []
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp operator_ids(reminder) do
+    LoanNotifications.inventory_operator_ids(except: reminder.borrower_principal_id)
   end
 
   defp stamp(ledger_id) do
@@ -452,6 +523,36 @@ defmodule Dhc.Inventory.LoanReminders do
   # do: the item is back, so the reminder must not be delivered, and leaving the
   # claim would report repair work that never completes. Delivered rows are
   # never touched — they are the record of what the member was actually told.
+  defp reconcile_claims do
+    release_closed_claims()
+    release_stale_revision_claims()
+  end
+
+  # An undelivered claim whose due-on revision no longer matches a still-live
+  # loan is work for a date that is gone: the next pass must be free to
+  # compute the current occurrence, and `due/1` must not report the old
+  # claim as pending forever.
+  defp release_stale_revision_claims do
+    Repo.delete_all(
+      from r in LoanReminder,
+        as: :reminder,
+        where: is_nil(r.delivered_at),
+        where:
+          exists(
+            from l in Loan,
+              where:
+                l.id == parent_as(:reminder).loan_id and
+                  l.status in ^@live_statuses and
+                  not is_nil(l.approved_due_on) and
+                  parent_as(:reminder).due_on_revision !=
+                    fragment("(? - DATE '1970-01-01') + 719163", l.approved_due_on),
+              select: 1
+          )
+    )
+
+    :ok
+  end
+
   defp release_closed_claims do
     Repo.delete_all(
       from r in LoanReminder,
@@ -481,6 +582,7 @@ defmodule Dhc.Inventory.LoanReminders do
   # invalidates the old keys for free, and restating the same date changes
   # nothing, so no transition has to write a reminder row.
   defp revision(%Date{} = due_on), do: Date.to_gregorian_days(due_on)
+  defp revision(nil), do: :none
 
   # ── Bodies ──────────────────────────────────────────────────────
 
@@ -500,8 +602,27 @@ defmodule Dhc.Inventory.LoanReminders do
   defp body(%{kind: "overdue_week_" <> _number} = reminder),
     do: "#{label(reminder)} is still overdue — it was due back on #{date(reminder)}."
 
+  defp operator_overdue_body(reminder),
+    do: "#{label(reminder)} is overdue — it was due back on #{date(reminder)}."
+
   defp label(%{item_label: label}) when is_binary(label) and label != "", do: label
   defp label(_reminder), do: "A borrowed item"
 
   defp date(%{approved_due_on: due_on}), do: Date.to_iso8601(due_on)
+
+  # Test seam. Arity 0 runs only before the claim (owed → delivery).
+  # Arity 1 is called with `:before_claim` and `:after_recheck` so a
+  # mutation can land after the lock recheck and before the insert.
+  defp interrupt_delivery(phase \\ :before_claim) do
+    case Application.get_env(:dhc, :loan_reminder_delivery_interrupt) do
+      fun when is_function(fun, 1) ->
+        fun.(phase)
+
+      fun when is_function(fun, 0) and phase == :before_claim ->
+        fun.()
+
+      _absent ->
+        :ok
+    end
+  end
 end

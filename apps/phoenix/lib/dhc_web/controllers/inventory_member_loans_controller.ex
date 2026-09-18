@@ -18,10 +18,14 @@ defmodule DhcWeb.InventoryMemberLoansController do
   (ALE-298); nothing here can be reached with an operator role that a
   plain member could not reach.
 
-  The controller only maps `Dhc.Inventory` result tuples onto status codes.
+  The controller only maps `Dhc.Inventory` result tuples onto status codes
+  and enqueues keyed operator notifications after a successful cancel.
+  Enqueue failure is a `500` before the client is told the cancel succeeded.
   """
 
   use DhcWeb, :controller
+
+  require Logger
 
   alias Dhc.Inventory
 
@@ -56,13 +60,39 @@ defmodule DhcWeb.InventoryMemberLoansController do
   POST /inventory/loans/mine/:loanId/cancel
   """
   def cancel(conn, %{"loanId" => loan_id} = params) do
-    loan_id |> Inventory.cancel_loan(params, actor_id(conn)) |> respond(conn)
+    loan_id
+    |> Inventory.cancel_loan(params, actor_id(conn))
+    |> notify(:member_cancelled)
+    |> respond(conn)
   end
 
   # ── Result mapping ──────────────────────────────────────────────
 
+  defp notify({:ok, loan} = ok, kind) do
+    case Inventory.notify_loan_transition(loan, kind) do
+      {:ok, :enqueued} ->
+        ok
+
+      :ok ->
+        ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[inventory] loan notification enqueue failed loan_id=#{loan.id} kind=#{kind} reason=#{inspect(reason)}"
+        )
+
+        {:error, :notification_enqueue_failed}
+    end
+  end
+
+  defp notify(error, _kind), do: error
+
   defp respond({:ok, loan}, conn) do
     conn |> put_view(@view) |> render(:show, loan: loan)
+  end
+
+  defp respond({:error, :notification_enqueue_failed}, conn) do
+    render_error(conn, :internal_server_error, %{detail: "Failed to enqueue notification"})
   end
 
   defp respond({:error, :not_found}, conn), do: not_found(conn)

@@ -43,16 +43,18 @@ defmodule Dhc.Inventory.Workers.LoanReminderWorkerTest do
     end
 
     test "succeeds and logs when a reminder cannot be delivered" do
-      loan = overdue_loan()
-      orphan_borrower(loan)
+      bad = overdue_loan()
+      _healthy = overdue_loan()
+      orphan_borrower(bad)
 
       logs = capture_log(fn -> assert :ok = perform_job() end)
 
       # The job succeeds deliberately: the undelivered claim stays in the ledger
       # for the next pass, whereas failing the job would re-walk every healthy
-      # loan to chase one bad recipient.
+      # loan to chase one bad recipient. The savepoint around insert_claim/1
+      # is what lets the healthy loan still deliver in the same tick.
       assert logs =~ "[loan-reminder-worker]"
-      assert Repo.all(Notification) == []
+      assert [%Notification{}] = Repo.all(Notification)
     end
 
     test "does nothing when no loan is owed a reminder" do

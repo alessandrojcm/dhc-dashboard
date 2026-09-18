@@ -236,6 +236,55 @@ defmodule Dhc.NotificationsTest do
     end
   end
 
+  describe "create_keyed_in_transaction/3" do
+    test "inserts inside the caller transaction and does not signal until asked" do
+      Phoenix.PubSub.subscribe(Dhc.PubSub, Broadcaster.topic(@user_id))
+
+      assert {:ok, {:ok, :created, notification}} =
+               Repo.transaction(fn ->
+                 Notifications.create_keyed_in_transaction(
+                   @user_id,
+                   "loan:1:overdue",
+                   "Overdue"
+                 )
+               end)
+
+      assert %Notification{body: "Overdue", notification_key: "loan:1:overdue"} = notification
+      assert [%Notification{id: id}] = Repo.all(Notification)
+      assert id == notification.id
+      refute_received %Phoenix.Socket.Broadcast{event: "notification_created"}
+
+      assert :ok = Notifications.signal_created(notification)
+      assert_received %Phoenix.Socket.Broadcast{event: "notification_created", payload: %{}}
+    end
+
+    test "a rolled-back insert leaves no row and never signals" do
+      Phoenix.PubSub.subscribe(Dhc.PubSub, Broadcaster.topic(@user_id))
+
+      assert {:error, :boom} =
+               Repo.transaction(fn ->
+                 assert {:ok, :created, _notification} =
+                          Notifications.create_keyed_in_transaction(
+                            @user_id,
+                            "loan:1:overdue",
+                            "Overdue"
+                          )
+
+                 Repo.rollback(:boom)
+               end)
+
+      assert [] = Repo.all(Notification)
+      refute_received %Phoenix.Socket.Broadcast{event: "notification_created"}
+    end
+
+    test "refuses to run outside a transaction" do
+      assert {:error, :notification_create_outside_transaction} =
+               Notifications.create_keyed_in_transaction(@user_id, "loan:1:overdue", "Overdue")
+
+      assert [] = Repo.all(Notification)
+    end
+  end
+
   describe "create_keyed/3 rejections" do
     test "refuses to run inside a caller's transaction" do
       result =

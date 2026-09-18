@@ -427,6 +427,115 @@ defmodule Dhc.Inventory.LoanRemindersTest do
     end
   end
 
+  # ── TOCTOU and stale-revision claims ────────────────────────────
+
+  describe "a change between owed computation and delivery" do
+    test "does not notify when the due date moves before delivery" do
+      today = ClubCalendar.today()
+      %{loan: loan} = overdue_loan(days_late: 1)
+      later = Date.add(today, 30)
+
+      Application.put_env(:dhc, :loan_reminder_delivery_interrupt, fn ->
+        assert {:ok, _} = edit_due(loan, later)
+      end)
+
+      on_exit(fn -> Application.delete_env(:dhc, :loan_reminder_delivery_interrupt) end)
+
+      assert %{delivered: 0} = LoanReminders.run()
+      assert notifications() == []
+      assert kinds(loan) == []
+    end
+
+    test "does not notify when the loan is returned before delivery" do
+      %{loan: loan} = overdue_loan(days_late: 1)
+
+      Application.put_env(:dhc, :loan_reminder_delivery_interrupt, fn ->
+        assert {:ok, _} = Inventory.return_loan(loan, operator())
+      end)
+
+      on_exit(fn -> Application.delete_env(:dhc, :loan_reminder_delivery_interrupt) end)
+
+      assert %{delivered: 0} = LoanReminders.run()
+      assert notifications() == []
+      assert kinds(loan) == []
+    end
+
+    test "does not notify when the due date moves after the lock recheck" do
+      today = ClubCalendar.today()
+      %{loan: loan} = overdue_loan(days_late: 1)
+      later = Date.add(today, 30)
+
+      Application.put_env(:dhc, :loan_reminder_delivery_interrupt, fn
+        :after_recheck -> assert {:ok, _} = edit_due(loan, later)
+        _before_claim -> :ok
+      end)
+
+      on_exit(fn -> Application.delete_env(:dhc, :loan_reminder_delivery_interrupt) end)
+
+      assert %{delivered: 0} = LoanReminders.run()
+      assert notifications() == []
+      assert kinds(loan) == []
+    end
+  end
+
+  describe "a claimed-but-undelivered stale revision" do
+    test "is released so the current occurrence can be computed" do
+      today = ClubCalendar.today()
+      %{loan: loan, borrower: borrower} = overdue_loan(days_late: 1)
+      old_due = Date.add(today, -1)
+      old_revision = Date.to_gregorian_days(old_due)
+
+      now = DateTime.utc_now()
+
+      Repo.insert_all(Dhc.Inventory.LoanReminder, [
+        %{
+          loan_id: loan,
+          recipient_principal_id: borrower,
+          kind: "overdue",
+          due_on_revision: old_revision,
+          scheduled_for: now,
+          created_at: now,
+          updated_at: now
+        }
+      ])
+
+      assert %{pending: 1} = LoanReminders.due()
+
+      assert {:ok, _} = edit_due(loan, Date.add(today, 30))
+
+      assert %{delivered: 0} = LoanReminders.run()
+      assert %{owed: 0, pending: 0} = LoanReminders.due()
+      assert notifications() == []
+      assert kinds(loan) == []
+    end
+  end
+
+  describe "operator overdue notifications" do
+    test "notifies inventory operators of an overdue occurrence with the borrower" do
+      operator = grant_operator!()
+      %{loan: loan, borrower: borrower} = overdue_loan(days_late: 1)
+
+      assert %{delivered: 1} = LoanReminders.run()
+
+      rows = notifications()
+      assert Enum.sort(Enum.map(rows, & &1.principal_id)) == Enum.sort([borrower, operator])
+      assert Enum.all?(rows, &(&1.body =~ "overdue"))
+      assert Enum.all?(rows, &String.contains?(&1.notification_key, ":reminder:overdue:"))
+      assert kinds(loan) == ["overdue"]
+    end
+
+    test "does not notify an inactive inventory operator of an overdue occurrence" do
+      inactive = grant_operator!(active: false)
+      %{borrower: borrower} = overdue_loan(days_late: 1)
+
+      assert %{delivered: 1} = LoanReminders.run()
+
+      rows = notifications()
+      assert Enum.map(rows, & &1.principal_id) == [borrower]
+      refute Enum.any?(rows, &(&1.principal_id == inactive))
+    end
+  end
+
   # ── Helpers ─────────────────────────────────────────────────────
 
   defp notifications, do: Repo.all(from n in Notification, order_by: n.created_at)
@@ -556,4 +665,15 @@ defmodule Dhc.Inventory.LoanRemindersTest do
   end
 
   defp unique, do: System.unique_integer([:positive])
+
+  defp grant_operator!(opts \\ []) do
+    %{principal_id: id} =
+      Dhc.MemberFixtures.member_fixture(%{is_active: Keyword.get(opts, :active, true)})
+
+    Repo.insert_all("user_roles", [
+      [principal_id: Ecto.UUID.dump!(id), role: "admin"]
+    ])
+
+    id
+  end
 end

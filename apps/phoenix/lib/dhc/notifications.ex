@@ -105,11 +105,58 @@ defmodule Dhc.Notifications do
         {:error, :notification_create_inside_transaction}
 
       true ->
-        principal_id
-        |> notification_changeset(body)
-        |> Ecto.Changeset.put_change(:notification_key, String.trim(key))
-        |> insert_keyed()
+        case insert_keyed(principal_id, key, body) do
+          {:ok, :created, notification} ->
+            signal_created(notification)
+            {:ok, :created}
+
+          other ->
+            other
+        end
     end
+  end
+
+  @doc """
+  Inserts a keyed notification **inside** the caller's open transaction and
+  does not signal.
+
+  `create_keyed/3` refuses an open transaction because `signal_created/1`
+  broadcasts and enqueues Web Push — those must not fire before the outer
+  write commits (ADR 0025: the row is the source of truth; the channel is
+  after it). A caller that already holds locks around the insert uses this
+  function, collects any `{:ok, :created, notification}` rows, and calls
+  `signal_created/1` only after `Repo.transaction/1` returns `{:ok, _}`.
+
+  Refuses a call that is *not* inside a transaction so a missed signal
+  cannot look like a successful create.
+  """
+  @spec create_keyed_in_transaction(String.t(), String.t(), String.t()) ::
+          {:ok, :created, Notification.t()} | {:ok, :already_created} | {:error, term()}
+  def create_keyed_in_transaction(principal_id, key, body)
+      when is_binary(principal_id) and is_binary(key) and is_binary(body) do
+    cond do
+      String.trim(key) == "" ->
+        {:error, :invalid_notification_key}
+
+      not Repo.in_transaction?() ->
+        {:error, :notification_create_outside_transaction}
+
+      true ->
+        insert_keyed(principal_id, key, body)
+    end
+  end
+
+  @doc """
+  Best-effort realtime broadcast and Web Push enqueue for a committed row.
+
+  Safe to call only after the transaction that inserted `notification` has
+  committed. A failure is logged inside each channel and does not raise.
+  """
+  @spec signal_created(Notification.t()) :: :ok
+  def signal_created(%Notification{} = notification) do
+    _ = Broadcaster.notification_created(notification)
+    _ = WebPush.enqueue_delivery(notification)
+    :ok
   end
 
   # The changeset is built (and validated) exactly as for `create/2`, but the
@@ -118,10 +165,17 @@ defmodule Dhc.Notifications do
   # `on_conflict: :nothing` cannot answer that here: the schema autogenerates
   # its `binary_id` in Elixir, so the returned struct carries an id whether or
   # not the row reached the table.
-  defp insert_keyed(%Ecto.Changeset{valid?: false} = changeset),
+  defp insert_keyed(principal_id, key, body) do
+    principal_id
+    |> notification_changeset(body)
+    |> Ecto.Changeset.put_change(:notification_key, String.trim(key))
+    |> insert_keyed_row()
+  end
+
+  defp insert_keyed_row(%Ecto.Changeset{valid?: false} = changeset),
     do: {:error, %{changeset | action: :insert}}
 
-  defp insert_keyed(%Ecto.Changeset{} = changeset) do
+  defp insert_keyed_row(%Ecto.Changeset{} = changeset) do
     entry =
       Map.take(Ecto.Changeset.apply_changes(changeset), [:principal_id, :body, :notification_key])
 
@@ -140,10 +194,7 @@ defmodule Dhc.Notifications do
         {:ok, :already_created}
 
       {1, [%Notification{} = notification]} ->
-        # Best-effort, exactly as in `create/2`: the row is already durable, and
-        # only a genuinely new row rings the recipient's bell.
-        signal_created(notification)
-        {:ok, :created}
+        {:ok, :created, notification}
     end
   end
 
@@ -156,17 +207,6 @@ defmodule Dhc.Notifications do
   end
 
   defp after_commit_signal({:error, _operation, reason, _changes}), do: {:error, reason}
-
-  # The two post-commit channels for a new row: the realtime invalidation
-  # signal for open dashboards and (ALE-299) an Oban job that pushes to the
-  # recipient's browsers for closed ones. Both are best-effort by contract —
-  # each logs and returns rather than raising — so the committed row is the
-  # only outcome a caller can observe.
-  defp signal_created(%Notification{} = notification) do
-    _ = Broadcaster.notification_created(notification)
-    _ = WebPush.enqueue_delivery(notification)
-    :ok
-  end
 
   defp notification_changeset(principal_id, body) do
     changeset =

@@ -15,9 +15,13 @@ defmodule DhcWeb.InventoryCatalogControllerTest do
   """
 
   use DhcWeb.ConnCase, async: false
+  use Oban.Testing, repo: Dhc.Repo
 
   alias Dhc.Inventory
   alias Dhc.Inventory.ClubCalendar
+  alias Dhc.Notifications.Notification
+  alias Dhc.Notifications.Workers.KeyedCreateWorker
+  alias Dhc.Repo
 
   @actor_id "33333333-3333-3333-3333-333333333333"
 
@@ -452,6 +456,29 @@ defmodule DhcWeb.InventoryCatalogControllerTest do
 
       assert %{"errors" => %{"detail" => "Item not found"}} = json_response(missing, 404)
     end
+
+    test "notifies inventory operators of a new request", %{conn: conn} do
+      operator = grant_operator!()
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, item} = create_item(container_id, category.id)
+      today = ClubCalendar.today()
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/inventory/catalog/items/#{item.slug}/requests", %{
+          "startsOn" => Date.to_iso8601(today),
+          "dueOn" => Date.to_iso8601(Date.add(today, 7))
+        })
+
+      assert %{"data" => loan} = json_response(conn, 201)
+      deliver_loan_notifications()
+
+      [row] = Repo.all(Notification)
+      assert row.principal_id == operator
+      assert row.notification_key == "inventory:loan:#{loan["id"]}:requested"
+      refute row.principal_id == @actor_id
+    end
   end
 
   # ── Fixtures ────────────────────────────────────────────────────
@@ -533,5 +560,21 @@ defmodule DhcWeb.InventoryCatalogControllerTest do
       )
 
     Ecto.UUID.load!(loan_id)
+  end
+
+  defp grant_operator! do
+    %{principal_id: id} = Dhc.MemberFixtures.member_fixture(%{is_active: true})
+
+    Repo.insert_all("user_roles", [
+      [principal_id: Ecto.UUID.dump!(id), role: "quartermaster"]
+    ])
+
+    id
+  end
+
+  defp deliver_loan_notifications do
+    for job <- all_enqueued(worker: KeyedCreateWorker) do
+      assert :ok = perform_job(KeyedCreateWorker, job.args)
+    end
   end
 end

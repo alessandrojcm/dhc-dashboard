@@ -15,10 +15,12 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
   """
 
   use DhcWeb.ConnCase, async: false
+  use Oban.Testing, repo: Dhc.Repo
 
   alias Dhc.Inventory
   alias Dhc.Inventory.ClubCalendar
   alias Dhc.Notifications.Notification
+  alias Dhc.Notifications.Workers.KeyedCreateWorker
   alias Dhc.Repo
 
   @actor_id "55555555-5555-5555-5555-555555555555"
@@ -137,6 +139,8 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       assert payload["status"] == "approved"
       assert payload["containerPath"] != nil
 
+      deliver_loan_notifications()
+
       [row] = Repo.all(Notification)
       assert row.principal_id == payload["borrowerPrincipalId"]
       assert row.notification_key == "inventory:loan:#{request.id}:approved"
@@ -178,6 +182,8 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       assert %{"data" => %{"status" => "approved"}} = json_response(first, 200)
       assert %{"errors" => %{"code" => "not_pending"}} = json_response(retry, 409)
 
+      deliver_loan_notifications()
+
       assert {:ok, %{status: "approved"}} = Inventory.get_operator_loan(request.id)
       assert [%{notification_key: "inventory:loan:" <> _}] = Repo.all(Notification)
     end
@@ -217,6 +223,8 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       assert payload["status"] == "rejected"
       assert payload["decisionNote"] == "Needed for a workshop"
 
+      deliver_loan_notifications()
+
       [row] = Repo.all(Notification)
       assert row.notification_key == "inventory:loan:#{request.id}:rejected"
     end
@@ -247,6 +255,8 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
 
       assert %{"data" => payload} = json_response(conn, 200)
       assert payload["status"] == "cancelled"
+
+      deliver_loan_notifications()
 
       [row] = Repo.all(Notification)
       assert row.notification_key == "inventory:loan:#{loan.id}:cancelled"
@@ -330,12 +340,109 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       assert %{"data" => payload} = json_response(conn, 200)
       assert payload["approvedDueOn"] == Date.to_iso8601(new_due)
 
+      deliver_loan_notifications()
+
       [row] = Repo.all(Notification)
-
-      assert row.notification_key ==
-               "inventory:loan:#{loan.id}:dates_changed:#{Date.to_gregorian_days(new_due)}"
-
+      assert row.notification_key =~ "inventory:loan:#{loan.id}:dates_changed:"
       assert row.body =~ Date.to_iso8601(new_due)
+    end
+
+    test "does not notify when the same due date is restated", %{conn: conn} do
+      %{loan: loan} = approved_loan()
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/operator/loans/#{loan.id}/dates", %{
+          "dueOn" => Date.to_iso8601(loan.approved_due_on)
+        })
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["approvedDueOn"] == Date.to_iso8601(loan.approved_due_on)
+      assert all_enqueued(worker: KeyedCreateWorker) == []
+      assert Repo.all(Notification) == []
+    end
+
+    test "A to B to A produces three notifications; replaying the last transition produces one",
+         %{
+           conn: conn
+         } do
+      %{loan: loan} = approved_loan()
+      original = loan.approved_due_on
+      moved = Date.add(original, 3)
+
+      first =
+        conn
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/operator/loans/#{loan.id}/dates", %{
+          "dueOn" => Date.to_iso8601(moved)
+        })
+
+      assert json_response(first, 200)
+
+      second =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/operator/loans/#{loan.id}/dates", %{
+          "dueOn" => Date.to_iso8601(original)
+        })
+
+      assert json_response(second, 200)
+
+      third =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/operator/loans/#{loan.id}/dates", %{
+          "dueOn" => Date.to_iso8601(moved)
+        })
+
+      assert json_response(third, 200)
+      deliver_loan_notifications()
+      assert match?([_, _, _], Repo.all(Notification))
+
+      replay =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/operator/loans/#{loan.id}/dates", %{
+          "dueOn" => Date.to_iso8601(moved)
+        })
+
+      assert json_response(replay, 200)
+      deliver_loan_notifications()
+      assert match?([_, _, _], Repo.all(Notification))
+    end
+
+    test "a failed create_keyed is retried by the enqueued job", %{conn: conn} do
+      %{item: item} = fixture()
+      {:ok, request} = request(item)
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/operator/loans/#{request.id}/approve", %{})
+
+      assert json_response(conn, 200)
+      assert [job] = all_enqueued(worker: KeyedCreateWorker)
+      assert Repo.all(Notification) == []
+
+      original = Application.get_env(:dhc, :keyed_notification_create)
+
+      Application.put_env(:dhc, :keyed_notification_create, fn _id, _key, _body ->
+        {:error, :injected}
+      end)
+
+      on_exit(fn ->
+        if original,
+          do: Application.put_env(:dhc, :keyed_notification_create, original),
+          else: Application.delete_env(:dhc, :keyed_notification_create)
+      end)
+
+      assert {:error, :injected} = perform_job(KeyedCreateWorker, job.args)
+      assert Repo.all(Notification) == []
+
+      Application.delete_env(:dhc, :keyed_notification_create)
+      assert :ok = perform_job(KeyedCreateWorker, job.args)
+      assert [%Notification{notification_key: "inventory:loan:" <> _}] = Repo.all(Notification)
     end
 
     test "does not notify when only the start date moves", %{conn: conn} do
@@ -529,6 +636,12 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
     case YamlElixir.read_from_file(path) do
       {:ok, spec} -> spec
       {:error, error} -> flunk("failed to parse OpenAPI spec: #{inspect(error)}")
+    end
+  end
+
+  defp deliver_loan_notifications do
+    for job <- all_enqueued(worker: KeyedCreateWorker) do
+      assert :ok = perform_job(KeyedCreateWorker, job.args)
     end
   end
 end

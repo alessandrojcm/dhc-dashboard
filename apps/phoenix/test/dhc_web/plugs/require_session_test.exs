@@ -72,6 +72,32 @@ defmodule DhcWeb.Plugs.RequireSessionTest do
       assert conn.assigns.current_session.principal.id
       assert "member" in conn.assigns.current_session.roles
     end
+
+    test "returns 401 (not 403) when the principal has the role but is inactive" do
+      auth_user_id = Ecto.UUID.generate()
+      email = "inactive-op-#{System.unique_integer([:positive])}@example.com"
+
+      Dhc.MemberFixtures.member_fixture(%{
+        auth_user_id: auth_user_id,
+        is_active: false,
+        email: email
+      })
+
+      Repo.insert_all("user_roles", [
+        [principal_id: Ecto.UUID.dump!(auth_user_id), role: "quartermaster"]
+      ])
+
+      principal = principal_fixture(id: auth_user_id, email: email)
+      token = session_token(principal)
+
+      conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> DhcWeb.Plugs.RequireSession.call(roles: Dhc.Auth.inventory_operator_roles())
+
+      assert conn.halted
+      assert conn.status == 401
+    end
   end
 
   describe "tampered or expired cookie" do

@@ -320,6 +320,25 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
       assert same_day.approved_due_on == today
       assert same_day.overdue? == false
     end
+
+    test "exposes the previous due date and persist stamp on the operator view" do
+      %{item: item} = fixture()
+      today = ClubCalendar.today()
+      {:ok, {:loan, loan}} = request(item, principal_id(), today, Date.add(today, 7))
+      assert {:ok, _} = approve(loan.id)
+
+      original = Date.add(today, 7)
+      moved = Date.add(today, 10)
+
+      assert {:ok, {:loan, edited}} = edit_dates(loan.id, %{"dueOn" => Date.to_iso8601(moved)})
+      assert edited.previous_due_on == original
+      assert edited.approved_due_on == moved
+      assert %DateTime{} = edited.due_edit_at
+
+      assert {:ok, {:loan, restated}} = edit_dates(loan.id, %{"dueOn" => Date.to_iso8601(moved)})
+      assert restated.previous_due_on == moved
+      assert restated.approved_due_on == moved
+    end
   end
 
   # ── Item lifecycle ──────────────────────────────────────────────

@@ -13,19 +13,22 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
   """
 
   use Dhc.DataCase, async: false
+  use Oban.Testing, repo: Dhc.Repo
 
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
   alias Dhc.Inventory.ClubCalendar
   alias Dhc.Notifications.Notification
+  alias Dhc.Notifications.Workers.KeyedCreateWorker
   alias Dhc.Repo
 
   describe "approval" do
     test "notifies the borrower with dates and container path, once" do
       %{loan: loan} = approved_loan()
 
-      assert {:ok, :created} = Inventory.notify_loan_transition(loan, :approved)
-      assert {:ok, :already_created} = Inventory.notify_loan_transition(loan, :approved)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(loan, :approved)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(loan, :approved)
+      deliver_loan_notifications()
 
       assert [row] = Repo.all(Notification)
       assert row.principal_id == loan.borrower_principal_id
@@ -45,7 +48,8 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
       {:ok, losing} = request(item, loser)
       assert {:ok, approved} = Inventory.approve_loan(winning.id, %{}, principal_id())
 
-      assert {:ok, :created} = Inventory.notify_loan_transition(approved, :approved)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(approved, :approved)
+      deliver_loan_notifications()
       assert {:ok, rejected} = Inventory.get_own_loan(losing.id, loser)
       assert rejected.status == "rejected"
 
@@ -61,7 +65,8 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
       {:ok, request} = request(item, principal_id())
       assert {:ok, rejected} = Inventory.reject_loan(request.id, %{}, principal_id())
 
-      assert {:ok, :created} = Inventory.notify_loan_transition(rejected, :rejected)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(rejected, :rejected)
+      deliver_loan_notifications()
 
       [row] = Repo.all(Notification)
       assert row.principal_id == rejected.borrower_principal_id
@@ -73,7 +78,8 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
       %{loan: loan} = approved_loan()
       assert {:ok, cancelled} = Inventory.cancel_operator_loan(loan.id, %{}, principal_id())
 
-      assert {:ok, :created} = Inventory.notify_loan_transition(cancelled, :cancelled)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(cancelled, :cancelled)
+      deliver_loan_notifications()
 
       [row] = Repo.all(Notification)
       assert row.notification_key == "inventory:loan:#{cancelled.id}:cancelled"
@@ -93,7 +99,8 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
                  principal_id()
                )
 
-      assert {:ok, :created} = Inventory.notify_loan_transition(edited, :dates_changed)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(edited, :dates_changed)
+      deliver_loan_notifications()
 
       [row] = Repo.all(Notification)
       assert row.notification_key == dates_changed_key(edited)
@@ -112,8 +119,9 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
                  principal_id()
                )
 
-      assert {:ok, :created} = Inventory.notify_loan_transition(once, :dates_changed)
-      assert {:ok, :already_created} = Inventory.notify_loan_transition(once, :dates_changed)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(once, :dates_changed)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(once, :dates_changed)
+      deliver_loan_notifications()
 
       assert {:ok, twice} =
                Inventory.edit_loan_dates(
@@ -122,10 +130,97 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
                  principal_id()
                )
 
-      assert {:ok, :created} = Inventory.notify_loan_transition(twice, :dates_changed)
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(twice, :dates_changed)
+      deliver_loan_notifications()
 
       keys = Repo.all(Notification) |> Enum.map(& &1.notification_key) |> Enum.sort()
       assert keys == Enum.sort([dates_changed_key(once), dates_changed_key(twice)])
+    end
+
+    test "A to B to A to B is three events" do
+      %{loan: loan} = approved_loan()
+      original = loan.approved_due_on
+      moved = Date.add(original, 3)
+
+      assert {:ok, to_b} =
+               Inventory.edit_loan_dates(
+                 loan.id,
+                 %{"dueOn" => Date.to_iso8601(moved)},
+                 principal_id()
+               )
+
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(to_b, :dates_changed)
+
+      assert {:ok, to_a} =
+               Inventory.edit_loan_dates(
+                 to_b.id,
+                 %{"dueOn" => Date.to_iso8601(original)},
+                 principal_id()
+               )
+
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(to_a, :dates_changed)
+
+      assert {:ok, to_b_again} =
+               Inventory.edit_loan_dates(
+                 to_a.id,
+                 %{"dueOn" => Date.to_iso8601(moved)},
+                 principal_id()
+               )
+
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(to_b_again, :dates_changed)
+      deliver_loan_notifications()
+
+      keys = Repo.all(Notification) |> Enum.map(& &1.notification_key)
+      assert match?([_, _, _], keys)
+      assert match?([_, _, _], Enum.uniq(keys))
+    end
+  end
+
+  describe "operator-facing request and member cancellation" do
+    test "notifies every inventory operator of a new request, not the borrower" do
+      operator = grant_operator!()
+      other = grant_operator!()
+      %{item: item} = fixture()
+      borrower = principal_id()
+      {:ok, request} = request(item, borrower)
+
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(request, :requested)
+      deliver_loan_notifications()
+
+      rows = Repo.all(Notification)
+      assert Enum.sort(Enum.map(rows, & &1.principal_id)) == Enum.sort([operator, other])
+      assert Enum.all?(rows, &(&1.notification_key == "inventory:loan:#{request.id}:requested"))
+      refute Enum.any?(rows, &(&1.principal_id == borrower))
+    end
+
+    test "notifies every inventory operator of a member cancellation" do
+      operator = grant_operator!()
+      %{item: item} = fixture()
+      borrower = principal_id()
+      {:ok, request} = request(item, borrower)
+      assert {:ok, cancelled} = Inventory.cancel_loan(request.id, %{}, borrower)
+
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(cancelled, :member_cancelled)
+      deliver_loan_notifications()
+
+      [row] = Repo.all(Notification)
+      assert row.principal_id == operator
+      assert row.notification_key == "inventory:loan:#{cancelled.id}:member_cancelled"
+    end
+
+    test "does not notify an inactive inventory operator" do
+      inactive = grant_operator!(active: false)
+      active = grant_operator!()
+      %{item: item} = fixture()
+      borrower = principal_id()
+      {:ok, request} = request(item, borrower)
+
+      assert {:ok, :enqueued} = Inventory.notify_loan_transition(request, :requested)
+      deliver_loan_notifications()
+
+      rows = Repo.all(Notification)
+      assert Enum.map(rows, & &1.principal_id) == [active]
+      refute Enum.any?(rows, &(&1.principal_id == inactive))
     end
   end
 
@@ -207,7 +302,30 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
   end
 
   defp dates_changed_key(loan) do
-    "inventory:loan:#{loan.id}:dates_changed:#{Date.to_gregorian_days(loan.approved_due_on)}"
+    prev =
+      case loan do
+        %{previous_due_on: %Date{} = due_on} -> Date.to_gregorian_days(due_on)
+        _missing -> "none"
+      end
+
+    "inventory:loan:#{loan.id}:dates_changed:#{prev}:#{Date.to_gregorian_days(loan.approved_due_on)}:#{DateTime.to_unix(loan.due_edit_at, :microsecond)}"
+  end
+
+  defp grant_operator!(opts \\ []) do
+    %{principal_id: id} =
+      Dhc.MemberFixtures.member_fixture(%{is_active: Keyword.get(opts, :active, true)})
+
+    Repo.insert_all("user_roles", [
+      [principal_id: Ecto.UUID.dump!(id), role: "quartermaster"]
+    ])
+
+    id
+  end
+
+  defp deliver_loan_notifications do
+    for job <- all_enqueued(worker: KeyedCreateWorker) do
+      assert :ok = perform_job(KeyedCreateWorker, job.args)
+    end
   end
 
   defp refute_receive_notification(principal_id) do

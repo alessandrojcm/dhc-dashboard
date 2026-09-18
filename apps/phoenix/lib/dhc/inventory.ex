@@ -103,10 +103,10 @@ defmodule Dhc.Inventory do
   # (ALE-285) cannot express at all.
   defdelegate get_operator_loan_queue(), to: OperatorLoanQueue
 
-  # ALE-298 (286c) post-commit keyed notifications for exposed operator
+  # ALE-298 (286c) post-commit keyed notifications for exposed loan
   # transitions. The commands themselves stay notification-free; the
-  # controller calls this after they return so a retry cannot land a
-  # second unread row (create_keyed/3).
+  # controller calls this after they return to enqueue
+  # `KeyedCreateWorker`, which retries `create_keyed/3`.
   defdelegate notify_loan_transition(loan, kind), to: LoanNotifications
 
   # ALE-287 loan reminders. A durable ledger whose delivery pass is also its
