@@ -38,7 +38,7 @@ export const navIcons = {
 	"/dashboard/my-loans": Handshake,
 	"/dashboard/inventory": Boxes,
 	"/dashboard/inventory/loans": ClipboardList,
-	"/dashboard/inventory/items": Swords,
+	"/dashboard/inventory/items": Package,
 	"/dashboard/inventory/categories": Tags,
 	"/dashboard/inventory/containers": Boxes,
 } satisfies Partial<Record<Pathname, NavIcon>>;
