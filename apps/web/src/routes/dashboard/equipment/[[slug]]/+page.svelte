@@ -421,8 +421,8 @@ function availabilityLabel(reason: string): string {
 	}}
 >
 	<Sheet.Content
-		side="bottom"
-		class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[40rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none sm:border-t-0 sm:border-l sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right"
+		side="bottom-right"
+		class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:max-h-none sm:w-[40rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none"
 	>
 		<Sheet.Header class="sr-only">
 			<Sheet.Title>Equipment details</Sheet.Title>

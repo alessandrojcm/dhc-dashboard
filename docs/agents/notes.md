@@ -15,6 +15,7 @@
 - Stripe sync scheduling is Phoenix/Oban-owned through `Dhc.StripeSync.Worker`; the legacy Supabase `functions/stripe-sync` edge function and its manual E2E spec have been removed.
 - Members dashboard status filtering supports three states: `active`, `inactive`, `paused`; `paused` means `is_active = true` and `subscription_paused_until` is in the future.
 - `member_management_view` now exposes computed `membership_status` (`active`/`inactive`/`paused`) plus `paused_until` aliasing `member_profiles.subscription_paused_until` for member list filtering.
+- Responsive detail sheets (equipment, my-loans, operator loan queue) use `Sheet.Content side="bottom-right"`. Do not compose `side="bottom"` with `sm:slide-in-from-right`: `tailwindcss-animate`'s `animate-in` keyframes use both `--tw-enter-translate-x` and `--tw-enter-translate-y`, so the two utilities together slide diagonally. Tests: `apps/web/src/lib/components/ui/sheet/sheet-motion.test.ts`.
 
 ## Phoenix (in progress)
 

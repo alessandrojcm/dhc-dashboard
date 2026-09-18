@@ -365,10 +365,10 @@ const busy = $derived(
 		}}
 	>
 		<Sheet.Content
-			side="bottom"
+			side="bottom-right"
 			data-testid="loan-action-panel"
 			aria-label="Loan action panel"
-			class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:inset-y-0 sm:right-0 sm:left-auto sm:h-full sm:max-h-none sm:w-[28rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none sm:border-t-0 sm:border-l sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right"
+			class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:max-h-none sm:w-[28rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none"
 		>
 			{#if selected}
 				<Sheet.Header
