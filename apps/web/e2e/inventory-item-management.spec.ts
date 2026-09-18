@@ -60,6 +60,15 @@ test.describe("ALE-284 operator inventory items", () => {
 		await page.getByLabel("Notes").fill("Training loaner");
 		await page.getByRole("button", { name: "Add item" }).click();
 
+		// Creating an item selects it: its management sheet opens on Details.
+		const createdSheet = page.getByRole("dialog");
+		await expect(createdSheet).toContainText("Medium");
+		await expect(
+			createdSheet.getByRole("tab", { name: "Details", selected: true }),
+		).toBeVisible();
+		await page.keyboard.press("Escape");
+		await expect(createdSheet).toBeHidden();
+
 		const item = page.getByRole("article").filter({ hasText: "Medium" });
 		await expect(item).toContainText("Training loaner");
 
