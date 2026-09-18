@@ -2,6 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-09-16  
+**Amended:** 2026-09-18 — container-chain `FOR SHARE` (root first) precedes the item `FOR UPDATE`; restore retries from a peek when the container moved  
 **Tags:** inventory, loans, concurrency, locking, ecto
 
 ## Context
@@ -20,6 +21,10 @@ The item-before-loan lock order is load-bearing — the reverse order deadlocks 
 - one write path, `persist/1`, that declares the partial unique indexes and principal foreign keys on every changeset and translates each into a stable domain reason (`:already_allocated`, `:duplicate_request`, `:maintenance_open`, `:unknown_actor`) — no bang calls;
 - transaction rollback and result normalization;
 - actor-appropriate projection: `{:loan, member_view | operator_view}` or `{:item, projected_item}`.
+
+### 2026-09-18 lock-order amendment
+
+The accepted decision above still describes the original item-before-loan protocol. Commands that depend on a container now lock that container chain `FOR SHARE` **before** the item `FOR UPDATE` (root first): a move locks the destination chain first; a restore locks the item's current chain first. That matches container archive, which locks the container (and its subtree) before any item row. After the item lock come the dependent rows (the loan, the open maintenance period, the item's live loans). A restore peeks the item only to learn which chain to share-lock; if the locked row sits in a different container, the transaction rolls back and retries from a fresh peek rather than locking a new chain while holding the item. The item-before-loan rule in the original decision remains; the container chain is an earlier step in the same protocol.
 
 Role authorization is explicit in the actor value (`{:operator, id}`, `{:member, id}`, `:system`); the wrong actor is `{:error, :forbidden}` before any read.
 

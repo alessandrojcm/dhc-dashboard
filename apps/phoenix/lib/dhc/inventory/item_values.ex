@@ -26,6 +26,7 @@ defmodule Dhc.Inventory.ItemValues do
   alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
+  alias Dhc.Inventory.Structure
   alias Dhc.Repo
 
   @type definition :: PropertyDefinition.t()
@@ -71,7 +72,7 @@ defmodule Dhc.Inventory.ItemValues do
     |> Enum.map(fn %PropertyDefinition{id: id} = definition ->
       %PropertyDefinition{definition | options: Map.get(options, id, [])}
     end)
-    |> Enum.sort_by(&definition_order/1)
+    |> Structure.sort_definitions()
   end
 
   @doc """
@@ -311,10 +312,6 @@ defmodule Dhc.Inventory.ItemValues do
     )
     |> Repo.all()
     |> Enum.group_by(& &1.property_definition_id)
-  end
-
-  defp definition_order(%PropertyDefinition{identifying_position: position, label: label}) do
-    {if(is_nil(position), do: 1, else: 0), position || 0, String.downcase(label || "")}
   end
 
   # ── Supplied-attribute normalization ────────────────────────────

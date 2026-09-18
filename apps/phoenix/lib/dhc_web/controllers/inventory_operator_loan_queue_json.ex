@@ -11,6 +11,8 @@ defmodule DhcWeb.InventoryOperatorLoanQueueJSON do
   # the show projection cannot disagree. Handover rows add the advisory
   # `readyForCheckout` flag on top.
 
+  import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
+
   alias DhcWeb.InventoryOperatorLoansJSON
 
   def render("show.json", %{queue: queue}) do
@@ -54,15 +56,5 @@ defmodule DhcWeb.InventoryOperatorLoanQueueJSON do
       startedByPrincipalId: row.started_by_principal_id,
       startReason: row.start_reason
     }
-  end
-
-  defp serialize_datetime(nil), do: nil
-
-  defp serialize_datetime(%DateTime{} = dt) do
-    dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-  end
-
-  defp serialize_datetime(%NaiveDateTime{} = dt) do
-    dt |> NaiveDateTime.truncate(:second) |> NaiveDateTime.to_iso8601()
   end
 end

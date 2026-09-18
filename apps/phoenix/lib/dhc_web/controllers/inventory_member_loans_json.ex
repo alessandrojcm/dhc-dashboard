@@ -18,6 +18,8 @@ defmodule DhcWeb.InventoryMemberLoansJSON do
   # still renders. `containerPath` arrives already gated by
   # `Dhc.Inventory.MemberLoans`, which returns it only from approval onward.
 
+  import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
+
   def render("index.json", %{page: page}) do
     %{
       data: %{
@@ -65,14 +67,4 @@ defmodule DhcWeb.InventoryMemberLoansJSON do
 
   defp serialize_date(nil), do: nil
   defp serialize_date(%Date{} = date), do: Date.to_iso8601(date)
-
-  defp serialize_datetime(nil), do: nil
-
-  defp serialize_datetime(%DateTime{} = dt) do
-    dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-  end
-
-  defp serialize_datetime(%NaiveDateTime{} = dt) do
-    dt |> NaiveDateTime.truncate(:second) |> NaiveDateTime.to_iso8601()
-  end
 end

@@ -8,6 +8,8 @@ defmodule DhcWeb.InventoryStructureJSON do
   #   * single     → `%{data: %{...}}`
   #   * error      → `%{errors: %{detail: ..., code?: ...}}`
 
+  import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
+
   def render("index.json", %{definitions: definitions}) do
     %{data: %{definitions: Enum.map(definitions, &render_definition/1)}}
   end
@@ -55,19 +57,5 @@ defmodule DhcWeb.InventoryStructureJSON do
       position: option.position,
       retiredAt: serialize_datetime(option.retired_at)
     }
-  end
-
-  defp serialize_datetime(nil), do: nil
-
-  defp serialize_datetime(%DateTime{} = dt) do
-    dt
-    |> DateTime.truncate(:second)
-    |> DateTime.to_iso8601()
-  end
-
-  defp serialize_datetime(%NaiveDateTime{} = dt) do
-    dt
-    |> NaiveDateTime.truncate(:second)
-    |> NaiveDateTime.to_iso8601()
   end
 end

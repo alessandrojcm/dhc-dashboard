@@ -16,6 +16,8 @@ defmodule DhcWeb.InventoryItemsJSON do
   # `label` and `availability` are projections computed on read
   # (`Dhc.Inventory.ItemProjection`), never stored fields.
 
+  import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
+
   alias Dhc.Inventory.Item
 
   def render("index.json", %{page: page}) do
@@ -122,14 +124,4 @@ defmodule DhcWeb.InventoryItemsJSON do
   # Decimals serialize as strings so no precision is lost in JSON.
   defp serialize_decimal(nil), do: nil
   defp serialize_decimal(%Decimal{} = decimal), do: Decimal.to_string(decimal)
-
-  defp serialize_datetime(nil), do: nil
-
-  defp serialize_datetime(%DateTime{} = dt) do
-    dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-  end
-
-  defp serialize_datetime(%NaiveDateTime{} = dt) do
-    dt |> NaiveDateTime.truncate(:second) |> NaiveDateTime.to_iso8601()
-  end
 end

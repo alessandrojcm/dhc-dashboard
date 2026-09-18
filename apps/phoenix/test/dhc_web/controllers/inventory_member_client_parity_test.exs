@@ -15,7 +15,7 @@ defmodule DhcWeb.InventoryMemberClientParityTest do
   missing name.
 
   This is the member twin of
-  `DhcWeb.InventoryOperatorItemsClientParityTest`; both exist because a
+  `DhcWeb.InventoryItemsClientParityTest`; both exist because a
   member operation and an operator operation can drift independently.
   """
 

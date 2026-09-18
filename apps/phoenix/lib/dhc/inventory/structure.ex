@@ -44,6 +44,19 @@ defmodule Dhc.Inventory.Structure do
     |> sort_definitions()
   end
 
+  @doc """
+  Order definitions: identifying positions first (by position), then
+  remaining definitions by case-insensitive label. Shared with
+  `Dhc.Inventory.ItemValues` so a validation load and a structure list
+  cannot disagree about display order.
+  """
+  @spec sort_definitions([definition()]) :: [definition()]
+  def sort_definitions(definitions) do
+    Enum.sort_by(definitions, fn %PropertyDefinition{identifying_position: pos, label: label} ->
+      {if(is_nil(pos), do: 1, else: 0), pos || 0, String.downcase(label || "")}
+    end)
+  end
+
   @spec get_definition(String.t()) :: {:ok, definition()} | {:error, :not_found}
   def get_definition(id) when is_binary(id) do
     case Repo.get(PropertyDefinition, id) do
@@ -478,12 +491,6 @@ defmodule Dhc.Inventory.Structure do
 
   defp attach_options(%PropertyDefinition{} = definition) do
     %PropertyDefinition{definition | options: list_options(definition.id)}
-  end
-
-  defp sort_definitions(definitions) do
-    Enum.sort_by(definitions, fn %PropertyDefinition{identifying_position: pos, label: label} ->
-      {if(is_nil(pos), do: 1, else: 0), pos || 0, String.downcase(label || "")}
-    end)
   end
 
   # ── Result helpers ──────────────────────────────────────────────

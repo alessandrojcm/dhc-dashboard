@@ -11,6 +11,8 @@ defmodule DhcWeb.InventoryCategoriesJSON do
   # Payload keys are camelCase per the contract: `itemCount`, `createdAt`,
   # `updatedAt`.
 
+  import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
+
   def render("index.json", %{categories: categories}) do
     %{data: %{categories: Enum.map(categories, &render_category/1)}}
   end
@@ -32,22 +34,5 @@ defmodule DhcWeb.InventoryCategoriesJSON do
       createdAt: serialize_datetime(category.created_at),
       updatedAt: serialize_datetime(category.updated_at)
     }
-  end
-
-  defp serialize_datetime(nil), do: nil
-
-  defp serialize_datetime(%DateTime{} = dt) do
-    dt
-    |> DateTime.truncate(:second)
-    |> DateTime.to_iso8601()
-  end
-
-  # `:utc_datetime` Ecto type loads as a naive `%DateTime{}`-ish struct via
-  # Postgrex when the column is timestamptz — cover the `%NaiveDateTime{}` case
-  # too in case the adapter returns naive values.
-  defp serialize_datetime(%NaiveDateTime{} = dt) do
-    dt
-    |> NaiveDateTime.truncate(:second)
-    |> NaiveDateTime.to_iso8601()
   end
 end

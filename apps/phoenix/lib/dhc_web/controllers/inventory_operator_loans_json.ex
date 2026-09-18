@@ -12,6 +12,8 @@ defmodule DhcWeb.InventoryOperatorLoansJSON do
   # timestamps. `overdue` is the domain's `overdue?` projected as a
   # boolean; `containerPath` is the snapshot captured at approval.
 
+  import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
+
   def render("show.json", %{loan: loan}), do: %{data: render_loan(loan)}
 
   def render("error.json", assigns) do
@@ -51,14 +53,4 @@ defmodule DhcWeb.InventoryOperatorLoansJSON do
 
   defp serialize_date(nil), do: nil
   defp serialize_date(%Date{} = date), do: Date.to_iso8601(date)
-
-  defp serialize_datetime(nil), do: nil
-
-  defp serialize_datetime(%DateTime{} = dt) do
-    dt |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-  end
-
-  defp serialize_datetime(%NaiveDateTime{} = dt) do
-    dt |> NaiveDateTime.truncate(:second) |> NaiveDateTime.to_iso8601()
-  end
 end

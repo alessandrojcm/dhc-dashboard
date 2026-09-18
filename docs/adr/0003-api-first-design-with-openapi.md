@@ -44,7 +44,7 @@ Request validation is **explicit and generated**, not runtime-magical. The gener
 
 The generator's unit of scaffolding is the **slice**, named by the `operationId` prefix (`inventoryStructure.showDefinition` → slice `inventoryStructure` → `inventory_structure_controller.ex`). The **tag** remains the domain boundary — "one domain = one tag = one URL root" — and carries the `x-context` / `x-resource` extensions.
 
-Separating the two lets one domain be served by several controllers without giving up its single tag and URL root. The `Inventory` tag, for example, owns both the `inventoryStructure` and `inventoryOperatorItems` slices. Keying scaffolding on the tag instead made the generator re-emit a broken stub for every tag whose controllers were deliberately named per slice.
+Separating the two lets one domain be served by several controllers without giving up its single tag and URL root. The `Inventory` tag, for example, owns both the `inventoryStructure` and `inventoryItems` slices. Keying scaffolding on the tag instead made the generator re-emit a broken stub for every tag whose controllers were deliberately named per slice.
 
 Every operation therefore **must** carry an `operationId` of the form `<slice>.<action>`, where `<slice>` underscores to the intended controller filename. An operationId with no prefix falls back to the tag name as its slice, preserving the original one-controller-per-tag behaviour.
 

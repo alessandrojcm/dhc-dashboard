@@ -15,7 +15,7 @@ defmodule Mix.Tasks.Gen.Controllers do
   root" — and supplies the `x-context` / `x-resource` extensions. Because a
   domain may be served by several controllers, one tag may contain several
   slices: the `Inventory` tag holds both `inventoryStructure` and
-  `inventoryOperatorItems`. Keying scaffolding on the slice is what keeps
+  `inventoryItems`. Keying scaffolding on the slice is what keeps
   `mix gen.controllers` idempotent for such tags.
 
   ## Usage

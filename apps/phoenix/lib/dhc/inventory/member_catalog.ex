@@ -55,13 +55,10 @@ defmodule Dhc.Inventory.MemberCatalog do
   alias Dhc.Inventory.ItemValues
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.MaintenancePeriod
+  alias Dhc.Inventory.PageParams
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
   alias Dhc.Repo
-
-  @allowed_limits [10, 25, 50, 100]
-  @default_limit 25
-  @allowed_directions ~w(asc desc)
 
   @sort_specs %{"slug" => %{field: :slug}}
 
@@ -364,8 +361,8 @@ defmodule Dhc.Inventory.MemberCatalog do
   defp parse_options(params) when is_list(params), do: parse_options(Map.new(params))
 
   defp parse_options(params) do
-    with {:ok, limit} <- parse_limit(take(params, ["limit"])),
-         {:ok, direction} <- parse_direction(take(params, ["direction"])),
+    with {:ok, limit} <- PageParams.parse_limit(take(params, ["limit"])),
+         {:ok, direction} <- PageParams.parse_direction(take(params, ["direction"])),
          {:ok, category_ids} <- parse_categories(take(params, ["categoryId", "category_id"])),
          {:ok, properties} <- parse_properties(take(params, ["property", "properties"])),
          {:ok, availability} <- parse_availability(take(params, ["availability"])) do
@@ -377,35 +374,11 @@ defmodule Dhc.Inventory.MemberCatalog do
          category_ids: category_ids,
          properties: properties,
          availability: availability,
-         q: blank_to_nil(take(params, ["q"])),
-         cursor: blank_to_nil(take(params, ["cursor"]))
+         q: PageParams.blank_to_nil(take(params, ["q"])),
+         cursor: PageParams.blank_to_nil(take(params, ["cursor"]))
        }}
     end
   end
-
-  defp parse_limit(nil), do: {:ok, @default_limit}
-  defp parse_limit(""), do: {:ok, @default_limit}
-  defp parse_limit(limit) when limit in @allowed_limits, do: {:ok, limit}
-
-  defp parse_limit(limit) when is_binary(limit) do
-    case Integer.parse(limit) do
-      {parsed, ""} -> parse_limit(parsed)
-      _other -> {:error, :invalid_limit}
-    end
-  end
-
-  defp parse_limit(_limit), do: {:error, :invalid_limit}
-
-  defp parse_direction(nil), do: {:ok, "asc"}
-  defp parse_direction(""), do: {:ok, "asc"}
-
-  defp parse_direction(direction) when is_binary(direction) do
-    if direction in @allowed_directions,
-      do: {:ok, direction},
-      else: {:error, :invalid_direction}
-  end
-
-  defp parse_direction(_direction), do: {:error, :invalid_direction}
 
   defp parse_availability(nil), do: {:ok, :all}
   defp parse_availability(""), do: {:ok, :all}
@@ -489,13 +462,6 @@ defmodule Dhc.Inventory.MemberCatalog do
   rescue
     ArgumentError -> nil
   end
-
-  defp blank_to_nil(nil), do: nil
-
-  defp blank_to_nil(value) when is_binary(value),
-    do: if(String.trim(value) == "", do: nil, else: value)
-
-  defp blank_to_nil(_value), do: nil
 
   # Everything that changes the result set is bound into the cursor, so a
   # cursor cannot be replayed against a different query.

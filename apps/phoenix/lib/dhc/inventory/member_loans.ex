@@ -65,11 +65,8 @@ defmodule Dhc.Inventory.MemberLoans do
   alias Dhc.Inventory.ClubCalendar
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.LoanProjection
+  alias Dhc.Inventory.PageParams
   alias Dhc.Repo
-
-  @allowed_limits [10, 25, 50, 100]
-  @default_limit 25
-  @allowed_directions ~w(asc desc)
 
   # A loan's creation time is immutable, which makes it the one ordering key
   # no transition can change underneath a cursor.
@@ -231,8 +228,11 @@ defmodule Dhc.Inventory.MemberLoans do
   defp parse_list_options(params) when is_list(params), do: parse_list_options(Map.new(params))
 
   defp parse_list_options(params) do
-    with {:ok, limit} <- parse_limit(take(params, ["limit", :limit])),
-         {:ok, direction} <- parse_direction(take(params, ["direction", :direction])),
+    # Newest-first is the default a history is read in, so `direction`
+    # defaults to `desc` here rather than to the catalog's ascending slug.
+    with {:ok, limit} <- PageParams.parse_limit(take(params, ["limit", :limit])),
+         {:ok, direction} <-
+           PageParams.parse_direction(take(params, ["direction", :direction]), "desc"),
          {:ok, statuses} <- parse_status_filter(take(params, ["status", :status])) do
       {:ok,
        %{
@@ -241,36 +241,10 @@ defmodule Dhc.Inventory.MemberLoans do
          direction: direction,
          statuses: statuses,
          status: normalize_status(take(params, ["status", :status])),
-         cursor: blank_to_nil(take(params, ["cursor", :cursor]))
+         cursor: PageParams.blank_to_nil(take(params, ["cursor", :cursor]))
        }}
     end
   end
-
-  # Newest-first is the default a history is read in, so `direction` defaults
-  # to `desc` here rather than to the catalog's ascending slug order.
-  defp parse_direction(nil), do: {:ok, "desc"}
-  defp parse_direction(""), do: {:ok, "desc"}
-
-  defp parse_direction(direction) when is_binary(direction) do
-    if direction in @allowed_directions,
-      do: {:ok, direction},
-      else: {:error, :invalid_direction}
-  end
-
-  defp parse_direction(_direction), do: {:error, :invalid_direction}
-
-  defp parse_limit(nil), do: {:ok, @default_limit}
-  defp parse_limit(""), do: {:ok, @default_limit}
-  defp parse_limit(limit) when limit in @allowed_limits, do: {:ok, limit}
-
-  defp parse_limit(limit) when is_binary(limit) do
-    case Integer.parse(limit) do
-      {parsed, ""} -> parse_limit(parsed)
-      _other -> {:error, :invalid_limit}
-    end
-  end
-
-  defp parse_limit(_limit), do: {:error, :invalid_limit}
 
   defp parse_status_filter(nil), do: {:ok, nil}
   defp parse_status_filter(""), do: {:ok, nil}
@@ -284,13 +258,6 @@ defmodule Dhc.Inventory.MemberLoans do
   # revised.
   defp normalize_status(status) when status in [nil, "", "all"], do: "all"
   defp normalize_status(status) when is_binary(status), do: status
-
-  defp blank_to_nil(nil), do: nil
-
-  defp blank_to_nil(value) when is_binary(value),
-    do: if(String.trim(value) == "", do: nil, else: value)
-
-  defp blank_to_nil(_value), do: nil
 
   defp cursor_context(opts) do
     %{

@@ -11,11 +11,13 @@ defmodule DhcWeb.InventoryContainersJSON do
   #
   # Payload keys are camelCase per the contract: `parentContainerId`,
   # `parentContainer`, `childContainers`, `itemCount`, `createdAt`,
-  # `updatedAt`, `outForMaintenance`. The virtual summary maps
+  # `updatedAt`. The virtual summary maps
   # (`parent_container`, `child_containers`, `items`) come back from
   # `Dhc.Inventory` with string keys already (see `parent_summary/1`,
   # `list_child_summaries/1`, `list_container_items/1`); they are passed
   # through verbatim so the wire shape matches the contract.
+
+  import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
 
   def render("index.json", %{containers: containers}) do
     %{data: %{containers: Enum.map(containers, &render_container/1)}}
@@ -73,22 +75,5 @@ defmodule DhcWeb.InventoryContainersJSON do
 
   defp render_item(%{"id" => id, "category" => category}) do
     %{id: id, category: category}
-  end
-
-  defp serialize_datetime(nil), do: nil
-
-  defp serialize_datetime(%DateTime{} = dt) do
-    dt
-    |> DateTime.truncate(:second)
-    |> DateTime.to_iso8601()
-  end
-
-  # `:utc_datetime` Ecto type loads as a naive struct via Postgrex when the
-  # column is timestamptz — cover the `%NaiveDateTime{}` case too in case the
-  # adapter returns naive values.
-  defp serialize_datetime(%NaiveDateTime{} = dt) do
-    dt
-    |> NaiveDateTime.truncate(:second)
-    |> NaiveDateTime.to_iso8601()
   end
 end

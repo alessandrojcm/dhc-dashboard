@@ -48,7 +48,9 @@ defmodule Dhc.Repo.Migrations.Ale289DropLegacyInventory do
   end
 
   def down do
-    raise "ALE-289 is a nuke migration: legacy inventory rows and history cannot be restored. " <>
-            "Recover via a normal deploy rollback, never a data restore."
+    raise "ALE-289 is irreversible: the previous release needs the dropped " <>
+            "inventory_history table and legacy columns, so a deploy rollback " <>
+            "is schema-incompatible. Recover forward-only — restore from backup " <>
+            "or re-run the expand — never via mix ecto.rollback."
   end
 end

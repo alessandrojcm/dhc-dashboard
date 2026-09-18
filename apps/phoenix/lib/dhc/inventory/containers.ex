@@ -491,15 +491,8 @@ defmodule Dhc.Inventory.Containers do
 
   defp active_dependants?(container_id) do
     %{rows: [[active_dependants?]]} =
-      Repo.query!(
+      query_subtree!(
         """
-        WITH RECURSIVE subtree AS (
-          SELECT id FROM containers WHERE id = $1
-          UNION ALL
-          SELECT child.id
-          FROM containers child
-          JOIN subtree parent ON parent.id = child.parent_container_id
-        )
         SELECT
           EXISTS (
             SELECT 1
@@ -514,31 +507,40 @@ defmodule Dhc.Inventory.Containers do
             WHERE item.archived_at IS NULL
           )
         """,
-        [Ecto.UUID.dump!(container_id)]
+        container_id
       )
 
     active_dependants?
   end
 
   defp lock_dependants(container_id) do
-    Repo.query!(
+    query_subtree!(
       """
-      WITH RECURSIVE subtree AS (
-        SELECT id FROM containers WHERE id = $1
-        UNION ALL
-        SELECT child.id
-        FROM containers child
-        JOIN subtree parent ON parent.id = child.parent_container_id
-      )
       SELECT container.id
       FROM containers container
       JOIN subtree ON subtree.id = container.id
       ORDER BY container.id
       FOR UPDATE
       """,
-      [Ecto.UUID.dump!(container_id)]
+      container_id
     )
 
+    query_subtree!(
+      """
+      SELECT item.id
+      FROM inventory_items item
+      JOIN subtree ON subtree.id = item.container_id
+      ORDER BY item.id
+      FOR UPDATE
+      """,
+      container_id
+    )
+  end
+
+  # Shared recursive walk of a container and every descendant. The three
+  # callers differ only in the SELECT that follows (active-dependant check,
+  # container FOR UPDATE, item FOR UPDATE).
+  defp query_subtree!(select_sql, container_id) do
     Repo.query!(
       """
       WITH RECURSIVE subtree AS (
@@ -548,12 +550,7 @@ defmodule Dhc.Inventory.Containers do
         FROM containers child
         JOIN subtree parent ON parent.id = child.parent_container_id
       )
-      SELECT item.id
-      FROM inventory_items item
-      JOIN subtree ON subtree.id = item.container_id
-      ORDER BY item.id
-      FOR UPDATE
-      """,
+      """ <> select_sql,
       [Ecto.UUID.dump!(container_id)]
     )
   end
