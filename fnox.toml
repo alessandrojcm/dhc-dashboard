@@ -24,4 +24,4 @@ STRIPE_STUDENT_COUPON_ID = { provider = "1Password", value = "STRIPE_STUDENT_COU
 STRIPE_COACH_COUPON_ID = { provider = "1Password", value = "STRIPE_COACH_COUPON_ID" }
 WEB_PUSH_VAPID_PRIVATE_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PRIVATE_KEY" }
 WEB_PUSH_VAPID_PUBLIC_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PUBLIC_KEY" }
-WEB_PUSH_VAPID_SUBJECT= { provider = "1Password", avlue = "WEB_PUSH_VAPID_SUBJECT" }
+WEB_PUSH_VAPID_SUBJECT= { provider = "1Password", value = "WEB_PUSH_VAPID_SUBJECT" }
