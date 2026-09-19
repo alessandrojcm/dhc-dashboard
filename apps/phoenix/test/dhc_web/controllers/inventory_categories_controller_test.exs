@@ -6,9 +6,8 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
   Covers the ALE-104 contract for `GET/POST /inventory/categories` and
   `GET/PATCH/DELETE /inventory/categories/:id`: RBAC (member reads,
   inventory write roles), 404/409/422 error mapping, camelCase payload shape
-  (`availableAttributes`, `itemCount`, `createdAt`), and the
-  still-referenced-vs-empty delete semantics. The underlying domain logic is
-  covered by `Dhc.InventoryTest`.
+  (`itemCount`, `createdAt`), and the still-referenced-vs-empty delete
+  semantics. The underlying domain logic is covered by `Dhc.InventoryTest`.
   """
 
   use DhcWeb.ConnCase, async: false
@@ -16,6 +15,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
   import Ecto.Query
 
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
   # Inventory write roles — mirrors the `:inventory_admin_api` pipeline and the
   # existing SvelteKit `INVENTORY_ROLES`.
@@ -23,28 +23,14 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
   # Reads are any authenticated member.
   @read_roles ~w(member quartermaster admin president)
 
-  defmodule Verifier do
-    for role <- ~w(quartermaster admin president member) do
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: Ecto.UUID.generate(),
-           email: "#{unquote(role)}@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end
-
-    def verify("bad-token"), do: {:error, :invalid_token}
-    def verify(_token), do: {:error, :invalid_token}
-  end
-
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        generate_sub: true,
+        roles: ~w(quartermaster admin president member)
+      )
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
   end
 
   defp auth_conn(conn, role), do: put_req_header(conn, "authorization", "Bearer #{role}-token")
@@ -59,7 +45,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
 
     {:ok, category} =
       %Dhc.Inventory.EquipmentCategory{}
-      |> Ecto.Changeset.cast(attrs, [:name, :description, :available_attributes])
+      |> Ecto.Changeset.cast(attrs, [:name, :description])
       |> Ecto.Changeset.validate_required([:name])
       |> Repo.insert()
 
@@ -71,7 +57,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
   describe "index" do
     test "returns categories ordered by name with itemCount", %{conn: conn} do
       insert_category(name: "Zzz Last", description: "last")
-      insert_category(name: "Aaa First", available_attributes: [])
+      insert_category(name: "Aaa First", description: "first")
 
       conn =
         conn
@@ -86,8 +72,8 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
       # A category with no items reports itemCount 0.
       aaa = Enum.find(categories, &(&1["name"] == "Aaa First"))
       assert aaa["itemCount"] == 0
-      assert aaa["description"] == nil
-      assert aaa["availableAttributes"] == []
+      assert aaa["description"] == "first"
+      refute Map.has_key?(aaa, "availableAttributes")
       # camelCase contracts
       assert Map.has_key?(aaa, "createdAt")
       assert Map.has_key?(aaa, "updatedAt")
@@ -155,33 +141,32 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
           |> auth_conn(role)
           |> post("/api/inventory/categories", %{
             "name" => "Test #{role}",
-            "description" => "desc",
-            "availableAttributes" => [
-              %{"name" => "brand", "type" => "text", "label" => "Brand", "required" => true}
-            ]
+            "description" => "desc"
           })
 
         assert %{"data" => payload} = json_response(conn, 201)
         assert payload["name"] == "Test #{role}"
         assert payload["itemCount"] == 0
-        assert [attr] = payload["availableAttributes"]
-        assert attr["name"] == "brand"
+        refute Map.has_key?(payload, "availableAttributes")
       end
     end
 
-    test "accepts either camelCase or snake_case availableAttributes", %{conn: conn} do
+    test "ignores legacy attribute config keys", %{conn: conn} do
+      # ALE-289 dropped the availableAttributes JSON config; a stale caller
+      # still sending it must get a clean create without it echoed back.
       conn =
         conn
         |> auth_conn("quartermaster")
         |> post("/api/inventory/categories", %{
-          "name" => "Snake Case Category",
-          "available_attributes" => [
+          "name" => "Legacy Config Category",
+          "availableAttributes" => [
             %{"name" => "size", "type" => "select", "options" => ["S", "M"]}
           ]
         })
 
       assert %{"data" => payload} = json_response(conn, 201)
-      assert [_attribute] = payload["availableAttributes"]
+      assert payload["name"] == "Legacy Config Category"
+      refute Map.has_key?(payload, "availableAttributes")
     end
 
     test "returns 403 for non-write roles", %{conn: conn} do
@@ -204,10 +189,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
       conn =
         conn
         |> auth_conn("admin")
-        |> post("/api/inventory/categories", %{
-          "name" => "Duplicate Name",
-          "availableAttributes" => []
-        })
+        |> post("/api/inventory/categories", %{"name" => "Duplicate Name"})
 
       assert %{"errors" => %{"detail" => "A category with that name already exists"}} =
                json_response(conn, 409)
@@ -217,7 +199,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
       conn =
         conn
         |> auth_conn("admin")
-        |> post("/api/inventory/categories", %{"availableAttributes" => []})
+        |> post("/api/inventory/categories", %{"description" => "no name"})
 
       assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
       assert detail =~ "name"
@@ -334,14 +316,15 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
         Repo.query(
           """
           INSERT INTO inventory_items
-            (id, container_id, category_id, attributes, quantity, created_at, updated_at)
-          VALUES ($1, $2, $3, '{}'::jsonb, 1, NOW(), NOW())
+            (id, container_id, category_id, slug, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, NOW(), NOW())
           """,
           # uuid columns require 16-byte binaries for raw SQL params.
           [
             Ecto.UUID.dump!(Ecto.UUID.generate()),
             Ecto.UUID.dump!(container_id),
-            Ecto.UUID.dump!(to_uuid(category.id))
+            Ecto.UUID.dump!(to_uuid(category.id)),
+            "test-#{System.unique_integer([:positive])}"
           ]
         )
 

@@ -28,6 +28,13 @@ cors_allowed_origins =
       String.split(origins, ",", trim: true)
   end
 
+endpoint_ip =
+  case System.get_env("PHX_BIND_ADDRESS", "127.0.0.1") do
+    "127.0.0.1" -> {127, 0, 0, 1}
+    "0.0.0.0" -> {0, 0, 0, 0}
+    address -> raise "PHX_BIND_ADDRESS must be 127.0.0.1 or 0.0.0.0, got: #{address}"
+  end
+
 config :dhc, Dhc.Repo,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
@@ -42,9 +49,9 @@ config :dhc, Dhc.Repo, repo_config
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
 config :dhc, DhcWeb.Endpoint,
-  # Binding to loopback ipv4 address prevents access from other machines.
-  # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
-  http: [ip: {127, 0, 0, 1}],
+  # Bind to loopback by default. The Docker development service sets
+  # PHX_BIND_ADDRESS=0.0.0.0 so its published port is reachable from the host.
+  http: [ip: endpoint_ip],
   check_origin: false,
   code_reloader: true,
   debug_errors: true,

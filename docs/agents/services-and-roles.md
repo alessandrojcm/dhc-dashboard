@@ -10,10 +10,10 @@
 
 ## Roles (RBAC)
 
-```typescript
-WORKSHOP_ROLES: ['workshop_coordinator', 'president', 'admin']
-SETTINGS_ROLES: ['president', 'committee_coordinator', 'admin']
-INVENTORY_ROLES: ['quartermaster', 'admin', 'president']
-```
-
-Check with `authorize(locals, ROLES)` in API routes or `has_any_role()` in SQL.
+Frontend role policy lives behind typed capabilities in
+`apps/web/src/lib/server/authorization/` (GH-510). Feature code never imports
+role sets; it asks `authorizationFor(session).can("inventory.manage")` /
+`.require(...)`, or `authorize(locals, "workshops.manage")` when it only needs
+the session back. Role → capability rules are the single table in
+`capabilities.ts`; they mirror the Phoenix router pipelines, which remain the
+authoritative enforcement (`has_any_role()` in SQL, plugs in Phoenix).

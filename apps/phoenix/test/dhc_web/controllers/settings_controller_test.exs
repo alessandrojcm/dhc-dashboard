@@ -3,34 +3,22 @@ defmodule DhcWeb.SettingsControllerTest do
 
   alias Dhc.Repo
 
-  defmodule Verifier do
-    @settings_admin_roles ~w(president committee_coordinator admin)
+  alias DhcWeb.OpenApiVerifier
 
-    Enum.each(@settings_admin_roles, fn role ->
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: Ecto.UUID.generate(),
-           email: "admin@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end)
-
-    def verify("member-token") do
-      {:ok,
-       %{sub: Ecto.UUID.generate(), email: "member@example.com", roles: ["member"], raw: %{}}}
-    end
-
-    def verify(_token), do: {:error, :invalid_token}
-  end
+  @settings_admin_roles ~w(president committee_coordinator admin)
 
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        generate_sub: true,
+        roles: @settings_admin_roles,
+        role_email: "admin@example.com",
+        tokens: %{
+          "member-token" => %{email: "member@example.com", roles: ["member"]}
+        }
+      )
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
   end
 
   describe "index" do

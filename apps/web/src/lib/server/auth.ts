@@ -1,9 +1,7 @@
-import { authShowSession } from "@dhc/api-client";
+import { authSessionShowSession } from "@dhc/api-client";
 import { env } from "$env/dynamic/private";
-import { error } from "@sveltejs/kit";
-import { invariant } from "./invariant";
-import { getRolesFromSession } from "./roles";
-import { apiClientOptions, type Cookies } from "./api-client";
+import { authorizationFor, type Capability } from "./authorization";
+import type { Cookies } from "./api-client";
 
 export interface PhoenixSessionClient {
 	showSession(options: {
@@ -16,7 +14,7 @@ export interface PhoenixSessionClient {
 }
 
 const defaultSessionClient: PhoenixSessionClient = {
-	showSession: async (options) => authShowSession(options),
+	showSession: async (options) => authSessionShowSession(options),
 };
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:4000/api";
@@ -87,44 +85,18 @@ export async function getPhoenixSession(
 export type { Cookies };
 
 /**
- * Authorize a request against a role set. Returns the session projection on
- * success; throws (via `invariant`) with 401 when there is no session and
- * 403 when the session's roles do not intersect `allowedRoles`.
- *
- * ALE-164: reads roles from the Phoenix session projection (no JWT decoding).
+ * Authorize a request against a capability. Returns the session projection on
+ * success; throws a SvelteKit `error()` with the decision's status otherwise
+ * (401 anonymous, 403 forbidden). GH-510: a thin adapter over
+ * `authorizationFor(session).require(capability)` for callers that only need
+ * the session back.
  */
 export async function authorize(
 	locals: App.Locals,
-	allowedRoles: Set<string>,
+	capability: Capability,
 ): Promise<PhoenixSessionProjection> {
 	const { session } = await locals.safeGetSession();
-	if (!session) error(401, { message: "Unauthorized" });
-
-	const roles = getRolesFromSession(session);
-	const hasPermission = roles.intersection(allowedRoles).size > 0;
-	invariant(!hasPermission, "Unauthorized", 403);
-
-	return session;
-}
-
-/**
- * ALE-164: authorize a request and return both the session projection and
- * the API client options that forward the `_dhc_session` cookie to Phoenix.
- *
- * Most server loads / remote functions need both: the session for self-reads
- * (e.g. `session.principal.id`), and the cookie-forwarding options for the
- * generated `@dhc/api-client` calls. This helper avoids the prior
- * `apiClientOptions(session)` pattern that no longer type-checks because the
- * session projection does not carry an `access_token`.
- */
-export async function authorizeWithClientOptions(
-	locals: App.Locals,
-	cookies: Cookies,
-	allowedRoles: Set<string>,
-): Promise<{
-	session: PhoenixSessionProjection;
-	clientOptions: ReturnType<typeof apiClientOptions>;
-}> {
-	const session = await authorize(locals, allowedRoles);
-	return { session, clientOptions: apiClientOptions(cookies) };
+	authorizationFor(session).require(capability);
+	// `require` throws for anonymous sessions, so `session` is non-null here.
+	return session!;
 }

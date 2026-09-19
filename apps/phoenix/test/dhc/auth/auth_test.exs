@@ -910,4 +910,37 @@ defmodule Dhc.AuthTest do
     }
     |> Repo.insert!()
   end
+
+  describe "inventory_operator_principal_ids/1" do
+    test "includes an active operator and omits an inactive one with the same role" do
+      %{principal_id: active} = Dhc.MemberFixtures.member_fixture(%{is_active: true})
+      %{principal_id: inactive} = Dhc.MemberFixtures.member_fixture(%{is_active: false})
+      leftover = principal_fixture()
+
+      Repo.insert_all("user_roles", [
+        [principal_id: Ecto.UUID.dump!(active), role: "quartermaster"],
+        [principal_id: Ecto.UUID.dump!(inactive), role: "admin"],
+        [principal_id: Ecto.UUID.dump!(leftover.id), role: "president"]
+      ])
+
+      assert Auth.inventory_operator_principal_ids() == [active]
+
+      assert Auth.inventory_operator_principal_ids(except: active) == []
+    end
+  end
+
+  describe "authorize_session/2" do
+    test "rejects an inactive projection even when the role matches" do
+      assert {:error, :inactive} =
+               Auth.authorize_session(
+                 %{is_active: false, roles: ["quartermaster"]},
+                 Auth.inventory_operator_roles()
+               )
+    end
+
+    test "rejects an active projection that lacks the required role" do
+      assert {:error, :forbidden} =
+               Auth.authorize_session(%{is_active: true, roles: ["member"]}, ~w(admin))
+    end
+  end
 end

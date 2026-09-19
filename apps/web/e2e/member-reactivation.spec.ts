@@ -90,10 +90,26 @@ test.describe("Member reactivation", () => {
 			.first();
 	}
 
-	async function openReactivationFromDirectory(page: Page, email: string) {
-		await gotoHydrated(page, "/dashboard/members/directory");
+	/**
+	 * Open the directory filtered to one member and return their entry. The
+	 * directory paginates at 10 and fixtures from parallel specs share the
+	 * database, so the member is not reliably on page 1 of the unfiltered list.
+	 */
+	async function findInDirectory(page: Page, email: string) {
+		await gotoHydrated(
+			page,
+			`/dashboard/members/directory?q=${encodeURIComponent(email)}`,
+		);
+		await expect(
+			page.getByRole("region", { name: "Member directory", exact: true }),
+		).toHaveAttribute("aria-busy", "false");
 		const entry = directoryEntry(page, email);
 		await expect(entry).toBeVisible();
+		return entry;
+	}
+
+	async function openReactivationFromDirectory(page: Page, email: string) {
+		const entry = await findInDirectory(page, email);
 		await entry.getByRole("button", { name: /reactivate/i }).click();
 		return page.getByRole("dialog");
 	}
@@ -103,26 +119,14 @@ test.describe("Member reactivation", () => {
 		context,
 	}) => {
 		await loginAsUser(context, adminEmail);
-		await gotoHydrated(page, "/dashboard/members/directory");
-
-		const entry = directoryEntry(page, memberEmail);
-		await expect(entry).toBeVisible();
+		const entry = await findInDirectory(page, memberEmail);
 		// Inactive member with billing authority → action visible…
 		await expect(
 			entry.getByRole("button", { name: /reactivate/i }),
 		).toBeVisible();
 
 		// …but active members never offer reactivation.
-		const adminEntry = page
-			.getByRole("row")
-			.filter({ has: page.getByRole("link", { name: adminEmail }) })
-			.or(
-				page
-					.getByRole("article")
-					.filter({ has: page.getByRole("link", { name: adminEmail }) }),
-			)
-			.first();
-		await expect(adminEntry).toBeVisible();
+		const adminEntry = await findInDirectory(page, adminEmail);
 		await expect(
 			adminEntry.getByRole("button", { name: /reactivate/i }),
 		).toHaveCount(0);
@@ -133,10 +137,7 @@ test.describe("Member reactivation", () => {
 		context,
 	}) => {
 		await loginAsUser(context, coordinatorData.email);
-		await gotoHydrated(page, "/dashboard/members/directory");
-
-		const entry = directoryEntry(page, memberEmail);
-		await expect(entry).toBeVisible();
+		const entry = await findInDirectory(page, memberEmail);
 		await expect(
 			entry.getByRole("button", { name: /reactivate/i }),
 		).toHaveCount(0);
@@ -195,9 +196,13 @@ test.describe("Member reactivation", () => {
 		expect(amountsBody.data.annualFee.amount).toBeGreaterThan(0);
 
 		await expect(dialog.getByText("Due today")).toBeVisible();
-		await expect(
-			dialog.getByText(/for this month.*for this year/i),
-		).toBeVisible();
+		// The prorated monthly + annual lines render as sibling text nodes
+		// inside one <p> (or in separate branches for partial coverage), so
+		// assert each phrase separately scoped to the amounts block instead
+		// of requiring both phrases in a single element.
+		const amountsBlock = dialog.getByTestId("reactivation-amounts");
+		await expect(amountsBlock.getByText(/for this month/i)).toBeVisible();
+		await expect(amountsBlock.getByText(/for this year/i)).toBeVisible();
 		await expect(dialog.getByText("Then monthly")).toBeVisible();
 		await expect(dialog.getByText("Then annually")).toBeVisible();
 		await expect(

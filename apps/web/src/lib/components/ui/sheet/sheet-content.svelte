@@ -10,6 +10,10 @@ export const sheetVariants = tv({
 			left: "data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left inset-y-0 left-0 h-full w-3/4 border-r sm:max-w-sm",
 			right:
 				"data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm",
+			// Breakpoint-scoped animations: unprefixed bottom + sm:right both
+			// set --tw-enter-translate-* and animate-in combines them (diagonal).
+			"bottom-right":
+				"max-sm:data-[state=closed]:slide-out-to-bottom max-sm:data-[state=open]:slide-in-from-bottom max-sm:inset-x-0 max-sm:bottom-0 max-sm:h-auto max-sm:border-t sm:data-[state=closed]:slide-out-to-right sm:data-[state=open]:slide-in-from-right sm:inset-y-0 sm:right-0 sm:h-full sm:w-3/4 sm:border-l sm:max-w-sm",
 		},
 	},
 	defaultVariants: {

@@ -1,0 +1,23 @@
+id: no-xstate-actor-in-server-code
+snapshots:
+  ? |
+    const actor = createActor(invitationDecisionMachine).start();
+  : labels:
+    - source: createActor(invitationDecisionMachine)
+      style: primary
+      start: 14
+      end: 52
+  ? |
+    const { snapshot } = useActor(paymentMachine);
+  : labels:
+    - source: useActor(paymentMachine)
+      style: primary
+      start: 21
+      end: 45
+  ? |
+    const { snapshot, send } = useMachine(paymentMachine);
+  : labels:
+    - source: useMachine(paymentMachine)
+      style: primary
+      start: 27
+      end: 53

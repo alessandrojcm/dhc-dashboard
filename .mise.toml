@@ -78,9 +78,12 @@ dir = "apps/phoenix"
 run = "mix ecto.gen.migration $@"
 
 [tasks.phx-test]
-description = "Run Phoenix tests (creates DB, migrates, runs)"
-dir = "apps/phoenix"
-run = "mix test"
+description = "Generate the TS API client, then run Phoenix tests"
+run = [
+    "pnpm install --filter @dhc/api-client...",
+    "pnpm --filter @dhc/api-client api:generate",
+    "cd apps/phoenix && mix test",
+]
 
 [tasks.phx-precommit]
 description = "Full Phoenix check: compile + unlock + format + test"
@@ -224,6 +227,14 @@ usage = '''
 arg "[count]" help="Number of workshops to seed" default="5"
 '''
 run = 'mix seed.workshops "${usage_count?}"'
+
+[tasks."seed-inventory"]
+description = "Seed inventory structure, items, loans, and maintenance"
+dir = "apps/phoenix"
+usage = '''
+arg "[count]" help="Number of inventory items to seed" default="24"
+'''
+run = 'mix seed.inventory "${usage_count?}"'
 
 # ── Email templates (Resend sync, ADR 0022) ────────
 # Requires a Full Access Resend key in RESEND_API_KEY (CI secret

@@ -58,3 +58,6 @@ erl_crash.dump
 
 # Logs
 *.log
+
+# Local scratch / accidental screenshot dumps
+.tmp/

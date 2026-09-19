@@ -1,10 +1,9 @@
 import { authorize } from "$lib/server/auth";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
 import { coerceToCreateWorkshopSchema } from "$lib/server/workshop-generator";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	await authorize(locals, WORKSHOP_ROLES);
+	await authorize(locals, "workshops.manage");
 
 	// Check if this is a generated workshop (from quick create)
 	const generatedParam = url.searchParams.get("generated");

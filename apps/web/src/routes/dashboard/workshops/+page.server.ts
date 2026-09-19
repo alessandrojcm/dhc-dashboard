@@ -1,11 +1,10 @@
 import { authorize } from "$lib/server/auth";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
 import type { PageServerLoad } from "./$types";
 
 export const ssr = false;
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const session = await authorize(locals, WORKSHOP_ROLES);
+	const session = await authorize(locals, "workshops.manage");
 
 	// ALE-164: the calendar component needs the signed-in principal id to
 	// highlight the current user's workshops. Previously sourced from the

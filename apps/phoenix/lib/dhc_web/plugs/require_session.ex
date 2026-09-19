@@ -48,8 +48,7 @@ defmodule DhcWeb.Plugs.RequireSession do
     conn = fetch_cookies(conn, signed: [@session_cookie])
 
     with {:ok, token, projection} <- authenticate(conn),
-         :ok <- require_active(projection),
-         :ok <- authorize(projection, required_roles) do
+         :ok <- Dhc.Auth.authorize_session(projection, required_roles) do
       conn
       |> assign(:current_session, projection)
       |> assign(:current_session_token, token)
@@ -83,15 +82,6 @@ defmodule DhcWeb.Plugs.RequireSession do
     defp test_projection(conn), do: DhcWeb.SessionTestAdapter.projection(conn)
   else
     defp test_projection(_conn), do: {:error, :missing_token}
-  end
-
-  defp require_active(%{is_active: true}), do: :ok
-  defp require_active(_), do: {:error, :inactive}
-
-  defp authorize(_projection, []), do: :ok
-
-  defp authorize(%{roles: roles}, required_roles) do
-    if Enum.any?(roles, &(&1 in required_roles)), do: :ok, else: {:error, :forbidden}
   end
 
   defp unauthorized(conn, reason) do

@@ -6,7 +6,7 @@ import {
 	notificationsMarkAllReadMutation,
 	notificationsMarkReadMutation,
 	type Notification as ApiNotification,
-	authSocketToken,
+	authSessionSocketToken,
 } from "@dhc/api-client";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -20,6 +20,7 @@ import { env } from "$env/dynamic/public";
 import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 import { Bell } from "@lucide/svelte";
 import { connectNotificationRealtime } from "./notification-realtime.svelte";
+import WebPushToggle from "./WebPushToggle.svelte";
 import * as v from "valibot";
 
 // Initialize dayjs plugins
@@ -109,7 +110,7 @@ onMount(() => {
 	const realtime = connectNotificationRealtime({
 		socketUrl: env.PUBLIC_PHOENIX_SOCKET_URL,
 		getSocketToken: async () => {
-			const { data, error } = await authSocketToken();
+			const { data, error } = await authSessionSocketToken();
 			if (error || !data) return null;
 			return data.data.socketToken;
 		},
@@ -258,6 +259,10 @@ function formatTime(timestamp: string): string {
 					{/if}
 				{/if}
 			</div>
+
+			<!-- ALE-299: opt this browser into Web Push for the same notifications. -->
+			<DropdownMenu.Separator />
+			<WebPushToggle />
 		</DropdownMenu.Group>
 	</DropdownMenu.Content>
 </DropdownMenu.Root>

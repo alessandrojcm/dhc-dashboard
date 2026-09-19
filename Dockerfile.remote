@@ -1,0 +1,158 @@
+# syntax=docker/dockerfile:1
+
+# Namespace Devbox image. Repositories are checked out into /workspaces after
+# the image is built, so this image contains developer tooling only.
+ARG BASE_IMAGE="ubuntu:24.04"
+ARG MISE_VERSION="2026.6.0"
+ARG MISE_SHA256="a167298194e6d3f8eb52eccb9107cea36e9786b2b15a7d24b1386eb9f1bcd31c"
+ARG NODE_VERSION="26"
+ARG BUN_VERSION="1.3.11"
+ARG AST_GREP_VERSION="0.45.3"
+
+FROM ${BASE_IMAGE}
+
+# Build arguments declared before FROM select the base image only. Re-declare
+# the tool versions in this stage so they are available to RUN instructions.
+ARG MISE_VERSION
+ARG MISE_SHA256
+ARG NODE_VERSION
+ARG BUN_VERSION
+ARG AST_GREP_VERSION
+
+LABEL maintainer="Dublin HEMA Club"
+LABEL description="Namespace Devbox image with mise and portable OpenCode configuration"
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ENV DEBIAN_FRONTEND="noninteractive"
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        sudo \
+        unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash --uid 1001 devbox \
+    && echo "devbox ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/devbox \
+    && chmod 0440 /etc/sudoers.d/devbox \
+    && mkdir -p /workspaces \
+    && chown devbox:devbox /workspaces
+
+# mise is installed system-wide from a versioned release asset; language
+# runtimes are installed for the Namespace-provided devbox user below.
+RUN curl --fail --show-error --silent --location \
+        "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-x64.tar.gz" \
+        --output /tmp/mise.tar.gz \
+    && echo "${MISE_SHA256}  /tmp/mise.tar.gz" | sha256sum --check - \
+    && tar --extract --gzip --file /tmp/mise.tar.gz --directory /usr/local/bin mise/bin/mise --strip-components=2 \
+    && rm /tmp/mise.tar.gz \
+    && mise --version \
+    && test "$(mise --version | awk '{print $1}')" = "${MISE_VERSION}"
+
+USER devbox
+WORKDIR /workspaces
+
+ENV HOME="/home/devbox" \
+    BUN_INSTALL="/home/devbox/.bun" \
+    PATH="/home/devbox/.opencode/bin:/home/devbox/.bun/bin:/home/devbox/.local/share/mise/shims:${PATH}"
+
+# Node is supplied by mise so it remains easy for a Devbox user to select
+# project-specific versions. Bun runs the bundled OpenCode plugins.
+RUN mise use --global "node@${NODE_VERSION}" \
+    && node --version \
+    && npm --version \
+    && curl -fsSL https://bun.com/install | bash -s -- "bun-v${BUN_VERSION}" \
+    && test "$(bun --version)" = "${BUN_VERSION}"
+
+# ast-grep powers the portable structural-search plugin. Install the current
+# OpenCode v2 release through its official installer.
+RUN npm install --global "@ast-grep/cli@${AST_GREP_VERSION}" \
+    && ast-grep --version \
+    && curl -fsSL https://opencode.ai/v2/install | bash \
+    && opencode --version
+
+# The source repository deliberately does not commit opencode.json because it
+# carries machine/provider credentials. Clone its portable prompts, commands,
+# plugins, and tool implementation, then remove host-specific integrations.
+RUN git clone --depth 1 https://github.com/alessandrojcm/opencode-config.git /home/devbox/.config/opencode \
+    && cd /home/devbox/.config/opencode \
+    && rm -rf \
+        herdr-plugins \
+        nono \
+        plugins/herdr-agent-state \
+        plugins/herdr-worktrees \
+        plugins/nono-sandbox \
+        plugins/session-retro \
+        skills \
+    && bun install --frozen-lockfile \
+    && cat > /home/devbox/.config/opencode/opencode.json <<'EOF'
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "docs": {
+      "mode": "subagent",
+      "prompt": "{file:./prompts/docs.md}",
+      "permission": {
+        "bash": "deny",
+        "grep": "deny",
+        "webfetch": "deny",
+        "websearch": "deny"
+      }
+    },
+    "browser": {
+      "description": "Investigates browser-only UI behavior and returns reproduction steps and evidence without editing code.",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/browser.md}",
+      "permission": {
+        "read": "deny",
+        "bash": "deny",
+        "grep": "deny"
+      }
+    },
+    "build": {
+      "mode": "all",
+      "prompt": "{file:./prompts/build.md}",
+      "permission": {
+        "grep": "deny",
+        "task": {
+          "*": "deny",
+          "indexer": "allow",
+          "structural-indexer": "allow",
+          "docs": "allow",
+          "browser": "allow",
+          "build": "allow"
+        }
+      }
+    },
+    "indexer": {
+      "description": "Finds files and literal text in code, prose, comments, documentation, and configuration without performing structural code analysis.",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/indexer.md}",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "grep": "allow",
+        "glob": "allow"
+      }
+    },
+    "structural-indexer": {
+      "description": "Performs structural code search with ast-grep, including call relationships, containment, missing constructs, and repeated code shapes.",
+      "mode": "subagent",
+      "prompt": "{file:./prompts/structural-indexer.md}",
+      "permission": {
+        "bash": "deny",
+        "edit": "deny",
+        "grep": "deny",
+        "glob": "allow"
+      }
+    }
+  }
+}
+EOF
+
+# Namespace checks out repositories beneath this directory and connects as the
+# devbox user. It manages interactive sessions, so this image intentionally has
+# no application CMD or ENTRYPOINT.

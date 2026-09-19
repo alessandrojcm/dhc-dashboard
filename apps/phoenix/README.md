@@ -13,6 +13,21 @@ mise run phx-server
 
 The local tasks connect to the local Supabase Postgres instance on `localhost:54322`.
 
+### Docker development server
+
+To run Phoenix, PostgreSQL, and Mailpit entirely in Docker with source
+hot-reloading, start the opt-in `phoenix` Compose profile from the repository
+root:
+
+```bash
+docker compose --profile phoenix up --build phoenix
+```
+
+Phoenix is available at `http://127.0.0.1:4000`. The service bind-mounts
+`apps/phoenix`; Mix dependencies and build artifacts remain in the image so the
+mount does not discard the cached dependency compilation. Stop it with
+`docker compose --profile phoenix down`.
+
 ## Production deployment model
 
 Production uses:
@@ -68,6 +83,13 @@ These are committed in `fly.toml` under `[env]`:
 
 If the Fly app name or primary hostname changes, update `PHX_HOST` and `DNS_CLUSTER_QUERY`.
 
+Optional, once Web Push is enabled (see [Enabling Web Push](#5-enabling-web-push-ale-299)):
+
+| Variable | Value | Purpose |
+| --- | --- | --- |
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | base64url key from `mix web_push_ex.vapid` | VAPID public key browsers use as `applicationServerKey` |
+| `WEB_PUSH_VAPID_SUBJECT` | `mailto:contact@dublinhemaclub.com` | VAPID contact the push services may use to reach us |
+
 ### 3. 1Password items referenced by fnox
 
 Create one item per variable in the `Production-phoenix-api` vault. For simple references like `DATABASE_URL`, fnox reads the item's `password` field.
@@ -89,6 +111,12 @@ Required production items:
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SENTRY_DSN` are not high-sensitivity secrets, but they are currently loaded via fnox for one consistent production config path.
 
+Optional, once Web Push is enabled:
+
+| 1Password item | Secret? | Purpose |
+| --- | --- | --- |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | Yes | VAPID private key that signs every push request (ALE-299) |
+
 ### 4. GitHub Actions secrets and variables
 
 GitHub Actions deploys the image; the running container loads app secrets from 1Password.
@@ -106,6 +134,21 @@ Optional GitHub Actions variable:
 | `FLY_PHOENIX_APP` | `dhc-dashboard` in workflow fallback | Overrides the Fly app name used by CI |
 
 Note: `fly.toml` currently has `app = "dhc-dashboard"`. If the final Fly app name changes, update `fly.toml`, `PHX_HOST`, `DNS_CLUSTER_QUERY`, and the `FLY_PHOENIX_APP` workflow variable/fallback together.
+
+### 5. Enabling Web Push (ALE-299)
+
+Web Push is off until all three `WEB_PUSH_VAPID_*` values are present; a partial set is treated as unset, the notification centre reports push as unavailable, and no delivery jobs are enqueued. The VAPID pair identifies the application server to the push services, so generate it **once** and keep it stable — rotating it invalidates every browser subscription (the dashboard detects a key mismatch and asks members to opt in again).
+
+Rollout order matters because `FNOX_IF_MISSING=error` fails startup on a missing fnox item:
+
+1. Generate a pair locally: `cd apps/phoenix && mix web_push_ex.vapid`.
+2. Create the `WEB_PUSH_VAPID_PRIVATE_KEY` item in the `Production-phoenix-api` vault (password field = private key).
+3. Uncomment `WEB_PUSH_VAPID_PRIVATE_KEY` in `fnox.toml` and `WEB_PUSH_VAPID_PUBLIC_KEY` / `WEB_PUSH_VAPID_SUBJECT` under `[env]` in `fly.toml`, filling in the public key.
+4. Deploy. `GET /api/notifications/push/config` should answer `{"enabled": true, "vapidPublicKey": "..."}`; the toggle in the notification centre then offers to enable push.
+
+Nothing is needed on the Cloudflare/SvelteKit side: the browser fetches the public key from the API.
+
+Locally, copy the same three variables into `.env` (see `.env.example`); `mise` loads it for `mise run phx-server`. The dev SvelteKit origin is HTTPS, which the Push API requires.
 
 ## Deploy
 

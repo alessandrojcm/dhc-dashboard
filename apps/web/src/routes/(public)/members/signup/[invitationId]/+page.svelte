@@ -10,74 +10,11 @@ import PaymentForm from "./payment-form.svelte";
 import PaymentStatus from "./payment-status.svelte";
 import DiscordUnavailable from "./discord-unavailable.svelte";
 import OnboardingStepper from "./onboarding-stepper.svelte";
+import { presentAcceptanceStep } from "$lib/invitation-acceptance/presentation";
 
 const { data } = $props();
 
-const view = $derived.by(() => {
-	if (data.state === "awaiting_oauth") {
-		return {
-			step: 2 as const,
-			title: "Connect Discord",
-			description: "Link the Discord account you use for club communication.",
-		};
-	}
-	if (data.state === "discordVerified") {
-		return {
-			step: 2 as const,
-			title: "Discord verified",
-			description: "Check the account below before moving on to payment.",
-		};
-	}
-	if (data.state === "discordCollision") {
-		return {
-			step: 2 as const,
-			title: "This Discord account cannot be used",
-			description: "Your membership and payment have not been created.",
-		};
-	}
-	if (data.state === "discordUnavailable") {
-		return {
-			step: 2 as const,
-			title: "Discord is temporarily unavailable",
-			description: "Nothing has been charged. You can safely try again.",
-		};
-	}
-	if (data.state === "paymentReady") {
-		return {
-			step: 3 as const,
-			title: "Finish your membership",
-			description: "Add an emergency contact and choose your membership plan.",
-		};
-	}
-	if (data.state === "paymentNeedsAction") {
-		return {
-			step: 3 as const,
-			title: "Payment needs attention",
-			description:
-				"Your progress is safe and your Discord account stays linked.",
-		};
-	}
-	if (data.state === "paymentTerminal") {
-		return {
-			step: 3 as const,
-			title: "Payment could not be completed",
-			description: "Your verified invitation is still saved.",
-		};
-	}
-	if (data.state === "paymentPending") {
-		return {
-			step: 3 as const,
-			title: "Payment in progress",
-			description: "We are finishing your membership setup.",
-		};
-	}
-	return {
-		step: 1 as const,
-		title: "Verify Your Invitation",
-		description:
-			"Confirm the email address and date of birth on your invitation.",
-	};
-});
+const view = $derived(presentAcceptanceStep(data.state));
 
 function focusStepHeading(event: Event) {
 	if (!(event.currentTarget instanceof HTMLElement)) return;
@@ -126,7 +63,7 @@ function focusStepHeading(event: Event) {
 						</p>
 					</div>
 
-					{#if data.state === "awaiting_oauth"}
+					{#if data.state === "awaitingDiscord"}
 						<AwaitingDiscord />
 					{:else if data.state === "discordVerified"}
 						<DiscordVerified discord={data.discord} />

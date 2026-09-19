@@ -5,6 +5,8 @@ defmodule Dhc.DevSeeds do
 
   alias Dhc.Auth.{Principal, UserRole}
   alias Dhc.Invitations.Repository, as: InvitationRepository
+  alias Dhc.Inventory
+  alias Dhc.Inventory.ClubCalendar
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
@@ -19,6 +21,26 @@ defmodule Dhc.DevSeeds do
   @workshop_statuses ~w(planned published finished cancelled)
   @refund_statuses ~w(pending processing completed failed cancelled)
   @attendance_statuses ~w(pending attended no_show excused)
+  @inventory_categories [
+    %{
+      name: "Longswords",
+      description: "Club steel longswords and feders",
+      makers: ["Regenyei", "Kvetun", "Sigi", "Ensifer"],
+      sizes: ["Short", "Standard", "Long"]
+    },
+    %{
+      name: "Masks",
+      description: "Fencing masks for training and sparring",
+      makers: ["PBT", "Allstar", "Uhlmann", "Red Dragon"],
+      sizes: ["Small", "Medium", "Large"]
+    },
+    %{
+      name: "Jackets",
+      description: "Protective HEMA jackets",
+      makers: ["SPES", "Black Armoury", "Superior Fencing"],
+      sizes: ["Small", "Medium", "Large", "Extra Large"]
+    }
+  ]
 
   # Fakerer maintains a per-process sampler store, so each concurrent task
   # gets its own. `Application.ensure_all_started/1` cascades to transitive
@@ -154,6 +176,34 @@ defmodule Dhc.DevSeeds do
     :ok
   end
 
+  @doc """
+  Seeds a realistic inventory catalog and a small spread of operational states.
+
+  The count is the number of physical items. The task creates categories,
+  typed identifying properties, a nested storage hierarchy, active members,
+  pending/approved/checked-out loans, and open maintenance periods.
+  """
+  @spec seed_inventory(pos_integer()) :: :ok
+  def seed_inventory(count) do
+    ensure_faker_started()
+
+    actor_id = ensure_inventory_actor()
+    members = ensure_inventory_members(min(max(div(count, 2), 4), 12))
+
+    Repo.transaction(fn ->
+      structures = Enum.map(@inventory_categories, &create_inventory_structure!(&1, actor_id))
+
+      1..count
+      |> Enum.map(fn index ->
+        structure = Enum.at(structures, rem(index - 1, length(structures)))
+        create_inventory_item!(structure, actor_id, index)
+      end)
+      |> seed_inventory_states!(members, actor_id)
+    end)
+
+    :ok
+  end
+
   defp create_member(attrs) do
     with {:ok, principal} <- create_principal(attrs.email),
          {:ok, waitlist} <- insert_waitlist(attrs.email, "completed"),
@@ -168,6 +218,170 @@ defmodule Dhc.DevSeeds do
         nil
     end
   end
+
+  # ── Inventory seeding helpers ───────────────────────────────────
+
+  defp ensure_inventory_actor do
+    email = "inventory.operator@example.com"
+    {:ok, principal} = create_principal(email)
+    principal.id
+  end
+
+  defp ensure_inventory_members(count) do
+    existing_ids =
+      from(profile in UserProfile,
+        where: not is_nil(profile.principal_id),
+        select: profile.principal_id,
+        limit: ^count
+      )
+      |> Repo.all()
+
+    missing_count = max(count - length(existing_ids), 0)
+
+    created_ids =
+      if missing_count == 0 do
+        []
+      else
+        missing_count
+        |> create_members()
+        |> Enum.map(fn %{principal: principal} -> principal.id end)
+      end
+
+    Enum.take(existing_ids ++ created_ids, count)
+  end
+
+  defp create_inventory_structure!(spec, actor_id) do
+    suffix = System.unique_integer([:positive])
+
+    {:ok, category} =
+      Inventory.create_category(%{
+        "name" => "#{spec.name} #{suffix}",
+        "description" => spec.description
+      })
+
+    {:ok, maker} =
+      Inventory.create_definition(category.id, %{
+        "label" => "Maker",
+        "valueType" => "text",
+        "required" => true,
+        "identifyingPosition" => 0
+      })
+
+    {:ok, size} =
+      Inventory.create_definition(category.id, %{
+        "label" => "Size",
+        "valueType" => "single_select",
+        "required" => true,
+        "identifyingPosition" => 1
+      })
+
+    options =
+      spec.sizes
+      |> Enum.with_index()
+      |> Enum.map(fn {label, position} ->
+        {:ok, option} =
+          Inventory.create_option(size.id, %{"label" => label, "position" => position})
+
+        option
+      end)
+
+    {:ok, root} =
+      Inventory.create_container(%{"name" => "Equipment Store #{suffix}"}, actor_id)
+
+    {:ok, container} =
+      Inventory.create_container(
+        %{
+          "name" => "#{spec.name} Rack",
+          "description" => "Seeded development inventory",
+          "parent_container_id" => root.id
+        },
+        actor_id
+      )
+
+    %{
+      category: category,
+      maker: maker,
+      size: size,
+      options: options,
+      makers: spec.makers,
+      container: container
+    }
+  end
+
+  defp create_inventory_item!(structure, actor_id, index) do
+    maker = Enum.at(structure.makers, rem(index - 1, length(structure.makers)))
+    option = Enum.at(structure.options, rem(index - 1, length(structure.options)))
+
+    {:ok, item} =
+      Inventory.create_operator_item(
+        %{
+          "container_id" => structure.container.id,
+          "category_id" => structure.category.id,
+          "notes" => "Development seed item #{index}",
+          "values" => %{structure.maker.id => maker, structure.size.id => option.id}
+        },
+        actor_id
+      )
+
+    item
+  end
+
+  defp seed_inventory_states!(items, members, actor_id) do
+    items
+    |> Enum.with_index()
+    |> Enum.each(fn {item, index} ->
+      case rem(index, 8) do
+        1 -> start_inventory_maintenance!(item, actor_id)
+        2 -> create_inventory_loan!(item, members, actor_id, index, :requested)
+        3 -> create_inventory_loan!(item, members, actor_id, index, :approved)
+        4 -> create_inventory_loan!(item, members, actor_id, index, :checked_out)
+        _ -> :ok
+      end
+    end)
+  end
+
+  defp start_inventory_maintenance!(item, actor_id) do
+    {:ok, _item} =
+      Inventory.start_operator_item_maintenance(
+        item.slug,
+        %{"reason" => "Routine inspection from development seed"},
+        actor_id
+      )
+  end
+
+  defp create_inventory_loan!(item, members, actor_id, index, state) do
+    borrower_id = Enum.at(members, rem(index, length(members)))
+    starts_on = ClubCalendar.today()
+    due_on = Date.add(starts_on, 14)
+
+    {:ok, request} =
+      Inventory.request_loan(
+        item.slug,
+        %{
+          "startsOn" => Date.to_iso8601(starts_on),
+          "dueOn" => Date.to_iso8601(due_on),
+          "note" => "Seeded loan for development"
+        },
+        borrower_id
+      )
+
+    case state do
+      :requested ->
+        :ok
+
+      :approved ->
+        Inventory.approve_loan(request.id, %{}, actor_id) |> expect_seed_success!()
+
+      :checked_out ->
+        {:ok, approved} = Inventory.approve_loan(request.id, %{}, actor_id)
+        Inventory.check_out_loan(approved.id, %{}, actor_id) |> expect_seed_success!()
+    end
+  end
+
+  defp expect_seed_success!({:ok, _result}), do: :ok
+
+  defp expect_seed_success!(error),
+    do: raise("inventory seed transition failed: #{inspect(error)}")
 
   defp create_waitlist_entry(attrs) do
     with {:ok, waitlist} <- insert_waitlist(attrs.email, "waiting"),

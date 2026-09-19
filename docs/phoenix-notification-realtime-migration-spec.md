@@ -104,7 +104,7 @@ Add the public frontend setting beside the existing API configuration:
 PUBLIC_PHOENIX_SOCKET_URL=ws://localhost:4000/socket
 
 # Production
-PUBLIC_PHOENIX_SOCKET_URL=wss://dhc-dashboard.fly.dev/socket
+PUBLIC_PHOENIX_SOCKET_URL=wss://api.dublinhemaclub.com/socket
 ```
 
 Configure the socket's effective production `check_origin` allow-list from the

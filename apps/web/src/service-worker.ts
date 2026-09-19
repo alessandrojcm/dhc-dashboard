@@ -7,12 +7,30 @@
 // static files) keyed by the deployment version; navigation requests fall back
 // to the cached shell when offline. API requests are never intercepted or
 // cached — offline data is explicitly out of scope.
+//
+// ALE-299: also the Web Push receiver. A `push` event displays the persisted
+// notification's body; a click focuses an open dashboard window (or opens
+// one). The decisions live in `$lib/service-worker/push` so they are
+// unit-tested; this file only wires the events.
 
 import { build, files, version } from "$service-worker";
+import * as v from "valibot";
+import {
+	DEFAULT_URL,
+	parsePushPayload,
+	resolveClickTarget,
+	sameOriginPath,
+} from "$lib/service-worker/push";
 
-const self = /** @type {ServiceWorkerGlobalScope} */ (
-	/** @type {unknown} */ (globalThis.self)
-);
+// `notification.data` round-trips through the browser's structured clone, so
+// it is parsed again rather than trusted.
+const notificationDataSchema = v.object({ url: v.string() });
+
+// This file is only ever executed as a service worker, where the global scope
+// is a `ServiceWorkerGlobalScope`; the push handlers below need its
+// `registration` and `clients`. Declared rather than cast so no runtime code
+// is emitted for it.
+declare const self: ServiceWorkerGlobalScope;
 
 // Create a unique cache name for this deployment
 const CACHE = `cache-${version}`;
@@ -102,4 +120,47 @@ self.addEventListener("fetch", (event) => {
 	}
 
 	event.respondWith(respond());
+});
+
+self.addEventListener("push", (event) => {
+	const display = parsePushPayload(event.data ? event.data.text() : null);
+
+	event.waitUntil(
+		self.registration.showNotification(display.title, {
+			body: display.body,
+			tag: display.tag,
+			icon: "/icon-192.png",
+			badge: "/icon-192.png",
+			data: { url: display.url },
+		}),
+	);
+});
+
+self.addEventListener("notificationclick", (event) => {
+	event.notification.close();
+	const data = v.safeParse(notificationDataSchema, event.notification.data);
+	const path = data.success ? sameOriginPath(data.output.url) : DEFAULT_URL;
+
+	async function openDashboard() {
+		const windows = await self.clients.matchAll({
+			type: "window",
+			includeUncontrolled: true,
+		});
+		const target = resolveClickTarget(windows, self.location.origin, path);
+
+		if (target.action === "focus") {
+			const focused = await target.client.focus();
+			// Navigating a focused client is best-effort: it can be refused for a
+			// window the worker does not control, in which case focusing is still
+			// the right outcome.
+			if ("navigate" in focused && focused.url !== target.url) {
+				await focused.navigate(target.url).catch(() => null);
+			}
+			return;
+		}
+
+		await self.clients.openWindow(target.url);
+	}
+
+	event.waitUntil(openDashboard());
 });

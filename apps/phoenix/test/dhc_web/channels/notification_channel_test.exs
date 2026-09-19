@@ -104,6 +104,31 @@ defmodule DhcWeb.NotificationChannelTest do
       # subscribe_and_join; assert_received checks nothing matching arrives.
       refute_receive {:socket_push, _, {:text, _}}, 50
     end
+
+    test "a broadcast to the owner's topic reaches a channel joined through notifications:self" do
+      # ALE-299 regression: the browser always joins the `self` alias (it
+      # cannot read its own id from the opaque socket token), while the
+      # broadcaster emits on `notifications:<principal_id>`. The alias must
+      # therefore subscribe to the canonical topic, or no browser ever hears
+      # a notification_created signal.
+      socket = authenticated_socket("user-token")
+
+      {:ok, _, _joined} = subscribe_and_join(socket, NotificationChannel, "notifications:self")
+
+      DhcWeb.Endpoint.broadcast("notifications:#{@user_id}", "notification_created", %{})
+
+      assert_push "notification_created", %{}
+    end
+
+    test "a channel joined through notifications:self does not hear another user's topic" do
+      socket = authenticated_socket("user-token")
+
+      {:ok, _, _joined} = subscribe_and_join(socket, NotificationChannel, "notifications:self")
+
+      DhcWeb.Endpoint.broadcast("notifications:#{@other_user_id}", "notification_created", %{})
+
+      refute_receive {:socket_push, _, {:text, _}}, 50
+    end
   end
 
   describe "production WebSocket origin validation" do

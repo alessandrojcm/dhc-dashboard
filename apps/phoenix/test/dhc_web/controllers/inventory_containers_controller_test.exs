@@ -14,8 +14,9 @@ defmodule DhcWeb.InventoryContainersControllerTest do
   use DhcWeb.ConnCase, async: false
 
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
-  # A fixed Supabase user id the test Verifier always returns as `sub`. We
+  # A fixed Supabase user id the test verifier always returns as `sub`. We
   # insert a matching `auth.users` row in `setup` so the NOT-NULL
   # `containers.created_by` FK is satisfied for `create_container`.
   @actor_id "11111111-1111-1111-1111-111111111111"
@@ -26,34 +27,18 @@ defmodule DhcWeb.InventoryContainersControllerTest do
   # Reads are any authenticated member.
   @read_roles ~w(member quartermaster admin president)
 
-  defmodule Verifier do
-    @actor_id "11111111-1111-1111-1111-111111111111"
-
-    for role <- ~w(quartermaster admin president member) do
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: @actor_id,
-           email: "#{unquote(role)}@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end
-
-    def verify("bad-token"), do: {:error, :invalid_token}
-    def verify(_token), do: {:error, :invalid_token}
-  end
-
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+    original =
+      OpenApiVerifier.install(
+        actor_id: @actor_id,
+        roles: ~w(quartermaster admin president member)
+      )
 
     # Stand up the auth.users row the JWT `sub` resolves to. All roles share
     # the same synthetic user; RBAC is about the JWT role list, not the user.
     insert_user!(@actor_id, "inv-actor@example.com")
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn -> OpenApiVerifier.restore(original) end)
 
     :ok
   end
@@ -85,13 +70,14 @@ defmodule DhcWeb.InventoryContainersControllerTest do
       Repo.query(
         """
         INSERT INTO inventory_items
-          (id, container_id, category_id, attributes, quantity, created_at, updated_at)
-        VALUES ($1, $2, $3, '{}'::jsonb, 1, NOW(), NOW())
+          (id, container_id, category_id, slug, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, NOW(), NOW())
         """,
         [
           Ecto.UUID.dump!(Ecto.UUID.generate()),
           Ecto.UUID.dump!(container_id),
-          Ecto.UUID.dump!(category_id)
+          Ecto.UUID.dump!(category_id),
+          "test-#{System.unique_integer([:positive])}"
         ]
       )
 
@@ -220,8 +206,7 @@ defmodule DhcWeb.InventoryContainersControllerTest do
 
       [item] = payload["items"]
       assert item["category"]["name"] == "Detail Cat"
-      assert item["quantity"] == 1
-      assert item["outForMaintenance"] == false
+      assert Enum.sort(Map.keys(item)) == ["category", "id"]
     end
 
     test "returns childContainers as empty for a leaf container", %{conn: conn} do
@@ -340,6 +325,19 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         })
 
       assert %{"errors" => %{"detail" => _detail}} = json_response(conn, 422)
+    end
+
+    test "returns 422 when parentContainerId is not a UUID", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> post("/api/inventory/containers", %{
+          "name" => "Orphan",
+          "parentContainerId" => "not-a-uuid"
+        })
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
+      assert detail =~ "parent_container_id" or detail =~ "is invalid"
     end
 
     test "returns 403 for non-write roles", %{conn: conn} do
@@ -510,7 +508,7 @@ defmodule DhcWeb.InventoryContainersControllerTest do
       refute "Delete Me" in names
     end
 
-    test "cascades deletion to empty child containers", %{conn: conn} do
+    test "requires child containers to be handled explicitly", %{conn: conn} do
       parent = create_container!(%{"name" => "Cascade Parent"})
       create_container!(%{"name" => "Cascade Child", "parentContainerId" => parent.id})
 
@@ -519,7 +517,12 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         |> auth_conn("admin")
         |> delete("/api/inventory/containers/#{to_uuid(parent.id)}")
 
-      assert conn.status == 204
+      assert %{
+               "errors" => %{
+                 "detail" => "Container still has child containers or inventory items"
+               }
+             } =
+               json_response(conn, 409)
 
       names =
         build_conn()
@@ -529,8 +532,8 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         |> get_in(["data", "containers"])
         |> Enum.map(& &1["name"])
 
-      refute "Cascade Parent" in names
-      refute "Cascade Child" in names
+      assert "Cascade Parent" in names
+      assert "Cascade Child" in names
     end
 
     test "returns 409 when the container still contains items", %{conn: conn} do
@@ -543,7 +546,11 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         |> auth_conn("admin")
         |> delete("/api/inventory/containers/#{to_uuid(container.id)}")
 
-      assert %{"errors" => %{"detail" => "Container still contains inventory items"}} =
+      assert %{
+               "errors" => %{
+                 "detail" => "Container still has child containers or inventory items"
+               }
+             } =
                json_response(conn, 409)
 
       # Still exists.

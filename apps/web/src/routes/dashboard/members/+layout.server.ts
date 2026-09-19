@@ -1,21 +1,19 @@
 import { membersInsuranceForm } from "@dhc/api-client";
+import { error } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
-import { invariant } from "$lib/server/invariant";
-import {
-	getRolesFromSession,
-	MEMBERSHIP_MINTING_ROLES,
-	SETTINGS_ROLES,
-} from "$lib/server/roles";
+import { authorizationFor } from "$lib/server/authorization";
 import type { LayoutServerLoad } from "./$types";
 
 export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 	const { session } = await locals.safeGetSession();
-	invariant(session === null, "Unauthorized");
-	const roles = getRolesFromSession(session!);
-	const canEditSettings = roles.intersection(SETTINGS_ROLES).size > 0;
+	// This layout also wraps a member's own profile, so it only requires a
+	// session; `[memberId]/+page.server.ts` applies the contextual rule.
+	const access = authorizationFor(session);
+	if (!session) error(401, { message: "Unauthorized" });
+	const canEditSettings = access.can("members.settings.edit");
 	// ALE-252: mirrors the Phoenix `:membership_minting_api` pipeline. The
 	// directory table uses it to show the Reactivate action for inactive rows.
-	const canReactivate = roles.intersection(MEMBERSHIP_MINTING_ROLES).size > 0;
+	const canReactivate = access.can("membership.reactivate");
 
 	if (!canEditSettings) {
 		return { canEditSettings, canReactivate, membersInsuranceFormLink: "" };

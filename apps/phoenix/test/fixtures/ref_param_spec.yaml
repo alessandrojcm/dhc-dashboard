@@ -1,0 +1,121 @@
+openapi: 3.0.3
+info:
+  title: DHC Dashboard API ($ref path parameter fixture)
+  version: 0.1.0
+
+servers:
+  - url: /api
+
+# Every path parameter here is declared as a `$ref` into
+# `components.parameters` rather than inline. OpenApiSpex decodes such an
+# entry to an `%OpenApiSpex.Reference{}`, which carries only a `"$ref":`
+# field — so the generator must dereference it before reading `.in` / `.name`.
+#
+# The slice (`refs`) has no hand-written controller, so generation actually
+# runs against it instead of being skipped.
+tags:
+  - name: Refs
+
+paths:
+  /refs/{slugOrId}:
+    get:
+      operationId: refs.show
+      tags:
+        - Refs
+      summary: Show a ref by slug or id
+      parameters:
+        - $ref: "#/components/parameters/SlugOrId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Ref"
+
+    patch:
+      operationId: refs.update
+      tags:
+        - Refs
+      summary: Update a ref
+      parameters:
+        - $ref: "#/components/parameters/SlugOrId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Ref"
+
+    delete:
+      operationId: refs.delete
+      tags:
+        - Refs
+      summary: Delete a ref
+      parameters:
+        - $ref: "#/components/parameters/SlugOrId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Ref"
+
+  /refs/{slugOrId}/archive:
+    post:
+      operationId: refs.archive
+      tags:
+        - Refs
+      summary: A non-REST command on a $ref-parameterised path
+      parameters:
+        - $ref: "#/components/parameters/SlugOrId"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Ref"
+
+components:
+  parameters:
+    SlugOrId:
+      name: slugOrId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: |
+        The Ref's immutable slug (`ref-000001`) or its uuid.
+
+  schemas:
+    Ref:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string

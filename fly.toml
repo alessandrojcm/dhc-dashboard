@@ -21,6 +21,10 @@ kill_signal = "SIGTERM"
   PORT = "8080"
   CORS_ALLOWED_ORIGINS = "https://dashboard.dublinhemaclub.com"
   DISCORD_REDIRECT_URI = "https://api.dublinhemaclub.com/api/auth/discord/callback"
+  # ALE-299 Web Push: uncomment together with WEB_PUSH_VAPID_PRIVATE_KEY in
+  # fnox.toml (all three or none). See apps/phoenix/README.md §5.
+  # WEB_PUSH_VAPID_PUBLIC_KEY = "<base64url public key from mix web_push_ex.vapid>"
+  # WEB_PUSH_VAPID_SUBJECT = "mailto:contact@dublinhemaclub.com"
 
 [http_service]
   internal_port = 8080

@@ -37,12 +37,28 @@ mise run test-unit          # Vitest
 mise run test-browser       # Vitest Browser Mode component tests in Chromium
 STRIPE_SECRET_KEY=sk_test_... mise run test-e2e
                             # Playwright + real Stripe test mode; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
-mise run check              # Svelte type check (NOT raw tsc)
+mise run check              # svelte-check over src/ + tsc over e2e/ (pnpm check:e2e); NOT raw tsc on src
 
 # Lint & format
 mise run lint               # Oxlint (web Svelte/JS/TS + API client TS)
 mise run format             # Auto-format with Oxfmt
 ```
+
+**herdr panes in this repo run `fish`, not `zsh`.** `(...)` is command
+substitution and `$?` does not exist there, so a chained gate written as
+`(mise run check && mise run lint) ...; echo $?` fails to parse — and the
+rejected text stays on the prompt, silently swallowing the next command you
+send. Put multi-step or exit-code-checking runs in a `#!/bin/zsh` script under
+the approved temp dir and have the pane execute that file. `mix` is also not on
+the pane's PATH; prefix it with `mise exec --`. If a pane starts echoing your
+command back instead of running it, clear the stuck prompt with
+`herdr pane send-keys <id> ctrl+c` then `ctrl+u`.
+
+In a fresh linked worktree, run `mise run check` before `mise run lint` or
+`mise run ci`. The check runs `svelte-kit sync` and creates
+`apps/web/.svelte-kit/tsconfig.json`; without it, Oxlint can fail while loading
+the web TypeScript project, and the parallel `ci` tasks cannot reliably create
+the file before lint starts.
 
 Oxlint runs in `apps/web`, `packages/api-client`, and `packages/email-templates`;
 the generated API client under `packages/api-client/src/client/` is ignored.
@@ -111,11 +127,19 @@ mise run phx-setup          # deps.get + ecto.create + ecto.migrate
 mise run phx-server         # Start dev server (hot-reload) on :4000
 mise run phx-console        # Start server inside IEx interactive shell
 
+# Docker alternative (Phoenix + PostgreSQL + Mailpit; source hot-reloads)
+docker compose --profile phoenix up --build phoenix
+
 # Database
 mise run phx-migrate        # Run pending migrations
 mise run phx-rollback       # Rollback last migration
 mise run phx-gen-migration NAME  # Generate a new migration
 ```
+
+The Compose `phoenix` profile uses `apps/phoenix/Dockerfile.dev`, bind-mounts
+the Phoenix source, and leaves Mix dependencies/build artifacts in the image so
+the source mount does not erase the dependency cache. It publishes Phoenix at
+`http://127.0.0.1:4000`; stop it with `docker compose --profile phoenix down`.
 
 ### One-off Discord roster export and assignment review
 
@@ -160,7 +184,7 @@ mise run phx-reach          # Reach architecture policy checks (.reach.exs)
 mise run phx-precommit      # Full check: audit + credo + reach arch + compile + unlock + format + test
 
 # Testing
-mise run phx-test           # Run all Phoenix tests (excludes :integration tests)
+mise run phx-test           # Generate the TS API client, then run all Phoenix tests (excludes :integration)
 
 # For specific test files, run directly:
 cd apps/phoenix && mix test test/some_test.exs
@@ -249,7 +273,11 @@ mise run api-gen
 
 Fails fast: if either step exits non-zero, mise stops immediately and does not proceed.
 
-**`mix gen.controllers` clobber caveat**: the task maps every operation under a tag to a REST action derived from HTTP method + path (or `operationId`), and regenerates the *whole* controller + JSON renderer + contract test for that tag. When a tag carries multiple non-REST operations (e.g. `Members` has `members.list`, `members.analytics`, `members.insuranceForm`), `--force=<path>` will overwrite the controller with stubs that map *all three* to `index` and call a non-existent `Members.list_members()` — clobbering any hand-written action bodies. After regenerating, restore the hand-written controller (keep your real action names + bodies) and never re-run `--force` on a tag whose controller you've fleshed out unless you're prepared to restore it from git. The JSON renderer and contract test are likewise tag-scoped, so extend them by hand for non-REST operations.
+**`mix gen.controllers` scaffolds per slice**: the *slice* — the `operationId` prefix, e.g. `inventoryStructure` from `inventoryStructure.showDefinition` — names the controller, JSON renderer, and contract test. The *tag* remains the domain boundary ("one domain = one tag = one URL root") and supplies `x-context`/`x-resource`, so one tag can own several controllers. Give every operation an `operationId` of `<slice>.<action>` whose `<slice>` underscores to the controller filename; otherwise the generator writes a stub for a controller you did not intend.
+
+Re-running is safe by default: a slice whose controller already exists is skipped **together with its renderer and test**, so `mise run api-gen` is idempotent and should print only `skip` lines for existing slices.
+
+**`--force` clobber caveat**: `--force`/`--force=<path>` bypasses that skip and regenerates the whole trio from the spec, mapping operations to REST actions derived from HTTP method + path (or `operationId`). When a slice carries multiple non-REST operations (e.g. `members` has `members.list`, `members.analytics`, `members.insuranceForm`), it will overwrite the controller with stubs that map *all three* to `index` and call a non-existent `Members.list_members()` — clobbering hand-written action bodies. After forcing, restore the hand-written controller (keep your real action names + bodies), and never `--force` a slice you have fleshed out unless you can restore it from version control.
 
 ## API Client (TypeScript)
 
@@ -323,15 +351,18 @@ mise run seed-members
 mise run seed-members 25
 mise run seed-committee
 mise run seed-committee ./scripts/users.csv
+mise run seed-inventory
+mise run seed-inventory 30
 
 # Or run directly from Phoenix app
 cd apps/phoenix && mix seed.waitlist 50
 cd apps/phoenix && mix seed.invitations 50
 cd apps/phoenix && mix seed.members 25
 cd apps/phoenix && mix seed.committee_members ../../scripts/users.csv
+cd apps/phoenix && mix seed.inventory 30
 ```
 
-`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.invitations` creates direct, pending member invitations without a waitlist entry or an issuing administrator. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
+`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.invitations` creates direct, pending member invitations without a waitlist entry or an issuing administrator. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. `seed.inventory` creates typed categories, nested containers, physical items, active members as needed, and a spread of available, maintenance, requested, approved, and checked-out states. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
 
 ## CI (full check)
 

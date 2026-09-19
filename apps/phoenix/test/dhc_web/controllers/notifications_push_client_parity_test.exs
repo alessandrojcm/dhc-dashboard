@@ -1,0 +1,126 @@
+defmodule DhcWeb.NotificationsPushClientParityTest do
+  @moduledoc """
+  ALE-299 client parity: every Web Push operation in the contract must be
+  reachable from `@dhc/api-client`.
+
+  `mise run api-gen` writes `packages/api-client/src/client/`, but the public
+  surface in `packages/api-client/src/index.ts` is hand-maintained, so a
+  regenerated operation that is not re-exported exists yet cannot be imported.
+  Reads the generated files as text on purpose: the risk here is a missing
+  name, not TypeScript semantics.
+  """
+
+  use ExUnit.Case, async: true
+
+  @repo_root Path.expand("../../../../..", __DIR__)
+  @client_root Path.join(@repo_root, "packages/api-client")
+  # config + subscribe + unsubscribe.
+  @expected_operation_count 3
+
+  setup_all do
+    # ExUnit 1.20 only skips via `@tag skip:`, evaluated before setup.
+    # A `skip:` context key does not skip; require! raises instead of KeyError.
+    DhcWeb.ClientParity.require!(@client_root)
+  end
+
+  @tag :parity
+  test "every push operation is generated and publicly re-exported", context do
+    sdk = File.read!(Path.join(context.generated, "sdk.gen.ts"))
+    public = File.read!(context.public)
+
+    operations = operation_ids()
+
+    assert Enum.count(operations) == @expected_operation_count,
+           "expected the full push operation set, got: #{inspect(operations)}"
+
+    for operation <- operations do
+      function = sdk_function_name(operation)
+
+      assert sdk =~ "export const #{function}",
+             "#{operation} is missing from the generated SDK — run `mise run api-gen`"
+
+      assert public =~ ~r/\n\t#{function},\n/,
+             "#{function} is generated but not re-exported from src/index.ts"
+    end
+  end
+
+  @tag :parity
+  test "the push request/response schemas reach the public surface", context do
+    types = File.read!(Path.join(context.generated, "types.gen.ts"))
+    public = File.read!(context.public)
+
+    for schema <- ~w(
+          NotificationsPushConfigResponse
+          NotificationsPushSubscribeRequest
+          NotificationsPushSubscriptionResponse
+          NotificationsPushUnsubscribeRequest
+          NotificationsPushUnsubscribeResponse
+          NotificationsPushValidationError
+        ) do
+      assert types =~ "export type #{schema} =", "#{schema} is missing from the generated types"
+
+      assert public =~ ~r/\n\t#{schema},\n/,
+             "#{schema} is generated but not re-exported from src/index.ts"
+    end
+  end
+
+  @tag :parity
+  test "query and mutation helpers exist for the push operations", context do
+    query = File.read!(Path.join(context.generated, "@tanstack/svelte-query.gen.ts"))
+    public = File.read!(context.public)
+
+    for helper <- ~w(
+          notificationsPushConfigOptions
+          notificationsPushConfigQueryKey
+          notificationsPushSubscribeMutation
+          notificationsPushUnsubscribeMutation
+        ) do
+      assert query =~ "export const #{helper}",
+             "#{helper} is missing from the generated TanStack helpers"
+
+      assert public =~ ~r/\n\t#{helper},\n/,
+             "#{helper} is generated but not re-exported from src/index.ts"
+    end
+  end
+
+  @tag :parity
+  test "no push response type carries an endpoint or browser key", context do
+    types = File.read!(Path.join(context.generated, "types.gen.ts"))
+
+    for name <- ~w(NotificationsPushConfigResponse NotificationsPushSubscriptionResponse) do
+      type = extract_type(types, name)
+
+      for forbidden <- ~w(endpoint p256dh auth privateKey) do
+        refute type =~ ~r/\b#{forbidden}\b/, "#{name} must not expose #{forbidden}"
+      end
+    end
+  end
+
+  defp operation_ids do
+    path = Application.app_dir(:dhc, "priv/api/openapi.yaml")
+    {:ok, spec} = YamlElixir.read_from_file(path)
+
+    for {path, methods} <- spec["paths"],
+        String.starts_with?(path, "/notifications/push"),
+        {_method, operation} <- methods,
+        is_map(operation),
+        id = operation["operationId"],
+        is_binary(id),
+        do: id
+  end
+
+  defp sdk_function_name(operation_id) do
+    [namespace, action] = String.split(operation_id, ".", parts: 2)
+
+    namespace <>
+      String.replace_prefix(action, String.first(action), String.upcase(String.first(action)))
+  end
+
+  defp extract_type(types, name) do
+    [_before, rest] = String.split(types, "export type #{name} = ", parts: 2)
+
+    rest
+    |> String.split("\nexport ", parts: 2)
+    |> List.first()
+  end
+end

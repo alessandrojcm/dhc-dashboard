@@ -1,39 +1,60 @@
 <script lang="ts">
 import * as Field from "$lib/components/ui/field";
 import { Input } from "$lib/components/ui/input";
-import { Button, type ButtonProps } from "$lib/components/ui/button";
-import { ArrowRightIcon } from "@lucide/svelte";
+import { Button } from "$lib/components/ui/button";
 import {
 	loadStripe,
+	type Stripe,
 	type StripeElements,
 	type StripeElementsOptions,
-	type StripePaymentElement,
 	type StripePaymentElementOptions,
 } from "@stripe/stripe-js";
 import { PUBLIC_STRIPE_KEY } from "$env/static/public";
 import { toast } from "svelte-sonner";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { onMount, tick } from "svelte";
+import { tick } from "svelte";
+import { fromPromise, type AnyActorRef } from "xstate";
+import { useMachine } from "@xstate/svelte";
 import * as Alert from "$lib/components/ui/alert";
 import PhoneInput from "$lib/components/ui/phone-input.svelte";
 import PricingDisplay from "./pricing-display.svelte";
+import PaymentSubmit from "./payment-submit.svelte";
 import type { PageServerData } from "./$types";
 import { page } from "$app/state";
+import { browser } from "$app/environment";
 import { processPayment } from "./data.remote";
 import { initForm } from "$lib/utils/init-form.svelte";
+import { invitationPaths } from "$lib/invitation-acceptance/paths";
+import {
+	paymentMachine,
+	type PaymentMachineState,
+} from "$lib/invitation-acceptance/payment-machine";
 
-const { data }: { data: PageServerData } = $props();
+const {
+	data,
+	onActor,
+	submit: submitOverride,
+}: {
+	data: PageServerData;
+	/** Test-only: observe the component-scoped actor. */
+	onActor?: (actor: AnyActorRef) => void;
+	/** Test-only: replace the remote form's `submit()` (false = validation failed). */
+	submit?: () => Promise<boolean>;
+} = $props();
 let currentCoupon = $state("");
 
-const complimentary = $derived(data.complimentary === true);
+// Machine input is fixed for the component's lifetime: a complimentary
+// invitation never mounts Stripe, a paid one always does.
+const complimentary = data.complimentary === true;
 const nextMonthlyBillingDate = $derived(data.nextMonthlyBillingDate);
 const nextAnnualBillingDate = $derived(data.nextAnnualBillingDate);
-let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
-let elements: StripeElements | null | undefined = $state(null);
-let paymentElement: StripePaymentElement | null | undefined = $state(null);
-let paymentError = $state<string | null>(null);
-let paymentElementReady = $state(false);
+
+let formElement: HTMLFormElement | undefined = $state();
 let paymentElementComplete = $state(false);
+
+// Stripe browser objects are UI adapters owned by this component; the machine
+// only ever sees their outcomes.
+let stripe: Stripe | null = null;
+let elements: StripeElements | undefined;
 
 const stripeElementsOptions: StripeElementsOptions = {
 	mode: "setup",
@@ -74,7 +95,6 @@ const paymentElementOptions: StripePaymentElementOptions = {
 	},
 };
 
-// Initialize form with empty values
 initForm(processPayment, () => ({
 	nextOfKin: "",
 	nextOfKinNumber: "",
@@ -82,104 +102,131 @@ initForm(processPayment, () => ({
 	couponCode: "",
 }));
 
-// Handle form results
-$effect(() => {
-	const result = processPayment.result;
-	if (result?.paymentFailed === false) {
-		paymentError = null;
-	} else if (result?.paymentFailed && "error" in result) {
-		paymentError = result.error || "Payment failed";
-		toast.error(paymentError);
-	}
-});
+const { snapshot, send, actorRef } = useMachine(
+	paymentMachine.provide({
+		actors: {
+			loadPaymentElement: fromPromise(async () => {
+				// SSR renders the initializing state; only the browser mounts Stripe.
+				// The actor is stopped with the component, so this never settles.
+				if (!browser) await new Promise<never>(() => {});
+				const loaded = await loadStripe(PUBLIC_STRIPE_KEY);
+				if (!loaded) throw new Error("Payment system not initialized");
+				stripe = loaded;
+				elements = loaded.elements(stripeElementsOptions);
+				const paymentElement = elements.create(
+					"payment",
+					paymentElementOptions,
+				);
+				paymentElement.on("change", ({ complete }) => {
+					paymentElementComplete = complete;
+				});
+				await new Promise<void>((resolve) => {
+					paymentElement.on("ready", () => resolve());
+					paymentElement.mount("#payment-element");
+				});
+			}),
+			preparePayment: fromPromise(async ({ input }) => {
+				if (input.complimentary) return { confirmationToken: undefined };
+				if (!stripe || !elements) {
+					throw new Error("Payment system not initialized");
+				}
 
-onMount(() => {
-	if (complimentary) {
-		paymentElementReady = true;
-		return;
-	}
+				const { error: elementsError } = await elements.submit();
+				if (elementsError?.message) throw new Error(elementsError.message);
 
-	loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
-		stripe = result;
-		elements = stripe?.elements(stripeElementsOptions);
-		paymentElement = elements?.create("payment", paymentElementOptions);
-		paymentElement?.on("ready", () => {
-			paymentElementReady = true;
-		});
-		paymentElement?.on("change", ({ complete }) => {
-			paymentElementComplete = complete;
-		});
-		paymentElement?.mount("#payment-element");
-	});
-});
+				const { error: tokenError, confirmationToken } =
+					await stripe.createConfirmationToken({
+						elements,
+						params: { return_url: page.url.toString() },
+					});
+				if (tokenError?.message) {
+					console.error(
+						"[PaymentForm] Stripe createConfirmationToken error:",
+						tokenError,
+					);
+					throw new Error(tokenError.message);
+				}
+				if (!confirmationToken?.id) {
+					console.error(
+						"[PaymentForm] No confirmation token received from Stripe",
+					);
+					throw new Error(
+						"Failed to create payment confirmation. Please try again.",
+					);
+				}
 
-const handleSubmit: ButtonProps["onclick"] = async (e) => {
-	e.preventDefault();
-	if (!(e.currentTarget instanceof HTMLButtonElement)) return;
-	const form = e.currentTarget.form;
-
-	if (complimentary) {
-		form?.requestSubmit();
-		return;
-	}
-
-	// Validate Stripe is ready
-	if (!stripe || !elements) {
-		toast.error("Payment system not initialized");
-		return;
-	}
-
-	const { error: elementsError } = await elements.submit();
-	if (elementsError?.message) {
-		toast.error(elementsError.message);
-		return;
-	}
-
-	const { error: paymentMethodError, confirmationToken } =
-		await stripe.createConfirmationToken({
-			elements,
-			params: {
-				return_url: page.url.toString(),
+				return { confirmationToken: confirmationToken.id };
+			}),
+		},
+		actions: {
+			submitPayment: (_, { confirmationToken }) => {
+				processPayment.fields.stripeConfirmationToken.set(
+					confirmationToken ?? "",
+				);
+				// Wait for the remote field update to reach the hidden input before
+				// the form serializes its controls for submission.
+				void tick().then(() => formElement?.requestSubmit());
 			},
+		},
+	}),
+	{ input: { complimentary } },
+);
+onActor?.(actorRef);
+
+// SAFETY: `paymentMachine` is flat (no nested or parallel states), so its
+// snapshot value is always one of `paymentMachineStates`.
+const machineState = $derived($snapshot.value as PaymentMachineState);
+const failure = $derived($snapshot.context.failure);
+
+// Toast every failure, not only recoverable ones. A terminal failure clears
+// the acceptance proof, and the form's refresh then re-renders this page as
+// step 1 — unmounting the inline alert almost immediately. The toast lives in
+// the layout, so it is what the invitee actually gets to read.
+$effect(() => {
+	if ((machineState === "failed" || machineState === "expired") && failure)
+		toast.error(failure.message);
+});
+
+// Every submission goes through the machine: a native submit (Enter in a
+// field) becomes a payment request, and only the machine's `submitting` state
+// reaches the server. The server answers a failed submission with data
+// (success and still-pending answers redirect away from this page).
+const enhancedForm = processPayment.enhance(async ({ submit }) => {
+	if (machineState !== "submitting") {
+		send({ type: "PAYMENT_REQUESTED" });
+		return;
+	}
+
+	try {
+		const submitted = await (submitOverride ?? submit)();
+		if (submitted === false) {
+			send({
+				type: "SUBMISSION_FAILED",
+				message: "Please check the form and try again.",
+				recoverable: true,
+			});
+			return;
+		}
+	} catch (error) {
+		send({
+			type: "SUBMISSION_FAILED",
+			message:
+				error instanceof Error ? error.message : "An unexpected error occurred",
+			recoverable: true,
 		});
-
-	if (paymentMethodError?.message) {
-		console.error(
-			"[PaymentForm] Stripe createConfirmationToken error:",
-			paymentMethodError,
-		);
-		toast.error(paymentMethodError.message);
 		return;
 	}
 
-	if (!confirmationToken?.id) {
-		console.error("[PaymentForm] No confirmation token received from Stripe");
-		toast.error("Failed to create payment confirmation. Please try again.");
-		return;
+	const result = processPayment.result;
+	if (result?.paymentFailed) {
+		send({
+			type: "SUBMISSION_FAILED",
+			message: result.error || "Payment failed",
+			recoverable: result.recoverable,
+		});
 	}
-
-	// Wait for the remote field update to reach the hidden input before the form
-	// serializes its controls for submission.
-	processPayment.fields.stripeConfirmationToken.set(confirmationToken.id);
-	await tick();
-	if (form) {
-		form.requestSubmit();
-	}
-};
+});
 </script>
-
-{#snippet errorAlert()}
-	<Alert.Root variant="destructive" class="w-full mb-4">
-		<Alert.Title>Payment Error</Alert.Title>
-		<Alert.Description>
-			{paymentError}
-		</Alert.Description>
-	</Alert.Root>
-{/snippet}
-
-{#if paymentError}
-	{@render errorAlert()}
-{/if}
 
 {#each processPayment.fields.stripeConfirmationToken.issues() as issue (issue.message)}
 	<Alert.Root variant="destructive" class="w-full mb-4">
@@ -190,7 +237,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 	</Alert.Root>
 {/each}
 
-<form {...processPayment} class="space-y-7">
+<form {...enhancedForm} bind:this={formElement} class="space-y-7">
 	<div class="space-y-4">
 		<Field.Field>
 			{@const fieldProps = processPayment.fields.nextOfKin.as("text")}
@@ -244,25 +291,19 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 			</svelte:boundary>
 		{/if}
 	</div>
-	<div class="flex justify-end border-t border-border/70 pt-6">
-		<Button
-			type="submit"
-			class="w-full sm:w-auto"
-			size="lg"
-			disabled={!!processPayment.pending || !paymentElementReady}
-			onclick={handleSubmit}
-		>
-			{#if processPayment.pending}
-				<LoaderCircle />
-			{:else}
-				{complimentary ? "Complete signup" : "Sign up"}
-				<ArrowRightIcon class="ml-2 h-4 w-4" />
-			{/if}
-		</Button>
-	</div>
+	<PaymentSubmit
+		state={machineState}
+		{failure}
+		{complimentary}
+		verifyAgainHref={invitationPaths.page(page.params.invitationId ?? "")}
+		onsubmit={() => send({ type: "PAYMENT_REQUESTED" })}
+		onretry={() => send({ type: "RETRY_REQUESTED" })}
+	/>
 	<div
 		id="payment-element-state"
-		data-ready={paymentElementReady}
+		data-ready={machineState !== "deciding" &&
+			machineState !== "initializing" &&
+			machineState !== "unavailable"}
 		data-complete={paymentElementComplete}
 		class="sr-only"
 	></div>

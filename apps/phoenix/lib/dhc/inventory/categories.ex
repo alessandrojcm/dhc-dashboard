@@ -93,38 +93,37 @@ defmodule Dhc.Inventory.Categories do
 
   defp category_changeset(%EquipmentCategory{} = category, attrs) do
     category
-    |> Ecto.Changeset.cast(attrs, [:name, :description, :available_attributes])
+    |> Ecto.Changeset.cast(attrs, [:name, :description])
     |> Ecto.Changeset.validate_required([:name])
     |> Ecto.Changeset.validate_length(:name, min: 1, max: 50)
     |> Ecto.Changeset.validate_length(:description, max: 500)
-    |> validate_available_attributes()
     |> Ecto.Changeset.unique_constraint(:name, name: :equipment_categories_name_index)
-  end
-
-  defp validate_available_attributes(changeset) do
-    case Ecto.Changeset.get_change(changeset, :available_attributes) do
-      nil ->
-        changeset
-
-      list when is_list(list) ->
-        case Enum.find_value(list, &available_attribute_error/1) do
-          nil -> changeset
-          message -> Ecto.Changeset.add_error(changeset, :available_attributes, message)
-        end
-
-      _ ->
-        Ecto.Changeset.add_error(changeset, :available_attributes, "must be an array")
-    end
   end
 
   defp delete_unreferenced_category(%EquipmentCategory{id: id} = category) do
     if category_item_count(id) > 0 do
       {:error, :still_referenced}
     else
-      case Repo.delete(category) do
+      case category
+           |> Ecto.Changeset.change()
+           |> Ecto.Changeset.no_assoc_constraint(:property_definitions,
+             name: :inventory_property_definitions_category_id_fkey
+           )
+           |> Repo.delete() do
         {:ok, deleted} -> {:ok, deleted}
-        {:error, _changeset} -> {:error, :not_found}
+        {:error, %Ecto.Changeset{} = changeset} -> translate_delete_error(changeset)
       end
+    end
+  end
+
+  defp translate_delete_error(%Ecto.Changeset{errors: errors}) do
+    if Enum.any?(errors, fn
+         {:property_definitions, _} -> true
+         _other -> false
+       end) do
+      {:error, :still_referenced}
+    else
+      {:error, :not_found}
     end
   end
 
@@ -136,21 +135,10 @@ defmodule Dhc.Inventory.Categories do
     |> Repo.one() || 0
   end
 
-  defp available_attribute_error(item) when not is_map(item),
-    do: "must be an array of attribute definitions"
-
-  defp available_attribute_error(%{"type" => type})
-       when type not in ~w(text select number boolean),
-       do: "attribute type must be one of: text, select, number, boolean"
-
-  defp available_attribute_error(_item), do: nil
-
   defp normalize_attrs(attrs) when is_map(attrs) do
     %{
       "name" => map_get(attrs, [:name, "name"]),
-      "description" => map_get(attrs, [:description, "description"]),
-      "available_attributes" =>
-        map_get(attrs, [:available_attributes, "available_attributes", "availableAttributes"])
+      "description" => map_get(attrs, [:description, "description"])
     }
     |> Enum.reject(fn {_k, v} -> is_nil(v) end)
     |> Map.new()

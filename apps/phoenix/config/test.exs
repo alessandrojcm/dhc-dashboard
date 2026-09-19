@@ -40,6 +40,15 @@ config :dhc, Oban,
   plugins: false,
   queues: false
 
+# ALE-299: throwaway VAPID pair so Web Push tests exercise real aes128gcm
+# encryption and VAPID signing. Never reuse outside the test environment; the
+# HTTP hop is stubbed (`:web_push_sender` / Req `plug:`), so nothing is sent.
+config :web_push_ex, :vapid,
+  public_key:
+    "BPc-Rg-95F7uw6WULGEQrg3rJTPI546a_og2r-OKgHKNE55A4BHPlr1LVarNEKFVss8GpZx4DeTOIRcpEM0ygwA",
+  private_key: "zhxDag9DD1xQEjZrUYMF5_bZMw-3EKUIRa-PPp2R2h0",
+  subject: "mailto:test@dhc.local"
+
 # Discord worker — skip sending in test
 config :dhc, :discord_webhook_url, "https://discord.example.com/webhook/test"
 

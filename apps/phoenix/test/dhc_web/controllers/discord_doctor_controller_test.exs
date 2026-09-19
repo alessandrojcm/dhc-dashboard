@@ -9,43 +9,32 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Repo
+  alias DhcWeb.OpenApiVerifier
 
-  defmodule Verifier do
-    for role <- ~w(admin president committee_coordinator member treasurer) do
-      def verify(unquote("#{role}-token")) do
-        {:ok,
-         %{
-           sub: principal_id(unquote(role)),
-           email: "#{unquote(role)}@example.com",
-           roles: [unquote(role)],
-           raw: %{}
-         }}
-      end
-    end
-
-    def verify(_token), do: {:error, :invalid_token}
-
-    def principal_id("admin"), do: "00000000-0000-0000-0000-000000000001"
-    def principal_id("president"), do: "00000000-0000-0000-0000-000000000002"
-
-    def principal_id("committee_coordinator"),
-      do: "00000000-0000-0000-0000-000000000003"
-
-    def principal_id("member"), do: "00000000-0000-0000-0000-000000000004"
-    def principal_id("treasurer"), do: "00000000-0000-0000-0000-000000000005"
-  end
+  @role_subs %{
+    "admin" => "00000000-0000-0000-0000-000000000001",
+    "president" => "00000000-0000-0000-0000-000000000002",
+    "committee_coordinator" => "00000000-0000-0000-0000-000000000003",
+    "member" => "00000000-0000-0000-0000-000000000004",
+    "treasurer" => "00000000-0000-0000-0000-000000000005"
+  }
 
   setup do
-    original_verifier = Application.get_env(:dhc, :auth_verifier)
     original_guild_id = Application.get_env(:dhc, :discord_guild_id)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
+
+    original_verifier =
+      OpenApiVerifier.install(
+        roles: ~w(admin president committee_coordinator member treasurer),
+        role_subs: @role_subs
+      )
+
     Application.put_env(:dhc, :discord_guild_id, "guild-123")
 
     start_supervised!({DiscordAdapter, owner: self()})
     :ok = Dhc.Discord.GuildMemberCache.clear()
 
     on_exit(fn ->
-      Application.put_env(:dhc, :auth_verifier, original_verifier)
+      OpenApiVerifier.restore(original_verifier)
 
       if original_guild_id do
         Application.put_env(:dhc, :discord_guild_id, original_guild_id)
@@ -224,7 +213,7 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
     conn: conn
   } do
     member("Ada", "Admin",
-      principal_id: Verifier.principal_id("admin"),
+      principal_id: OpenApiVerifier.principal_id("admin"),
       email: "admin@example.com"
     )
 
@@ -263,7 +252,7 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
 
   test "refuses every unsafe row while continuing a reviewed batch", %{conn: conn} do
     member("Ada", "Admin",
-      principal_id: Verifier.principal_id("admin"),
+      principal_id: OpenApiVerifier.principal_id("admin"),
       email: "admin@example.com"
     )
 
@@ -339,7 +328,7 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
 
   test "returns every Discord kick outcome as row data in one successful response", %{conn: conn} do
     member("Ada", "Admin",
-      principal_id: Verifier.principal_id("admin"),
+      principal_id: OpenApiVerifier.principal_id("admin"),
       email: "admin@example.com"
     )
 
@@ -373,7 +362,7 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
 
   test "allows a pending link to be kicked only as a single reviewed target", %{conn: conn} do
     member("Ada", "Admin",
-      principal_id: Verifier.principal_id("admin"),
+      principal_id: OpenApiVerifier.principal_id("admin"),
       email: "admin@example.com"
     )
 
@@ -404,7 +393,7 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
     conn: conn
   } do
     member("Ada", "Admin",
-      principal_id: Verifier.principal_id("admin"),
+      principal_id: OpenApiVerifier.principal_id("admin"),
       email: "admin@example.com"
     )
 
@@ -438,7 +427,7 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
   test "authorizes only the three Discord Doctor roles for kicks", %{conn: conn} do
     for role <- ~w(admin president committee_coordinator) do
       member(String.capitalize(role), "Admin",
-        principal_id: Verifier.principal_id(role),
+        principal_id: OpenApiVerifier.principal_id(role),
         email: "#{role}@example.com"
       )
 

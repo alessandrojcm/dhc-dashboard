@@ -4,23 +4,28 @@ defmodule Dhc.Inventory do
 
   This module is the stable Phoenix context boundary used by controllers and
   other callers. Implementation is split by inventory slice under
-  `Dhc.Inventory.*` so category, container, item, and history behavior can stay
-  navigable without changing the public API.
+  `Dhc.Inventory.*` so category, container, item, loan, and notification
+  behavior can stay navigable without changing the public API.
   """
 
   alias Dhc.Inventory.Categories
   alias Dhc.Inventory.Containers
   alias Dhc.Inventory.EquipmentCategory
-  alias Dhc.Inventory.InventoryHistory
   alias Dhc.Inventory.Item
-  alias Dhc.Inventory.ItemHistory
-  alias Dhc.Inventory.Items
-  alias Dhc.Inventory.Stats
+  alias Dhc.Inventory.MemberCatalog
+  alias Dhc.Inventory.LoanNotifications
+  alias Dhc.Inventory.LoanReminders
+  alias Dhc.Inventory.MemberLoans
+  alias Dhc.Inventory.OperatorItemLifecycle
+  alias Dhc.Inventory.OperatorItemList
+  alias Dhc.Inventory.OperatorItems
+  alias Dhc.Inventory.OperatorLoanQueue
+  alias Dhc.Inventory.OperatorLoans
+  alias Dhc.Inventory.Structure
 
   @type category :: EquipmentCategory.t()
   @type container :: Containers.container()
   @type item :: Item.t()
-  @type history :: InventoryHistory.t()
 
   defdelegate list_categories(), to: Categories
   defdelegate get_category(id), to: Categories
@@ -32,18 +37,97 @@ defmodule Dhc.Inventory do
   defdelegate get_container(id), to: Containers
   defdelegate create_container(attrs, actor_id), to: Containers
   defdelegate update_container(id, attrs), to: Containers
+  defdelegate move_container(id, parent_container_id), to: Containers
+  defdelegate archive_container(id), to: Containers
+  defdelegate restore_container(id), to: Containers
   defdelegate delete_container(id), to: Containers
 
-  defdelegate list_items(opts \\ %{}), to: Items
-  defdelegate get_item(id), to: Items
-  defdelegate create_item(attrs, actor_id), to: Items
-  defdelegate update_item(id, attrs, actor_id), to: Items
-  defdelegate delete_item(id), to: Items
-  defdelegate move_item(id, attrs, actor_id), to: Items
-  defdelegate set_item_maintenance(id, attrs, actor_id), to: Items
+  # ALE-289: the legacy quantity/JSON-attributes slice is gone. One row is
+  # one physical unit with an immutable slug; labels are derived, never
+  # stored; availability is a projection, never a stored flag.
+  defdelegate resolve_operator_item(slug_or_id), to: OperatorItems
+  # ALE-284c paginated operator read backing the viewer contract.
+  defdelegate list_operator_items(params \\ %{}), to: OperatorItemList
+  defdelegate create_operator_item(attrs, actor_id), to: OperatorItems
+  defdelegate update_operator_item(slug_or_id, attrs, actor_id), to: OperatorItems
+  defdelegate change_operator_item_category(slug_or_id, attrs, actor_id), to: OperatorItems
 
-  defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
-  defdelegate list_history(opts \\ %{}), to: ItemHistory
+  # ALE-284b availability-changing commands. Each serializes on the item and
+  # returns a domain conflict on races; availability stays a projection.
+  defdelegate move_operator_item(slug_or_id, attrs, actor_id), to: OperatorItemLifecycle
 
-  defdelegate get_stats(), to: Stats
+  defdelegate start_operator_item_maintenance(slug_or_id, attrs, actor_id),
+    to: OperatorItemLifecycle
+
+  defdelegate end_operator_item_maintenance(slug_or_id, attrs, actor_id),
+    to: OperatorItemLifecycle
+
+  defdelegate list_operator_item_maintenance_periods(slug_or_id), to: OperatorItemLifecycle
+  defdelegate archive_operator_item(slug_or_id, attrs, actor_id), to: OperatorItemLifecycle
+  defdelegate restore_operator_item(slug_or_id, actor_id), to: OperatorItemLifecycle
+  defdelegate delete_operator_item(slug_or_id, attrs), to: OperatorItemLifecycle
+
+  # ALE-285 member catalog. A separate read model, not a role variant of the
+  # operator viewer: member rows never carry container, notes, or operator
+  # maintenance facts, and availability is a generic reason (story 45).
+  defdelegate list_catalog_items(params \\ %{}), to: MemberCatalog
+  defdelegate resolve_catalog_item(slug_or_id), to: MemberCatalog
+
+  # ALE-285 member loan commands and own history. A member acts only on their
+  # own loans and only before checkout; approve/reject/checkout/return and the
+  # operator queue are ALE-286.
+  defdelegate request_loan(slug_or_id, attrs, borrower_id), to: MemberLoans
+  defdelegate cancel_loan(loan_id, attrs, borrower_id), to: MemberLoans
+  defdelegate list_own_loans(borrower_id, params \\ %{}), to: MemberLoans
+  defdelegate get_own_loan(loan_id, borrower_id), to: MemberLoans
+
+  # ALE-296 (286a) operator loan transitions. Each locks the item before the
+  # loan and returns a domain conflict on a race; approval reserves the item
+  # exactly once and rejects every competing request. Notifications stay
+  # absent here — ALE-298 attaches them after the command returns. Operator
+  # cancel applies only to an approved loan; the member's own cancellation
+  # stays in `MemberLoans`.
+  defdelegate approve_loan(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate reject_loan(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate cancel_operator_loan(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate check_out_loan(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate return_loan(loan_id, actor_id), to: OperatorLoans
+  defdelegate edit_loan_dates(loan_id, attrs, actor_id), to: OperatorLoans
+  defdelegate get_operator_loan(loan_id), to: OperatorLoans
+
+  # ALE-297 (286b) the shared operator loan queue. A read model bucketed by
+  # lifecycle and due date, with counts derived from the rows beside them. No
+  # actor and no claim semantics: the queue is shared, so every duty officer
+  # sees the same thing. Operator-only — these rows name the borrower and
+  # disclose container and maintenance facts, which the member read model
+  # (ALE-285) cannot express at all.
+  defdelegate get_operator_loan_queue(), to: OperatorLoanQueue
+
+  # ALE-298 (286c) post-commit keyed notifications for exposed loan
+  # transitions. The commands themselves stay notification-free; the
+  # controller calls this after they return to enqueue
+  # `KeyedCreateWorker`, which retries `create_keyed/3`.
+  defdelegate notify_loan_transition(loan, kind), to: LoanNotifications
+
+  # ALE-287 loan reminders. A durable ledger whose delivery pass is also its
+  # reconciliation: one pre-due reminder, one at overdue, weekly thereafter,
+  # none for a closed loan, and no duplicate per occurrence across retries or
+  # scheduler restarts. Reminders are *derived* from each loan's approved due
+  # date, so a due-date edit reschedules them with no write on the transition
+  # path — which is why the loan commands stay reminder-free. Driven on a cron
+  # by `Dhc.Inventory.Workers.LoanReminderWorker`; `run_loan_reminders/0` is
+  # exposed for that worker and for operational repair.
+  defdelegate run_loan_reminders(), to: LoanReminders, as: :run
+  defdelegate due_loan_reminders(), to: LoanReminders, as: :due
+
+  defdelegate list_definitions(category_id), to: Structure
+  defdelegate get_definition(id), to: Structure
+  defdelegate create_definition(category_id, attrs), to: Structure
+  defdelegate update_definition(id, attrs), to: Structure
+  defdelegate retire_definition(id), to: Structure
+  defdelegate list_options(definition_id), to: Structure
+  defdelegate get_option(id), to: Structure
+  defdelegate create_option(definition_id, attrs), to: Structure
+  defdelegate update_option(id, attrs), to: Structure
+  defdelegate retire_option(id), to: Structure
 end

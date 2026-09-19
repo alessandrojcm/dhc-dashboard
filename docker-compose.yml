@@ -28,6 +28,29 @@ services:
       - "1025:1025"
       - "8025:8025"
 
+  # Opt-in Phoenix development server. Its source is bind-mounted for
+  # code reloading; Dockerfile.dev keeps Mix build artifacts outside the mount.
+  phoenix:
+    profiles: ["phoenix"]
+    build:
+      context: .
+      dockerfile: apps/phoenix/Dockerfile.dev
+    ports:
+      - "4000:4000"
+    environment:
+      PHX_BIND_ADDRESS: 0.0.0.0
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      POSTGRES_PASSWORD: postgres
+      MAILPIT_HTTP_URL: http://mailpit:8025
+    volumes:
+      - ./apps/phoenix:/workspace/apps/phoenix
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
   # Disposable testcontainers database. The dynamic host port and absence of
   # a named volume keep concurrent and repeated Phoenix test runs isolated.
   test-db:

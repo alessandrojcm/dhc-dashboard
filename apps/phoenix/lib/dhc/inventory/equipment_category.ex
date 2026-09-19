@@ -5,14 +5,11 @@ defmodule Dhc.Inventory.EquipmentCategory do
   Vocabulary note: the persistence table is `equipment_categories`; the
   public API contract (see `apps/phoenix/priv/api/openapi.yaml`) refers to
   these as **Inventory Categories** (`InventoryCategory` schema components).
-  Payload keys are camelCase (`availableAttributes`, `createdAt`, …); the
+  Payload keys are camelCase (`itemCount`, `createdAt`, …); the
   `DhcWeb.InventoryCategoriesJSON` renderer performs the camelCase mapping.
-
-  ## Non-exposed columns
-
-  `attribute_schema` is persisted for forward-compatibility with future
-  item-attribute validation slices but is intentionally not part of the
-  ALE-105 category contract — it is neither read nor written by this slice.
+  Typed property definitions live in their own tables behind
+  `Dhc.Inventory.Structure` — ALE-289 dropped the legacy
+  `available_attributes` / `attribute_schema` JSON config columns.
   """
 
   use Ecto.Schema
@@ -25,14 +22,16 @@ defmodule Dhc.Inventory.EquipmentCategory do
   schema "equipment_categories" do
     field :name, :string
     field :description, :string
-    field :available_attributes, Dhc.Inventory.JsonArray
-    # Persisted for future item-attribute validation; not exposed in the
-    # ALE-105 category contract.
-    field :attribute_schema, Dhc.Inventory.JsonArray
+    # ALE-282 target column: set when the category is archived instead of
+    # hard-deleted. ALE-283b owns the archive/restore commands; the field
+    # exists here so structure reads can distinguish active rows.
+    field :archived_at, :utc_datetime_usec
 
     # Optional aggregate populated by `Dhc.Inventory` read helpers. Not a
     # column — set via `inspect/2` query disables / or assigned directly.
     field :item_count, :integer, virtual: true
+
+    has_many :property_definitions, Dhc.Inventory.PropertyDefinition, foreign_key: :category_id
 
     # Production Supabase uses `created_at`/`updated_at` (see the baseline
     # migration `20260512000010_create_inventory.exs`). Use the `timestamps/1`

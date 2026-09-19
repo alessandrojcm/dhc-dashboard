@@ -7,7 +7,7 @@ import {
 	type WorkshopRegistrationResponse,
 } from "@dhc/api-client";
 import { apiBaseUrl } from "$lib/server/api-client";
-import { apiErrorMessage } from "$lib/server/api-error";
+import { apiErrorMessage } from "$lib/api-error";
 
 export interface ExternalWorkshopRegistrationClient {
 	completeRegistration(options: {

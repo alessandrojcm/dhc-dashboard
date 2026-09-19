@@ -4,6 +4,8 @@ defmodule Dhc.Inventory.Containers do
   import Ecto.Query
 
   alias Dhc.Inventory.Container
+  alias Dhc.Inventory.ItemGuards
+  alias Dhc.Inventory.Locks
   alias Dhc.Repo
 
   @type container :: Container.t()
@@ -48,10 +50,7 @@ defmodule Dhc.Inventory.Containers do
   def create_container(attrs, actor_id) when is_map(attrs) and is_binary(actor_id) do
     normalized = normalize_container_attrs(attrs)
 
-    %Container{created_by: actor_id}
-    |> container_changeset(normalized)
-    |> Repo.insert()
-    |> handle_container_insert()
+    Repo.transaction(fn -> insert_created_container(actor_id, normalized) end)
   end
 
   @spec update_container(String.t(), map()) ::
@@ -67,37 +66,93 @@ defmodule Dhc.Inventory.Containers do
         {:error, :not_found}
 
       %Container{} = container ->
-        if circular_parent?(id, normalized) do
-          {:error, :circular_parent}
-        else
-          container
-          |> container_changeset(normalized)
-          |> Repo.update()
-          |> handle_container_update(id)
-        end
+        update_existing_container(container, normalized)
     end
+  end
+
+  @spec move_container(String.t(), String.t() | nil) ::
+          {:ok, container()}
+          | {:error, :not_found | :circular_parent | :archived_parent}
+          | {:error, Ecto.Changeset.t()}
+  def move_container(id, parent_container_id) when is_binary(id) do
+    Repo.transaction(fn ->
+      locked_move_container(id, normalize_parent_id(parent_container_id))
+    end)
+    |> translate_move_result()
+  end
+
+  @spec archive_container(String.t()) ::
+          {:ok, container()} | {:error, :not_found | :active_dependants}
+  def archive_container(id) when is_binary(id) do
+    Repo.transaction(fn -> locked_archive_container(id) end)
+    |> translate_archive_result()
+  end
+
+  @spec restore_container(String.t()) ::
+          {:ok, container()} | {:error, :not_found | :archived_parent}
+  def restore_container(id) when is_binary(id) do
+    Repo.transaction(fn -> locked_restore_container(id) end)
+    |> translate_restore_result()
   end
 
   @spec delete_container(String.t()) ::
           {:ok, container()} | {:error, :not_found} | {:error, :still_referenced}
   def delete_container(id) when is_binary(id) do
-    case Repo.get(Container, id) do
-      nil ->
-        {:error, :not_found}
+    Repo.transaction(fn -> locked_delete_container(id) end)
+    |> translate_delete_result()
+  end
 
-      %Container{} = container ->
-        delete_unreferenced_container(container)
+  defp locked_delete_container(id) do
+    case Locks.get_for_update(Container, id) do
+      nil -> Repo.rollback(:not_found)
+      %Container{} = container -> delete_unreferenced_container(container)
     end
   end
 
   defp delete_unreferenced_container(%Container{} = container) do
-    if direct_item_count(container.id) > 0 do
-      {:error, :still_referenced}
+    lock_dependants(container.id)
+
+    if direct_dependants?(container.id) do
+      Repo.rollback(:still_referenced)
     else
       case Repo.delete(container) do
-        {:ok, deleted} -> {:ok, deleted}
-        {:error, _changeset} -> {:error, :still_referenced}
+        {:ok, deleted} -> deleted
+        {:error, _changeset} -> Repo.rollback(:still_referenced)
       end
+    end
+  end
+
+  defp translate_delete_result({:ok, %Container{} = container}), do: {:ok, container}
+  defp translate_delete_result({:error, reason}), do: {:error, reason}
+
+  defp update_existing_container(%Container{} = container, normalized) do
+    case Map.fetch(normalized, "parent_container_id") do
+      :error ->
+        container
+        |> container_changeset(normalized)
+        |> Repo.update()
+        |> handle_container_update(container.id)
+
+      {:ok, parent_id} ->
+        move_and_update(container.id, parent_id, normalized)
+        |> translate_move_result()
+    end
+  end
+
+  defp move_and_update(id, parent_id, normalized) do
+    Repo.transaction(fn ->
+      id
+      |> locked_move_container(parent_id)
+      |> update_moved_container(normalized)
+    end)
+  end
+
+  defp update_moved_container(%Container{} = container, normalized) do
+    case container
+         |> container_changeset(Map.delete(normalized, "parent_container_id"))
+         |> Repo.update() do
+      {:ok, updated} -> populate_flat_aggregates(updated)
+      {:error, changeset} -> Repo.rollback(changeset)
     end
   end
 
@@ -139,8 +194,6 @@ defmodule Dhc.Inventory.Containers do
       order_by: [asc: i.created_at],
       select: %{
         "id" => fragment("?::text", i.id),
-        "quantity" => i.quantity,
-        "out_for_maintenance" => i.out_for_maintenance,
         "category" =>
           fragment(
             "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?::text, 'name', ?) ELSE NULL END",
@@ -161,12 +214,22 @@ defmodule Dhc.Inventory.Containers do
     |> Repo.one() || 0
   end
 
+  defp direct_dependants?(container_id) do
+    children? =
+      from(c in Container, where: c.parent_container_id == ^container_id)
+      |> Repo.exists?()
+
+    children? or direct_item_count(container_id) > 0
+  end
+
   defp container_changeset(%Container{} = container, attrs) do
     container
     |> Ecto.Changeset.cast(attrs, [:name, :description, :parent_container_id])
     |> Ecto.Changeset.validate_required([:name])
     |> Ecto.Changeset.validate_length(:name, min: 1, max: 100)
     |> Ecto.Changeset.validate_length(:description, max: 500)
+    |> Ecto.Changeset.unique_constraint(:name, name: :containers_root_name_unique)
+    |> Ecto.Changeset.unique_constraint(:name, name: :containers_sibling_name_unique)
     |> Ecto.Changeset.foreign_key_constraint(:parent_container_id,
       name: :containers_parent_container_id_fkey
     )
@@ -212,16 +275,63 @@ defmodule Dhc.Inventory.Containers do
   defp normalize_parent_id(value) when is_binary(value), do: value
   defp normalize_parent_id(value), do: value
 
-  defp circular_parent?(container_id, normalized) do
-    case Map.get(normalized, "parent_container_id") do
-      nil -> false
-      proposed when is_binary(proposed) -> cycle?(container_id, proposed)
+  defp insert_created_container(actor_id, normalized) do
+    changeset = %Container{created_by: actor_id} |> container_changeset(normalized)
+
+    cond do
+      invalid_parent_id?(Map.get(normalized, "parent_container_id")) ->
+        Repo.rollback(invalid_parent_changeset(%Container{created_by: actor_id}))
+
+      not changeset.valid? ->
+        Repo.rollback(changeset)
+
+      parent_is_active(normalized) == :archived_parent ->
+        Repo.rollback(archived_parent_changeset(actor_id, normalized))
+
+      true ->
+        case Repo.insert(changeset) do
+          {:ok, container} -> populate_flat_aggregates(container)
+          {:error, failed} -> Repo.rollback(failed)
+        end
     end
   end
 
-  defp cycle?(container_id, proposed) when proposed == container_id, do: true
+  defp parent_is_active(normalized) do
+    case Map.get(normalized, "parent_container_id") do
+      nil ->
+        :ok
+
+      parent_id ->
+        case ItemGuards.require_active_container_chain(parent_id) do
+          :ok -> :ok
+          {:error, _reason} -> :archived_parent
+        end
+    end
+  end
+
+  defp archived_parent_changeset(actor_id, attrs) do
+    %Container{created_by: actor_id}
+    |> container_changeset(attrs)
+    |> Ecto.Changeset.add_error(:parent_container_id, "must refer to an active container")
+  end
 
   defp cycle?(container_id, proposed) do
+    if skip_cycle_check?() do
+      false
+    else
+      detect_cycle?(container_id, proposed)
+    end
+  end
+
+  defp skip_cycle_check? do
+    :dhc
+    |> Application.get_env(__MODULE__, [])
+    |> Keyword.get(:skip_cycle_check, false)
+  end
+
+  defp detect_cycle?(container_id, proposed) when proposed == container_id, do: true
+
+  defp detect_cycle?(container_id, proposed) do
     parent_map = container_parent_map()
 
     Stream.unfold(proposed, fn
@@ -241,13 +351,212 @@ defmodule Dhc.Inventory.Containers do
     |> Map.new()
   end
 
-  defp handle_container_insert({:ok, %Container{} = container}) do
-    {:ok, populate_flat_aggregates(container)}
+  defp locked_move_container(id, parent_id) do
+    case Locks.get_for_update(Container, id) do
+      nil ->
+        Repo.rollback(:not_found)
+
+      %Container{} = container ->
+        apply_locked_move(container, parent_id)
+    end
   end
 
-  defp handle_container_insert({:error, %Ecto.Changeset{} = changeset}) do
-    {:error, changeset}
+  defp apply_locked_move(%Container{} = container, parent_id) do
+    changeset = move_changeset(container, parent_id)
+
+    cond do
+      parent_id == container.parent_container_id ->
+        populate_flat_aggregates(container)
+
+      invalid_parent_id?(parent_id) ->
+        Repo.rollback(invalid_parent_changeset(container))
+
+      not changeset.valid? ->
+        Repo.rollback(changeset)
+
+      parent_id != nil and not parent_chain_active?(parent_id) ->
+        Repo.rollback(:archived_parent)
+
+      parent_id != nil and cycle?(container.id, parent_id) ->
+        Repo.rollback(:circular_parent)
+
+      true ->
+        persist_moved_container(changeset)
+    end
   end
+
+  defp invalid_parent_id?(nil), do: false
+
+  defp invalid_parent_id?(parent_id) when is_binary(parent_id) do
+    match?(:error, Ecto.UUID.cast(parent_id))
+  end
+
+  defp invalid_parent_id?(_parent_id), do: true
+
+  defp invalid_parent_changeset(%Container{} = container) do
+    container
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.add_error(:parent_container_id, "is invalid")
+  end
+
+  defp move_changeset(%Container{} = container, parent_id) do
+    container
+    |> Ecto.Changeset.cast(%{"parent_container_id" => parent_id}, [:parent_container_id])
+    |> Ecto.Changeset.unique_constraint(:name, name: :containers_root_name_unique)
+    |> Ecto.Changeset.unique_constraint(:name, name: :containers_sibling_name_unique)
+    |> Ecto.Changeset.check_constraint(:parent_container_id, name: :containers_parent_acyclic)
+    |> Ecto.Changeset.foreign_key_constraint(:parent_container_id,
+      name: :containers_parent_container_id_fkey
+    )
+  end
+
+  defp persist_moved_container(%Ecto.Changeset{} = changeset) do
+    # The acyclic trigger is DEFERRABLE INITIALLY DEFERRED, so without this
+    # it would fire at COMMIT — after Repo.update/1 already returned :ok —
+    # and escape as a Postgrex.Error. Immediate checking makes the
+    # check_constraint/3 translation on the changeset actually run.
+    Repo.query!("SET CONSTRAINTS containers_parent_acyclic IMMEDIATE")
+
+    case Repo.update(changeset) do
+      {:ok, updated} -> populate_flat_aggregates(updated)
+      {:error, failed} -> Repo.rollback(translate_move_write_error(failed))
+    end
+  end
+
+  defp translate_move_write_error(%Ecto.Changeset{} = changeset) do
+    if cycle_constraint?(changeset), do: :circular_parent, else: changeset
+  end
+
+  defp cycle_constraint?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:parent_container_id, {_msg, meta}} ->
+        Keyword.get(meta, :constraint) == :check and
+          Keyword.get(meta, :constraint_name) == "containers_parent_acyclic"
+
+      _other ->
+        false
+    end)
+  end
+
+  defp translate_move_result({:ok, %Container{} = container}), do: {:ok, container}
+  defp translate_move_result({:error, reason}), do: {:error, reason}
+
+  defp locked_archive_container(id) do
+    case Locks.get_for_update(Container, id) do
+      nil ->
+        Repo.rollback(:not_found)
+
+      %Container{archived_at: archived_at} = container when not is_nil(archived_at) ->
+        populate_flat_aggregates(container)
+
+      %Container{} = container ->
+        lock_dependants(container.id)
+
+        if active_dependants?(container.id) do
+          Repo.rollback(:active_dependants)
+        else
+          persist_container_stamp(container, archived_at: DateTime.utc_now())
+        end
+    end
+  end
+
+  defp translate_archive_result({:ok, %Container{} = container}), do: {:ok, container}
+  defp translate_archive_result({:error, reason}), do: {:error, reason}
+
+  defp locked_restore_container(id) do
+    case Locks.get_for_update(Container, id) do
+      nil ->
+        Repo.rollback(:not_found)
+
+      %Container{archived_at: nil} = container ->
+        populate_flat_aggregates(container)
+
+      %Container{} = container ->
+        if parent_chain_active?(container.parent_container_id) do
+          persist_container_stamp(container, archived_at: nil)
+        else
+          Repo.rollback(:archived_parent)
+        end
+    end
+  end
+
+  defp persist_container_stamp(%Container{} = container, changes) do
+    case container |> Ecto.Changeset.change(changes) |> Repo.update() do
+      {:ok, updated} -> populate_flat_aggregates(updated)
+      {:error, _failed} -> Repo.rollback(:not_found)
+    end
+  end
+
+  defp translate_restore_result({:ok, %Container{} = container}), do: {:ok, container}
+  defp translate_restore_result({:error, reason}), do: {:error, reason}
+
+  defp active_dependants?(container_id) do
+    %{rows: [[active_dependants?]]} =
+      query_subtree!(
+        """
+        SELECT
+          EXISTS (
+            SELECT 1
+            FROM containers container
+            JOIN subtree ON subtree.id = container.id
+            WHERE container.id <> $1 AND container.archived_at IS NULL
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM inventory_items item
+            JOIN subtree ON subtree.id = item.container_id
+            WHERE item.archived_at IS NULL
+          )
+        """,
+        container_id
+      )
+
+    active_dependants?
+  end
+
+  defp lock_dependants(container_id) do
+    query_subtree!(
+      """
+      SELECT container.id
+      FROM containers container
+      JOIN subtree ON subtree.id = container.id
+      ORDER BY container.id
+      FOR UPDATE
+      """,
+      container_id
+    )
+
+    query_subtree!(
+      """
+      SELECT item.id
+      FROM inventory_items item
+      JOIN subtree ON subtree.id = item.container_id
+      ORDER BY item.id
+      FOR UPDATE
+      """,
+      container_id
+    )
+  end
+
+  # Shared recursive walk of a container and every descendant. The three
+  # callers differ only in the SELECT that follows (active-dependant check,
+  # container FOR UPDATE, item FOR UPDATE).
+  defp query_subtree!(select_sql, container_id) do
+    Repo.query!(
+      """
+      WITH RECURSIVE subtree AS (
+        SELECT id FROM containers WHERE id = $1
+        UNION ALL
+        SELECT child.id
+        FROM containers child
+        JOIN subtree parent ON parent.id = child.parent_container_id
+      )
+      """ <> select_sql,
+      [Ecto.UUID.dump!(container_id)]
+    )
+  end
+
+  defp parent_chain_active?(parent_id), do: ItemGuards.container_chain_active?(parent_id)
 
   defp handle_container_update({:ok, %Container{} = container}, id) do
     case Repo.get(Container, id) do

@@ -49,7 +49,7 @@ defmodule DhcWeb.Router do
   # categories are any authenticated member — the existing Svelte category
   # list view is member-readable; writes require the inventory write roles.
   pipeline :inventory_admin_api do
-    plug DhcWeb.Plugs.RequireSession, roles: ~w(quartermaster admin president)
+    plug DhcWeb.Plugs.RequireSession, roles: Dhc.Auth.inventory_operator_roles()
   end
 
   pipeline :authenticated_api do
@@ -90,6 +90,9 @@ defmodule DhcWeb.Router do
       get "/assertions/invitation-acceptance/:id",
           E2EHarnessController,
           :invitation_acceptance_assertion
+
+      get "/status", E2EHarnessController, :status
+      post "/loan-reminders/run", E2EHarnessController, :run_loan_reminders
 
       post "/onboarding/clear-finalization-interruption",
            E2EHarnessController,
@@ -240,6 +243,12 @@ defmodule DhcWeb.Router do
     get "/notifications", NotificationsController, :index
     post "/notifications/read-all", NotificationsController, :mark_all_read
     patch "/notifications/:id/read", NotificationsController, :mark_read
+    # ALE-299: Web Push registration for the notification centre. Any
+    # authenticated member may read the public VAPID key and manage the
+    # subscriptions of the browser they are calling from.
+    get "/notifications/push/config", NotificationsPushController, :config
+    post "/notifications/push/subscriptions", NotificationsPushController, :subscribe
+    post "/notifications/push/unsubscribe", NotificationsPushController, :unsubscribe
     get "/workshops", WorkshopsController, :list
     post "/workshops/:id/interest", WorkshopsController, :toggle_interest
 
@@ -252,16 +261,36 @@ defmodule DhcWeb.Router do
     # ALE-105: any authenticated member may read equipment categories.
     get "/inventory/categories", InventoryCategoriesController, :index
     get "/inventory/categories/:id", InventoryCategoriesController, :show
+    # ALE-283c: any authenticated member may read property definitions/options.
+    get "/inventory/categories/:categoryId/definitions", InventoryStructureController, :index
+    get "/inventory/definitions/:id", InventoryStructureController, :show
+
+    get "/inventory/definitions/:definitionId/options",
+        InventoryStructureController,
+        :index_options
+
     # ALE-106: any authenticated member may read inventory containers.
     get "/inventory/containers", InventoryContainersController, :index
     get "/inventory/containers/:id", InventoryContainersController, :show
-    # ALE-107: any authenticated member may read inventory items + history.
-    get "/inventory/items", InventoryItemsController, :index
-    get "/inventory/items/:id", InventoryItemsController, :show
-    get "/inventory/items/:id/history", InventoryItemsController, :history
-    # ALE-108: any authenticated member may read the global inventory activity feed.
-    get "/inventory/history", InventoryHistoryController, :index
-    get "/inventory/stats", InventoryDashboardController, :stats
+
+    # ALE-285 member catalog and own loans. Member-readable by design: these
+    # serve separate read models that cannot express container location,
+    # operator notes, maintenance facts, or another member's loans. Access
+    # follows membership, not a role list — an inactive member cannot hold a
+    # session (ALE-280 story 46), so :authenticated_api already means "active
+    # member". A request is addressed to an item, so it hangs off the item;
+    # reading and cancelling a loan hangs off /loans/mine, whose `mine`
+    # segment is the authorization model made visible.
+    get "/inventory/catalog/items", InventoryCatalogController, :list_items
+    get "/inventory/catalog/items/:slugOrId", InventoryCatalogController, :show_item
+
+    post "/inventory/catalog/items/:slugOrId/requests",
+         InventoryCatalogController,
+         :request_loan
+
+    get "/inventory/loans/mine", InventoryMemberLoansController, :list
+    get "/inventory/loans/mine/:loanId", InventoryMemberLoansController, :show
+    post "/inventory/loans/mine/:loanId/cancel", InventoryMemberLoansController, :cancel
   end
 
   scope "/api", DhcWeb do
@@ -271,17 +300,86 @@ defmodule DhcWeb.Router do
     post "/inventory/categories", InventoryCategoriesController, :create
     patch "/inventory/categories/:id", InventoryCategoriesController, :update
     delete "/inventory/categories/:id", InventoryCategoriesController, :delete
+    # ALE-283c: write roles only.
+    post "/inventory/categories/:categoryId/definitions", InventoryStructureController, :create
+    patch "/inventory/definitions/:id", InventoryStructureController, :update
+    post "/inventory/definitions/:id/retire", InventoryStructureController, :retire
+
+    post "/inventory/definitions/:definitionId/options",
+         InventoryStructureController,
+         :create_option
+
+    patch "/inventory/options/:id", InventoryStructureController, :update_option
+    post "/inventory/options/:id/retire", InventoryStructureController, :retire_option
+    post "/inventory/containers/:id/move", InventoryContainersController, :move
+    post "/inventory/containers/:id/archive", InventoryContainersController, :archive
+    post "/inventory/containers/:id/restore", InventoryContainersController, :restore
     # ALE-106: write roles only.
     post "/inventory/containers", InventoryContainersController, :create
     patch "/inventory/containers/:id", InventoryContainersController, :update
     delete "/inventory/containers/:id", InventoryContainersController, :delete
-    # ALE-107: write roles only.
+
+    # ALE-289: the target item viewer and commands live on the freed
+    # /inventory/items URLs. Equal authority for quartermaster, president,
+    # and admin. Reads live here rather than in the member scope because
+    # the operator viewer discloses container location, notes, and
+    # maintenance facts (ALE-280 story 45). Each availability-changing
+    # command is its own route so the generic PATCH cannot express it.
+    get "/inventory/items", InventoryItemsController, :index
+    get "/inventory/items/:slugOrId", InventoryItemsController, :show
     post "/inventory/items", InventoryItemsController, :create
-    patch "/inventory/items/:id", InventoryItemsController, :update
-    delete "/inventory/items/:id", InventoryItemsController, :delete
-    # ALE-108: dedicated movement/maintenance command endpoints, write roles only.
-    post "/inventory/items/:id/move", InventoryItemsController, :move
-    post "/inventory/items/:id/maintenance", InventoryItemsController, :maintenance
+    patch "/inventory/items/:slugOrId", InventoryItemsController, :update
+    delete "/inventory/items/:slugOrId", InventoryItemsController, :delete
+
+    post "/inventory/items/:slugOrId/category",
+         InventoryItemsController,
+         :change_category
+
+    post "/inventory/items/:slugOrId/move", InventoryItemsController, :move
+
+    get "/inventory/items/:slugOrId/maintenance",
+        InventoryItemsController,
+        :list_maintenance
+
+    post "/inventory/items/:slugOrId/maintenance/start",
+         InventoryItemsController,
+         :start_maintenance
+
+    post "/inventory/items/:slugOrId/maintenance/end",
+         InventoryItemsController,
+         :end_maintenance
+
+    post "/inventory/items/:slugOrId/archive",
+         InventoryItemsController,
+         :archive
+
+    post "/inventory/items/:slugOrId/restore",
+         InventoryItemsController,
+         :restore
+
+    # ALE-286c operator loan viewers, commands, and the shared queue.
+    # Equal authority for quartermaster, president, and admin. Each
+    # transition is its own route so there is no generic loan patch.
+    # The queue is unpaginated: bucket counts are length(rows).
+    get "/inventory/operator/loans/queue", InventoryOperatorLoanQueueController, :show
+    get "/inventory/operator/loans/:loanId", InventoryOperatorLoansController, :show
+
+    post "/inventory/operator/loans/:loanId/approve",
+         InventoryOperatorLoansController,
+         :approve
+
+    post "/inventory/operator/loans/:loanId/reject", InventoryOperatorLoansController, :reject
+    post "/inventory/operator/loans/:loanId/cancel", InventoryOperatorLoansController, :cancel
+
+    post "/inventory/operator/loans/:loanId/checkout",
+         InventoryOperatorLoansController,
+         :checkout
+
+    post "/inventory/operator/loans/:loanId/return", InventoryOperatorLoansController, :return
+
+    post "/inventory/operator/loans/:loanId/dates",
+         InventoryOperatorLoansController,
+         :edit_dates
   end
 
   # Phoenix-session auth API. Lives under /api/auth/* and is the first

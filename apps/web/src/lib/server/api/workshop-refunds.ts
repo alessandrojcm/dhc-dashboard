@@ -5,7 +5,7 @@ import {
 	type WorkshopRefundsResponse,
 } from "@dhc/api-client";
 import { apiClientOptions, type Cookies } from "$lib/server/api-client";
-import { apiErrorMessage } from "$lib/server/api-error";
+import { apiErrorMessage } from "$lib/api-error";
 
 export interface WorkshopRefundClient {
 	refundRegistration(

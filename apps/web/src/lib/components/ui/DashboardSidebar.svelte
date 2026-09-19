@@ -8,17 +8,8 @@ import { Button } from "$lib/components/ui/button";
 import type { NavData, UserData } from "$lib/types";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 import NotificationCenter from "$lib/components/notifications/NotificationCenter.svelte";
-import {
-	Boxes,
-	CalendarDays,
-	ChevronRight,
-	GraduationCap,
-	House,
-	Menu,
-	Stethoscope,
-	Swords,
-	UsersRound,
-} from "@lucide/svelte";
+import { House, Menu } from "@lucide/svelte";
+import { navIconFor } from "$lib/components/ui/nav-icons";
 import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
 import { browser } from "$app/environment";
 import { resolve } from "$app/paths";
@@ -28,7 +19,7 @@ type Props = {
 	className?: string | undefined | null;
 	logout: () => void;
 	userData: Promise<Partial<UserData>>;
-	roles: Set<string>;
+	/** Navigation already filtered by `authorizationFor(session).navigation()`. */
 	navData: NavData;
 };
 
@@ -49,24 +40,10 @@ let {
 	collapsible = "offcanvas",
 	userData,
 	logout,
-	roles,
 	navData: data,
 	...restProps
 }: ComponentProps<typeof Sidebar.Root> & Props = $props();
 let customAnchor = $state<HTMLElement>(null!);
-
-const navIcons = {
-	"Beginners Workshop": GraduationCap,
-	Members: UsersRound,
-	"Discord Doctor": Stethoscope,
-	Workshops: CalendarDays,
-	"My Workshops": Swords,
-	Inventory: Boxes,
-	Overview: House,
-	Containers: Boxes,
-	Categories: Boxes,
-	Items: Swords,
-};
 
 function isActive(url: string) {
 	return url === "/dashboard"
@@ -133,65 +110,55 @@ function isActive(url: string) {
 		</Sidebar.Group>
 		<!-- We create a Sidebar.Group for each parent. -->
 		{#each data.navMain as group (group.title)}
-			{#if group.role.intersection(roles).size > 0}
-				<Sidebar.Group class="py-2">
-					{#if group?.items}
-						<Sidebar.GroupLabel class="gap-2 text-sidebar-foreground/55">
-							{@const GroupIcon =
-								navIcons[group.title as keyof typeof navIcons] ?? Boxes}
-							<GroupIcon class="size-3.5" />{group.title}
-						</Sidebar.GroupLabel>
-						<Sidebar.GroupContent>
-							<Sidebar.Menu>
-								{#each group.items as item (item.title)}
-									{#if item.role.intersection(roles).size > 0}
-										<Sidebar.MenuItem>
-											{@const ItemIcon =
-												navIcons[item.title as keyof typeof navIcons] ??
-												ChevronRight}
-											<Sidebar.MenuButton
-												isActive={isActive(item.url)}
-												tooltipContent={item.title}
+			<Sidebar.Group class="py-2">
+				{#if group?.items}
+					<Sidebar.GroupLabel class="gap-2 text-sidebar-foreground/55">
+						{@const GroupIcon = navIconFor(group.url)}
+						<GroupIcon class="size-3.5" />{group.title}
+					</Sidebar.GroupLabel>
+					<Sidebar.GroupContent>
+						<Sidebar.Menu>
+							{#each group.items as item (item.title)}
+								<Sidebar.MenuItem>
+									{@const ItemIcon = navIconFor(item.url)}
+									<Sidebar.MenuButton
+										isActive={isActive(item.url)}
+										tooltipContent={item.title}
+									>
+										{#snippet child({ props })}
+											<a
+												class={props.class}
+												href={item.url}
+												onclick={toggleSidebar}
+												aria-current={isActive(item.url) ? "page" : undefined}
 											>
-												{#snippet child({ props })}
-													<a
-														class={props.class}
-														href={item.url}
-														onclick={toggleSidebar}
-														aria-current={isActive(item.url)
-															? "page"
-															: undefined}
-													>
-														<ItemIcon /><span>{item.title}</span>
-													</a>
-												{/snippet}
-											</Sidebar.MenuButton>
-										</Sidebar.MenuItem>
-									{/if}
-								{/each}
-							</Sidebar.Menu>
-						</Sidebar.GroupContent>
-					{:else}
-						{@const GroupIcon =
-							navIcons[group.title as keyof typeof navIcons] ?? ChevronRight}
-						<Sidebar.MenuButton
-							isActive={isActive(group.url)}
-							tooltipContent={group.title}
-						>
-							{#snippet child({ props })}
-								<a
-									class={props.class}
-									href={group.url}
-									onclick={toggleSidebar}
-									aria-current={isActive(group.url) ? "page" : undefined}
-								>
-									<GroupIcon /><span>{group.title}</span>
-								</a>
-							{/snippet}
-						</Sidebar.MenuButton>
-					{/if}
-				</Sidebar.Group>
-			{/if}
+												<ItemIcon /><span>{item.title}</span>
+											</a>
+										{/snippet}
+									</Sidebar.MenuButton>
+								</Sidebar.MenuItem>
+							{/each}
+						</Sidebar.Menu>
+					</Sidebar.GroupContent>
+				{:else}
+					{@const GroupIcon = navIconFor(group.url)}
+					<Sidebar.MenuButton
+						isActive={isActive(group.url)}
+						tooltipContent={group.title}
+					>
+						{#snippet child({ props })}
+							<a
+								class={props.class}
+								href={group.url}
+								onclick={toggleSidebar}
+								aria-current={isActive(group.url) ? "page" : undefined}
+							>
+								<GroupIcon /><span>{group.title}</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				{/if}
+			</Sidebar.Group>
 		{/each}
 	</Sidebar.Content>
 	<Sidebar.Footer class="m-2 mb-4 border-t border-sidebar-border pt-3">
@@ -209,30 +176,35 @@ function isActive(url: string) {
 						<Skeleton class="h-[50px]" />
 					{:then user}
 						<DropdownMenu.Trigger>
-							<Sidebar.MenuButton
-								size="lg"
-								class="data-[state=open]:bg-sidebar-accent cursor-pointer data-[state=open]:text-sidebar-accent-foreground"
-							>
-								<Avatar.Root class="h-8 w-8 border border-secondary/50">
-									<Avatar.Fallback
-										class="bg-sidebar-primary font-semibold text-sidebar-primary-foreground"
-										>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(
-											0,
-										)}</Avatar.Fallback
+							{#snippet child({ props })}
+								<Sidebar.MenuButton
+									{...props}
+									size="lg"
+									class="data-[state=open]:bg-sidebar-accent cursor-pointer data-[state=open]:text-sidebar-accent-foreground"
+								>
+									<Avatar.Root
+										class="h-8 w-8 shrink-0 border border-secondary/50"
 									>
-								</Avatar.Root>
-								<div class="flex min-w-0 flex-col space-y-1">
-									<p class="text-sm font-medium leading-none">
-										{user?.firstName}
-										{user?.lastName}
-									</p>
-									<p
-										class="truncate text-xs leading-none text-sidebar-foreground/55"
-									>
-										{user?.email}
-									</p>
-								</div>
-							</Sidebar.MenuButton>
+										<Avatar.Fallback
+											class="bg-sidebar-primary font-semibold text-sidebar-primary-foreground"
+											>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(
+												0,
+											)}</Avatar.Fallback
+										>
+									</Avatar.Root>
+									<div class="min-w-0 flex-1 space-y-1 overflow-hidden">
+										<p class="truncate text-sm font-medium leading-none">
+											{user?.firstName}
+											{user?.lastName}
+										</p>
+										<p
+											class="truncate text-xs leading-none text-sidebar-foreground/55"
+										>
+											{user?.email}
+										</p>
+									</div>
+								</Sidebar.MenuButton>
+							{/snippet}
 						</DropdownMenu.Trigger>
 
 						<DropdownMenu.Content strategy="fixed" {customAnchor} class="w-56">

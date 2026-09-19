@@ -7,9 +7,8 @@ import {
 } from "@dhc/api-client";
 import Dinero from "dinero.js";
 import { authorize } from "$lib/server/auth";
-import { apiErrorMessage } from "$lib/server/api-error";
+import { apiErrorMessage } from "$lib/api-error";
 import { apiClientOptions } from "$lib/server/api-client";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
 import {
 	CreateWorkshopRemoteSchema,
 	UpdateWorkshopRemoteSchema,
@@ -18,7 +17,7 @@ import dayjs from "dayjs";
 
 export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
-	await authorize(event.locals, WORKSHOP_ROLES);
+	await authorize(event.locals, "workshops.manage");
 
 	// Cross-field validations
 	const startDate = dayjs(data.workshop_date);
@@ -88,7 +87,7 @@ export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 
 export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
-	await authorize(event.locals, WORKSHOP_ROLES);
+	await authorize(event.locals, "workshops.manage");
 	const workshopId = event.params.id;
 
 	if (!workshopId) {

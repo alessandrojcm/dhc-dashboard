@@ -2,12 +2,7 @@ import { command, form, getRequestEvent } from "$app/server";
 import { invitationsCreate, settingsUpdate } from "@dhc/api-client";
 import { apiClientOptions } from "$lib/server/api-client";
 import { InsuranceFormLinkSchema } from "$lib/schemas/settings";
-import { invariant } from "$lib/server/invariant";
-import {
-	getRolesFromSession,
-	SETTINGS_ROLES,
-	allowedToggleRoles,
-} from "$lib/server/roles";
+import { authorizationFor } from "$lib/server/authorization";
 import {
 	bulkInviteRemoteSchema,
 	bulkInviteSchema,
@@ -22,14 +17,7 @@ export const submitBulkInvites = command(
 	async (data) => {
 		const event = getRequestEvent();
 		const { session } = await event.locals.safeGetSession();
-
-		invariant(session === null, "Unauthorized");
-		const roles = getRolesFromSession(session!);
-		invariant(
-			roles.intersection(allowedToggleRoles).size === 0,
-			"Unauthorized",
-			403,
-		);
+		authorizationFor(session).require("members.invite");
 
 		// Transform string dates to Date objects for the full schema validation
 		const transformedData = {
@@ -82,14 +70,7 @@ export const updateMemberSettings = form(
 	async (data) => {
 		const event = getRequestEvent();
 		const { session } = await event.locals.safeGetSession();
-
-		invariant(session === null, "Unauthorized");
-		const roles = getRolesFromSession(session!);
-		invariant(
-			roles.intersection(SETTINGS_ROLES).size === 0,
-			"Unauthorized",
-			403,
-		);
+		authorizationFor(session).require("members.settings.edit");
 
 		const response = await settingsUpdate({
 			...apiClientOptions(event.cookies),

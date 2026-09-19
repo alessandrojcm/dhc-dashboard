@@ -65,7 +65,16 @@ config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
 config :dhc, Oban,
   repo: Dhc.Repo,
   prefix: "public",
-  queues: [default: 10, emails: 5, discord: 5, announcements: 5, stripe: 5, invitations: 5],
+  queues: [
+    default: 10,
+    emails: 5,
+    discord: 5,
+    announcements: 5,
+    stripe: 5,
+    invitations: 5,
+    # ALE-299: Web Push fan-out, one job per committed notification.
+    notifications: 5
+  ],
   plugins: [
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
     Oban.Plugins.Lifeline,
@@ -75,7 +84,10 @@ config :dhc, Oban,
        {"0 0 * * *", Dhc.StripeSync.Worker},
        {"0 * * * *", Dhc.Discord.Workers.JoinGrantCleanupWorker},
        {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker},
-       {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker}
+       {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker},
+       # ALE-287: hourly rather than daily so a missed window is repaired
+       # within the hour. A pass in an unchanged state delivers nothing.
+       {"0 * * * *", Dhc.Inventory.Workers.LoanReminderWorker}
      ]}
   ]
 
@@ -104,6 +116,7 @@ config :logger, :default_formatter,
     :covered_price_ids,
     :created_by,
     :customer_id,
+    :delivered,
     :discord_jobs,
     :email,
     :email_jobs,
@@ -223,6 +236,18 @@ config :sentry,
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
+
+# Phoenix 1.8 defaults to ["password", "token"]. Extend that list so Web Push
+# subscription material (endpoint URL, p256dh/auth, nested keys) cannot land
+# in Plug.Logger / router debug "Parameters:" lines.
+config :phoenix, :filter_parameters, [
+  "password",
+  "token",
+  "endpoint",
+  "p256dh",
+  "auth",
+  "keys"
+]
 
 # OpenTelemetry: route spans to Sentry's span processor and sampler.
 # See lib/dhc/application.ex for the instrumentation setup calls.

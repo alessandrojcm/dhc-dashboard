@@ -1,0 +1,13 @@
+id: no-xstate-actor-in-server-code
+valid:
+  - |
+      const [snapshot, actions] = initialTransition(invitationDecisionMachine, input);
+  - |
+      const [next] = transition(invitationDecisionMachine, snapshot, event);
+invalid:
+  - |
+      const actor = createActor(invitationDecisionMachine).start();
+  - |
+      const { snapshot, send } = useMachine(paymentMachine);
+  - |
+      const { snapshot } = useActor(paymentMachine);

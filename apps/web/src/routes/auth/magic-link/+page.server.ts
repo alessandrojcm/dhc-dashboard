@@ -1,4 +1,4 @@
-import { authVerifyMagicLink } from "@dhc/api-client";
+import { authSessionVerifyMagicLink } from "@dhc/api-client";
 import { redirect } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
 import { forwardTrustedResponseCookies } from "$lib/server/trusted-cookie-forwarding";
@@ -22,9 +22,9 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 		throw redirect(303, "/auth#error_description=Invalid%20magic%20link");
 	}
 
-	let result: Awaited<ReturnType<typeof authVerifyMagicLink>>;
+	let result: Awaited<ReturnType<typeof authSessionVerifyMagicLink>>;
 	try {
-		result = await authVerifyMagicLink({
+		result = await authSessionVerifyMagicLink({
 			...apiClientOptions(cookies),
 			body: { token },
 		});

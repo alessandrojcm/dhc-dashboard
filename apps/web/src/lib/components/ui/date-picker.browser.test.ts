@@ -47,6 +47,25 @@ test("opens the calendar popover without an initial date", async () => {
 	await expect.element(screen.getByLabelText("Select a year")).toBeVisible();
 });
 
+test("keeps the selected date when it is clicked again", async () => {
+	const onValueChange = vi.fn();
+	const screen = await render(DatePicker, {
+		value: new CalendarDate(2000, 1, 1),
+		onValueChange,
+		label: "Due",
+	});
+
+	await userEvent.click(screen.getByRole("button", { name: "Due" }));
+	await userEvent.click(
+		screen.getByRole("button", { name: "Saturday, January 1," }),
+	);
+
+	await expect
+		.element(screen.getByRole("button", { name: "Due" }))
+		.toHaveTextContent("January 1, 2000");
+	expect(onValueChange).not.toHaveBeenCalledWith(undefined);
+});
+
 test("submits a date-only value without timezone conversion", async () => {
 	setLocalTimeZone("Europe/Dublin");
 

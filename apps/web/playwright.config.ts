@@ -11,6 +11,12 @@ process.env.E2E_COMPOSE_PROJECT = `${composeProjectPrefix}-${process.pid}`;
 export default defineConfig({
 	use: {
 		ignoreHTTPSErrors: true,
+		// ALE-270 ships a shell-caching service worker that SvelteKit
+		// auto-registers. Its fetch handler re-issues same-origin requests
+		// from the worker, which bypasses page.route mocks (e.g. the Discord
+		// acceptance mock), so block workers for the whole suite. The PWA
+		// shell spec intentionally asserts on static output only.
+		serviceWorkers: "block",
 		launchOptions: {
 			args: ["--start-maximized"],
 		},

@@ -10,15 +10,25 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Auth.UserRole
 
   alias Dhc.Invitations.Invitation
-  alias Dhc.Inventory.Categories
-  alias Dhc.Inventory.Containers
-  alias Dhc.Inventory.Items
+  alias Dhc.Inventory
+  alias Dhc.Inventory.Item
+  alias Dhc.Inventory.ItemPropertyValue
+  alias Dhc.Inventory.Loan
+  alias Dhc.Inventory.LoanReminder
+  alias Dhc.Inventory.LoanReminders
+  alias Dhc.Inventory.MaintenancePeriod
+  alias Dhc.Inventory.MemberCatalog
+  alias Dhc.Inventory.MemberLoans
+  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.Inventory.PropertyDefinition
+  alias Dhc.Inventory.PropertyOption
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
+  alias Dhc.Notifications.Notification
   alias Dhc.Repo
   alias Dhc.Settings.Setting
   alias Dhc.Waitlist
@@ -60,6 +70,45 @@ defmodule Dhc.E2EHarness do
 
   def start_onboarding_isolation_probe,
     do: Dhc.Onboarding.StripeAdapter.E2E.start_probe()
+
+  @doc """
+  Club-calendar today plus the latest `schema_migrations` version.
+
+  Loan dates are Europe/Dublin days (`ClubCalendar.today/0`). Specs must use
+  this date rather than `Date.now().toISOString().slice(0, 10)`, which can
+  cross a UTC midnight into yesterday. Schema version is the cutover smoke
+  check that the disposable database actually ran migrations.
+  """
+  def status do
+    %{
+      today: Date.to_iso8601(ClubCalendar.today()),
+      schemaVersion: schema_version()
+    }
+  end
+
+  @doc """
+  Drive one `LoanReminders.run/1` pass and report owedness + keyed rows.
+
+  When `attrs` includes `"loanId"`, `reminderNotificationCount` is the number
+  of notification rows whose key is `inventory:loan:<id>:reminder:%` — the
+  S5 idempotency assertion (one pass delivers, a second pass does not add
+  another row).
+  """
+  def run_loan_reminders(attrs \\ %{}) do
+    today = ClubCalendar.today()
+    pass = LoanReminders.run(today)
+    due = LoanReminders.due(today)
+
+    %{
+      today: Date.to_iso8601(today),
+      delivered: pass.delivered,
+      failed: pass.failed,
+      considered: pass.considered,
+      owed: due.owed,
+      pending: due.pending,
+      reminderNotificationCount: reminder_notification_count(Map.get(attrs, "loanId"))
+    }
+  end
 
   def invitation_acceptance_assertion(invitation_id) do
     invitation = Repo.get!(Invitation, invitation_id)
@@ -243,21 +292,1055 @@ defmodule Dhc.E2EHarness do
     workshop_dto(workshop)
   end
 
-  def seed("inventoryCategory", attrs) do
-    {:ok, category} = Categories.create_category(attrs)
-    DhcWeb.InventoryCategoriesJSON.render("show.json", %{category: category}).data
+  # ALE-288 IMPL-01: frozen `inventoryStructure` scenario. Routes through
+  # `Dhc.Inventory` only; returns plain camelCase maps, never `*JSON.render/2`
+  # output. Creates category → definitions/options in order → nested
+  # containers under the actor, atomically (any step failing rolls back).
+  def seed("inventoryStructure", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_structure!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
   end
 
-  def seed("inventoryContainer", attrs) do
-    actor_id = Map.fetch!(attrs, "actorId")
-    {:ok, container} = Containers.create_container(Map.delete(attrs, "actorId"), actor_id)
-    DhcWeb.InventoryContainersJSON.render("item.json", %{container: container}).data
+  defp do_seed_structure!(attrs) do
+    category_name = Map.fetch!(attrs, "categoryName")
+    definitions = Map.get(attrs, "definitions", []) || []
+    container_path = Map.get(attrs, "containerPath", []) || []
+    container_description = Map.get(attrs, "containerDescription")
+    actor_id = Map.get(attrs, "actorId")
+
+    if container_path != [] and (actor_id == nil or actor_id == "") do
+      raise ArgumentError,
+            "inventoryStructure seed requires actorId when containerPath is non-empty"
+    end
+
+    category =
+      case Inventory.create_category(%{
+             "name" => category_name,
+             "description" => Map.get(attrs, "categoryDescription")
+           }) do
+        {:ok, category} -> category
+        {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+
+    Enum.each(definitions, fn definition ->
+      seed_structure_definition!(category.id, definition)
+    end)
+
+    containers = seed_structure_containers!(container_path, container_description, actor_id)
+
+    %{
+      categoryId: category.id,
+      categoryName: category.name,
+      definitions: structure_definition_results!(category.id),
+      containers: containers
+    }
   end
 
-  def seed("inventoryItem", attrs) do
-    actor_id = Map.fetch!(attrs, "actorId")
-    {:ok, item} = Items.create_item(Map.delete(attrs, "actorId"), actor_id)
-    DhcWeb.InventoryItemsJSON.render("item.json", %{item: item}).data
+  defp seed_structure_definition!(category_id, definition) when is_map(definition) do
+    label = Map.fetch!(definition, "label")
+    value_type = Map.fetch!(definition, "valueType")
+    options = Map.get(definition, "options")
+
+    validate_structure_definition!(label, value_type, options)
+    definition_id = create_structure_definition!(category_id, definition, label, value_type)
+    seed_structure_options!(definition_id, value_type, options)
+  end
+
+  defp validate_structure_definition!(label, "single_select", options)
+       when options in [nil, []],
+       do: Repo.rollback({:missing_options, label})
+
+  defp validate_structure_definition!(_label, value_type, options)
+       when value_type != "single_select" and is_list(options) and options != [],
+       do: Repo.rollback(:not_single_select)
+
+  defp validate_structure_definition!(_label, _value_type, _options), do: :ok
+
+  defp create_structure_definition!(category_id, definition, label, value_type) do
+    definition_attrs = %{
+      "label" => label,
+      "valueType" => value_type,
+      "required" => Map.get(definition, "required", false),
+      "identifyingPosition" => Map.get(definition, "identifyingPosition")
+    }
+
+    case Inventory.create_definition(category_id, definition_attrs) do
+      {:ok, created} -> created.id
+      {:error, :not_found} -> Repo.rollback(:category_not_found)
+      {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  defp seed_structure_options!(_definition_id, value_type, _options)
+       when value_type != "single_select",
+       do: :ok
+
+  defp seed_structure_options!(definition_id, "single_select", options) do
+    options
+    |> Enum.with_index()
+    |> Enum.each(fn {option, index} -> seed_structure_option!(definition_id, option, index) end)
+
+    :ok
+  end
+
+  defp seed_structure_option!(definition_id, option, index) do
+    option_attrs = %{
+      "label" => Map.fetch!(option, "label"),
+      "position" => Map.get(option, "position", index)
+    }
+
+    case Inventory.create_option(definition_id, option_attrs) do
+      {:ok, _} -> :ok
+      {:error, :not_found} -> Repo.rollback(:definition_not_found)
+      {:error, :not_single_select} -> Repo.rollback(:not_single_select)
+      {:error, :conflict, changeset} -> Repo.rollback({:conflict, changeset})
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  defp seed_structure_containers!([], _description, _actor_id), do: []
+
+  defp seed_structure_containers!(path, description, actor_id) when is_list(path) do
+    {containers, _parent_id, _path_acc} =
+      Enum.reduce(path, {[], nil, []}, fn name, {acc, parent_id, path_acc} ->
+        current_path = path_acc ++ [name]
+        leaf? = length(current_path) == length(path)
+
+        container_attrs =
+          %{
+            "name" => name,
+            "description" => if(leaf?, do: description, else: nil),
+            "parent_container_id" => parent_id
+          }
+          |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+          |> Map.new()
+
+        container =
+          case Inventory.create_container(container_attrs, actor_id) do
+            {:ok, container} -> container
+            {:error, changeset} -> Repo.rollback(changeset)
+          end
+
+        result = %{
+          containerId: container.id,
+          name: container.name,
+          parentContainerId: container.parent_container_id,
+          path: current_path
+        }
+
+        {acc ++ [result], container.id, current_path}
+      end)
+
+    containers
+  end
+
+  defp structure_definition_results!(category_id) do
+    category_id
+    |> Inventory.list_definitions()
+    |> Enum.map(fn definition ->
+      %{
+        definitionId: definition.id,
+        label: definition.label,
+        valueType: definition.value_type,
+        required: definition.required,
+        identifyingPosition: definition.identifying_position,
+        options:
+          Enum.map(definition.options, fn option ->
+            %{optionId: option.id, label: option.label, position: option.position}
+          end)
+      }
+    end)
+  end
+
+  # ALE-288 IMPL-02: frozen `inventoryItem` scenario. Routes through
+  # `Dhc.Inventory` only; returns plain camelCase maps, never `*JSON.render/2`
+  # output. Creates one physical unit (or a duplicate-label pair) with typed
+  # values validated in-transaction, then applies the `inMaintenance` /
+  # `archived` presets in that order via `OperatorItemLifecycle` (archive
+  # atomically ends the open period). Structure ids come from the
+  # `inventoryStructure` seed — never names. `deletable` is a seed-time
+  # cleanup signal: `false` once a preset ran (maintenance history is
+  # retained; an archived row asserts archived, never absence), `true` for
+  # history-free units.
+  def seed("inventoryItem", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_item!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_item!(attrs) do
+    actor_id = Map.get(attrs, "actorId")
+
+    if actor_id == nil or actor_id == "" do
+      raise ArgumentError, "inventoryItem seed requires actorId"
+    end
+
+    category_id = Map.get(attrs, "categoryId")
+    container_id = Map.get(attrs, "containerId")
+    values = Map.get(attrs, "values", %{}) || %{}
+    notes = Map.get(attrs, "notes")
+    pair? = Map.get(attrs, "withDuplicateLabel", false) == true
+    archived? = Map.get(attrs, "archived", false) == true
+    in_maintenance? = Map.get(attrs, "inMaintenance", false) == true
+
+    count = if pair?, do: 2, else: 1
+
+    items =
+      Enum.map(1..count//1, fn _ ->
+        create_seed_item!(category_id, container_id, values, notes, actor_id)
+      end)
+
+    if in_maintenance? do
+      Enum.each(items, &start_seed_maintenance!(&1.id, actor_id))
+    end
+
+    if archived? do
+      Enum.each(items, &archive_seed_item!(&1.id, actor_id))
+    end
+
+    deletable = not (archived? or in_maintenance?)
+
+    if pair? do
+      %{items: Enum.map(items, &item_seed_row!(&1.id, deletable)), deletable: deletable}
+    else
+      [item] = items
+      item_seed_row!(item.id, deletable)
+    end
+  end
+
+  defp create_seed_item!(category_id, container_id, values, notes, actor_id) do
+    attrs = %{
+      "categoryId" => category_id,
+      "containerId" => container_id,
+      "values" => values,
+      "notes" => notes
+    }
+
+    try do
+      case Inventory.create_operator_item(attrs, actor_id) do
+        {:ok, item} -> item
+        {:error, :invalid_values, errors} -> Repo.rollback({:invalid_values, errors})
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    rescue
+      error in Ecto.InvalidChangesetError -> Repo.rollback(error.changeset)
+    end
+  end
+
+  defp start_seed_maintenance!(item_id, actor_id) do
+    case Inventory.start_operator_item_maintenance(
+           item_id,
+           %{"reason" => "E2E seed: routine check"},
+           actor_id
+         ) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp archive_seed_item!(item_id, actor_id) do
+    case Inventory.archive_operator_item(item_id, %{}, actor_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp item_seed_row!(item_id, deletable) do
+    case Inventory.resolve_operator_item(item_id) do
+      {:ok, item} ->
+        %{
+          itemId: item.id,
+          slug: item.slug,
+          label: item.label,
+          categoryId: item.category_id,
+          deletable: deletable
+        }
+
+      {:error, :not_found} ->
+        Repo.rollback(:item_not_found)
+    end
+  end
+
+  # ALE-288 IMPL-03: frozen `inventoryLoan` scenario. Single scenario with a
+  # `preset` enum, never one scenario per state. Routes through
+  # `Dhc.Inventory` only (member request/cancel via `MemberLoans`,
+  # approve/reject/cancel/checkout/return via `OperatorLoans`,
+  # notification-free — exposure attaches `create_keyed/3` after return,
+  # `Notifications.create/2` here). Returns plain camelCase maps with
+  # viewer-neutral ids, never `*JSON.render/2` output. `overdue` is derived
+  # in club-calendar days, never a stored flag; the seed fabricates elapsed
+  # time with a harness-only backdate. `reminderState` (IMPL-04) pins the
+  # due-date geometry in-transaction and — for `weekly` only — earns its
+  # delivered history via one domain `run` *after* commit, because
+  # `create_keyed/3` refuses to write inside a transaction.
+  def seed("inventoryLoan", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_loan_transaction!(attrs) end) do
+      {:ok, {:single_loan, loan_id, preset}} -> finish_single_loan_seed!(loan_id, preset, attrs)
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_loan_transaction!(attrs) do
+    preset = Map.get(attrs, "preset")
+
+    unless preset in ~w(requested approved checkedOut returned rejected cancelled overdue competingPair) do
+      raise ArgumentError,
+            "inventoryLoan seed requires preset requested/approved/checkedOut/returned/rejected/cancelled/overdue/competingPair"
+    end
+
+    reminder_state = Map.get(attrs, "reminderState")
+
+    if reminder_state != nil and reminder_state not in ~w(preDue overdue weekly) do
+      raise ArgumentError, "inventoryLoan reminderState must be preDue/overdue/weekly"
+    end
+
+    if preset == "competingPair" and reminder_state != nil do
+      raise ArgumentError,
+            "inventoryLoan reminderState needs exactly one live loan, not a competingPair"
+    end
+
+    case preset do
+      "competingPair" -> seed_loan_pair!(attrs)
+      _ -> {:single_loan, seed_single_loan_transaction!(preset, attrs), preset}
+    end
+  end
+
+  defp seed_single_loan_transaction!(preset, attrs) do
+    item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
+    borrower_id = Map.get(attrs, "borrowerMemberId")
+
+    validate_single_loan_seed!(attrs, item_ref, borrower_id)
+
+    operator_id = Map.get(attrs, "operatorActorId")
+    note = Map.get(attrs, "note")
+    today = ClubCalendar.today()
+    {starts_on, due_on} = loan_default_dates!(attrs, today)
+
+    seed = %{
+      attrs: attrs,
+      item_ref: item_ref,
+      starts_on: starts_on,
+      due_on: due_on,
+      note: note,
+      borrower_id: borrower_id,
+      operator_id: operator_id,
+      today: today
+    }
+
+    loan_id = seed_loan_for_preset!(preset, seed)
+
+    force_loan_reminder_geometry!(loan_id, preset, attrs, today)
+    force_non_ready_handover!(loan_id, preset, attrs, today)
+    loan_id
+  end
+
+  defp validate_single_loan_seed!(attrs, item_ref, borrower_id) do
+    if item_ref in [nil, ""], do: Repo.rollback(:not_found)
+
+    if borrower_id in [nil, ""],
+      do: raise(ArgumentError, "inventoryLoan seed requires borrowerMemberId")
+
+    if Map.get(attrs, "borrowerMemberIds") != nil do
+      raise ArgumentError,
+            "inventoryLoan seed takes borrowerMemberId or borrowerMemberIds, never both"
+    end
+  end
+
+  defp seed_loan_for_preset!("requested", seed),
+    do:
+      request_seed_loan!(
+        seed.item_ref,
+        seed.starts_on,
+        seed.due_on,
+        seed.note,
+        seed.borrower_id
+      )
+
+  defp seed_loan_for_preset!("cancelled", seed),
+    do:
+      seed_cancelled_loan!(
+        seed.attrs,
+        seed.item_ref,
+        seed.starts_on,
+        seed.due_on,
+        seed.note,
+        seed.borrower_id,
+        seed.operator_id
+      )
+
+  defp seed_loan_for_preset!(preset, seed) do
+    require_operator!(seed.operator_id, preset)
+
+    loan_id =
+      request_seed_loan!(
+        seed.item_ref,
+        seed.starts_on,
+        seed.due_on,
+        seed.note,
+        seed.borrower_id
+      )
+
+    advance_seed_loan!(
+      preset,
+      seed.attrs,
+      loan_id,
+      seed.note,
+      seed.borrower_id,
+      seed.operator_id,
+      seed.today
+    )
+  end
+
+  defp advance_seed_loan!("approved", _attrs, loan_id, note, _borrower_id, operator_id, _today) do
+    approve_seed_loan!(loan_id, note, operator_id)
+    loan_id
+  end
+
+  defp advance_seed_loan!("checkedOut", _attrs, loan_id, note, _borrower_id, operator_id, _today) do
+    approve_seed_loan!(loan_id, note, operator_id)
+    checkout_seed_loan!(loan_id, operator_id)
+    loan_id
+  end
+
+  defp advance_seed_loan!("returned", _attrs, loan_id, note, _borrower_id, operator_id, _today) do
+    approve_seed_loan!(loan_id, note, operator_id)
+    checkout_seed_loan!(loan_id, operator_id)
+    return_seed_loan!(loan_id, operator_id)
+    loan_id
+  end
+
+  defp advance_seed_loan!("rejected", _attrs, loan_id, note, _borrower_id, operator_id, _today) do
+    reject_seed_loan!(loan_id, note, operator_id)
+    loan_id
+  end
+
+  defp advance_seed_loan!("overdue", attrs, loan_id, note, _borrower_id, operator_id, today) do
+    approve_seed_loan!(loan_id, note, operator_id)
+    checkout_seed_loan!(loan_id, operator_id)
+    backdate_overdue_loan!(loan_id, loan_due_offset!(attrs), today)
+    loan_id
+  end
+
+  # Harness-only elapsed-time fixture for the operator queue. The request and
+  # approval still go through their public domain seams with valid dates; this
+  # final write simulates the approved window lapsing before Playwright opens
+  # the queue, yielding a real `ready_for_checkout? == false` row.
+  defp force_non_ready_handover!(loan_id, "approved", %{"checkoutReady" => false}, today) do
+    Repo.query!(
+      "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2 WHERE id = $3",
+      [Date.add(today, -8), Date.add(today, -1), Ecto.UUID.dump!(loan_id)]
+    )
+
+    :ok
+  end
+
+  defp force_non_ready_handover!(_loan_id, _preset, _attrs, _today), do: :ok
+
+  defp seed_cancelled_loan!(attrs, item_ref, starts_on, due_on, note, borrower_id, operator_id) do
+    cancelled_by = Map.get(attrs, "cancelledBy", "member")
+
+    unless cancelled_by in ~w(member operator) do
+      raise ArgumentError, "inventoryLoan cancelledBy must be member or operator"
+    end
+
+    loan_id = request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id)
+    seed_cancelled_existing_loan!(attrs, loan_id, note, borrower_id, operator_id)
+  end
+
+  defp seed_cancelled_existing_loan!(attrs, loan_id, note, borrower_id, operator_id) do
+    case Map.get(attrs, "cancelledBy", "member") do
+      "member" ->
+        cancel_seed_loan!(loan_id, note, borrower_id)
+        loan_id
+
+      "operator" ->
+        require_operator!(operator_id, "cancelled")
+        approve_seed_loan!(loan_id, note, operator_id)
+        cancel_operator_seed_loan!(loan_id, note, operator_id)
+        loan_id
+    end
+  end
+
+  defp seed_loan_pair!(attrs) do
+    borrower_ids = Map.get(attrs, "borrowerMemberIds")
+
+    unless match?([first, second] when is_binary(first) and is_binary(second), borrower_ids) do
+      raise ArgumentError, "inventoryLoan competingPair requires borrowerMemberIds of 2 uuids"
+    end
+
+    if Map.get(attrs, "borrowerMemberId") != nil do
+      raise ArgumentError,
+            "inventoryLoan seed takes borrowerMemberId or borrowerMemberIds, never both"
+    end
+
+    item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
+
+    if item_ref == nil or item_ref == "" do
+      Repo.rollback(:not_found)
+    end
+
+    note = Map.get(attrs, "note")
+    today = Dhc.Inventory.ClubCalendar.today()
+    {starts_on, due_on} = loan_default_dates!(attrs, today)
+    [first_borrower, second_borrower] = borrower_ids
+
+    first_id = request_seed_loan!(item_ref, starts_on, due_on, note, first_borrower)
+    second_id = request_seed_loan!(item_ref, starts_on, due_on, note, second_borrower)
+
+    first_row = loan_seed_row!(first_id)
+    second_row = loan_seed_row!(second_id)
+
+    %{loans: [first_row, second_row], itemId: first_row.itemId}
+  end
+
+  defp require_operator!(operator_id, _preset)
+       when is_binary(operator_id) and operator_id != "",
+       do: :ok
+
+  defp require_operator!(_operator_id, preset) do
+    raise ArgumentError, "inventoryLoan preset #{preset} requires operatorActorId"
+  end
+
+  defp loan_default_dates!(attrs, today) do
+    starts_on = Map.get(attrs, "startsOn") || Date.to_iso8601(today)
+
+    due_on =
+      Map.get(attrs, "dueOn") ||
+        case Date.from_iso8601(String.slice(starts_on, 0, 10)) do
+          {:ok, starts_date} -> starts_date |> Date.add(7) |> Date.to_iso8601()
+          {:error, _} -> today |> Date.add(7) |> Date.to_iso8601()
+        end
+
+    {starts_on, due_on}
+  end
+
+  defp loan_due_offset!(attrs) do
+    offset = Map.get(attrs, "dueOffsetDays", 3)
+
+    if is_integer(offset) and offset > 0 do
+      offset
+    else
+      raise ArgumentError, "inventoryLoan dueOffsetDays must be an integer > 0"
+    end
+  end
+
+  defp request_seed_loan!(item_ref, starts_on, due_on, note, borrower_id) do
+    case Inventory.request_loan(
+           item_ref,
+           %{"startsOn" => starts_on, "dueOn" => due_on, "note" => note},
+           borrower_id
+         ) do
+      {:ok, loan} -> loan.id
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp approve_seed_loan!(loan_id, note, operator_id) do
+    case Inventory.approve_loan(loan_id, %{"note" => note}, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp reject_seed_loan!(loan_id, note, operator_id) do
+    case Inventory.reject_loan(loan_id, %{"note" => note}, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp checkout_seed_loan!(loan_id, operator_id) do
+    case Inventory.check_out_loan(loan_id, %{}, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp return_seed_loan!(loan_id, operator_id) do
+    case Inventory.return_loan(loan_id, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp cancel_seed_loan!(loan_id, note, borrower_id) do
+    case Inventory.cancel_loan(loan_id, %{"note" => note}, borrower_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp cancel_operator_seed_loan!(loan_id, note, operator_id) do
+    case Inventory.cancel_operator_loan(loan_id, %{"note" => note}, operator_id) do
+      {:ok, _} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  # Harness-only time-travel write: simulates elapsed wall-clock time the seed
+  # cannot otherwise produce, because checkout gates to a window containing
+  # today while overdue needs a due date in the past. Not a domain command.
+  defp backdate_overdue_loan!(loan_id, offset_days, today) do
+    new_due = Date.add(today, -offset_days)
+
+    loan =
+      case Repo.get(Loan, loan_id) do
+        nil -> Repo.rollback(:not_found)
+        %Loan{} = loan -> loan
+      end
+
+    new_start =
+      case loan.approved_start_on do
+        %Date{} = start ->
+          if Date.compare(start, new_due) == :gt, do: Date.add(new_due, -7), else: start
+
+        nil ->
+          Date.add(new_due, -7)
+      end
+
+    {:ok, handover_at, _offset} =
+      "#{Date.to_iso8601(new_due)}T12:00:00Z" |> DateTime.from_iso8601()
+
+    handover_at = DateTime.truncate(handover_at, :second)
+
+    Repo.query!(
+      "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2, checked_out_at = $3 WHERE id = $4",
+      [new_start, new_due, handover_at, Ecto.UUID.dump!(loan_id)]
+    )
+
+    :ok
+  end
+
+  defp loan_seed_row!(loan_id) do
+    case Repo.get(Loan, loan_id) do
+      nil -> Repo.rollback(:not_found)
+      %Loan{} = loan -> project_loan_seed_row(loan, ClubCalendar.today())
+    end
+  end
+
+  # ALE-288 IMPL-04: `reminderState` flag on the `inventoryLoan` seed. Pins
+  # the due-date geometry + delivery history so the next
+  # `LoanReminders.run(today)` owes exactly the named occurrence. Performs
+  # no notification writes itself (except the single domain `run` the
+  # `weekly` state needs to earn its delivered history) — notifications are
+  # produced only by `LoanReminders.run/1` down the claim → `create_keyed/3`
+  # → stamp path. Closed loans earn nothing; `competingPair` already
+  # rejected above.
+  # In-transaction reminder geometry (no notification writes): pins
+  # `approved_due_on` for live presets so the post-commit pass owes exactly
+  # the named occurrence. Closed/pending presets keep their dates — the flag
+  # is accepted but earns nothing.
+  defp force_loan_reminder_geometry!(loan_id, preset, attrs, today) do
+    reminder_state = Map.get(attrs, "reminderState")
+
+    if reminder_state != nil and preset in ~w(approved checkedOut overdue) do
+      case reminder_state do
+        "preDue" ->
+          set_approved_due!(loan_id, Date.add(today, 1))
+
+        "overdue" ->
+          set_approved_due!(loan_id, Date.add(today, -loan_due_offset!(attrs)))
+
+        "weekly" ->
+          set_approved_due!(loan_id, Date.add(today, -loan_due_offset!(attrs)))
+      end
+    else
+      :ok
+    end
+  end
+
+  # Post-commit finish for a single loan seed. Reads the committed row and,
+  # for `weekly` only, earns the delivered `overdue` history through one
+  # domain `run` (never a raw insert) before backdating that delivery so the
+  # follow-up is owed. The run lives here — not in the transaction above —
+  # because `create_keyed/3` refuses to write inside a transaction. On a
+  # post-commit failure the half-seeded loan is removed so a failed seed
+  # never leaks a row.
+  defp finish_single_loan_seed!(loan_id, preset, attrs) do
+    today = ClubCalendar.today()
+    reminder_state = Map.get(attrs, "reminderState")
+
+    if reminder_state == "weekly" and preset in ~w(approved checkedOut overdue) do
+      case earn_weekly_history!(loan_id, attrs, today) do
+        :ok -> refresh_loan_reminder_row!(loan_id, today)
+        {:error, reason} -> cleanup_half_seeded_loan!(loan_id, reason)
+      end
+    else
+      refresh_loan_reminder_row!(loan_id, today)
+    end
+  end
+
+  defp earn_weekly_history!(loan_id, attrs, today) do
+    offset = loan_due_offset!(attrs)
+    new_due = Date.add(today, -offset)
+
+    case LoanReminders.run(today) do
+      %{delivered: delivered} when delivered >= 1 ->
+        backdate_reminder_delivery(loan_id, "overdue", new_due, Date.add(today, -8))
+
+      _no_delivery ->
+        {:error, :reminder_not_delivered}
+    end
+  end
+
+  defp cleanup_half_seeded_loan!(loan_id, reason) do
+    delete_loan_reminder_ledger!(loan_id)
+
+    case Repo.get(Loan, loan_id) do
+      nil ->
+        {:error, reason}
+
+      loan ->
+        _ = Repo.delete(loan)
+        {:error, reason}
+    end
+  end
+
+  # Harness-only due-date write for reminder geometry. Mirrors the overdue
+  # preset's time-travel (not a domain command): the flag pins geometry, the
+  # spec drives the operator date-edit route live when it wants a real edit.
+  # Leaves `checked_out_at` alone — owedness reads only `approved_due_on`.
+  defp set_approved_due!(loan_id, %Date{} = new_due) do
+    loan =
+      case Repo.get(Loan, loan_id) do
+        nil -> Repo.rollback(:not_found)
+        %Loan{} = loan -> loan
+      end
+
+    new_start =
+      case loan.approved_start_on do
+        nil ->
+          nil
+
+        %Date{} = start ->
+          if Date.compare(start, new_due) == :gt, do: new_due, else: start
+      end
+
+    if new_start == nil do
+      Repo.query!(
+        "UPDATE inventory_loans SET approved_due_on = $1 WHERE id = $2",
+        [new_due, Ecto.UUID.dump!(loan_id)]
+      )
+    else
+      Repo.query!(
+        "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2 WHERE id = $3",
+        [new_start, new_due, Ecto.UUID.dump!(loan_id)]
+      )
+    end
+
+    :ok
+  end
+
+  # Harness-only delivery time-travel: moves a delivered ledger row's
+  # `delivered_at` back so weekly follow-ups pace from a previous delivery
+  # ≥ 7 club days ago. The row itself was created by the domain `run` above.
+  # Runs post-commit (plain error tuples, never `Repo.rollback/1`).
+  defp backdate_reminder_delivery(loan_id, kind, %Date{} = due_on, %Date{} = delivered_on) do
+    revision = Date.to_gregorian_days(due_on)
+
+    {:ok, delivered_at, _} =
+      "#{Date.to_iso8601(delivered_on)}T12:00:00Z" |> DateTime.from_iso8601()
+
+    delivered_at = DateTime.truncate(delivered_at, :second)
+
+    {count, _} =
+      Repo.update_all(
+        from(r in LoanReminder,
+          where:
+            r.loan_id == ^loan_id and r.kind == ^kind and r.due_on_revision == ^revision and
+              not is_nil(r.delivered_at)
+        ),
+        set: [delivered_at: delivered_at, updated_at: delivered_at]
+      )
+
+    if count == 0, do: {:error, :reminder_not_delivered}, else: :ok
+  end
+
+  # Post-commit result row: re-reads the committed loan and echoes the single
+  # occurrence `owed_occurrence/3` returns for it (`null` when no flag was
+  # given or the loan is closed). Plain maps — never `Repo.rollback/1`, the
+  # loan row is committed by now.
+  defp refresh_loan_reminder_row!(loan_id, today) do
+    loan = Repo.get!(Loan, loan_id)
+    base = loan_seed_row_outside!(loan_id, today)
+
+    case loan.approved_due_on do
+      nil ->
+        base
+
+      %Date{} = due_on ->
+        revision = Date.to_gregorian_days(due_on)
+        history = loan_reminder_history!(loan_id, revision)
+        owed = LoanReminders.owed_occurrence(due_on, today, history)
+
+        case owed do
+          nil ->
+            %{base | owedKind: nil, notificationKey: nil}
+
+          kind ->
+            %{
+              base
+              | owedKind: kind,
+                notificationKey: "inventory:loan:#{loan_id}:reminder:#{kind}:r#{revision}"
+            }
+        end
+    end
+  end
+
+  defp loan_seed_row_outside!(loan_id, today) do
+    project_loan_seed_row(Repo.get!(Loan, loan_id), today)
+  end
+
+  defp project_loan_seed_row(%Loan{} = loan, today) do
+    starts_on = loan.approved_start_on || loan.requested_start_on
+    due_on = loan.approved_due_on || loan.requested_due_on
+
+    %{
+      loanId: loan.id,
+      status: loan.status,
+      overdue: loan_overdue?(loan, today),
+      itemId: loan.item_id,
+      slug: loan.item_slug_snapshot,
+      borrowerMemberId: loan.borrower_principal_id,
+      startsOn: Date.to_iso8601(starts_on),
+      dueOn: Date.to_iso8601(due_on),
+      containerPath: loan_member_container_path(loan),
+      decidedBy: loan.decided_by_principal_id,
+      owedKind: nil,
+      notificationKey: nil
+    }
+  end
+
+  defp schema_version do
+    %{rows: [[version]]} = Repo.query!("SELECT MAX(version) FROM schema_migrations", [])
+    version
+  end
+
+  defp reminder_notification_count(nil), do: nil
+
+  defp reminder_notification_count(loan_id) when is_binary(loan_id) do
+    prefix = "inventory:loan:#{loan_id}:reminder:"
+
+    Repo.aggregate(
+      from(n in Notification, where: like(n.notification_key, ^"#{prefix}%")),
+      :count
+    )
+  end
+
+  defp loan_reminder_history!(loan_id, revision) do
+    rows =
+      Repo.all(
+        from(r in LoanReminder,
+          where:
+            r.loan_id == ^loan_id and r.due_on_revision == ^revision and
+              not is_nil(r.delivered_at),
+          select: %{kind: r.kind, delivered_at: r.delivered_at}
+        )
+      )
+
+    if rows == [] do
+      %{kinds: MapSet.new(), last_delivered_on: nil}
+    else
+      delivered_ons = Enum.map(rows, &ClubCalendar.on_date(&1.delivered_at))
+
+      %{
+        kinds: MapSet.new(rows, & &1.kind),
+        last_delivered_on: Enum.max(delivered_ons, Date)
+      }
+    end
+  end
+
+  defp loan_overdue?(%Loan{status: "checked_out", approved_due_on: %Date{} = due_on}, today),
+    do: Date.compare(today, due_on) == :gt
+
+  defp loan_overdue?(%Loan{}, _today), do: false
+
+  # Member-visible rule (story 15/45): the approval snapshot for approved and
+  # later; null before approval so specs assert absence, even though the
+  # operator projection technically carries a snapshot.
+  defp loan_member_container_path(%Loan{
+         status: status,
+         approved_container_path_snapshot: path
+       })
+       when status in ~w(approved checked_out returned),
+       do: path
+
+  defp loan_member_container_path(%Loan{}), do: nil
+
+  # ALE-288 IMPL-04: frozen `inventoryMaintenance` scenario. One scenario
+  # with a `preset` enum (`open` | `closed`). Routes through
+  # `Dhc.Inventory` only (`OperatorItemLifecycle`), never around it.
+  # Returns plain camelCase maps, never `*JSON.render/2` output. At most
+  # one open period per item (partial unique index); start rejects pending,
+  # blocked by live loans — all surfaced, never papered over.
+  def seed("inventoryMaintenance", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_maintenance!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_maintenance!(attrs) do
+    preset = Map.get(attrs, "preset")
+    item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
+    operator_id = Map.get(attrs, "operatorActorId")
+
+    validate_maintenance_seed!(preset, item_ref, operator_id)
+
+    reason = Map.get(attrs, "reason")
+    end_note = if preset == "closed", do: Map.get(attrs, "endNote"), else: nil
+
+    seed_maintenance_preset!(preset, item_ref, reason, end_note, operator_id)
+  end
+
+  defp validate_maintenance_seed!(preset, _item_ref, _operator_id)
+       when preset not in ~w(open closed),
+       do: raise(ArgumentError, "inventoryMaintenance seed requires preset open/closed")
+
+  defp validate_maintenance_seed!(_preset, item_ref, _operator_id) when item_ref in [nil, ""],
+    do: Repo.rollback(:not_found)
+
+  defp validate_maintenance_seed!(_preset, _item_ref, operator_id)
+       when operator_id in [nil, ""],
+       do: raise(ArgumentError, "inventoryMaintenance seed requires operatorActorId")
+
+  defp validate_maintenance_seed!(_preset, _item_ref, _operator_id), do: :ok
+
+  defp seed_maintenance_preset!("open", item_ref, reason, _end_note, operator_id) do
+    case Inventory.start_operator_item_maintenance(item_ref, %{"reason" => reason}, operator_id) do
+      {:ok, _} -> maintenance_seed_row!(item_ref)
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp seed_maintenance_preset!("closed", item_ref, reason, end_note, operator_id) do
+    with {:ok, _} <-
+           wrap_maintenance_call(
+             Inventory.start_operator_item_maintenance(
+               item_ref,
+               %{"reason" => reason},
+               operator_id
+             )
+           ),
+         {:ok, _} <-
+           wrap_maintenance_call(
+             Inventory.end_operator_item_maintenance(
+               item_ref,
+               %{"endNote" => end_note},
+               operator_id
+             )
+           ) do
+      maintenance_seed_row!(item_ref)
+    end
+  end
+
+  defp wrap_maintenance_call({:ok, item}), do: {:ok, item}
+  defp wrap_maintenance_call({:error, reason}), do: Repo.rollback(reason)
+
+  defp maintenance_seed_row!(item_ref) do
+    item =
+      case Inventory.resolve_operator_item(item_ref) do
+        {:ok, item} -> item
+        {:error, :not_found} -> Repo.rollback(:not_found)
+      end
+
+    period =
+      case Inventory.list_operator_item_maintenance_periods(item.id) do
+        [] -> Repo.rollback(:no_open_maintenance)
+        [newest | _] -> newest
+      end
+
+    %{
+      periodId: period.id,
+      itemId: item.id,
+      slug: item.slug,
+      open: period.open?,
+      reason: period.start_reason,
+      startedBy: period.started_by_principal_id,
+      endedBy: period.ended_by_principal_id
+    }
+  end
+
+  # ALE-288 IMPL-04: frozen `inventoryArchive` scenario. One scenario, no
+  # enum. Retires one item via `OperatorItemLifecycle` (ends any open
+  # period atomically, rejects pending, blocked by live loans). Catalog
+  # hides (`:not_found`), own-loan history keeps its snapshot. Already-
+  # archived is a no-op success (idempotent).
+  def seed("inventoryArchive", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_archive!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp do_seed_archive!(attrs) do
+    item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
+    operator_id = Map.get(attrs, "operatorActorId")
+
+    validate_archive_seed!(item_ref, operator_id)
+
+    domain_attrs =
+      case Map.fetch(attrs, "reason") do
+        {:ok, reason} -> %{"reason" => reason}
+        :error -> %{}
+      end
+
+    case Inventory.archive_operator_item(item_ref, domain_attrs, operator_id) do
+      {:ok, _} -> archive_seed_row!(item_ref, operator_id)
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp validate_archive_seed!(item_ref, _operator_id) when item_ref in [nil, ""],
+    do: Repo.rollback(:not_found)
+
+  defp validate_archive_seed!(_item_ref, operator_id) when operator_id in [nil, ""],
+    do: raise(ArgumentError, "inventoryArchive seed requires operatorActorId")
+
+  defp validate_archive_seed!(_item_ref, _operator_id), do: :ok
+
+  defp archive_seed_row!(item_ref, operator_id) do
+    item =
+      case Inventory.resolve_operator_item(item_ref) do
+        {:ok, item} -> item
+        {:error, :not_found} -> Repo.rollback(:not_found)
+      end
+
+    catalog_hidden =
+      case MemberCatalog.resolve_catalog_item(item.slug) do
+        {:error, :not_found} -> true
+        {:ok, _} -> false
+      end
+
+    %{
+      itemId: item.id,
+      slug: item.slug,
+      archived: item.archived_at != nil,
+      archivedBy: operator_id,
+      catalogHidden: catalog_hidden,
+      historyKept: archive_history_kept?(item.id)
+    }
+  end
+
+  defp archive_history_kept?(item_id) do
+    loans = Repo.all(from(l in Loan, where: l.item_id == ^item_id))
+
+    Enum.all?(loans, fn loan ->
+      case MemberLoans.get_own_loan(loan.id, loan.borrower_principal_id) do
+        {:ok, view} ->
+          is_binary(view.item_slug) and view.item_slug != "" and is_binary(view.item_label) and
+            view.item_label != ""
+
+        {:error, _} ->
+          false
+      end
+    end)
   end
 
   def seed("registration", attrs) do
@@ -323,9 +1406,300 @@ defmodule Dhc.E2EHarness do
     Waitlist.delete_entry(id)
   end
 
-  def delete_fixture("inventoryCategory", id), do: Categories.delete_category(id)
-  def delete_fixture("inventoryContainer", id), do: Containers.delete_container(id)
-  def delete_fixture("inventoryItem", id), do: Items.delete_item(id)
+  # Teardown for the frozen structure scenario. Accepts either a category id
+  # (retires options/definitions, then deletes the category) or a container
+  # id (hard-deletes that container). Containers carry no category FK, so a
+  # full teardown is multi-call leaf-first: delete containers deepest-first,
+  # then the category — matching the integration teardown order. Blocked
+  # deletions (`:still_referenced`) surface instead of cascading; callers
+  # delete items first.
+  #
+  # Domain gap (disclosed): `inventory_property_definitions.category_id` is
+  # `on_delete: :nothing`. `Categories.delete_category/1` returns
+  # `:still_referenced` when definition rows remain — but the domain offers
+  # only `retire_*` (rows stay). A history-free seed therefore cannot tear
+  # down through the seam alone. After retiring, the harness hard-deletes
+  # definition/option rows **iff zero `item_property_values` reference them
+  # (active or archived)** — provably history-free, so no retained fact is
+  # destroyed. Any referencing value (even archived-only) stops the teardown
+  # with `:still_referenced` instead, preserving the retention rule.
+  def delete_fixture("inventoryStructure", id) when is_binary(id) do
+    case Inventory.get_category(id) do
+      {:ok, _} -> delete_structure_category!(id)
+      {:error, :not_found} -> Inventory.delete_container(id)
+    end
+  end
+
+  defp delete_structure_category!(category_id) do
+    with :ok <- retire_structure_definitions!(category_id),
+         :ok <- hard_delete_value_free_definitions!(category_id),
+         {:ok, _} <- Inventory.delete_category(category_id) do
+      :ok
+    end
+  end
+
+  defp retire_structure_definitions!(category_id) do
+    Inventory.list_definitions(category_id)
+    |> Enum.reduce_while(:ok, fn definition, :ok ->
+      definition.id |> retire_structure_definition!() |> reduce_result()
+    end)
+  end
+
+  defp retire_structure_definition!(definition_id) do
+    with :ok <- retire_structure_options!(definition_id),
+         {:ok, _} <- Inventory.retire_definition(definition_id) do
+      :ok
+    else
+      {:error, :not_found} -> :ok
+      {:error, :still_referenced, _} = blocked -> blocked
+    end
+  end
+
+  defp retire_structure_options!(definition_id) do
+    Enum.reduce_while(
+      Inventory.list_options(definition_id),
+      :ok,
+      fn option, :ok ->
+        case Inventory.retire_option(option.id) do
+          {:ok, _} -> {:cont, :ok}
+          {:error, :not_found} -> {:cont, :ok}
+          {:error, :still_referenced, _} = blocked -> {:halt, blocked}
+        end
+      end
+    )
+  end
+
+  defp hard_delete_value_free_definitions!(category_id) do
+    Inventory.list_definitions(category_id)
+    |> Enum.reduce_while(:ok, fn definition, :ok ->
+      definition.id |> hard_delete_value_free_definition_tree!() |> reduce_result()
+    end)
+  end
+
+  defp hard_delete_value_free_definition_tree!(definition_id) do
+    with :ok <- hard_delete_value_free_options!(definition_id),
+         do: hard_delete_value_free_definition!(definition_id)
+  end
+
+  defp hard_delete_value_free_options!(definition_id) do
+    Enum.reduce_while(
+      Inventory.list_options(definition_id),
+      :ok,
+      fn option, :ok ->
+        option.id |> hard_delete_value_free_option!() |> reduce_result()
+      end
+    )
+  end
+
+  defp hard_delete_value_free_option!(option_id) do
+    if option_values_exist?(option_id) do
+      {:error, :still_referenced, %{active_value_count: 1}}
+    else
+      case Repo.get(PropertyOption, option_id) do
+        nil -> :ok
+        record -> record |> Repo.delete() |> delete_result()
+      end
+    end
+  end
+
+  defp delete_result({:ok, _}), do: :ok
+  defp delete_result({:error, changeset}), do: {:error, changeset}
+
+  defp reduce_result(:ok), do: {:cont, :ok}
+  defp reduce_result({:error, _reason} = error), do: {:halt, error}
+  defp reduce_result({:error, _reason, _details} = error), do: {:halt, error}
+
+  defp hard_delete_value_free_definition!(definition_id) do
+    if definition_values_exist?(definition_id) do
+      {:error, :still_referenced, %{active_value_count: 1}}
+    else
+      case Repo.get(PropertyDefinition, definition_id) do
+        nil -> :ok
+        record -> hard_delete_definition_record!(record)
+      end
+    end
+  end
+
+  defp hard_delete_definition_record!(record) do
+    case Repo.delete(record) do
+      {:ok, _} -> :ok
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp definition_values_exist?(definition_id) do
+    from(v in ItemPropertyValue, where: v.property_definition_id == ^definition_id)
+    |> Repo.exists?()
+  end
+
+  defp option_values_exist?(option_id) do
+    from(v in ItemPropertyValue, where: v.option_id == ^option_id)
+    |> Repo.exists?()
+  end
+
+  # Teardown for the frozen item scenario. History-free items hard-delete via
+  # `delete_operator_item/2` with explicit confirmation (value rows + item
+  # row; asserts row absence). Items with retained loan or maintenance rows
+  # archive instead — `archive_operator_item/3` is idempotent, so an already
+  # archived seed is a no-op and teardown asserts `archived_at`, never row
+  # absence. A live loan blocking archival surfaces `:loan_active`; the
+  # caller closes loans first. Pair seeds delete each `items[]` entry
+  # individually. Loans, periods, categories, and containers are never
+  # deleted on the caller's behalf.
+  def delete_fixture("inventoryItem", id) when is_binary(id) do
+    case Inventory.delete_operator_item(id, %{"confirm" => true}) do
+      {:ok, _} ->
+        if Repo.get(Item, id) == nil, do: :ok, else: {:error, :not_deleted}
+
+      {:error, :has_history} ->
+        archive_seed_teardown!(id)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp archive_seed_teardown!(id) do
+    case Inventory.resolve_operator_item(id) do
+      {:error, :not_found} = error -> error
+      {:ok, item} -> archive_resolved_item!(id, item)
+    end
+  end
+
+  defp archive_resolved_item!(_id, %{created_by: nil}), do: {:error, :missing_actor}
+
+  defp archive_resolved_item!(id, %{created_by: actor_id}) do
+    with {:ok, _} <- Inventory.archive_operator_item(id, %{}, actor_id),
+         {:ok, archived} <- Inventory.resolve_operator_item(id) do
+      if archived.archived_at == nil, do: {:error, :not_archived}, else: :ok
+    end
+  end
+
+  defp item_has_history?(item_id) do
+    loans? = from(loan in Loan, where: loan.item_id == ^item_id) |> Repo.exists?()
+
+    periods? =
+      from(period in MaintenancePeriod, where: period.item_id == ^item_id) |> Repo.exists?()
+
+    loans? or periods?
+  end
+
+  # Teardown for the frozen loan scenario. Retention says loan records are
+  # permanent with no domain delete — E2E teardown breaks this deliberately
+  # and narrowly: hard-deletes the loan row directly (both `competingPair`
+  # entries deleted individually — no bulk pair delete) and asserts row
+  # absence. Reminder ledger rows for the loan are deleted alongside
+  # (claimed-but-undelivered first, then delivered) — otherwise a re-seeded
+  # loan with the same id geometry would inherit another loan's delivered
+  # history. Notification rows are left untouched (per-user facts another
+  # spec may still assert; keyed idempotency makes leftovers harmless).
+  # Never cascades: items, members, periods, categories, and containers are
+  # left untouched. Production retention is unaffected — no domain delete
+  # function is created to serve this.
+  def delete_fixture("inventoryLoan", id) when is_binary(id) do
+    case Repo.get(Loan, id) do
+      nil -> {:error, :not_found}
+      loan -> delete_seed_loan!(loan)
+    end
+  end
+
+  defp delete_seed_loan!(loan) do
+    delete_loan_reminder_ledger!(loan.id)
+
+    case Repo.delete(loan) do
+      {:ok, _} -> ensure_absent(Loan, loan.id, :not_deleted)
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp ensure_absent(schema, id, error) do
+    if Repo.get(schema, id) == nil, do: :ok, else: {:error, error}
+  end
+
+  defp delete_loan_reminder_ledger!(loan_id) do
+    from(r in LoanReminder, where: r.loan_id == ^loan_id and is_nil(r.delivered_at))
+    |> Repo.delete_all()
+
+    from(r in LoanReminder, where: r.loan_id == ^loan_id)
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  # Teardown for the frozen maintenance scenario. Retention says periods are
+  # permanent with no domain delete — E2E teardown breaks this deliberately
+  # and narrowly: an open period is ended via
+  # `end_operator_item_maintenance/3` with the canned note
+  # `"E2E teardown: closing open maintenance."`, attributed to the seed's
+  # `started_by` actor. Asserts `open: false`, not row absence. A closed
+  # period is a no-op success (retained history; the item stays
+  # non-deletable → archived on item cleanup). The helper never deletes
+  # period rows.
+  def delete_fixture("inventoryMaintenance", id) when is_binary(id) do
+    case Repo.get(MaintenancePeriod, id) do
+      nil ->
+        {:error, :not_found}
+
+      %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) ->
+        :ok
+
+      %MaintenancePeriod{} = period ->
+        close_seed_maintenance!(period)
+    end
+  end
+
+  defp close_seed_maintenance!(%MaintenancePeriod{started_by_principal_id: nil}),
+    do: {:error, :missing_actor}
+
+  defp close_seed_maintenance!(%MaintenancePeriod{} = period) do
+    case Inventory.end_operator_item_maintenance(
+           period.item_id,
+           %{"endNote" => "E2E teardown: closing open maintenance."},
+           period.started_by_principal_id
+         ) do
+      {:ok, _} -> ensure_maintenance_closed!(period.id)
+      {:error, _} = error -> error
+    end
+  end
+
+  defp ensure_maintenance_closed!(id) do
+    case Repo.get(MaintenancePeriod, id) do
+      %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) -> :ok
+      _ -> {:error, :not_closed}
+    end
+  end
+
+  # Teardown for the frozen archive scenario. The only legal "un-archive"
+  # is a restore via `restore_operator_item/2`. An archived item restores
+  # (surfacing `:archived_category` / `:archived_container` /
+  # `:invalid_values` when dependencies drifted); an active item is a no-op
+  # success. Never hard-deletes: a with-history item stays under the item
+  # contract's archive path; a history-free item stays under its hard-delete
+  # path. This fixture never deletes items.
+  def delete_fixture("inventoryArchive", id) when is_binary(id) do
+    case Inventory.resolve_operator_item(id) do
+      {:error, :not_found} = error ->
+        error
+
+      {:ok, %{archived_at: nil}} ->
+        :ok
+
+      {:ok, %{archived_at: _archived, archived_by_principal_id: nil}} ->
+        {:error, :missing_actor}
+
+      {:ok, %{archived_at: _archived, archived_by_principal_id: actor_id}} ->
+        restore_seed_archive!(id, actor_id)
+    end
+  end
+
+  defp restore_seed_archive!(id, actor_id) do
+    case Inventory.restore_operator_item(id, actor_id) do
+      {:ok, %{archived_at: nil}} -> :ok
+      {:ok, _} -> {:error, :not_restored}
+      {:error, :invalid_values, _} = error -> error
+      {:error, _} = error -> error
+    end
+  end
 
   def delete_fixture("registration", id) do
     case Repo.get(Registration, id) do
@@ -348,19 +1722,234 @@ defmodule Dhc.E2EHarness do
     |> registration_dto()
   end
 
-  def update_fixture("inventoryCategory", id, attrs) do
-    {:ok, category} = Categories.update_category(id, attrs)
-    DhcWeb.InventoryCategoriesJSON.render("show.json", %{category: category}).data
+  # Partial update for the frozen structure scenario. Accepts the seed's
+  # field names plus ids targeting existing rows: optional `categoryName` /
+  # `categoryDescription`, id-keyed `definitions` (each with `definitionId`
+  # plus `label` / `required` / `identifyingPosition` / id-keyed `options`),
+  # and id-keyed `containers` (each with `containerId` plus `name` /
+  # `description`). Container moves are excluded — `parentContainerId`
+  # changes are ignored; moves go through `Containers.move_container/2`.
+  # Domain refusals (`:type_immutable`, `:required_blocked`, conflicts)
+  # pass through as error tuples. Returns the seed result shape for the
+  # touched rows (containers echo only the ids listed in attrs).
+  def update_fixture("inventoryStructure", category_id, attrs) when is_map(attrs) do
+    with :ok <- update_structure_category!(category_id, attrs),
+         :ok <- update_structure_definitions!(attrs),
+         :ok <- update_structure_containers!(attrs) do
+      case Inventory.get_category(category_id) do
+        {:ok, category} ->
+          %{
+            categoryId: category.id,
+            categoryName: category.name,
+            definitions: structure_definition_results!(category.id),
+            containers: structure_updated_containers!(attrs)
+          }
+
+        {:error, :not_found} = error ->
+          error
+      end
+    end
   end
 
-  def update_fixture("inventoryContainer", id, attrs) do
-    {:ok, container} = Containers.update_container(id, attrs)
-    DhcWeb.InventoryContainersJSON.render("item.json", %{container: container}).data
+  defp update_structure_category!(category_id, attrs) do
+    updates =
+      %{}
+      |> maybe_put("name", attrs, "categoryName")
+      |> maybe_put("description", attrs, "categoryDescription")
+
+    if updates == %{} do
+      :ok
+    else
+      case Inventory.update_category(category_id, updates) do
+        {:ok, _} -> :ok
+        {:error, :not_found} = error -> error
+        {:error, :conflict, _} = error -> error
+        {:error, _} = error -> error
+      end
+    end
   end
 
-  def update_fixture("inventoryItem", id, %{"actorId" => actor_id} = attrs) do
-    {:ok, item} = Items.update_item(id, Map.delete(attrs, "actorId"), actor_id)
-    DhcWeb.InventoryItemsJSON.render("item.json", %{item: item}).data
+  defp update_structure_definitions!(attrs) do
+    case Map.get(attrs, "definitions") do
+      nil ->
+        :ok
+
+      definitions when is_list(definitions) ->
+        Enum.reduce_while(definitions, :ok, fn definition, :ok ->
+          definition |> update_one_structure_definition!() |> reduce_result()
+        end)
+    end
+  end
+
+  defp update_one_structure_definition!(definition) when is_map(definition) do
+    definition_id = Map.fetch!(definition, "definitionId")
+
+    updates =
+      %{}
+      |> maybe_put("label", definition, "label")
+      |> maybe_put("value_type", definition, "valueType")
+      |> maybe_put("required", definition, "required")
+      |> maybe_put("identifying_position", definition, "identifyingPosition")
+
+    with :ok <- apply_definition_updates!(definition_id, updates),
+         do: update_structure_options!(definition)
+  end
+
+  defp apply_definition_updates!(_definition_id, updates) when updates == %{}, do: :ok
+
+  defp apply_definition_updates!(definition_id, updates) do
+    case Inventory.update_definition(definition_id, updates) do
+      {:ok, _} -> :ok
+      {:error, :not_found} = error -> error
+      {:error, :type_immutable} = error -> error
+      {:error, :required_blocked, _} = error -> error
+      {:error, :conflict, _} = error -> error
+      {:error, _} = error -> error
+    end
+  end
+
+  defp update_structure_options!(definition) do
+    case Map.get(definition, "options") do
+      nil ->
+        :ok
+
+      options when is_list(options) ->
+        Enum.reduce_while(options, :ok, fn option, :ok ->
+          option |> update_one_structure_option!() |> reduce_result()
+        end)
+    end
+  end
+
+  defp update_one_structure_option!(option) do
+    updates =
+      %{}
+      |> maybe_put("label", option, "label")
+      |> maybe_put("position", option, "position")
+
+    apply_option_updates!(Map.fetch!(option, "optionId"), updates)
+  end
+
+  defp apply_option_updates!(_option_id, updates) when updates == %{}, do: :ok
+
+  defp apply_option_updates!(option_id, updates) do
+    case Inventory.update_option(option_id, updates) do
+      {:ok, _} -> :ok
+      {:error, :not_found} = error -> error
+      {:error, :conflict, _} = error -> error
+      {:error, _} = error -> error
+    end
+  end
+
+  defp update_structure_containers!(attrs) do
+    case Map.get(attrs, "containers") do
+      nil ->
+        :ok
+
+      containers when is_list(containers) ->
+        Enum.reduce_while(containers, :ok, fn container, :ok ->
+          container |> update_one_structure_container!() |> reduce_result()
+        end)
+    end
+  end
+
+  defp update_one_structure_container!(container) do
+    updates =
+      %{}
+      |> maybe_put("name", container, "name")
+      |> maybe_put("description", container, "description")
+
+    apply_container_updates!(Map.fetch!(container, "containerId"), updates)
+  end
+
+  defp apply_container_updates!(_container_id, updates) when updates == %{}, do: :ok
+
+  defp apply_container_updates!(container_id, updates) do
+    case Inventory.update_container(container_id, updates) do
+      {:ok, _} -> :ok
+      {:error, :not_found} = error -> error
+      {:error, _} = error -> error
+    end
+  end
+
+  defp structure_updated_containers!(attrs) do
+    case Map.get(attrs, "containers") do
+      nil ->
+        []
+
+      containers when is_list(containers) ->
+        Enum.map(containers, fn container ->
+          container_id = Map.fetch!(container, "containerId")
+          {:ok, fresh} = Inventory.get_container(container_id)
+
+          %{
+            containerId: fresh.id,
+            name: fresh.name,
+            parentContainerId: fresh.parent_container_id,
+            path: structure_container_path!(fresh)
+          }
+        end)
+    end
+  end
+
+  defp structure_container_path!(container) do
+    case container.parent_container_id do
+      nil ->
+        [container.name]
+
+      parent_id ->
+        {:ok, parent} = Inventory.get_container(parent_id)
+        structure_container_path!(parent) ++ [container.name]
+    end
+  end
+
+  # Partial update for the frozen item scenario. Accepts `notes` + `values`
+  # only, mapping to `OperatorItems.update_operator_item/3`: supplying
+  # `values` replaces the complete set, omitting it leaves stored values
+  # untouched. `containerId` / `categoryId` / preset flags are never applied
+  # (movement and reclassification are handoff 04 commands, not generic
+  # edits). Edits on an archived item (`:archived`) and value failures
+  # (`:invalid_values`) pass through. Returns the flat seed row; `deletable`
+  # reflects retained history and archive state.
+  def update_fixture("inventoryItem", id, attrs) when is_map(attrs) do
+    case Inventory.resolve_operator_item(id) do
+      {:error, :not_found} = error ->
+        error
+
+      {:ok, current} ->
+        actor_id = Map.get(attrs, "actorId") || current.created_by
+
+        if actor_id == nil do
+          {:error, :missing_actor}
+        else
+          update_seed_item!(id, attrs, actor_id)
+        end
+    end
+  end
+
+  defp update_seed_item!(id, attrs, actor_id) do
+    update_attrs =
+      %{}
+      |> maybe_put("notes", attrs, "notes")
+      |> maybe_put("values", attrs, "values")
+
+    case Inventory.update_operator_item(id, update_attrs, actor_id) do
+      {:ok, item} ->
+        deletable = not item_has_history?(item.id) and is_nil(item.archived_at)
+
+        %{
+          itemId: item.id,
+          slug: item.slug,
+          label: item.label,
+          categoryId: item.category_id,
+          deletable: deletable
+        }
+
+      {:error, :invalid_values, errors} ->
+        {:error, {:invalid_values, errors}}
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   def login_cookie(email) do

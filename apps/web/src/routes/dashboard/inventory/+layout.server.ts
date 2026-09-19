@@ -1,15 +1,11 @@
-import { authorize } from "$lib/server/auth";
-import {
-	getRolesFromSession,
-	INVENTORY_READ_ROLES,
-	INVENTORY_ROLES,
-} from "$lib/server/roles";
+import { authorizationFor } from "$lib/server/authorization";
 import type { LayoutServerLoad } from "./$types";
 
-export const load: LayoutServerLoad = async (event) => {
-	const session = await authorize(event.locals, INVENTORY_READ_ROLES);
-	return {
-		canEdit:
-			getRolesFromSession(session).intersection(INVENTORY_ROLES).size > 0,
-	};
+export const load: LayoutServerLoad = async ({ locals }) => {
+	const { session } = await locals.safeGetSession();
+	// GH-510: same rule as the "Inventory" navigation entry and the request
+	// hook; here it surfaces as a 403 rather than the hook's redirect.
+	authorizationFor(session).require("inventory.manage");
+
+	return {};
 };

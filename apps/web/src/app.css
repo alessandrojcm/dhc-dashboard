@@ -193,6 +193,28 @@
 	}
 }
 
+@layer components {
+	.inventory-page {
+		@apply mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8;
+	}
+
+	.inventory-page-header {
+		@apply flex flex-col gap-4 border-b border-border/80 pb-5 sm:flex-row sm:items-end sm:justify-between;
+	}
+
+	.inventory-page-header__icon {
+		@apply mt-0.5 hidden size-12 shrink-0 place-items-center rounded-2xl border border-primary/15 bg-primary/10 text-primary sm:grid;
+	}
+
+	.inventory-panel {
+		@apply rounded-2xl border border-border/80 bg-card shadow-sm;
+	}
+
+	.inventory-card {
+		@apply rounded-2xl border border-border/80 bg-card shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/30 hover:shadow-md;
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	*,
 	*::before,

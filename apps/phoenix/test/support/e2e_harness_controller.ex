@@ -71,6 +71,18 @@ defmodule DhcWeb.E2EHarnessController do
     end)
   end
 
+  def status(conn, _params) do
+    with_harness(conn, fn conn ->
+      json(conn, %{data: E2EHarness.status()})
+    end)
+  end
+
+  def run_loan_reminders(conn, params) do
+    with_harness(conn, fn conn ->
+      json(conn, %{data: E2EHarness.run_loan_reminders(Map.get(params, "attrs", %{}))})
+    end)
+  end
+
   def clear_finalization_interruption(conn, %{"invitationId" => invitation_id}) do
     with_harness(conn, fn conn ->
       :ok = E2EHarness.clear_finalization_interruption!(invitation_id)
@@ -80,8 +92,9 @@ defmodule DhcWeb.E2EHarnessController do
 
   def delete_fixture(conn, %{"type" => type, "id" => id}) do
     with_harness(conn, fn conn ->
-      E2EHarness.delete_fixture(type, id)
-      json(conn, %{data: %{deleted: true}})
+      type
+      |> E2EHarness.delete_fixture(id)
+      |> delete_fixture_response(conn)
     end)
   end
 
@@ -91,6 +104,56 @@ defmodule DhcWeb.E2EHarnessController do
       json(conn, %{data: data})
     end)
   end
+
+  defp delete_fixture_response(:ok, conn), do: json(conn, %{data: %{deleted: true}})
+  defp delete_fixture_response({:ok, _}, conn), do: json(conn, %{data: %{deleted: true}})
+
+  defp delete_fixture_response({:error, :still_referenced}, conn) do
+    conn
+    |> put_status(:conflict)
+    |> json(%{errors: %{detail: "still_referenced"}})
+  end
+
+  defp delete_fixture_response({:error, :still_referenced, details}, conn) do
+    conn
+    |> put_status(:conflict)
+    |> json(%{errors: still_referenced_errors(details)})
+  end
+
+  defp delete_fixture_response({:error, :not_found}, conn) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{errors: %{detail: "not_found"}})
+  end
+
+  defp delete_fixture_response({:error, reason}, conn) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{errors: %{detail: inspect(reason)}})
+  end
+
+  defp delete_fixture_response({:error, reason, _details}, conn) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> json(%{errors: %{detail: inspect(reason)}})
+  end
+
+  defp still_referenced_errors(details) when is_map(details) do
+    count =
+      case details do
+        %{active_value_count: value} -> value
+        %{"active_value_count" => value} -> value
+        _other -> nil
+      end
+
+    if is_integer(count) do
+      %{detail: "still_referenced", activeValueCount: count}
+    else
+      %{detail: "still_referenced"}
+    end
+  end
+
+  defp still_referenced_errors(_details), do: %{detail: "still_referenced"}
 
   defp with_harness(conn, callback) do
     expected = Application.fetch_env!(:dhc, :e2e_harness_key)

@@ -1,20 +1,19 @@
 import { error } from "@sveltejs/kit";
 import { workshopsAttendees } from "@dhc/api-client";
 import { apiClientOptions } from "$lib/server/api-client";
+import { authorizationFor } from "$lib/server/authorization";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ params, locals, cookies }) => {
 	const { session } = await locals.safeGetSession();
-
-	if (!session) {
-		error(401, { message: "Unauthorized" });
-	}
+	// GH-510: same `workshops.manage` rule the request hook applies to the
+	// `/dashboard/workshops` subtree; the authoritative check is Phoenix's.
+	authorizationFor(session).require("workshops.manage");
 
 	// Single Phoenix read (`GET /api/workshops/{id}/attendees`) returning the
 	// combined Workshop summary + attendees + refunds payload. Phoenix enforces
 	// coordinator RBAC (`workshop_coordinator` / `president` / `admin`) via the
-	// `workshop_management_api` pipeline, so no SvelteKit `authorize()` role gate
-	// is needed here — see commit 389a54ae and ADR 0005. The historical
+	// `workshop_management_api` pipeline — see commit 389a54ae and ADR 0005. The historical
 	// `beginners_coordinator` registration visibility drift is NOT reproduced
 	// (Phoenix 403s it). ALE-164: the `_dhc_session` cookie is forwarded by
 	// `apiClientOptions(cookies)`; the Supabase JWT path is removed.

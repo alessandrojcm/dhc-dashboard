@@ -1,377 +1,1179 @@
 <script lang="ts">
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "$lib/components/ui/card";
-import { Button } from "$lib/components/ui/button";
-import { Badge } from "$lib/components/ui/badge";
-import { Input } from "$lib/components/ui/input";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-} from "$lib/components/ui/select";
-import {
-	Package,
-	Plus,
-	Search,
-	Funnel,
-	TriangleAlert,
-	FolderOpen,
-	Tags,
-} from "@lucide/svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { goto } from "$app/navigation";
-import { resolve } from "$app/paths";
+import { onDestroy } from "svelte";
 import { page } from "$app/state";
-import { Label } from "$lib/components/ui/label";
-import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
 import {
-	inventoryItemsIndexOptions,
-	type InventoryItem as ApiInventoryItem,
+	createMutation,
+	createQuery,
+	keepPreviousData,
+	useQueryClient,
+} from "@tanstack/svelte-query";
+import {
+	type InventoryOperatorItem,
+	type InventoryOperatorItemValues,
+	type InventoryPropertyDefinition,
+	inventoryCategoriesIndexOptions,
+	inventoryContainersIndexOptions,
+	inventoryItemsArchiveMutation,
+	inventoryItemsChangeCategoryMutation,
+	inventoryItemsCreateMutation,
+	inventoryItemsDeleteMutation,
+	inventoryItemsEndMaintenanceMutation,
+	inventoryItemsListMaintenanceOptions,
+	inventoryItemsListOptions,
+	inventoryItemsMoveMutation,
+	inventoryItemsRestoreMutation,
+	inventoryItemsShowOptions,
+	inventoryItemsStartMaintenanceMutation,
+	inventoryItemsUpdateMutation,
+	inventoryStructureListDefinitionsOptions,
 } from "@dhc/api-client";
-import type { InventoryAttributes } from "$lib/types";
-import { parseInventoryAttributes } from "$lib/schemas/inventory";
-import { SvelteURLSearchParams } from "svelte/reactivity";
+import { Alert, AlertDescription } from "$lib/components/ui/alert";
+import * as AlertDialog from "$lib/components/ui/alert-dialog";
+import { Badge } from "$lib/components/ui/badge";
+import { Button, buttonVariants } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import { Label } from "$lib/components/ui/label";
+import * as Select from "$lib/components/ui/select";
+import * as Sheet from "$lib/components/ui/sheet";
+import * as Tabs from "$lib/components/ui/tabs";
+import { Textarea } from "$lib/components/ui/textarea";
+import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import { apiErrorMessage } from "$lib/api-error";
+import {
+	Archive,
+	MapPin,
+	NotebookPen,
+	PackageSearch,
+	PackagePlus,
+	RefreshCw,
+	RotateCcw,
+	Tags,
+	Trash2,
+} from "@lucide/svelte";
+import { toast } from "svelte-sonner";
 
-let { data } = $props();
+const PAGE_SIZE = 25;
 
-const PAGE_SIZE = 50;
-const currentCursor = $derived(page.url.searchParams.get("cursor") || "");
-let searchInput = $derived(page.url.searchParams.get("search") || "");
-let categoryInput = $derived(page.url.searchParams.get("category") || "");
-let containerInput = $derived(page.url.searchParams.get("container") || "");
-let maintenanceInput = $derived(page.url.searchParams.get("maintenance") || "");
+let archived = $state<"exclude" | "include" | "only">("exclude");
+let availability = $state<"all" | "maintenance">("all");
+let search = $state("");
+let debouncedQuery = $state("");
+let searchTimeout: ReturnType<typeof setTimeout> | undefined;
+let cursor = $state<string | undefined>(undefined);
+let slugLookup = $state(page.url.searchParams.get("slug") ?? "");
+let lookedUpSlug = $state<string | undefined>(undefined);
+const queryClient = useQueryClient();
+let categoryId = $state("");
+let containerId = $state("");
+let notes = $state("");
+let values = $state<InventoryOperatorItemValues>({});
+let selected = $state<InventoryOperatorItem | undefined>();
+let editNotes = $state("");
+let editValues = $state<InventoryOperatorItemValues>({});
+let moveContainerId = $state("");
+let newCategoryId = $state("");
+let newCategoryValues = $state<InventoryOperatorItemValues>({});
+let maintenanceReason = $state("");
+let maintenanceEndNote = $state("");
+let archiveReason = $state("");
+let createOpen = $state(false);
+let createTrigger = $state<HTMLButtonElement | null>(null);
+type ManagementTab = "details" | "placement" | "maintenance";
+let managementTab = $state<ManagementTab>("details");
+let managementTrigger = $state<HTMLElement | null>(null);
+let deleteConfirmOpen = $state(false);
 
-type InventoryItem = {
-	id: string;
-	quantity: number;
-	out_for_maintenance: boolean;
-	attributes: InventoryAttributes;
-	category: { id?: string | null; name?: string | null } | null;
-	container: { id?: string | null; name?: string | null } | null;
-};
-
-function toLegacyItem(item: ApiInventoryItem): InventoryItem {
-	return {
-		id: item.id,
-		quantity: item.quantity,
-		out_for_maintenance: item.outForMaintenance,
-		attributes: parseInventoryAttributes(item.attributes ?? {}),
-		category: item.category,
-		container: item.container,
-	};
-}
+const availabilityOptions = [
+	{ value: "all", label: "All states" },
+	{ value: "maintenance", label: "Maintenance" },
+];
+const archiveOptions = [
+	{ value: "exclude", label: "Active" },
+	{ value: "include", label: "All" },
+	{ value: "only", label: "Archived" },
+];
 
 const itemsQuery = createQuery(() => ({
-	...inventoryItemsIndexOptions({
+	...inventoryItemsListOptions({
 		query: {
+			archived,
 			limit: PAGE_SIZE,
-			cursor: currentCursor || undefined,
-			search: searchInput || undefined,
-			categoryId: categoryInput || undefined,
-			containerId: containerInput || undefined,
-			outForMaintenance: maintenanceInput
-				? maintenanceInput === "true"
-				: undefined,
+			q: debouncedQuery || undefined,
+			cursor,
 		},
 	}),
 	placeholderData: keepPreviousData,
-	select: (response) => ({
-		items: response.data.items.map(toLegacyItem),
-		nextCursor: response.data.nextCursor,
+	select: (response) => response.data,
+}));
+const categoriesQuery = createQuery(() => ({
+	...inventoryCategoriesIndexOptions(),
+	select: (response) => response.data.categories,
+}));
+const containersQuery = createQuery(() => ({
+	...inventoryContainersIndexOptions(),
+	select: (response) => response.data.containers,
+}));
+const definitionsQuery = createQuery(() => ({
+	...inventoryStructureListDefinitionsOptions({ path: { categoryId } }),
+	enabled: Boolean(categoryId),
+	select: (response) => response.data.definitions,
+}));
+const editDefinitionsQuery = createQuery(() => ({
+	...inventoryStructureListDefinitionsOptions({
+		path: { categoryId: selected?.categoryId ?? "" },
 	}),
+	enabled: Boolean(selected),
+	select: (response) => response.data.definitions,
+}));
+const newDefinitionsQuery = createQuery(() => ({
+	...inventoryStructureListDefinitionsOptions({
+		path: { categoryId: newCategoryId },
+	}),
+	enabled: Boolean(newCategoryId),
+	select: (response) => response.data.definitions,
+}));
+const maintenanceQuery = createQuery(() => ({
+	...inventoryItemsListMaintenanceOptions({
+		path: { slugOrId: selected?.slug ?? "" },
+	}),
+	enabled: Boolean(selected),
+	select: (response) => response.data.periods,
+}));
+const maintenanceItems = $derived(
+	(itemsQuery.data?.items ?? []).filter(
+		(item) => item.availability.status === "maintenance",
+	),
+);
+const categoryOptions = $derived(
+	(categoriesQuery.data ?? []).map((category) => ({
+		value: category.id,
+		label: category.name,
+	})),
+);
+const containerOptions = $derived(
+	(containersQuery.data ?? [])
+		.filter((container) => !container.archivedAt)
+		.map((container) => ({ value: container.id, label: container.name })),
+);
+const visibleItems = $derived(
+	availability === "maintenance"
+		? maintenanceItems
+		: (itemsQuery.data?.items ?? []),
+);
+
+function refresh() {
+	void itemsQuery.refetch();
+	void maintenanceQuery.refetch();
+}
+function updateSearch(value: string) {
+	search = value;
+	clearTimeout(searchTimeout);
+	searchTimeout = setTimeout(() => {
+		debouncedQuery = value.trim();
+		cursor = undefined;
+	}, 300);
+}
+async function lookupSlug(slug: string) {
+	const trimmed = slug.trim();
+	if (!trimmed) return;
+	try {
+		const response = await queryClient.fetchQuery(
+			inventoryItemsShowOptions({ path: { slugOrId: trimmed } }),
+		);
+		choose(response.data);
+	} catch (cause) {
+		toast.error(apiErrorMessage(cause, "No item matches that code"));
+	}
+}
+$effect(() => {
+	const slug = page.url.searchParams.get("slug")?.trim();
+	if (!slug || slug === lookedUpSlug) return;
+	lookedUpSlug = slug;
+	slugLookup = slug;
+	void lookupSlug(slug);
+});
+onDestroy(() => clearTimeout(searchTimeout));
+function itemValues(item: InventoryOperatorItem): InventoryOperatorItemValues {
+	return Object.fromEntries(
+		item.values.map((value) => [
+			value.definitionId,
+			value.text ?? value.decimal ?? value.boolean ?? value.optionId,
+		]),
+	);
+}
+function choose(item: InventoryOperatorItem, tab: ManagementTab = "details") {
+	selected = item;
+	managementTab = tab;
+	editNotes = item.notes ?? "";
+	editValues = itemValues(item);
+	moveContainerId = item.containerId ?? "";
+	newCategoryId = item.categoryId;
+	newCategoryValues = itemValues(item);
+	maintenanceReason = "";
+	maintenanceEndNote = "";
+	archiveReason = "";
+	deleteConfirmOpen = false;
+}
+function openManagement(
+	item: InventoryOperatorItem,
+	tab: ManagementTab,
+	trigger: HTMLElement,
+) {
+	managementTrigger = trigger;
+	choose(item, tab);
+}
+function resetCreate() {
+	notes = "";
+	values = {};
+	createOpen = false;
+}
+function commandOptions(success: string, fallback: string, after?: () => void) {
+	return {
+		onSuccess: (response: { data: InventoryOperatorItem }) => {
+			toast.success(success);
+			if (selected) choose(response.data, managementTab);
+			after?.();
+			refresh();
+		},
+		onError: apiErrorHandler(fallback),
+	};
+}
+function apiErrorHandler(fallback: string) {
+	return (cause: unknown) => toast.error(apiErrorMessage(cause, fallback));
+}
+const createItem = createMutation(() => ({
+	...inventoryItemsCreateMutation(),
+	onSuccess: (response) => {
+		toast.success("Item created");
+		choose(response.data, "details");
+		resetCreate();
+		refresh();
+	},
+	onError: apiErrorHandler("Could not create item"),
+}));
+const updateItem = createMutation(() => ({
+	...inventoryItemsUpdateMutation(),
+	...commandOptions("Item updated", "Could not update item"),
+}));
+const moveItem = createMutation(() => ({
+	...inventoryItemsMoveMutation(),
+	...commandOptions("Item moved", "Could not move item"),
+}));
+const changeCategory = createMutation(() => ({
+	...inventoryItemsChangeCategoryMutation(),
+	...commandOptions("Category changed", "Could not change category"),
+}));
+const startMaintenance = createMutation(() => ({
+	...inventoryItemsStartMaintenanceMutation(),
+	...commandOptions("Maintenance started", "Could not start maintenance"),
+}));
+const endMaintenance = createMutation(() => ({
+	...inventoryItemsEndMaintenanceMutation(),
+	...commandOptions("Maintenance ended", "Could not end maintenance"),
+}));
+const archiveItem = createMutation(() => ({
+	...inventoryItemsArchiveMutation(),
+	...commandOptions("Item archived", "Could not archive item"),
+}));
+const restoreItem = createMutation(() => ({
+	...inventoryItemsRestoreMutation(),
+	...commandOptions("Item restored", "Could not restore item"),
+}));
+const deleteItem = createMutation(() => ({
+	...inventoryItemsDeleteMutation(),
+	onSuccess: () => {
+		toast.success("Item deleted");
+		deleteConfirmOpen = false;
+		selected = undefined;
+		refresh();
+	},
+	onError: (error) =>
+		toast.error(apiErrorMessage(error, "Items with history must be archived")),
 }));
 
-const applyFilters = () => {
-	const params = new SvelteURLSearchParams();
-	if (searchInput) params.set("search", searchInput);
-	if (categoryInput) params.set("category", categoryInput);
-	if (containerInput) params.set("container", containerInput);
-	if (maintenanceInput) params.set("maintenance", maintenanceInput);
-
-	const url = `/dashboard/inventory/items?${params.toString()}`;
-	goto(url);
-};
-
-const clearFilters = () => {
-	goto(resolve("/dashboard/inventory/items"));
-};
-
-const goToNextPage = () => {
-	if (!itemsQuery.data?.nextCursor) return;
-	const params = new SvelteURLSearchParams(page.url.searchParams);
-	params.set("cursor", itemsQuery.data.nextCursor);
-	const url = `/dashboard/inventory/items?${params.toString()}`;
-	goto(url);
-};
-
-const goToFirstPage = () => {
-	const params = new SvelteURLSearchParams(page.url.searchParams);
-	params.delete("cursor");
-	const url = `/dashboard/inventory/items?${params.toString()}`;
-	goto(url);
-};
-
-const getItemDisplayName = (item: InventoryItem) => {
-	if (item.attributes?.name) return String(item.attributes.name);
-	if (item.attributes?.brand && item.attributes?.type) {
-		return `${String(item.attributes.brand)} ${String(item.attributes.type)}`;
-	}
-	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
-};
-
-const hasActiveFilters = $derived(
-	searchInput || categoryInput || containerInput || maintenanceInput,
-);
+function setValue(
+	target: InventoryOperatorItemValues,
+	id: string,
+	value: string | boolean,
+) {
+	target[id] = value === "" ? null : value;
+}
+function displayValue(item: InventoryOperatorItem) {
+	return item.values
+		.map(
+			(value) =>
+				`${value.definitionLabel}: ${value.optionLabel ?? value.text ?? value.decimal ?? String(value.boolean)}`,
+		)
+		.join(" · ");
+}
 </script>
 
-<div class="p-6">
-	<div class="flex items-center justify-between mb-6">
+{#snippet fields(
+	definitions: InventoryPropertyDefinition[],
+	target: InventoryOperatorItemValues,
+	prefix: string,
+)}
+	{#each definitions.filter((definition) => !definition.retiredAt) as definition (definition.id)}
 		<div>
-			<h1 class="text-3xl font-bold">Inventory Items</h1>
-			<p class="text-muted-foreground">Browse and manage all equipment items</p>
-		</div>
-		<Button href="/dashboard/inventory/items/create">
-			<Plus class="mr-2 h-4 w-4" />
-			Add Item
-		</Button>
-	</div>
-
-	<!-- Filters -->
-	<Card class="mb-6">
-		<CardHeader>
-			<CardTitle class="flex items-center gap-2">
-				<Funnel class="h-5 w-5" />
-				Filters
-			</CardTitle>
-		</CardHeader>
-		<CardContent>
-			<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-				<div class="space-y-2">
-					<Label class="text-sm font-medium">Search</Label>
-					<div class="relative">
-						<Search
-							class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground"
-						/>
-						<Input
-							bind:value={searchInput}
-							placeholder="Search items..."
-							class="pl-10"
-							onkeydown={(e: KeyboardEvent) =>
-								e.key === "Enter" && applyFilters()}
-						/>
-					</div>
-				</div>
-
-				<div class="space-y-2">
-					<Label class="text-sm font-medium">Category</Label>
-					<Select type="single" bind:value={categoryInput}>
-						<SelectTrigger>
-							{categoryInput
-								? data.categories.find((c) => c.id === categoryInput)?.name
-								: "All categories"}
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="">All categories</SelectItem>
-							{#each data.categories as category (category.id)}
-								<SelectItem value={category.id}>{category.name}</SelectItem>
-							{/each}
-						</SelectContent>
-					</Select>
-				</div>
-
-				<div class="space-y-2">
-					<Label class="text-sm font-medium">Container</Label>
-					<Select type="single" bind:value={containerInput}>
-						<SelectTrigger>
-							{containerInput
-								? data.containers.find((c) => c.id === containerInput)?.name
-								: "All containers"}
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="">All containers</SelectItem>
-							{#each data.containers as container (container.id)}
-								<SelectItem value={container.id}>{container.name}</SelectItem>
-							{/each}
-						</SelectContent>
-					</Select>
-				</div>
-
-				<div class="space-y-2">
-					<Label class="text-sm font-medium">Maintenance</Label>
-					<Select type="single" bind:value={maintenanceInput}>
-						<SelectTrigger>
-							{maintenanceInput === "true"
-								? "Out for maintenance"
-								: maintenanceInput === "false"
-									? "Available items"
-									: "All items"}
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="">All items</SelectItem>
-							<SelectItem value="false">Available items</SelectItem>
-							<SelectItem value="true">Out for maintenance</SelectItem>
-						</SelectContent>
-					</Select>
-				</div>
-
-				<div class="space-y-2">
-					<Label class="text-sm font-medium invisible">Actions</Label>
-					<div class="flex gap-2">
-						<Button onclick={applyFilters} size="sm">Apply</Button>
-						{#if hasActiveFilters}
-							<Button onclick={clearFilters} variant="outline" size="sm"
-								>Clear</Button
-							>
-						{/if}
-					</div>
-				</div>
-			</div>
-		</CardContent>
-	</Card>
-
-	<!-- Results -->
-	{#if itemsQuery.isPending}
-		<Card>
-			<CardContent class="flex flex-col items-center justify-center py-12">
-				<LoaderCircle />
-				<p class="text-muted-foreground mt-4">Loading items...</p>
-			</CardContent>
-		</Card>
-	{:else if itemsQuery.isError}
-		<Card>
-			<CardContent class="flex flex-col items-center justify-center py-12">
-				<TriangleAlert class="h-12 w-12 text-destructive mb-4" />
-				<h3 class="text-lg font-semibold mb-2">Error loading items</h3>
-				<p class="text-muted-foreground mb-4">
-					{itemsQuery.error.errors?.detail || "Failed to load items"}
-				</p>
-				<Button onclick={() => itemsQuery.refetch()} variant="outline"
-					>Retry</Button
+			<Label for={`${prefix}-${definition.id}`} class="mb-2.5">
+				{definition.label}
+			</Label>
+			{#if definition.valueType === "boolean"}
+				<Select.Root
+					type="single"
+					name={`${prefix}-${definition.id}`}
+					bind:value={
+						() =>
+							target[definition.id] === true
+								? "true"
+								: target[definition.id] === false
+									? "false"
+									: "",
+						(value) =>
+							setValue(
+								target,
+								definition.id,
+								value === "" ? "" : value === "true",
+							)
+					}
+					required={definition.required}
 				>
-			</CardContent>
-		</Card>
-	{:else if itemsQuery.data.items.length === 0}
-		<Card>
-			<CardContent class="flex flex-col items-center justify-center py-12">
-				<Package class="h-12 w-12 text-muted-foreground mb-4" />
-				<h3 class="text-lg font-semibold mb-2">
-					{hasActiveFilters ? "No items match your filters" : "No items yet"}
-				</h3>
-				<p class="text-muted-foreground mb-4">
-					{hasActiveFilters
-						? "Try adjusting your search criteria"
-						: "Add your first inventory item to get started"}
-				</p>
-				{#if hasActiveFilters}
-					<Button onclick={clearFilters} variant="outline">Clear Filters</Button
+					<Select.Trigger
+						id={`${prefix}-${definition.id}`}
+						class="w-full data-[size=default]:h-11"
 					>
-				{:else}
-					<Button href="/dashboard/inventory/items/create">
-						<Plus class="mr-2 h-4 w-4" />
-						Add First Item
-					</Button>
-				{/if}
-			</CardContent>
-		</Card>
-	{:else}
-		<Card>
-			<CardHeader>
-				<CardTitle class="flex items-center gap-2">
-					Items ({itemsQuery.data.items.length})
-					{#if hasActiveFilters}
-						<Badge variant="secondary" class="ml-2">Filtered</Badge>
-					{/if}
-					{#if itemsQuery.isFetching}
-						<LoaderCircle />
-					{/if}
-				</CardTitle>
-			</CardHeader>
-			<CardContent>
-				<div class="space-y-3">
-					{#each itemsQuery.data.items as item (item.id)}
-						<div
-							class="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
-						>
-							<div class="flex items-center gap-4">
-								<div
-									class="flex h-10 w-10 items-center justify-center rounded-md bg-muted"
-								>
-									<Package class="h-5 w-5" />
-								</div>
+						{target[definition.id] === true
+							? "Yes"
+							: target[definition.id] === false
+								? "No"
+								: "Not set"}
+					</Select.Trigger>
+					<Select.Content portalProps={{ disabled: true }}>
+						<Select.Item value="true" label="Yes">Yes</Select.Item>
+						<Select.Item value="false" label="No">No</Select.Item>
+					</Select.Content>
+				</Select.Root>
+			{:else if definition.valueType === "single_select"}
+				{@const activeOptions = definition.options.filter(
+					(option) => !option.retiredAt,
+				)}
+				<Select.Root
+					type="single"
+					name={`${prefix}-${definition.id}`}
+					bind:value={
+						() => String(target[definition.id] ?? ""),
+						(value) => setValue(target, definition.id, value)
+					}
+					required={definition.required}
+				>
+					<Select.Trigger
+						id={`${prefix}-${definition.id}`}
+						class="w-full data-[size=default]:h-11"
+					>
+						{activeOptions.find(
+							(option) => option.id === String(target[definition.id] ?? ""),
+						)?.label ?? "Choose"}
+					</Select.Trigger>
+					<Select.Content portalProps={{ disabled: true }}>
+						{#each activeOptions as option (option.id)}
+							<Select.Item value={option.id} label={option.label}>
+								{option.label}
+							</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+			{:else}
+				<Input
+					id={`${prefix}-${definition.id}`}
+					type={definition.valueType === "decimal" ? "number" : "text"}
+					step={definition.valueType === "decimal" ? "any" : undefined}
+					value={String(target[definition.id] ?? "")}
+					oninput={(event) =>
+						setValue(target, definition.id, event.currentTarget.value)}
+					required={definition.required}
+				/>
+			{/if}
+		</div>
+	{/each}
+{/snippet}
 
-								<div class="flex-1">
-									<div class="flex items-center gap-2 mb-1">
-										<h3 class="font-medium">{getItemDisplayName(item)}</h3>
-										{#if item.out_for_maintenance}
-											<Badge
-												variant="destructive"
-												class="text-xs flex items-center gap-1"
-											>
-												<TriangleAlert class="h-3 w-3" />
-												Maintenance
-											</Badge>
-										{/if}
-									</div>
+<svelte:head><title>Inventory items | Dublin HEMA Club</title></svelte:head>
 
-									<div
-										class="flex items-center gap-3 text-sm text-muted-foreground"
-									>
-										<div class="flex items-center gap-1">
-											<Tags class="h-3 w-3" />
-											{item.category?.name || "Uncategorized"}
-										</div>
-										<div class="flex items-center gap-1">
-											<FolderOpen class="h-3 w-3" />
-											{item.container?.name || "No container"}
-										</div>
-										<Badge variant="outline" class="text-xs">
-											Qty: {item.quantity}
-										</Badge>
-									</div>
-								</div>
+{#snippet createAction()}
+	<Button bind:ref={createTrigger} onclick={() => (createOpen = true)}>
+		<PackagePlus aria-hidden="true" />New item
+	</Button>
+{/snippet}
+
+<Sheet.Root
+	bind:open={createOpen}
+	onOpenChangeComplete={(open) => {
+		if (!open) createTrigger?.focus();
+	}}
+>
+	<div
+		class="inventory-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:space-y-4 xl:overflow-hidden xl:py-4"
+	>
+		<InventoryPageHeader
+			eyebrow="Quartermaster"
+			title="Items"
+			icon={PackageSearch}
+			actions={createAction}
+			class="xl:pb-3"
+		/>
+		{#if itemsQuery.isError}<Alert variant="destructive"
+				><AlertDescription class="flex items-center justify-between"
+					><span
+						>{apiErrorMessage(itemsQuery.error, "Could not load items")}</span
+					><Button
+						variant="outline"
+						size="sm"
+						onclick={() => itemsQuery.refetch()}><RefreshCw />Try again</Button
+					></AlertDescription
+				></Alert
+			>{/if}
+		<div class="min-h-0 xl:flex-1">
+			<Sheet.Content
+				side="right"
+				class="w-full max-w-none gap-0 overflow-hidden p-0 sm:w-[50rem] sm:max-w-[calc(100vw-2rem)]"
+			>
+				<form
+					class="flex min-h-0 flex-1 flex-col"
+					onsubmit={(event) => {
+						event.preventDefault();
+						createItem.mutate({
+							body: {
+								categoryId,
+								containerId,
+								notes: notes.trim() || null,
+								values,
+							},
+						});
+					}}
+				>
+					<Sheet.Header
+						class="shrink-0 border-b bg-primary/7 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pr-16 pb-5 text-left sm:px-6 sm:pt-6"
+					>
+						<div class="flex items-start gap-3">
+							<div
+								class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm"
+							>
+								<PackagePlus class="size-5" aria-hidden="true" />
 							</div>
-
-							<div class="flex items-center gap-2">
-								<Button
-									href="/dashboard/inventory/items/{item.id}"
-									variant="ghost"
-									size="sm"
+							<div>
+								<p
+									class="text-[0.68rem] font-bold tracking-[0.16em] text-primary uppercase"
 								>
-									View
-								</Button>
+									New item
+								</p>
+								<Sheet.Title class="font-heading text-2xl font-bold">
+									Add item
+								</Sheet.Title>
+								<Sheet.Description class="mt-1 text-sm leading-relaxed">
+									The label and permanent item code are generated for you.
+								</Sheet.Description>
 							</div>
 						</div>
-					{/each}
-				</div>
+					</Sheet.Header>
 
-				<!-- Cursor pagination -->
-				{#if currentCursor || itemsQuery.data.nextCursor}
-					<div class="flex items-center justify-between mt-6">
-						<p class="text-sm text-muted-foreground">
-							Showing up to {PAGE_SIZE} items per page
-						</p>
+					<div
+						class="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain bg-muted/20 p-5 sm:p-8"
+					>
+						<fieldset
+							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm sm:p-6"
+						>
+							<legend class="sr-only">What and where</legend>
+							<div class="flex items-start gap-3 border-b pb-4">
+								<span
+									class="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-sm font-bold text-secondary-foreground"
+									>1</span
+								>
+								<div>
+									<h3 class="font-heading text-lg font-bold">
+										What and where
+									</h3>
+									<p class="mt-0.5 text-sm text-muted-foreground">
+										Choose what it is and where it's stored.
+									</p>
+								</div>
+							</div>
+							<div class="grid gap-5 sm:grid-cols-2 sm:gap-6">
+								<div>
+									<Label
+										for="item-category"
+										class="mb-2.5 flex items-center gap-1.5"
+										><Tags
+											class="size-3.5 text-primary"
+											aria-hidden="true"
+										/>Category</Label
+									>
+									<Select.Root
+										type="single"
+										name="categoryId"
+										items={categoryOptions}
+										bind:value={categoryId}
+										onValueChange={() => (values = {})}
+										required
+									>
+										<Select.Trigger
+											id="item-category"
+											class="w-full data-[size=default]:h-11"
+										>
+											{categoryOptions.find(
+												(option) => option.value === categoryId,
+											)?.label ?? "Choose category"}
+										</Select.Trigger>
+										<Select.Content portalProps={{ disabled: true }}>
+											{#each categoryOptions as option (option.value)}
+												<Select.Item value={option.value} label={option.label}>
+													{option.label}
+												</Select.Item>
+											{/each}
+										</Select.Content>
+									</Select.Root>
+								</div>
+								<div>
+									<Label
+										for="item-container"
+										class="mb-2.5 flex items-center gap-1.5"
+										><MapPin
+											class="size-3.5 text-primary"
+											aria-hidden="true"
+										/>Container</Label
+									>
+									<Select.Root
+										type="single"
+										name="containerId"
+										items={containerOptions}
+										bind:value={containerId}
+										required
+									>
+										<Select.Trigger
+											id="item-container"
+											class="w-full data-[size=default]:h-11"
+										>
+											{containerOptions.find(
+												(option) => option.value === containerId,
+											)?.label ?? "Choose container"}
+										</Select.Trigger>
+										<Select.Content portalProps={{ disabled: true }}>
+											{#each containerOptions as option (option.value)}
+												<Select.Item value={option.value} label={option.label}>
+													{option.label}
+												</Select.Item>
+											{/each}
+										</Select.Content>
+									</Select.Root>
+								</div>
+							</div>
+						</fieldset>
 
-						<div class="flex gap-2">
-							{#if currentCursor}
-								<Button onclick={goToFirstPage} variant="outline" size="sm">
-									First page
-								</Button>
+						<fieldset
+							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm sm:p-6"
+						>
+							<legend class="sr-only">Details</legend>
+							<div class="flex items-start gap-3 border-b pb-4">
+								<span
+									class="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-sm font-bold text-secondary-foreground"
+									>2</span
+								>
+								<div>
+									<h3 class="font-heading text-lg font-bold">
+										Details
+									</h3>
+									<p class="mt-0.5 text-sm text-muted-foreground">
+										Record size, condition, and any notes.
+									</p>
+								</div>
+							</div>
+							{#if categoryId}
+								{@render fields(definitionsQuery.data ?? [], values, "create")}
+							{:else}
+								<p
+									class="rounded-xl border border-dashed bg-muted/35 p-3 text-xs leading-relaxed text-muted-foreground"
+								>
+									Choose a category to reveal its specific properties.
+								</p>
 							{/if}
+							<div>
+								<Label for="item-notes" class="mb-2.5 flex items-center gap-1.5"
+									><NotebookPen
+										class="size-3.5 text-primary"
+										aria-hidden="true"
+									/>Notes</Label
+								><Textarea id="item-notes" bind:value={notes} />
+								<p class="mt-1.5 text-xs text-muted-foreground">
+									Optional notes for whoever handles this next.
+								</p>
+							</div>
+						</fieldset>
+					</div>
 
-							{#if itemsQuery.data.nextCursor}
-								<Button onclick={goToNextPage} variant="outline" size="sm">
+					<Sheet.Footer
+						class="shrink-0 border-t bg-background p-4 sm:flex-row sm:justify-between sm:px-6"
+					>
+						<Sheet.Close class={buttonVariants({ variant: "outline" })}>
+							Cancel
+						</Sheet.Close>
+						<Button
+							type="submit"
+							class="min-h-11 sm:min-w-36"
+							disabled={createItem.isPending}><PackagePlus />Add item</Button
+						>
+					</Sheet.Footer>
+				</form>
+			</Sheet.Content>
+			<section class="min-h-0 space-y-3 xl:flex xl:h-full xl:flex-col">
+				<div
+					class="inventory-panel flex flex-wrap items-end justify-between gap-4 p-4"
+				>
+					<div>
+						<h2 class="text-lg font-semibold">All items</h2>
+						<p class="text-sm text-muted-foreground">
+							{itemsQuery.data?.totalCount ?? 0} items
+						</p>
+					</div>
+					<div class="flex flex-1 flex-wrap items-end justify-end gap-3">
+						<div class="min-w-56 flex-1 sm:max-w-80">
+							<Label for="item-search" class="mb-2 text-xs font-semibold"
+								>Search</Label
+							>
+							<Input
+								id="item-search"
+								type="search"
+								class="h-11 border-border bg-background shadow-xs"
+								placeholder="Code, name, location or notes"
+								value={search}
+								oninput={(event) => updateSearch(event.currentTarget.value)}
+							/>
+						</div>
+						<form
+							class="min-w-48 flex-1 sm:max-w-64"
+							onsubmit={(event) => {
+								event.preventDefault();
+								void lookupSlug(slugLookup);
+							}}
+						>
+							<Label for="item-slug-lookup" class="mb-2 text-xs font-semibold"
+								>Find by code</Label
+							>
+							<div class="flex gap-2">
+								<Input
+									id="item-slug-lookup"
+									data-testid="find-by-slug"
+									class="h-11 border-border bg-background shadow-xs"
+									placeholder="item-000001"
+									bind:value={slugLookup}
+								/>
+								<Button type="submit" variant="outline" class="h-11">
+									Find
+								</Button>
+							</div>
+						</form>
+						<div>
+							<Label
+								for="availability-filter"
+								class="mb-2 text-xs font-semibold">Availability</Label
+							>
+							<Select.Root
+								type="single"
+								items={availabilityOptions}
+								bind:value={availability}
+							>
+								<Select.Trigger
+									id="availability-filter"
+									class="min-w-36 data-[size=default]:h-11"
+								>
+									{availabilityOptions.find(
+										(option) => option.value === availability,
+									)?.label}
+								</Select.Trigger>
+								<Select.Content>
+									{#each availabilityOptions as option (option.value)}
+										<Select.Item value={option.value} label={option.label}>
+											{option.label}
+										</Select.Item>
+									{/each}
+								</Select.Content>
+							</Select.Root>
+						</div>
+						<div>
+							<Label for="archive-filter" class="mb-2 text-xs font-semibold"
+								>Archive filter</Label
+							>
+							<Select.Root
+								type="single"
+								items={archiveOptions}
+								bind:value={archived}
+								onValueChange={() => (cursor = undefined)}
+							>
+								<Select.Trigger
+									id="archive-filter"
+									class="min-w-32 data-[size=default]:h-11"
+								>
+									{archiveOptions.find((option) => option.value === archived)
+										?.label}
+								</Select.Trigger>
+								<Select.Content>
+									{#each archiveOptions as option (option.value)}
+										<Select.Item value={option.value} label={option.label}>
+											{option.label}
+										</Select.Item>
+									{/each}
+								</Select.Content>
+							</Select.Root>
+						</div>
+					</div>
+				</div>
+				<div
+					class="space-y-3 xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-2 xl:[scrollbar-gutter:stable]"
+				>
+					{#each visibleItems as item (item.id)}<article
+							class="inventory-card p-4 {item.archivedAt ? 'opacity-65' : ''}"
+						>
+							<div class="flex flex-wrap items-start justify-between gap-3">
+								<div>
+									<div class="flex flex-wrap items-center gap-2">
+										<h3 class="font-semibold">{item.label}</h3>
+										<Badge variant="outline">{item.slug}</Badge><Badge
+											variant={item.availability.available
+												? "secondary"
+												: "outline"}
+											>{item.availability.status
+												.replace("_", " ")
+												.replace(/^./, (character) =>
+													character.toUpperCase(),
+												)}</Badge
+										>
+									</div>
+									<p class="mt-1 text-sm text-muted-foreground">
+										{item.category?.name} · {item.container?.name ??
+											"No container"}
+									</p>
+									{#if item.values.length}<p class="mt-1 text-sm">
+											{displayValue(item)}
+										</p>{/if}{#if item.notes}<p class="mt-1 text-sm">
+											{item.notes}
+										</p>{/if}
+								</div>
+								<Button
+									size="sm"
+									variant="outline"
+									onclick={(event) =>
+										openManagement(item, "details", event.currentTarget)}
+									>Manage</Button
+								>
+							</div>
+						</article>{:else}<div
+							class="rounded-2xl border bg-card p-10 text-center"
+						>
+							<h2 class="font-semibold">No items found</h2>
+							<p class="text-sm text-muted-foreground">
+								{debouncedQuery
+									? "Try another search or change the filters."
+									: "Add an item or change the archive filter."}
+							</p>
+						</div>{/each}
+					{#if cursor || itemsQuery.data?.nextCursor}
+						<div class="flex items-center justify-between gap-2">
+							{#if itemsQuery.data?.previousCursor}
+								<Button
+									variant="outline"
+									size="sm"
+									class="min-h-11"
+									data-testid="items-previous-page"
+									onclick={() => {
+										cursor = itemsQuery.data?.previousCursor ?? undefined;
+									}}
+								>
+									Previous
+								</Button>
+							{:else}
+								<span></span>
+							{/if}
+							{#if itemsQuery.data?.nextCursor}
+								<Button
+									variant="outline"
+									size="sm"
+									class="min-h-11"
+									data-testid="items-next-page"
+									onclick={() => {
+										cursor = itemsQuery.data?.nextCursor ?? undefined;
+									}}
+								>
 									Next
 								</Button>
 							{/if}
 						</div>
+					{/if}
+				</div>
+			</section>
+		</div>
+	</div>
+</Sheet.Root>
+
+{#if selected}
+	<Sheet.Root
+		open
+		onOpenChange={(open) => {
+			if (!open) selected = undefined;
+		}}
+		onOpenChangeComplete={(open) => {
+			if (!open) managementTrigger?.focus();
+		}}
+	>
+		<Sheet.Content
+			side="right"
+			class="w-full max-w-none gap-0 overflow-hidden p-0 sm:w-[46rem] sm:max-w-[calc(100vw-2rem)]"
+		>
+			<Sheet.Header
+				class="shrink-0 border-b bg-primary/7 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pr-16 pb-5 text-left sm:px-6 sm:pt-6"
+			>
+				<div class="flex items-start gap-3">
+					<div
+						class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm"
+					>
+						<PackageSearch class="size-5" aria-hidden="true" />
 					</div>
-				{/if}
-			</CardContent>
-		</Card>
-	{/if}
-</div>
+					<div class="min-w-0">
+						<div class="flex flex-wrap items-center gap-2">
+							<Sheet.Title class="font-heading text-2xl font-bold">
+								{selected.label}
+							</Sheet.Title>
+							{#if selected.archivedAt}<Badge variant="outline">Archived</Badge
+								>{/if}
+						</div>
+						<Sheet.Description class="mt-1 font-mono text-sm">
+							{selected.slug}
+						</Sheet.Description>
+					</div>
+				</div>
+			</Sheet.Header>
+
+			<Tabs.Root bind:value={managementTab} class="min-h-0 flex-1 gap-0">
+				<div class="shrink-0 border-b bg-background px-5 py-3 sm:px-6">
+					<Tabs.List class="grid h-11 w-full grid-cols-3">
+						<Tabs.Trigger value="details">Details</Tabs.Trigger>
+						<Tabs.Trigger value="placement">Placement</Tabs.Trigger>
+						<Tabs.Trigger value="maintenance">Maintenance</Tabs.Trigger>
+					</Tabs.List>
+				</div>
+
+				<Tabs.Content value="details" class="min-h-0 overflow-hidden">
+					<form
+						class="flex h-full min-h-0 flex-col"
+						onsubmit={(event) => {
+							event.preventDefault();
+							updateItem.mutate({
+								path: { slugOrId: selected!.slug },
+								body: { notes: editNotes.trim() || null, values: editValues },
+							});
+						}}
+					>
+						<div
+							class="min-h-0 flex-1 space-y-6 overflow-y-auto bg-muted/20 p-5 sm:p-6"
+						>
+							<section
+								class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
+							>
+								<div class="border-b pb-4">
+									<h3 class="font-heading text-lg font-bold">Details</h3>
+									<p class="mt-1 text-sm text-muted-foreground">
+										Update properties and notes.
+									</p>
+								</div>
+								{@render fields(
+									editDefinitionsQuery.data ?? [],
+									editValues,
+									"edit",
+								)}
+								<div>
+									<Label for="edit-notes" class="mb-2.5">Notes</Label>
+									<Textarea id="edit-notes" bind:value={editNotes} />
+								</div>
+							</section>
+
+							<section
+								class="space-y-4 rounded-2xl border bg-card p-5 shadow-sm"
+							>
+								<div>
+									<h3 class="font-heading text-lg font-bold">
+										Archive or delete
+									</h3>
+									<p class="mt-1 text-sm text-muted-foreground">
+										Archive items you still need a record of. Delete only items
+										with no history.
+									</p>
+								</div>
+								{#if selected.archivedAt}
+									<Button
+										type="button"
+										variant="outline"
+										onclick={() =>
+											restoreItem.mutate({
+												path: { slugOrId: selected!.slug },
+											})}
+									>
+										<RotateCcw />Restore item
+									</Button>
+								{:else}
+									<div>
+										<Label for="archive-reason" class="mb-2.5"
+											>Archive note</Label
+										>
+										<Input id="archive-reason" bind:value={archiveReason} />
+									</div>
+									<div class="flex flex-wrap gap-2 border-t pt-4">
+										<Button
+											type="button"
+											variant="outline"
+											onclick={() =>
+												archiveItem.mutate({
+													path: { slugOrId: selected!.slug },
+													body: { reason: archiveReason.trim() || null },
+												})}
+										>
+											<Archive />Archive item
+										</Button>
+										<Button
+											type="button"
+											variant="destructive"
+											onclick={() => (deleteConfirmOpen = true)}
+										>
+											<Trash2 />Delete item
+										</Button>
+									</div>
+								{/if}
+							</section>
+						</div>
+						<div
+							class="shrink-0 border-t bg-background p-4 sm:flex sm:justify-end sm:px-6"
+						>
+							<Button
+								type="submit"
+								class="w-full sm:w-auto"
+								disabled={updateItem.isPending}
+							>
+								Save item
+							</Button>
+						</div>
+					</form>
+				</Tabs.Content>
+
+				<Tabs.Content
+					value="placement"
+					class="min-h-0 overflow-y-auto bg-muted/20 p-5 sm:p-6"
+				>
+					<div class="space-y-6">
+						<form
+							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
+							onsubmit={(event) => {
+								event.preventDefault();
+								moveItem.mutate({
+									path: { slugOrId: selected!.slug },
+									body: { containerId: moveContainerId },
+								});
+							}}
+						>
+							<div class="border-b pb-4">
+								<h3 class="font-heading text-lg font-bold">Move item</h3>
+								<p class="mt-1 text-sm text-muted-foreground">
+									Move it to a different container.
+								</p>
+							</div>
+							<div>
+								<Label for="move-container" class="mb-2.5"
+									>Move to container</Label
+								>
+								<Select.Root
+									type="single"
+									items={containerOptions}
+									bind:value={moveContainerId}
+									required
+								>
+									<Select.Trigger
+										id="move-container"
+										class="w-full data-[size=default]:h-11"
+									>
+										{containerOptions.find(
+											(option) => option.value === moveContainerId,
+										)?.label ?? "Choose container"}
+									</Select.Trigger>
+									<Select.Content portalProps={{ disabled: true }}>
+										{#each containerOptions as option (option.value)}
+											<Select.Item value={option.value} label={option.label}>
+												{option.label}
+											</Select.Item>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+							</div>
+							<Button type="submit" disabled={moveItem.isPending}
+								>Move item</Button
+							>
+						</form>
+
+						<form
+							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
+							onsubmit={(event) => {
+								event.preventDefault();
+								changeCategory.mutate({
+									path: { slugOrId: selected!.slug },
+									body: {
+										categoryId: newCategoryId,
+										values: newCategoryValues,
+									},
+								});
+							}}
+						>
+							<div class="border-b pb-4">
+								<h3 class="font-heading text-lg font-bold">Change category</h3>
+								<p class="mt-1 text-sm text-muted-foreground">
+									Changing category replaces the details below.
+								</p>
+							</div>
+							<div>
+								<Label for="new-category" class="mb-2.5">New category</Label>
+								<Select.Root
+									type="single"
+									items={categoryOptions}
+									bind:value={newCategoryId}
+									onValueChange={() => (newCategoryValues = {})}
+									required
+								>
+									<Select.Trigger
+										id="new-category"
+										class="w-full data-[size=default]:h-11"
+									>
+										{categoryOptions.find(
+											(option) => option.value === newCategoryId,
+										)?.label ?? "Choose category"}
+									</Select.Trigger>
+									<Select.Content portalProps={{ disabled: true }}>
+										{#each categoryOptions as option (option.value)}
+											<Select.Item value={option.value} label={option.label}>
+												{option.label}
+											</Select.Item>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+							</div>
+							{@render fields(
+								newDefinitionsQuery.data ?? [],
+								newCategoryValues,
+								"category",
+							)}
+							<Button type="submit" disabled={changeCategory.isPending}
+								>Change category</Button
+							>
+						</form>
+					</div>
+				</Tabs.Content>
+
+				<Tabs.Content
+					value="maintenance"
+					class="min-h-0 overflow-y-auto bg-muted/20 p-5 sm:p-6"
+				>
+					<section class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm">
+						<div class="border-b pb-4">
+							<h3 class="font-heading text-lg font-bold">Maintenance</h3>
+							<p class="mt-1 text-sm text-muted-foreground">
+								Take the item out of circulation or return it when work is
+								complete.
+							</p>
+						</div>
+						{#if selected.availability.status === "maintenance"}
+							<div>
+								<Label for="maintenance-end-note" class="mb-2.5"
+									>Maintenance end note</Label
+								>
+								<Textarea
+									id="maintenance-end-note"
+									bind:value={maintenanceEndNote}
+								/>
+							</div>
+							<Button
+								disabled={endMaintenance.isPending}
+								onclick={() =>
+									endMaintenance.mutate({
+										path: { slugOrId: selected!.slug },
+										body: { endNote: maintenanceEndNote.trim() || null },
+									})}
+							>
+								End maintenance
+							</Button>
+						{:else}
+							<div>
+								<Label for="maintenance-reason" class="mb-2.5"
+									>Maintenance reason</Label
+								>
+								<Textarea
+									id="maintenance-reason"
+									bind:value={maintenanceReason}
+								/>
+							</div>
+							<Button
+								disabled={!maintenanceReason.trim() ||
+									startMaintenance.isPending}
+								onclick={() =>
+									startMaintenance.mutate({
+										path: { slugOrId: selected!.slug },
+										body: { reason: maintenanceReason.trim() },
+									})}
+							>
+								Start maintenance
+							</Button>
+						{/if}
+
+						<div class="space-y-3 border-t pt-5">
+							<h4 class="font-semibold">Maintenance history</h4>
+							{#each maintenanceQuery.data ?? [] as period (period.id)}
+								<div class="rounded-xl bg-muted/45 p-3 text-sm">
+									<div class="font-medium">{period.startReason}</div>
+									<div class="mt-1 text-muted-foreground">
+										{new Date(period.startedAt).toLocaleString()} · {period.open
+											? "Open"
+											: "Ended"}
+									</div>
+									{#if period.endNote}<div class="mt-2">
+											{period.endNote}
+										</div>{/if}
+								</div>
+							{:else}
+								<p class="text-sm text-muted-foreground">
+									No maintenance history.
+								</p>
+							{/each}
+						</div>
+					</section>
+				</Tabs.Content>
+			</Tabs.Root>
+		</Sheet.Content>
+	</Sheet.Root>
+
+	<AlertDialog.Root bind:open={deleteConfirmOpen}>
+		<AlertDialog.Content>
+			<AlertDialog.Header>
+				<AlertDialog.Title>Delete {selected.label}?</AlertDialog.Title>
+				<AlertDialog.Description>
+					This permanently removes the item. Items with retained history must be
+					archived instead.
+				</AlertDialog.Description>
+			</AlertDialog.Header>
+			<AlertDialog.Footer>
+				<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+				<AlertDialog.Action
+					class={buttonVariants({ variant: "destructive" })}
+					disabled={deleteItem.isPending}
+					onclick={() =>
+						deleteItem.mutate({
+							path: { slugOrId: selected!.slug },
+							body: { confirm: true },
+						})}
+				>
+					Delete permanently
+				</AlertDialog.Action>
+			</AlertDialog.Footer>
+		</AlertDialog.Content>
+	</AlertDialog.Root>
+{/if}

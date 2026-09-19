@@ -8,8 +8,20 @@ import {
 	ANNUAL_FEE_LOOKUP,
 	MEMBERSHIP_FEE_LOOKUP_NAME,
 } from "../src/lib/server/constants";
-import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
-import type { E2ERole } from "./e2eApi";
+import {
+	deleteE2EFixture,
+	isInventoryItemPair,
+	seedE2EScenario,
+} from "./e2eApi";
+import type {
+	E2ERole,
+	InventoryItemPairSeed,
+	InventoryItemSeed,
+	InventoryLoanPairSeed,
+	InventoryLoanSeed,
+	InventoryMaintenanceSeed,
+	InventoryStructureSeed,
+} from "./e2eApi";
 
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 if (!stripeSecretKey?.startsWith("sk_test_")) {
@@ -238,9 +250,7 @@ async function deleteStripeCustomersByEmail(email: string) {
 	const customers = await stripeClient.customers.list({ email, limit: 100 });
 
 	for (const customer of customers.data) {
-		if (!customer.deleted) {
-			await stripeClient.customers.del(customer.id);
-		}
+		await stripeClient.customers.del(customer.id);
 	}
 }
 
@@ -348,6 +358,150 @@ export async function createStripeCustomerWithSubscription(
 		paymentMethodId: paymentMethod.id,
 		async cleanUp() {
 			await stripeClient.customers.del(customer.id);
+		},
+	};
+}
+
+/**
+ * ALE-288 IMPL-05: thin structure wrapper over `seedE2EScenario`.
+ * Defaults fill the boring fields; ids stay explicit. The seed takes ids,
+ * never names — `operatorActorId` is the container-creation actor, required
+ * whenever the default container path is used (always, unless the caller
+ * passes `containerPath: []` explicitly... still required by the type so
+ * attribution stays visible).
+ */
+export async function createInventoryStructure(params: {
+	categoryName?: string;
+	definitions?: NonNullable<InventoryStructureSeed["attrs"]["definitions"]>;
+	containerPath?: string[];
+	containerDescription?: string | null;
+	operatorActorId: string;
+}) {
+	const rand = Math.random().toString(36).slice(2, 7);
+	const categoryName =
+		params.categoryName ?? `E2E Category ${Date.now()}-${rand}`;
+	const definitions = params.definitions ?? [
+		{ label: "E2E notes", valueType: "text" as const, required: true },
+	];
+	const containerPath = params.containerPath ?? [
+		`E2E Cage ${rand}`,
+		`Rack ${rand}`,
+	];
+
+	const seeded = await seedE2EScenario("inventoryStructure", {
+		categoryName,
+		definitions,
+		containerPath,
+		containerDescription: params.containerDescription ?? null,
+		actorId: params.operatorActorId,
+	});
+
+	const definitionIds = seeded.definitions.map((d) => d.definitionId);
+	const optionIds = seeded.definitions.flatMap((d) =>
+		d.options.map((o) => o.optionId),
+	);
+	const containerIds = seeded.containers.map((c) => c.containerId);
+
+	return {
+		categoryId: seeded.categoryId,
+		definitionIds,
+		optionIds,
+		containerIds,
+		async cleanUp() {
+			// Leaf-first: the seed returns containers root→leaf, so reverse.
+			// Then the category (retires definitions/options, hard-deletes
+			// the value-free rows, deletes the category). Dependency blocks
+			// (`:still_referenced`) surface — never force-deleted. Callers
+			// delete/archive items and loans first (see teardown order).
+			for (const containerId of [...containerIds].reverse()) {
+				await deleteE2EFixture("inventoryStructure", containerId);
+			}
+			await deleteE2EFixture("inventoryStructure", seeded.categoryId);
+		},
+	};
+}
+
+export async function createInventoryItem(
+	attrs: InventoryItemPairSeed["attrs"],
+): Promise<InventoryItemPairSeed["result"] & { cleanUp(): Promise<void> }>;
+export async function createInventoryItem(
+	attrs: InventoryItemSeed["attrs"],
+): Promise<InventoryItemSeed["result"] & { cleanUp(): Promise<void> }>;
+export async function createInventoryItem(attrs: InventoryItemSeed["attrs"]) {
+	const seeded = await seedE2EScenario("inventoryItem", attrs);
+
+	if (isInventoryItemPair(seeded)) {
+		return {
+			...seeded,
+			async cleanUp() {
+				for (const item of seeded.items) {
+					await deleteE2EFixture("inventoryItem", item.itemId);
+				}
+			},
+		};
+	}
+
+	return {
+		...seeded,
+		async cleanUp() {
+			await deleteE2EFixture("inventoryItem", seeded.itemId);
+		},
+	};
+}
+
+export async function createInventoryLoan(attrs: InventoryLoanSeed["attrs"]) {
+	const data: unknown = await seedE2EScenario("inventoryLoan", attrs);
+
+	if (attrs.preset === "competingPair") {
+		// SAFETY: the harness returns the pair shape exactly when preset is
+		// "competingPair"; the single-result type cannot express that union.
+		const pair = data as InventoryLoanPairSeed["result"];
+
+		return {
+			...pair,
+			async cleanUp() {
+				for (const loan of pair.loans) {
+					await deleteE2EFixture("inventoryLoan", loan.loanId);
+				}
+			},
+		};
+	}
+
+	// SAFETY: every non-pair preset returns the flat loan row matching the
+	// declared inventoryLoan result type.
+	const loan = data as InventoryLoanSeed["result"];
+
+	return {
+		...loan,
+		async cleanUp() {
+			await deleteE2EFixture("inventoryLoan", loan.loanId);
+		},
+	};
+}
+
+/**
+ * ALE-288 IMPL-05: the S5 interlock primitive — an open maintenance period.
+ * Exactly one of `itemId`/`itemSlug` is required (the seed resolves either).
+ * `cleanUp` ends the period with the canned teardown note; period rows are
+ * never deleted. There is deliberately no `closed`-maintenance wrapper:
+ * specs needing a closed period seed `inventoryMaintenance` with
+ * `preset: "closed"` directly.
+ */
+export async function createOpenMaintenance(params: {
+	itemId?: string;
+	itemSlug?: string;
+	reason: string;
+	operatorActorId: string;
+}) {
+	const seeded: InventoryMaintenanceSeed["result"] = await seedE2EScenario(
+		"inventoryMaintenance",
+		{ preset: "open", ...params },
+	);
+
+	return {
+		...seeded,
+		async cleanUp() {
+			await deleteE2EFixture("inventoryMaintenance", seeded.periodId);
 		},
 	};
 }
