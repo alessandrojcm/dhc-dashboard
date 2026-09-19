@@ -25,7 +25,10 @@ defmodule Dhc.Repo.Migrations.Ale289DropLegacyInventory do
     execute "DELETE FROM inventory_items WHERE slug IS NULL", ""
 
     drop index(:inventory_items, [:slug], where: "slug IS NOT NULL")
-    drop index(:inventory_items, [:out_for_maintenance])
+
+    # Production's Supabase baseline never created this index even though
+    # CreateInventory does. A hard drop aborts the Fly release_command.
+    drop_if_exists index(:inventory_items, [:out_for_maintenance])
 
     execute "ALTER TABLE inventory_items DROP CONSTRAINT IF EXISTS quantity_positive", ""
 
