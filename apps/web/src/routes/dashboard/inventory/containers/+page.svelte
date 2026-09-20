@@ -3,18 +3,18 @@ import { createMutation, createQuery } from "@tanstack/svelte-query";
 import {
 	type InventoryContainer,
 	inventoryContainersArchiveMutation,
-	inventoryContainersCreateMutation,
 	inventoryContainersDeleteMutation,
 	inventoryContainersIndexOptions,
 	inventoryContainersRestoreMutation,
-	inventoryContainersUpdateMutation,
 } from "@dhc/api-client";
+import { saveContainer } from "./data.remote";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
 import * as Select from "$lib/components/ui/select";
+import * as Sheet from "$lib/components/ui/sheet";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import {
@@ -31,6 +31,10 @@ import { toast } from "svelte-sonner";
 
 let editing = $state<InventoryContainer | undefined>();
 let draft = $state({ name: "", description: "", parentId: "" });
+let editorOpen = $state(false);
+let editorTrigger = $state<HTMLButtonElement | HTMLAnchorElement>();
+const desktopContainerForm = saveContainer.for("desktop");
+const mobileContainerForm = saveContainer.for("mobile");
 const containersQuery = createQuery(() => ({
 	...inventoryContainersIndexOptions(),
 	select: (response) => response.data.containers,
@@ -86,26 +90,8 @@ function reset() {
 	editing = undefined;
 	draft = { name: "", description: "", parentId: "" };
 }
-const createContainer = createMutation(() => ({
-	...inventoryContainersCreateMutation(),
-	onSuccess: () => {
-		toast.success("Container created");
-		reset();
-		refresh();
-	},
-	onError: (e) => toast.error(apiErrorMessage(e, "Could not create container")),
-}));
-const updateContainer = createMutation(() => ({
-	...inventoryContainersUpdateMutation(),
-	onSuccess: () => {
-		toast.success("Container updated");
-		reset();
-		refresh();
-	},
-	onError: (e) => toast.error(apiErrorMessage(e, "Could not update container")),
-}));
 const isSaving = $derived(
-	createContainer.isPending || updateContainer.isPending,
+	desktopContainerForm.pending > 0 || mobileContainerForm.pending > 0,
 );
 const archiveContainer = createMutation(() => ({
 	...inventoryContainersArchiveMutation(),
@@ -136,16 +122,16 @@ const deleteContainer = createMutation(() => ({
 			apiErrorMessage(e, "Handle children and items explicitly first"),
 		),
 }));
-function submit(event: SubmitEvent) {
-	event.preventDefault();
-	const body = {
-		name: draft.name.trim(),
-		description: draft.description.trim() || null,
-		parentContainerId: draft.parentId || null,
-	};
-	if (!body.name) return;
-	if (editing) updateContainer.mutate({ path: { id: editing.id }, body });
-	else createContainer.mutate({ body });
+function handleSave(result: typeof saveContainer.result) {
+	if (!result) return;
+	if (!result.ok) {
+		toast.error(result.error);
+		return;
+	}
+	toast.success(result.created ? "Container created" : "Container updated");
+	editorOpen = false;
+	reset();
+	refresh();
 }
 function startEdit(container: InventoryContainer) {
 	editing = container;
@@ -155,234 +141,395 @@ function startEdit(container: InventoryContainer) {
 		parentId: container.parentContainerId ?? "",
 	};
 }
+function openCreate(trigger: HTMLButtonElement | HTMLAnchorElement) {
+	reset();
+	editorTrigger = trigger;
+	editorOpen = true;
+}
+function openEdit(
+	container: InventoryContainer,
+	trigger: HTMLButtonElement | HTMLAnchorElement,
+) {
+	startEdit(container);
+	editorTrigger = trigger;
+	editorOpen = true;
+}
 </script>
 
 <svelte:head>
 	<title>Inventory containers | Dublin HEMA Club</title>
 </svelte:head>
-<div
-	class="inventory-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:overflow-hidden"
->
-	<InventoryPageHeader
-		eyebrow="Quartermaster"
-		title="Containers"
-		icon={FolderTree}
-		class="xl:items-center xl:pb-3"
+
+{#snippet editorFields(prefix: string)}
+	{@const remoteForm = prefix.startsWith("desktop")
+		? desktopContainerForm
+		: mobileContainerForm}
+	<input
+		type="hidden"
+		name={remoteForm.fields.id.as("hidden", editing?.id ?? "").name}
+		value={editing?.id ?? ""}
 	/>
-	{#if containersQuery.isError}
-		<Alert variant="destructive">
-			<AlertDescription class="flex items-center justify-between">
-				<span>
-					{apiErrorMessage(containersQuery.error, "Could not load containers")}
-				</span>
-				<Button
-					variant="outline"
-					size="sm"
-					onclick={() => containersQuery.refetch()}
-				>
-					<RefreshCw />Try again
-				</Button>
-			</AlertDescription>
-		</Alert>
-	{/if}
-	<div
-		class="grid min-h-0 items-start gap-6 lg:grid-cols-[21rem_minmax(0,1fr)] xl:flex-1 xl:items-stretch"
-	>
-		<form
-			class="inventory-panel space-y-5 p-5 lg:sticky lg:top-6 xl:static xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:[scrollbar-gutter:stable]"
-			onsubmit={submit}
+	<input
+		type="hidden"
+		name={remoteForm.fields.parentContainerId.as("hidden", draft.parentId).name}
+		value={draft.parentId}
+	/>
+	{#each remoteForm.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+			role="alert"
+			class="text-sm text-destructive"
 		>
-			<div class="flex items-center gap-3 border-b pb-4">
-				<div
-					class="grid size-10 place-items-center rounded-xl bg-secondary/20 text-primary"
-				>
-					{#if editing}<Pencil class="size-5" aria-hidden="true" />{:else}<Plus
-							class="size-5"
-							aria-hidden="true"
-						/>{/if}
-				</div>
-				<div>
-					<p class="text-xs font-bold tracking-wide text-primary uppercase">
-						{editing ? "Selected location" : "New location"}
-					</p>
-					<h2 class="text-lg font-semibold">
-						{editing ? "Edit container" : "Add container"}
-					</h2>
-				</div>
-			</div>
-			<div class="space-y-2">
-				<Label for="container-name">Name</Label>
-				<Input
-					id="container-name"
-					class="h-11"
-					maxlength={100}
-					placeholder="e.g. Main equipment room"
-					required
-					bind:value={draft.name}
-				/>
-			</div>
-			<div class="space-y-2">
-				<Label for="container-description">Description</Label>
-				<Input
-					id="container-description"
-					class="h-11"
-					maxlength={500}
-					placeholder="Optional location note"
-					bind:value={draft.description}
-				/>
-			</div>
-			<div class="space-y-2">
-				<Label for="container-parent">Parent</Label>
-				<Select.Root type="single" bind:value={draft.parentId}>
-					<Select.Trigger
-						id="container-parent"
-						class="w-full data-[size=default]:h-11"
+			{issue.message}
+		</p>{/each}
+	{#if remoteForm.result && !remoteForm.result.ok}<p
+			role="alert"
+			class="text-sm text-destructive"
+		>
+			{remoteForm.result.error}
+		</p>{/if}
+	<div class="space-y-2">
+		<Label for={`${prefix}-name`}>Name</Label>
+		<Input
+			id={`${prefix}-name`}
+			class="h-11"
+			maxlength={100}
+			placeholder="e.g. Main equipment room"
+			required
+			name={remoteForm.fields.name.as("text").name}
+			bind:value={draft.name}
+		/>
+		{#each remoteForm.fields.name.issues() as issue}<p
+				class="text-sm text-destructive"
+			>
+				{issue.message}
+			</p>{/each}
+	</div>
+	<div class="space-y-2">
+		<Label for={`${prefix}-description`}>Description</Label>
+		<Input
+			id={`${prefix}-description`}
+			class="h-11"
+			maxlength={500}
+			placeholder="Optional location note"
+			name={remoteForm.fields.description.as("text").name}
+			bind:value={draft.description}
+		/>
+	</div>
+	<div class="space-y-2">
+		<Label for={`${prefix}-parent`}>Parent</Label>
+		<Select.Root type="single" bind:value={draft.parentId}>
+			<Select.Trigger
+				id={`${prefix}-parent`}
+				class="w-full data-[size=default]:h-11"
+			>
+				{selectedParentLabel}
+			</Select.Trigger>
+			<Select.Content>
+				<Select.Item value="" label="Root">Root</Select.Item>
+				{#each parentOptions as candidate (candidate.id)}
+					<Select.Item value={candidate.id} label={candidate.name}
+						>{candidate.name}</Select.Item
 					>
-						{selectedParentLabel}
-					</Select.Trigger>
-					<Select.Content>
-						<Select.Item value="" label="Root">Root</Select.Item>
-						{#each parentOptions as candidate (candidate.id)}
-							<Select.Item value={candidate.id} label={candidate.name}
-								>{candidate.name}</Select.Item
-							>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-				<p class="text-xs leading-relaxed text-muted-foreground">
-					Choose Root for a top-level room or area.
+				{/each}
+			</Select.Content>
+		</Select.Root>
+		<p class="text-xs leading-relaxed text-muted-foreground">
+			Choose Root for a top-level room or area.
+		</p>
+	</div>
+{/snippet}
+
+<Sheet.Root
+	bind:open={editorOpen}
+	onOpenChangeComplete={(open) => {
+		if (!open) {
+			reset();
+		}
+	}}
+>
+	<div
+		class="inventory-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:overflow-hidden"
+	>
+		<header
+			class="sticky top-[2.8125rem] z-10 -mx-4 flex items-center justify-between gap-4 border-y border-border/80 bg-background/95 px-4 py-3 backdrop-blur-md lg:hidden"
+		>
+			<div class="min-w-0">
+				<p
+					class="text-[0.68rem] font-bold tracking-[0.14em] text-primary uppercase"
+				>
+					Quartermaster
 				</p>
+				<h1 class="truncate font-heading text-xl leading-tight font-bold">
+					Containers
+				</h1>
 			</div>
-			<div class="flex gap-2 border-t pt-4">
-				<Button class="flex-1" type="submit" disabled={isSaving}>
-					{editing ? "Save changes" : "Add container"}
-				</Button>
-				{#if editing}
+			<Button
+				size="sm"
+				class="min-h-11"
+				onclick={(event) => openCreate(event.currentTarget)}
+			>
+				<Plus aria-hidden="true" />New location
+			</Button>
+		</header>
+		<InventoryPageHeader
+			eyebrow="Quartermaster"
+			title="Containers"
+			icon={FolderTree}
+			class="hidden lg:flex xl:items-center xl:pb-3"
+		/>
+		{#if containersQuery.isError}
+			<Alert variant="destructive">
+				<AlertDescription class="flex items-center justify-between">
+					<span>
+						{apiErrorMessage(
+							containersQuery.error,
+							"Could not load containers",
+						)}
+					</span>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => containersQuery.refetch()}
+					>
+						<RefreshCw />Try again
+					</Button>
+				</AlertDescription>
+			</Alert>
+		{/if}
+		<div
+			class="grid min-h-0 items-start gap-6 lg:grid-cols-[21rem_minmax(0,1fr)] xl:flex-1 xl:items-stretch"
+		>
+			<form
+				{...desktopContainerForm.enhance(async (form) => {
+					if (await form.submit()) handleSave(form.result);
+				})}
+				class="inventory-panel hidden space-y-5 p-5 lg:sticky lg:top-6 lg:block xl:static xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:[scrollbar-gutter:stable]"
+			>
+				<div class="flex items-center gap-3 border-b pb-4">
+					<div
+						class="grid size-10 place-items-center rounded-xl bg-secondary/20 text-primary"
+					>
+						{#if editing}<Pencil
+								class="size-5"
+								aria-hidden="true"
+							/>{:else}<Plus class="size-5" aria-hidden="true" />{/if}
+					</div>
+					<div>
+						<p class="text-xs font-bold tracking-wide text-primary uppercase">
+							{editing ? "Selected location" : "New location"}
+						</p>
+						<h2 class="text-lg font-semibold">
+							{editing ? "Edit container" : "Add container"}
+						</h2>
+					</div>
+				</div>
+				{@render editorFields("desktop-container")}
+				<div class="flex gap-2 border-t pt-4">
+					<Button class="flex-1" type="submit" disabled={isSaving}>
+						{editing ? "Save changes" : "Add container"}
+					</Button>
+					{#if editing}
+						<Button
+							class="flex-1"
+							type="button"
+							variant="outline"
+							disabled={isSaving}
+							onclick={reset}
+						>
+							Cancel
+						</Button>
+					{/if}
+				</div>
+			</form>
+			<section
+				class="min-w-0 space-y-3 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1 xl:[scrollbar-gutter:stable]"
+			>
+				<div
+					class="flex items-end justify-between gap-3 border-b bg-background/95 pb-3 backdrop-blur-sm xl:sticky xl:top-0 xl:z-10"
+				>
+					<div>
+						<p
+							class="text-xs font-semibold uppercase tracking-[0.16em] text-primary"
+						>
+							Storage map
+						</p>
+						<h2 class="mt-1 font-heading text-xl font-bold">
+							Storage hierarchy
+						</h2>
+						<p class="text-sm text-muted-foreground">
+							{containers.length} location{containers.length === 1 ? "" : "s"} · indented
+							by parent
+						</p>
+					</div>
+				</div>
+				{#each hierarchyRows as { container, depth } (container.id)}
+					<div
+						class="relative"
+						style:padding-left={`${Math.min(depth, 4) * 1.25}rem`}
+					>
+						{#if depth > 0}<span
+								class="absolute top-0 bottom-0 left-2 border-l border-dashed border-primary/30"
+								aria-hidden="true"
+							></span>{/if}
+						<article
+							class="inventory-card p-4 transition-colors hover:border-primary/30 {container.archivedAt
+								? 'opacity-65'
+								: ''}"
+						>
+							<div class="flex flex-wrap items-start justify-between gap-3">
+								<div class="flex gap-3">
+									<div
+										class="grid size-10 place-items-center rounded-lg bg-secondary/20 text-primary"
+									>
+										<FolderTree class="size-5" aria-hidden="true" />
+									</div>
+									<div>
+										<div class="flex flex-wrap items-center gap-2">
+											<h3 class="font-semibold">{container.name}</h3>
+											{#if container.archivedAt}
+												<Badge variant="outline">Archived</Badge>
+											{/if}
+										</div>
+										<p class="text-sm text-muted-foreground">
+											{container.parentContainer
+												? `Inside ${container.parentContainer.name}`
+												: "Root container"} · {container.itemCount} direct items
+										</p>
+										{#if container.description}
+											<p class="mt-1 text-sm">
+												{container.description}
+											</p>
+										{/if}
+									</div>
+								</div>
+								<div class="flex flex-wrap gap-2">
+									<Button
+										size="sm"
+										variant="outline"
+										class="min-h-11 lg:hidden"
+										disabled={isSaving}
+										onclick={(event) =>
+											openEdit(container, event.currentTarget)}
+									>
+										<Pencil />Edit / move
+									</Button>
+									<Button
+										size="sm"
+										variant="outline"
+										class="hidden lg:inline-flex"
+										disabled={isSaving}
+										onclick={() => startEdit(container)}
+									>
+										<Pencil />Edit / move
+									</Button>
+									{#if container.archivedAt}
+										<Button
+											size="sm"
+											variant="outline"
+											disabled={restoreContainer.isPending}
+											onclick={() =>
+												restoreContainer.mutate({ path: { id: container.id } })}
+										>
+											<RotateCcw />Restore
+										</Button>
+									{:else}
+										<Button
+											size="sm"
+											variant="outline"
+											disabled={archiveContainer.isPending}
+											onclick={() =>
+												archiveContainer.mutate({ path: { id: container.id } })}
+										>
+											<Archive />Archive
+										</Button>
+										<Button
+											size="sm"
+											variant="ghost"
+											class="text-destructive"
+											disabled={deleteContainer.isPending}
+											aria-label="Delete {container.name}"
+											onclick={() =>
+												deleteContainer.mutate({ path: { id: container.id } })}
+										>
+											<Trash2 />
+										</Button>
+									{/if}
+								</div>
+							</div>
+						</article>
+					</div>
+				{:else}
+					<div class="rounded-2xl border bg-card p-10 text-center">
+						<FolderTree class="mx-auto mb-3 size-10 text-muted-foreground" />
+						<h2 class="font-semibold">No containers yet</h2>
+						<p class="text-sm text-muted-foreground">
+							Create a root storage location to begin.
+						</p>
+					</div>
+				{/each}
+			</section>
+		</div>
+
+		<Sheet.Content
+			side="bottom"
+			class="max-h-[min(42rem,calc(100svh-2rem))] gap-0 overflow-hidden rounded-t-3xl border-x p-0 lg:hidden"
+			onCloseAutoFocus={(event) => {
+				event.preventDefault();
+				editorTrigger?.focus();
+			}}
+		>
+			<form
+				{...mobileContainerForm.enhance(async (form) => {
+					if (await form.submit()) handleSave(form.result);
+				})}
+				class="flex min-h-0 flex-1 flex-col"
+			>
+				<Sheet.Header
+					class="shrink-0 border-b bg-primary/7 px-5 pt-5 pr-16 pb-4 text-left"
+				>
+					<div class="flex items-start gap-3">
+						<div
+							class="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm"
+						>
+							{#if editing}<Pencil
+									class="size-5"
+									aria-hidden="true"
+								/>{:else}<Plus class="size-5" aria-hidden="true" />{/if}
+						</div>
+						<div>
+							<p
+								class="text-[0.68rem] font-bold tracking-[0.16em] text-primary uppercase"
+							>
+								{editing ? "Selected location" : "New location"}
+							</p>
+							<Sheet.Title class="font-heading text-2xl font-bold">
+								{editing ? "Edit container" : "Add container"}
+							</Sheet.Title>
+							<Sheet.Description class="mt-1 text-sm leading-relaxed">
+								Name the location and choose where it sits in the storage map.
+							</Sheet.Description>
+						</div>
+					</div>
+				</Sheet.Header>
+				<div class="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/20 p-5">
+					{@render editorFields("mobile-container")}
+				</div>
+				<Sheet.Footer
+					class="shrink-0 flex-row gap-2 border-t bg-background px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+				>
 					<Button
 						class="flex-1"
 						type="button"
 						variant="outline"
 						disabled={isSaving}
-						onclick={reset}
+						onclick={() => (editorOpen = false)}
 					>
 						Cancel
 					</Button>
-				{/if}
-			</div>
-		</form>
-		<section
-			class="min-w-0 space-y-3 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1 xl:[scrollbar-gutter:stable]"
-		>
-			<div
-				class="sticky top-0 z-10 flex items-end justify-between gap-3 border-b bg-background/95 pb-3 backdrop-blur-sm"
-			>
-				<div>
-					<p
-						class="text-xs font-semibold uppercase tracking-[0.16em] text-primary"
-					>
-						Storage map
-					</p>
-					<h2 class="mt-1 font-heading text-xl font-bold">Storage hierarchy</h2>
-					<p class="text-sm text-muted-foreground">
-						{containers.length} location{containers.length === 1 ? "" : "s"} · indented
-						by parent
-					</p>
-				</div>
-			</div>
-			{#each hierarchyRows as { container, depth } (container.id)}
-				<div
-					class="relative"
-					style:padding-left={`${Math.min(depth, 4) * 1.25}rem`}
-				>
-					{#if depth > 0}<span
-							class="absolute top-0 bottom-0 left-2 border-l border-dashed border-primary/30"
-							aria-hidden="true"
-						></span>{/if}
-					<article
-						class="inventory-card p-4 transition-colors hover:border-primary/30 {container.archivedAt
-							? 'opacity-65'
-							: ''}"
-					>
-						<div class="flex flex-wrap items-start justify-between gap-3">
-							<div class="flex gap-3">
-								<div
-									class="grid size-10 place-items-center rounded-lg bg-secondary/20 text-primary"
-								>
-									<FolderTree class="size-5" aria-hidden="true" />
-								</div>
-								<div>
-									<div class="flex flex-wrap items-center gap-2">
-										<h3 class="font-semibold">{container.name}</h3>
-										{#if container.archivedAt}
-											<Badge variant="outline">Archived</Badge>
-										{/if}
-									</div>
-									<p class="text-sm text-muted-foreground">
-										{container.parentContainer
-											? `Inside ${container.parentContainer.name}`
-											: "Root container"} · {container.itemCount} direct items
-									</p>
-									{#if container.description}
-										<p class="mt-1 text-sm">
-											{container.description}
-										</p>
-									{/if}
-								</div>
-							</div>
-							<div class="flex flex-wrap gap-2">
-								<Button
-									size="sm"
-									variant="outline"
-									disabled={isSaving}
-									onclick={() => startEdit(container)}
-								>
-									<Pencil />Edit / move
-								</Button>
-								{#if container.archivedAt}
-									<Button
-										size="sm"
-										variant="outline"
-										disabled={restoreContainer.isPending}
-										onclick={() =>
-											restoreContainer.mutate({ path: { id: container.id } })}
-									>
-										<RotateCcw />Restore
-									</Button>
-								{:else}
-									<Button
-										size="sm"
-										variant="outline"
-										disabled={archiveContainer.isPending}
-										onclick={() =>
-											archiveContainer.mutate({ path: { id: container.id } })}
-									>
-										<Archive />Archive
-									</Button>
-									<Button
-										size="sm"
-										variant="ghost"
-										class="text-destructive"
-										disabled={deleteContainer.isPending}
-										aria-label="Delete {container.name}"
-										onclick={() =>
-											deleteContainer.mutate({ path: { id: container.id } })}
-									>
-										<Trash2 />
-									</Button>
-								{/if}
-							</div>
-						</div>
-					</article>
-				</div>
-			{:else}
-				<div class="rounded-2xl border bg-card p-10 text-center">
-					<FolderTree class="mx-auto mb-3 size-10 text-muted-foreground" />
-					<h2 class="font-semibold">No containers yet</h2>
-					<p class="text-sm text-muted-foreground">
-						Create a root storage location to begin.
-					</p>
-				</div>
-			{/each}
-		</section>
+					<Button class="flex-1" type="submit" disabled={isSaving}>
+						{editing ? "Save changes" : "Add container"}
+					</Button>
+				</Sheet.Footer>
+			</form>
+		</Sheet.Content>
 	</div>
-</div>
+</Sheet.Root>

@@ -34,6 +34,7 @@ const userDataQuery = createQuery(() => ({
 	}),
 }));
 const CATEGORY_DETAIL_ROUTE = "/dashboard/inventory/categories/[[categoryId]]";
+const ITEM_DETAIL_ROUTE = "/dashboard/inventory/items/[[itemId]]";
 const breadcrumbCategoriesQuery = createQuery(() => ({
 	...inventoryCategoriesIndexOptions(),
 	enabled:
@@ -126,6 +127,9 @@ function getBreadcrumbLabel(item: string, index: number): string {
 				(category) => category.id === page.params.categoryId,
 			)?.name ?? "Category"
 		);
+	}
+	if (page.route.id === ITEM_DETAIL_ROUTE && item === page.params.itemId) {
+		return item === "new" ? "Add item" : item;
 	}
 	return item.replaceAll("-", " ");
 }

@@ -1,4 +1,6 @@
 <script lang="ts">
+import { goto } from "$app/navigation";
+import { page } from "$app/state";
 import { createMutation, createQuery } from "@tanstack/svelte-query";
 import {
 	type InventoryOperatorLoan,
@@ -22,6 +24,7 @@ import { apiErrorMessage } from "$lib/api-error";
 import {
 	ArrowRight,
 	CalendarClock,
+	ChevronDown,
 	ClipboardCheck,
 	ClipboardList,
 	Clock3,
@@ -41,10 +44,71 @@ let startsOn = $state("");
 let dueOn = $state("");
 let note = $state("");
 
+type QueueView = "requests" | "handovers" | "returns" | "maintenance";
+
 const queueQuery = createQuery(() => ({
 	...inventoryOperatorLoanQueueShowOptions(),
 	select: (response) => response.data,
 }));
+
+const queueOptions = $derived([
+	{
+		value: "requests" as const,
+		label: "Requests",
+		count: queueQuery.data?.pendingRequests.count ?? 0,
+	},
+	{
+		value: "handovers" as const,
+		label: "Ready for handover",
+		count: queueQuery.data?.handoversDue.count ?? 0,
+	},
+	{
+		value: "returns" as const,
+		label: "Returns and overdue",
+		count: queueQuery.data?.returnsAndOverdue.count ?? 0,
+	},
+	{
+		value: "maintenance" as const,
+		label: "Open maintenance",
+		count: queueQuery.data?.openMaintenance.count ?? 0,
+	},
+]);
+const defaultQueue = $derived<QueueView>(
+	queueQuery.data?.pendingRequests.count
+		? "requests"
+		: queueQuery.data?.returnsAndOverdue.count
+			? "returns"
+			: queueQuery.data?.handoversDue.count
+				? "handovers"
+				: queueQuery.data?.openMaintenance.count
+					? "maintenance"
+					: "requests",
+);
+const requestedQueue = $derived(
+	parseQueueView(page.url.searchParams.get("view")),
+);
+const activeQueue = $derived(requestedQueue ?? defaultQueue);
+const activeQueueOption = $derived(
+	queueOptions.find((option) => option.value === activeQueue) ??
+		queueOptions[0],
+);
+
+function parseQueueView(value: string | null): QueueView | undefined {
+	return value === "requests" ||
+		value === "handovers" ||
+		value === "returns" ||
+		value === "maintenance"
+		? value
+		: undefined;
+}
+
+function changeQueue(value: string) {
+	const view = parseQueueView(value);
+	if (!view || view === activeQueue) return;
+	const url = new URL(page.url);
+	url.searchParams.set("view", view);
+	void goto(url, { keepFocus: true, noScroll: true });
+}
 
 function choose(loan: InventoryOperatorLoan, readyForCheckout = false) {
 	selected = loan;
@@ -217,16 +281,18 @@ const busy = $derived(
 
 <svelte:head><title>Loan queue | Dublin HEMA Club</title></svelte:head>
 
-<div class="inventory-page">
+<div class="inventory-page max-w-none">
 	{#snippet refreshAction()}
 		<Button
 			variant="outline"
-			class="min-h-11"
+			class="size-11 px-0 sm:w-auto sm:px-5"
+			aria-label="Refresh loan queue"
+			title="Refresh"
 			disabled={queueQuery.isFetching}
 			onclick={() => queueQuery.refetch()}
-			><RefreshCw
-				class={queueQuery.isFetching ? "animate-spin" : ""}
-			/>Refresh</Button
+			><RefreshCw class={queueQuery.isFetching ? "animate-spin" : ""} /><span
+				class="sr-only sm:not-sr-only">Refresh</span
+			></Button
 		>
 	{/snippet}
 	<InventoryPageHeader
@@ -234,6 +300,7 @@ const busy = $derived(
 		title="Shared loan queue"
 		icon={ClipboardList}
 		actions={refreshAction}
+		class="flex-row items-end justify-between"
 	/>
 
 	{#if queueQuery.isError}
@@ -255,8 +322,47 @@ const busy = $derived(
 			<div class="h-48 animate-pulse rounded-2xl bg-muted"></div>
 		</div>
 	{:else if queueQuery.data}
-		<div class="grid items-start gap-4 lg:grid-cols-2">
-			<section class="inventory-panel space-y-3 p-4 sm:p-5">
+		<div
+			class="sticky top-[2.8125rem] z-10 -mx-4 border-y border-border/70 bg-background/95 px-4 py-3 shadow-sm backdrop-blur-md sm:-mx-6 sm:px-6 lg:hidden"
+			data-testid="mobile-loan-queue-selector"
+		>
+			<Label for="mobile-loan-queue-view" class="mb-2 text-xs font-semibold">
+				Queue view
+			</Label>
+			<div class="relative">
+				<select
+					id="mobile-loan-queue-view"
+					class="focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full appearance-none rounded-md border border-input bg-background px-3 pr-20 text-sm font-semibold shadow-xs outline-none focus-visible:ring-[3px]"
+					value={activeQueue}
+					onchange={(event) => changeQueue(event.currentTarget.value)}
+				>
+					{#each queueOptions as option (option.value)}
+						<option value={option.value}>{option.label} — {option.count}</option
+						>
+					{/each}
+				</select>
+				<span
+					class="pointer-events-none absolute inset-y-0 right-3 flex items-center gap-2"
+					aria-hidden="true"
+				>
+					<Badge
+						variant={activeQueueOption.count ? "secondary" : "outline"}
+						class="min-w-7 justify-center"
+					>
+						{activeQueueOption.count}
+					</Badge>
+					<ChevronDown class="size-4 text-muted-foreground" />
+				</span>
+			</div>
+		</div>
+		<div
+			class="grid items-start gap-4 lg:grid-cols-[repeat(4,minmax(20rem,1fr))] lg:overflow-x-auto lg:pb-2"
+			data-testid="loan-queue-board"
+		>
+			<section
+				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
+				class:hidden={activeQueue !== "requests"}
+			>
 				{@render bucket(
 					"Requests",
 					"Approve or reject new borrowing requests.",
@@ -270,7 +376,10 @@ const busy = $derived(
 						No requests waiting.
 					</p>{/each}
 			</section>
-			<section class="inventory-panel space-y-3 p-4 sm:p-5">
+			<section
+				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
+				class:hidden={activeQueue !== "handovers"}
+			>
 				{@render bucket(
 					"Ready for handover",
 					"Physically check the item before checkout.",
@@ -293,7 +402,10 @@ const busy = $derived(
 						No handovers due.
 					</p>{/each}
 			</section>
-			<section class="inventory-panel space-y-3 p-4 sm:p-5">
+			<section
+				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
+				class:hidden={activeQueue !== "returns"}
+			>
 				{@render bucket(
 					"Returns and overdue",
 					"Record the item back in club custody.",
@@ -308,7 +420,8 @@ const busy = $derived(
 					</p>{/each}
 			</section>
 			<section
-				class="inventory-panel space-y-3 p-4 sm:p-5"
+				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
+				class:hidden={activeQueue !== "maintenance"}
 				data-testid="open-maintenance-bucket"
 			>
 				{@render bucket(

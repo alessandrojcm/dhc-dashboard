@@ -6,18 +6,18 @@ import { createMutation, createQuery } from "@tanstack/svelte-query";
 import {
 	type InventoryCategory,
 	type InventoryPropertyDefinition,
-	inventoryCategoriesCreateMutation,
 	inventoryCategoriesDeleteMutation,
 	inventoryCategoriesIndexOptions,
-	inventoryCategoriesUpdateMutation,
-	inventoryStructureCreateDefinitionMutation,
-	inventoryStructureCreateOptionMutation,
 	inventoryStructureListDefinitionsOptions,
 	inventoryStructureRetireDefinitionMutation,
 	inventoryStructureRetireOptionMutation,
-	inventoryStructureUpdateDefinitionMutation,
-	inventoryStructureUpdateOptionMutation,
 } from "@dhc/api-client";
+import {
+	createOption,
+	saveCategory,
+	saveDefinition,
+	updateOption,
+} from "./data.remote";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import * as AlertDialog from "$lib/components/ui/alert-dialog";
 import { Badge } from "$lib/components/ui/badge";
@@ -125,26 +125,6 @@ function refreshAll() {
 function formatCount(count: number, singular: string, plural = `${singular}s`) {
 	return `${count} ${count === 1 ? singular : plural}`;
 }
-const categoryCreate = createMutation(() => ({
-	...inventoryCategoriesCreateMutation(),
-	onSuccess: () => {
-		toast.success("Category created");
-		cancelCategoryEdit();
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not create category")),
-}));
-const categoryUpdate = createMutation(() => ({
-	...inventoryCategoriesUpdateMutation(),
-	onSuccess: () => {
-		toast.success("Category updated");
-		cancelCategoryEdit();
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not update category")),
-}));
 const categoryDelete = createMutation(() => ({
 	...inventoryCategoriesDeleteMutation(),
 	onSuccess: (_response, variables) => {
@@ -158,26 +138,6 @@ const categoryDelete = createMutation(() => ({
 			apiErrorMessage(error, "Move its items before deleting this category"),
 		),
 }));
-const definitionCreate = createMutation(() => ({
-	...inventoryStructureCreateDefinitionMutation(),
-	onSuccess: () => {
-		toast.success("Property created");
-		resetDefinition();
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not create property")),
-}));
-const definitionUpdate = createMutation(() => ({
-	...inventoryStructureUpdateDefinitionMutation(),
-	onSuccess: () => {
-		toast.success("Property updated");
-		resetDefinition();
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not update property")),
-}));
 const definitionRetire = createMutation(() => ({
 	...inventoryStructureRetireDefinitionMutation(),
 	onSuccess: () => {
@@ -186,25 +146,6 @@ const definitionRetire = createMutation(() => ({
 	},
 	onError: (error) =>
 		toast.error(apiErrorMessage(error, "Clear or migrate active values first")),
-}));
-const optionCreate = createMutation(() => ({
-	...inventoryStructureCreateOptionMutation(),
-	onSuccess: () => {
-		toast.success("Option created");
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not create option")),
-}));
-const optionUpdate = createMutation(() => ({
-	...inventoryStructureUpdateOptionMutation(),
-	onSuccess: () => {
-		toast.success("Option updated");
-		editingOptionId = undefined;
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not update option")),
 }));
 const optionRetire = createMutation(() => ({
 	...inventoryStructureRetireOptionMutation(),
@@ -282,10 +223,6 @@ function setOptionDraft(
 		[field]: field === "position" ? Number(value) : value,
 	};
 }
-function saveOption(option: { id: string; label: string; position: number }) {
-	const draft = optionDraft(option);
-	optionUpdate.mutate({ path: { id: option.id }, body: draft });
-}
 function editOption(option: { id: string; label: string; position: number }) {
 	optionDrafts[option.id] = { label: option.label, position: option.position };
 	editingOptionId = option.id;
@@ -294,39 +231,36 @@ function cancelOptionEdit(optionId: string) {
 	delete optionDrafts[optionId];
 	editingOptionId = undefined;
 }
-function submitCategory() {
-	const body = {
-		name: categoryName.trim(),
-		description: categoryDescription.trim() || null,
-	};
-	if (!body.name) return;
-	if (editingCategory)
-		categoryUpdate.mutate({ path: { id: editingCategory.id }, body });
-	else categoryCreate.mutate({ body });
+function handleCategorySave(result: typeof saveCategory.result) {
+	if (!result) return;
+	if (!result.ok) return toast.error(result.error);
+	toast.success(result.created ? "Category created" : "Category updated");
+	cancelCategoryEdit();
+	refreshAll();
 }
-function submitDefinition() {
-	if (!selectedCategoryId || !definitionLabel.trim()) return;
-	const body = {
-		label: definitionLabel.trim(),
-		valueType: definitionType,
-		required: definitionRequired,
-		identifyingPosition:
-			identifyingPosition === "" ? null : Number(identifyingPosition),
-	};
-	if (editingDefinition)
-		definitionUpdate.mutate({ path: { id: editingDefinition.id }, body });
-	else
-		definitionCreate.mutate({ path: { categoryId: selectedCategoryId }, body });
+function handleDefinitionSave(result: typeof saveDefinition.result) {
+	if (!result) return;
+	if (!result.ok) return toast.error(result.error);
+	toast.success(result.created ? "Property created" : "Property updated");
+	resetDefinition();
+	refreshAll();
 }
-function addOption(form: HTMLFormElement, definitionId: string) {
-	const input = form.elements.namedItem("label");
-	if (!(input instanceof HTMLInputElement)) return;
-	if (!input.value.trim()) return;
-	optionCreate.mutate({
-		path: { definitionId },
-		body: { label: input.value.trim() },
-	});
-	form.reset();
+function handleOptionCreate(result: typeof createOption.result) {
+	if (!result) return false;
+	if (!result.ok) {
+		toast.error(result.error);
+		return false;
+	}
+	toast.success("Option created");
+	refreshAll();
+	return true;
+}
+function handleOptionUpdate(result: typeof updateOption.result) {
+	if (!result) return;
+	if (!result.ok) return toast.error(result.error);
+	toast.success("Option updated");
+	editingOptionId = undefined;
+	refreshAll();
 }
 </script>
 
@@ -601,12 +535,63 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 					</div>
 
 					{#if propertyEditorOpen}<form
+							{...saveDefinition.enhance(async (form) => {
+								if (await form.submit()) handleDefinitionSave(form.result);
+							})}
 							class="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-12"
-							onsubmit={(event) => {
-								event.preventDefault();
-								submitDefinition();
-							}}
 						>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.categoryId.as(
+									"hidden",
+									selectedCategoryId ?? "",
+								).name}
+								value={selectedCategoryId ?? ""}
+							/>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.definitionId.as(
+									"hidden",
+									editingDefinition?.id ?? "",
+								).name}
+								value={editingDefinition?.id ?? ""}
+							/>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.valueType.as(
+									"hidden",
+									definitionType,
+								).name}
+								value={definitionType}
+							/>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.required.as(
+									"hidden",
+									String(definitionRequired),
+								).name}
+								value={String(definitionRequired)}
+							/>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.identifyingPosition.as(
+									"hidden",
+									identifyingPosition,
+								).name}
+								value={identifyingPosition}
+							/>
+							{#each saveDefinition.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+									role="alert"
+									class="text-sm text-destructive sm:col-span-2 xl:col-span-12"
+								>
+									{issue.message}
+								</p>{/each}
+							{#if saveDefinition.result && !saveDefinition.result.ok}<p
+									role="alert"
+									class="text-sm text-destructive sm:col-span-2 xl:col-span-12"
+								>
+									{saveDefinition.result.error}
+								</p>{/if}
 							<div class="sm:col-span-2 xl:col-span-12">
 								<h3 class="font-heading text-lg font-bold">
 									{editingDefinition ? "Edit property" : "Add a property"}
@@ -624,6 +609,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 									maxlength={100}
 									placeholder="e.g. Jacket size"
 									required
+									name={saveDefinition.fields.label.as("text").name}
 									bind:value={definitionLabel}
 								/>
 							</div>
@@ -662,7 +648,9 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 									type="number"
 									min="0"
 									placeholder="Not in item label"
-									bind:value={identifyingPosition}
+									value={identifyingPosition}
+									oninput={(event) =>
+										(identifyingPosition = event.currentTarget.value)}
 								/>
 							</div>
 							<div
@@ -825,10 +813,36 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 										{#each definition.options as option (option.id)}
 											{@const draft = optionDraft(option)}
 											{#if editingOptionId === option.id}
-												<div
+												{@const optionUpdateForm = updateOption.for(option.id)}
+												<form
+													{...optionUpdateForm.enhance(async (form) => {
+														if (await form.submit())
+															handleOptionUpdate(form.result);
+													})}
 													class="grid gap-2 rounded-xl border border-primary/35 bg-background p-3 sm:grid-cols-[minmax(0,1fr)_6rem_auto] sm:items-center"
 												>
+													<input
+														type="hidden"
+														name={optionUpdateForm.fields.optionId.as(
+															"hidden",
+															option.id,
+														).name}
+														value={option.id}
+													/>
+													{#each optionUpdateForm.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+															role="alert"
+															class="text-sm text-destructive sm:col-span-3"
+														>
+															{issue.message}
+														</p>{/each}
+													{#if optionUpdateForm.result && !optionUpdateForm.result.ok}<p
+															role="alert"
+															class="text-sm text-destructive sm:col-span-3"
+														>
+															{optionUpdateForm.result.error}
+														</p>{/if}
 													<Input
+														name={optionUpdateForm.fields.label.as("text").name}
 														value={draft.label}
 														aria-label="{option.label} label"
 														oninput={(event) =>
@@ -846,6 +860,8 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 														<Input
 															class="pl-8"
 															type="number"
+															name={optionUpdateForm.fields.position.as("text")
+																.name}
 															min="0"
 															value={draft.position}
 															aria-label="{option.label} position"
@@ -858,17 +874,16 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 														/>
 													</div>
 													<div class="flex gap-1 sm:justify-end">
-														<Button size="sm" onclick={() => saveOption(option)}
-															>Save</Button
-														>
+														<Button size="sm" type="submit">Save</Button>
 														<Button
 															size="sm"
 															variant="ghost"
+															type="button"
 															onclick={() => cancelOptionEdit(option.id)}
 															>Cancel</Button
 														>
 													</div>
-												</div>
+												</form>
 											{:else}
 												<div
 													class="flex min-h-12 items-center gap-3 rounded-xl border bg-background px-3 py-2.5"
@@ -939,15 +954,37 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 										{/each}
 									</div>
 									{#if !definition.retiredAt}
+										{@const optionForm = createOption.for(definition.id)}
 										<form
+											{...optionForm.enhance(async (form) => {
+												if (
+													(await form.submit()) &&
+													handleOptionCreate(form.result)
+												)
+													form.element.reset();
+											})}
 											class="mt-3 flex gap-2 rounded-xl border border-dashed bg-background/70 p-2.5"
-											onsubmit={(event) => {
-												event.preventDefault();
-												addOption(event.currentTarget, definition.id);
-											}}
 										>
+											<input
+												type="hidden"
+												name={optionForm.fields.definitionId.as(
+													"hidden",
+													definition.id,
+												).name}
+												value={definition.id}
+											/>
+											{#each optionForm.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<span
+													role="alert"
+													class="self-center text-sm text-destructive"
+													>{issue.message}</span
+												>{/each}
+											{#if optionForm.result && !optionForm.result.ok}<span
+													role="alert"
+													class="self-center text-sm text-destructive"
+													>{optionForm.result.error}</span
+												>{/if}
 											<Input
-												name="label"
+												name={optionForm.fields.label.as("text").name}
 												class="h-11"
 												maxlength={100}
 												aria-label="New option label"
@@ -1063,12 +1100,29 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 			</div>
 		</Sheet.Header>
 		<form
+			{...saveCategory.enhance(async (form) => {
+				if (await form.submit()) handleCategorySave(form.result);
+			})}
 			class="flex min-h-0 flex-1 flex-col"
-			onsubmit={(event) => {
-				event.preventDefault();
-				submitCategory();
-			}}
 		>
+			<input
+				type="hidden"
+				name={saveCategory.fields.id.as("hidden", editingCategory?.id ?? "")
+					.name}
+				value={editingCategory?.id ?? ""}
+			/>
+			{#each saveCategory.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+					role="alert"
+					class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
+				>
+					{issue.message}
+				</p>{/each}
+			{#if saveCategory.result && !saveCategory.result.ok}<p
+					role="alert"
+					class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
+				>
+					{saveCategory.result.error}
+				</p>{/if}
 			<div
 				class="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/20 p-5 sm:p-6"
 			>
@@ -1082,6 +1136,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							maxlength={50}
 							placeholder="e.g. Training swords"
 							required
+							name={saveCategory.fields.name.as("text").name}
 							bind:value={categoryName}
 						/>
 					</div>
@@ -1092,6 +1147,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							class="h-11"
 							maxlength={500}
 							placeholder="What belongs in this category?"
+							name={saveCategory.fields.description.as("text").name}
 							bind:value={categoryDescription}
 						/>
 						<p class="mt-2 text-xs leading-relaxed text-muted-foreground">
@@ -1113,7 +1169,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 				<Button
 					type="submit"
 					class="flex-1"
-					disabled={categoryCreate.isPending || categoryUpdate.isPending}
+					disabled={saveCategory.pending > 0}
 				>
 					{editingCategory ? "Save" : "Add category"}
 				</Button>

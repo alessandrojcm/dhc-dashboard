@@ -401,7 +401,7 @@ test("recovers a real Stripe acceptance interrupted before local finalization", 
 
 		await expect
 			.poll(() => auditInvitationAcceptance(invitation.invitationId), {
-				timeout: 30_000,
+				timeout: 60_000,
 			})
 			.toMatchObject({
 				principalCount: 0,

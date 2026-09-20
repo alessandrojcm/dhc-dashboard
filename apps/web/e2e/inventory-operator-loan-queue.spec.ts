@@ -92,6 +92,10 @@ async function openAction(page: Page, label: string, action: string) {
 }
 
 test.describe("ALE-286 operator loan queue", () => {
+	test.beforeEach(async ({ page }) => {
+		await page.setViewportSize({ width: 1280, height: 900 });
+	});
+
 	test.beforeAll(async () => {
 		clubToday = (await fetchE2EStatus()).today;
 		const operator = await createMember({
@@ -208,6 +212,57 @@ test.describe("ALE-286 operator loan queue", () => {
 			maintenanceBucket.getByText("1", { exact: true }),
 		).toBeVisible();
 		await expect(maintenanceBucket.getByText("Open item")).toBeVisible();
+	});
+
+	test("lays out all four queues as desktop board columns", async ({
+		page,
+		context,
+	}) => {
+		await loginAsUser(context, operatorEmail);
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto("/dashboard/inventory/loans");
+
+		const board = page.getByTestId("loan-queue-board");
+		await expect(board).toBeVisible();
+		await expect(board).toHaveCSS(
+			"grid-template-columns",
+			/^\d+(?:\.\d+)?px \d+(?:\.\d+)?px \d+(?:\.\d+)?px \d+(?:\.\d+)?px$/,
+		);
+	});
+
+	test("switches between loan queues in the compact mobile view", async ({
+		page,
+		context,
+	}) => {
+		const requestedLabel = `Mobile queue request ${tag}`;
+		const returnedLabel = `Mobile queue return ${tag}`;
+		await seedLoan(requestedLabel, { preset: "requested" });
+		await seedLoan(returnedLabel, { preset: "checkedOut" });
+
+		await loginAsUser(context, operatorEmail);
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.goto("/dashboard/inventory/loans");
+		await expect(
+			page.getByRole("heading", { name: "Shared loan queue" }),
+		).toBeVisible();
+
+		const selectorBar = page.getByTestId("mobile-loan-queue-selector");
+		await expect(selectorBar).toHaveCSS("position", "sticky");
+		await expect(bucket(page, "Requests")).toBeVisible();
+		await expect(bucket(page, "Returns and overdue")).toBeHidden();
+
+		await page.getByLabel("Queue view").selectOption("returns");
+		await expect(page).toHaveURL(/\?view=returns$/);
+		await expect(bucket(page, "Requests")).toBeHidden();
+		await expect(bucket(page, "Returns and overdue")).toBeVisible();
+		await expect(bucket(page, "Returns and overdue")).toContainText(
+			returnedLabel,
+		);
+
+		await page.goBack();
+		await expect(page).not.toHaveURL(/view=/);
+		await expect(bucket(page, "Requests")).toBeVisible();
+		await expect(bucket(page, "Requests")).toContainText(requestedLabel);
 	});
 
 	test("approves final dates and note, then checks out the refreshed handover", async ({

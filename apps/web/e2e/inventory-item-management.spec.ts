@@ -53,7 +53,8 @@ test.describe("ALE-284 operator inventory items", () => {
 			page.getByRole("heading", { name: "Items", exact: true }),
 		).toBeVisible();
 
-		await page.getByRole("button", { name: "New item" }).click();
+		await page.getByRole("link", { name: "New item" }).click();
+		await expect(page).toHaveURL(/\/dashboard\/inventory\/items\/new$/);
 		await page.getByLabel("Category").click();
 		await page.getByRole("option", { name: `Blades ${tag}` }).click();
 		await page.getByLabel("Container").click();
@@ -63,14 +64,14 @@ test.describe("ALE-284 operator inventory items", () => {
 		await page.getByLabel("Notes").fill("Training loaner");
 		await page.getByRole("button", { name: "Add item" }).click();
 
-		// Creating an item selects it: its management sheet opens on Details.
-		const createdSheet = page.getByRole("dialog");
-		await expect(createdSheet).toContainText("Medium");
+		// Creating an item navigates to its addressable management route.
+		await expect(page).toHaveURL(/\/dashboard\/inventory\/items\/item-\d+$/);
+		await expect(page.getByText("Medium").first()).toBeVisible();
 		await expect(
-			createdSheet.getByRole("tab", { name: "Details", selected: true }),
+			page.getByRole("tab", { name: "Details", selected: true }),
 		).toBeVisible();
-		await page.keyboard.press("Escape");
-		await expect(createdSheet).toBeHidden();
+		await page.getByRole("link", { name: "All items" }).click();
+		await expect(page).toHaveURL(/\/dashboard\/inventory\/items$/);
 
 		const item = page.getByRole("article").filter({ hasText: "Medium" });
 		await expect(item).toContainText("Training loaner");
@@ -109,13 +110,16 @@ test.describe("ALE-284 operator inventory items", () => {
 		await page.getByLabel("Search items").fill("  Training loaner  ");
 		await searched;
 		await expect(item).toBeVisible();
-		await item.getByRole("button", { name: "Manage" }).click();
+		await item.getByRole("link", { name: "Manage" }).click();
+		await expect(page).toHaveURL(/\/dashboard\/inventory\/items\/item-\d+$/);
 
 		await page.getByRole("tab", { name: "Placement" }).click();
 		await page.getByLabel("Move to container").click();
 		await page.getByRole("option", { name: `Cupboard ${tag}` }).click();
 		await page.getByRole("button", { name: "Move item" }).click();
-		await expect(page.getByText(`Cupboard ${tag}`)).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: "Move to container" }),
+		).toContainText(`Cupboard ${tag}`);
 
 		await page.getByRole("tab", { name: "Maintenance" }).click();
 		await page.getByLabel("Maintenance reason").fill("Inspect strap");
@@ -133,9 +137,17 @@ test.describe("ALE-284 operator inventory items", () => {
 		await page.getByLabel("New category").click();
 		await page.getByRole("option", { name: `Masks ${tag}` }).click();
 		await page.getByLabel("Colour").fill("Black");
-		await page.getByRole("button", { name: "Change category" }).click();
+		// A lingering success toast can overlap the submit button, and a
+		// cursor resting over it pauses its auto-dismiss timer: park the
+		// cursor away from the toast region, then wait for toasts to clear
+		// before clicking through.
+		await page.mouse.move(5, 5);
+		await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, {
+			timeout: 15_000,
+		});
+		await page.getByRole("button", { name: "Save category" }).click();
 		await expect(
-			page.getByRole("dialog").getByRole("heading", { name: /Masks.*Black/ }),
+			page.getByRole("heading", { name: /Masks.*Black/ }).first(),
 		).toBeVisible();
 
 		await page.getByRole("tab", { name: "Details" }).click();

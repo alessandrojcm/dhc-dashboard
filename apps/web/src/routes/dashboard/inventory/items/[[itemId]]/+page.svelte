@@ -1,5 +1,6 @@
 <script lang="ts">
 import { onDestroy } from "svelte";
+import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import {
 	createMutation,
@@ -14,19 +15,21 @@ import {
 	inventoryCategoriesIndexOptions,
 	inventoryContainersIndexOptions,
 	inventoryItemsArchiveMutation,
-	inventoryItemsChangeCategoryMutation,
-	inventoryItemsCreateMutation,
 	inventoryItemsDeleteMutation,
-	inventoryItemsEndMaintenanceMutation,
 	inventoryItemsListMaintenanceOptions,
 	inventoryItemsListOptions,
-	inventoryItemsMoveMutation,
 	inventoryItemsRestoreMutation,
 	inventoryItemsShowOptions,
-	inventoryItemsStartMaintenanceMutation,
-	inventoryItemsUpdateMutation,
 	inventoryStructureListDefinitionsOptions,
 } from "@dhc/api-client";
+import {
+	changeItemCategory,
+	createItem,
+	endItemMaintenance,
+	moveItem,
+	startItemMaintenance,
+	updateItem,
+} from "./data.remote";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import * as AlertDialog from "$lib/components/ui/alert-dialog";
 import { Badge } from "$lib/components/ui/badge";
@@ -41,6 +44,8 @@ import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.s
 import { apiErrorMessage } from "$lib/api-error";
 import {
 	Archive,
+	ArrowLeft,
+	LoaderCircle,
 	MapPin,
 	NotebookPen,
 	PackageSearch,
@@ -54,6 +59,9 @@ import {
 import { toast } from "svelte-sonner";
 
 const PAGE_SIZE = 25;
+const LIST_PATH = "/dashboard/inventory/items";
+const selectedItemId = $derived(page.params.itemId);
+const creatingItem = $derived(selectedItemId === "new");
 
 let archived = $state<"exclude" | "include" | "only">("exclude");
 let availability = $state<"all" | "maintenance">("all");
@@ -77,11 +85,8 @@ let newCategoryValues = $state<InventoryOperatorItemValues>({});
 let maintenanceReason = $state("");
 let maintenanceEndNote = $state("");
 let archiveReason = $state("");
-let createOpen = $state(false);
-let createTrigger = $state<HTMLButtonElement | null>(null);
 type ManagementTab = "details" | "placement" | "maintenance";
 let managementTab = $state<ManagementTab>("details");
-let managementTrigger = $state<HTMLElement | null>(null);
 let deleteConfirmOpen = $state(false);
 let mobileFiltersOpen = $state(false);
 
@@ -105,6 +110,11 @@ const itemsQuery = createQuery(() => ({
 		},
 	}),
 	placeholderData: keepPreviousData,
+	select: (response) => response.data,
+}));
+const routedItemQuery = createQuery(() => ({
+	...inventoryItemsShowOptions({ path: { slugOrId: selectedItemId ?? "" } }),
+	enabled: Boolean(selectedItemId && selectedItemId !== "new"),
 	select: (response) => response.data,
 }));
 const categoriesQuery = createQuery(() => ({
@@ -165,6 +175,24 @@ const visibleItems = $derived(
 const activeFilterCount = $derived(
 	Number(availability !== "all") + Number(archived !== "exclude"),
 );
+const detailsDirty = $derived(
+	Boolean(
+		selected &&
+		(editNotes.trim() !== (selected.notes ?? "") ||
+			JSON.stringify(editValues) !== JSON.stringify(itemValues(selected))),
+	),
+);
+const placementDirty = $derived(
+	Boolean(selected && moveContainerId !== (selected.containerId ?? "")),
+);
+const categoryDirty = $derived(
+	Boolean(
+		selected &&
+		(newCategoryId !== selected.categoryId ||
+			JSON.stringify(newCategoryValues) !==
+				JSON.stringify(itemValues(selected))),
+	),
+);
 
 function refresh() {
 	void itemsQuery.refetch();
@@ -193,7 +221,7 @@ async function lookupSlug(slug: string) {
 		const response = await queryClient.fetchQuery(
 			inventoryItemsShowOptions({ path: { slugOrId: trimmed } }),
 		);
-		choose(response.data);
+		await goto(`${LIST_PATH}/${response.data.slug}`);
 	} catch (cause) {
 		toast.error(apiErrorMessage(cause, "No item matches that code"));
 	}
@@ -205,6 +233,15 @@ $effect(() => {
 	slugLookup = slug;
 	void lookupSlug(slug);
 });
+$effect(() => {
+	if (!selectedItemId || creatingItem) {
+		selected = undefined;
+		return;
+	}
+	if (routedItemQuery.data && routedItemQuery.data.slug !== selected?.slug) {
+		choose(routedItemQuery.data);
+	}
+});
 onDestroy(() => clearTimeout(searchTimeout));
 function itemValues(item: InventoryOperatorItem): InventoryOperatorItemValues {
 	return Object.fromEntries(
@@ -214,7 +251,11 @@ function itemValues(item: InventoryOperatorItem): InventoryOperatorItemValues {
 		]),
 	);
 }
-function choose(item: InventoryOperatorItem, tab: ManagementTab = "details") {
+function choose(
+	item: InventoryOperatorItem,
+	tab: ManagementTab = "details",
+	resetTransientFields = true,
+) {
 	selected = item;
 	managementTab = tab;
 	editNotes = item.notes ?? "";
@@ -222,29 +263,24 @@ function choose(item: InventoryOperatorItem, tab: ManagementTab = "details") {
 	moveContainerId = item.containerId ?? "";
 	newCategoryId = item.categoryId;
 	newCategoryValues = itemValues(item);
-	maintenanceReason = "";
-	maintenanceEndNote = "";
-	archiveReason = "";
+	if (resetTransientFields) {
+		maintenanceReason = "";
+		maintenanceEndNote = "";
+		archiveReason = "";
+	}
 	deleteConfirmOpen = false;
 }
-function openManagement(
-	item: InventoryOperatorItem,
-	tab: ManagementTab,
-	trigger: HTMLElement,
-) {
-	managementTrigger = trigger;
-	choose(item, tab);
-}
 function resetCreate() {
+	categoryId = "";
+	containerId = "";
 	notes = "";
 	values = {};
-	createOpen = false;
 }
 function commandOptions(success: string, fallback: string, after?: () => void) {
 	return {
 		onSuccess: (response: { data: InventoryOperatorItem }) => {
 			toast.success(success);
-			if (selected) choose(response.data, managementTab);
+			if (selected) choose(response.data, managementTab, false);
 			after?.();
 			refresh();
 		},
@@ -254,36 +290,6 @@ function commandOptions(success: string, fallback: string, after?: () => void) {
 function apiErrorHandler(fallback: string) {
 	return (cause: unknown) => toast.error(apiErrorMessage(cause, fallback));
 }
-const createItem = createMutation(() => ({
-	...inventoryItemsCreateMutation(),
-	onSuccess: (response) => {
-		toast.success("Item created");
-		choose(response.data, "details");
-		resetCreate();
-		refresh();
-	},
-	onError: apiErrorHandler("Could not create item"),
-}));
-const updateItem = createMutation(() => ({
-	...inventoryItemsUpdateMutation(),
-	...commandOptions("Item updated", "Could not update item"),
-}));
-const moveItem = createMutation(() => ({
-	...inventoryItemsMoveMutation(),
-	...commandOptions("Item moved", "Could not move item"),
-}));
-const changeCategory = createMutation(() => ({
-	...inventoryItemsChangeCategoryMutation(),
-	...commandOptions("Category changed", "Could not change category"),
-}));
-const startMaintenance = createMutation(() => ({
-	...inventoryItemsStartMaintenanceMutation(),
-	...commandOptions("Maintenance started", "Could not start maintenance"),
-}));
-const endMaintenance = createMutation(() => ({
-	...inventoryItemsEndMaintenanceMutation(),
-	...commandOptions("Maintenance ended", "Could not end maintenance"),
-}));
 const archiveItem = createMutation(() => ({
 	...inventoryItemsArchiveMutation(),
 	...commandOptions("Item archived", "Could not archive item"),
@@ -299,10 +305,36 @@ const deleteItem = createMutation(() => ({
 		deleteConfirmOpen = false;
 		selected = undefined;
 		refresh();
+		void goto(LIST_PATH);
 	},
 	onError: (error) =>
 		toast.error(apiErrorMessage(error, "Items with history must be archived")),
 }));
+
+function handleCreateItem(result: typeof createItem.result) {
+	if (!result) return;
+	if (!result.ok) return toast.error(result.error);
+	toast.success("Item created");
+	resetCreate();
+	refresh();
+	void goto(`${LIST_PATH}/${result.data.slug}`);
+}
+
+function handleItemCommand(
+	result:
+		| typeof updateItem.result
+		| typeof moveItem.result
+		| typeof changeItemCategory.result
+		| typeof startItemMaintenance.result
+		| typeof endItemMaintenance.result,
+	success: string,
+) {
+	if (!result) return;
+	if (!result.ok) return toast.error(result.error);
+	toast.success(success);
+	choose(result.data, managementTab, false);
+	refresh();
+}
 
 function setValue(
 	target: InventoryOperatorItemValues,
@@ -329,12 +361,14 @@ function displayValue(item: InventoryOperatorItem) {
 	{#each definitions.filter((definition) => !definition.retiredAt) as definition (definition.id)}
 		<div>
 			<Label for={`${prefix}-${definition.id}`} class="mb-2.5">
-				{definition.label}
+				{definition.label}{#if definition.required}<span
+						class="ml-1 text-xs font-normal text-muted-foreground"
+						>(required)</span
+					>{/if}
 			</Label>
 			{#if definition.valueType === "boolean"}
 				<Select.Root
 					type="single"
-					name={`${prefix}-${definition.id}`}
 					bind:value={
 						() =>
 							target[definition.id] === true
@@ -372,7 +406,6 @@ function displayValue(item: InventoryOperatorItem) {
 				)}
 				<Select.Root
 					type="single"
-					name={`${prefix}-${definition.id}`}
 					bind:value={
 						() => String(target[definition.id] ?? ""),
 						(value) => setValue(target, definition.id, value)
@@ -410,61 +443,94 @@ function displayValue(item: InventoryOperatorItem) {
 	{/each}
 {/snippet}
 
-<svelte:head><title>Inventory items | Dublin HEMA Club</title></svelte:head>
+<svelte:head>
+	<title
+		>{creatingItem
+			? "Add inventory item"
+			: selected?.label
+				? `${selected.label} | Inventory items`
+				: "Inventory items"} | Dublin HEMA Club</title
+	>
+</svelte:head>
 
 {#snippet createAction()}
-	<Button bind:ref={createTrigger} onclick={() => (createOpen = true)}>
+	<Button href={`${LIST_PATH}/new`}>
 		<PackagePlus aria-hidden="true" />New item
 	</Button>
 {/snippet}
 
-<Sheet.Root
-	bind:open={createOpen}
-	onOpenChangeComplete={(open) => {
-		if (!open) createTrigger?.focus();
-	}}
+<div
+	class="inventory-page {selectedItemId && !creatingItem
+		? 'space-y-4 xl:py-4'
+		: 'xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:space-y-4 xl:overflow-hidden xl:py-4'} {selectedItemId
+		? 'max-lg:max-w-none max-lg:space-y-0 max-lg:px-0 max-lg:py-0'
+		: ''}"
 >
-	<div
-		class="inventory-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:space-y-4 xl:overflow-hidden xl:py-4"
-	>
-		<InventoryPageHeader
-			eyebrow="Quartermaster"
-			title="Items"
-			icon={PackageSearch}
-			actions={createAction}
-			class="xl:pb-3"
-		/>
-		{#if itemsQuery.isError}<Alert variant="destructive"
-				><AlertDescription class="flex items-center justify-between"
-					><span
-						>{apiErrorMessage(itemsQuery.error, "Could not load items")}</span
-					><Button
-						variant="outline"
-						size="sm"
-						onclick={() => itemsQuery.refetch()}><RefreshCw />Try again</Button
-					></AlertDescription
-				></Alert
-			>{/if}
-		<div class="min-h-0 xl:flex-1">
-			<Sheet.Content
-				side="right"
-				class="w-full max-w-none gap-0 overflow-hidden p-0 sm:w-[50rem] sm:max-w-[calc(100vw-2rem)]"
+	<InventoryPageHeader
+		eyebrow="Quartermaster"
+		title="Items"
+		icon={PackageSearch}
+		actions={selectedItemId ? undefined : createAction}
+		class="flex-row items-end justify-between xl:pb-3 {selectedItemId
+			? 'max-lg:hidden'
+			: ''}"
+	/>
+	{#if itemsQuery.isError}<Alert variant="destructive"
+			><AlertDescription class="flex items-center justify-between"
+				><span>{apiErrorMessage(itemsQuery.error, "Could not load items")}</span
+				><Button
+					variant="outline"
+					size="sm"
+					onclick={() => itemsQuery.refetch()}><RefreshCw />Try again</Button
+				></AlertDescription
+			></Alert
+		>{/if}
+	<div class="min-h-0 xl:flex-1">
+		{#if creatingItem}
+			<section
+				class="mx-auto flex h-full min-h-0 max-w-4xl flex-col overflow-hidden rounded-2xl border bg-background shadow-sm max-lg:min-h-[calc(100svh-2.8125rem)] max-lg:rounded-none max-lg:border-x-0 max-lg:shadow-none max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-right-4 max-lg:duration-200 max-lg:motion-reduce:animate-none"
 			>
+				<div class="shrink-0 border-b px-3 py-2 sm:px-5">
+					<Button href={LIST_PATH} variant="ghost" class="min-h-11 px-2">
+						<ArrowLeft aria-hidden="true" />All items
+					</Button>
+				</div>
 				<form
+					{...createItem.enhance(async (form) => {
+						if (await form.submit()) handleCreateItem(form.result);
+					})}
+					aria-busy={createItem.pending > 0}
 					class="flex min-h-0 flex-1 flex-col"
-					onsubmit={(event) => {
-						event.preventDefault();
-						createItem.mutate({
-							body: {
-								categoryId,
-								containerId,
-								notes: notes.trim() || null,
-								values,
-							},
-						});
-					}}
 				>
-					<Sheet.Header
+					<input
+						type="hidden"
+						name={createItem.fields.categoryId.as("hidden", categoryId).name}
+						value={categoryId}
+					/>
+					<input
+						type="hidden"
+						name={createItem.fields.containerId.as("hidden", containerId).name}
+						value={containerId}
+					/>
+					<input
+						type="hidden"
+						name={createItem.fields.values.as("hidden", JSON.stringify(values))
+							.name}
+						value={JSON.stringify(values)}
+					/>
+					{#each createItem.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+							role="alert"
+							class="mx-5 mt-4 text-sm text-destructive sm:mx-8"
+						>
+							{issue.message}
+						</p>{/each}
+					{#if createItem.result && !createItem.result.ok}<p
+							role="alert"
+							class="mx-5 mt-4 text-sm text-destructive sm:mx-8"
+						>
+							{createItem.result.error}
+						</p>{/if}
+					<div
 						class="shrink-0 border-b bg-primary/7 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pr-16 pb-5 text-left sm:px-6 sm:pt-6"
 					>
 						<div class="flex items-start gap-3">
@@ -479,15 +545,13 @@ function displayValue(item: InventoryOperatorItem) {
 								>
 									New item
 								</p>
-								<Sheet.Title class="font-heading text-2xl font-bold">
-									Add item
-								</Sheet.Title>
-								<Sheet.Description class="mt-1 text-sm leading-relaxed">
+								<h2 class="font-heading text-2xl font-bold">Add item</h2>
+								<p class="mt-1 text-sm leading-relaxed text-muted-foreground">
 									The label and permanent item code are generated for you.
-								</Sheet.Description>
+								</p>
 							</div>
 						</div>
-					</Sheet.Header>
+					</div>
 
 					<div
 						class="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain bg-muted/20 p-5 sm:p-8"
@@ -518,9 +582,11 @@ function displayValue(item: InventoryOperatorItem) {
 											aria-hidden="true"
 										/>Category</Label
 									>
+									<span class="mb-2 block text-xs text-muted-foreground"
+										>Required</span
+									>
 									<Select.Root
 										type="single"
-										name="categoryId"
 										items={categoryOptions}
 										bind:value={categoryId}
 										onValueChange={() => (values = {})}
@@ -552,9 +618,11 @@ function displayValue(item: InventoryOperatorItem) {
 											aria-hidden="true"
 										/>Container</Label
 									>
+									<span class="mb-2 block text-xs text-muted-foreground"
+										>Required</span
+									>
 									<Select.Root
 										type="single"
-										name="containerId"
 										items={containerOptions}
 										bind:value={containerId}
 										required
@@ -595,7 +663,18 @@ function displayValue(item: InventoryOperatorItem) {
 									</p>
 								</div>
 							</div>
-							{#if categoryId}
+							{#if categoryId && definitionsQuery.isPending}
+								<div
+									class="flex items-center gap-2 rounded-xl border border-dashed bg-muted/35 p-3 text-sm text-muted-foreground"
+									aria-live="polite"
+								>
+									<LoaderCircle
+										class="size-4 animate-spin motion-reduce:animate-none"
+										aria-hidden="true"
+									/>
+									Loading category details…
+								</div>
+							{:else if categoryId}
 								{@render fields(definitionsQuery.data ?? [], values, "create")}
 							{:else}
 								<p
@@ -610,7 +689,11 @@ function displayValue(item: InventoryOperatorItem) {
 										class="size-3.5 text-primary"
 										aria-hidden="true"
 									/>Notes</Label
-								><Textarea id="item-notes" bind:value={notes} />
+								><Textarea
+									id="item-notes"
+									name={createItem.fields.notes.as("text").name}
+									bind:value={notes}
+								/>
 								<p class="mt-1.5 text-xs text-muted-foreground">
 									Optional notes for whoever handles this next.
 								</p>
@@ -618,20 +701,29 @@ function displayValue(item: InventoryOperatorItem) {
 						</fieldset>
 					</div>
 
-					<Sheet.Footer
+					<div
 						class="shrink-0 border-t bg-background p-4 sm:flex-row sm:justify-between sm:px-6"
 					>
-						<Sheet.Close class={buttonVariants({ variant: "outline" })}>
-							Cancel
-						</Sheet.Close>
-						<Button
-							type="submit"
-							class="min-h-11 sm:min-w-36"
-							disabled={createItem.isPending}><PackagePlus />Add item</Button
+						<div
+							class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between"
 						>
-					</Sheet.Footer>
+							<Button href={LIST_PATH} variant="outline">Cancel</Button>
+							<Button
+								type="submit"
+								class="min-h-11 sm:min-w-36"
+								disabled={!categoryId ||
+									!containerId ||
+									createItem.pending > 0 ||
+									definitionsQuery.isPending}
+								><PackagePlus />{createItem.pending > 0
+									? "Adding item…"
+									: "Add item"}</Button
+							>
+						</div>
+					</div>
 				</form>
-			</Sheet.Content>
+			</section>
+		{:else if !selectedItemId}
 			<section class="min-h-0 space-y-3 xl:flex xl:h-full xl:flex-col">
 				<div class="flex items-center justify-between gap-3 lg:hidden">
 					<div class="flex min-w-0 items-baseline gap-2">
@@ -808,9 +900,7 @@ function displayValue(item: InventoryOperatorItem) {
 								<Button
 									size="sm"
 									variant="outline"
-									onclick={(event) =>
-										openManagement(item, "details", event.currentTarget)}
-									>Manage</Button
+									href={`${LIST_PATH}/${item.slug}`}>Manage</Button
 								>
 							</div>
 						</article>{:else}<div
@@ -857,9 +947,34 @@ function displayValue(item: InventoryOperatorItem) {
 					{/if}
 				</div>
 			</section>
-		</div>
+		{:else if routedItemQuery.isError}
+			<Alert variant="destructive" class="mx-auto max-w-5xl">
+				<AlertDescription class="flex items-center justify-between gap-4">
+					<span
+						>{apiErrorMessage(
+							routedItemQuery.error,
+							"Could not load item",
+						)}</span
+					>
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={() => routedItemQuery.refetch()}
+					>
+						<RefreshCw />Try again
+					</Button>
+				</AlertDescription>
+			</Alert>
+		{:else if routedItemQuery.isPending}
+			<div
+				class="mx-auto grid min-h-64 max-w-5xl place-items-center"
+				aria-live="polite"
+			>
+				<p class="text-sm text-muted-foreground">Loading item…</p>
+			</div>
+		{/if}
 	</div>
-</Sheet.Root>
+</div>
 
 <Sheet.Root bind:open={mobileFiltersOpen}>
 	<Sheet.Content
@@ -957,20 +1072,18 @@ function displayValue(item: InventoryOperatorItem) {
 </Sheet.Root>
 
 {#if selected}
-	<Sheet.Root
-		open
-		onOpenChange={(open) => {
-			if (!open) selected = undefined;
-		}}
-		onOpenChangeComplete={(open) => {
-			if (!open) managementTrigger?.focus();
-		}}
+	<section
+		class="inventory-page !pt-0 max-lg:max-w-none max-lg:px-0 max-lg:pb-0 max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-right-4 max-lg:duration-200 max-lg:motion-reduce:animate-none"
 	>
-		<Sheet.Content
-			side="right"
-			class="w-full max-w-none gap-0 overflow-hidden p-0 sm:w-[46rem] sm:max-w-[calc(100vw-2rem)]"
+		<div
+			class="mx-auto flex min-h-[calc(100svh-12rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border bg-background shadow-sm max-lg:min-h-[calc(100svh-2.8125rem)] max-lg:rounded-none max-lg:border-x-0 max-lg:shadow-none"
 		>
-			<Sheet.Header
+			<div class="shrink-0 border-b px-3 py-2 sm:px-5">
+				<Button href={LIST_PATH} variant="ghost" class="min-h-11 px-2">
+					<ArrowLeft aria-hidden="true" />All items
+				</Button>
+			</div>
+			<div
 				class="shrink-0 border-b bg-primary/7 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pr-16 pb-5 text-left sm:px-6 sm:pt-6"
 			>
 				<div class="flex items-start gap-3">
@@ -981,18 +1094,25 @@ function displayValue(item: InventoryOperatorItem) {
 					</div>
 					<div class="min-w-0">
 						<div class="flex flex-wrap items-center gap-2">
-							<Sheet.Title class="font-heading text-2xl font-bold">
+							<h2 class="font-heading text-2xl font-bold">
 								{selected.label}
-							</Sheet.Title>
-							{#if selected.archivedAt}<Badge variant="outline">Archived</Badge
-								>{/if}
+							</h2>
+							<Badge
+								variant={selected.availability.available
+									? "secondary"
+									: "outline"}
+							>
+								{selected.availability.status
+									.replace("_", " ")
+									.replace(/^./, (character) => character.toUpperCase())}
+							</Badge>
 						</div>
-						<Sheet.Description class="mt-1 font-mono text-sm">
+						<p class="mt-1 font-mono text-sm text-muted-foreground">
 							{selected.slug}
-						</Sheet.Description>
+						</p>
 					</div>
 				</div>
-			</Sheet.Header>
+			</div>
 
 			<Tabs.Root bind:value={managementTab} class="min-h-0 flex-1 gap-0">
 				<div class="shrink-0 border-b bg-background px-5 py-3 sm:px-6">
@@ -1005,15 +1125,38 @@ function displayValue(item: InventoryOperatorItem) {
 
 				<Tabs.Content value="details" class="min-h-0 overflow-hidden">
 					<form
+						{...updateItem.enhance(async (form) => {
+							if (await form.submit())
+								handleItemCommand(form.result, "Item updated");
+						})}
+						aria-busy={updateItem.pending > 0}
 						class="flex h-full min-h-0 flex-col"
-						onsubmit={(event) => {
-							event.preventDefault();
-							updateItem.mutate({
-								path: { slugOrId: selected!.slug },
-								body: { notes: editNotes.trim() || null, values: editValues },
-							});
-						}}
 					>
+						<input
+							type="hidden"
+							name={updateItem.fields.slugOrId.as("hidden", selected.slug).name}
+							value={selected.slug}
+						/>
+						<input
+							type="hidden"
+							name={updateItem.fields.values.as(
+								"hidden",
+								JSON.stringify(editValues),
+							).name}
+							value={JSON.stringify(editValues)}
+						/>
+						{#each updateItem.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+								role="alert"
+								class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
+							>
+								{issue.message}
+							</p>{/each}
+						{#if updateItem.result && !updateItem.result.ok}<p
+								role="alert"
+								class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
+							>
+								{updateItem.result.error}
+							</p>{/if}
 						<div
 							class="min-h-0 flex-1 space-y-6 overflow-y-auto bg-muted/20 p-5 sm:p-6"
 						>
@@ -1026,19 +1169,29 @@ function displayValue(item: InventoryOperatorItem) {
 										Update properties and notes.
 									</p>
 								</div>
-								{@render fields(
-									editDefinitionsQuery.data ?? [],
-									editValues,
-									"edit",
-								)}
+								{#if editDefinitionsQuery.isPending}
+									<p class="text-sm text-muted-foreground" aria-live="polite">
+										Loading item details…
+									</p>
+								{:else}
+									{@render fields(
+										editDefinitionsQuery.data ?? [],
+										editValues,
+										"edit",
+									)}
+								{/if}
 								<div>
 									<Label for="edit-notes" class="mb-2.5">Notes</Label>
-									<Textarea id="edit-notes" bind:value={editNotes} />
+									<Textarea
+										id="edit-notes"
+										name={updateItem.fields.notes.as("text").name}
+										bind:value={editNotes}
+									/>
 								</div>
 							</section>
 
 							<section
-								class="space-y-4 rounded-2xl border bg-card p-5 shadow-sm"
+								class="space-y-4 rounded-2xl border border-destructive/25 bg-destructive/3 p-5 shadow-sm"
 							>
 								<div>
 									<h3 class="font-heading text-lg font-bold">
@@ -1053,17 +1206,23 @@ function displayValue(item: InventoryOperatorItem) {
 									<Button
 										type="button"
 										variant="outline"
+										disabled={restoreItem.isPending}
 										onclick={() =>
 											restoreItem.mutate({
 												path: { slugOrId: selected!.slug },
 											})}
 									>
-										<RotateCcw />Restore item
+										<RotateCcw />{restoreItem.isPending
+											? "Restoring…"
+											: "Restore item"}
 									</Button>
 								{:else}
 									<div>
 										<Label for="archive-reason" class="mb-2.5"
-											>Archive note</Label
+											>Archive note <span
+												class="font-normal text-muted-foreground"
+												>(optional)</span
+											></Label
 										>
 										<Input id="archive-reason" bind:value={archiveReason} />
 									</div>
@@ -1071,17 +1230,21 @@ function displayValue(item: InventoryOperatorItem) {
 										<Button
 											type="button"
 											variant="outline"
+											disabled={archiveItem.isPending}
 											onclick={() =>
 												archiveItem.mutate({
 													path: { slugOrId: selected!.slug },
 													body: { reason: archiveReason.trim() || null },
 												})}
 										>
-											<Archive />Archive item
+											<Archive />{archiveItem.isPending
+												? "Archiving…"
+												: "Archive item"}
 										</Button>
 										<Button
 											type="button"
 											variant="destructive"
+											disabled={archiveItem.isPending}
 											onclick={() => (deleteConfirmOpen = true)}
 										>
 											<Trash2 />Delete item
@@ -1096,9 +1259,9 @@ function displayValue(item: InventoryOperatorItem) {
 							<Button
 								type="submit"
 								class="w-full sm:w-auto"
-								disabled={updateItem.isPending}
+								disabled={!detailsDirty || updateItem.pending > 0}
 							>
-								Save item
+								{updateItem.pending > 0 ? "Saving…" : "Save changes"}
 							</Button>
 						</div>
 					</form>
@@ -1110,15 +1273,36 @@ function displayValue(item: InventoryOperatorItem) {
 				>
 					<div class="space-y-6">
 						<form
+							{...moveItem.enhance(async (form) => {
+								if (await form.submit())
+									handleItemCommand(form.result, "Item moved");
+							})}
+							aria-busy={moveItem.pending > 0}
 							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
-							onsubmit={(event) => {
-								event.preventDefault();
-								moveItem.mutate({
-									path: { slugOrId: selected!.slug },
-									body: { containerId: moveContainerId },
-								});
-							}}
 						>
+							<input
+								type="hidden"
+								name={moveItem.fields.slugOrId.as("hidden", selected.slug).name}
+								value={selected.slug}
+							/>
+							<input
+								type="hidden"
+								name={moveItem.fields.containerId.as("hidden", moveContainerId)
+									.name}
+								value={moveContainerId}
+							/>
+							{#each moveItem.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+									role="alert"
+									class="text-sm text-destructive"
+								>
+									{issue.message}
+								</p>{/each}
+							{#if moveItem.result && !moveItem.result.ok}<p
+									role="alert"
+									class="text-sm text-destructive"
+								>
+									{moveItem.result.error}
+								</p>{/if}
 							<div class="border-b pb-4">
 								<h3 class="font-heading text-lg font-bold">Move item</h3>
 								<p class="mt-1 text-sm text-muted-foreground">
@@ -1151,25 +1335,61 @@ function displayValue(item: InventoryOperatorItem) {
 										{/each}
 									</Select.Content>
 								</Select.Root>
+								<p class="mt-2 text-xs text-muted-foreground">
+									Current location: {selected.container?.name ?? "No container"}
+								</p>
 							</div>
-							<Button type="submit" disabled={moveItem.isPending}
-								>Move item</Button
+							<Button
+								type="submit"
+								disabled={!placementDirty || moveItem.pending > 0}
+								>{moveItem.pending > 0 ? "Moving…" : "Move item"}</Button
 							>
 						</form>
 
 						<form
+							{...changeItemCategory.enhance(async (form) => {
+								if (await form.submit())
+									handleItemCommand(form.result, "Category changed");
+							})}
+							aria-busy={changeItemCategory.pending > 0}
 							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
-							onsubmit={(event) => {
-								event.preventDefault();
-								changeCategory.mutate({
-									path: { slugOrId: selected!.slug },
-									body: {
-										categoryId: newCategoryId,
-										values: newCategoryValues,
-									},
-								});
-							}}
 						>
+							<input
+								type="hidden"
+								name={changeItemCategory.fields.slugOrId.as(
+									"hidden",
+									selected.slug,
+								).name}
+								value={selected.slug}
+							/>
+							<input
+								type="hidden"
+								name={changeItemCategory.fields.categoryId.as(
+									"hidden",
+									newCategoryId,
+								).name}
+								value={newCategoryId}
+							/>
+							<input
+								type="hidden"
+								name={changeItemCategory.fields.values.as(
+									"hidden",
+									JSON.stringify(newCategoryValues),
+								).name}
+								value={JSON.stringify(newCategoryValues)}
+							/>
+							{#each changeItemCategory.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+									role="alert"
+									class="text-sm text-destructive"
+								>
+									{issue.message}
+								</p>{/each}
+							{#if changeItemCategory.result && !changeItemCategory.result.ok}<p
+									role="alert"
+									class="text-sm text-destructive"
+								>
+									{changeItemCategory.result.error}
+								</p>{/if}
 							<div class="border-b pb-4">
 								<h3 class="font-heading text-lg font-bold">Change category</h3>
 								<p class="mt-1 text-sm text-muted-foreground">
@@ -1202,13 +1422,25 @@ function displayValue(item: InventoryOperatorItem) {
 									</Select.Content>
 								</Select.Root>
 							</div>
-							{@render fields(
-								newDefinitionsQuery.data ?? [],
-								newCategoryValues,
-								"category",
-							)}
-							<Button type="submit" disabled={changeCategory.isPending}
-								>Change category</Button
+							{#if newDefinitionsQuery.isPending}
+								<p class="text-sm text-muted-foreground" aria-live="polite">
+									Loading category details…
+								</p>
+							{:else}
+								{@render fields(
+									newDefinitionsQuery.data ?? [],
+									newCategoryValues,
+									"category",
+								)}
+							{/if}
+							<Button
+								type="submit"
+								disabled={!categoryDirty ||
+									newDefinitionsQuery.isPending ||
+									changeItemCategory.pending > 0}
+								>{changeItemCategory.pending > 0
+									? "Saving category…"
+									: "Save category"}</Button
 							>
 						</form>
 					</div>
@@ -1227,46 +1459,101 @@ function displayValue(item: InventoryOperatorItem) {
 							</p>
 						</div>
 						{#if selected.availability.status === "maintenance"}
-							<div>
-								<Label for="maintenance-end-note" class="mb-2.5"
-									>Maintenance end note</Label
-								>
-								<Textarea
-									id="maintenance-end-note"
-									bind:value={maintenanceEndNote}
-								/>
-							</div>
-							<Button
-								disabled={endMaintenance.isPending}
-								onclick={() =>
-									endMaintenance.mutate({
-										path: { slugOrId: selected!.slug },
-										body: { endNote: maintenanceEndNote.trim() || null },
-									})}
+							<form
+								{...endItemMaintenance.enhance(async (form) => {
+									if (await form.submit())
+										handleItemCommand(form.result, "Maintenance ended");
+								})}
+								class="space-y-4"
+								aria-busy={endItemMaintenance.pending > 0}
 							>
-								End maintenance
-							</Button>
+								<input
+									type="hidden"
+									name={endItemMaintenance.fields.slugOrId.as(
+										"hidden",
+										selected.slug,
+									).name}
+									value={selected.slug}
+								/>
+								{#each endItemMaintenance.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+										role="alert"
+										class="text-sm text-destructive"
+									>
+										{issue.message}
+									</p>{/each}
+								{#if endItemMaintenance.result && !endItemMaintenance.result.ok}<p
+										role="alert"
+										class="text-sm text-destructive"
+									>
+										{endItemMaintenance.result.error}
+									</p>{/if}
+								<div>
+									<Label for="maintenance-end-note" class="mb-2.5"
+										>Maintenance end note</Label
+									>
+									<Textarea
+										id="maintenance-end-note"
+										name={endItemMaintenance.fields.endNote.as("text").name}
+										bind:value={maintenanceEndNote}
+									/>
+								</div>
+								<Button type="submit" disabled={endItemMaintenance.pending > 0}>
+									{endItemMaintenance.pending > 0
+										? "Ending maintenance…"
+										: "End maintenance"}
+								</Button>
+							</form>
 						{:else}
-							<div>
-								<Label for="maintenance-reason" class="mb-2.5"
-									>Maintenance reason</Label
-								>
-								<Textarea
-									id="maintenance-reason"
-									bind:value={maintenanceReason}
-								/>
-							</div>
-							<Button
-								disabled={!maintenanceReason.trim() ||
-									startMaintenance.isPending}
-								onclick={() =>
-									startMaintenance.mutate({
-										path: { slugOrId: selected!.slug },
-										body: { reason: maintenanceReason.trim() },
-									})}
+							<form
+								{...startItemMaintenance.enhance(async (form) => {
+									if (await form.submit())
+										handleItemCommand(form.result, "Maintenance started");
+								})}
+								class="space-y-4"
+								aria-busy={startItemMaintenance.pending > 0}
 							>
-								Start maintenance
-							</Button>
+								<input
+									type="hidden"
+									name={startItemMaintenance.fields.slugOrId.as(
+										"hidden",
+										selected.slug,
+									).name}
+									value={selected.slug}
+								/>
+								{#each startItemMaintenance.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+										role="alert"
+										class="text-sm text-destructive"
+									>
+										{issue.message}
+									</p>{/each}
+								{#if startItemMaintenance.result && !startItemMaintenance.result.ok}<p
+										role="alert"
+										class="text-sm text-destructive"
+									>
+										{startItemMaintenance.result.error}
+									</p>{/if}
+								<div>
+									<Label for="maintenance-reason" class="mb-2.5"
+										>Maintenance reason <span
+											class="font-normal text-muted-foreground">(required)</span
+										></Label
+									>
+									<Textarea
+										id="maintenance-reason"
+										name={startItemMaintenance.fields.reason.as("text").name}
+										bind:value={maintenanceReason}
+									/>
+								</div>
+								<Button
+									type="submit"
+									disabled={!maintenanceReason.trim() ||
+										startItemMaintenance.pending > 0}
+								>
+									{startItemMaintenance.pending > 0
+										? "Starting maintenance…"
+										: "Start maintenance"}
+								</Button>
+							</form>
 						{/if}
 
 						<div class="space-y-3 border-t pt-5">
@@ -1292,8 +1579,8 @@ function displayValue(item: InventoryOperatorItem) {
 					</section>
 				</Tabs.Content>
 			</Tabs.Root>
-		</Sheet.Content>
-	</Sheet.Root>
+		</div>
+	</section>
 
 	<AlertDialog.Root bind:open={deleteConfirmOpen}>
 		<AlertDialog.Content>

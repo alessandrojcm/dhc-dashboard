@@ -172,8 +172,10 @@ function formatTime(timestamp: string): string {
 		</div>
 	</DropdownMenu.Trigger>
 
-	<DropdownMenu.Content class="w-[380px] max-h-[500px] overflow-hidden p-0">
-		<DropdownMenu.Group>
+	<DropdownMenu.Content
+		class="flex w-[380px] max-h-[500px] flex-col overflow-hidden p-0"
+	>
+		<DropdownMenu.Group class="flex min-h-0 flex-1 flex-col">
 			<div class="flex justify-between items-center px-4 py-3">
 				<DropdownMenu.GroupHeading>Notifications</DropdownMenu.GroupHeading>
 				{#if notificationsQuery?.data?.pages?.[0]?.data?.some((n) => !n.read_at)}
@@ -188,7 +190,7 @@ function formatTime(timestamp: string): string {
 
 			<DropdownMenu.Separator />
 
-			<div class="max-h-[400px] overflow-y-auto">
+			<div class="min-h-0 flex-1 overflow-y-auto">
 				{#if notificationsQuery.isLoading}
 					<div class="py-6 px-4 text-center text-muted-foreground text-sm">
 						Loading notifications...
