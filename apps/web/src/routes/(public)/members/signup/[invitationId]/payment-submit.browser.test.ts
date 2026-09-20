@@ -96,7 +96,9 @@ test("expired: offers only the way back to verification", async () => {
 		onsubmit,
 	});
 
-	await expect.element(screen.getByText("Verify again to continue")).toBeVisible();
+	await expect
+		.element(screen.getByText("Verify again to continue"))
+		.toBeVisible();
 	await expect
 		.element(screen.getByRole("link", { name: "Verify again" }))
 		.toHaveAttribute("href", "/members/signup/inv-1");

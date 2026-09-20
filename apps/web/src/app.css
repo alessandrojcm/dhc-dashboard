@@ -213,6 +213,25 @@
 	.inventory-card {
 		@apply rounded-2xl border border-border/80 bg-card shadow-sm transition-[border-color,background-color,box-shadow] duration-200 hover:border-primary/30 hover:shadow-md;
 	}
+
+	/* Sonner toasts must stay opaque over sticky form footers. The
+	library reads --normal-bg/--success-bg/--error-bg from the Toaster
+	style prop; these rules are the backstop so a missing variable can
+	never render a transparent toast body. */
+	.toaster [data-sonner-toast] {
+		background: hsl(var(--popover));
+		color: hsl(var(--popover-foreground));
+		border: 1px solid hsl(var(--border));
+		box-shadow:
+			0 10px 30px hsl(var(--foreground) / 0.16),
+			0 2px 6px hsl(var(--foreground) / 0.12);
+	}
+	.toaster [data-sonner-toast][data-type="success"] {
+		border-left: 4px solid hsl(142 52% 32%);
+	}
+	.toaster [data-sonner-toast][data-type="error"] {
+		border-left: 4px solid hsl(var(--destructive));
+	}
 }
 
 @media (prefers-reduced-motion: reduce) {

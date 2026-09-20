@@ -92,6 +92,10 @@ async function openAction(page: Page, label: string, action: string) {
 }
 
 test.describe("ALE-286 operator loan queue", () => {
+	test.beforeEach(async ({ page }) => {
+		await page.setViewportSize({ width: 1280, height: 900 });
+	});
+
 	test.beforeAll(async () => {
 		clubToday = (await fetchE2EStatus()).today;
 		const operator = await createMember({
@@ -210,6 +214,57 @@ test.describe("ALE-286 operator loan queue", () => {
 		await expect(maintenanceBucket.getByText("Open item")).toBeVisible();
 	});
 
+	test("lays out all four queues as desktop board columns", async ({
+		page,
+		context,
+	}) => {
+		await loginAsUser(context, operatorEmail);
+		await page.setViewportSize({ width: 1440, height: 900 });
+		await page.goto("/dashboard/inventory/loans");
+
+		const board = page.getByTestId("loan-queue-board");
+		await expect(board).toBeVisible();
+		await expect(board).toHaveCSS(
+			"grid-template-columns",
+			/^\d+(?:\.\d+)?px \d+(?:\.\d+)?px \d+(?:\.\d+)?px \d+(?:\.\d+)?px$/,
+		);
+	});
+
+	test("switches between loan queues in the compact mobile view", async ({
+		page,
+		context,
+	}) => {
+		const requestedLabel = `Mobile queue request ${tag}`;
+		const returnedLabel = `Mobile queue return ${tag}`;
+		await seedLoan(requestedLabel, { preset: "requested" });
+		await seedLoan(returnedLabel, { preset: "checkedOut" });
+
+		await loginAsUser(context, operatorEmail);
+		await page.setViewportSize({ width: 390, height: 844 });
+		await page.goto("/dashboard/inventory/loans");
+		await expect(
+			page.getByRole("heading", { name: "Shared loan queue" }),
+		).toBeVisible();
+
+		const selectorBar = page.getByTestId("mobile-loan-queue-selector");
+		await expect(selectorBar).toHaveCSS("position", "sticky");
+		await expect(bucket(page, "Requests")).toBeVisible();
+		await expect(bucket(page, "Returns and overdue")).toBeHidden();
+
+		await page.getByLabel("Queue view").selectOption("returns");
+		await expect(page).toHaveURL(/\?view=returns$/);
+		await expect(bucket(page, "Requests")).toBeHidden();
+		await expect(bucket(page, "Returns and overdue")).toBeVisible();
+		await expect(bucket(page, "Returns and overdue")).toContainText(
+			returnedLabel,
+		);
+
+		await page.goBack();
+		await expect(page).not.toHaveURL(/view=/);
+		await expect(bucket(page, "Requests")).toBeVisible();
+		await expect(bucket(page, "Requests")).toContainText(requestedLabel);
+	});
+
 	test("approves final dates and note, then checks out the refreshed handover", async ({
 		page,
 		context,
@@ -224,7 +279,9 @@ test.describe("ALE-286 operator loan queue", () => {
 		await pickDate(page, panel, "Approved due", isoDate(10));
 		await panel.getByLabel("Decision note").fill(`Collection agreed ${tag}`);
 		await panel.getByRole("button", { name: "Approve", exact: true }).click();
-		await expect(page.getByText("Loan approved")).toBeVisible();
+		// Success closes the action panel instead of toasting; the bucket
+		// assertions below prove the outcome.
+		await expect(panel).toBeHidden();
 		await expect(bucket(page, "Requests").getByText(label)).toHaveCount(0);
 		await expect(
 			bucket(page, "Ready for handover").getByText(label),
@@ -232,7 +289,7 @@ test.describe("ALE-286 operator loan queue", () => {
 
 		panel = await openAction(page, label, "Record handover");
 		await panel.getByRole("button", { name: "Record checkout" }).click();
-		await expect(page.getByText("Checkout recorded")).toBeVisible();
+		await expect(panel).toBeHidden();
 		await expect(
 			bucket(page, "Returns and overdue").getByText(label),
 		).toBeVisible();
@@ -250,7 +307,7 @@ test.describe("ALE-286 operator loan queue", () => {
 		const panel = await openAction(page, label, "Review request");
 		await panel.getByLabel("Decision note").fill(`Not suitable ${tag}`);
 		await panel.getByRole("button", { name: "Reject" }).click();
-		await expect(page.getByText("Request rejected")).toBeVisible();
+		await expect(panel).toBeHidden();
 		await expect(page.getByText(label)).toHaveCount(0);
 	});
 
@@ -283,8 +340,10 @@ test.describe("ALE-286 operator loan queue", () => {
 		const panel = await openAction(page, label, "Record handover");
 		await pickDate(page, panel, "Due", isoDate(8));
 		await panel.getByRole("button", { name: "Save dates" }).click();
+		// The domain error renders inline in the action panel, not as a
+		// toast over the buttons.
 		await expect(
-			page.getByText("The loan changed before these dates were saved."),
+			panel.getByText("The loan changed before these dates were saved."),
 		).toBeVisible();
 	});
 
@@ -323,7 +382,7 @@ test.describe("ALE-286 operator loan queue", () => {
 		await pickDate(page, panel, "Start", isoDate(0));
 		await pickDate(page, panel, "Due", isoDate(12));
 		await panel.getByRole("button", { name: "Save dates" }).click();
-		await expect(page.getByText("Loan dates updated")).toBeVisible();
+		await expect(panel).toBeHidden();
 
 		await page.getByRole("button", { name: "Refresh" }).click();
 		panel = await openAction(page, label, "Record handover");
@@ -331,7 +390,7 @@ test.describe("ALE-286 operator loan queue", () => {
 			.getByLabel("Cancellation note")
 			.fill(`Borrower unavailable ${tag}`);
 		await panel.getByRole("button", { name: "Cancel loan" }).click();
-		await expect(page.getByText("Loan cancelled")).toBeVisible();
+		await expect(panel).toBeHidden();
 		await expect(page.getByText(label)).toHaveCount(0);
 	});
 
@@ -349,12 +408,12 @@ test.describe("ALE-286 operator loan queue", () => {
 		).toHaveCount(0);
 		await pickDate(page, panel, "Due date", isoDate(14));
 		await panel.getByRole("button", { name: "Update due date" }).click();
-		await expect(page.getByText("Loan dates updated")).toBeVisible();
+		await expect(panel).toBeHidden();
 
 		await page.getByRole("button", { name: "Refresh" }).click();
 		panel = await openAction(page, label, "Record return");
 		await panel.getByRole("button", { name: "Record return" }).click();
-		await expect(page.getByText("Return recorded")).toBeVisible();
+		await expect(panel).toBeHidden();
 		await expect(page.getByText(label)).toHaveCount(0);
 	});
 

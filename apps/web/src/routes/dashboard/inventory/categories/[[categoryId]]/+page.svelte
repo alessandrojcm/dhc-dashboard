@@ -1,21 +1,23 @@
 <script lang="ts">
 import { tick } from "svelte";
+import { afterNavigate, goto } from "$app/navigation";
+import { page } from "$app/state";
 import { createMutation, createQuery } from "@tanstack/svelte-query";
 import {
 	type InventoryCategory,
 	type InventoryPropertyDefinition,
-	inventoryCategoriesCreateMutation,
 	inventoryCategoriesDeleteMutation,
 	inventoryCategoriesIndexOptions,
-	inventoryCategoriesUpdateMutation,
-	inventoryStructureCreateDefinitionMutation,
-	inventoryStructureCreateOptionMutation,
 	inventoryStructureListDefinitionsOptions,
 	inventoryStructureRetireDefinitionMutation,
 	inventoryStructureRetireOptionMutation,
-	inventoryStructureUpdateDefinitionMutation,
-	inventoryStructureUpdateOptionMutation,
 } from "@dhc/api-client";
+import {
+	createOption,
+	saveCategory,
+	saveDefinition,
+	updateOption,
+} from "./data.remote";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import * as AlertDialog from "$lib/components/ui/alert-dialog";
 import { Badge } from "$lib/components/ui/badge";
@@ -27,11 +29,12 @@ import { Label } from "$lib/components/ui/label";
 import * as Select from "$lib/components/ui/select";
 import * as Sheet from "$lib/components/ui/sheet";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import SubmitButton from "$lib/components/ui/submit-button.svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import {
+	ArrowLeft,
 	Braces,
 	ChevronRight,
-	CircleDot,
 	Ellipsis,
 	Hash,
 	Pencil,
@@ -45,7 +48,8 @@ import {
 import { toast } from "svelte-sonner";
 
 type ValueType = "text" | "decimal" | "boolean" | "single_select";
-let selectedCategoryId = $state<string | undefined>();
+const LIST_PATH = "/dashboard/inventory/categories";
+const selectedCategoryId = $derived(page.params.categoryId);
 let editingCategory = $state<InventoryCategory | undefined>();
 let categoryName = $state("");
 let categoryDescription = $state("");
@@ -59,6 +63,10 @@ let categoryPendingDelete = $state<InventoryCategory | undefined>();
 let categoryNameInput = $state<HTMLInputElement | null>(null);
 let categoryEditorOpen = $state(false);
 let categoryEditorTrigger = $state<HTMLElement | null>(null);
+let categorySucceeded = $state(false);
+let definitionSucceeded = $state(false);
+let categoryTimer: ReturnType<typeof setTimeout> | undefined;
+let definitionTimer: ReturnType<typeof setTimeout> | undefined;
 let propertyEditorOpen = $state(false);
 let editingOptionId = $state<string | undefined>();
 let optionDrafts = $state<Record<string, { label: string; position: number }>>(
@@ -104,63 +112,36 @@ const totalItemCount = $derived(
 const activeDefinitions = $derived(
 	(definitionsQuery.data ?? []).filter((definition) => !definition.retiredAt),
 );
+const retiredDefinitionCount = $derived(
+	(definitionsQuery.data?.length ?? 0) - activeDefinitions.length,
+);
+
+afterNavigate(({ from, to }) => {
+	if (from?.url.pathname !== to?.url.pathname) {
+		resetDefinition();
+		editingOptionId = undefined;
+	}
+});
 
 function refreshAll() {
 	void categoriesQuery.refetch();
 	void definitionsQuery.refetch();
 }
-const categoryCreate = createMutation(() => ({
-	...inventoryCategoriesCreateMutation(),
-	onSuccess: () => {
-		toast.success("Category created");
-		cancelCategoryEdit();
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not create category")),
-}));
-const categoryUpdate = createMutation(() => ({
-	...inventoryCategoriesUpdateMutation(),
-	onSuccess: () => {
-		toast.success("Category updated");
-		cancelCategoryEdit();
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not update category")),
-}));
+function formatCount(count: number, singular: string, plural = `${singular}s`) {
+	return `${count} ${count === 1 ? singular : plural}`;
+}
 const categoryDelete = createMutation(() => ({
 	...inventoryCategoriesDeleteMutation(),
-	onSuccess: () => {
+	onSuccess: (_response, variables) => {
 		toast.success("Category deleted");
 		categoryPendingDelete = undefined;
-		selectedCategoryId = undefined;
 		refreshAll();
+		if (variables.path.id === selectedCategoryId) void goto(LIST_PATH);
 	},
 	onError: (error) =>
 		toast.error(
 			apiErrorMessage(error, "Move its items before deleting this category"),
 		),
-}));
-const definitionCreate = createMutation(() => ({
-	...inventoryStructureCreateDefinitionMutation(),
-	onSuccess: () => {
-		toast.success("Property created");
-		resetDefinition();
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not create property")),
-}));
-const definitionUpdate = createMutation(() => ({
-	...inventoryStructureUpdateDefinitionMutation(),
-	onSuccess: () => {
-		toast.success("Property updated");
-		resetDefinition();
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not update property")),
 }));
 const definitionRetire = createMutation(() => ({
 	...inventoryStructureRetireDefinitionMutation(),
@@ -170,25 +151,6 @@ const definitionRetire = createMutation(() => ({
 	},
 	onError: (error) =>
 		toast.error(apiErrorMessage(error, "Clear or migrate active values first")),
-}));
-const optionCreate = createMutation(() => ({
-	...inventoryStructureCreateOptionMutation(),
-	onSuccess: () => {
-		toast.success("Option created");
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not create option")),
-}));
-const optionUpdate = createMutation(() => ({
-	...inventoryStructureUpdateOptionMutation(),
-	onSuccess: () => {
-		toast.success("Option updated");
-		editingOptionId = undefined;
-		refreshAll();
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Could not update option")),
 }));
 const optionRetire = createMutation(() => ({
 	...inventoryStructureRetireOptionMutation(),
@@ -207,6 +169,8 @@ function resetDefinition() {
 	definitionRequired = false;
 	identifyingPosition = "";
 	propertyEditorOpen = false;
+	definitionSucceeded = false;
+	clearTimeout(definitionTimer);
 }
 function editDefinition(definition: InventoryPropertyDefinition) {
 	editingDefinition = definition;
@@ -225,7 +189,6 @@ async function editCategory(
 	trigger?: HTMLElement,
 ) {
 	categoryEditorTrigger = trigger ?? null;
-	selectedCategoryId = category.id;
 	editingCategory = category;
 	categoryName = category.name;
 	categoryDescription = category.description ?? "";
@@ -247,6 +210,8 @@ function cancelCategoryEdit() {
 	categoryName = "";
 	categoryDescription = "";
 	categoryEditorOpen = false;
+	categorySucceeded = false;
+	clearTimeout(categoryTimer);
 }
 function optionDraft(option: { id: string; label: string; position: number }) {
 	return (
@@ -267,10 +232,6 @@ function setOptionDraft(
 		[field]: field === "position" ? Number(value) : value,
 	};
 }
-function saveOption(option: { id: string; label: string; position: number }) {
-	const draft = optionDraft(option);
-	optionUpdate.mutate({ path: { id: option.id }, body: draft });
-}
 function editOption(option: { id: string; label: string; position: number }) {
 	optionDrafts[option.id] = { label: option.label, position: option.position };
 	editingOptionId = option.id;
@@ -279,50 +240,54 @@ function cancelOptionEdit(optionId: string) {
 	delete optionDrafts[optionId];
 	editingOptionId = undefined;
 }
-function submitCategory() {
-	const body = {
-		name: categoryName.trim(),
-		description: categoryDescription.trim() || null,
-	};
-	if (!body.name) return;
-	if (editingCategory)
-		categoryUpdate.mutate({ path: { id: editingCategory.id }, body });
-	else categoryCreate.mutate({ body });
+function handleCategorySave(result: typeof saveCategory.result) {
+	if (!result) return;
+	// Errors render inline in the sheet; success flashes the submit button
+	// green and then closes — no toast to linger over the list.
+	if (!result.ok) return;
+	categorySucceeded = true;
+	refreshAll();
+	clearTimeout(categoryTimer);
+	categoryTimer = setTimeout(() => cancelCategoryEdit(), 650);
 }
-function submitDefinition() {
-	if (!selectedCategoryId || !definitionLabel.trim()) return;
-	const body = {
-		label: definitionLabel.trim(),
-		valueType: definitionType,
-		required: definitionRequired,
-		identifyingPosition:
-			identifyingPosition === "" ? null : Number(identifyingPosition),
-	};
-	if (editingDefinition)
-		definitionUpdate.mutate({ path: { id: editingDefinition.id }, body });
-	else
-		definitionCreate.mutate({ path: { categoryId: selectedCategoryId }, body });
+function handleDefinitionSave(result: typeof saveDefinition.result) {
+	if (!result) return;
+	if (!result.ok) return;
+	definitionSucceeded = true;
+	refreshAll();
+	clearTimeout(definitionTimer);
+	definitionTimer = setTimeout(() => resetDefinition(), 650);
 }
-function addOption(form: HTMLFormElement, definitionId: string) {
-	const input = form.elements.namedItem("label");
-	if (!(input instanceof HTMLInputElement)) return;
-	if (!input.value.trim()) return;
-	optionCreate.mutate({
-		path: { definitionId },
-		body: { label: input.value.trim() },
-	});
-	form.reset();
+function handleOptionCreate(result: typeof createOption.result) {
+	if (!result) return false;
+	if (!result.ok) return false;
+	refreshAll();
+	return true;
+}
+function handleOptionUpdate(result: typeof updateOption.result) {
+	if (!result) return;
+	if (!result.ok) return;
+	editingOptionId = undefined;
+	refreshAll();
 }
 </script>
 
 {#snippet categoryAction()}
-	<Button onclick={(event) => addCategory(event.currentTarget)}>
+	<Button
+		class="max-lg:hidden"
+		onclick={(event) => addCategory(event.currentTarget)}
+	>
 		<Plus aria-hidden="true" />New category
 	</Button>
 {/snippet}
 
-<svelte:head><title>Inventory categories | Dublin HEMA Club</title></svelte:head
->
+<svelte:head>
+	<title
+		>{selectedCategory
+			? `${selectedCategory.name} properties`
+			: "Inventory categories"} | Dublin HEMA Club</title
+	>
+</svelte:head>
 <div
 	class="inventory-page inventory-categories-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:overflow-hidden"
 >
@@ -351,29 +316,31 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 	<div
 		class="flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-border/60 px-1 py-3 text-sm text-muted-foreground"
 	>
-		<span
-			><strong class="font-semibold text-foreground"
-				>{categoriesQuery.data?.length ?? 0}</strong
-			> categories</span
-		>
+		<span class="font-semibold text-foreground">
+			{formatCount(categoriesQuery.data?.length ?? 0, "category", "categories")}
+		</span>
 		<span
 			class="hidden size-1 rounded-full bg-border sm:block"
 			aria-hidden="true"
 		></span>
-		<span
-			><strong class="font-semibold text-foreground">{totalItemCount}</strong> items</span
-		>
+		<span class="font-semibold text-foreground">
+			{formatCount(totalItemCount, "item")}
+		</span>
 		{#if selectedCategory}
 			<span
 				class="hidden size-1 rounded-full bg-border sm:block"
 				aria-hidden="true"
 			></span>
-			<span
-				><strong class="font-semibold text-foreground"
-					>{activeDefinitions.length}</strong
-				>
-				active properties in {selectedCategory.name}</span
-			>
+			<span>
+				<strong class="font-semibold text-foreground">
+					{formatCount(
+						activeDefinitions.length,
+						"active property",
+						"active properties",
+					)}
+				</strong>
+				in {selectedCategory.name}
+			</span>
 		{/if}
 	</div>
 
@@ -381,7 +348,9 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 		class="inventory-categories-workspace grid min-h-0 items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] xl:flex-1 xl:items-stretch"
 	>
 		<section
-			class="inventory-categories-rail inventory-panel overflow-hidden lg:sticky lg:top-6 xl:static xl:flex xl:h-full xl:min-h-0 xl:flex-col"
+			class="inventory-categories-rail inventory-panel overflow-hidden lg:sticky lg:top-6 xl:static xl:flex xl:h-full xl:min-h-0 xl:flex-col {selectedCategoryId
+				? 'max-lg:hidden'
+				: 'max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-left-4 max-lg:duration-200 max-lg:motion-reduce:animate-none'}"
 		>
 			<div class="border-b bg-muted/25 p-5">
 				<div class="flex items-center justify-between gap-3">
@@ -393,7 +362,18 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 						</p>
 						<h2 class="mt-1 font-heading text-xl font-bold">Categories</h2>
 					</div>
-					<Badge variant="secondary">{categoriesQuery.data?.length ?? 0}</Badge>
+					<div class="flex shrink-0 items-center gap-2">
+						<Badge variant="secondary"
+							>{categoriesQuery.data?.length ?? 0}</Badge
+						>
+						<Button
+							size="sm"
+							class="min-h-11 lg:hidden"
+							onclick={(event) => addCategory(event.currentTarget)}
+						>
+							<Plus aria-hidden="true" />New category
+						</Button>
+					</div>
 				</div>
 				<div class="relative mt-4">
 					<Search
@@ -420,13 +400,12 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							? 'border-primary/55 bg-primary/7 shadow-sm'
 							: 'bg-card hover:border-primary/30 hover:bg-muted/25'}"
 					>
-						<button
-							type="button"
+						<a
+							href="{LIST_PATH}/{category.id}"
 							class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							onclick={() => {
-								selectedCategoryId = category.id;
-								resetDefinition();
-							}}
+							aria-current={selectedCategoryId === category.id
+								? "page"
+								: undefined}
 						>
 							<span
 								class="grid size-10 shrink-0 place-items-center rounded-lg {selectedCategoryId ===
@@ -439,11 +418,11 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							<span class="min-w-0 flex-1">
 								<span class="block truncate font-semibold">{category.name}</span
 								>
-								<span class="block text-xs text-muted-foreground"
-									>{category.itemCount} items</span
-								>
+								<span class="block text-xs text-muted-foreground">
+									{formatCount(category.itemCount, "item")}
+								</span>
 							</span>
-						</button>
+						</a>
 						<ChevronRight
 							class="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
 							aria-hidden="true"
@@ -480,8 +459,20 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 		</section>
 
 		<section
-			class="inventory-categories-detail min-w-0 space-y-5 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1 xl:[scrollbar-gutter:stable]"
+			class="inventory-categories-detail min-w-0 space-y-5 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1 xl:[scrollbar-gutter:stable] {selectedCategoryId
+				? 'max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-right-4 max-lg:duration-200 max-lg:motion-reduce:animate-none'
+				: 'max-lg:hidden'}"
 		>
+			{#if selectedCategoryId}
+				<Button
+					href={LIST_PATH}
+					variant="ghost"
+					class="min-h-11 px-2 lg:hidden"
+				>
+					<ArrowLeft aria-hidden="true" />
+					All categories
+				</Button>
+			{/if}
 			{#if selectedCategory}
 				<div class="inventory-panel overflow-hidden">
 					<div class="relative border-b bg-primary/7 p-5 sm:p-6">
@@ -517,38 +508,98 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 								<Button
 									variant="outline"
 									size="sm"
+									class="min-h-11 sm:min-h-9"
 									onclick={(event) =>
 										editCategory(selectedCategory, event.currentTarget)}
 								>
 									<Pencil />Edit category
 								</Button>
-								<Button size="sm" onclick={addDefinition}
-									><Plus />Add property</Button
+								<Button
+									size="sm"
+									class="min-h-11 sm:min-h-9"
+									onclick={addDefinition}><Plus />Add property</Button
 								>
 							</div>
 						</div>
 						<div class="relative mt-5 flex flex-wrap gap-2">
-							<Badge variant="secondary"
-								>{selectedCategory.itemCount} items</Badge
-							>
-							<Badge variant="outline"
-								>{activeDefinitions.length} active properties</Badge
-							>
-							{#if (definitionsQuery.data?.length ?? 0) > activeDefinitions.length}<Badge
-									variant="outline"
-									>{(definitionsQuery.data?.length ?? 0) -
-										activeDefinitions.length} retired</Badge
-								>{/if}
+							<Badge variant="secondary">
+								{formatCount(selectedCategory.itemCount, "item")}
+							</Badge>
+							<Badge variant="outline">
+								{formatCount(
+									activeDefinitions.length,
+									"active property",
+									"active properties",
+								)}
+							</Badge>
+							{#if retiredDefinitionCount > 0}<Badge variant="outline">
+									{formatCount(
+										retiredDefinitionCount,
+										"retired property",
+										"retired properties",
+									)}
+								</Badge>{/if}
 						</div>
 					</div>
 
 					{#if propertyEditorOpen}<form
+							{...saveDefinition.enhance(async (form) => {
+								if (await form.submit()) handleDefinitionSave(form.result);
+							})}
 							class="grid gap-4 p-5 sm:grid-cols-2 sm:p-6 xl:grid-cols-12"
-							onsubmit={(event) => {
-								event.preventDefault();
-								submitDefinition();
-							}}
 						>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.categoryId.as(
+									"hidden",
+									selectedCategoryId ?? "",
+								).name}
+								value={selectedCategoryId ?? ""}
+							/>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.definitionId.as(
+									"hidden",
+									editingDefinition?.id ?? "",
+								).name}
+								value={editingDefinition?.id ?? ""}
+							/>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.valueType.as(
+									"hidden",
+									definitionType,
+								).name}
+								value={definitionType}
+							/>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.required.as(
+									"hidden",
+									String(definitionRequired),
+								).name}
+								value={String(definitionRequired)}
+							/>
+							<input
+								type="hidden"
+								name={saveDefinition.fields.identifyingPosition.as(
+									"hidden",
+									identifyingPosition,
+								).name}
+								value={identifyingPosition}
+							/>
+							{#each saveDefinition.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+									role="alert"
+									class="text-sm text-destructive sm:col-span-2 xl:col-span-12"
+								>
+									{issue.message}
+								</p>{/each}
+							{#if saveDefinition.result && !saveDefinition.result.ok}<p
+									role="alert"
+									class="text-sm text-destructive sm:col-span-2 xl:col-span-12"
+								>
+									{saveDefinition.result.error}
+								</p>{/if}
 							<div class="sm:col-span-2 xl:col-span-12">
 								<h3 class="font-heading text-lg font-bold">
 									{editingDefinition ? "Edit property" : "Add a property"}
@@ -566,6 +617,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 									maxlength={100}
 									placeholder="e.g. Jacket size"
 									required
+									name={saveDefinition.fields.label.as("text").name}
 									bind:value={definitionLabel}
 								/>
 							</div>
@@ -604,7 +656,9 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 									type="number"
 									min="0"
 									placeholder="Not in item label"
-									bind:value={identifyingPosition}
+									value={identifyingPosition}
+									oninput={(event) =>
+										(identifyingPosition = event.currentTarget.value)}
 								/>
 							</div>
 							<div
@@ -632,11 +686,17 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 										variant="outline"
 										onclick={resetDefinition}>Cancel</Button
 									>{/if}
-								<Button type="submit" class="min-w-36"
-									><Save />{editingDefinition
-										? "Save property"
-										: "Add property"}</Button
+								<SubmitButton
+									type="submit"
+									class="min-w-36"
+									disabled={saveDefinition.pending > 0}
+									pending={saveDefinition.pending > 0}
+									succeeded={definitionSucceeded}
+									pendingLabel={editingDefinition ? "Saving…" : "Adding…"}
+									successLabel={editingDefinition ? "Saved" : "Added"}
 								>
+									<Save />{editingDefinition ? "Save property" : "Add property"}
+								</SubmitButton>
 							</div>
 						</form>{/if}
 				</div>
@@ -664,20 +724,19 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 								? 'opacity-70'
 								: ''}"
 						>
-							<div class="flex flex-wrap items-start gap-4 p-5">
+							<div
+								class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 p-4 sm:gap-4 sm:p-5"
+							>
 								<div
 									class="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground"
 								>
-									{#if definition.identifyingPosition !== null}<span
-											class="font-mono text-sm font-bold"
-											>{definition.identifyingPosition}</span
-										>{:else}<Braces class="size-5" aria-hidden="true" />{/if}
+									<Braces class="size-5" aria-hidden="true" />
 								</div>
-								<div class="min-w-0 flex-1">
-									<div class="flex flex-wrap items-center gap-2">
-										<h3 class="font-heading text-lg font-bold">
-											{definition.label}
-										</h3>
+								<div class="min-w-0">
+									<h3 class="font-heading text-lg font-bold leading-tight">
+										{definition.label}
+									</h3>
+									<div class="mt-2 flex flex-wrap items-center gap-1.5">
 										<Badge variant="outline"
 											>{valueTypeOptions.find(
 												(option) => option.value === definition.valueType,
@@ -686,26 +745,52 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 										{#if definition.required}<Badge>Required</Badge>{/if}
 										{#if definition.identifyingPosition !== null}<Badge
 												variant="secondary"
-												>Item label #{definition.identifyingPosition}</Badge
+												>Item label position {definition.identifyingPosition}</Badge
 											>{/if}
 										{#if definition.retiredAt}<Badge variant="destructive"
 												>Retired</Badge
 											>{/if}
 									</div>
-									<p
-										class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"
-									>
-										<CircleDot class="size-3.5" aria-hidden="true" />Property {index +
-											1} · <span class="font-mono">{definition.id}</span>
+									<p class="mt-2 text-xs text-muted-foreground">
+										Property {index + 1} of {definitionsQuery.data?.length ?? 0}
 									</p>
 								</div>
 								{#if !definition.retiredAt}
-									<div class="ml-auto flex gap-2">
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger
+											class={buttonVariants({
+												variant: "ghost",
+												size: "icon",
+												class: "sm:hidden",
+											})}
+											aria-label="Property actions for {definition.label}"
+										>
+											<Ellipsis aria-hidden="true" />
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Content align="end" class="w-44 sm:hidden">
+											<DropdownMenu.Item
+												onSelect={() => editDefinition(definition)}
+											>
+												<Pencil />Edit property
+											</DropdownMenu.Item>
+											<DropdownMenu.Separator />
+											<DropdownMenu.Item
+												class="text-destructive focus:text-destructive"
+												onSelect={() =>
+													definitionRetire.mutate({
+														path: { id: definition.id },
+													})}
+											>
+												<Trash2 />Retire property
+											</DropdownMenu.Item>
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+									<div class="hidden gap-2 sm:flex">
 										<Button
 											size="sm"
 											variant="outline"
 											onclick={() => editDefinition(definition)}
-											><Pencil />Edit</Button
+											><Pencil />Edit property</Button
 										>
 										<Button
 											size="sm"
@@ -714,7 +799,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 											onclick={() =>
 												definitionRetire.mutate({
 													path: { id: definition.id },
-												})}>Retire</Button
+												})}>Retire property</Button
 										>
 									</div>
 								{/if}
@@ -729,19 +814,49 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 												Order controls how choices appear in item forms.
 											</p>
 										</div>
-										<Badge variant="outline"
-											>{definition.options.filter((option) => !option.retiredAt)
-												.length} active</Badge
-										>
+										<Badge variant="outline">
+											{formatCount(
+												definition.options.filter((option) => !option.retiredAt)
+													.length,
+												"active option",
+												"active options",
+											)}
+										</Badge>
 									</div>
 									<div class="space-y-2">
 										{#each definition.options as option (option.id)}
 											{@const draft = optionDraft(option)}
 											{#if editingOptionId === option.id}
-												<div
+												{@const optionUpdateForm = updateOption.for(option.id)}
+												<form
+													{...optionUpdateForm.enhance(async (form) => {
+														if (await form.submit())
+															handleOptionUpdate(form.result);
+													})}
 													class="grid gap-2 rounded-xl border border-primary/35 bg-background p-3 sm:grid-cols-[minmax(0,1fr)_6rem_auto] sm:items-center"
 												>
+													<input
+														type="hidden"
+														name={optionUpdateForm.fields.optionId.as(
+															"hidden",
+															option.id,
+														).name}
+														value={option.id}
+													/>
+													{#each optionUpdateForm.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+															role="alert"
+															class="text-sm text-destructive sm:col-span-3"
+														>
+															{issue.message}
+														</p>{/each}
+													{#if optionUpdateForm.result && !optionUpdateForm.result.ok}<p
+															role="alert"
+															class="text-sm text-destructive sm:col-span-3"
+														>
+															{optionUpdateForm.result.error}
+														</p>{/if}
 													<Input
+														name={optionUpdateForm.fields.label.as("text").name}
 														value={draft.label}
 														aria-label="{option.label} label"
 														oninput={(event) =>
@@ -759,6 +874,8 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 														<Input
 															class="pl-8"
 															type="number"
+															name={optionUpdateForm.fields.position.as("text")
+																.name}
 															min="0"
 															value={draft.position}
 															aria-label="{option.label} position"
@@ -771,17 +888,23 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 														/>
 													</div>
 													<div class="flex gap-1 sm:justify-end">
-														<Button size="sm" onclick={() => saveOption(option)}
-															>Save</Button
+														<SubmitButton
+															size="sm"
+															type="submit"
+															pending={optionUpdateForm.pending > 0}
+															pendingLabel="Saving…"
 														>
+															Save
+														</SubmitButton>
 														<Button
 															size="sm"
 															variant="ghost"
+															type="button"
 															onclick={() => cancelOptionEdit(option.id)}
 															>Cancel</Button
 														>
 													</div>
-												</div>
+												</form>
 											{:else}
 												<div
 													class="flex min-h-12 items-center gap-3 rounded-xl border bg-background px-3 py-2.5"
@@ -796,7 +919,39 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 													{#if option.retiredAt}
 														<Badge variant="outline">Retired</Badge>
 													{:else}
-														<div class="flex gap-1">
+														<DropdownMenu.Root>
+															<DropdownMenu.Trigger
+																class={buttonVariants({
+																	variant: "ghost",
+																	size: "icon",
+																	class: "sm:hidden",
+																})}
+																aria-label="Option actions for {option.label}"
+															>
+																<Ellipsis aria-hidden="true" />
+															</DropdownMenu.Trigger>
+															<DropdownMenu.Content
+																align="end"
+																class="w-40 sm:hidden"
+															>
+																<DropdownMenu.Item
+																	onSelect={() => editOption(option)}
+																>
+																	<Pencil />Edit option
+																</DropdownMenu.Item>
+																<DropdownMenu.Separator />
+																<DropdownMenu.Item
+																	class="text-destructive focus:text-destructive"
+																	onSelect={() =>
+																		optionRetire.mutate({
+																			path: { id: option.id },
+																		})}
+																>
+																	<Trash2 />Retire option
+																</DropdownMenu.Item>
+															</DropdownMenu.Content>
+														</DropdownMenu.Root>
+														<div class="hidden gap-1 sm:flex">
 															<Button
 																size="sm"
 																variant="ghost"
@@ -820,21 +975,52 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 										{/each}
 									</div>
 									{#if !definition.retiredAt}
+										{@const optionForm = createOption.for(definition.id)}
 										<form
+											{...optionForm.enhance(async (form) => {
+												if (
+													(await form.submit()) &&
+													handleOptionCreate(form.result)
+												)
+													form.element.reset();
+											})}
 											class="mt-3 flex gap-2 rounded-xl border border-dashed bg-background/70 p-2.5"
-											onsubmit={(event) => {
-												event.preventDefault();
-												addOption(event.currentTarget, definition.id);
-											}}
 										>
+											<input
+												type="hidden"
+												name={optionForm.fields.definitionId.as(
+													"hidden",
+													definition.id,
+												).name}
+												value={definition.id}
+											/>
+											{#each optionForm.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<span
+													role="alert"
+													class="self-center text-sm text-destructive"
+													>{issue.message}</span
+												>{/each}
+											{#if optionForm.result && !optionForm.result.ok}<span
+													role="alert"
+													class="self-center text-sm text-destructive"
+													>{optionForm.result.error}</span
+												>{/if}
 											<Input
-												name="label"
+												name={optionForm.fields.label.as("text").name}
+												class="h-11"
 												maxlength={100}
 												aria-label="New option label"
 												placeholder="Add another option"
 												required
 											/>
-											<Button type="submit" size="sm"><Plus />Add</Button>
+											<SubmitButton
+												type="submit"
+												size="sm"
+												class="min-h-11"
+												pending={optionForm.pending > 0}
+												pendingLabel="Adding…"
+											>
+												<Plus />Add
+											</SubmitButton>
 										</form>
 									{/if}
 								</div>
@@ -857,6 +1043,29 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							</div>
 						</div>
 					{/each}
+				</div>
+			{:else if selectedCategoryId && categoriesQuery.isPending}
+				<div
+					class="inventory-panel grid min-h-48 place-items-center border-dashed p-8 text-center"
+					aria-live="polite"
+				>
+					<p class="text-sm text-muted-foreground">Loading category…</p>
+				</div>
+			{:else if selectedCategoryId}
+				<div
+					class="inventory-panel grid min-h-64 place-items-center border-dashed p-8 text-center"
+				>
+					<div class="max-w-md">
+						<h2 class="font-heading text-2xl font-bold">Category not found</h2>
+						<p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+							This category may have been deleted or the link may be out of
+							date.
+						</p>
+						<Button href={LIST_PATH} variant="outline" class="mt-5">
+							<ArrowLeft aria-hidden="true" />
+							Back to categories
+						</Button>
+					</div>
 				</div>
 			{:else}
 				<div
@@ -918,12 +1127,29 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 			</div>
 		</Sheet.Header>
 		<form
+			{...saveCategory.enhance(async (form) => {
+				if (await form.submit()) handleCategorySave(form.result);
+			})}
 			class="flex min-h-0 flex-1 flex-col"
-			onsubmit={(event) => {
-				event.preventDefault();
-				submitCategory();
-			}}
 		>
+			<input
+				type="hidden"
+				name={saveCategory.fields.id.as("hidden", editingCategory?.id ?? "")
+					.name}
+				value={editingCategory?.id ?? ""}
+			/>
+			{#each saveCategory.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+					role="alert"
+					class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
+				>
+					{issue.message}
+				</p>{/each}
+			{#if saveCategory.result && !saveCategory.result.ok}<p
+					role="alert"
+					class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
+				>
+					{saveCategory.result.error}
+				</p>{/if}
 			<div
 				class="min-h-0 flex-1 space-y-5 overflow-y-auto bg-muted/20 p-5 sm:p-6"
 			>
@@ -937,6 +1163,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							maxlength={50}
 							placeholder="e.g. Training swords"
 							required
+							name={saveCategory.fields.name.as("text").name}
 							bind:value={categoryName}
 						/>
 					</div>
@@ -947,6 +1174,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							class="h-11"
 							maxlength={500}
 							placeholder="What belongs in this category?"
+							name={saveCategory.fields.description.as("text").name}
 							bind:value={categoryDescription}
 						/>
 						<p class="mt-2 text-xs leading-relaxed text-muted-foreground">
@@ -965,13 +1193,17 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 					class="flex-1"
 					onclick={cancelCategoryEdit}>Cancel</Button
 				>
-				<Button
+				<SubmitButton
 					type="submit"
 					class="flex-1"
-					disabled={categoryCreate.isPending || categoryUpdate.isPending}
+					disabled={saveCategory.pending > 0}
+					pending={saveCategory.pending > 0}
+					succeeded={categorySucceeded}
+					pendingLabel={editingCategory ? "Saving…" : "Adding…"}
+					successLabel={editingCategory ? "Saved" : "Added"}
 				>
 					{editingCategory ? "Save" : "Add category"}
-				</Button>
+				</SubmitButton>
 			</Sheet.Footer>
 		</form>
 	</Sheet.Content>
