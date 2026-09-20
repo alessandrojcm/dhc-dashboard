@@ -29,5 +29,11 @@
         { "action": "sentry_*", "resource": "*", "effect": "allow" }
       ]
     }
+  },
+  "references": {
+     "discord-bot": {
+	"repository": "https://github.com/alessandrojcm/dhc-discord-bot",
+	"description": "Current discord bot implementation"
+     }
   }
 }
