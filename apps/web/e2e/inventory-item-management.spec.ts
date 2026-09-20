@@ -47,6 +47,7 @@ test.describe("ALE-284 operator inventory items", () => {
 		});
 
 		await loginAsUser(context, operator.email);
+		await page.setViewportSize({ width: 390, height: 844 });
 		await gotoHydrated(page, "/dashboard/inventory/items");
 		await expect(
 			page.getByRole("heading", { name: "Items", exact: true }),
@@ -74,7 +75,26 @@ test.describe("ALE-284 operator inventory items", () => {
 		const item = page.getByRole("article").filter({ hasText: "Medium" });
 		await expect(item).toContainText("Training loaner");
 
-		await page.getByLabel("Search").fill(`missing-${tag}`);
+		await page.getByRole("button", { name: "Filters", exact: true }).click();
+		const filters = page.getByRole("dialog", {
+			name: "Filter items",
+		});
+		await expect(filters).toBeVisible();
+		await filters.getByRole("button", { name: "Availability" }).click();
+		await page.getByRole("option", { name: "Maintenance" }).click();
+		await filters.getByRole("button", { name: "Show items" }).click();
+		await expect(
+			page.getByRole("button", { name: "Filters, 1 active", exact: true }),
+		).toBeVisible();
+
+		await page
+			.getByRole("button", { name: "Filters, 1 active", exact: true })
+			.click();
+		await page.getByRole("button", { name: "Clear filters" }).click();
+		await page.getByRole("button", { name: "Show items" }).click();
+		await expect(item).toBeVisible();
+
+		await page.getByLabel("Search items").fill(`missing-${tag}`);
 		await expect(
 			page.getByRole("heading", { name: "No items found" }),
 		).toBeVisible();
@@ -86,7 +106,7 @@ test.describe("ALE-284 operator inventory items", () => {
 				url.searchParams.get("q") === "Training loaner"
 			);
 		});
-		await page.getByLabel("Search").fill("  Training loaner  ");
+		await page.getByLabel("Search items").fill("  Training loaner  ");
 		await searched;
 		await expect(item).toBeVisible();
 		await item.getByRole("button", { name: "Manage" }).click();

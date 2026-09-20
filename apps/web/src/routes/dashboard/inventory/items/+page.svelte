@@ -47,6 +47,7 @@ import {
 	PackagePlus,
 	RefreshCw,
 	RotateCcw,
+	SlidersHorizontal,
 	Tags,
 	Trash2,
 } from "@lucide/svelte";
@@ -82,6 +83,7 @@ type ManagementTab = "details" | "placement" | "maintenance";
 let managementTab = $state<ManagementTab>("details");
 let managementTrigger = $state<HTMLElement | null>(null);
 let deleteConfirmOpen = $state(false);
+let mobileFiltersOpen = $state(false);
 
 const availabilityOptions = [
 	{ value: "all", label: "All states" },
@@ -160,6 +162,9 @@ const visibleItems = $derived(
 		? maintenanceItems
 		: (itemsQuery.data?.items ?? []),
 );
+const activeFilterCount = $derived(
+	Number(availability !== "all") + Number(archived !== "exclude"),
+);
 
 function refresh() {
 	void itemsQuery.refetch();
@@ -172,6 +177,14 @@ function updateSearch(value: string) {
 		debouncedQuery = value.trim();
 		cursor = undefined;
 	}, 300);
+}
+function openMobileFilters() {
+	mobileFiltersOpen = true;
+}
+function clearMobileFilters() {
+	availability = "all";
+	archived = "exclude";
+	cursor = undefined;
 }
 async function lookupSlug(slug: string) {
 	const trimmed = slug.trim();
@@ -489,9 +502,7 @@ function displayValue(item: InventoryOperatorItem) {
 									>1</span
 								>
 								<div>
-									<h3 class="font-heading text-lg font-bold">
-										What and where
-									</h3>
+									<h3 class="font-heading text-lg font-bold">What and where</h3>
 									<p class="mt-0.5 text-sm text-muted-foreground">
 										Choose what it is and where it's stored.
 									</p>
@@ -578,9 +589,7 @@ function displayValue(item: InventoryOperatorItem) {
 									>2</span
 								>
 								<div>
-									<h3 class="font-heading text-lg font-bold">
-										Details
-									</h3>
+									<h3 class="font-heading text-lg font-bold">Details</h3>
 									<p class="mt-0.5 text-sm text-muted-foreground">
 										Record size, condition, and any notes.
 									</p>
@@ -624,8 +633,48 @@ function displayValue(item: InventoryOperatorItem) {
 				</form>
 			</Sheet.Content>
 			<section class="min-h-0 space-y-3 xl:flex xl:h-full xl:flex-col">
+				<div class="flex items-center justify-between gap-3 lg:hidden">
+					<div class="flex min-w-0 items-baseline gap-2">
+						<h2 class="font-heading text-xl font-bold">All items</h2>
+						<span class="text-sm text-muted-foreground"
+							>{itemsQuery.data?.totalCount ?? 0} items</span
+						>
+					</div>
+				</div>
 				<div
-					class="inventory-panel flex flex-wrap items-end justify-between gap-4 p-4"
+					class="sticky top-[2.8125rem] z-10 -mx-4 flex gap-2 border-y border-border/70 bg-background/95 px-4 py-3 shadow-sm backdrop-blur-md sm:-mx-6 sm:px-6 lg:hidden"
+				>
+					<Label for="mobile-item-search" class="sr-only">Search items</Label>
+					<Input
+						id="mobile-item-search"
+						type="search"
+						class="h-11 flex-1 border-border bg-background shadow-xs"
+						placeholder="Search code, name, location or notes"
+						value={search}
+						oninput={(event) => updateSearch(event.currentTarget.value)}
+					/>
+					<Button
+						variant="outline"
+						size="icon"
+						class="relative size-11 shrink-0"
+						aria-label={activeFilterCount > 0
+							? `Filters, ${activeFilterCount} active`
+							: "Filters"}
+						onclick={openMobileFilters}
+					>
+						<SlidersHorizontal aria-hidden="true" />
+						{#if activeFilterCount > 0}
+							<span
+								class="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-secondary text-[0.6875rem] font-bold text-secondary-foreground"
+								aria-hidden="true"
+							>
+								{activeFilterCount}
+							</span>
+						{/if}
+					</Button>
+				</div>
+				<div
+					class="inventory-panel hidden flex-wrap items-end justify-between gap-4 p-4 lg:flex"
 				>
 					<div>
 						<h2 class="text-lg font-semibold">All items</h2>
@@ -810,6 +859,101 @@ function displayValue(item: InventoryOperatorItem) {
 			</section>
 		</div>
 	</div>
+</Sheet.Root>
+
+<Sheet.Root bind:open={mobileFiltersOpen}>
+	<Sheet.Content
+		side="bottom"
+		class="max-h-[calc(100svh-1rem)] gap-0 overflow-hidden rounded-t-2xl p-0 lg:hidden"
+	>
+		<Sheet.Header class="shrink-0 border-b px-5 py-5 pr-16 text-left">
+			<div class="flex items-center gap-3">
+				<div
+					class="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"
+				>
+					<SlidersHorizontal class="size-5" aria-hidden="true" />
+				</div>
+				<div>
+					<Sheet.Title class="font-heading text-xl font-bold">
+						Filter items
+					</Sheet.Title>
+					<Sheet.Description class="mt-0.5">
+						Narrow the list by availability or archive status.
+					</Sheet.Description>
+				</div>
+			</div>
+		</Sheet.Header>
+
+		<div class="min-h-0 flex-1 overflow-y-auto p-5">
+			<fieldset class="space-y-4">
+				<legend class="font-heading text-lg font-bold">List filters</legend>
+				<div>
+					<Label
+						for="mobile-availability-filter"
+						class="mb-2 text-sm font-semibold">Availability</Label
+					>
+					<Select.Root
+						type="single"
+						items={availabilityOptions}
+						bind:value={availability}
+					>
+						<Select.Trigger
+							id="mobile-availability-filter"
+							class="w-full data-[size=default]:h-11"
+						>
+							{availabilityOptions.find(
+								(option) => option.value === availability,
+							)?.label}
+						</Select.Trigger>
+						<Select.Content>
+							{#each availabilityOptions as option (option.value)}
+								<Select.Item value={option.value} label={option.label}>
+									{option.label}
+								</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+				<div>
+					<Label for="mobile-archive-filter" class="mb-2 text-sm font-semibold"
+						>Archive filter</Label
+					>
+					<Select.Root
+						type="single"
+						items={archiveOptions}
+						bind:value={archived}
+						onValueChange={() => (cursor = undefined)}
+					>
+						<Select.Trigger
+							id="mobile-archive-filter"
+							class="w-full data-[size=default]:h-11"
+						>
+							{archiveOptions.find((option) => option.value === archived)
+								?.label}
+						</Select.Trigger>
+						<Select.Content>
+							{#each archiveOptions as option (option.value)}
+								<Select.Item value={option.value} label={option.label}>
+									{option.label}
+								</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+			</fieldset>
+		</div>
+
+		<Sheet.Footer
+			class="shrink-0 flex-row justify-between border-t bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
+		>
+			<Button
+				variant="ghost"
+				disabled={activeFilterCount === 0}
+				onclick={clearMobileFilters}>Clear filters</Button
+			>
+			<Sheet.Close class={buttonVariants()}>Show items</Sheet.Close>
+		</Sheet.Footer>
+	</Sheet.Content>
 </Sheet.Root>
 
 {#if selected}
