@@ -35,6 +35,10 @@ description = "Start SvelteKit dev server"
 dir = "apps/web"
 run = "pnpm dev"
 
+[tasks.prototype-sveltednd]
+description = "Print the throwaway sveltednd prototype URL (does not start Vite)"
+run = "echo https://127.0.0.1:5173/prototype/sveltednd"
+
 [tasks.build]
 description = "Production build (SvelteKit)"
 dir = "apps/web"
