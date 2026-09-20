@@ -1,6 +1,6 @@
 # CONTEXT: DHC Dashboard
 
-**Last updated:** 2026-09-21
+**Last updated:** 2026-09-20
 **Status:** Active migration from SvelteKit + Supabase + Deno edge functions to Phoenix + Ecto + Oban
 
 ## Domain Language
