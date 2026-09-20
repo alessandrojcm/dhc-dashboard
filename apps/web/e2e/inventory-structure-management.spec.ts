@@ -21,6 +21,7 @@ test.describe("ALE-283 operator inventory structure", () => {
 		let categoryId: string | undefined;
 		try {
 			await loginAsUser(context, operator.email);
+			await page.setViewportSize({ width: 390, height: 844 });
 			await page.goto("/dashboard/inventory/categories");
 			await page.waitForLoadState("networkidle");
 			await expect(
@@ -50,15 +51,19 @@ test.describe("ALE-283 operator inventory structure", () => {
 			// SAFETY: InventoryCategoriesJSON renders `{ data: { id, name, … } }`.
 			const created = (await response!.json()) as { data: { id: string } };
 			categoryId = created.data.id;
-			const categoryButton = page.getByRole("button", {
+			const categoryLink = page.getByRole("link", {
 				name: `${categoryName} 0 items`,
 			});
-			await expect(categoryButton).toBeVisible();
-			await categoryButton.click();
-			await page
-				.getByRole("button", { name: `Actions for ${categoryName}` })
-				.click();
-			await page.getByRole("menuitem", { name: "Edit" }).click();
+			await expect(categoryLink).toBeVisible();
+			await categoryLink.click();
+			await expect(page).toHaveURL(
+				new RegExp(`/dashboard/inventory/categories/${categoryId}$`),
+			);
+			await expect(
+				page.getByRole("link", { name: "All categories" }),
+			).toBeVisible();
+			await expect(categoryLink).toBeHidden();
+			await page.getByRole("button", { name: "Edit category" }).click();
 			await expect(page.getByLabel("Name")).toHaveValue(categoryName);
 			await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
 			await page.getByRole("button", { name: "Cancel" }).click();

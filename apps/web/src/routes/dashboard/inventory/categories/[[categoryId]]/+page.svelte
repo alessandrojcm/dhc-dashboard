@@ -1,5 +1,7 @@
 <script lang="ts">
 import { tick } from "svelte";
+import { afterNavigate, goto } from "$app/navigation";
+import { page } from "$app/state";
 import { createMutation, createQuery } from "@tanstack/svelte-query";
 import {
 	type InventoryCategory,
@@ -29,6 +31,7 @@ import * as Sheet from "$lib/components/ui/sheet";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import {
+	ArrowLeft,
 	Braces,
 	ChevronRight,
 	CircleDot,
@@ -45,7 +48,8 @@ import {
 import { toast } from "svelte-sonner";
 
 type ValueType = "text" | "decimal" | "boolean" | "single_select";
-let selectedCategoryId = $state<string | undefined>();
+const LIST_PATH = "/dashboard/inventory/categories";
+const selectedCategoryId = $derived(page.params.categoryId);
 let editingCategory = $state<InventoryCategory | undefined>();
 let categoryName = $state("");
 let categoryDescription = $state("");
@@ -105,6 +109,13 @@ const activeDefinitions = $derived(
 	(definitionsQuery.data ?? []).filter((definition) => !definition.retiredAt),
 );
 
+afterNavigate(({ from, to }) => {
+	if (from?.url.pathname !== to?.url.pathname) {
+		resetDefinition();
+		editingOptionId = undefined;
+	}
+});
+
 function refreshAll() {
 	void categoriesQuery.refetch();
 	void definitionsQuery.refetch();
@@ -131,11 +142,11 @@ const categoryUpdate = createMutation(() => ({
 }));
 const categoryDelete = createMutation(() => ({
 	...inventoryCategoriesDeleteMutation(),
-	onSuccess: () => {
+	onSuccess: (_response, variables) => {
 		toast.success("Category deleted");
 		categoryPendingDelete = undefined;
-		selectedCategoryId = undefined;
 		refreshAll();
+		if (variables.path.id === selectedCategoryId) void goto(LIST_PATH);
 	},
 	onError: (error) =>
 		toast.error(
@@ -225,7 +236,6 @@ async function editCategory(
 	trigger?: HTMLElement,
 ) {
 	categoryEditorTrigger = trigger ?? null;
-	selectedCategoryId = category.id;
 	editingCategory = category;
 	categoryName = category.name;
 	categoryDescription = category.description ?? "";
@@ -316,13 +326,21 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 </script>
 
 {#snippet categoryAction()}
-	<Button onclick={(event) => addCategory(event.currentTarget)}>
+	<Button
+		class="max-lg:hidden"
+		onclick={(event) => addCategory(event.currentTarget)}
+	>
 		<Plus aria-hidden="true" />New category
 	</Button>
 {/snippet}
 
-<svelte:head><title>Inventory categories | Dublin HEMA Club</title></svelte:head
->
+<svelte:head>
+	<title
+		>{selectedCategory
+			? `${selectedCategory.name} properties`
+			: "Inventory categories"} | Dublin HEMA Club</title
+	>
+</svelte:head>
 <div
 	class="inventory-page inventory-categories-page xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:overflow-hidden"
 >
@@ -381,7 +399,9 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 		class="inventory-categories-workspace grid min-h-0 items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)] xl:flex-1 xl:items-stretch"
 	>
 		<section
-			class="inventory-categories-rail inventory-panel overflow-hidden lg:sticky lg:top-6 xl:static xl:flex xl:h-full xl:min-h-0 xl:flex-col"
+			class="inventory-categories-rail inventory-panel overflow-hidden lg:sticky lg:top-6 xl:static xl:flex xl:h-full xl:min-h-0 xl:flex-col {selectedCategoryId
+				? 'max-lg:hidden'
+				: 'max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-left-4 max-lg:duration-200 max-lg:motion-reduce:animate-none'}"
 		>
 			<div class="border-b bg-muted/25 p-5">
 				<div class="flex items-center justify-between gap-3">
@@ -393,7 +413,18 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 						</p>
 						<h2 class="mt-1 font-heading text-xl font-bold">Categories</h2>
 					</div>
-					<Badge variant="secondary">{categoriesQuery.data?.length ?? 0}</Badge>
+					<div class="flex shrink-0 items-center gap-2">
+						<Badge variant="secondary"
+							>{categoriesQuery.data?.length ?? 0}</Badge
+						>
+						<Button
+							size="sm"
+							class="min-h-11 lg:hidden"
+							onclick={(event) => addCategory(event.currentTarget)}
+						>
+							<Plus aria-hidden="true" />New category
+						</Button>
+					</div>
 				</div>
 				<div class="relative mt-4">
 					<Search
@@ -420,13 +451,12 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							? 'border-primary/55 bg-primary/7 shadow-sm'
 							: 'bg-card hover:border-primary/30 hover:bg-muted/25'}"
 					>
-						<button
-							type="button"
+						<a
+							href="{LIST_PATH}/{category.id}"
 							class="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-							onclick={() => {
-								selectedCategoryId = category.id;
-								resetDefinition();
-							}}
+							aria-current={selectedCategoryId === category.id
+								? "page"
+								: undefined}
 						>
 							<span
 								class="grid size-10 shrink-0 place-items-center rounded-lg {selectedCategoryId ===
@@ -443,7 +473,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 									>{category.itemCount} items</span
 								>
 							</span>
-						</button>
+						</a>
 						<ChevronRight
 							class="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5"
 							aria-hidden="true"
@@ -480,8 +510,20 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 		</section>
 
 		<section
-			class="inventory-categories-detail min-w-0 space-y-5 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1 xl:[scrollbar-gutter:stable]"
+			class="inventory-categories-detail min-w-0 space-y-5 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1 xl:[scrollbar-gutter:stable] {selectedCategoryId
+				? 'max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-right-4 max-lg:duration-200 max-lg:motion-reduce:animate-none'
+				: 'max-lg:hidden'}"
 		>
+			{#if selectedCategoryId}
+				<Button
+					href={LIST_PATH}
+					variant="ghost"
+					class="min-h-11 px-2 lg:hidden"
+				>
+					<ArrowLeft aria-hidden="true" />
+					All categories
+				</Button>
+			{/if}
 			{#if selectedCategory}
 				<div class="inventory-panel overflow-hidden">
 					<div class="relative border-b bg-primary/7 p-5 sm:p-6">
@@ -857,6 +899,29 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							</div>
 						</div>
 					{/each}
+				</div>
+			{:else if selectedCategoryId && categoriesQuery.isPending}
+				<div
+					class="inventory-panel grid min-h-48 place-items-center border-dashed p-8 text-center"
+					aria-live="polite"
+				>
+					<p class="text-sm text-muted-foreground">Loading category…</p>
+				</div>
+			{:else if selectedCategoryId}
+				<div
+					class="inventory-panel grid min-h-64 place-items-center border-dashed p-8 text-center"
+				>
+					<div class="max-w-md">
+						<h2 class="font-heading text-2xl font-bold">Category not found</h2>
+						<p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+							This category may have been deleted or the link may be out of
+							date.
+						</p>
+						<Button href={LIST_PATH} variant="outline" class="mt-5">
+							<ArrowLeft aria-hidden="true" />
+							Back to categories
+						</Button>
+					</div>
 				</div>
 			{:else}
 				<div
