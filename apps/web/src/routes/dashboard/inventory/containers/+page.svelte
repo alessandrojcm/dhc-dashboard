@@ -16,6 +16,7 @@ import { Label } from "$lib/components/ui/label";
 import * as Select from "$lib/components/ui/select";
 import * as Sheet from "$lib/components/ui/sheet";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import SubmitButton from "$lib/components/ui/submit-button.svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import {
 	Archive,
@@ -33,6 +34,8 @@ let editing = $state<InventoryContainer | undefined>();
 let draft = $state({ name: "", description: "", parentId: "" });
 let editorOpen = $state(false);
 let editorTrigger = $state<HTMLButtonElement | HTMLAnchorElement>();
+let saveSucceeded = $state(false);
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
 const desktopContainerForm = saveContainer.for("desktop");
 const mobileContainerForm = saveContainer.for("mobile");
 const containersQuery = createQuery(() => ({
@@ -89,6 +92,8 @@ function refresh() {
 function reset() {
 	editing = undefined;
 	draft = { name: "", description: "", parentId: "" };
+	saveSucceeded = false;
+	clearTimeout(saveTimer);
 }
 const isSaving = $derived(
 	desktopContainerForm.pending > 0 || mobileContainerForm.pending > 0,
@@ -124,17 +129,22 @@ const deleteContainer = createMutation(() => ({
 }));
 function handleSave(result: typeof saveContainer.result) {
 	if (!result) return;
-	if (!result.ok) {
-		toast.error(result.error);
-		return;
-	}
-	toast.success(result.created ? "Container created" : "Container updated");
-	editorOpen = false;
-	reset();
+	// Errors render inline in the form via `remoteForm.result`; no toast so
+	// the message never covers the submit button.
+	if (!result.ok) return;
+	// Success shows a green check in the submit button, then the editor
+	// closes — no success toast, so nothing lingers over the next action.
+	saveSucceeded = true;
 	refresh();
+	clearTimeout(saveTimer);
+	saveTimer = setTimeout(() => {
+		editorOpen = false;
+		reset();
+	}, 650);
 }
 function startEdit(container: InventoryContainer) {
 	editing = container;
+	saveSucceeded = false;
 	draft = {
 		name: container.name,
 		description: container.description ?? "",
@@ -324,9 +334,17 @@ function openEdit(
 				</div>
 				{@render editorFields("desktop-container")}
 				<div class="flex gap-2 border-t pt-4">
-					<Button class="flex-1" type="submit" disabled={isSaving}>
+					<SubmitButton
+						class="flex-1"
+						type="submit"
+						disabled={isSaving}
+						pending={isSaving}
+						succeeded={saveSucceeded}
+						pendingLabel={editing ? "Saving…" : "Adding…"}
+						successLabel={editing ? "Saved" : "Added"}
+					>
 						{editing ? "Save changes" : "Add container"}
-					</Button>
+					</SubmitButton>
 					{#if editing}
 						<Button
 							class="flex-1"
@@ -525,9 +543,17 @@ function openEdit(
 					>
 						Cancel
 					</Button>
-					<Button class="flex-1" type="submit" disabled={isSaving}>
+					<SubmitButton
+						class="flex-1"
+						type="submit"
+						disabled={isSaving}
+						pending={isSaving}
+						succeeded={saveSucceeded}
+						pendingLabel={editing ? "Saving…" : "Adding…"}
+						successLabel={editing ? "Saved" : "Added"}
+					>
 						{editing ? "Save changes" : "Add container"}
-					</Button>
+					</SubmitButton>
 				</Sheet.Footer>
 			</form>
 		</Sheet.Content>

@@ -35,7 +35,11 @@ test.describe("ALE-283 operator inventory structure", () => {
 				.getByLabel("Description")
 				.fill("Managed through the operator UI");
 			await page.getByRole("button", { name: "Add category" }).click();
-			await expect(page.getByText("Category created")).toBeVisible();
+			// Success flashes a green check in the submit button, then the
+			// sheet closes — no success toast.
+			await expect(
+				page.getByRole("button", { name: "Added", exact: true }),
+			).toBeVisible();
 			const categoryLink = page.getByRole("link", {
 				name: `${categoryName} 0 items`,
 			});
@@ -85,7 +89,7 @@ test.describe("ALE-283 operator inventory structure", () => {
 
 			await page.getByLabel("New option label").fill("Medium");
 			await page.getByRole("button", { name: "Add", exact: true }).click();
-			await expect(page.getByText("Option created")).toBeVisible();
+			// The new option row appearing is the feedback — no toast.
 			await expect(page.getByText("Medium", { exact: true })).toBeVisible();
 		} finally {
 			if (categoryId) {
@@ -148,7 +152,12 @@ test.describe("ALE-283 operator inventory structure", () => {
 			await page.getByRole("button", { name: "Parent" }).click();
 			await page.getByRole("option", { name: "Root", exact: true }).click();
 			await page.getByRole("button", { name: "Save changes" }).click();
-			await expect(page.getByText("Container updated")).toBeVisible();
+			// Success flashes a green check in the submit button, then the
+			// sheet closes — no success toast.
+			await expect(
+				editor.getByRole("button", { name: "Saved", exact: true }),
+			).toBeVisible();
+			await expect(editor).toBeHidden();
 			await expect(
 				page
 					.getByRole("article")

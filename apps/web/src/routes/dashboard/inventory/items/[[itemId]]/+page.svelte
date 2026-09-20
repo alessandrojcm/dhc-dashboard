@@ -41,6 +41,7 @@ import * as Sheet from "$lib/components/ui/sheet";
 import * as Tabs from "$lib/components/ui/tabs";
 import { Textarea } from "$lib/components/ui/textarea";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import SubmitButton from "$lib/components/ui/submit-button.svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import {
 	Archive,
@@ -64,12 +65,11 @@ const selectedItemId = $derived(page.params.itemId);
 const creatingItem = $derived(selectedItemId === "new");
 
 let archived = $state<"exclude" | "include" | "only">("exclude");
-let availability = $state<"all" | "maintenance">("all");
+let availability = $state<"all" | "available" | "maintenance">("all");
 let search = $state("");
 let debouncedQuery = $state("");
 let searchTimeout: ReturnType<typeof setTimeout> | undefined;
 let cursor = $state<string | undefined>(undefined);
-let slugLookup = $state(page.url.searchParams.get("slug") ?? "");
 let lookedUpSlug = $state<string | undefined>(undefined);
 const queryClient = useQueryClient();
 let categoryId = $state("");
@@ -89,9 +89,29 @@ type ManagementTab = "details" | "placement" | "maintenance";
 let managementTab = $state<ManagementTab>("details");
 let deleteConfirmOpen = $state(false);
 let mobileFiltersOpen = $state(false);
+let createSucceeded = $state(false);
+let detailsSucceeded = $state(false);
+let moveSucceeded = $state(false);
+let categorySucceeded = $state(false);
+let maintenanceSucceeded = $state(false);
+let successTimer: ReturnType<typeof setTimeout> | undefined;
+
+function flashSuccess(
+	setter: (value: boolean) => void,
+	after?: () => void,
+	delay = 650,
+) {
+	setter(true);
+	clearTimeout(successTimer);
+	successTimer = setTimeout(() => {
+		setter(false);
+		after?.();
+	}, delay);
+}
 
 const availabilityOptions = [
 	{ value: "all", label: "All states" },
+	{ value: "available", label: "Available" },
 	{ value: "maintenance", label: "Maintenance" },
 ];
 const archiveOptions = [
@@ -151,10 +171,12 @@ const maintenanceQuery = createQuery(() => ({
 	enabled: Boolean(selected),
 	select: (response) => response.data.periods,
 }));
-const maintenanceItems = $derived(
-	(itemsQuery.data?.items ?? []).filter(
-		(item) => item.availability.status === "maintenance",
-	),
+const availabilityItems = $derived(
+	availability === "all"
+		? (itemsQuery.data?.items ?? [])
+		: (itemsQuery.data?.items ?? []).filter(
+				(item) => item.availability.status === availability,
+			),
 );
 const categoryOptions = $derived(
 	(categoriesQuery.data ?? []).map((category) => ({
@@ -167,11 +189,7 @@ const containerOptions = $derived(
 		.filter((container) => !container.archivedAt)
 		.map((container) => ({ value: container.id, label: container.name })),
 );
-const visibleItems = $derived(
-	availability === "maintenance"
-		? maintenanceItems
-		: (itemsQuery.data?.items ?? []),
-);
+const visibleItems = $derived(availabilityItems);
 const activeFilterCount = $derived(
 	Number(availability !== "all") + Number(archived !== "exclude"),
 );
@@ -226,11 +244,14 @@ async function lookupSlug(slug: string) {
 		toast.error(apiErrorMessage(cause, "No item matches that code"));
 	}
 }
+// Deep link for the loan queue's "Open item" maintenance links:
+// `?slug=` resolves through the show endpoint (which is archive-agnostic)
+// and lands directly on the management route. Day-to-day code search goes
+// through the main search box — backend `q` full-text already covers slugs.
 $effect(() => {
 	const slug = page.url.searchParams.get("slug")?.trim();
 	if (!slug || slug === lookedUpSlug) return;
 	lookedUpSlug = slug;
-	slugLookup = slug;
 	void lookupSlug(slug);
 });
 $effect(() => {
@@ -301,7 +322,7 @@ const restoreItem = createMutation(() => ({
 const deleteItem = createMutation(() => ({
 	...inventoryItemsDeleteMutation(),
 	onSuccess: () => {
-		toast.success("Item deleted");
+		// The list navigation is the feedback; no toast to linger over it.
 		deleteConfirmOpen = false;
 		selected = undefined;
 		refresh();
@@ -313,11 +334,18 @@ const deleteItem = createMutation(() => ({
 
 function handleCreateItem(result: typeof createItem.result) {
 	if (!result) return;
-	if (!result.ok) return toast.error(result.error);
-	toast.success("Item created");
-	resetCreate();
-	refresh();
-	void goto(`${LIST_PATH}/${result.data.slug}`);
+	// Errors render inline in the form; success flashes the submit button
+	// green and then navigates — no toast to cover the next submit.
+	if (!result.ok) return;
+	const slug = result.data.slug;
+	flashSuccess(
+		(value) => (createSucceeded = value),
+		() => {
+			resetCreate();
+			refresh();
+			void goto(`${LIST_PATH}/${slug}`);
+		},
+	);
 }
 
 function handleItemCommand(
@@ -327,13 +355,15 @@ function handleItemCommand(
 		| typeof changeItemCategory.result
 		| typeof startItemMaintenance.result
 		| typeof endItemMaintenance.result,
-	success: string,
+	setter: (value: boolean) => void,
 ) {
 	if (!result) return;
-	if (!result.ok) return toast.error(result.error);
-	toast.success(success);
+	// Errors render inline in each form; success flashes that form's submit
+	// button green while the detail refreshes underneath.
+	if (!result.ok) return;
 	choose(result.data, managementTab, false);
 	refresh();
+	flashSuccess(setter);
 }
 
 function setValue(
@@ -708,17 +738,20 @@ function displayValue(item: InventoryOperatorItem) {
 							class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between"
 						>
 							<Button href={LIST_PATH} variant="outline">Cancel</Button>
-							<Button
+							<SubmitButton
 								type="submit"
 								class="min-h-11 sm:min-w-36"
 								disabled={!categoryId ||
 									!containerId ||
 									createItem.pending > 0 ||
 									definitionsQuery.isPending}
-								><PackagePlus />{createItem.pending > 0
-									? "Adding item…"
-									: "Add item"}</Button
+								pending={createItem.pending > 0}
+								succeeded={createSucceeded}
+								pendingLabel="Adding item…"
+								successLabel="Added"
 							>
+								<PackagePlus />Add item
+							</SubmitButton>
 						</div>
 					</div>
 				</form>
@@ -775,7 +808,7 @@ function displayValue(item: InventoryOperatorItem) {
 						</p>
 					</div>
 					<div class="flex flex-1 flex-wrap items-end justify-end gap-3">
-						<div class="min-w-56 flex-1 sm:max-w-80">
+						<div class="min-w-56 flex-1 sm:max-w-md">
 							<Label for="item-search" class="mb-2 text-xs font-semibold"
 								>Search</Label
 							>
@@ -788,29 +821,6 @@ function displayValue(item: InventoryOperatorItem) {
 								oninput={(event) => updateSearch(event.currentTarget.value)}
 							/>
 						</div>
-						<form
-							class="min-w-48 flex-1 sm:max-w-64"
-							onsubmit={(event) => {
-								event.preventDefault();
-								void lookupSlug(slugLookup);
-							}}
-						>
-							<Label for="item-slug-lookup" class="mb-2 text-xs font-semibold"
-								>Find by code</Label
-							>
-							<div class="flex gap-2">
-								<Input
-									id="item-slug-lookup"
-									data-testid="find-by-slug"
-									class="h-11 border-border bg-background shadow-xs"
-									placeholder="item-000001"
-									bind:value={slugLookup}
-								/>
-								<Button type="submit" variant="outline" class="h-11">
-									Find
-								</Button>
-							</div>
-						</form>
 						<div>
 							<Label
 								for="availability-filter"
@@ -1127,7 +1137,10 @@ function displayValue(item: InventoryOperatorItem) {
 					<form
 						{...updateItem.enhance(async (form) => {
 							if (await form.submit())
-								handleItemCommand(form.result, "Item updated");
+								handleItemCommand(
+									form.result,
+									(value) => (detailsSucceeded = value),
+								);
 						})}
 						aria-busy={updateItem.pending > 0}
 						class="flex h-full min-h-0 flex-col"
@@ -1256,13 +1269,17 @@ function displayValue(item: InventoryOperatorItem) {
 						<div
 							class="shrink-0 border-t bg-background p-4 sm:flex sm:justify-end sm:px-6"
 						>
-							<Button
+							<SubmitButton
 								type="submit"
 								class="w-full sm:w-auto"
 								disabled={!detailsDirty || updateItem.pending > 0}
+								pending={updateItem.pending > 0}
+								succeeded={detailsSucceeded}
+								pendingLabel="Saving…"
+								successLabel="Saved"
 							>
-								{updateItem.pending > 0 ? "Saving…" : "Save changes"}
-							</Button>
+								Save changes
+							</SubmitButton>
 						</div>
 					</form>
 				</Tabs.Content>
@@ -1275,7 +1292,10 @@ function displayValue(item: InventoryOperatorItem) {
 						<form
 							{...moveItem.enhance(async (form) => {
 								if (await form.submit())
-									handleItemCommand(form.result, "Item moved");
+									handleItemCommand(
+										form.result,
+										(value) => (moveSucceeded = value),
+									);
 							})}
 							aria-busy={moveItem.pending > 0}
 							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
@@ -1339,17 +1359,25 @@ function displayValue(item: InventoryOperatorItem) {
 									Current location: {selected.container?.name ?? "No container"}
 								</p>
 							</div>
-							<Button
+							<SubmitButton
 								type="submit"
 								disabled={!placementDirty || moveItem.pending > 0}
-								>{moveItem.pending > 0 ? "Moving…" : "Move item"}</Button
+								pending={moveItem.pending > 0}
+								succeeded={moveSucceeded}
+								pendingLabel="Moving…"
+								successLabel="Moved"
 							>
+								Move item
+							</SubmitButton>
 						</form>
 
 						<form
 							{...changeItemCategory.enhance(async (form) => {
 								if (await form.submit())
-									handleItemCommand(form.result, "Category changed");
+									handleItemCommand(
+										form.result,
+										(value) => (categorySucceeded = value),
+									);
 							})}
 							aria-busy={changeItemCategory.pending > 0}
 							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
@@ -1433,15 +1461,18 @@ function displayValue(item: InventoryOperatorItem) {
 									"category",
 								)}
 							{/if}
-							<Button
+							<SubmitButton
 								type="submit"
 								disabled={!categoryDirty ||
 									newDefinitionsQuery.isPending ||
 									changeItemCategory.pending > 0}
-								>{changeItemCategory.pending > 0
-									? "Saving category…"
-									: "Save category"}</Button
+								pending={changeItemCategory.pending > 0}
+								succeeded={categorySucceeded}
+								pendingLabel="Saving category…"
+								successLabel="Saved"
 							>
+								Save category
+							</SubmitButton>
 						</form>
 					</div>
 				</Tabs.Content>
@@ -1462,7 +1493,10 @@ function displayValue(item: InventoryOperatorItem) {
 							<form
 								{...endItemMaintenance.enhance(async (form) => {
 									if (await form.submit())
-										handleItemCommand(form.result, "Maintenance ended");
+										handleItemCommand(
+											form.result,
+											(value) => (maintenanceSucceeded = value),
+										);
 								})}
 								class="space-y-4"
 								aria-busy={endItemMaintenance.pending > 0}
@@ -1497,17 +1531,25 @@ function displayValue(item: InventoryOperatorItem) {
 										bind:value={maintenanceEndNote}
 									/>
 								</div>
-								<Button type="submit" disabled={endItemMaintenance.pending > 0}>
-									{endItemMaintenance.pending > 0
-										? "Ending maintenance…"
-										: "End maintenance"}
-								</Button>
+								<SubmitButton
+									type="submit"
+									disabled={endItemMaintenance.pending > 0}
+									pending={endItemMaintenance.pending > 0}
+									succeeded={maintenanceSucceeded}
+									pendingLabel="Ending maintenance…"
+									successLabel="Ended"
+								>
+									End maintenance
+								</SubmitButton>
 							</form>
 						{:else}
 							<form
 								{...startItemMaintenance.enhance(async (form) => {
 									if (await form.submit())
-										handleItemCommand(form.result, "Maintenance started");
+										handleItemCommand(
+											form.result,
+											(value) => (maintenanceSucceeded = value),
+										);
 								})}
 								class="space-y-4"
 								aria-busy={startItemMaintenance.pending > 0}
@@ -1544,15 +1586,17 @@ function displayValue(item: InventoryOperatorItem) {
 										bind:value={maintenanceReason}
 									/>
 								</div>
-								<Button
+								<SubmitButton
 									type="submit"
 									disabled={!maintenanceReason.trim() ||
 										startItemMaintenance.pending > 0}
+									pending={startItemMaintenance.pending > 0}
+									succeeded={maintenanceSucceeded}
+									pendingLabel="Starting maintenance…"
+									successLabel="Started"
 								>
-									{startItemMaintenance.pending > 0
-										? "Starting maintenance…"
-										: "Start maintenance"}
-								</Button>
+									Start maintenance
+								</SubmitButton>
 							</form>
 						{/if}
 

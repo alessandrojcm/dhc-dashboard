@@ -34,7 +34,6 @@ import {
 	UserRound,
 	Wrench,
 } from "@lucide/svelte";
-import { toast } from "svelte-sonner";
 import { parseDate } from "@internationalized/date";
 
 let selected = $state<InventoryOperatorLoan | undefined>();
@@ -43,6 +42,9 @@ let selectedReadyForCheckout = $state(false);
 let startsOn = $state("");
 let dueOn = $state("");
 let note = $state("");
+// Loan action errors render inline in the sheet so they never cover the
+// action buttons; success closes the sheet, so no success toast.
+let actionError = $state<string | null>(null);
 
 type QueueView = "requests" | "handovers" | "returns" | "maintenance";
 
@@ -116,46 +118,49 @@ function choose(loan: InventoryOperatorLoan, readyForCheckout = false) {
 	startsOn = loan.approvedStartOn ?? loan.requestedStartOn;
 	dueOn = loan.approvedDueOn ?? loan.requestedDueOn;
 	note = "";
+	actionError = null;
 }
 
 function refresh() {
 	selected = undefined;
+	actionError = null;
 	void queueQuery.refetch();
 }
 
-function mutationOptions(success: string, fallback: string) {
+function mutationOptions(fallback: string) {
 	return {
 		onSuccess: () => {
-			toast.success(success);
 			refresh();
 		},
-		onError: (cause: unknown) => toast.error(apiErrorMessage(cause, fallback)),
+		onError: (cause: unknown) => {
+			actionError = apiErrorMessage(cause, fallback);
+		},
 	};
 }
 
 const approve = createMutation(() => ({
 	...inventoryOperatorLoansApproveMutation(),
-	...mutationOptions("Loan approved", "Could not approve this request"),
+	...mutationOptions("Could not approve this request"),
 }));
 const reject = createMutation(() => ({
 	...inventoryOperatorLoansRejectMutation(),
-	...mutationOptions("Request rejected", "Could not reject this request"),
+	...mutationOptions("Could not reject this request"),
 }));
 const cancel = createMutation(() => ({
 	...inventoryOperatorLoansCancelMutation(),
-	...mutationOptions("Loan cancelled", "Could not cancel this loan"),
+	...mutationOptions("Could not cancel this loan"),
 }));
 const checkout = createMutation(() => ({
 	...inventoryOperatorLoansCheckoutMutation(),
-	...mutationOptions("Checkout recorded", "Could not record checkout"),
+	...mutationOptions("Could not record checkout"),
 }));
 const returnLoan = createMutation(() => ({
 	...inventoryOperatorLoansReturnMutation(),
-	...mutationOptions("Return recorded", "Could not record return"),
+	...mutationOptions("Could not record return"),
 }));
 const editDates = createMutation(() => ({
 	...inventoryOperatorLoansEditDatesMutation(),
-	...mutationOptions("Loan dates updated", "Could not update loan dates"),
+	...mutationOptions("Could not update loan dates"),
 }));
 
 function formatDate(value: string | null) {
@@ -500,6 +505,11 @@ const busy = $derived(
 				<div
 					class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-5 sm:p-6"
 				>
+					{#if actionError}
+						<Alert variant="destructive">
+							<AlertDescription>{actionError}</AlertDescription>
+						</Alert>
+					{/if}
 					<div
 						class="mb-5 grid grid-cols-2 gap-3 rounded-xl bg-muted/50 p-3 text-sm"
 					>
@@ -564,7 +574,7 @@ const busy = $derived(
 										reject.mutate({
 											path: { loanId: selected!.id },
 											body: { note: note.trim() || undefined },
-										})}>Reject</Button
+										})}>{reject.isPending ? "Rejecting…" : "Reject"}</Button
 								><Button
 									class="min-h-12"
 									disabled={!startsOn || !dueOn || busy}
@@ -572,7 +582,7 @@ const busy = $derived(
 										approve.mutate({
 											path: { loanId: selected!.id },
 											body: { startsOn, dueOn, note: note.trim() || undefined },
-										})}>Approve</Button
+										})}>{approve.isPending ? "Approving…" : "Approve"}</Button
 								>
 							</div>
 						</div>
@@ -612,7 +622,10 @@ const busy = $derived(
 									editDates.mutate({
 										path: { loanId: selected!.id },
 										body: { startsOn, dueOn },
-									})}><CalendarClock />Save dates</Button
+									})}
+								><CalendarClock />{editDates.isPending
+									? "Saving…"
+									: "Save dates"}</Button
 							>
 							<div>
 								<Label for="cancel-note">Cancellation note</Label><Textarea
@@ -629,13 +642,16 @@ const busy = $derived(
 										cancel.mutate({
 											path: { loanId: selected!.id },
 											body: { note: note.trim() || undefined },
-										})}>Cancel loan</Button
+										})}
+									>{cancel.isPending ? "Cancelling…" : "Cancel loan"}</Button
 								><Button
 									class="min-h-12"
 									disabled={busy || !selectedReadyForCheckout}
 									onclick={() =>
 										checkout.mutate({ path: { loanId: selected!.id } })}
-									>Record checkout</Button
+									>{checkout.isPending
+										? "Recording…"
+										: "Record checkout"}</Button
 								>
 							</div>
 						</div>
@@ -659,13 +675,16 @@ const busy = $derived(
 									editDates.mutate({
 										path: { loanId: selected!.id },
 										body: { dueOn },
-									})}><CalendarClock />Update due date</Button
+									})}
+								><CalendarClock />{editDates.isPending
+									? "Updating…"
+									: "Update due date"}</Button
 							><Button
 								class="w-full min-h-12"
 								disabled={busy}
 								onclick={() =>
 									returnLoan.mutate({ path: { loanId: selected!.id } })}
-								>Record return</Button
+								>{returnLoan.isPending ? "Recording…" : "Record return"}</Button
 							>
 						</div>
 					{/if}

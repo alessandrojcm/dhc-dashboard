@@ -29,6 +29,7 @@ import { Label } from "$lib/components/ui/label";
 import * as Select from "$lib/components/ui/select";
 import * as Sheet from "$lib/components/ui/sheet";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import SubmitButton from "$lib/components/ui/submit-button.svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import {
 	ArrowLeft,
@@ -62,6 +63,10 @@ let categoryPendingDelete = $state<InventoryCategory | undefined>();
 let categoryNameInput = $state<HTMLInputElement | null>(null);
 let categoryEditorOpen = $state(false);
 let categoryEditorTrigger = $state<HTMLElement | null>(null);
+let categorySucceeded = $state(false);
+let definitionSucceeded = $state(false);
+let categoryTimer: ReturnType<typeof setTimeout> | undefined;
+let definitionTimer: ReturnType<typeof setTimeout> | undefined;
 let propertyEditorOpen = $state(false);
 let editingOptionId = $state<string | undefined>();
 let optionDrafts = $state<Record<string, { label: string; position: number }>>(
@@ -164,6 +169,8 @@ function resetDefinition() {
 	definitionRequired = false;
 	identifyingPosition = "";
 	propertyEditorOpen = false;
+	definitionSucceeded = false;
+	clearTimeout(definitionTimer);
 }
 function editDefinition(definition: InventoryPropertyDefinition) {
 	editingDefinition = definition;
@@ -203,6 +210,8 @@ function cancelCategoryEdit() {
 	categoryName = "";
 	categoryDescription = "";
 	categoryEditorOpen = false;
+	categorySucceeded = false;
+	clearTimeout(categoryTimer);
 }
 function optionDraft(option: { id: string; label: string; position: number }) {
 	return (
@@ -233,32 +242,31 @@ function cancelOptionEdit(optionId: string) {
 }
 function handleCategorySave(result: typeof saveCategory.result) {
 	if (!result) return;
-	if (!result.ok) return toast.error(result.error);
-	toast.success(result.created ? "Category created" : "Category updated");
-	cancelCategoryEdit();
+	// Errors render inline in the sheet; success flashes the submit button
+	// green and then closes — no toast to linger over the list.
+	if (!result.ok) return;
+	categorySucceeded = true;
 	refreshAll();
+	clearTimeout(categoryTimer);
+	categoryTimer = setTimeout(() => cancelCategoryEdit(), 650);
 }
 function handleDefinitionSave(result: typeof saveDefinition.result) {
 	if (!result) return;
-	if (!result.ok) return toast.error(result.error);
-	toast.success(result.created ? "Property created" : "Property updated");
-	resetDefinition();
+	if (!result.ok) return;
+	definitionSucceeded = true;
 	refreshAll();
+	clearTimeout(definitionTimer);
+	definitionTimer = setTimeout(() => resetDefinition(), 650);
 }
 function handleOptionCreate(result: typeof createOption.result) {
 	if (!result) return false;
-	if (!result.ok) {
-		toast.error(result.error);
-		return false;
-	}
-	toast.success("Option created");
+	if (!result.ok) return false;
 	refreshAll();
 	return true;
 }
 function handleOptionUpdate(result: typeof updateOption.result) {
 	if (!result) return;
-	if (!result.ok) return toast.error(result.error);
-	toast.success("Option updated");
+	if (!result.ok) return;
 	editingOptionId = undefined;
 	refreshAll();
 }
@@ -678,11 +686,17 @@ function handleOptionUpdate(result: typeof updateOption.result) {
 										variant="outline"
 										onclick={resetDefinition}>Cancel</Button
 									>{/if}
-								<Button type="submit" class="min-w-36"
-									><Save />{editingDefinition
-										? "Save property"
-										: "Add property"}</Button
+								<SubmitButton
+									type="submit"
+									class="min-w-36"
+									disabled={saveDefinition.pending > 0}
+									pending={saveDefinition.pending > 0}
+									succeeded={definitionSucceeded}
+									pendingLabel={editingDefinition ? "Saving…" : "Adding…"}
+									successLabel={editingDefinition ? "Saved" : "Added"}
 								>
+									<Save />{editingDefinition ? "Save property" : "Add property"}
+								</SubmitButton>
 							</div>
 						</form>{/if}
 				</div>
@@ -874,7 +888,14 @@ function handleOptionUpdate(result: typeof updateOption.result) {
 														/>
 													</div>
 													<div class="flex gap-1 sm:justify-end">
-														<Button size="sm" type="submit">Save</Button>
+														<SubmitButton
+															size="sm"
+															type="submit"
+															pending={optionUpdateForm.pending > 0}
+															pendingLabel="Saving…"
+														>
+															Save
+														</SubmitButton>
 														<Button
 															size="sm"
 															variant="ghost"
@@ -991,9 +1012,15 @@ function handleOptionUpdate(result: typeof updateOption.result) {
 												placeholder="Add another option"
 												required
 											/>
-											<Button type="submit" size="sm" class="min-h-11"
-												><Plus />Add</Button
+											<SubmitButton
+												type="submit"
+												size="sm"
+												class="min-h-11"
+												pending={optionForm.pending > 0}
+												pendingLabel="Adding…"
 											>
+												<Plus />Add
+											</SubmitButton>
 										</form>
 									{/if}
 								</div>
@@ -1166,13 +1193,17 @@ function handleOptionUpdate(result: typeof updateOption.result) {
 					class="flex-1"
 					onclick={cancelCategoryEdit}>Cancel</Button
 				>
-				<Button
+				<SubmitButton
 					type="submit"
 					class="flex-1"
 					disabled={saveCategory.pending > 0}
+					pending={saveCategory.pending > 0}
+					succeeded={categorySucceeded}
+					pendingLabel={editingCategory ? "Saving…" : "Adding…"}
+					successLabel={editingCategory ? "Saved" : "Added"}
 				>
 					{editingCategory ? "Save" : "Add category"}
-				</Button>
+				</SubmitButton>
 			</Sheet.Footer>
 		</form>
 	</Sheet.Content>

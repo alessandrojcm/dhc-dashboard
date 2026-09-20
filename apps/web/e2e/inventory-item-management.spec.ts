@@ -137,15 +137,12 @@ test.describe("ALE-284 operator inventory items", () => {
 		await page.getByLabel("New category").click();
 		await page.getByRole("option", { name: `Masks ${tag}` }).click();
 		await page.getByLabel("Colour").fill("Black");
-		// A lingering success toast can overlap the submit button, and a
-		// cursor resting over it pauses its auto-dismiss timer: park the
-		// cursor away from the toast region, then wait for toasts to clear
-		// before clicking through.
-		await page.mouse.move(5, 5);
-		await expect(page.locator("[data-sonner-toast]")).toHaveCount(0, {
-			timeout: 15_000,
-		});
 		await page.getByRole("button", { name: "Save category" }).click();
+		// Success flashes a green check in the submit button — no toast to
+		// overlap the next action.
+		await expect(
+			page.getByRole("button", { name: "Saved", exact: true }),
+		).toBeVisible();
 		await expect(
 			page.getByRole("heading", { name: /Masks.*Black/ }).first(),
 		).toBeVisible();

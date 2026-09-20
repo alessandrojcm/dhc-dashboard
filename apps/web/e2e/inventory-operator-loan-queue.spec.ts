@@ -279,7 +279,9 @@ test.describe("ALE-286 operator loan queue", () => {
 		await pickDate(page, panel, "Approved due", isoDate(10));
 		await panel.getByLabel("Decision note").fill(`Collection agreed ${tag}`);
 		await panel.getByRole("button", { name: "Approve", exact: true }).click();
-		await expect(page.getByText("Loan approved")).toBeVisible();
+		// Success closes the action panel instead of toasting; the bucket
+		// assertions below prove the outcome.
+		await expect(panel).toBeHidden();
 		await expect(bucket(page, "Requests").getByText(label)).toHaveCount(0);
 		await expect(
 			bucket(page, "Ready for handover").getByText(label),
@@ -287,7 +289,7 @@ test.describe("ALE-286 operator loan queue", () => {
 
 		panel = await openAction(page, label, "Record handover");
 		await panel.getByRole("button", { name: "Record checkout" }).click();
-		await expect(page.getByText("Checkout recorded")).toBeVisible();
+		await expect(panel).toBeHidden();
 		await expect(
 			bucket(page, "Returns and overdue").getByText(label),
 		).toBeVisible();
@@ -305,7 +307,7 @@ test.describe("ALE-286 operator loan queue", () => {
 		const panel = await openAction(page, label, "Review request");
 		await panel.getByLabel("Decision note").fill(`Not suitable ${tag}`);
 		await panel.getByRole("button", { name: "Reject" }).click();
-		await expect(page.getByText("Request rejected")).toBeVisible();
+		await expect(panel).toBeHidden();
 		await expect(page.getByText(label)).toHaveCount(0);
 	});
 
@@ -338,8 +340,10 @@ test.describe("ALE-286 operator loan queue", () => {
 		const panel = await openAction(page, label, "Record handover");
 		await pickDate(page, panel, "Due", isoDate(8));
 		await panel.getByRole("button", { name: "Save dates" }).click();
+		// The domain error renders inline in the action panel, not as a
+		// toast over the buttons.
 		await expect(
-			page.getByText("The loan changed before these dates were saved."),
+			panel.getByText("The loan changed before these dates were saved."),
 		).toBeVisible();
 	});
 
@@ -378,7 +382,7 @@ test.describe("ALE-286 operator loan queue", () => {
 		await pickDate(page, panel, "Start", isoDate(0));
 		await pickDate(page, panel, "Due", isoDate(12));
 		await panel.getByRole("button", { name: "Save dates" }).click();
-		await expect(page.getByText("Loan dates updated")).toBeVisible();
+		await expect(panel).toBeHidden();
 
 		await page.getByRole("button", { name: "Refresh" }).click();
 		panel = await openAction(page, label, "Record handover");
@@ -386,7 +390,7 @@ test.describe("ALE-286 operator loan queue", () => {
 			.getByLabel("Cancellation note")
 			.fill(`Borrower unavailable ${tag}`);
 		await panel.getByRole("button", { name: "Cancel loan" }).click();
-		await expect(page.getByText("Loan cancelled")).toBeVisible();
+		await expect(panel).toBeHidden();
 		await expect(page.getByText(label)).toHaveCount(0);
 	});
 
@@ -404,12 +408,12 @@ test.describe("ALE-286 operator loan queue", () => {
 		).toHaveCount(0);
 		await pickDate(page, panel, "Due date", isoDate(14));
 		await panel.getByRole("button", { name: "Update due date" }).click();
-		await expect(page.getByText("Loan dates updated")).toBeVisible();
+		await expect(panel).toBeHidden();
 
 		await page.getByRole("button", { name: "Refresh" }).click();
 		panel = await openAction(page, label, "Record return");
 		await panel.getByRole("button", { name: "Record return" }).click();
-		await expect(page.getByText("Return recorded")).toBeVisible();
+		await expect(panel).toBeHidden();
 		await expect(page.getByText(label)).toHaveCount(0);
 	});
 
