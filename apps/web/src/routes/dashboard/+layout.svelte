@@ -9,6 +9,7 @@ import { goto } from "$app/navigation";
 import { invalidateAll, invalidate } from "$app/navigation";
 import { resolve } from "$app/paths";
 import {
+	inventoryCategoriesIndexOptions,
 	membersMeOptions,
 	authSessionDeleteSession,
 	notificationsPushUnsubscribeMutation,
@@ -31,6 +32,13 @@ const userDataQuery = createQuery(() => ({
 		phoneNumber: response.data.phoneNumber ?? "",
 		customerId: response.data.customerId ?? undefined,
 	}),
+}));
+const CATEGORY_DETAIL_ROUTE = "/dashboard/inventory/categories/[[categoryId]]";
+const breadcrumbCategoriesQuery = createQuery(() => ({
+	...inventoryCategoriesIndexOptions(),
+	enabled:
+		page.route.id === CATEGORY_DETAIL_ROUTE && Boolean(page.params.categoryId),
+	select: (response) => response.data.categories,
 }));
 
 /**
@@ -108,6 +116,16 @@ function getBreadcrumbLabel(item: string, index: number): string {
 			| undefined;
 		const workshop = page.data.workshop ?? attendeesEnvelope?.data?.workshop;
 		return workshop?.title || "Workshop";
+	}
+	if (
+		page.route.id === CATEGORY_DETAIL_ROUTE &&
+		item === page.params.categoryId
+	) {
+		return (
+			breadcrumbCategoriesQuery.data?.find(
+				(category) => category.id === page.params.categoryId,
+			)?.name ?? "Category"
+		);
 	}
 	return item.replaceAll("-", " ");
 }

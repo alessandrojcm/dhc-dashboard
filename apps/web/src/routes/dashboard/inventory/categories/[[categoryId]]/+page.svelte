@@ -34,7 +34,6 @@ import {
 	ArrowLeft,
 	Braces,
 	ChevronRight,
-	CircleDot,
 	Ellipsis,
 	Hash,
 	Pencil,
@@ -108,6 +107,9 @@ const totalItemCount = $derived(
 const activeDefinitions = $derived(
 	(definitionsQuery.data ?? []).filter((definition) => !definition.retiredAt),
 );
+const retiredDefinitionCount = $derived(
+	(definitionsQuery.data?.length ?? 0) - activeDefinitions.length,
+);
 
 afterNavigate(({ from, to }) => {
 	if (from?.url.pathname !== to?.url.pathname) {
@@ -119,6 +121,9 @@ afterNavigate(({ from, to }) => {
 function refreshAll() {
 	void categoriesQuery.refetch();
 	void definitionsQuery.refetch();
+}
+function formatCount(count: number, singular: string, plural = `${singular}s`) {
+	return `${count} ${count === 1 ? singular : plural}`;
 }
 const categoryCreate = createMutation(() => ({
 	...inventoryCategoriesCreateMutation(),
@@ -369,29 +374,31 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 	<div
 		class="flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-border/60 px-1 py-3 text-sm text-muted-foreground"
 	>
-		<span
-			><strong class="font-semibold text-foreground"
-				>{categoriesQuery.data?.length ?? 0}</strong
-			> categories</span
-		>
+		<span class="font-semibold text-foreground">
+			{formatCount(categoriesQuery.data?.length ?? 0, "category", "categories")}
+		</span>
 		<span
 			class="hidden size-1 rounded-full bg-border sm:block"
 			aria-hidden="true"
 		></span>
-		<span
-			><strong class="font-semibold text-foreground">{totalItemCount}</strong> items</span
-		>
+		<span class="font-semibold text-foreground">
+			{formatCount(totalItemCount, "item")}
+		</span>
 		{#if selectedCategory}
 			<span
 				class="hidden size-1 rounded-full bg-border sm:block"
 				aria-hidden="true"
 			></span>
-			<span
-				><strong class="font-semibold text-foreground"
-					>{activeDefinitions.length}</strong
-				>
-				active properties in {selectedCategory.name}</span
-			>
+			<span>
+				<strong class="font-semibold text-foreground">
+					{formatCount(
+						activeDefinitions.length,
+						"active property",
+						"active properties",
+					)}
+				</strong>
+				in {selectedCategory.name}
+			</span>
 		{/if}
 	</div>
 
@@ -469,9 +476,9 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 							<span class="min-w-0 flex-1">
 								<span class="block truncate font-semibold">{category.name}</span
 								>
-								<span class="block text-xs text-muted-foreground"
-									>{category.itemCount} items</span
-								>
+								<span class="block text-xs text-muted-foreground">
+									{formatCount(category.itemCount, "item")}
+								</span>
 							</span>
 						</a>
 						<ChevronRight
@@ -559,28 +566,37 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 								<Button
 									variant="outline"
 									size="sm"
+									class="min-h-11 sm:min-h-9"
 									onclick={(event) =>
 										editCategory(selectedCategory, event.currentTarget)}
 								>
 									<Pencil />Edit category
 								</Button>
-								<Button size="sm" onclick={addDefinition}
-									><Plus />Add property</Button
+								<Button
+									size="sm"
+									class="min-h-11 sm:min-h-9"
+									onclick={addDefinition}><Plus />Add property</Button
 								>
 							</div>
 						</div>
 						<div class="relative mt-5 flex flex-wrap gap-2">
-							<Badge variant="secondary"
-								>{selectedCategory.itemCount} items</Badge
-							>
-							<Badge variant="outline"
-								>{activeDefinitions.length} active properties</Badge
-							>
-							{#if (definitionsQuery.data?.length ?? 0) > activeDefinitions.length}<Badge
-									variant="outline"
-									>{(definitionsQuery.data?.length ?? 0) -
-										activeDefinitions.length} retired</Badge
-								>{/if}
+							<Badge variant="secondary">
+								{formatCount(selectedCategory.itemCount, "item")}
+							</Badge>
+							<Badge variant="outline">
+								{formatCount(
+									activeDefinitions.length,
+									"active property",
+									"active properties",
+								)}
+							</Badge>
+							{#if retiredDefinitionCount > 0}<Badge variant="outline">
+									{formatCount(
+										retiredDefinitionCount,
+										"retired property",
+										"retired properties",
+									)}
+								</Badge>{/if}
 						</div>
 					</div>
 
@@ -706,20 +722,19 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 								? 'opacity-70'
 								: ''}"
 						>
-							<div class="flex flex-wrap items-start gap-4 p-5">
+							<div
+								class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 p-4 sm:gap-4 sm:p-5"
+							>
 								<div
 									class="grid size-11 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground"
 								>
-									{#if definition.identifyingPosition !== null}<span
-											class="font-mono text-sm font-bold"
-											>{definition.identifyingPosition}</span
-										>{:else}<Braces class="size-5" aria-hidden="true" />{/if}
+									<Braces class="size-5" aria-hidden="true" />
 								</div>
-								<div class="min-w-0 flex-1">
-									<div class="flex flex-wrap items-center gap-2">
-										<h3 class="font-heading text-lg font-bold">
-											{definition.label}
-										</h3>
+								<div class="min-w-0">
+									<h3 class="font-heading text-lg font-bold leading-tight">
+										{definition.label}
+									</h3>
+									<div class="mt-2 flex flex-wrap items-center gap-1.5">
 										<Badge variant="outline"
 											>{valueTypeOptions.find(
 												(option) => option.value === definition.valueType,
@@ -728,26 +743,52 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 										{#if definition.required}<Badge>Required</Badge>{/if}
 										{#if definition.identifyingPosition !== null}<Badge
 												variant="secondary"
-												>Item label #{definition.identifyingPosition}</Badge
+												>Item label position {definition.identifyingPosition}</Badge
 											>{/if}
 										{#if definition.retiredAt}<Badge variant="destructive"
 												>Retired</Badge
 											>{/if}
 									</div>
-									<p
-										class="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground"
-									>
-										<CircleDot class="size-3.5" aria-hidden="true" />Property {index +
-											1} · <span class="font-mono">{definition.id}</span>
+									<p class="mt-2 text-xs text-muted-foreground">
+										Property {index + 1} of {definitionsQuery.data?.length ?? 0}
 									</p>
 								</div>
 								{#if !definition.retiredAt}
-									<div class="ml-auto flex gap-2">
+									<DropdownMenu.Root>
+										<DropdownMenu.Trigger
+											class={buttonVariants({
+												variant: "ghost",
+												size: "icon",
+												class: "sm:hidden",
+											})}
+											aria-label="Property actions for {definition.label}"
+										>
+											<Ellipsis aria-hidden="true" />
+										</DropdownMenu.Trigger>
+										<DropdownMenu.Content align="end" class="w-44 sm:hidden">
+											<DropdownMenu.Item
+												onSelect={() => editDefinition(definition)}
+											>
+												<Pencil />Edit property
+											</DropdownMenu.Item>
+											<DropdownMenu.Separator />
+											<DropdownMenu.Item
+												class="text-destructive focus:text-destructive"
+												onSelect={() =>
+													definitionRetire.mutate({
+														path: { id: definition.id },
+													})}
+											>
+												<Trash2 />Retire property
+											</DropdownMenu.Item>
+										</DropdownMenu.Content>
+									</DropdownMenu.Root>
+									<div class="hidden gap-2 sm:flex">
 										<Button
 											size="sm"
 											variant="outline"
 											onclick={() => editDefinition(definition)}
-											><Pencil />Edit</Button
+											><Pencil />Edit property</Button
 										>
 										<Button
 											size="sm"
@@ -756,7 +797,7 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 											onclick={() =>
 												definitionRetire.mutate({
 													path: { id: definition.id },
-												})}>Retire</Button
+												})}>Retire property</Button
 										>
 									</div>
 								{/if}
@@ -771,10 +812,14 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 												Order controls how choices appear in item forms.
 											</p>
 										</div>
-										<Badge variant="outline"
-											>{definition.options.filter((option) => !option.retiredAt)
-												.length} active</Badge
-										>
+										<Badge variant="outline">
+											{formatCount(
+												definition.options.filter((option) => !option.retiredAt)
+													.length,
+												"active option",
+												"active options",
+											)}
+										</Badge>
 									</div>
 									<div class="space-y-2">
 										{#each definition.options as option (option.id)}
@@ -838,7 +883,39 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 													{#if option.retiredAt}
 														<Badge variant="outline">Retired</Badge>
 													{:else}
-														<div class="flex gap-1">
+														<DropdownMenu.Root>
+															<DropdownMenu.Trigger
+																class={buttonVariants({
+																	variant: "ghost",
+																	size: "icon",
+																	class: "sm:hidden",
+																})}
+																aria-label="Option actions for {option.label}"
+															>
+																<Ellipsis aria-hidden="true" />
+															</DropdownMenu.Trigger>
+															<DropdownMenu.Content
+																align="end"
+																class="w-40 sm:hidden"
+															>
+																<DropdownMenu.Item
+																	onSelect={() => editOption(option)}
+																>
+																	<Pencil />Edit option
+																</DropdownMenu.Item>
+																<DropdownMenu.Separator />
+																<DropdownMenu.Item
+																	class="text-destructive focus:text-destructive"
+																	onSelect={() =>
+																		optionRetire.mutate({
+																			path: { id: option.id },
+																		})}
+																>
+																	<Trash2 />Retire option
+																</DropdownMenu.Item>
+															</DropdownMenu.Content>
+														</DropdownMenu.Root>
+														<div class="hidden gap-1 sm:flex">
 															<Button
 																size="sm"
 																variant="ghost"
@@ -871,12 +948,15 @@ function addOption(form: HTMLFormElement, definitionId: string) {
 										>
 											<Input
 												name="label"
+												class="h-11"
 												maxlength={100}
 												aria-label="New option label"
 												placeholder="Add another option"
 												required
 											/>
-											<Button type="submit" size="sm"><Plus />Add</Button>
+											<Button type="submit" size="sm" class="min-h-11"
+												><Plus />Add</Button
+											>
 										</form>
 									{/if}
 								</div>

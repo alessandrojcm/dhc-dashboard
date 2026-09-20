@@ -62,6 +62,9 @@ test.describe("ALE-283 operator inventory structure", () => {
 			await expect(
 				page.getByRole("link", { name: "All categories" }),
 			).toBeVisible();
+			const breadcrumb = page.getByRole("navigation", { name: "breadcrumb" });
+			await expect(breadcrumb).toContainText(categoryName);
+			await expect(breadcrumb).not.toContainText(categoryId);
 			await expect(categoryLink).toBeHidden();
 			await page.getByRole("button", { name: "Edit category" }).click();
 			await expect(page.getByLabel("Name")).toHaveValue(categoryName);
@@ -79,6 +82,17 @@ test.describe("ALE-283 operator inventory structure", () => {
 				.getByRole("button", { name: "Add property" })
 				.click();
 			await expect(page.getByRole("heading", { name: "Size" })).toBeVisible();
+			const propertyCard = page
+				.getByRole("article")
+				.filter({ has: page.getByRole("heading", { name: "Size" }) });
+			await expect(propertyCard).toContainText("Property 1 of 1");
+			await propertyCard
+				.getByRole("button", { name: "Property actions for Size" })
+				.click();
+			await expect(
+				page.getByRole("menuitem", { name: "Edit property" }),
+			).toBeVisible();
+			await page.keyboard.press("Escape");
 
 			await page.getByLabel("New option label").fill("Medium");
 			const optionResponsePromise = page.waitForResponse(
