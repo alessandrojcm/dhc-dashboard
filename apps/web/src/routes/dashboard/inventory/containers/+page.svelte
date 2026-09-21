@@ -5,6 +5,7 @@ import {
 	inventoryContainersArchiveMutation,
 	inventoryContainersDeleteMutation,
 	inventoryContainersIndexOptions,
+	inventoryContainersMoveMutation,
 	inventoryContainersRestoreMutation,
 } from "@dhc/api-client";
 import { saveContainer } from "./data.remote";
@@ -15,12 +16,23 @@ import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
 import * as Select from "$lib/components/ui/select";
 import * as Sheet from "$lib/components/ui/sheet";
+import {
+	dndState,
+	draggable,
+	droppable,
+	type DragDropState,
+} from "@thisux/sveltednd";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import {
+	decideContainerDrop,
+	type ContainerSnapshot,
+} from "$lib/components/inventory/container-dnd";
 import SubmitButton from "$lib/components/ui/submit-button.svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import {
 	Archive,
 	FolderTree,
+	GripVertical,
 	Pencil,
 	Plus,
 	RefreshCw,
@@ -127,6 +139,88 @@ const deleteContainer = createMutation(() => ({
 			apiErrorMessage(e, "Handle children and items explicitly first"),
 		),
 }));
+const moveContainer = createMutation(() => ({
+	...inventoryContainersMoveMutation(),
+	onSuccess: () => {
+		toast.success("Container moved");
+		refresh();
+	},
+	onError: (e) => toast.error(apiErrorMessage(e, "Could not move container")),
+}));
+
+// Drag-and-drop notice announced above the hierarchy. An allowed drop commits
+// through the dedicated move mutation; Phoenix re-checks cycles and archived
+// parents under lock, so a stale client view fails as a toast, not bad data.
+let dndNotice = $state<string | null>(null);
+
+type ContainerDragData = {
+	container: InventoryContainer;
+};
+
+function resolveDropTarget(targetContainer: string): string | null | undefined {
+	if (targetContainer === "root") return null;
+	if (targetContainer.startsWith("nest:")) {
+		return targetContainer.slice("nest:".length);
+	}
+	return undefined;
+}
+
+function containerSnapshots(): ContainerSnapshot[] {
+	return containers.map((container) => ({
+		id: container.id,
+		parentContainerId: container.parentContainerId,
+		archivedAt: container.archivedAt,
+	}));
+}
+
+/**
+ * Whether the zone for `targetId` (null is the Root zone) is currently
+ * hovered with a container the machine would refuse. Drives the red
+ * `drag-invalid` outline so a disallowed hover reads before the drop.
+ */
+function invalidHover(targetId: string | null): boolean {
+	if (!dndState.isDragging) return false;
+	if (
+		dndState.targetContainer !==
+		(targetId === null ? "root" : `nest:${targetId}`)
+	) {
+		return false;
+	}
+	// SAFETY: every draggable on this page sets dragData to ContainerDragData;
+	// anything else means no drag started here and there is nothing to judge.
+	const dragged = dndState.draggedItem as ContainerDragData | undefined;
+	if (!dragged?.container.id) return false;
+	return (
+		decideContainerDrop({
+			draggedId: dragged.container.id,
+			targetId,
+			containers: containerSnapshots(),
+		}).kind !== "move"
+	);
+}
+
+function handleContainerDrop(state: DragDropState<ContainerDragData>) {
+	const dragged = state.draggedItem;
+	if (!dragged || !state.targetContainer) return;
+	const targetId = resolveDropTarget(state.targetContainer);
+	if (targetId === undefined) return;
+	const outcome = decideContainerDrop({
+		draggedId: dragged.container.id,
+		targetId,
+		containers: containerSnapshots(),
+	});
+	if (outcome.kind === "move") {
+		dndNotice = null;
+		moveContainer.mutate({
+			path: { id: dragged.container.id },
+			body: { parentContainerId: outcome.parentId },
+		});
+	} else if (outcome.kind === "ignored") {
+		dndNotice = null;
+	} else {
+		dndNotice = outcome.reason;
+	}
+}
 function handleSave(result: typeof saveContainer.result) {
 	if (!result) return;
 	// Errors render inline in the form via `remoteForm.result`; no toast so
@@ -362,23 +456,48 @@ function openEdit(
 				class="min-w-0 space-y-3 xl:h-full xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-1 xl:[scrollbar-gutter:stable]"
 			>
 				<div
-					class="flex items-end justify-between gap-3 border-b bg-background/95 pb-3 backdrop-blur-sm xl:sticky xl:top-0 xl:z-10"
+					class="space-y-3 border-b bg-background/95 pb-3 backdrop-blur-sm xl:sticky xl:top-0 xl:z-10"
 				>
-					<div>
-						<p
-							class="text-xs font-semibold uppercase tracking-[0.16em] text-primary"
-						>
-							Storage map
-						</p>
-						<h2 class="mt-1 font-heading text-xl font-bold">
-							Storage hierarchy
-						</h2>
-						<p class="text-sm text-muted-foreground">
-							{containers.length} location{containers.length === 1 ? "" : "s"} · indented
-							by parent
-						</p>
+					<div class="flex items-end justify-between gap-3">
+						<div>
+							<p
+								class="text-xs font-semibold uppercase tracking-[0.16em] text-primary"
+							>
+								Storage map
+							</p>
+							<h2 class="mt-1 font-heading text-xl font-bold">
+								Storage hierarchy
+							</h2>
+							<p class="text-sm text-muted-foreground">
+								{containers.length} location{containers.length === 1 ? "" : "s"} ·
+								indented by parent
+							</p>
+						</div>
+					</div>
+					<div
+						class="rounded-xl border border-dashed border-border bg-background px-4 py-3 text-sm text-muted-foreground"
+						class:drag-invalid={invalidHover(null)}
+						use:droppable={{
+							container: "root",
+							containerGroup: "container",
+							callbacks: { onDrop: handleContainerDrop },
+						}}
+					>
+						Drop here to move to the top level (Root)
 					</div>
 				</div>
+				<p class="text-sm text-muted-foreground">
+					Drag a location by its grip handle onto another location to move it
+					inside, or onto the top-level zone to make it a root location.
+				</p>
+				{#if dndNotice}
+					<p
+						class="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive"
+						role="status"
+					>
+						{dndNotice}
+					</p>
+				{/if}
 				{#each hierarchyRows as { container, depth } (container.id)}
 					<div
 						class="relative"
@@ -392,9 +511,30 @@ function openEdit(
 							class="inventory-card p-4 transition-colors hover:border-primary/30 {container.archivedAt
 								? 'opacity-65'
 								: ''}"
+							class:drag-invalid={invalidHover(container.id)}
+							use:draggable={{
+								container: `nest:${container.id}`,
+								containerGroup: "container",
+								dragData: { container } satisfies ContainerDragData,
+								handle: ".container-drag-handle",
+								keyboard: true,
+								disabled: Boolean(container.archivedAt),
+							}}
+							use:droppable={{
+								container: `nest:${container.id}`,
+								containerGroup: "container",
+								callbacks: { onDrop: handleContainerDrop },
+							}}
 						>
 							<div class="flex flex-wrap items-start justify-between gap-3">
 								<div class="flex gap-3">
+									{#if !container.archivedAt}<span
+											class="container-drag-handle mt-1 inline-flex shrink-0 cursor-grab text-muted-foreground"
+											role="button"
+											aria-label="Drag to move {container.name}"
+										>
+											<GripVertical class="size-5" aria-hidden="true" />
+										</span>{/if}
 									<div
 										class="grid size-10 place-items-center rounded-lg bg-secondary/20 text-primary"
 									>
@@ -559,3 +699,19 @@ function openEdit(
 		</Sheet.Content>
 	</div>
 </Sheet.Root>
+
+<style>
+/* Drag affordances shared with the loan queue board. */
+:global(.dragging) {
+	opacity: 0.55;
+}
+:global(.drag-over) {
+	outline: 2px dashed var(--color-primary, #1f4f85);
+	outline-offset: 2px;
+}
+/* Refused hover target: the drop machine would not allow this move. */
+:global(.drag-invalid) {
+	outline: 2px solid var(--color-destructive, #c0392b);
+	outline-offset: 2px;
+}
+</style>

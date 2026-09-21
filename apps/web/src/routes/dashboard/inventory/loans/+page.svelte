@@ -19,7 +19,17 @@ import DatePicker from "$lib/components/ui/date-picker.svelte";
 import { Label } from "$lib/components/ui/label";
 import * as Sheet from "$lib/components/ui/sheet";
 import { Textarea } from "$lib/components/ui/textarea";
+import {
+	dndState,
+	draggable,
+	droppable,
+	type DragDropState,
+} from "@thisux/sveltednd";
 import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import {
+	decideLoanDrop,
+	type LoanQueueDropTarget,
+} from "$lib/components/inventory/loan-queue-dnd";
 import { apiErrorMessage } from "$lib/api-error";
 import {
 	ArrowRight,
@@ -28,6 +38,7 @@ import {
 	ClipboardCheck,
 	ClipboardList,
 	Clock3,
+	GripVertical,
 	PackageCheck,
 	RefreshCw,
 	TriangleAlert,
@@ -127,6 +138,120 @@ function refresh() {
 	void queueQuery.refetch();
 }
 
+// Drag-and-drop notice announced in the board's status line. A drop never
+// writes: an allowed drop opens the action sheet below, whose TanStack
+// mutation stays the single write path. Phoenix re-decides under the item
+// lock, so a stale advisory `readyForCheckout` is safe.
+let dndNotice = $state<string | null>(null);
+
+type LoanDragData = {
+	loan: InventoryOperatorLoan;
+	readyForCheckout?: boolean;
+};
+
+// Drag only makes sense on the wide four-column board. Mobile shows one
+// queue at a time through the selector, so there is no other column to drop
+// onto. `isDesktop` tracks the `lg` breakpoint the board uses.
+let isDesktop = $state(false);
+$effect(() => {
+	const media = window.matchMedia("(min-width: 1024px)");
+	isDesktop = media.matches;
+	const onChange = (event: MediaQueryListEvent) => {
+		isDesktop = event.matches;
+	};
+	media.addEventListener("change", onChange);
+	return () => media.removeEventListener("change", onChange);
+});
+
+/**
+ * Whether a card can start a drag at all. Returns carry `checked_out`
+ * loans, which have no forward column (the machine refuses every move, and
+ * recording a return stays on the card button), and overdue loans cannot
+ * move anywhere either, so neither gets a grip handle.
+ */
+function canDragLoan(loan: InventoryOperatorLoan, kind: string): boolean {
+	if (kind === "return" || loan.overdue) return false;
+	return isDesktop;
+}
+
+function columnForLoanId(id: string): LoanQueueDropTarget | undefined {
+	const data = queueQuery.data;
+	if (!data) return undefined;
+	if (data.pendingRequests.rows.some((loan) => loan.id === id))
+		return "requests";
+	if (data.handoversDue.rows.some((loan) => loan.id === id)) return "handovers";
+	if (data.returnsAndOverdue.rows.some((loan) => loan.id === id))
+		return "returns";
+	return undefined;
+}
+
+function resolveDropTarget(
+	targetContainer: string,
+): LoanQueueDropTarget | undefined {
+	if (
+		targetContainer === "requests" ||
+		targetContainer === "handovers" ||
+		targetContainer === "returns" ||
+		targetContainer === "maintenance"
+	) {
+		return targetContainer;
+	}
+	if (targetContainer.startsWith("card:")) {
+		return columnForLoanId(targetContainer.slice("card:".length));
+	}
+	return undefined;
+}
+
+function handleLoanDrop(state: DragDropState<LoanDragData>) {
+	const dragged = state.draggedItem;
+	if (!dragged || !state.targetContainer) return;
+	const toColumn = resolveDropTarget(state.targetContainer);
+	if (!toColumn) return;
+	const outcome = decideLoanDrop({
+		fromStatus: dragged.loan.status,
+		toColumn,
+		readyForCheckout: dragged.readyForCheckout,
+	});
+	if (outcome.kind === "openAction") {
+		dndNotice = null;
+		selectedTrigger = null;
+		choose(
+			dragged.loan,
+			outcome.action === "checkout"
+				? (dragged.readyForCheckout ?? false)
+				: false,
+		);
+	} else if (outcome.kind === "ignored") {
+		dndNotice = null;
+	} else {
+		dndNotice = outcome.reason;
+	}
+}
+
+/**
+ * Whether `column` is currently hovered with a loan the machine would not
+ * act on. Drives the red `drag-invalid` outline so a disallowed hover reads
+ * before the drop. Card hovers resolve through their column, so hovering a
+ * card inside a refused column counts too.
+ */
+function invalidHover(column: LoanQueueDropTarget): boolean {
+	if (!dndState.isDragging) return false;
+	if (!dndState.targetContainer) return false;
+	const toColumn = resolveDropTarget(dndState.targetContainer);
+	if (toColumn !== column) return false;
+	// SAFETY: every draggable on this board sets dragData to LoanDragData;
+	// anything else means no drag started here and there is nothing to judge.
+	const dragged = dndState.draggedItem as LoanDragData | undefined;
+	if (!dragged?.loan) return false;
+	return (
+		decideLoanDrop({
+			fromStatus: dragged.loan.status,
+			toColumn,
+			readyForCheckout: dragged.readyForCheckout,
+		}).kind !== "openAction"
+	);
+}
+
 function mutationOptions(fallback: string) {
 	return {
 		onSuccess: () => {
@@ -190,10 +315,35 @@ const busy = $derived(
 	kind: "request" | "handover" | "return",
 	readyForCheckout = false,
 )}
-	<article class="inventory-card p-4">
+	<article
+		class="inventory-card p-4"
+		use:draggable={{
+			container:
+				kind === "request"
+					? "requests"
+					: kind === "handover"
+						? "handovers"
+						: "returns",
+			dragData: { loan, readyForCheckout } satisfies LoanDragData,
+			handle: ".loan-drag-handle",
+			keyboard: true,
+			disabled: !canDragLoan(loan, kind),
+		}}
+		use:droppable={{
+			container: `card:${loan.id}`,
+			callbacks: { onDrop: handleLoanDrop },
+		}}
+	>
 		<div class="flex items-start justify-between gap-3">
 			<div class="min-w-0">
 				<div class="flex items-start gap-3">
+					{#if canDragLoan(loan, kind)}<span
+							class="loan-drag-handle mt-1 hidden shrink-0 cursor-grab text-muted-foreground lg:inline-flex"
+							role="button"
+							aria-label="Drag to move {loan.itemLabel}"
+						>
+							<GripVertical class="size-5" aria-hidden="true" />
+						</span>{/if}
 					<div
 						class="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary"
 					>
@@ -360,13 +510,33 @@ const busy = $derived(
 				</span>
 			</div>
 		</div>
+		<p class="hidden text-sm text-muted-foreground lg:block">
+			On wide screens you can drag a card by its grip handle to another column:
+			a request to Ready for handover approves it, an approved loan to Returns
+			checks it out. Every drop opens the action panel to confirm; nothing moves
+			until you confirm. Returns and overdue loans have no handle because they
+			cannot move to another column.
+		</p>
 		<div
 			class="grid items-start gap-4 lg:grid-cols-[repeat(4,minmax(20rem,1fr))] lg:overflow-x-auto lg:pb-2"
 			data-testid="loan-queue-board"
 		>
+			{#if dndNotice}
+				<p
+					class="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive lg:col-span-4"
+					role="status"
+				>
+					{dndNotice}
+				</p>
+			{/if}
 			<section
 				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
 				class:hidden={activeQueue !== "requests"}
+				class:drag-invalid={invalidHover("requests")}
+				use:droppable={{
+					container: "requests",
+					callbacks: { onDrop: handleLoanDrop },
+				}}
 			>
 				{@render bucket(
 					"Requests",
@@ -384,6 +554,11 @@ const busy = $derived(
 			<section
 				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
 				class:hidden={activeQueue !== "handovers"}
+				class:drag-invalid={invalidHover("handovers")}
+				use:droppable={{
+					container: "handovers",
+					callbacks: { onDrop: handleLoanDrop },
+				}}
 			>
 				{@render bucket(
 					"Ready for handover",
@@ -410,6 +585,11 @@ const busy = $derived(
 			<section
 				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
 				class:hidden={activeQueue !== "returns"}
+				class:drag-invalid={invalidHover("returns")}
+				use:droppable={{
+					container: "returns",
+					callbacks: { onDrop: handleLoanDrop },
+				}}
 			>
 				{@render bucket(
 					"Returns and overdue",
@@ -427,7 +607,12 @@ const busy = $derived(
 			<section
 				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
 				class:hidden={activeQueue !== "maintenance"}
+				class:drag-invalid={invalidHover("maintenance")}
 				data-testid="open-maintenance-bucket"
+				use:droppable={{
+					container: "maintenance",
+					callbacks: { onDrop: handleLoanDrop },
+				}}
 			>
 				{@render bucket(
 					"Open maintenance",
@@ -693,3 +878,19 @@ const busy = $derived(
 		</Sheet.Content>
 	</Sheet.Root>
 </div>
+
+<style>
+/* Drag affordances shared with the sveltednd prototype (variant C). */
+:global(.dragging) {
+	opacity: 0.55;
+}
+:global(.drag-over) {
+	outline: 2px dashed var(--color-primary, #1f4f85);
+	outline-offset: 2px;
+}
+/* Refused hover column: the drop machine would not act on this move. */
+:global(.drag-invalid) {
+	outline: 2px solid var(--color-destructive, #c0392b);
+	outline-offset: 2px;
+}
+</style>
