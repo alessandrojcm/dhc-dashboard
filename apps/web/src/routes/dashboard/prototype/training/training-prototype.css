@@ -1,0 +1,533 @@
+/* PROTOTYPE — throwaway. Status colours and chip styles shared by every Training calendar variant. */
+
+.tr-event {
+	width: 100%;
+	min-width: 0;
+	border: 1px solid hsl(var(--border) / 0.78);
+	border-left-width: 3px;
+	border-radius: 0.625rem;
+	background: hsl(var(--card));
+	padding: 0.45rem 0.6rem;
+	color: hsl(var(--foreground));
+	box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+	transition:
+		border-color 180ms ease,
+		box-shadow 180ms ease,
+		background-color 180ms ease;
+}
+
+.workshop-calendar-event:hover .tr-event {
+	border-color: hsl(var(--primary) / 0.5);
+	box-shadow: 0 4px 10px rgb(0 0 0 / 8%);
+}
+
+.tr-event-meta,
+.tr-event-footer {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.375rem;
+	color: hsl(var(--muted-foreground));
+	font-size: 0.625rem;
+	font-weight: 800;
+	letter-spacing: 0.06em;
+	line-height: 1.2;
+	text-transform: uppercase;
+}
+
+.tr-event-footer {
+	margin-top: 0.35rem;
+	font-weight: 600;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+.tr-event-meta time {
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0;
+}
+
+.tr-event-status {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	gap: 0.3rem;
+}
+
+.tr-event-dot,
+.tr-dot {
+	width: 0.5rem;
+	height: 0.5rem;
+	flex: none;
+	border-radius: 9999px;
+	background: var(--tr-status, hsl(var(--muted-foreground)));
+}
+
+.tr-event-title {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	margin-top: 0.25rem;
+	font-size: 0.75rem;
+	font-weight: 800;
+	line-height: 1.25;
+}
+
+.tr-event--struck .tr-event-title {
+	text-decoration: line-through;
+	color: hsl(var(--muted-foreground));
+}
+
+.tr-marker {
+	border: 1px solid currentColor;
+	border-radius: 9999px;
+	padding: 0.1rem 0.3rem;
+	font-size: 0.5625rem;
+	font-weight: 800;
+	text-transform: uppercase;
+}
+
+/* status colours — shared token per state */
+.tr-event--default,
+.tr-dot--default,
+.tr-pill--default {
+	--tr-status: hsl(var(--primary));
+}
+.tr-event--overridden,
+.tr-dot--overridden,
+.tr-pill--overridden {
+	--tr-status: hsl(var(--secondary));
+}
+.tr-event--suppressed,
+.tr-dot--suppressed,
+.tr-pill--suppressed,
+.tr-event--skipped,
+.tr-dot--skipped,
+.tr-pill--skipped {
+	--tr-status: hsl(var(--muted-foreground));
+}
+.tr-event--disabled,
+.tr-dot--disabled,
+.tr-pill--disabled {
+	--tr-status: hsl(var(--muted-foreground) / 0.6);
+}
+.tr-event--bank_holiday,
+.tr-dot--bank_holiday,
+.tr-pill--bank_holiday {
+	--tr-status: hsl(var(--destructive));
+}
+.tr-event--delivered,
+.tr-dot--delivered,
+.tr-pill--delivered {
+	--tr-status: hsl(142 60% 40%);
+}
+.tr-event--thread_failed,
+.tr-dot--thread_failed,
+.tr-pill--thread_failed {
+	--tr-status: hsl(38 92% 45%);
+}
+.tr-event--message_uncertain,
+.tr-dot--message_uncertain,
+.tr-pill--message_uncertain {
+	--tr-status: hsl(280 60% 50%);
+}
+.tr-event--blocked,
+.tr-dot--blocked,
+.tr-pill--blocked,
+.tr-event--missed,
+.tr-dot--missed,
+.tr-pill--missed {
+	--tr-status: hsl(var(--destructive));
+}
+
+.tr-event {
+	border-left-color: var(--tr-status);
+	background: color-mix(in oklab, var(--tr-status) 7%, hsl(var(--card)));
+}
+
+.tr-event--announcement {
+	--tr-status: hsl(var(--destructive));
+	border-style: dashed;
+}
+
+.tr-event--delivered,
+.tr-event--skipped {
+	opacity: 0.75;
+}
+
+.tr-pill {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35rem;
+	border-radius: 9999px;
+	padding: 0.15rem 0.6rem;
+	font-size: 0.6875rem;
+	font-weight: 800;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+	color: var(--tr-status);
+	background: color-mix(in oklab, var(--tr-status) 12%, transparent);
+}
+
+/* --- copied from workshop-calendar.svelte (component-scoped :global there, so not reusable without mounting it) --- */
+
+.workshop-calendar {
+	--ec-bg-color: hsl(var(--card));
+	--ec-border-color: hsl(var(--border) / 0.72);
+	--ec-button-bg-color: hsl(var(--background));
+	--ec-button-border-color: hsl(var(--border));
+	--ec-button-text-color: hsl(var(--foreground));
+	--ec-today-bg-color: hsl(var(--secondary) / 0.12);
+	width: 100%;
+	border: 0;
+	background: hsl(var(--card));
+	color: hsl(var(--foreground));
+	font-family: inherit;
+}
+
+.workshop-calendar .workshop-calendar-toolbar {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 1rem;
+	align-items: center;
+	padding: 1.25rem;
+	border-bottom: 1px solid hsl(var(--border) / 0.72);
+	background:
+		linear-gradient(90deg, hsl(var(--primary) / 0.08), transparent 58%),
+		hsl(var(--card));
+}
+
+.workshop-calendar .ec-center:empty {
+	display: none;
+}
+
+.workshop-calendar .ec-end {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.75rem;
+}
+
+.workshop-calendar .workshop-calendar-title {
+	font-family: var(--font-heading), serif;
+	font-size: 1.5rem;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+	color: hsl(var(--foreground));
+}
+
+.workshop-calendar .workshop-calendar-control-group {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.workshop-calendar .workshop-calendar-control {
+	display: inline-flex;
+	min-width: 2.75rem;
+	min-height: 2.75rem;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid hsl(var(--border));
+	border-radius: 0.75rem;
+	background: hsl(var(--background));
+	padding: 0.625rem 0.875rem;
+	color: hsl(var(--foreground));
+	font-size: 0.875rem;
+	font-weight: 700;
+	box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+	cursor: pointer;
+	transition:
+		border-color 180ms ease,
+		background-color 180ms ease,
+		color 180ms ease,
+		box-shadow 180ms ease;
+}
+
+.workshop-calendar .workshop-calendar-control:hover {
+	border-color: hsl(var(--primary) / 0.45);
+	background: hsl(var(--primary) / 0.08);
+	color: hsl(var(--primary));
+}
+
+.workshop-calendar .workshop-calendar-control:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 2px;
+}
+
+.workshop-calendar .workshop-calendar-weekdays {
+	border-bottom: 1px solid hsl(var(--border) / 0.72);
+	background: hsl(var(--muted) / 0.45);
+}
+
+.workshop-calendar .workshop-calendar-weekdays .workshop-calendar-day {
+	display: flex;
+	min-height: 2.75rem;
+	align-items: center;
+	justify-content: center;
+	border-right: 1px solid hsl(var(--border) / 0.72);
+	color: hsl(var(--muted-foreground));
+	font-size: 0.6875rem;
+	font-weight: 800;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+}
+
+.workshop-calendar .workshop-calendar-body .workshop-calendar-day {
+	min-height: 7.5rem;
+	border-right: 1px solid hsl(var(--border) / 0.72);
+	border-bottom: 1px solid hsl(var(--border) / 0.72);
+	background: hsl(var(--card));
+	transition: background-color 180ms ease;
+}
+
+.workshop-calendar .workshop-calendar-body .workshop-calendar-day:hover {
+	background: hsl(var(--muted) / 0.2);
+}
+
+.workshop-calendar .workshop-calendar-body .workshop-calendar-day.ec-sat,
+.workshop-calendar .workshop-calendar-body .workshop-calendar-day.ec-sun {
+	background: hsl(var(--muted) / 0.12);
+}
+
+.workshop-calendar .workshop-calendar-day-number {
+	display: flex;
+	justify-content: flex-end;
+	border: 0;
+	background: transparent;
+	padding: 0.625rem 0.75rem 0.375rem;
+	color: hsl(var(--foreground));
+	font-size: 0.75rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+
+.workshop-calendar .workshop-calendar-day-number time {
+	display: inline-flex;
+	width: 1.75rem;
+	height: 1.75rem;
+	align-items: center;
+	justify-content: center;
+	border-radius: 9999px;
+}
+
+.workshop-calendar
+	.workshop-calendar-today
+	.workshop-calendar-day
+	.workshop-calendar-day-number
+	time {
+	background: hsl(var(--primary));
+	color: hsl(var(--primary-foreground));
+	box-shadow: 0 0 0 3px hsl(var(--secondary) / 0.35);
+}
+
+.workshop-calendar .workshop-calendar-body .workshop-calendar-other-month {
+	background: hsl(var(--muted) / 0.28);
+}
+
+.workshop-calendar
+	.workshop-calendar-other-month
+	.workshop-calendar-day-number {
+	color: hsl(var(--muted-foreground) / 0.48);
+}
+
+.workshop-calendar .workshop-calendar-event {
+	margin: 0 0.375rem 0.375rem;
+	border: 0 !important;
+	background: transparent !important;
+	color: inherit !important;
+	box-shadow: none !important;
+	cursor: pointer;
+}
+
+.workshop-calendar .workshop-calendar-event-body {
+	padding: 0;
+}
+
+.workshop-event {
+	width: 100%;
+	min-width: 0;
+	border: 1px solid hsl(var(--border) / 0.78);
+	border-left-width: 3px;
+	border-radius: 0.625rem;
+	background: hsl(var(--card));
+	padding: 0.5rem 0.625rem;
+	color: hsl(var(--foreground));
+	box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+	transition:
+		border-color 180ms ease,
+		box-shadow 180ms ease,
+		background-color 180ms ease;
+}
+
+.workshop-calendar-event:hover .workshop-event {
+	border-color: hsl(var(--primary) / 0.5);
+	background: hsl(var(--primary) / 0.04);
+	box-shadow: 0 4px 10px rgb(0 0 0 / 8%);
+}
+
+.workshop-calendar-event:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 1px;
+}
+
+.workshop-event--planned {
+	border-left-color: hsl(var(--secondary));
+	background: hsl(var(--secondary) / 0.08);
+}
+
+.workshop-event--published {
+	border-left-color: hsl(var(--primary));
+	background: hsl(var(--primary) / 0.055);
+}
+
+.workshop-event--finished {
+	border-left-color: hsl(var(--muted-foreground));
+	background: hsl(var(--muted) / 0.28);
+}
+
+.workshop-event--cancelled {
+	border-left-color: hsl(var(--destructive));
+	background: hsl(var(--destructive) / 0.055);
+}
+
+.workshop-event-meta,
+.workshop-event-footer {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.375rem;
+}
+
+.workshop-event-meta {
+	color: hsl(var(--muted-foreground));
+	font-size: 0.625rem;
+	font-weight: 800;
+	letter-spacing: 0.06em;
+	line-height: 1.2;
+	text-transform: uppercase;
+}
+
+.workshop-event-meta time {
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0;
+}
+
+.workshop-event-status {
+	display: inline-flex;
+	min-width: 0;
+	align-items: center;
+	gap: 0.3rem;
+}
+
+.workshop-event-status-dot {
+	width: 0.45rem;
+	height: 0.45rem;
+	flex: none;
+	border-radius: 9999px;
+	background: hsl(var(--muted-foreground));
+}
+
+.workshop-event--planned .workshop-event-status-dot {
+	background: hsl(var(--secondary));
+}
+
+.workshop-event--published .workshop-event-status-dot {
+	background: hsl(var(--primary));
+}
+
+.workshop-event--cancelled .workshop-event-status-dot {
+	background: hsl(var(--destructive));
+}
+
+.workshop-event-title {
+	display: -webkit-box;
+	overflow: hidden;
+	line-clamp: 2;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	margin-top: 0.3rem;
+	font-size: 0.75rem;
+	font-weight: 800;
+	line-height: 1.25;
+}
+
+.workshop-event-footer {
+	margin-top: 0.4rem;
+	color: hsl(var(--muted-foreground));
+	font-size: 0.625rem;
+	font-weight: 600;
+	line-height: 1.2;
+}
+
+.workshop-public-marker {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	border: 1px solid currentColor;
+	border-radius: 9999px;
+	padding: 0.1rem 0.3rem;
+	font-size: 0.5625rem;
+	font-weight: 800;
+	line-height: 1;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+
+.workshop-calendar .ec-more-link {
+	display: inline-flex;
+	min-height: 2rem;
+	align-items: center;
+	margin: 0 0.375rem 0.375rem;
+	border-radius: 0.5rem;
+	padding: 0.25rem 0.5rem;
+	color: hsl(var(--primary));
+	font-size: 0.6875rem;
+	font-weight: 800;
+	text-decoration: none;
+	transition:
+		background-color 180ms ease,
+		color 180ms ease;
+}
+
+.workshop-calendar .ec-more-link:hover {
+	background: hsl(var(--primary) / 0.1);
+}
+
+.workshop-calendar .ec-more-link:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 1px;
+}
+
+.workshop-calendar .workshop-calendar-popup {
+	border: 1px solid hsl(var(--border));
+	border-radius: 1rem;
+	background: hsl(var(--popover));
+	color: hsl(var(--popover-foreground));
+	box-shadow: 0 14px 30px rgb(0 0 0 / 14%);
+}
+
+@media (max-width: 900px) {
+	.workshop-calendar .workshop-calendar-toolbar {
+		grid-template-columns: 1fr;
+	}
+
+	.workshop-calendar .ec-end {
+		justify-content: space-between;
+	}
+
+	.workshop-event-footer {
+		display: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.workshop-calendar *,
+	.workshop-calendar *::before,
+	.workshop-calendar *::after {
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
+}
