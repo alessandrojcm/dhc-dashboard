@@ -15,28 +15,18 @@ import { Label } from "$lib/components/ui/label";
 import { Switch } from "$lib/components/ui/switch";
 import { Textarea } from "$lib/components/ui/textarea";
 import dayjs from "dayjs";
-import {
-	Ban,
-	CalendarOff,
-	Check,
-	ExternalLink,
-	Pencil,
-	Plus,
-	Trash2,
-} from "@lucide/svelte";
+import { Ban, CalendarOff, Pencil, Plus, Trash2 } from "@lucide/svelte";
 import DiscordPreview from "./discord-preview.svelte";
+import OccurrenceInspector from "./occurrence-inspector.svelte";
 import TrainingFormFields from "./training-form-fields.svelte";
 import {
 	ANNOUNCEMENT_CHANNEL,
 	CHANNEL,
-	DELIVERY_LABEL,
 	HOLIDAYS,
 	KIND_LABEL,
 	STATUS_LABEL,
 	TODAY,
 	announcementsBetween,
-	decisionLabel,
-	formatLongDate,
 	formatRange,
 	occurrencesBetween,
 	resolveOccurrence,
@@ -264,33 +254,6 @@ const options = $derived({
 	}),
 });
 
-const PRECEDENCE = [
-	{
-		id: "bank_holiday",
-		label: "Irish bank holiday",
-		note: "Cannot be overridden",
-	},
-	{ id: "disabled", label: "Training disabled" },
-	{ id: "suppressed", label: "Training Suppression" },
-	{ id: "overridden", label: "Training Override" },
-	{ id: "default", label: "Training defaults" },
-] as const;
-
-function precedenceState(
-	o: Occurrence,
-	step: (typeof PRECEDENCE)[number]["id"],
-) {
-	const order = PRECEDENCE.map((p) => p.id);
-	const winner = order.indexOf(o.decision);
-	const index = order.indexOf(step);
-	if (index === winner) return "won";
-	if (index < winner) return "passed";
-	// A later rule that would have applied had the winner not.
-	if (step === "overridden" && o.override) return "shadowed";
-	if (step === "suppressed" && o.suppression) return "shadowed";
-	return "unreached";
-}
-
 function startOverride(o: Occurrence) {
 	overrideDraft = {
 		trainingId: o.training.id,
@@ -486,172 +449,13 @@ const overridePreview = $derived.by(() => {
 </div>
 
 <!-- Occurrence inspector -->
-<Dialog.Root bind:open={inspectorOpen}>
-	<Dialog.Content
-		class="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-3xl"
-	>
-		{#if inspected}
-			{@const status = statusOf(inspected)}
-			<Dialog.Header>
-				<p class="text-xs font-bold tracking-[0.14em] text-primary uppercase">
-					{KIND_LABEL[inspected.training.kind]} · {formatLongDate(
-						inspected.date,
-					)} · {inspected.startTime} · {CHANNEL[inspected.training.kind]}
-				</p>
-				<Dialog.Title class="flex flex-wrap items-center gap-2 text-2xl">
-					{inspected.title}
-					<span class="tr-pill tr-pill--{status}"
-						>{STATUS_LABEL[status] ?? status}</span
-					>
-				</Dialog.Title>
-				<Dialog.Description>
-					{#if inspected.past && inspected.delivery}
-						{DELIVERY_LABEL[inspected.delivery.state]}
-						{#if inspected.delivery.at}at {dayjs(inspected.delivery.at).format(
-								"HH:mm:ss",
-							)}{/if}
-						{#if inspected.delivery.reason}
-							— {inspected.delivery.reason}{/if}
-					{:else if inspected.willPost}
-						Will post at {inspected.startTime} Europe/Dublin. Snapshot freezes at
-						that moment; edits after it affect later dates only.
-					{:else}
-						Nothing will post on this date — {decisionLabel(
-							inspected.decision,
-							inspected.holiday,
-						).toLowerCase()}.
-					{/if}
-				</Dialog.Description>
-			</Dialog.Header>
-
-			<div class="grid gap-5 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
-				<div>
-					<p
-						class="mb-2 text-xs font-bold tracking-[0.14em] text-muted-foreground uppercase"
-					>
-						Why this outcome
-					</p>
-					<ol class="space-y-1">
-						{#each PRECEDENCE as step (step.id)}
-							{@const state = precedenceState(inspected, step.id)}
-							<li class="tr-rule tr-rule--{state}">
-								<span class="tr-rule-mark" aria-hidden="true">
-									{#if state === "won"}<Check
-											class="size-3.5"
-										/>{:else if state === "passed"}—{:else}·{/if}
-								</span>
-								<span class="min-w-0">
-									<span class="block text-sm font-semibold">{step.label}</span>
-									{#if state === "won" && step.id === "suppressed" && inspected.suppression}
-										<span class="block text-xs text-muted-foreground"
-											>{formatRange(
-												inspected.suppression.from,
-												inspected.suppression.to,
-											)}{inspected.suppression.note
-												? ` · ${inspected.suppression.note}`
-												: ""}</span
-										>
-									{:else if (state === "won" || state === "shadowed") && step.id === "overridden" && inspected.override}
-										<span class="block text-xs text-muted-foreground"
-											>{formatRange(
-												inspected.override.from,
-												inspected.override.to,
-											)}{state === "shadowed"
-												? " · stored, not applied"
-												: ""}</span
-										>
-									{:else if state === "won" && step.id === "bank_holiday" && inspected.holiday}
-										<span class="block text-xs text-muted-foreground"
-											>{inspected.holiday.name}{"note" in step
-												? ` · ${step.note}`
-												: ""}</span
-										>
-									{/if}
-								</span>
-							</li>
-						{/each}
-					</ol>
-				</div>
-				<div class="space-y-3">
-					<p
-						class="text-xs font-bold tracking-[0.14em] text-muted-foreground uppercase"
-					>
-						{inspected.past ? "What was posted" : "What will post"}
-					</p>
-					<DiscordPreview
-						channel={CHANNEL[inspected.training.kind]}
-						rendered={inspected.rendered}
-						threadName={inspected.threadName}
-						muted={!inspected.willPost}
-					/>
-					{#if inspected.past && inspected.delivery && inspected.delivery.messageId}
-						<dl class="grid grid-cols-2 gap-2 text-xs">
-							<div class="rounded-lg border px-3 py-2">
-								<dt class="text-muted-foreground">Message id</dt>
-								<dd class="font-mono">{inspected.delivery.messageId}</dd>
-							</div>
-							<div class="rounded-lg border px-3 py-2">
-								<dt class="text-muted-foreground">Thread id</dt>
-								<dd class="font-mono">
-									{inspected.delivery.threadId ?? "— none"}
-								</dd>
-							</div>
-						</dl>
-					{/if}
-				</div>
-			</div>
-
-			<Dialog.Footer class="flex-wrap gap-2 sm:justify-between">
-				<div class="flex flex-wrap gap-2">
-					{#if !inspected.past && inspected.decision !== "bank_holiday"}
-						{#if inspected.suppression}
-							<Button
-								variant="outline"
-								onclick={() => {
-									store.unsuppress(inspected.suppression!.id);
-								}}
-							>
-								<CalendarOff aria-hidden="true" /> Remove suppression
-							</Button>
-						{:else if inspected.decision !== "disabled"}
-							<Button
-								variant="outline"
-								onclick={() => startSuppress(inspected)}
-							>
-								<CalendarOff aria-hidden="true" /> Skip this date
-							</Button>
-						{/if}
-						{#if inspected.override}
-							<Button
-								variant="outline"
-								onclick={() => {
-									store.removeOverride(inspected.override!.id);
-								}}
-							>
-								Remove override
-							</Button>
-						{:else}
-							<Button
-								variant="outline"
-								onclick={() => startOverride(inspected)}
-							>
-								<Pencil aria-hidden="true" /> Change copy for this date
-							</Button>
-						{/if}
-					{/if}
-					{#if inspected.past && inspected.delivery?.messageId}
-						<Button variant="ghost" class="text-muted-foreground"
-							><ExternalLink aria-hidden="true" /> Open in Discord</Button
-						>
-					{/if}
-				</div>
-				<Button variant="ghost" onclick={() => openEdit(inspected.training)}
-					>Edit Training defaults</Button
-				>
-			</Dialog.Footer>
-		{/if}
-	</Dialog.Content>
-</Dialog.Root>
+<OccurrenceInspector
+	bind:open={inspectorOpen}
+	occurrence={inspected}
+	onSkip={startSuppress}
+	onOverride={startOverride}
+	onEditTraining={openEdit}
+/>
 
 <!-- Suppress range -->
 <Dialog.Root
@@ -855,45 +659,5 @@ const overridePreview = $derived.by(() => {
 		hsl(var(--destructive) / 0.06) 0 6px,
 		transparent 6px 12px
 	);
-}
-
-.tr-rule {
-	display: flex;
-	gap: 0.6rem;
-	align-items: flex-start;
-	border-radius: 0.6rem;
-	padding: 0.45rem 0.6rem;
-	color: hsl(var(--muted-foreground));
-}
-
-.tr-rule-mark {
-	display: inline-flex;
-	width: 1.25rem;
-	height: 1.25rem;
-	flex: none;
-	align-items: center;
-	justify-content: center;
-	border-radius: 9999px;
-	border: 1px solid hsl(var(--border));
-	font-size: 0.75rem;
-}
-
-.tr-rule--won {
-	color: hsl(var(--foreground));
-	background: hsl(var(--primary) / 0.08);
-}
-
-.tr-rule--won .tr-rule-mark {
-	border-color: hsl(var(--primary));
-	background: hsl(var(--primary));
-	color: hsl(var(--primary-foreground));
-}
-
-.tr-rule--shadowed {
-	text-decoration: line-through;
-}
-
-.tr-rule--unreached {
-	opacity: 0.55;
 }
 </style>

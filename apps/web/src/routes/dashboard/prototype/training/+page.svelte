@@ -1,6 +1,6 @@
 <!--
 	PROTOTYPE — throwaway (ALE-310)
-	Three structurally different Training calendar workflows on the throwaway
+	Three structurally different Training calendar workflows (plus D, the hybrid asked for after round one) on the throwaway
 	`/dashboard/prototype/training` route, switchable via `?variant=`. All three use
 	@event-calendar/core in the workshop-calendar visual language and share one
 	in-memory Training store and one copy renderer. Nothing here talks to Phoenix.
@@ -12,11 +12,13 @@ import "./training-prototype.css";
 import VariantA from "./variant-a-month-grid.svelte";
 import VariantB from "./variant-b-rail-week.svelte";
 import VariantC from "./variant-c-post-feed.svelte";
+import VariantD from "./variant-d-hybrid.svelte";
 
 const variants = [
 	{ id: "A", label: "A — Month grid + occurrence inspector" },
 	{ id: "B", label: "B — Trainings rail + week timeline" },
 	{ id: "C", label: "C — Post feed" },
+	{ id: "D", label: "D — Hybrid: B layout + A inspector + Month/Week" },
 ];
 
 const rawVariant = $derived(page.url.searchParams.get("variant") ?? "A");
@@ -56,6 +58,8 @@ const current = $derived(
 			<VariantB />
 		{:else if current === "C"}
 			<VariantC />
+		{:else if current === "D"}
+			<VariantD />
 		{:else}
 			<VariantA />
 		{/if}

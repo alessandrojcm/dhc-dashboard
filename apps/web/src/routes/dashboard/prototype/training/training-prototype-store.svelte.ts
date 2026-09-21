@@ -193,6 +193,22 @@ class TrainingStore {
 			attempted: true,
 		},
 		{
+			id: "t-monday-beginners",
+			kind: "roll_call",
+			title: "Beginners roll call {{date}}",
+			message:
+				"Beginners course tonight ({{date}}) — who is coming? Doors {{startTime}}, loaner gear provided.",
+			everyone: false,
+			enabled: true,
+			schedule: {
+				type: "weekly",
+				weekday: 1,
+				startTime: "09:00",
+				endTime: "09:15",
+			},
+			attempted: true,
+		},
+		{
 			id: "t-thursday",
 			kind: "roll_call",
 			title: PRESETS.roll_call.title,
