@@ -3,7 +3,8 @@
 **Status:** Decided (wayfinder grilling, 2026-09-21)  
 **Ticket:** ALE-309 — part of the map *Specify dashboard-owned Discord Training notifications* (ALE-305)  
 **Depends on:** ALE-306 (Discord delivery and thread constraints), ALE-308 (Training recurrence and exception semantics)  
-**Scope:** Delivery identity, state progression, failure policy, rendering, routing, and scheduling of one Discord notification per Training Occurrence. Module placement, API shape, holiday announcements, retention and cutover belong to later tickets.
+**Scope:** Delivery identity, state progression, failure policy, rendering, routing, and scheduling of one Discord notification per Training Occurrence. Module placement, API shape, holiday announcements, retention and cutover belong to later tickets.  
+**Naming (ALE-311):** read *Training* as **Training Announcement**, *Training Occurrence* as **Announcement Occurrence**, and *Discord Training Delivery* as **Discord Announcement Delivery** — see the rename table in `docs/ale-311-training-announcements-boundary.md`.
 
 ## Scale assumption
 
