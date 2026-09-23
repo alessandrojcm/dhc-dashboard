@@ -63,7 +63,7 @@ defmodule Dhc.Inventory.OperatorLoans do
   import Ecto.Query
 
   alias Dhc.Inventory.AvailabilityCommands
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.LoanProjection
   alias Dhc.Repo

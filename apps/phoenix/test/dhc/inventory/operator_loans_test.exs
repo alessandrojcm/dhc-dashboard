@@ -30,7 +30,7 @@ defmodule Dhc.Inventory.OperatorLoansTest do
 
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Repo
 
   describe "approve" do

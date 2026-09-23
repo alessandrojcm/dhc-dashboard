@@ -6,7 +6,7 @@ defmodule Dhc.DevSeeds do
   alias Dhc.Auth.{Principal, UserRole}
   alias Dhc.Invitations.Repository, as: InvitationRepository
   alias Dhc.Inventory
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile

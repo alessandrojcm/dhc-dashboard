@@ -86,7 +86,7 @@ defmodule Dhc.Inventory.AvailabilityCommands do
 
   import Ecto.Query
 
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemGuards
   alias Dhc.Inventory.ItemProjection

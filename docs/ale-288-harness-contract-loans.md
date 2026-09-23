@@ -41,8 +41,8 @@
   never duplicates the logic)
 - `apps/phoenix/lib/dhc/inventory/loan_notifications.ex` (post-commit keyed
   notifications; ALE-298 — named only to mark the boundary, see Non-goals)
-- `apps/phoenix/lib/dhc/inventory/club_calendar.ex` (`today/0`, `on_date/1`,
-  `Europe/Dublin`)
+- `apps/phoenix/lib/dhc/club_calendar.ex` (`today/0`, `on_date/1`, `to_utc/2`,
+  `Europe/Dublin`, Irish bank-holiday cache)
 - `apps/phoenix/lib/dhc/inventory/loan.ex` (schema: `requested_start_on`,
   `requested_due_on`, `approved_start_on`, `approved_due_on`,
   `approved_container_path_snapshot`, snapshots)

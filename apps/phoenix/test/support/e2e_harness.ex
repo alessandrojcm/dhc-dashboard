@@ -19,7 +19,7 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Inventory.MaintenancePeriod
   alias Dhc.Inventory.MemberCatalog
   alias Dhc.Inventory.MemberLoans
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
   alias Dhc.MemberProfiles.MemberProfile
@@ -786,7 +786,7 @@ defmodule Dhc.E2EHarness do
     end
 
     note = Map.get(attrs, "note")
-    today = Dhc.Inventory.ClubCalendar.today()
+    today = Dhc.ClubCalendar.today()
     {starts_on, due_on} = loan_default_dates!(attrs, today)
     [first_borrower, second_borrower] = borrower_ids
 
