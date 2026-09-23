@@ -32,6 +32,13 @@
   ],
   calls: [
     forbidden: [
+      {"Dhc.TrainingAnnouncements.*",
+       ["Dhc.Workshops.*", "Dhc.WorkshopAnnouncements.*", "Dhc.Discord.Worker"]},
+      {"Dhc.Workshops.*", ["Dhc.TrainingAnnouncements.*"]},
+      # Training Announcements jobs are written in one place (ALE-311):
+      # only Scheduling may insert Oban jobs.
+      {"Dhc.TrainingAnnouncements.*", ["Oban.insert", "Oban.insert!", "Oban.insert_all"],
+       except: ["Dhc.TrainingAnnouncements.Scheduling"]},
       # Stripe goes through the generated Dhc.Stripe.Operations.* API only;
       # the raw client escape hatch is reserved for debugging the client
       # boundary itself (docs/agents/anti-patterns.md).
