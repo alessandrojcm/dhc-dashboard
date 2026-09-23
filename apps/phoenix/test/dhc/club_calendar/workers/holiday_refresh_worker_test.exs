@@ -4,8 +4,11 @@ defmodule Dhc.ClubCalendar.Workers.HolidayRefreshWorkerTest do
 
   The worker refreshes the current and next Dublin year and always
   succeeds: a failed year keeps its cached rows and is repaired by the
-  next pass. HTTP is stubbed with Bypass, prior art: the Discord worker
-  tests. `async: false`: the tests repoint global application env per test.
+  The worker refreshes the current and next Dublin year and always
+  succeeds: a failed year keeps its cached rows and is repaired by the
+  next pass. HTTP is stubbed with Bypass (Bypass prior art: the Discord
+  worker tests). `async: false`: the tests repoint global application env
+  per test.
   """
 
   use Dhc.DataCase, async: false

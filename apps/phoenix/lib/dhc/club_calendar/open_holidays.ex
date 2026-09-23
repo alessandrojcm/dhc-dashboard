@@ -81,17 +81,15 @@ defmodule Dhc.ClubCalendar.OpenHolidays do
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, []}, fn {item, index}, {:ok, rows} ->
       case parse_item(item) do
+        # Append in order (years hold a handful of holidays): the returned
+        # rows run date-ascending within each multi-day holiday.
         {:ok, item_rows} ->
-          {:cont, {:ok, item_rows ++ rows}}
+          {:cont, {:ok, rows ++ item_rows}}
 
         {:error, reason} ->
           {:halt, {:error, {:unexpected_shape, %{year: year, index: index, reason: reason}}}}
       end
     end)
-    |> case do
-      {:ok, rows} -> {:ok, Enum.reverse(rows)}
-      {:error, _} = error -> error
-    end
   end
 
   defp parse(_year, body), do: {:error, {:unexpected_shape, %{body: body_summary(body)}}}

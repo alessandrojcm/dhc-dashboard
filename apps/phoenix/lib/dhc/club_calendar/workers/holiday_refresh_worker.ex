@@ -24,10 +24,7 @@ defmodule Dhc.ClubCalendar.Workers.HolidayRefreshWorker do
   def perform(%Oban.Job{}) do
     today = ClubCalendar.today()
 
-    today.year
-    |> Range.new(today.year + 1)
-    |> Enum.uniq()
-    |> Enum.each(&ClubCalendar.refresh_year/1)
+    Enum.each([today.year, today.year + 1], &ClubCalendar.refresh_year/1)
 
     :ok
   end

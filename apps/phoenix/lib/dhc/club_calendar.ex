@@ -143,39 +143,47 @@ defmodule Dhc.ClubCalendar do
   """
   @spec refresh_year(integer()) :: :ok | {:error, term()}
   def refresh_year(year) when is_integer(year) and year > 0 do
+    case ingest_year(year, :refresh) do
+      {:ok, dates} ->
+        prune_stale(year, dates)
+        :ok
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  # Fetch-on-miss shares the refresh ingest (strict shape, empty response
+  # reported, failures logged) but never prunes and never fails: the caller
+  # answers from whatever the cache holds.
+  defp fetch_year_on_miss(year) do
+    ingest_year(year, :fetch_on_miss)
+    :ok
+  end
+
+  defp ingest_year(year, op) do
     case OpenHolidays.fetch_year(year) do
       {:ok, []} ->
-        report_source_error(:refresh, year, :empty_response)
+        report_source_error(op, year, :empty_response)
         {:error, :empty_response}
 
       {:ok, rows} ->
         store_rows(rows)
-        prune_stale(year, Enum.map(rows, & &1.date))
-        :ok
+        {:ok, Enum.map(rows, & &1.date)}
 
       {:error, reason} ->
-        report_source_error(:refresh, year, reason)
+        report_source_error(op, year, reason)
         {:error, reason}
     end
   end
 
-  defp fetch_year_on_miss(year) do
-    case OpenHolidays.fetch_year(year) do
-      {:ok, rows} ->
-        store_rows(rows)
-
-      {:error, reason} ->
-        report_source_error(:fetch_on_miss, year, reason)
-    end
-
-    :ok
+  defp year_range(year) do
+    {Date.new!(year, 1, 1), Date.new!(year, 12, 31)}
   end
 
   defp year_fetched?(year) do
-    Repo.exists?(
-      from h in Holiday,
-        where: h.date >= ^Date.new!(year, 1, 1) and h.date <= ^Date.new!(year, 12, 31)
-    )
+    {first, last} = year_range(year)
+    Repo.exists?(from h in Holiday, where: h.date >= ^first and h.date <= ^last)
   end
 
   defp store_rows(rows) do
@@ -189,11 +197,11 @@ defmodule Dhc.ClubCalendar do
   end
 
   defp prune_stale(year, dates) do
+    {first, last} = year_range(year)
+
     Repo.delete_all(
       from h in Holiday,
-        where:
-          h.date >= ^Date.new!(year, 1, 1) and h.date <= ^Date.new!(year, 12, 31) and
-            h.date not in ^dates
+        where: h.date >= ^first and h.date <= ^last and h.date not in ^dates
     )
   end
 
