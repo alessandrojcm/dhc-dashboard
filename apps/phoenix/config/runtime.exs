@@ -185,6 +185,12 @@ if config_env() == :prod do
   config :dhc, :stripe_api_version, "2025-10-29.clover"
   config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
 
+  # Irish bank-holiday source (ALE-319). Optional override; the compiled
+  # default in config.exs is the public OpenHolidays API.
+  config :dhc,
+         :openholidays_api_url,
+         System.get_env("OPENHOLIDAYS_API_URL", "https://openholidaysapi.org")
+
   stripe_membership_lookup_keys =
     [
       monthly: System.get_env("STRIPE_MEMBERSHIP_MONTHLY_LOOKUP_KEY"),

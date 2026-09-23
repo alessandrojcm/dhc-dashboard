@@ -18,7 +18,7 @@ defmodule Dhc.E2EHarnessMaintenanceTest do
   alias Dhc.Auth.Principal
   alias Dhc.E2EHarness
   alias Dhc.Inventory
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Inventory.LoanReminders
   alias Dhc.Repo
 

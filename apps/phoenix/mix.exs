@@ -84,6 +84,10 @@ defmodule Dhc.MixProject do
       {:hackney, "~> 1.25", only: :test},
       {:finch, "~> 0.22.0"},
       {:req, "~> 0.7.2"},
+      # ALE-318: IANA time-zone database for Europe/Dublin civil-time work
+      # (ClubCalendar today/on_date/to_utc). Compile-time data, no updater
+      # process. The app's one sanctioned date/time dependency.
+      {:tz, "~> 0.28"},
       {:nostrum, "~> 0.10.4"},
       {:assent, "~> 0.3.1"},
       # Email transport seam for transactional emails (ADR 0021). First-party

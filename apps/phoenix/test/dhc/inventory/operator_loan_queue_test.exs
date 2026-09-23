@@ -19,7 +19,7 @@ defmodule Dhc.Inventory.OperatorLoanQueueTest do
 
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Repo
 
   # ── Bucket membership ───────────────────────────────────────────

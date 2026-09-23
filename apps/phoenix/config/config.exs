@@ -17,6 +17,10 @@ config :dhc,
   ecto_repos: [Dhc.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# ALE-318: the IANA time-zone database behind Dhc.ClubCalendar's
+# Europe/Dublin civil-time work (today/on_date/to_utc).
+config :elixir, :time_zone_database, Tz.TimeZoneDatabase
+
 config :dhc, :cors_allowed_origins, []
 config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
 config :dhc, :discord_adapter, Dhc.Discord.Adapter.Nostrum
@@ -87,7 +91,12 @@ config :dhc, Oban,
        {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker},
        # ALE-287: hourly rather than daily so a missed window is repaired
        # within the hour. A pass in an unchanged state delivers nothing.
-       {"0 * * * *", Dhc.Inventory.Workers.LoanReminderWorker}
+       {"0 * * * *", Dhc.Inventory.Workers.LoanReminderWorker},
+       # ALE-319: daily refresh of the Irish bank-holiday cache (current +
+       # next Dublin year; upserts by date, deletes dates the source no
+       # longer returns). Failures keep cached rows and are repaired by the
+       # next pass, so 02:30 keeps clear of the midnight Stripe sync.
+       {"30 2 * * *", Dhc.ClubCalendar.Workers.HolidayRefreshWorker}
      ]}
   ]
 
@@ -172,7 +181,8 @@ config :logger, :default_formatter,
     :transactional_id,
     :unchanged,
     :updated,
-    :workshop_id
+    :workshop_id,
+    :year
   ]
 
 # Sentry baseline config (DSN/secrets are loaded in config/runtime.exs).
@@ -254,6 +264,10 @@ config :phoenix, :filter_parameters, [
 config :opentelemetry,
   span_processor: {Sentry.OpenTelemetry.SpanProcessor, []},
   sampler: {Sentry.OpenTelemetry.Sampler, []}
+
+# Irish bank-holiday source (ALE-319). Overridden from OPENHOLIDAYS_API_URL
+# in runtime (prod) and dev config; tests point it at a Bypass stub.
+config :dhc, :openholidays_api_url, "https://openholidaysapi.org"
 
 # Stripe API — pinned to match the version used by the Deno edge functions
 # and the generated OpenAPI client. Update this + re-run `mise run stripe-gen`

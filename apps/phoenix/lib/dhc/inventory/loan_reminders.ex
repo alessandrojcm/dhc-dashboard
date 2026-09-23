@@ -101,7 +101,7 @@ defmodule Dhc.Inventory.LoanReminders do
 
   import Ecto.Query
 
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.LoanNotifications
   alias Dhc.Inventory.LoanReminder
@@ -281,9 +281,10 @@ defmodule Dhc.Inventory.LoanReminders do
     )
   end
 
-  # Delivery days are converted in Postgres, for the reason `ClubCalendar`
-  # exists: the application ships no time-zone database, and a UTC timestamp
-  # late in the evening is already the next Dublin day in summer.
+  # Delivery days are converted in Postgres: the per-row conversion belongs
+  # in the query, and a UTC timestamp late in the evening is already the
+  # next Dublin day in summer, so Elixir-side `DateTime.to_date/1` would
+  # compare the wrong day.
   defp histories([]), do: %{}
 
   defp histories(loans) do

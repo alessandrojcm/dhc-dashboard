@@ -14,7 +14,7 @@ defmodule Dhc.Inventory.MemberLoans do
       borrower is the caller's principal. A quartermaster requesting an item
       does so as a member under exactly these rules (ALE-273).
     * **Both dates today or later, due on or after start.** Dates are
-      calendar days in `Europe/Dublin` (`Dhc.Inventory.ClubCalendar`), so a
+      calendar days in `Europe/Dublin` (`Dhc.ClubCalendar`), so a
       request made after midnight Dublin time is not rejected for being
       "yesterday" in UTC.
     * **At most one pending request per item per member**, backed by the
@@ -62,7 +62,7 @@ defmodule Dhc.Inventory.MemberLoans do
 
   alias Dhc.CursorPagination
   alias Dhc.Inventory.AvailabilityCommands
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.LoanProjection
   alias Dhc.Inventory.PageParams

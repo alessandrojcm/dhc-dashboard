@@ -22,6 +22,7 @@ INVITATION_ACCEPTANCE_SUBJECT_FINGERPRINT_SECRET = { provider = "1Password", val
 RESEND_API_KEY = { provider = "1Password", value = "RESEND_API_KEY" }
 STRIPE_STUDENT_COUPON_ID = { provider = "1Password", value = "STRIPE_STUDENT_COUPON_ID" }
 STRIPE_COACH_COUPON_ID = { provider = "1Password", value = "STRIPE_COACH_COUPON_ID" }
+OPENHOLIDAYS_API_URL = { provider = "1Password", value = "OPENHOLIDAYS_API_URL" }
 WEB_PUSH_VAPID_PRIVATE_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PRIVATE_KEY" }
 WEB_PUSH_VAPID_PUBLIC_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PUBLIC_KEY" }
 WEB_PUSH_VAPID_SUBJECT= { provider = "1Password", value = "WEB_PUSH_VAPID_SUBJECT" }

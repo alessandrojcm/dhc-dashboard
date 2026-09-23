@@ -17,7 +17,7 @@ defmodule Dhc.Inventory.LoanNotificationsTest do
 
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Notifications.Notification
   alias Dhc.Notifications.Workers.KeyedCreateWorker
   alias Dhc.Repo

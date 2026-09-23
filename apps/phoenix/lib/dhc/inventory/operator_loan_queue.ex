@@ -54,7 +54,7 @@ defmodule Dhc.Inventory.OperatorLoanQueue do
   ## Derived facts come from where they already live
 
   Overdue derives from the approved due date in
-  `Dhc.Inventory.ClubCalendar.today/0` — the same rule as ALE-296, reached
+  `Dhc.ClubCalendar.today/0` — the same rule as ALE-296, reached
   through the same projection rather than re-derived. Rows *are*
   `Dhc.Inventory.LoanProjection.operator_view/2`, so a queue row, the
   operator detail read, and an operator command outcome can never disagree
@@ -81,7 +81,7 @@ defmodule Dhc.Inventory.OperatorLoanQueue do
 
   import Ecto.Query
 
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.Loan

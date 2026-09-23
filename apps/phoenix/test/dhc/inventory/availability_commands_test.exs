@@ -25,7 +25,7 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
   alias Dhc.Inventory.AvailabilityCommands
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Repo
 
   import Dhc.ConcurrencyHelpers,

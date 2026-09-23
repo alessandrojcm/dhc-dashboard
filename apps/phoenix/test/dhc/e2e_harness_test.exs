@@ -3,7 +3,7 @@ defmodule Dhc.E2EHarnessTest do
 
   alias Dhc.Auth.Principal
   alias Dhc.E2EHarness
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Invitations.Invitation
   alias Dhc.Repo
 
