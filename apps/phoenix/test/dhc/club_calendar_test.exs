@@ -4,15 +4,20 @@ defmodule Dhc.ClubCalendarTest do
   (Irish bank-holiday cache with OpenHolidays fetch-on-miss and the daily
   refresh seam).
 
-  HTTP is stubbed with Bypass pointed at via `:openholidays_api_url`, prior
-  art: the Discord worker tests. `async: false`: the tests repoint global
-  application env per test.
+  HTTP is stubbed with Bypass pointed at via `:openholidays_api_url`
+  (Bypass prior art: the Discord worker tests — the ticket names the Web
+  Push sender tests, which cover the same hop through a Req `plug:`
+  instead). `async: false`: the tests repoint global application env per
+  test.
   """
 
   use Dhc.DataCase, async: false
 
+  import ExUnit.CaptureLog, only: [capture_log: 1]
+
   alias Dhc.ClubCalendar
   alias Dhc.ClubCalendar.Holiday
+  alias Dhc.ClubCalendar.OpenHolidays
   alias Dhc.Repo
 
   setup do
@@ -136,7 +141,12 @@ defmodule Dhc.ClubCalendarTest do
         Plug.Conn.send_resp(conn, 500, "boom")
       end)
 
-      assert {:ok, nil} = ClubCalendar.holiday_on(~D[2028-06-01])
+      log =
+        capture_log(fn ->
+          assert {:ok, nil} = ClubCalendar.holiday_on(~D[2028-06-01])
+        end)
+
+      assert log =~ "[club-calendar] OpenHolidays fetch failed"
 
       # The previously cached row survives the failed fetch.
       assert {:ok, %Holiday{name: "Saint Patrick's Day"}} =
@@ -190,6 +200,38 @@ defmodule Dhc.ClubCalendarTest do
     end
   end
 
+  describe "OpenHolidays.fetch_year/1" do
+    test "returns one row per date, date-ascending within multi-day holidays" do
+      bypass = Bypass.open()
+      point_at_bypass(bypass)
+
+      Bypass.expect_once(bypass, "GET", "/PublicHolidays", fn conn ->
+        Plug.Conn.send_resp(
+          conn,
+          200,
+          Jason.encode!([
+            holiday_item(~D[2027-12-25], "Christmas", end_date: ~D[2027-12-26]),
+            holiday_item(~D[2027-03-17], "Saint Patrick's Day")
+          ])
+        )
+      end)
+
+      assert {:ok, [%{date: ~D[2027-12-25]}, %{date: ~D[2027-12-26]}, %{date: ~D[2027-03-17]}]} =
+               OpenHolidays.fetch_year(2027)
+    end
+
+    test "rejects a non-list body" do
+      bypass = Bypass.open()
+      point_at_bypass(bypass)
+
+      Bypass.expect_once(bypass, "GET", "/PublicHolidays", fn conn ->
+        Plug.Conn.send_resp(conn, 200, Jason.encode!(%{holidays: []}))
+      end)
+
+      assert {:error, {:unexpected_shape, _}} = OpenHolidays.fetch_year(2027)
+    end
+  end
+
   describe "refresh_year/1" do
     test "upserts returned dates and deletes dates the source no longer returns" do
       insert_holiday!(~D[2032-01-01], "Old name", "old-source")
@@ -239,7 +281,12 @@ defmodule Dhc.ClubCalendarTest do
         Plug.Conn.send_resp(conn, 503, "unavailable")
       end)
 
-      assert {:error, {:unexpected_status, 503, _}} = ClubCalendar.refresh_year(2034)
+      log =
+        capture_log(fn ->
+          assert {:error, {:unexpected_status, 503, _}} = ClubCalendar.refresh_year(2034)
+        end)
+
+      assert log =~ "[club-calendar] OpenHolidays fetch failed"
 
       assert {:ok, %Holiday{name: "New Year's Day"}} = ClubCalendar.holiday_on(~D[2034-01-01])
     end
