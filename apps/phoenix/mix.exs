@@ -83,6 +83,14 @@ defmodule Dhc.MixProject do
       # Keep it test-only so the unpatched line is excluded from production.
       {:hackney, "~> 1.25", only: :test},
       {:finch, "~> 0.22.0"},
+      # Mint is Finch's HTTP transport, transitive through the entry above.
+      # Direct floor constraint because `mix deps.update` has no per-version
+      # form: 1.10.2 is the fixed release for CVE-2026-82672 (fixed in
+      # 1.10.1), CVE-2026-91043, CVE-2026-92103, and CVE-2026-94194. The cap
+      # below 1.11 is deliberate: Mint 1.11 no longer closes connections on
+      # receive timeouts, which pairs with Finch 0.24's pool fix (finch#397),
+      # not with the Finch 0.22.x line pinned above.
+      {:mint, "~> 1.10.2"},
       {:req, "~> 0.7.2"},
       # ALE-318: IANA time-zone database for Europe/Dublin civil-time work
       # (ClubCalendar today/on_date/to_utc). Compile-time data, no updater
