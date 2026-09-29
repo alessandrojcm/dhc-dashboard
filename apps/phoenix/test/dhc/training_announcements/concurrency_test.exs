@@ -5,12 +5,118 @@ defmodule Dhc.TrainingAnnouncements.ConcurrencyTest do
   alias Dhc.Auth.Principal
   alias Dhc.Auth.UserRole
   alias Dhc.ClubCalendar.Holiday
+  alias Dhc.Discord.Adapter.Test, as: DiscordAdapter
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements
+  alias Dhc.TrainingAnnouncements.Announcement
+  alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
   alias Dhc.UserProfiles.UserProfile
   alias Ecto.Adapters.SQL.Sandbox
+
+  test "a racing second driver does not repost or reinterpret an active message call" do
+    supervisor = start_supervised!(Task.Supervisor)
+    start_supervised!({DiscordAdapter, owner: self()})
+    previous = Application.get_env(:dhc, :discord_sparring_channel_id)
+    Application.put_env(:dhc, :discord_sparring_channel_id, "123456789012345678")
+    on_exit(fn -> Application.put_env(:dhc, :discord_sparring_channel_id, previous) end)
+    parent = self()
+
+    DiscordAdapter.script(:create_message, [
+      fn _ ->
+        send(parent, {:posting, self()})
+
+        receive do
+          :continue -> {:ok, %{message_id: "234567890123456789"}}
+        after
+          5000 -> raise "message call was not released"
+        end
+      end
+    ])
+
+    DiscordAdapter.script(:create_thread_from_message, [{:ok, %{thread_id: "345678901234567890"}}])
+
+    Sandbox.unboxed_run(Repo, fn ->
+      member = Dhc.MemberFixtures.member_fixture()
+      actor = member.principal_id
+      Repo.insert!(%UserRole{principal_id: actor, role: "coach"})
+
+      holiday =
+        Repo.insert!(%Holiday{
+          date: ~D[2030-01-01],
+          name: "New Year",
+          source_id: Ecto.UUID.generate(),
+          fetched_at: DateTime.utc_now()
+        })
+
+      {:ok, %{announcement: announcement}} =
+        TrainingAnnouncements.create(
+          actor,
+          %{
+            kind: "sparring",
+            weekday: 4,
+            post_time: ~T[14:00:00],
+            title: "Training",
+            message: "Come train",
+            mention_everyone: false
+          },
+          now: ~U[2030-09-05 09:00:00Z]
+        )
+
+      job = %Oban.Job{
+        args: %{"announcement_id" => announcement.id, "occurrence_date" => "2030-09-05"},
+        attempt: 1,
+        max_attempts: 3
+      }
+
+      clock = fn -> ~U[2030-09-05 13:00:00.000000Z] end
+
+      try do
+        task =
+          Task.Supervisor.async_nolink(supervisor, fn ->
+            Sandbox.unboxed_run(Repo, fn -> AnnouncementWorker.perform(job, clock: clock) end)
+          end)
+
+        assert_receive {:posting, caller}, 5000
+
+        try do
+          assert :ok = AnnouncementWorker.perform(%{job | attempt: 2}, clock: clock)
+
+          assert [%{state: "posting_message"}] =
+                   Repo.all(
+                     from(d in DiscordAnnouncementDelivery,
+                       where: d.announcement_id == ^announcement.id
+                     )
+                   )
+        after
+          send(caller, :continue)
+        end
+
+        assert :ok = Task.await(task, 10_000)
+
+        assert [%{state: "delivered"}] =
+                 Repo.all(
+                   from(d in DiscordAnnouncementDelivery,
+                     where: d.announcement_id == ^announcement.id
+                   )
+                 )
+
+        assert_receive {:create_message, _}
+        refute_receive {:create_message, _}
+        assert_receive {:create_thread_from_message, _}
+        refute_receive {:create_thread_from_message, _}
+      after
+        Repo.delete_all(from(a in Announcement, where: a.id == ^announcement.id))
+        Repo.delete!(holiday)
+        Repo.delete_all(from(j in Oban.Job, where: j.args["announcement_id"] == ^announcement.id))
+        Repo.delete_all(from(r in UserRole, where: r.principal_id == ^actor))
+        Repo.delete_all(from(m in MemberProfile, where: m.id == ^actor))
+        Repo.delete_all(from(p in UserProfile, where: p.principal_id == ^actor))
+        Repo.delete_all(from(p in Principal, where: p.id == ^actor))
+      end
+    end)
+  end
 
   test "concurrent schedule edits commit the combined schedule and one matching driver" do
     supervisor = start_supervised!(Task.Supervisor)

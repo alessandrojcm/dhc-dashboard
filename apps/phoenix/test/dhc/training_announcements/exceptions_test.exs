@@ -256,6 +256,13 @@ defmodule Dhc.TrainingAnnouncements.ExceptionsTest do
 
   test "worker uses override copy instead of corrupt defaults, without allowing mention or kind overrides",
        ctx do
+    start_supervised!({Dhc.Discord.Adapter.Test, owner: self()})
+    Dhc.Discord.Adapter.Test.script(:create_message, [{:ok, %{message_id: "234567890123456789"}}])
+
+    Dhc.Discord.Adapter.Test.script(:create_thread_from_message, [
+      {:ok, %{thread_id: "345678901234567890"}}
+    ])
+
     previous = Application.get_env(:dhc, :discord_sparring_channel_id)
     Application.put_env(:dhc, :discord_sparring_channel_id, "123456789012345678")
     on_exit(fn -> Application.put_env(:dhc, :discord_sparring_channel_id, previous) end)
@@ -279,11 +286,21 @@ defmodule Dhc.TrainingAnnouncements.ExceptionsTest do
     )
 
     assert :ok = run_due(ctx)
-    # ALE-325 will freeze/post valid copy. This driver currently leaves no row.
-    assert Repo.all(DiscordAnnouncementDelivery) == []
+    delivery = Repo.one!(DiscordAnnouncementDelivery)
+    assert delivery.state == "delivered"
+    assert delivery.title_source == "Special"
+    assert delivery.message_source == "Safe"
+    assert delivery.mention_everyone == false
+    assert delivery.kind == "sparring"
+    assert delivery.applied_override_id == override.id
+    assert_receive {:create_message, [_, %{content: "Safe", allowed_mentions: %{parse: []}}]}
     {:ok, _} = TrainingAnnouncements.remove_override(ctx.actor, ctx.announcement.id, override.id)
     assert :ok = run_due(ctx)
-    assert %{state: "blocked", reason: "invalid_copy"} = Repo.one!(DiscordAnnouncementDelivery)
+    retained = Repo.one!(DiscordAnnouncementDelivery)
+    assert retained.state == "delivered"
+    assert retained.rendered_message == "Safe"
+    assert retained.applied_override_id == nil
+    refute_receive {:create_message, _}
 
     assert {:ok, %{mention_everyone: false, kind: "sparring"}} =
              TrainingAnnouncements.get(ctx.actor, ctx.announcement.id)

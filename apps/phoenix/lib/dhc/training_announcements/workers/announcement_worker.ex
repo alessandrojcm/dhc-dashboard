@@ -6,6 +6,7 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements.Channels
   alias Dhc.TrainingAnnouncements.Copy
+  alias Dhc.TrainingAnnouncements.Delivery
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery
   alias Dhc.TrainingAnnouncements.Occurrences
   alias Dhc.TrainingAnnouncements.Scheduling
@@ -14,13 +15,18 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
   @impl Oban.Worker
   def perform(job, opts \\ [])
 
-  def perform(%Oban.Job{args: %{"announcement_id" => id, "occurrence_date" => date}}, opts) do
+  def perform(%Oban.Job{args: %{"announcement_id" => id, "occurrence_date" => date}} = job, opts) do
     with {:ok, id} <- Ecto.UUID.cast(id), {:ok, date} <- Date.from_iso8601(date) do
       # Fetch-on-miss can use HTTP. Obtain holiday facts before claiming a row,
       # then read the clock and authoritative inputs inside the transaction.
       clock = Keyword.get(opts, :clock, &DateTime.utc_now/0)
       holidays = holidays_on(id, date)
-      finish(Store.with_current(id, &run(&1, date, clock.(), holidays)))
+
+      finish(
+        Store.with_current(id, &load_or_run(&1, date, clock, holidays)),
+        job,
+        clock
+      )
     else
       _ -> {:discard, :invalid_args}
     end
@@ -28,13 +34,23 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
 
   def perform(_job, _opts), do: {:discard, :invalid_args}
 
-  defp finish({:ok, delivery}) do
-    report_blocked(delivery)
-    :ok
+  defp load_or_run(announcement, date, clock, holidays) do
+    case Delivery.for_occurrence(announcement.id, date) do
+      nil -> run(announcement, date, clock.(), holidays)
+      delivery -> {:existing, delivery}
+    end
   end
 
-  defp finish({:error, :not_found}), do: :ok
-  defp finish({:error, reason}), do: {:error, reason}
+  defp finish({:ok, {:existing, delivery}}, job, clock),
+    do: Delivery.progress(delivery, job, clock)
+
+  defp finish({:ok, delivery}, job, clock) do
+    Delivery.report_failure(delivery)
+    Delivery.progress(delivery, job, clock)
+  end
+
+  defp finish({:error, :not_found}, _job, _clock), do: :ok
+  defp finish({:error, reason}, _job, _clock), do: {:error, reason}
 
   defp run(%{retired: true}, _date, _now, _holidays), do: nil
 
@@ -95,11 +111,9 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
   end
 
   defp validate(occurrence) do
-    with {:ok, _channel} <- Channels.for_kind(occurrence.kind),
-         {:ok, _copy} <- Copy.render(occurrence, occurrence.date) do
-      # ALE-325 attaches freeze-and-post here. Until then a deliverable slot
-      # must not manufacture delivery evidence or call Discord.
-      nil
+    with {:ok, channel} <- Channels.for_kind(occurrence.kind),
+         {:ok, copy} <- Copy.render(occurrence, occurrence.date) do
+      {:freeze, channel, copy}
     else
       {:error, :unconfigured_channel} -> {"blocked", "unconfigured_channel"}
       {:error, _errors} -> {"blocked", "invalid_copy"}
@@ -107,7 +121,12 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
   end
 
   defp advance(announcement, occurrence, now, outcome) do
-    delivery = record(announcement.id, occurrence, now, outcome)
+    delivery =
+      case outcome do
+        {:freeze, channel, copy} -> Delivery.freeze(announcement, occurrence, channel, copy, now)
+        outcome -> record(announcement.id, occurrence, now, outcome)
+      end
+
     enqueue_next!(announcement, now, occurrence.date)
     delivery
   end
@@ -118,20 +137,6 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
       {:error, reason} -> Repo.rollback(reason)
     end
   end
-
-  defp report_blocked(%{state: "blocked"} = delivery) do
-    Sentry.capture_message("Training Announcement delivery blocked",
-      level: :error,
-      extra: %{
-        delivery_id: delivery.id,
-        announcement_id: delivery.announcement_id,
-        occurrence_date: Date.to_iso8601(delivery.occurrence_date),
-        reason: delivery.reason
-      }
-    )
-  end
-
-  defp report_blocked(_delivery), do: :ok
 
   defp record(_id, _date, _now, nil), do: nil
 
