@@ -82,7 +82,9 @@ defmodule Dhc.Repo.Migrations.CreateTrainingAnnouncementTables do
     create(
       constraint(
         :training_announcement_suppressions,
-        :training_announcement_suppressions_range_check, check: "from_date <= to_date")
+        :training_announcement_suppressions_range_check,
+        check: "from_date <= to_date"
+      )
     )
 
     create table(:training_announcement_overrides, primary_key: false) do
@@ -215,7 +217,9 @@ defmodule Dhc.Repo.Migrations.CreateTrainingAnnouncementTables do
     create(
       constraint(
         :discord_announcement_deliveries,
-        :discord_announcement_deliveries_thread_attempts_check, check: "thread_attempts >= 0")
+        :discord_announcement_deliveries_thread_attempts_check,
+        check: "thread_attempts >= 0"
+      )
     )
   end
 

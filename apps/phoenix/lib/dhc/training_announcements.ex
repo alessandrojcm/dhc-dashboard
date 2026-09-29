@@ -38,9 +38,293 @@ defmodule Dhc.TrainingAnnouncements do
   Pure projection lives in `Dhc.TrainingAnnouncements.Occurrences` and pure
   copy rendering in `Dhc.TrainingAnnouncements.Copy`; both are database-free
   so the worker, the read model and preview cannot disagree. Actor-first
-  facade commands (`create`, `update_schedule`, `disable`, `suppress`, …)
-  arrive in ALE-323 — this skeleton owns the tables and the pure modules
-  only. The only module that may write Oban jobs is the future
+  facade commands authorize a live, active committee principal before reading
+  announcements. Schedule writes and their pending job commit together.
+  The only module that may write Oban jobs is
   `Dhc.TrainingAnnouncements.Scheduling`.
   """
+
+  import Ecto.Query
+  alias Dhc.Auth
+  alias Dhc.Auth.Principal
+  alias Dhc.ClubCalendar
+  alias Dhc.Repo
+  alias Dhc.TrainingAnnouncements.Announcement
+  alias Dhc.TrainingAnnouncements.Copy
+  alias Dhc.TrainingAnnouncements.Occurrences
+  alias Dhc.TrainingAnnouncements.Scheduling
+  alias Dhc.TrainingAnnouncements.Store
+
+  @management_roles ~w(sparring_coordinator coach president admin committee_coordinator)
+
+  def management_roles, do: @management_roles
+
+  @doc "Creates a Training Announcement and its first future job atomically."
+  def create(actor_id, attrs, opts \\ []) do
+    with :ok <- authorize(actor_id) do
+      Repo.transaction(fn ->
+        now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+
+        changeset =
+          %Announcement{}
+          |> Announcement.create_changeset(attrs)
+          |> validate_send_time(now)
+          |> validate_rendered_copy(now)
+
+        announcement = persist!(Repo.insert(changeset))
+        persist!(Scheduling.enqueue_next(announcement, now))
+        {announcement, nil, now}
+      end)
+      |> with_warnings()
+    end
+  end
+
+  @doc "Replaces the schedule for all future occurrences, together with the pending job."
+  def update_schedule(actor_id, id, attrs, opts \\ []) do
+    with :ok <- authorize(actor_id) do
+      Store.with_current(id, fn announcement ->
+        # Read the production clock only after any claim wait or stale retry.
+        now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+        persist!(editable(announcement))
+        persist!(schedule_editable(announcement))
+
+        changeset =
+          announcement
+          |> Announcement.update_changeset(
+            only(attrs, [:weekday, :one_off_date, :post_time, :kind])
+          )
+          |> validate_send_time(now)
+          |> validate_rendered_copy(now)
+
+        updated = persist!(Repo.update(changeset))
+        persist!(Scheduling.reschedule(updated, now))
+        {updated, announcement, now}
+      end)
+      |> with_warnings()
+    end
+  end
+
+  defp with_warnings({:ok, {announcement, previous, now}}) do
+    # Warnings are advisory: holiday fetch-on-miss and projection happen after
+    # the schedule/job commit, never while holding a write transaction open.
+    {:ok,
+     %{
+       announcement: announcement,
+       warnings: warnings(announcement, previous, now, holiday_dates(now))
+     }}
+  end
+
+  defp with_warnings({:error, _} = error), do: error
+
+  def list(actor_id, opts \\ []) do
+    with :ok <- authorize(actor_id) do
+      query = from(a in Announcement, order_by: [asc: a.created_at, asc: a.id])
+
+      query =
+        if Keyword.get(opts, :include_retired, false),
+          do: query,
+          else: where(query, [a], not a.retired)
+
+      {:ok, Repo.all(query)}
+    end
+  end
+
+  def get(actor_id, id) do
+    with :ok <- authorize(actor_id), do: Store.fetch(id)
+  end
+
+  @doc "Updates default copy only; it cannot change the schedule or kind."
+  def update_copy(actor_id, id, attrs, opts \\ []) do
+    with :ok <- authorize(actor_id) do
+      Store.with_current(id, fn announcement ->
+        persist!(editable(announcement))
+
+        announcement
+        |> Announcement.update_changeset(
+          only(attrs, [:title, :message, :mention_everyone, :kind])
+        )
+        |> validate_rendered_copy(Keyword.get_lazy(opts, :now, &DateTime.utc_now/0))
+        |> Repo.update()
+        |> persist!()
+      end)
+    end
+  end
+
+  def disable(actor_id, id), do: set_enabled(actor_id, id, false)
+  def enable(actor_id, id), do: set_enabled(actor_id, id, true)
+
+  def retire(actor_id, id) do
+    with :ok <- authorize(actor_id) do
+      Store.with_current(id, fn announcement ->
+        retired = persist!(Repo.update(Ecto.Changeset.change(announcement, retired: true)))
+        Scheduling.cancel(announcement.id)
+        retired
+      end)
+    end
+  end
+
+  def delete(actor_id, id) do
+    with :ok <- authorize(actor_id) do
+      Store.with_current(id, fn announcement ->
+        persist!(deletable(announcement))
+        Scheduling.cancel(announcement.id)
+        persist!(Repo.delete(announcement))
+      end)
+    end
+  end
+
+  defp deletable(%{first_attempted_at: nil}), do: :ok
+  defp deletable(_announcement), do: {:error, :attempted}
+
+  @doc "Stateless copy preview: validates and renders without writing or posting."
+  def preview_copy(actor_id, attrs) do
+    with :ok <- authorize(actor_id) do
+      types = %{
+        kind: :string,
+        title: :string,
+        message: :string,
+        mention_everyone: :boolean,
+        date: :date
+      }
+
+      changeset =
+        {%{mention_everyone: false}, types}
+        |> Ecto.Changeset.cast(attrs, Map.keys(types))
+        |> Ecto.Changeset.validate_required([:kind, :title, :message, :date, :mention_everyone])
+        |> Ecto.Changeset.validate_inclusion(:kind, ~w(roll_call sparring))
+
+      with {:ok, copy} <- Ecto.Changeset.apply_action(changeset, :preview) do
+        Copy.render(copy, copy.date)
+      end
+    end
+  end
+
+  defp set_enabled(actor_id, id, enabled) do
+    with :ok <- authorize(actor_id) do
+      Store.with_current(id, fn announcement ->
+        persist!(editable(announcement))
+        announcement |> Ecto.Changeset.change(enabled: enabled) |> Repo.update() |> persist!()
+      end)
+    end
+  end
+
+  defp holiday_dates(now) do
+    today = ClubCalendar.on_date(now)
+    {:ok, holidays} = ClubCalendar.holidays_between(today, Date.add(today, 61))
+    MapSet.new(holidays, & &1.date)
+  end
+
+  defp warnings(announcement, previous, now, holidays) do
+    today = ClubCalendar.on_date(now)
+    last = Date.add(today, 61)
+
+    opts = [
+      today: today,
+      now_time:
+        now
+        |> DateTime.shift_zone!(ClubCalendar.zone(), Tz.TimeZoneDatabase)
+        |> DateTime.to_time(),
+      holidays: holidays
+    ]
+
+    entry = Store.entry(announcement)
+
+    others =
+      Repo.all(from(a in Announcement, where: not a.retired and a.id != ^announcement.id))
+      |> Enum.map(&Store.entry/1)
+
+    collision = Occurrences.warnings_for_create(entry, others, today, last, opts)
+
+    intersection =
+      if previous,
+        do:
+          Occurrences.warnings_for_schedule_change(
+            previous,
+            announcement,
+            entry.suppressions,
+            entry.overrides,
+            today,
+            last,
+            opts
+          ),
+        else: []
+
+    collision ++ intersection
+  end
+
+  defp validate_rendered_copy(%{valid?: false} = changeset, _now), do: changeset
+
+  defp validate_rendered_copy(changeset, now) do
+    announcement = Ecto.Changeset.apply_changes(changeset)
+    today = ClubCalendar.on_date(now)
+    # A full civil year includes the longest date/weekday expansions; one-offs
+    # validate their actual date. This does not depend on disablement or holidays.
+    dates =
+      if announcement.one_off_date,
+        do: [announcement.one_off_date],
+        else:
+          Enum.filter(
+            Date.range(today, Date.add(today, 366)),
+            &(Date.day_of_week(&1) == announcement.weekday)
+          )
+
+    Enum.reduce_while(dates, changeset, fn date, changeset ->
+      case Copy.render(announcement, date) do
+        {:ok, _} ->
+          {:cont, changeset}
+
+        {:error, errors} ->
+          {:halt, Ecto.Changeset.add_error(changeset, :message, Enum.join(errors, ", "))}
+      end
+    end)
+  end
+
+  defp editable(%{retired: true}), do: {:error, :retired}
+  defp editable(_), do: :ok
+
+  defp schedule_editable(%{weekday: nil, first_attempted_at: at}) when not is_nil(at),
+    do: {:error, :delivery_started}
+
+  defp schedule_editable(_), do: :ok
+
+  defp validate_send_time(%{valid?: false} = changeset, _now), do: changeset
+
+  defp validate_send_time(changeset, now) do
+    announcement = Ecto.Changeset.apply_changes(changeset)
+    today = ClubCalendar.on_date(now)
+
+    date =
+      announcement.one_off_date ||
+        Date.add(today, Integer.mod(announcement.weekday - Date.day_of_week(today), 7))
+
+    if DateTime.compare(ClubCalendar.to_utc(date, announcement.post_time), now) == :gt do
+      changeset
+    else
+      Ecto.Changeset.add_error(
+        changeset,
+        :post_time,
+        "the first send instant has elapsed; choose a future Dublin date or time"
+      )
+    end
+  end
+
+  defp only(attrs, fields) do
+    Map.take(attrs, fields ++ Enum.map(fields, &Atom.to_string/1))
+  end
+
+  defp authorize(actor_id) when is_binary(actor_id) do
+    with {:ok, actor_id} <- Ecto.UUID.cast(actor_id),
+         {:ok, projection} <- Auth.load_session_principal(%Principal{id: actor_id}),
+         :ok <- Auth.authorize_session(projection, management_roles()) do
+      :ok
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  defp authorize(_actor), do: {:error, :forbidden}
+
+  defp persist!({:ok, result}), do: result
+  defp persist!(:ok), do: :ok
+  defp persist!({:error, reason}), do: Repo.rollback(reason)
 end

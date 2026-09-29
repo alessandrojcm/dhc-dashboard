@@ -74,6 +74,7 @@ config :dhc, Oban,
     emails: 5,
     discord: 5,
     announcements: 5,
+    training_announcements: 1,
     stripe: 5,
     invitations: 5,
     # ALE-299: Web Push fan-out, one job per committed notification.

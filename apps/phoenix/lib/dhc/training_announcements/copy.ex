@@ -38,6 +38,23 @@ defmodule Dhc.TrainingAnnouncements.Copy do
 
   @type bindings :: %{optional(:title) => String.t(), optional(:date) => Date.t()}
 
+  @doc "Validates and renders the resolved copy for save, preview and delivery."
+  def render(copy, date) do
+    with :ok <- non_empty(copy.title, "title"),
+         :ok <- non_empty(copy.message, "message"),
+         {:ok, title} <- render_title(copy.title, date),
+         {:ok, message} <-
+           render_message(copy.message, %{date: date, title: title}, copy.mention_everyone) do
+      {:ok, %{thread_name: title, rendered_message: message}}
+    end
+  end
+
+  defp non_empty(value, field) do
+    if is_binary(value) and String.trim(value) != "",
+      do: :ok,
+      else: {:error, ["#{field} must not be empty"]}
+  end
+
   @doc "Formats a date as e.g. `Thursday 25 September` (Europe/Dublin civil date)."
   @spec format_date(Date.t()) :: String.t()
   def format_date(%Date{} = date) do

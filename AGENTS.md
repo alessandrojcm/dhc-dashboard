@@ -40,6 +40,8 @@ The operator loan queue (`Dhc.Inventory.OperatorLoanQueue`, ALE-297) is a lock-f
 
 ## Navigation
 
+Training Announcement lifecycle and drivers (ALE-323) share `Dhc.TrainingAnnouncements.Store.with_current/2` for conditional-write claims and authoritative rereads; the first-freeze stamp must join that seam. `Scheduling` alone writes Oban jobs. Before changing these paths, read the Training Announcement row in `docs/agents/where-to-look.md`.
+
 - Structure: [docs/agents/structure.md](docs/agents/structure.md)
 - Where to look: [docs/agents/where-to-look.md](docs/agents/where-to-look.md)
 - Migration notes: [docs/agents/migration-notes.md](docs/agents/migration-notes.md)
