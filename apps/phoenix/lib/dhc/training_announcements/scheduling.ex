@@ -8,7 +8,9 @@ defmodule Dhc.TrainingAnnouncements.Scheduling do
   import Ecto.Query
 
   alias Dhc.ClubCalendar
+  alias Dhc.TrainingAnnouncements.HolidayAnnouncements
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
+  alias Dhc.TrainingAnnouncements.Workers.HolidayAnnouncementWorker
 
   # Scheduling owns driver identity. Executing/retryable jobs intentionally
   # do not block the next driver; delivery-row uniqueness is the duplicate fence.
@@ -18,6 +20,19 @@ defmodule Dhc.TrainingAnnouncements.Scheduling do
     keys: [:announcement_id],
     states: [:available, :scheduled]
   ]
+
+  # Call before the write seam. The authoritative enqueue below only reads the
+  # cache; a concurrently changed schedule may fail open until its next run.
+  def prefetch_next(announcement, now, after_date \\ nil) do
+    if announcement.kind == "roll_call" do
+      case next_date(announcement, now, after_date) do
+        nil -> :ok
+        date -> ClubCalendar.holiday_on(date)
+      end
+    end
+
+    :ok
+  end
 
   def cancel(announcement_id) do
     Oban.cancel_all_jobs(
@@ -34,14 +49,66 @@ defmodule Dhc.TrainingAnnouncements.Scheduling do
         {:ok, nil}
 
       date ->
-        %{announcement_id: announcement.id, occurrence_date: Date.to_iso8601(date)}
-        |> AnnouncementWorker.new(
-          scheduled_at: ClubCalendar.to_utc(date, announcement.post_time),
-          unique: @driver_unique,
-          replace: [scheduled: [:scheduled_at, :args]]
-        )
-        |> Oban.insert()
+        result =
+          %{announcement_id: announcement.id, occurrence_date: Date.to_iso8601(date)}
+          |> AnnouncementWorker.new(
+            scheduled_at: ClubCalendar.to_utc(date, announcement.post_time),
+            unique: @driver_unique,
+            replace: [scheduled: [:scheduled_at, :args]]
+          )
+          |> Oban.insert()
+
+        with {:ok, _} <- result,
+             {:ok, _} <- enqueue_holiday(announcement, date, now) do
+          result
+        end
     end
+  end
+
+  defp enqueue_holiday(%{kind: "roll_call"} = announcement, date, now) do
+    post_time = HolidayAnnouncements.driver_post_time(date, now) || announcement.post_time
+    at = ClubCalendar.to_utc(Date.add(date, -1), post_time)
+
+    if DateTime.compare(at, now) == :gt do
+      case ClubCalendar.cached_holiday_on(date) do
+        nil ->
+          {:ok, nil}
+
+        _holiday ->
+          %{holiday_date: Date.to_iso8601(date), phase: "day_before"}
+          |> HolidayAnnouncementWorker.new(
+            scheduled_at: at,
+            unique: [
+              period: :infinity,
+              fields: [:worker, :args],
+              keys: [:holiday_date, :phase],
+              states: [:available, :scheduled]
+            ],
+            replace: [scheduled: [:scheduled_at]]
+          )
+          |> Oban.insert()
+      end
+    else
+      {:ok, nil}
+    end
+  end
+
+  defp enqueue_holiday(_announcement, _date, _now), do: {:ok, nil}
+
+  # Commit this independent recovery driver with a same-day holiday freeze.
+  # Deleting/retiring its triggering roll call must not abandon frozen evidence.
+  def enqueue_holiday_recovery(date, now) do
+    %{holiday_date: Date.to_iso8601(date), phase: "same_day"}
+    |> HolidayAnnouncementWorker.new(
+      scheduled_at: DateTime.add(now, 60, :second),
+      unique: [
+        period: :infinity,
+        fields: [:worker, :args],
+        keys: [:holiday_date, :phase],
+        states: [:available, :scheduled, :executing, :retryable]
+      ]
+    )
+    |> Oban.insert()
   end
 
   def reschedule(announcement, now) do

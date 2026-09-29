@@ -8,6 +8,7 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
   alias Dhc.TrainingAnnouncements.Copy
   alias Dhc.TrainingAnnouncements.Delivery
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery
+  alias Dhc.TrainingAnnouncements.HolidayAnnouncements
   alias Dhc.TrainingAnnouncements.Occurrences
   alias Dhc.TrainingAnnouncements.Scheduling
   alias Dhc.TrainingAnnouncements.Store
@@ -20,7 +21,7 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
       # Fetch-on-miss can use HTTP. Obtain holiday facts before claiming a row,
       # then read the clock and authoritative inputs inside the transaction.
       clock = Keyword.get(opts, :clock, &DateTime.utc_now/0)
-      holidays = holidays_on(id, date)
+      holidays = holidays_on(id, date, clock)
 
       finish(
         Store.with_current(id, &load_or_run(&1, date, clock, holidays)),
@@ -42,15 +43,20 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
   end
 
   defp finish({:ok, {:existing, delivery}}, job, clock),
-    do: Delivery.progress(delivery, job, clock)
+    do: progress(delivery, job, clock)
 
   defp finish({:ok, delivery}, job, clock) do
     Delivery.report_failure(delivery)
-    Delivery.progress(delivery, job, clock)
+    progress(delivery, job, clock)
   end
 
   defp finish({:error, :not_found}, _job, _clock), do: :ok
   defp finish({:error, reason}, _job, _clock), do: {:error, reason}
+
+  defp progress(%{state: "skipped", reason: "holiday", occurrence_date: date}, job, clock),
+    do: HolidayAnnouncements.perform(date, "same_day", job, clock)
+
+  defp progress(delivery, job, clock), do: Delivery.progress(delivery, job, clock)
 
   defp run(%{retired: true}, _date, _now, _holidays), do: nil
 
@@ -83,10 +89,15 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
     end
   end
 
-  defp holidays_on(id, date) do
+  defp holidays_on(id, date, clock) do
     case Store.fetch(id) do
-      {:ok, %{kind: "roll_call", retired: false}} -> holiday_dates(date)
-      _ -> MapSet.new()
+      {:ok, %{kind: "roll_call", retired: false} = announcement} ->
+        holidays = holiday_dates(date)
+        Scheduling.prefetch_next(announcement, clock.(), date)
+        holidays
+
+      _ ->
+        MapSet.new()
     end
   end
 

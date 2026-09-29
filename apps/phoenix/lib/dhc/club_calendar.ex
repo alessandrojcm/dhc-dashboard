@@ -104,6 +104,9 @@ defmodule Dhc.ClubCalendar do
     end
   end
 
+  @doc "Reads only committed cache facts; safe inside a scheduling transaction after prefetch."
+  def cached_holiday_on(%Date{} = date), do: Repo.get(Holiday, date)
+
   @doc """
   Returns every cached holiday in the inclusive Dublin date range, ordered
   by date — the holiday set the pure occurrence projection receives.
@@ -122,9 +125,10 @@ defmodule Dhc.ClubCalendar do
 
     holidays =
       Repo.all(
-        from h in Holiday,
+        from(h in Holiday,
           where: h.date >= ^from and h.date <= ^to,
           order_by: h.date
+        )
       )
 
     {:ok, holidays}
@@ -183,7 +187,7 @@ defmodule Dhc.ClubCalendar do
 
   defp year_fetched?(year) do
     {first, last} = year_range(year)
-    Repo.exists?(from h in Holiday, where: h.date >= ^first and h.date <= ^last)
+    Repo.exists?(from(h in Holiday, where: h.date >= ^first and h.date <= ^last))
   end
 
   defp store_rows(rows) do
@@ -200,8 +204,9 @@ defmodule Dhc.ClubCalendar do
     {first, last} = year_range(year)
 
     Repo.delete_all(
-      from h in Holiday,
+      from(h in Holiday,
         where: h.date >= ^first and h.date <= ^last and h.date not in ^dates
+      )
     )
   end
 

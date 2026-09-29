@@ -63,6 +63,8 @@ defmodule Dhc.TrainingAnnouncements do
   @doc "Creates a Training Announcement and its first future job atomically."
   def create(actor_id, attrs, opts \\ []) do
     with :ok <- authorize(actor_id) do
+      prefetch_schedule(Announcement.create_changeset(%Announcement{}, attrs), opts)
+
       Repo.transaction(fn ->
         now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
 
@@ -82,7 +84,16 @@ defmodule Dhc.TrainingAnnouncements do
 
   @doc "Replaces the schedule for all future occurrences, together with the pending job."
   def update_schedule(actor_id, id, attrs, opts \\ []) do
-    with :ok <- authorize(actor_id) do
+    with :ok <- authorize(actor_id),
+         {:ok, current} <- Store.fetch(id) do
+      prefetch_schedule(
+        Announcement.update_changeset(
+          current,
+          only(attrs, [:weekday, :one_off_date, :post_time, :kind])
+        ),
+        opts
+      )
+
       Store.with_current(id, fn announcement ->
         # Read the production clock only after any claim wait or stale retry.
         now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
@@ -104,6 +115,15 @@ defmodule Dhc.TrainingAnnouncements do
       |> with_warnings()
     end
   end
+
+  defp prefetch_schedule(%{valid?: true} = changeset, opts) do
+    Scheduling.prefetch_next(
+      Ecto.Changeset.apply_changes(changeset),
+      Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+    )
+  end
+
+  defp prefetch_schedule(_changeset, _opts), do: :ok
 
   defp with_warnings({:ok, {announcement, previous, now}}) do
     # Warnings are advisory: holiday fetch-on-miss and projection happen after

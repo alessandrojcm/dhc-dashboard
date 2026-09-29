@@ -64,7 +64,9 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
         :global.del_lock(lock, [node()])
       end
     else
-      :ok
+      # A date-owned holiday recovery driver must remain pending while a live
+      # roll-call worker owns the call, rather than disappear before a crash.
+      if delivery.subject == "holiday", do: {:snooze, 30}, else: :ok
     end
   end
 
@@ -72,7 +74,7 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
     now = clock.()
 
     cond do
-      Date.compare(delivery.occurrence_date, ClubCalendar.on_date(now)) == :lt ->
+      Date.compare(send_date(delivery), ClubCalendar.on_date(now)) == :lt ->
         checkpoint(delivery, %{state: "missed", reason: "late", concluded_at: now})
         :ok
 
@@ -94,6 +96,11 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
           claimed -> post_message(claimed, job, clock)
         end
     end
+  end
+
+  defp do_progress(%{state: "message_posted", subject: "holiday"} = delivery, _job, clock) do
+    checkpoint(delivery, %{state: "delivered", concluded_at: clock.()})
+    :ok
   end
 
   defp do_progress(%{state: "message_posted"} = delivery, job, clock) do
@@ -256,13 +263,19 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
       extra: %{
         delivery_id: delivery.id,
         announcement_id: delivery.announcement_id,
-        occurrence_date: Date.to_iso8601(delivery.occurrence_date),
+        occurrence_date: Date.to_iso8601(send_date(delivery)),
         reason: delivery.reason
       }
     )
   end
 
   def report_failure(_delivery), do: :ok
+
+  defp send_date(%{subject: "holiday", holiday_date: date, phase: "day_before"}),
+    do: Date.add(date, -1)
+
+  defp send_date(%{subject: "holiday", holiday_date: date}), do: date
+  defp send_date(delivery), do: delivery.occurrence_date
 
   defp reason(%ApiError{status: 403}), do: "permission"
   defp reason(%ApiError{status: 404}), do: "unknown_channel"
