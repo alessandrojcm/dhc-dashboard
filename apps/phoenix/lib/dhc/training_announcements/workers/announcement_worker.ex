@@ -63,7 +63,7 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
         nil
 
       true ->
-        advance(announcement, date, now, outcome(occurrence, now))
+        advance(announcement, occurrence, now, outcome(occurrence, now))
     end
   end
 
@@ -106,9 +106,9 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
     end
   end
 
-  defp advance(announcement, date, now, outcome) do
-    delivery = record(announcement.id, date, now, outcome)
-    enqueue_next!(announcement, now, date)
+  defp advance(announcement, occurrence, now, outcome) do
+    delivery = record(announcement.id, occurrence, now, outcome)
+    enqueue_next!(announcement, now, occurrence.date)
     delivery
   end
 
@@ -135,12 +135,14 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
 
   defp record(_id, _date, _now, nil), do: nil
 
-  defp record(id, date, now, {state, reason}) do
+  defp record(id, occurrence, now, {state, reason}) do
     attrs = %{
       id: Ecto.UUID.generate(),
       announcement_id: id,
       subject: "occurrence",
-      occurrence_date: date,
+      occurrence_date: occurrence.date,
+      applied_suppression_id: occurrence.applied_suppression_id,
+      applied_override_id: occurrence.applied_override_id,
       state: state,
       reason: reason,
       concluded_at: now,

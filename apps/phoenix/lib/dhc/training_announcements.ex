@@ -51,6 +51,7 @@ defmodule Dhc.TrainingAnnouncements do
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements.Announcement
   alias Dhc.TrainingAnnouncements.Copy
+  alias Dhc.TrainingAnnouncements.Exceptions
   alias Dhc.TrainingAnnouncements.Occurrences
   alias Dhc.TrainingAnnouncements.Scheduling
   alias Dhc.TrainingAnnouncements.Store
@@ -152,6 +153,46 @@ defmodule Dhc.TrainingAnnouncements do
 
   def disable(actor_id, id), do: set_enabled(actor_id, id, false)
   def enable(actor_id, id), do: set_enabled(actor_id, id, true)
+
+  def suppress(actor_id, id, attrs, opts \\ []),
+    do: create_exception(actor_id, id, :suppression, attrs, opts)
+
+  def override(actor_id, id, attrs, opts \\ []),
+    do: create_exception(actor_id, id, :override, attrs, opts)
+
+  def list_suppressions(actor_id, id), do: list_exceptions(actor_id, id, :suppression)
+  def list_overrides(actor_id, id), do: list_exceptions(actor_id, id, :override)
+
+  def remove_suppression(actor_id, id, exception_id),
+    do: remove_exception(actor_id, id, :suppression, exception_id)
+
+  def remove_override(actor_id, id, exception_id),
+    do: remove_exception(actor_id, id, :override, exception_id)
+
+  defp create_exception(actor_id, id, kind, attrs, opts) do
+    with :ok <- authorize(actor_id) do
+      Store.with_current(id, fn announcement ->
+        persist!(editable(announcement))
+        now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
+        persist!(Exceptions.create(announcement, kind, attrs, now))
+      end)
+    end
+  end
+
+  defp list_exceptions(actor_id, id, kind) do
+    with :ok <- authorize(actor_id),
+         {:ok, announcement} <- Store.fetch(id),
+         do: {:ok, Exceptions.list(announcement.id, kind)}
+  end
+
+  defp remove_exception(actor_id, id, kind, exception_id) do
+    with :ok <- authorize(actor_id) do
+      Store.with_current(id, fn announcement ->
+        persist!(editable(announcement))
+        persist!(Exceptions.remove(announcement.id, kind, exception_id))
+      end)
+    end
+  end
 
   def retire(actor_id, id) do
     with :ok <- authorize(actor_id) do
