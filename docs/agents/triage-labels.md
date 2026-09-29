@@ -18,4 +18,4 @@ The five canonical triage roles and their Linear label/status strings:
 - `ready-for-human`: Requires human implementation or decision
 - `wontfix`: Will not be actioned
 
-When using Linear, apply these as labels, statuses, workflow states, or the closest configured equivalent available through `linctl`.
+When using Linear, apply these as labels, statuses, workflow states, or the closest configured equivalent in the workspace.

@@ -55,7 +55,7 @@ The operator loan queue (`Dhc.Inventory.OperatorLoanQueue`, ALE-297) is a lock-f
 
 ## Agent skills
 
-- Issue tracker: Linear issues via `linctl`; see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+- Issue tracker: Linear issues via the `linear` MCP server; see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 - Triage labels: canonical labels/status strings; see [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 - Domain docs: single-context monorepo with `CONTEXT.md` and `docs/adr/`; see [docs/agents/domain.md](docs/agents/domain.md).
 
