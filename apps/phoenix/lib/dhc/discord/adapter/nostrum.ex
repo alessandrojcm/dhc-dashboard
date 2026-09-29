@@ -66,10 +66,10 @@ defmodule Dhc.Discord.Adapter.Nostrum do
          {:ok, options} <- thread_options(params) do
       case Nostrum.Api.Thread.create_with_message(channel_id, message_id, options) do
         {:ok, %Nostrum.Struct.Channel{id: id}} when not is_nil(id) ->
-          {:ok, %{thread_id: to_string(id)}}
+          decode_id(id, :thread_id, "thread")
 
         {:ok, _unexpected} ->
-          {:error, untrustworthy_response("thread")}
+          {:error, invalid_response("thread")}
 
         {:error, error} ->
           {:error, normalize_error(error)}
@@ -79,10 +79,13 @@ defmodule Dhc.Discord.Adapter.Nostrum do
 
   defp message_body(%{content: content} = params)
        when is_binary(content) and content != "" do
-    body = %{
-      content: content,
-      allowed_mentions: Map.get(params, :allowed_mentions, %{parse: []})
-    }
+    body = %{content: content}
+
+    body =
+      case Map.fetch(params, :allowed_mentions) do
+        {:ok, allowed_mentions} -> Map.put(body, :allowed_mentions, allowed_mentions)
+        :error -> body
+      end
 
     case Map.fetch(params, :nonce) do
       {:ok, nonce} when is_binary(nonce) or is_integer(nonce) ->
@@ -117,18 +120,27 @@ defmodule Dhc.Discord.Adapter.Nostrum do
 
   defp decode_message_id(response_body) do
     case Jason.decode(response_body) do
-      {:ok, %{"id" => id}} when is_binary(id) and id != "" ->
-        {:ok, %{message_id: id}}
-
-      {:ok, %{"id" => id}} when is_integer(id) ->
-        {:ok, %{message_id: Integer.to_string(id)}}
+      {:ok, %{"id" => id}} ->
+        decode_id(id, :message_id, "message")
 
       _invalid ->
-        {:error, untrustworthy_response("message")}
+        {:error, invalid_response("message")}
     end
   end
 
-  defp untrustworthy_response(noun) do
+  defp decode_id(id, key, _noun) when is_binary(id) and id != "" do
+    {:ok, Map.new([{key, id}])}
+  end
+
+  defp decode_id(id, key, _noun) when is_integer(id) do
+    {:ok, Map.new([{key, Integer.to_string(id)}])}
+  end
+
+  defp decode_id(_id, _key, noun) do
+    {:error, invalid_response(noun)}
+  end
+
+  defp invalid_response(noun) do
     %ApiError{status: 502, message: "invalid Discord #{noun} response"}
   end
 

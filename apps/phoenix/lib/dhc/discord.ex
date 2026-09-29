@@ -53,19 +53,8 @@ defmodule Dhc.Discord do
   @spec create_message(String.t(), map()) ::
           {:ok, %{message_id: String.t()}} | classified_error()
   def create_message(channel_id, params) when is_map(params) do
-    case adapter().create_message(channel_id, params) do
-      {:ok, %{message_id: id}} when is_binary(id) and id != "" ->
-        {:ok, %{message_id: id}}
-
-      {:ok, %{message_id: id}} when is_integer(id) ->
-        {:ok, %{message_id: Integer.to_string(id)}}
-
-      {:ok, _unexpected} ->
-        uncertain("invalid Discord message response")
-
-      {:error, reason} ->
-        classify_wrapped(reason)
-    end
+    adapter().create_message(channel_id, params)
+    |> normalize_id(:message_id, "invalid Discord message response")
   end
 
   @doc """
@@ -78,19 +67,29 @@ defmodule Dhc.Discord do
   @spec create_thread_from_message(String.t(), String.t(), map()) ::
           {:ok, %{thread_id: String.t()}} | classified_error()
   def create_thread_from_message(channel_id, message_id, params) when is_map(params) do
-    case adapter().create_thread_from_message(channel_id, message_id, params) do
-      {:ok, %{thread_id: id}} when is_binary(id) and id != "" ->
-        {:ok, %{thread_id: id}}
+    adapter().create_thread_from_message(channel_id, message_id, params)
+    |> normalize_id(:thread_id, "invalid Discord thread response")
+  end
 
-      {:ok, %{thread_id: id}} when is_integer(id) ->
-        {:ok, %{thread_id: Integer.to_string(id)}}
+  defp normalize_id({:ok, result}, key, invalid_message) when is_map(result) do
+    case Map.fetch(result, key) do
+      {:ok, id} when is_binary(id) and id != "" ->
+        {:ok, Map.new([{key, id}])}
 
-      {:ok, _unexpected} ->
-        uncertain("invalid Discord thread response")
+      {:ok, id} when is_integer(id) ->
+        {:ok, Map.new([{key, Integer.to_string(id)}])}
 
-      {:error, reason} ->
-        classify_wrapped(reason)
+      _unexpected ->
+        uncertain(invalid_message)
     end
+  end
+
+  defp normalize_id({:ok, _unexpected}, _key, invalid_message) do
+    uncertain(invalid_message)
+  end
+
+  defp normalize_id({:error, reason}, _key, _invalid_message) do
+    classify_wrapped(reason)
   end
 
   defp uncertain(message) do
@@ -129,7 +128,7 @@ defmodule Dhc.Discord do
     if connection_refused?(error.details), do: :retry, else: :uncertain
   end
 
-  defp classify_error(%ApiError{status: status}) when status in [400, 401, 403, 404],
+  defp classify_error(%ApiError{status: status}) when status in [400, 403, 404],
     do: :blocked
 
   defp classify_error(%ApiError{}), do: :uncertain
