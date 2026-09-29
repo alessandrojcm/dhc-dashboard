@@ -42,6 +42,96 @@ defmodule Dhc.Discord.Adapter.Nostrum do
     end
   end
 
+  @valid_archive_durations [60, 1440, 4320, 10_080]
+
+  @impl true
+  def create_message(channel_id, params) when is_map(params) do
+    with {:ok, channel_id} <- cast_snowflake(channel_id, "channel id"),
+         {:ok, body} <- message_body(params) do
+      # NOTE: `Nostrum.Api.Message.create/2` is deliberately bypassed here.
+      # Its `prepare_allowed_mentions/1` helper crashes on verbatim Discord
+      # payloads such as `%{parse: ["everyone"]}`, and this seam must forward
+      # `allowed_mentions` untouched — the caller owns mention policy.
+      case Api.request(:post, Nostrum.Constants.channel_messages(channel_id), body) do
+        {:ok, response_body} -> decode_message_id(response_body)
+        {:error, error} -> {:error, normalize_error(error)}
+      end
+    end
+  end
+
+  @impl true
+  def create_thread_from_message(channel_id, message_id, params) when is_map(params) do
+    with {:ok, channel_id} <- cast_snowflake(channel_id, "channel id"),
+         {:ok, message_id} <- cast_snowflake(message_id, "message id"),
+         {:ok, options} <- thread_options(params) do
+      case Nostrum.Api.Thread.create_with_message(channel_id, message_id, options) do
+        {:ok, %Nostrum.Struct.Channel{id: id}} when not is_nil(id) ->
+          {:ok, %{thread_id: to_string(id)}}
+
+        {:ok, _unexpected} ->
+          {:error, untrustworthy_response("thread")}
+
+        {:error, error} ->
+          {:error, normalize_error(error)}
+      end
+    end
+  end
+
+  defp message_body(%{content: content} = params)
+       when is_binary(content) and content != "" do
+    body = %{
+      content: content,
+      allowed_mentions: Map.get(params, :allowed_mentions, %{parse: []})
+    }
+
+    case Map.fetch(params, :nonce) do
+      {:ok, nonce} when is_binary(nonce) or is_integer(nonce) ->
+        {:ok, Map.put(body, :nonce, nonce)}
+
+      {:ok, _invalid} ->
+        {:error, invalid_request("invalid Discord message nonce")}
+
+      :error ->
+        {:ok, body}
+    end
+  end
+
+  defp message_body(_params) do
+    {:error, invalid_request("message content is required")}
+  end
+
+  defp thread_options(%{name: name} = params)
+       when is_binary(name) and name != "" do
+    duration = Map.get(params, :auto_archive_duration, 1440)
+
+    if duration in @valid_archive_durations do
+      {:ok, %{name: name, auto_archive_duration: duration}}
+    else
+      {:error, invalid_request("invalid Discord auto archive duration")}
+    end
+  end
+
+  defp thread_options(_params) do
+    {:error, invalid_request("thread name is required")}
+  end
+
+  defp decode_message_id(response_body) do
+    case Jason.decode(response_body) do
+      {:ok, %{"id" => id}} when is_binary(id) and id != "" ->
+        {:ok, %{message_id: id}}
+
+      {:ok, %{"id" => id}} when is_integer(id) ->
+        {:ok, %{message_id: Integer.to_string(id)}}
+
+      _invalid ->
+        {:error, untrustworthy_response("message")}
+    end
+  end
+
+  defp untrustworthy_response(noun) do
+    %ApiError{status: 502, message: "invalid Discord #{noun} response"}
+  end
+
   defp fetch_member_pages(guild_id, after_id, collected) do
     params = %{limit: @page_size}
     params = if after_id, do: Map.put(params, :after, after_id), else: params
@@ -76,6 +166,22 @@ defmodule Dhc.Discord.Adapter.Nostrum do
     {:ok, Enum.map(page, &GuildMember.from_discord/1)}
   rescue
     error -> {:error, error}
+  end
+
+  defp normalize_error({:retry_after, millis}) do
+    %ApiError{
+      status: 429,
+      message: "Discord rate limited",
+      details: %{retry_after: millis}
+    }
+  end
+
+  defp normalize_error({:connection_died, reason}) do
+    %ApiError{
+      status: 0,
+      message: "Discord connection failed",
+      details: {:connection_died, reason}
+    }
   end
 
   defp normalize_error(%NostrumApiError{status_code: status, response: response}) do

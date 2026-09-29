@@ -37,6 +37,114 @@ defmodule Dhc.Discord do
     adapter().kick_guild_member(guild_id(), user_id, reason)
   end
 
+  @type discord_error_class :: :retry | :blocked | :uncertain
+  @type classified_error :: {:error, {discord_error_class(), ApiError.t()}}
+
+  @doc """
+  Posts a channel message through the configured Discord adapter.
+
+  `params` carries `%{content:, allowed_mentions:, nonce:}`. `allowed_mentions`
+  is forwarded verbatim — this seam never adds mentions itself; the caller
+  owns mention policy (ALE-309). Returns the Discord message id, or a
+  classified error (ALE-320: `:retry` for rate-limit deferral and
+  connection-refused-before-submission, `:blocked` for deterministic 400/403/404
+  rejections, `:uncertain` for everything else including unknown errors).
+  """
+  @spec create_message(String.t(), map()) ::
+          {:ok, %{message_id: String.t()}} | classified_error()
+  def create_message(channel_id, params) when is_map(params) do
+    case adapter().create_message(channel_id, params) do
+      {:ok, %{message_id: id}} when is_binary(id) and id != "" ->
+        {:ok, %{message_id: id}}
+
+      {:ok, %{message_id: id}} when is_integer(id) ->
+        {:ok, %{message_id: Integer.to_string(id)}}
+
+      {:ok, _unexpected} ->
+        uncertain("invalid Discord message response")
+
+      {:error, reason} ->
+        classify_wrapped(reason)
+    end
+  end
+
+  @doc """
+  Opens a thread on an existing channel message (ALE-320).
+
+  `params` carries `%{name:, auto_archive_duration:}`. Thread failures never
+  repost the message — the caller keeps the standing message id and records
+  the classified outcome.
+  """
+  @spec create_thread_from_message(String.t(), String.t(), map()) ::
+          {:ok, %{thread_id: String.t()}} | classified_error()
+  def create_thread_from_message(channel_id, message_id, params) when is_map(params) do
+    case adapter().create_thread_from_message(channel_id, message_id, params) do
+      {:ok, %{thread_id: id}} when is_binary(id) and id != "" ->
+        {:ok, %{thread_id: id}}
+
+      {:ok, %{thread_id: id}} when is_integer(id) ->
+        {:ok, %{thread_id: Integer.to_string(id)}}
+
+      {:ok, _unexpected} ->
+        uncertain("invalid Discord thread response")
+
+      {:error, reason} ->
+        classify_wrapped(reason)
+    end
+  end
+
+  defp uncertain(message) do
+    {:error, {:uncertain, %ApiError{status: 502, message: message}}}
+  end
+
+  defp classify_wrapped(reason) do
+    error = to_api_error(reason)
+    {:error, {classify_error(error), error}}
+  end
+
+  defp to_api_error(%ApiError{} = error), do: error
+
+  defp to_api_error(%{status: status} = error) when is_integer(status) do
+    %ApiError{
+      status: status,
+      code: Map.get(error, :code),
+      message: Map.get(error, :message),
+      details: Map.get(error, :details, error)
+    }
+  end
+
+  defp to_api_error(reason) do
+    %ApiError{status: 0, message: "Discord request failed", details: reason}
+  end
+
+  # Failure classification (ALE-309 table, ALE-320 seam). Unknown errors
+  # default to :uncertain — never retry without positive proof the message
+  # was not accepted.
+  defp classify_error(%ApiError{status: 429}), do: :retry
+  defp classify_error(%ApiError{details: {:retry_after, _millis}}), do: :retry
+  defp classify_error(%ApiError{details: %{retry_after: _}}), do: :retry
+
+  defp classify_error(%ApiError{status: status} = error)
+       when status == 0 or status == 408 do
+    if connection_refused?(error.details), do: :retry, else: :uncertain
+  end
+
+  defp classify_error(%ApiError{status: status}) when status in [400, 401, 403, 404],
+    do: :blocked
+
+  defp classify_error(%ApiError{}), do: :uncertain
+
+  defp connection_refused?(:econnrefused), do: true
+  defp connection_refused?({:connection_died, reason}), do: connection_refused?(reason)
+  defp connection_refused?({:econnrefused, _detail}), do: true
+  defp connection_refused?(%{reason: reason}), do: connection_refused?(reason)
+
+  defp connection_refused?(reason) when is_tuple(reason) do
+    reason |> Tuple.to_list() |> Enum.any?(&connection_refused?/1)
+  end
+
+  defp connection_refused?(_reason), do: false
+
   @spec doctor_report(keyword()) :: {:ok, map()} | {:error, term()}
   def doctor_report(options \\ []) do
     refresh? = Keyword.get(options, :refresh, false)
