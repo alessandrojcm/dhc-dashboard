@@ -15,6 +15,10 @@ servers:
     description: Relative path (same origin)
 
 tags:
+  - name: TrainingAnnouncements
+    description: Committee-managed Training Announcements and absolute-date exceptions.
+    x-context: Dhc.TrainingAnnouncements
+    x-resource: Announcement
   - name: Inventory
     description: |
       Target Inventory capability (ALE-272 / ALE-283c / ALE-284c / ALE-289).
@@ -67,6 +71,291 @@ tags:
     x-resource: DoctorReport
 
 paths:
+  /training-announcements:
+    get:
+      operationId: trainingAnnouncements.list
+      tags: [TrainingAnnouncements]
+      summary: List announcements (retired excluded by default)
+      security: [{cookieSession: []}]
+      parameters:
+        - name: includeRetired
+          in: query
+          schema: {type: boolean, default: false}
+      responses:
+        "200":
+          description: Announcements
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementListResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "422": {$ref: "#/components/responses/TrainingAnnouncementInvalid"}
+    post:
+      operationId: trainingAnnouncements.create
+      tags: [TrainingAnnouncements]
+      summary: Create an announcement and its first future send
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TrainingAnnouncementCreateRequest"}
+      responses:
+        "201":
+          description: Created with advisory warnings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementScheduleResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "422": {$ref: "#/components/responses/TrainingAnnouncementInvalid"}
+  /training-announcements/preview-copy:
+    post:
+      operationId: trainingAnnouncements.previewCopy
+      tags: [TrainingAnnouncements]
+      summary: Render copy for a date without saving or posting
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TrainingAnnouncementPreviewRequest"}
+      responses:
+        "200":
+          description: Rendered Discord copy
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementPreviewResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "422": {$ref: "#/components/responses/TrainingAnnouncementInvalid"}
+  /training-announcements/{id}:
+    parameters: [{$ref: "#/components/parameters/TrainingAnnouncementId"}]
+    get:
+      operationId: trainingAnnouncements.get
+      tags: [TrainingAnnouncements]
+      summary: Get an announcement, including retired announcements
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Announcement
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+    delete:
+      operationId: trainingAnnouncements.delete
+      tags: [TrainingAnnouncements]
+      summary: Delete only an announcement that has never attempted delivery
+      security: [{cookieSession: []}]
+      responses:
+        "204": {description: Deleted}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+  /training-announcements/{id}/schedule:
+    parameters: [{$ref: "#/components/parameters/TrainingAnnouncementId"}]
+    put:
+      operationId: trainingAnnouncements.updateSchedule
+      tags: [TrainingAnnouncements]
+      summary: Replace the future schedule (exceptions keep their absolute dates)
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TrainingAnnouncementScheduleRequest"}
+      responses:
+        "200":
+          description: Updated with advisory warnings
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementScheduleResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+        "422": {$ref: "#/components/responses/TrainingAnnouncementInvalid"}
+  /training-announcements/{id}/copy:
+    parameters: [{$ref: "#/components/parameters/TrainingAnnouncementId"}]
+    put:
+      operationId: trainingAnnouncements.updateCopy
+      tags: [TrainingAnnouncements]
+      summary: Update default title, message and explicit mention toggle
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TrainingAnnouncementCopyRequest"}
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+        "422": {$ref: "#/components/responses/TrainingAnnouncementInvalid"}
+  /training-announcements/{id}/disable:
+    parameters: [{$ref: "#/components/parameters/TrainingAnnouncementId"}]
+    post:
+      operationId: trainingAnnouncements.disable
+      tags: [TrainingAnnouncements]
+      summary: Pause indefinitely
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Disabled
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+  /training-announcements/{id}/enable:
+    parameters: [{$ref: "#/components/parameters/TrainingAnnouncementId"}]
+    post:
+      operationId: trainingAnnouncements.enable
+      tags: [TrainingAnnouncements]
+      summary: Resume future deliveries
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Enabled
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+  /training-announcements/{id}/retire:
+    parameters: [{$ref: "#/components/parameters/TrainingAnnouncementId"}]
+    post:
+      operationId: trainingAnnouncements.retire
+      tags: [TrainingAnnouncements]
+      summary: Retire while retaining evidence
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Retired
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+  /training-announcements/{id}/suppressions:
+    parameters: [{$ref: "#/components/parameters/TrainingAnnouncementId"}]
+    get:
+      operationId: trainingAnnouncementExceptions.listSuppressions
+      tags: [TrainingAnnouncements]
+      summary: List absolute-date suppressions
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Suppressions
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementSuppressionListResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+    post:
+      operationId: trainingAnnouncementExceptions.createSuppression
+      tags: [TrainingAnnouncements]
+      summary: Suppress a single date or finite inclusive range
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TrainingAnnouncementDateRange"}
+      responses:
+        "201":
+          description: Suppression created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementSuppressionResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+        "422": {$ref: "#/components/responses/TrainingAnnouncementInvalid"}
+  /training-announcements/{id}/suppressions/{exceptionId}:
+    parameters:
+      - {$ref: "#/components/parameters/TrainingAnnouncementId"}
+      - {$ref: "#/components/parameters/TrainingAnnouncementExceptionId"}
+    delete:
+      operationId: trainingAnnouncementExceptions.deleteSuppression
+      tags: [TrainingAnnouncements]
+      summary: Remove a suppression without rewriting delivery evidence
+      security: [{cookieSession: []}]
+      responses:
+        "204": {description: Removed}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+  /training-announcements/{id}/overrides:
+    parameters: [{$ref: "#/components/parameters/TrainingAnnouncementId"}]
+    get:
+      operationId: trainingAnnouncementExceptions.listOverrides
+      tags: [TrainingAnnouncements]
+      summary: List absolute-date copy overrides
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Overrides
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementOverrideListResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+    post:
+      operationId: trainingAnnouncementExceptions.createOverride
+      tags: [TrainingAnnouncements]
+      summary: Override title, message or both (overlapping ranges rejected)
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TrainingAnnouncementOverrideRequest"}
+      responses:
+        "201":
+          description: Override created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/TrainingAnnouncementOverrideResponse"}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+        "422": {$ref: "#/components/responses/TrainingAnnouncementInvalid"}
+  /training-announcements/{id}/overrides/{exceptionId}:
+    parameters:
+      - {$ref: "#/components/parameters/TrainingAnnouncementId"}
+      - {$ref: "#/components/parameters/TrainingAnnouncementExceptionId"}
+    delete:
+      operationId: trainingAnnouncementExceptions.deleteOverride
+      tags: [TrainingAnnouncements]
+      summary: Remove an override without rewriting delivery evidence
+      security: [{cookieSession: []}]
+      responses:
+        "204": {description: Removed}
+        "401": {$ref: "#/components/responses/TrainingAnnouncementUnauthorized"}
+        "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
+        "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
+        "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
   /discord-doctor/report:
     get:
       operationId: discordDoctor.report
@@ -6218,6 +6507,32 @@ paths:
                 $ref: "#/components/schemas/Error"
 
 components:
+  responses:
+    TrainingAnnouncementUnauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+    TrainingAnnouncementForbidden:
+      description: Active management role required
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+    TrainingAnnouncementNotFound:
+      description: Announcement or scoped exception not found
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+    TrainingAnnouncementConflict:
+      description: Lifecycle conflict (attempted, retired, or delivery started)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+    TrainingAnnouncementInvalid:
+      description: Invalid input, elapsed first send, overlapping override or invalid copy
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
   securitySchemes:
     bearerAuth:
       type: http
@@ -6242,6 +6557,16 @@ components:
         Short-lived signed HttpOnly browser proof for one Invitation Acceptance.
         It is transport state only and is never a DHC authenticated Session.
   parameters:
+    TrainingAnnouncementId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    TrainingAnnouncementExceptionId:
+      name: exceptionId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     WorkshopId:
       name: workshopId
       in: path
@@ -6268,6 +6593,164 @@ components:
         format: uuid
       description: The Loan id.
   schemas:
+    TrainingAnnouncementKind:
+      type: string
+      enum: [roll_call, sparring]
+    TrainingAnnouncementWarning:
+      type: string
+      enum: [slot_collision, exception_intersection_changed]
+    TrainingAnnouncementScheduleRequest:
+      type: object
+      description: Set exactly one of weekday or oneOffDate; explicitly clear the other when switching schedule type. Civil time in Europe/Dublin, first send strictly after now.
+      required: [postTime]
+      properties:
+        weekday: {type: integer, minimum: 1, maximum: 7, nullable: true}
+        oneOffDate: {type: string, format: date, nullable: true}
+        postTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
+    TrainingAnnouncementCopyRequest:
+      type: object
+      required: [title, message, mentionEveryone]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 100}
+        message: {type: string, minLength: 1, maxLength: 2000}
+        mentionEveryone: {type: boolean}
+    TrainingAnnouncementCreateRequest:
+      allOf:
+        - {$ref: "#/components/schemas/TrainingAnnouncementScheduleRequest"}
+        - {$ref: "#/components/schemas/TrainingAnnouncementCopyRequest"}
+        - type: object
+          required: [kind]
+          properties:
+            kind: {$ref: "#/components/schemas/TrainingAnnouncementKind"}
+    TrainingAnnouncementPreviewRequest:
+      allOf:
+        - {$ref: "#/components/schemas/TrainingAnnouncementCopyRequest"}
+        - type: object
+          required: [kind, date]
+          properties:
+            kind: {$ref: "#/components/schemas/TrainingAnnouncementKind"}
+            date: {type: string, format: date}
+    TrainingAnnouncement:
+      allOf:
+        - {$ref: "#/components/schemas/TrainingAnnouncementCreateRequest"}
+        - type: object
+          required: [id, weekday, oneOffDate, enabled, retired, firstAttemptedAt, createdAt, updatedAt]
+          properties:
+            id: {type: string, format: uuid}
+            weekday: {type: integer, minimum: 1, maximum: 7, nullable: true}
+            oneOffDate: {type: string, format: date, nullable: true}
+            enabled: {type: boolean}
+            retired: {type: boolean}
+            firstAttemptedAt: {type: string, format: date-time, nullable: true}
+            createdAt: {type: string, format: date-time}
+            updatedAt: {type: string, format: date-time}
+    TrainingAnnouncementResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/TrainingAnnouncement"}
+    TrainingAnnouncementListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/TrainingAnnouncement"}
+    TrainingAnnouncementScheduleResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [announcement, warnings]
+          properties:
+            announcement: {$ref: "#/components/schemas/TrainingAnnouncement"}
+            warnings:
+              type: array
+              items: {$ref: "#/components/schemas/TrainingAnnouncementWarning"}
+    TrainingAnnouncementPreviewResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [threadName, renderedMessage]
+          properties:
+            threadName: {type: string, maxLength: 100}
+            renderedMessage: {type: string, maxLength: 2000}
+    TrainingAnnouncementDateRange:
+      type: object
+      description: Finite inclusive Dublin range; fromDate equals toDate for a single occurrence.
+      required: [fromDate, toDate]
+      properties:
+        fromDate: {type: string, format: date}
+        toDate: {type: string, format: date}
+    TrainingAnnouncementSuppression:
+      allOf:
+        - {$ref: "#/components/schemas/TrainingAnnouncementDateRange"}
+        - type: object
+          required: [id, announcementId, createdAt]
+          properties:
+            id: {type: string, format: uuid}
+            announcementId: {type: string, format: uuid}
+            createdAt: {type: string, format: date-time}
+    TrainingAnnouncementOverrideRequest:
+      allOf:
+        - {$ref: "#/components/schemas/TrainingAnnouncementDateRange"}
+        - type: object
+          description: Replace title, message or both; kind and mention overrides do not exist.
+          properties:
+            title: {type: string, minLength: 1, maxLength: 100, nullable: true}
+            message: {type: string, minLength: 1, maxLength: 2000, nullable: true}
+    TrainingAnnouncementOverride:
+      allOf:
+        - {$ref: "#/components/schemas/TrainingAnnouncementSuppression"}
+        - type: object
+          required: [title, message]
+          properties:
+            title: {type: string, nullable: true}
+            message: {type: string, nullable: true}
+    TrainingAnnouncementSuppressionResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/TrainingAnnouncementSuppression"}
+    TrainingAnnouncementOverrideResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/TrainingAnnouncementOverride"}
+    TrainingAnnouncementSuppressionListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/TrainingAnnouncementSuppression"}
+    TrainingAnnouncementOverrideListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/TrainingAnnouncementOverride"}
+    TrainingAnnouncementError:
+      type: object
+      required: [errors]
+      properties:
+        errors:
+          type: object
+          required: [detail]
+          properties:
+            detail: {type: string}
+            code:
+              type: string
+              enum: [attempted, retired, delivery_started, concurrent_change]
+            fields:
+              type: object
+              additionalProperties:
+                type: array
+                items: {type: string}
     OnboardingStartAcceptanceRequest:
       type: object
       required: [invitationId, email, dateOfBirth]

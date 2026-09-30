@@ -2,29 +2,31 @@ defmodule DhcWeb.Router do
   use DhcWeb, :router
 
   pipeline :api do
-    plug :accepts, ["json"]
+    plug(:accepts, ["json"])
   end
 
   pipeline :invitation_admin_api do
-    plug DhcWeb.Plugs.RequireSession, roles: ~w(president admin committee_coordinator)
+    plug(DhcWeb.Plugs.RequireSession, roles: ~w(president admin committee_coordinator))
   end
 
   pipeline :waitlist_admin_api do
-    plug DhcWeb.Plugs.RequireSession,
+    plug(DhcWeb.Plugs.RequireSession,
       roles: ~w(admin president committee_coordinator beginners_coordinator coach)
+    )
   end
 
   pipeline :members_admin_api do
-    plug DhcWeb.Plugs.RequireSession,
+    plug(DhcWeb.Plugs.RequireSession,
       roles:
         ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
+    )
   end
 
   # Membership commands that MINT new Stripe charges (ALE-251 reactivation).
   # Deliberately narrower than :members_admin_api: only officers with billing
   # authority, and no self-service fallback.
   pipeline :membership_minting_api do
-    plug DhcWeb.Plugs.RequireSession, roles: ~w(admin president treasurer committee_coordinator)
+    plug(DhcWeb.Plugs.RequireSession, roles: ~w(admin president treasurer committee_coordinator))
   end
 
   pipeline :workshop_coordinator_api do
@@ -33,15 +35,51 @@ defmodule DhcWeb.Router do
     # `Dhc.Workshops.coordinator_management_roles/0`. Deliberately excludes
     # `beginners_coordinator` — the historical registration visibility drift
     # (see the `Dhc.Workshops` moduledoc) must not be reproduced.
-    plug DhcWeb.Plugs.RequireSession, roles: Dhc.Workshops.coordinator_management_roles()
+    plug(DhcWeb.Plugs.RequireSession, roles: Dhc.Workshops.coordinator_management_roles())
   end
 
   pipeline :settings_admin_api do
-    plug DhcWeb.Plugs.RequireSession, roles: ~w(president committee_coordinator admin)
+    plug(DhcWeb.Plugs.RequireSession, roles: ~w(president committee_coordinator admin))
+  end
+
+  pipeline :training_announcements_api do
+    plug(DhcWeb.Plugs.RequireSession, roles: Dhc.TrainingAnnouncements.management_roles())
+  end
+
+  scope "/api/training-announcements", DhcWeb do
+    pipe_through([:api, :training_announcements_api])
+
+    get("/", TrainingAnnouncementsController, :index)
+    post("/", TrainingAnnouncementsController, :create)
+    post("/preview-copy", TrainingAnnouncementsController, :preview_copy)
+    get("/:id", TrainingAnnouncementsController, :show)
+    delete("/:id", TrainingAnnouncementsController, :delete)
+    put("/:id/schedule", TrainingAnnouncementsController, :update_schedule)
+    put("/:id/copy", TrainingAnnouncementsController, :update_copy)
+    post("/:id/disable", TrainingAnnouncementsController, :disable)
+    post("/:id/enable", TrainingAnnouncementsController, :enable)
+    post("/:id/retire", TrainingAnnouncementsController, :retire)
+    get("/:id/suppressions", TrainingAnnouncementExceptionsController, :list_suppressions)
+    post("/:id/suppressions", TrainingAnnouncementExceptionsController, :create_suppression)
+
+    delete(
+      "/:id/suppressions/:exceptionId",
+      TrainingAnnouncementExceptionsController,
+      :delete_suppression
+    )
+
+    get("/:id/overrides", TrainingAnnouncementExceptionsController, :list_overrides)
+    post("/:id/overrides", TrainingAnnouncementExceptionsController, :create_override)
+
+    delete(
+      "/:id/overrides/:exceptionId",
+      TrainingAnnouncementExceptionsController,
+      :delete_override
+    )
   end
 
   pipeline :discord_doctor_admin_api do
-    plug DhcWeb.Plugs.RequireSession, roles: ~w(admin president committee_coordinator)
+    plug(DhcWeb.Plugs.RequireSession, roles: ~w(admin president committee_coordinator))
   end
 
   # ALE-105 inventory category management. Mirrors the existing SvelteKit
@@ -49,229 +87,259 @@ defmodule DhcWeb.Router do
   # categories are any authenticated member — the existing Svelte category
   # list view is member-readable; writes require the inventory write roles.
   pipeline :inventory_admin_api do
-    plug DhcWeb.Plugs.RequireSession, roles: Dhc.Auth.inventory_operator_roles()
+    plug(DhcWeb.Plugs.RequireSession, roles: Dhc.Auth.inventory_operator_roles())
   end
 
   pipeline :authenticated_api do
-    plug DhcWeb.Plugs.RequireSession
+    plug(DhcWeb.Plugs.RequireSession)
   end
 
   pipeline :authenticated_session_api do
-    plug DhcWeb.Plugs.RequireSession
+    plug(DhcWeb.Plugs.RequireSession)
   end
 
   # ALE-165 — rate-limited, non-enumerating magic-link request. Public.
   # The plug short-circuits over-the-limit requests with the same 200 body
   # the controller returns for a known/unknown address.
   pipeline :magic_link_request_api do
-    plug :accepts, ["json"]
-    plug DhcWeb.Plugs.MagicLinkRateLimit
+    plug(:accepts, ["json"])
+    plug(DhcWeb.Plugs.MagicLinkRateLimit)
   end
 
   pipeline :discord_oauth_api do
-    plug :fetch_session
+    plug(:fetch_session)
   end
 
   if Application.compile_env(:dhc, :e2e_harness, false) do
     scope "/api/e2e", DhcWeb do
-      pipe_through :api
+      pipe_through(:api)
 
-      post "/reset", E2EHarnessController, :reset
-      post "/seed/:scenario", E2EHarnessController, :seed
-      post "/login", E2EHarnessController, :login
-      post "/audit/invitation-acceptance/:id", E2EHarnessController, :invitation_acceptance_audit
+      post("/reset", E2EHarnessController, :reset)
+      post("/seed/:scenario", E2EHarnessController, :seed)
+      post("/login", E2EHarnessController, :login)
+      post("/audit/invitation-acceptance/:id", E2EHarnessController, :invitation_acceptance_audit)
 
-      post "/onboarding/interrupt-next-finalization",
-           E2EHarnessController,
-           :interrupt_next_finalization
+      post(
+        "/onboarding/interrupt-next-finalization",
+        E2EHarnessController,
+        :interrupt_next_finalization
+      )
 
-      post "/probes/onboarding-isolation", E2EHarnessController, :start_onboarding_isolation_probe
+      post(
+        "/probes/onboarding-isolation",
+        E2EHarnessController,
+        :start_onboarding_isolation_probe
+      )
 
-      get "/assertions/invitation-acceptance/:id",
-          E2EHarnessController,
-          :invitation_acceptance_assertion
+      get(
+        "/assertions/invitation-acceptance/:id",
+        E2EHarnessController,
+        :invitation_acceptance_assertion
+      )
 
-      get "/status", E2EHarnessController, :status
-      post "/loan-reminders/run", E2EHarnessController, :run_loan_reminders
+      get("/status", E2EHarnessController, :status)
+      post("/loan-reminders/run", E2EHarnessController, :run_loan_reminders)
 
-      post "/onboarding/clear-finalization-interruption",
-           E2EHarnessController,
-           :clear_finalization_interruption
+      post(
+        "/onboarding/clear-finalization-interruption",
+        E2EHarnessController,
+        :clear_finalization_interruption
+      )
 
-      patch "/fixtures/:type/:id", E2EHarnessController, :update_fixture
-      post "/fixtures/:type/:id", E2EHarnessController, :delete_fixture
+      patch("/fixtures/:type/:id", E2EHarnessController, :update_fixture)
+      post("/fixtures/:type/:id", E2EHarnessController, :delete_fixture)
     end
   end
 
   scope "/api", DhcWeb do
-    pipe_through :api
+    pipe_through(:api)
 
-    get "/health", HealthController, :index
+    get("/health", HealthController, :index)
 
-    get "/onboarding/invitation-acceptance",
-        OnboardingController,
-        :show_invitation_acceptance
+    get(
+      "/onboarding/invitation-acceptance",
+      OnboardingController,
+      :show_invitation_acceptance
+    )
 
-    post "/onboarding/invitation-acceptance/verify",
-         OnboardingController,
-         :verify_invitation_acceptance
+    post(
+      "/onboarding/invitation-acceptance/verify",
+      OnboardingController,
+      :verify_invitation_acceptance
+    )
 
-    post "/onboarding/invitation-acceptance/continue", OnboardingController, :continue_acceptance
-    post "/onboarding/invitation-acceptance/payment", OnboardingController, :submit_payment
-    post "/onboarding/invitation-acceptance/retry", OnboardingController, :retry_acceptance
-    get "/onboarding/invitation-acceptance/pricing", OnboardingController, :preview_pricing
+    post("/onboarding/invitation-acceptance/continue", OnboardingController, :continue_acceptance)
+    post("/onboarding/invitation-acceptance/payment", OnboardingController, :submit_payment)
+    post("/onboarding/invitation-acceptance/retry", OnboardingController, :retry_acceptance)
+    get("/onboarding/invitation-acceptance/pricing", OnboardingController, :preview_pricing)
 
-    post "/onboarding/invitation-acceptance/discord/cancel",
-         OnboardingController,
-         :cancel_discord
+    post(
+      "/onboarding/invitation-acceptance/discord/cancel",
+      OnboardingController,
+      :cancel_discord
+    )
 
-    get "/options", MembersController, :options
-    get "/invitations/:id", InvitationsController, :show
-    post "/invitations/:id/verify", InvitationsController, :verify
-    get "/waitlist/status", WaitlistController, :index
-    post "/waitlist/entries", WaitlistController, :create
-    post "/webhooks/stripe", StripeWebhooksController, :create
-    get "/workshops/:id/external-registration", WorkshopsController, :external_registration_gate
+    get("/options", MembersController, :options)
+    get("/invitations/:id", InvitationsController, :show)
+    post("/invitations/:id/verify", InvitationsController, :verify)
+    get("/waitlist/status", WaitlistController, :index)
+    post("/waitlist/entries", WaitlistController, :create)
+    post("/webhooks/stripe", StripeWebhooksController, :create)
+    get("/workshops/:id/external-registration", WorkshopsController, :external_registration_gate)
 
-    post "/workshops/:id/external-registration/checkout-session",
-         WorkshopsController,
-         :create_external_checkout_session
+    post(
+      "/workshops/:id/external-registration/checkout-session",
+      WorkshopsController,
+      :create_external_checkout_session
+    )
 
-    post "/workshops/:id/external-registration/complete",
-         WorkshopsController,
-         :complete_external_registration
+    post(
+      "/workshops/:id/external-registration/complete",
+      WorkshopsController,
+      :complete_external_registration
+    )
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :discord_oauth_api]
+    pipe_through([:api, :discord_oauth_api])
 
-    get "/onboarding/invitation-acceptance/discord", OnboardingController, :start_discord
+    get("/onboarding/invitation-acceptance/discord", OnboardingController, :start_discord)
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :invitation_admin_api]
+    pipe_through([:api, :invitation_admin_api])
 
-    get "/invitations", InvitationsController, :list
-    post "/invitations", InvitationsController, :create
-    delete "/invitations", InvitationsController, :delete
-    post "/invitations/resend", InvitationsController, :resend
+    get("/invitations", InvitationsController, :list)
+    post("/invitations", InvitationsController, :create)
+    delete("/invitations", InvitationsController, :delete)
+    post("/invitations/resend", InvitationsController, :resend)
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :waitlist_admin_api]
+    pipe_through([:api, :waitlist_admin_api])
 
-    get "/waitlist/analytics", WaitlistController, :analytics
-    patch "/waitlist/status", WaitlistController, :update_status
-    get "/waitlist/entries", WaitlistController, :entries
-    get "/waitlist/entries/:id", WaitlistController, :show
-    patch "/waitlist/entries/:id", WaitlistController, :update
-    get "/waitlist/entries/:id/guardian", WaitlistController, :guardian
+    get("/waitlist/analytics", WaitlistController, :analytics)
+    patch("/waitlist/status", WaitlistController, :update_status)
+    get("/waitlist/entries", WaitlistController, :entries)
+    get("/waitlist/entries/:id", WaitlistController, :show)
+    patch("/waitlist/entries/:id", WaitlistController, :update)
+    get("/waitlist/entries/:id/guardian", WaitlistController, :guardian)
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :members_admin_api]
+    pipe_through([:api, :members_admin_api])
 
-    get "/members", MembersController, :index
-    get "/members/analytics", MembersController, :analytics
+    get("/members", MembersController, :index)
+    get("/members/analytics", MembersController, :analytics)
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :membership_minting_api]
+    pipe_through([:api, :membership_minting_api])
 
     # ALE-251 — mints new Stripe charges, so only billing-authority roles and
     # NO self-service fallback (unlike pause/resume under :authenticated_api).
-    post "/members/:memberId/membership/reactivate", MembershipController, :reactivate
+    post("/members/:memberId/membership/reactivate", MembershipController, :reactivate)
 
     # ALE-252: read-only preview of the saved SEPA method the command would
     # charge. Same narrow pipeline, because saved payment data must not leak
     # to the broader members-admin list.
-    get "/members/:memberId/membership/reactivation-preview",
-        MembershipController,
-        :reactivation_preview
+    get(
+      "/members/:memberId/membership/reactivation-preview",
+      MembershipController,
+      :reactivation_preview
+    )
 
     # ALE-254: read-only Stripe-computed amounts for a reactivation starting
     # on a chosen date. Same narrow pipeline — pricing data rides on the same
     # authority as the command itself.
-    get "/members/:memberId/membership/reactivation-preview/amounts",
-        MembershipController,
-        :reactivation_amounts_preview
+    get(
+      "/members/:memberId/membership/reactivation-preview/amounts",
+      MembershipController,
+      :reactivation_amounts_preview
+    )
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :discord_doctor_admin_api]
+    pipe_through([:api, :discord_doctor_admin_api])
 
-    get "/discord-doctor/report", DiscordDoctorController, :report
-    post "/discord-doctor/kick", DiscordDoctorController, :kick
+    get("/discord-doctor/report", DiscordDoctorController, :report)
+    post("/discord-doctor/kick", DiscordDoctorController, :kick)
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :workshop_coordinator_api]
+    pipe_through([:api, :workshop_coordinator_api])
 
-    post "/workshops", WorkshopsController, :create
-    get "/workshops/calendar", WorkshopsController, :calendar
-    get "/workshops/:id", WorkshopsController, :show
-    patch "/workshops/:id", WorkshopsController, :update
-    delete "/workshops/:id", WorkshopsController, :delete
-    post "/workshops/:id/publish", WorkshopsController, :publish
-    post "/workshops/:id/cancel", WorkshopsController, :cancel
-    get "/workshops/:id/attendees", WorkshopsController, :attendees
-    get "/workshops/:id/refunds", WorkshopsController, :refunds
-    patch "/workshops/:id/attendance", WorkshopsController, :update_attendance
+    post("/workshops", WorkshopsController, :create)
+    get("/workshops/calendar", WorkshopsController, :calendar)
+    get("/workshops/:id", WorkshopsController, :show)
+    patch("/workshops/:id", WorkshopsController, :update)
+    delete("/workshops/:id", WorkshopsController, :delete)
+    post("/workshops/:id/publish", WorkshopsController, :publish)
+    post("/workshops/:id/cancel", WorkshopsController, :cancel)
+    get("/workshops/:id/attendees", WorkshopsController, :attendees)
+    get("/workshops/:id/refunds", WorkshopsController, :refunds)
+    patch("/workshops/:id/attendance", WorkshopsController, :update_attendance)
 
-    post "/workshops/:id/registrations/:registration_id/refund",
-         WorkshopsController,
-         :refund_registration
+    post(
+      "/workshops/:id/registrations/:registration_id/refund",
+      WorkshopsController,
+      :refund_registration
+    )
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :settings_admin_api]
+    pipe_through([:api, :settings_admin_api])
 
-    get "/settings", SettingsController, :index
-    patch "/settings/:key", SettingsController, :update
+    get("/settings", SettingsController, :index)
+    patch("/settings/:key", SettingsController, :update)
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :authenticated_api]
+    pipe_through([:api, :authenticated_api])
 
-    get "/members/insurance-form", MembersController, :insurance_form
-    get "/members/me", MembersController, :me
-    get "/members/:memberId", MembersController, :show
-    patch "/members/:memberId", MembersController, :update
-    post "/members/:memberId/membership/pause", MembershipController, :pause
-    post "/members/:memberId/membership/resume", MembershipController, :resume
-    post "/members/:memberId/billing-portal", MembershipController, :billing_portal
-    get "/notifications", NotificationsController, :index
-    post "/notifications/read-all", NotificationsController, :mark_all_read
-    patch "/notifications/:id/read", NotificationsController, :mark_read
+    get("/members/insurance-form", MembersController, :insurance_form)
+    get("/members/me", MembersController, :me)
+    get("/members/:memberId", MembersController, :show)
+    patch("/members/:memberId", MembersController, :update)
+    post("/members/:memberId/membership/pause", MembershipController, :pause)
+    post("/members/:memberId/membership/resume", MembershipController, :resume)
+    post("/members/:memberId/billing-portal", MembershipController, :billing_portal)
+    get("/notifications", NotificationsController, :index)
+    post("/notifications/read-all", NotificationsController, :mark_all_read)
+    patch("/notifications/:id/read", NotificationsController, :mark_read)
     # ALE-299: Web Push registration for the notification centre. Any
     # authenticated member may read the public VAPID key and manage the
     # subscriptions of the browser they are calling from.
-    get "/notifications/push/config", NotificationsPushController, :config
-    post "/notifications/push/subscriptions", NotificationsPushController, :subscribe
-    post "/notifications/push/unsubscribe", NotificationsPushController, :unsubscribe
-    get "/workshops", WorkshopsController, :list
-    post "/workshops/:id/interest", WorkshopsController, :toggle_interest
+    get("/notifications/push/config", NotificationsPushController, :config)
+    post("/notifications/push/subscriptions", NotificationsPushController, :subscribe)
+    post("/notifications/push/unsubscribe", NotificationsPushController, :unsubscribe)
+    get("/workshops", WorkshopsController, :list)
+    post("/workshops/:id/interest", WorkshopsController, :toggle_interest)
 
-    post "/workshops/:id/registration/payment-intent",
-         WorkshopsController,
-         :create_registration_payment_intent
+    post(
+      "/workshops/:id/registration/payment-intent",
+      WorkshopsController,
+      :create_registration_payment_intent
+    )
 
-    post "/workshops/:id/registration/complete", WorkshopsController, :complete_registration
-    delete "/workshops/:id/registration", WorkshopsController, :cancel_registration
+    post("/workshops/:id/registration/complete", WorkshopsController, :complete_registration)
+    delete("/workshops/:id/registration", WorkshopsController, :cancel_registration)
     # ALE-105: any authenticated member may read equipment categories.
-    get "/inventory/categories", InventoryCategoriesController, :index
-    get "/inventory/categories/:id", InventoryCategoriesController, :show
+    get("/inventory/categories", InventoryCategoriesController, :index)
+    get("/inventory/categories/:id", InventoryCategoriesController, :show)
     # ALE-283c: any authenticated member may read property definitions/options.
-    get "/inventory/categories/:categoryId/definitions", InventoryStructureController, :index
-    get "/inventory/definitions/:id", InventoryStructureController, :show
+    get("/inventory/categories/:categoryId/definitions", InventoryStructureController, :index)
+    get("/inventory/definitions/:id", InventoryStructureController, :show)
 
-    get "/inventory/definitions/:definitionId/options",
-        InventoryStructureController,
-        :index_options
+    get(
+      "/inventory/definitions/:definitionId/options",
+      InventoryStructureController,
+      :index_options
+    )
 
     # ALE-106: any authenticated member may read inventory containers.
-    get "/inventory/containers", InventoryContainersController, :index
-    get "/inventory/containers/:id", InventoryContainersController, :show
+    get("/inventory/containers", InventoryContainersController, :index)
+    get("/inventory/containers/:id", InventoryContainersController, :show)
 
     # ALE-285 member catalog and own loans. Member-readable by design: these
     # serve separate read models that cannot express container location,
@@ -281,43 +349,47 @@ defmodule DhcWeb.Router do
     # member". A request is addressed to an item, so it hangs off the item;
     # reading and cancelling a loan hangs off /loans/mine, whose `mine`
     # segment is the authorization model made visible.
-    get "/inventory/catalog/items", InventoryCatalogController, :list_items
-    get "/inventory/catalog/items/:slugOrId", InventoryCatalogController, :show_item
+    get("/inventory/catalog/items", InventoryCatalogController, :list_items)
+    get("/inventory/catalog/items/:slugOrId", InventoryCatalogController, :show_item)
 
-    post "/inventory/catalog/items/:slugOrId/requests",
-         InventoryCatalogController,
-         :request_loan
+    post(
+      "/inventory/catalog/items/:slugOrId/requests",
+      InventoryCatalogController,
+      :request_loan
+    )
 
-    get "/inventory/loans/mine", InventoryMemberLoansController, :list
-    get "/inventory/loans/mine/:loanId", InventoryMemberLoansController, :show
-    post "/inventory/loans/mine/:loanId/cancel", InventoryMemberLoansController, :cancel
+    get("/inventory/loans/mine", InventoryMemberLoansController, :list)
+    get("/inventory/loans/mine/:loanId", InventoryMemberLoansController, :show)
+    post("/inventory/loans/mine/:loanId/cancel", InventoryMemberLoansController, :cancel)
   end
 
   scope "/api", DhcWeb do
-    pipe_through [:api, :inventory_admin_api]
+    pipe_through([:api, :inventory_admin_api])
 
     # ALE-105: write roles only.
-    post "/inventory/categories", InventoryCategoriesController, :create
-    patch "/inventory/categories/:id", InventoryCategoriesController, :update
-    delete "/inventory/categories/:id", InventoryCategoriesController, :delete
+    post("/inventory/categories", InventoryCategoriesController, :create)
+    patch("/inventory/categories/:id", InventoryCategoriesController, :update)
+    delete("/inventory/categories/:id", InventoryCategoriesController, :delete)
     # ALE-283c: write roles only.
-    post "/inventory/categories/:categoryId/definitions", InventoryStructureController, :create
-    patch "/inventory/definitions/:id", InventoryStructureController, :update
-    post "/inventory/definitions/:id/retire", InventoryStructureController, :retire
+    post("/inventory/categories/:categoryId/definitions", InventoryStructureController, :create)
+    patch("/inventory/definitions/:id", InventoryStructureController, :update)
+    post("/inventory/definitions/:id/retire", InventoryStructureController, :retire)
 
-    post "/inventory/definitions/:definitionId/options",
-         InventoryStructureController,
-         :create_option
+    post(
+      "/inventory/definitions/:definitionId/options",
+      InventoryStructureController,
+      :create_option
+    )
 
-    patch "/inventory/options/:id", InventoryStructureController, :update_option
-    post "/inventory/options/:id/retire", InventoryStructureController, :retire_option
-    post "/inventory/containers/:id/move", InventoryContainersController, :move
-    post "/inventory/containers/:id/archive", InventoryContainersController, :archive
-    post "/inventory/containers/:id/restore", InventoryContainersController, :restore
+    patch("/inventory/options/:id", InventoryStructureController, :update_option)
+    post("/inventory/options/:id/retire", InventoryStructureController, :retire_option)
+    post("/inventory/containers/:id/move", InventoryContainersController, :move)
+    post("/inventory/containers/:id/archive", InventoryContainersController, :archive)
+    post("/inventory/containers/:id/restore", InventoryContainersController, :restore)
     # ALE-106: write roles only.
-    post "/inventory/containers", InventoryContainersController, :create
-    patch "/inventory/containers/:id", InventoryContainersController, :update
-    delete "/inventory/containers/:id", InventoryContainersController, :delete
+    post("/inventory/containers", InventoryContainersController, :create)
+    patch("/inventory/containers/:id", InventoryContainersController, :update)
+    delete("/inventory/containers/:id", InventoryContainersController, :delete)
 
     # ALE-289: the target item viewer and commands live on the freed
     # /inventory/items URLs. Equal authority for quartermaster, president,
@@ -325,102 +397,120 @@ defmodule DhcWeb.Router do
     # the operator viewer discloses container location, notes, and
     # maintenance facts (ALE-280 story 45). Each availability-changing
     # command is its own route so the generic PATCH cannot express it.
-    get "/inventory/items", InventoryItemsController, :index
-    get "/inventory/items/:slugOrId", InventoryItemsController, :show
-    post "/inventory/items", InventoryItemsController, :create
-    patch "/inventory/items/:slugOrId", InventoryItemsController, :update
-    delete "/inventory/items/:slugOrId", InventoryItemsController, :delete
+    get("/inventory/items", InventoryItemsController, :index)
+    get("/inventory/items/:slugOrId", InventoryItemsController, :show)
+    post("/inventory/items", InventoryItemsController, :create)
+    patch("/inventory/items/:slugOrId", InventoryItemsController, :update)
+    delete("/inventory/items/:slugOrId", InventoryItemsController, :delete)
 
-    post "/inventory/items/:slugOrId/category",
-         InventoryItemsController,
-         :change_category
+    post(
+      "/inventory/items/:slugOrId/category",
+      InventoryItemsController,
+      :change_category
+    )
 
-    post "/inventory/items/:slugOrId/move", InventoryItemsController, :move
+    post("/inventory/items/:slugOrId/move", InventoryItemsController, :move)
 
-    get "/inventory/items/:slugOrId/maintenance",
-        InventoryItemsController,
-        :list_maintenance
+    get(
+      "/inventory/items/:slugOrId/maintenance",
+      InventoryItemsController,
+      :list_maintenance
+    )
 
-    post "/inventory/items/:slugOrId/maintenance/start",
-         InventoryItemsController,
-         :start_maintenance
+    post(
+      "/inventory/items/:slugOrId/maintenance/start",
+      InventoryItemsController,
+      :start_maintenance
+    )
 
-    post "/inventory/items/:slugOrId/maintenance/end",
-         InventoryItemsController,
-         :end_maintenance
+    post(
+      "/inventory/items/:slugOrId/maintenance/end",
+      InventoryItemsController,
+      :end_maintenance
+    )
 
-    post "/inventory/items/:slugOrId/archive",
-         InventoryItemsController,
-         :archive
+    post(
+      "/inventory/items/:slugOrId/archive",
+      InventoryItemsController,
+      :archive
+    )
 
-    post "/inventory/items/:slugOrId/restore",
-         InventoryItemsController,
-         :restore
+    post(
+      "/inventory/items/:slugOrId/restore",
+      InventoryItemsController,
+      :restore
+    )
 
     # ALE-286c operator loan viewers, commands, and the shared queue.
     # Equal authority for quartermaster, president, and admin. Each
     # transition is its own route so there is no generic loan patch.
     # The queue is unpaginated: bucket counts are length(rows).
-    get "/inventory/operator/loans/queue", InventoryOperatorLoanQueueController, :show
-    get "/inventory/operator/loans/:loanId", InventoryOperatorLoansController, :show
+    get("/inventory/operator/loans/queue", InventoryOperatorLoanQueueController, :show)
+    get("/inventory/operator/loans/:loanId", InventoryOperatorLoansController, :show)
 
-    post "/inventory/operator/loans/:loanId/approve",
-         InventoryOperatorLoansController,
-         :approve
+    post(
+      "/inventory/operator/loans/:loanId/approve",
+      InventoryOperatorLoansController,
+      :approve
+    )
 
-    post "/inventory/operator/loans/:loanId/reject", InventoryOperatorLoansController, :reject
-    post "/inventory/operator/loans/:loanId/cancel", InventoryOperatorLoansController, :cancel
+    post("/inventory/operator/loans/:loanId/reject", InventoryOperatorLoansController, :reject)
+    post("/inventory/operator/loans/:loanId/cancel", InventoryOperatorLoansController, :cancel)
 
-    post "/inventory/operator/loans/:loanId/checkout",
-         InventoryOperatorLoansController,
-         :checkout
+    post(
+      "/inventory/operator/loans/:loanId/checkout",
+      InventoryOperatorLoansController,
+      :checkout
+    )
 
-    post "/inventory/operator/loans/:loanId/return", InventoryOperatorLoansController, :return
+    post("/inventory/operator/loans/:loanId/return", InventoryOperatorLoansController, :return)
 
-    post "/inventory/operator/loans/:loanId/dates",
-         InventoryOperatorLoansController,
-         :edit_dates
+    post(
+      "/inventory/operator/loans/:loanId/dates",
+      InventoryOperatorLoansController,
+      :edit_dates
+    )
   end
 
   # Phoenix-session auth API. Lives under /api/auth/* and is the first
   # Phoenix-owned authentication path.
   scope "/api/auth", DhcWeb do
     # Magic-link request — public, rate-limited, non-enumerating.
-    pipe_through :magic_link_request_api
-    post "/magic-link", AuthSessionController, :request_magic_link
+    pipe_through(:magic_link_request_api)
+    post("/magic-link", AuthSessionController, :request_magic_link)
   end
 
   scope "/api/auth", DhcWeb do
-    pipe_through :api
+    pipe_through(:api)
 
     # Magic-link verify — public (the token is the credential). Sets the
     # signed _dhc_session cookie on success.
-    post "/magic-link/verify", AuthSessionController, :verify_magic_link
+    post("/magic-link/verify", AuthSessionController, :verify_magic_link)
   end
 
   scope "/api/auth", DhcWeb do
-    pipe_through :discord_oauth_api
+    pipe_through(:discord_oauth_api)
 
-    get "/discord", AuthSessionController, :request_discord
-    get "/discord/callback", AuthSessionController, :discord_callback
+    get("/discord", AuthSessionController, :request_discord)
+    get("/discord/callback", AuthSessionController, :discord_callback)
   end
 
   scope "/api/auth", DhcWeb do
-    pipe_through [:api, :discord_oauth_api, :authenticated_session_api]
+    pipe_through([:api, :discord_oauth_api, :authenticated_session_api])
 
-    get "/discord/link", AuthSessionController, :request_discord_link
+    get("/discord/link", AuthSessionController, :request_discord_link)
   end
 
   scope "/api/auth", DhcWeb do
-    pipe_through [:api, :authenticated_session_api]
+    pipe_through([:api, :authenticated_session_api])
 
     # Session projection — requires a valid, active session.
-    get "/session", AuthSessionController, :show_session
+    get("/session", AuthSessionController, :show_session)
     # Sign out the current device — revokes the one session token.
-    delete "/session", AuthSessionController, :delete_session
+    delete("/session", AuthSessionController, :delete_session)
     # ALE-164 — exchange the session cookie for a short-lived JS-readable
     # socket token (the browser passes it via the Phoenix JS `authToken`
     # subprotocol; the HTTP-only cookie cannot be read by JS).
-    get "/socket-token", AuthSessionController, :socket_token
+    get("/socket-token", AuthSessionController, :socket_token)
   end
 end
