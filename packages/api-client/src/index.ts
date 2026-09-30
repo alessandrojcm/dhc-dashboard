@@ -5,6 +5,9 @@
 
 // Generated SDK functions & types
 export {
+	trainingAnnouncementOccurrencesWindow,
+	trainingAnnouncementOccurrencesGet,
+	trainingAnnouncementOccurrencesListForAnnouncement,
 	trainingAnnouncementsList,
 	trainingAnnouncementsCreate,
 	trainingAnnouncementsGet,
@@ -144,6 +147,25 @@ export {
 	type Options,
 } from "./client/sdk.gen";
 export type {
+	TrainingAnnouncementDeliveryEvidence,
+	TrainingAnnouncementOccurrence,
+	TrainingAnnouncementOccurrenceResponse,
+	TrainingAnnouncementOccurrenceListResponse,
+	TrainingAnnouncementOccurrencesWindowData,
+	TrainingAnnouncementOccurrencesWindowError,
+	TrainingAnnouncementOccurrencesWindowErrors,
+	TrainingAnnouncementOccurrencesWindowResponse,
+	TrainingAnnouncementOccurrencesWindowResponses,
+	TrainingAnnouncementOccurrencesGetData,
+	TrainingAnnouncementOccurrencesGetError,
+	TrainingAnnouncementOccurrencesGetErrors,
+	TrainingAnnouncementOccurrencesGetResponse,
+	TrainingAnnouncementOccurrencesGetResponses,
+	TrainingAnnouncementOccurrencesListForAnnouncementData,
+	TrainingAnnouncementOccurrencesListForAnnouncementError,
+	TrainingAnnouncementOccurrencesListForAnnouncementErrors,
+	TrainingAnnouncementOccurrencesListForAnnouncementResponse,
+	TrainingAnnouncementOccurrencesListForAnnouncementResponses,
 	TrainingAnnouncement,
 	TrainingAnnouncementKind,
 	TrainingAnnouncementWarning,
@@ -925,6 +947,17 @@ export type {
 // Valibot schemas (runtime validation)
 export {
 	vTrainingAnnouncement,
+	vTrainingAnnouncementDeliveryEvidence,
+	vTrainingAnnouncementOccurrence,
+	vTrainingAnnouncementOccurrenceResponse,
+	vTrainingAnnouncementOccurrenceListResponse,
+	vTrainingAnnouncementOccurrencesWindowQuery,
+	vTrainingAnnouncementOccurrencesWindowResponse,
+	vTrainingAnnouncementOccurrencesGetPath,
+	vTrainingAnnouncementOccurrencesGetResponse,
+	vTrainingAnnouncementOccurrencesListForAnnouncementPath,
+	vTrainingAnnouncementOccurrencesListForAnnouncementQuery,
+	vTrainingAnnouncementOccurrencesListForAnnouncementResponse,
 	vTrainingAnnouncementKind,
 	vTrainingAnnouncementWarning,
 	vTrainingAnnouncementScheduleRequest,
@@ -1331,6 +1364,12 @@ export {
 // TanStack Svelte Query helpers
 export {
 	trainingAnnouncementsListOptions,
+	trainingAnnouncementOccurrencesWindowOptions,
+	trainingAnnouncementOccurrencesWindowQueryKey,
+	trainingAnnouncementOccurrencesGetOptions,
+	trainingAnnouncementOccurrencesGetQueryKey,
+	trainingAnnouncementOccurrencesListForAnnouncementOptions,
+	trainingAnnouncementOccurrencesListForAnnouncementQueryKey,
 	trainingAnnouncementsListQueryKey,
 	trainingAnnouncementsGetOptions,
 	trainingAnnouncementsGetQueryKey,

@@ -53,6 +53,7 @@ defmodule Dhc.TrainingAnnouncements do
   alias Dhc.TrainingAnnouncements.Copy
   alias Dhc.TrainingAnnouncements.Exceptions
   alias Dhc.TrainingAnnouncements.Occurrences
+  alias Dhc.TrainingAnnouncements.OccurrenceReads
   alias Dhc.TrainingAnnouncements.Scheduling
   alias Dhc.TrainingAnnouncements.Store
 
@@ -62,7 +63,23 @@ defmodule Dhc.TrainingAnnouncements do
 
   @doc "Earliest Dublin date retained as delivery evidence and accepted by the window read model."
   @spec retention_horizon() :: Date.t()
-  def retention_horizon, do: Date.add(ClubCalendar.today(), -400)
+  def retention_horizon(today \\ ClubCalendar.today()), do: Date.add(today, -400)
+
+  def occurrence_window(actor_id, from, to, opts \\ []) do
+    with :ok <- authorize(actor_id), do: OccurrenceReads.window(from, to, opts)
+  end
+
+  def get_occurrence(actor_id, id, date, opts \\ []) do
+    with :ok <- authorize(actor_id),
+         {:ok, announcement} <- Store.fetch(id),
+         do: OccurrenceReads.get(announcement, date, opts)
+  end
+
+  def list_occurrences(actor_id, id, params, opts \\ []) do
+    with :ok <- authorize(actor_id),
+         {:ok, announcement} <- Store.fetch(id),
+         do: OccurrenceReads.list(announcement, params, opts)
+  end
 
   @doc "Creates a Training Announcement and its first future job atomically."
   def create(actor_id, attrs, opts \\ []) do

@@ -35,42 +35,46 @@ defmodule Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery do
   @reasons ~w(holiday disabled suppressed unconfigured_channel invalid_copy late permission unknown_channel payload_rejected timeout server_error worker_lost unknown)
 
   schema "discord_announcement_deliveries" do
-    field :subject, :string
-    field :occurrence_date, :date
-    field :holiday_date, :date
-    field :phase, :string
+    field(:subject, :string)
+    field(:occurrence_date, :date)
+    field(:holiday_date, :date)
+    field(:phase, :string)
 
-    field :post_time, :time
-    field :kind, :string
-    field :mention_everyone, :boolean
-    field :title_source, :string
-    field :message_source, :string
-    field :rendered_message, :string
-    field :thread_name, :string
-    field :channel_id, :string
+    field(:post_time, :time)
+    field(:kind, :string)
+    field(:mention_everyone, :boolean)
+    field(:title_source, :string)
+    field(:message_source, :string)
+    field(:rendered_message, :string)
+    field(:thread_name, :string)
+    field(:channel_id, :string)
 
-    field :state, :string
-    field :reason, :string
+    field(:state, :string)
+    field(:reason, :string)
+    field(:resolved_outcome, :string)
+    field(:precedence_chain, {:array, :string}, default: [])
 
-    field :frozen_at, :utc_datetime_usec
-    field :posting_started_at, :utc_datetime_usec
-    field :message_posted_at, :utc_datetime_usec
-    field :thread_created_at, :utc_datetime_usec
-    field :concluded_at, :utc_datetime_usec
+    field(:frozen_at, :utc_datetime_usec)
+    field(:posting_started_at, :utc_datetime_usec)
+    field(:message_posted_at, :utc_datetime_usec)
+    field(:thread_created_at, :utc_datetime_usec)
+    field(:concluded_at, :utc_datetime_usec)
 
-    field :discord_message_id, :string
-    field :discord_thread_id, :string
-    field :error_detail, :string
-    field :thread_attempts, :integer, default: 0
-    field :last_thread_error, :string
+    field(:discord_message_id, :string)
+    field(:discord_thread_id, :string)
+    field(:error_detail, :string)
+    field(:thread_attempts, :integer, default: 0)
+    field(:last_thread_error, :string)
 
-    belongs_to :announcement, Dhc.TrainingAnnouncements.Announcement
+    belongs_to(:announcement, Dhc.TrainingAnnouncements.Announcement)
 
-    belongs_to :applied_suppression, Dhc.TrainingAnnouncements.AnnouncementSuppression,
+    belongs_to(:applied_suppression, Dhc.TrainingAnnouncements.AnnouncementSuppression,
       foreign_key: :applied_suppression_id
+    )
 
-    belongs_to :applied_override, Dhc.TrainingAnnouncements.AnnouncementOverride,
+    belongs_to(:applied_override, Dhc.TrainingAnnouncements.AnnouncementOverride,
       foreign_key: :applied_override_id
+    )
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end

@@ -8,14 +8,18 @@ defmodule DhcWeb.TrainingAnnouncementsClientParityTest do
     DhcWeb.ClientParity.require!(@client_root)
   end
 
-  test "both slices have cookie security, the domain tag, SDK exports and query helpers",
+  test "all three slices have cookie security, the domain tag, SDK exports and query helpers",
        context do
     {:ok, spec} = YamlElixir.read_from_file(Application.app_dir(:dhc, "priv/api/openapi.yaml"))
     sdk = File.read!(Path.join(context.generated, "sdk.gen.ts"))
     query = File.read!(Path.join(context.generated, "@tanstack/svelte-query.gen.ts"))
     public = File.read!(context.public)
 
-    for {slice, count} <- [{"trainingAnnouncements", 10}, {"trainingAnnouncementExceptions", 6}] do
+    for {slice, count} <- [
+          {"trainingAnnouncements", 10},
+          {"trainingAnnouncementExceptions", 6},
+          {"trainingAnnouncementOccurrences", 3}
+        ] do
       operations =
         for {_path, methods} <- spec["paths"],
             {method, operation} <- methods,

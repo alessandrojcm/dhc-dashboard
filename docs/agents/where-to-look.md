@@ -2,6 +2,7 @@
 
 | Task | Location | Notes |
 |------|----------|-------|
+| Change Training Announcement calendar, inspector or rail reads | `apps/phoenix/lib/dhc/training_announcements/occurrence_reads.ex` + `training_announcement_occurrences_controller.ex` / `training_announcement_occurrences_json.ex` in `lib/dhc_web/controllers/`; facade and controller tests named `occurrence_reads_test.exs` / `training_announcement_occurrences_controller_test.exs` | ALE-329. `OccurrenceReads` merges future `Occurrences` projections with durable evidence (row wins), never re-projecting history. Workers retain `resolved_outcome` and `precedence_chain` independently of deletable exception references; legacy rows expose unknown/empty rather than inventing a past resolution. Pre-freeze snapshot fields stay null. Holiday eligibility and copy rendering are shared with `HolidayAnnouncements`; item `date` is the send date while `holidayDate` is identity, so a day-before row belongs on the preceding day. Window bounds use the same retention horizon as pruning. The third slice shares the management pipeline and required-nullable client contract. |
 | Add DB mutation | `apps/phoenix/lib/dhc/<domain>/` | Phoenix is the current owner. The legacy Svelte service directory has been removed; do not recreate it. |
 | Add SvelteKit route or server endpoint | `apps/web/src/routes/` | Frontend/BFF routes only; domain APIs belong in Phoenix. |
 | Add edge function | `supabase/functions/` | DEPRECATED — migrate to Oban instead |

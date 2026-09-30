@@ -71,6 +71,63 @@ tags:
     x-resource: DoctorReport
 
 paths:
+  /training-announcements/occurrences/window:
+    get:
+      operationId: trainingAnnouncementOccurrences.window
+      tags: [TrainingAnnouncements]
+      summary: Calendar window with retained evidence and prospective occurrences
+      security: [{cookieSession: []}]
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date}}
+        - {name: to, in: query, required: true, schema: {type: string, format: date}}
+      responses:
+        '200':
+          description: Inclusive window of at most 62 Dublin dates, from no earlier than the retention horizon. Delivery rows win over projections; day-before holiday items use their send date.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TrainingAnnouncementOccurrenceListResponse'}
+        '401': {$ref: '#/components/responses/TrainingAnnouncementUnauthorized'}
+        '403': {$ref: '#/components/responses/TrainingAnnouncementForbidden'}
+        '422': {$ref: '#/components/responses/TrainingAnnouncementInvalid'}
+  /training-announcements/{id}/occurrences:
+    get:
+      operationId: trainingAnnouncementOccurrences.listForAnnouncement
+      tags: [TrainingAnnouncements]
+      summary: Upcoming occurrences or recent delivery evidence for a rail card
+      security: [{cookieSession: []}]
+      parameters:
+        - {$ref: '#/components/parameters/TrainingAnnouncementId'}
+        - {name: direction, in: query, schema: {type: string, enum: [upcoming, recent], default: upcoming}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 3}}
+      responses:
+        '200':
+          description: Upcoming in send order, recent evidence newest first, at most limit items. No Holiday Announcement items.
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TrainingAnnouncementOccurrenceListResponse'}
+        '401': {$ref: '#/components/responses/TrainingAnnouncementUnauthorized'}
+        '403': {$ref: '#/components/responses/TrainingAnnouncementForbidden'}
+        '404': {$ref: '#/components/responses/TrainingAnnouncementNotFound'}
+        '422': {$ref: '#/components/responses/TrainingAnnouncementInvalid'}
+  /training-announcements/{id}/occurrences/{date}:
+    get:
+      operationId: trainingAnnouncementOccurrences.get
+      tags: [TrainingAnnouncements]
+      summary: Announcement Occurrence inspector, never a Holiday Announcement
+      security: [{cookieSession: []}]
+      parameters:
+        - {$ref: '#/components/parameters/TrainingAnnouncementId'}
+        - {name: date, in: path, required: true, schema: {type: string, format: date}}
+      responses:
+        '200':
+          description: Retained row or prospective occurrence; an elapsed slot without evidence is absent
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TrainingAnnouncementOccurrenceResponse'}
+        '401': {$ref: '#/components/responses/TrainingAnnouncementUnauthorized'}
+        '403': {$ref: '#/components/responses/TrainingAnnouncementForbidden'}
+        '404': {$ref: '#/components/responses/TrainingAnnouncementNotFound'}
+        '422': {$ref: '#/components/responses/TrainingAnnouncementInvalid'}
   /training-announcements:
     get:
       operationId: trainingAnnouncements.list
@@ -6593,6 +6650,68 @@ components:
         format: uuid
       description: The Loan id.
   schemas:
+    TrainingAnnouncementOccurrenceListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: '#/components/schemas/TrainingAnnouncementOccurrence'}
+    TrainingAnnouncementOccurrenceResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: '#/components/schemas/TrainingAnnouncementOccurrence'}
+    TrainingAnnouncementOccurrence:
+      type: object
+      description: Full inspector payload. Non-frozen evidence deliberately has null snapshot fields. Legacy rows have only their retained outcome, an empty chain and unknown when the original resolution cannot be established. No current copy or exceptions are substituted into evidence.
+      required: [subject, date, announcementId, holidayDate, phase, postTime, kind, outcome, chain, decidedBy, titleSource, messageSource, mentionEveryone, renderedMessage, threadName, readOnly, renderErrors, delivery, appliedSuppressionId, appliedOverrideId]
+      properties:
+        subject: {type: string, enum: [occurrence, holiday]}
+        date: {type: string, format: date, description: Dublin send date, not the holiday identity date for day_before}
+        announcementId: {type: string, format: uuid, nullable: true}
+        appliedSuppressionId: {type: string, format: uuid, nullable: true}
+        appliedOverrideId: {type: string, format: uuid, nullable: true}
+        holidayDate: {type: string, format: date, nullable: true}
+        phase: {type: string, enum: [day_before, same_day], nullable: true}
+        postTime: {type: string, nullable: true}
+        kind: {type: string, enum: [roll_call, sparring], nullable: true}
+        outcome: {type: string, enum: [post, post_override, skipped_holiday, skipped_disabled, skipped_suppressed, missed, unknown]}
+        chain:
+          type: array
+          items: {type: string, enum: [holiday, disablement, suppression, override, defaults]}
+        decidedBy: {type: string, enum: [holiday, disablement, suppression, override, defaults], nullable: true}
+        titleSource: {type: string, nullable: true}
+        messageSource: {type: string, nullable: true}
+        mentionEveryone: {type: boolean, nullable: true}
+        renderedMessage: {type: string, nullable: true}
+        threadName: {type: string, nullable: true}
+        readOnly: {type: boolean}
+        renderErrors: {type: array, items: {type: string}}
+        delivery:
+          allOf:
+            - {$ref: '#/components/schemas/TrainingAnnouncementDeliveryEvidence'}
+          nullable: true
+    TrainingAnnouncementDeliveryEvidence:
+      type: object
+      required: [id, state, reason, frozenAt, postingStartedAt, messagePostedAt, threadCreatedAt, concludedAt, discordMessageId, discordThreadId, permalink, errorDetail, threadAttempts, lastThreadError, appliedSuppressionId, appliedOverrideId]
+      properties:
+        id: {type: string, format: uuid}
+        state: {type: string, enum: [frozen, posting_message, message_posted, creating_thread, delivered, message_uncertain, thread_failed, blocked, skipped, missed]}
+        reason: {type: string, enum: [holiday, disabled, suppressed, unconfigured_channel, invalid_copy, late, permission, unknown_channel, payload_rejected, timeout, server_error, worker_lost, unknown], nullable: true}
+        frozenAt: {type: string, format: date-time, nullable: true}
+        postingStartedAt: {type: string, format: date-time, nullable: true}
+        messagePostedAt: {type: string, format: date-time, nullable: true}
+        threadCreatedAt: {type: string, format: date-time, nullable: true}
+        concludedAt: {type: string, format: date-time, nullable: true}
+        discordMessageId: {type: string, nullable: true}
+        discordThreadId: {type: string, nullable: true}
+        permalink: {type: string, nullable: true}
+        errorDetail: {type: string, nullable: true}
+        threadAttempts: {type: integer, minimum: 0}
+        lastThreadError: {type: string, nullable: true}
+        appliedSuppressionId: {type: string, format: uuid, nullable: true}
+        appliedOverrideId: {type: string, format: uuid, nullable: true}
     TrainingAnnouncementKind:
       type: string
       enum: [roll_call, sparring]

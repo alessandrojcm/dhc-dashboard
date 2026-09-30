@@ -84,8 +84,22 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncements do
     end
   end
 
-  defp eligible(date) do
+  @doc "The enabled roll-call condition shared by the worker and calendar."
+  def eligible(date) do
     Enum.find(candidates(date), & &1.enabled)
+  end
+
+  def preview(holiday, phase) do
+    render_copy(holiday, phase)
+  end
+
+  defp render_copy(holiday, phase) do
+    source = Map.fetch!(@copy, phase)
+
+    with {:ok, message} <-
+           Copy.render_holiday_message(source, %{date: holiday.date, holiday_name: holiday.name}) do
+      {:ok, %{message_source: source, rendered_message: message}}
+    end
   end
 
   # A date-wide driver uses the earliest live roll-call slot. Disablement must
@@ -128,6 +142,8 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncements do
           subject: "holiday",
           holiday_date: holiday.date,
           phase: phase,
+          resolved_outcome: if(snapshot.state == "missed", do: "missed", else: "post"),
+          precedence_chain: ["holiday"],
           created_at: now,
           updated_at: now
         },
@@ -148,18 +164,15 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncements do
   end
 
   defp freeze_snapshot(holiday, phase, post_time, now) do
-    source = Map.fetch!(@copy, phase)
-
     with {:ok, channel} <- Channels.for_kind("holiday"),
-         {:ok, message} <-
-           Copy.render_holiday_message(source, %{date: holiday.date, holiday_name: holiday.name}) do
+         {:ok, copy} <- render_copy(holiday, phase) do
       %{
         state: "frozen",
         frozen_at: now,
         post_time: post_time,
         mention_everyone: true,
-        message_source: source,
-        rendered_message: message,
+        message_source: copy.message_source,
+        rendered_message: copy.rendered_message,
         channel_id: channel
       }
     else
@@ -171,6 +184,6 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncements do
     end
   end
 
-  defp send_date(date, "day_before"), do: Date.add(date, -1)
-  defp send_date(date, "same_day"), do: date
+  def send_date(date, "day_before"), do: Date.add(date, -1)
+  def send_date(date, "same_day"), do: date
 end

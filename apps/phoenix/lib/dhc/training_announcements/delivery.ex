@@ -25,6 +25,8 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
       applied_suppression_id: occurrence.applied_suppression_id,
       applied_override_id: occurrence.applied_override_id,
       state: "frozen",
+      resolved_outcome: to_string(occurrence.outcome),
+      precedence_chain: Enum.map(occurrence.chain, &to_string/1),
       frozen_at: now,
       created_at: now,
       updated_at: now

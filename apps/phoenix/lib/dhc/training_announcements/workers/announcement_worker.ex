@@ -160,6 +160,9 @@ defmodule Dhc.TrainingAnnouncements.Workers.AnnouncementWorker do
       applied_suppression_id: occurrence.applied_suppression_id,
       applied_override_id: occurrence.applied_override_id,
       state: state,
+      resolved_outcome: if(state == "missed", do: "missed", else: to_string(occurrence.outcome)),
+      precedence_chain:
+        if(state == "missed", do: [], else: Enum.map(occurrence.chain, &to_string/1)),
       reason: reason,
       concluded_at: now,
       created_at: now,
