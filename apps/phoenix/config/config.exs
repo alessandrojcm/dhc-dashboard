@@ -97,7 +97,8 @@ config :dhc, Oban,
        # next Dublin year; upserts by date, deletes dates the source no
        # longer returns). Failures keep cached rows and are repaired by the
        # next pass, so 02:30 keeps clear of the midnight Stripe sync.
-       {"30 2 * * *", Dhc.ClubCalendar.Workers.HolidayRefreshWorker}
+       {"30 2 * * *", Dhc.ClubCalendar.Workers.HolidayRefreshWorker},
+       {"30 3 * * *", Dhc.TrainingAnnouncements.Workers.DeliveryPruneWorker}
      ]}
   ]
 

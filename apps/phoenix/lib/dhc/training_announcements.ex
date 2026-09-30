@@ -60,6 +60,10 @@ defmodule Dhc.TrainingAnnouncements do
 
   def management_roles, do: @management_roles
 
+  @doc "Earliest Dublin date retained as delivery evidence and accepted by the window read model."
+  @spec retention_horizon() :: Date.t()
+  def retention_horizon, do: Date.add(ClubCalendar.today(), -400)
+
   @doc "Creates a Training Announcement and its first future job atomically."
   def create(actor_id, attrs, opts \\ []) do
     with :ok <- authorize(actor_id) do
