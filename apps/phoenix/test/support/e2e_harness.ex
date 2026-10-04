@@ -24,6 +24,12 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Inventory.PropertyOption
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
+  alias Dhc.TrainingAnnouncements
+  alias Dhc.TrainingAnnouncements.Announcement
+  alias Dhc.TrainingAnnouncements.AnnouncementOverride
+  alias Dhc.TrainingAnnouncements.AnnouncementSuppression
+  alias Dhc.TrainingAnnouncements.Copy
+  alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -1376,6 +1382,199 @@ defmodule Dhc.E2EHarness do
     %{key: setting.key, value: setting.value}
   end
 
+  # ALE-334: `trainingAnnouncement` scenario. Routes announcement creation
+  # through `Dhc.TrainingAnnouncements.create/2` (actor-first, so `actorId`
+  # must be a live active management-role principal — seed one via the
+  # `member` scenario), then inserts one past `delivered` delivery row as
+  # durable evidence, the way the worker's freeze would have left it. The
+  # past date is the most recent past occurrence of the announcement's
+  # weekday, so the `window` read model serves it as a past item with
+  # inspector evidence. Returns plain camelCase maps, never `*JSON.render/2`
+  # output. Teardown hard-deletes the evidence and the announcement row
+  # directly (retention says attempted rows are permanent; E2E teardown
+  # breaks this deliberately and narrowly, like the loan teardown).
+  def seed("trainingAnnouncement", attrs) when is_map(attrs) do
+    actor_id = Map.get(attrs, "actorId")
+
+    if actor_id in [nil, ""] do
+      raise ArgumentError,
+            "trainingAnnouncement seed requires actorId of a management-role operator"
+    end
+
+    kind = Map.get(attrs, "kind", "roll_call")
+
+    unless kind in ~w(roll_call sparring) do
+      raise ArgumentError, "trainingAnnouncement kind must be roll_call/sparring"
+    end
+
+    today = ClubCalendar.today()
+    {schedule_attrs, _weekday} = training_schedule!(attrs, today)
+    post_time = parse_time!(Map.get(attrs, "postTime", "19:00"))
+    {title, message} = training_copy!(attrs, kind)
+    mention_everyone = Map.get(attrs, "mentionEveryone", true)
+
+    create_attrs =
+      Map.merge(
+        %{
+          "kind" => kind,
+          "post_time" => post_time,
+          "title" => title,
+          "message" => message,
+          "mention_everyone" => mention_everyone
+        },
+        schedule_attrs
+      )
+
+    case TrainingAnnouncements.create(actor_id, create_attrs) do
+      {:ok, %{announcement: announcement}} ->
+        evidence = insert_past_evidence!(announcement, today, kind, mention_everyone)
+
+        %{
+          announcementId: announcement.id,
+          kind: announcement.kind,
+          title: announcement.title,
+          postTime: Time.to_iso8601(announcement.post_time),
+          weekday: announcement.weekday,
+          oneOffDate:
+            if(announcement.one_off_date, do: Date.to_iso8601(announcement.one_off_date)),
+          occurrenceDate: Date.to_iso8601(evidence.occurrence_date),
+          deliveryId: evidence.id,
+          threadName: evidence.thread_name
+        }
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp training_schedule!(attrs, today) do
+    case Map.get(attrs, "oneOffDate") do
+      nil ->
+        weekday = Map.get(attrs, "weekday", next_weekday(today))
+        validate_weekday!(weekday)
+        {%{"weekday" => weekday}, weekday}
+
+      date ->
+        {%{"one_off_date" => parse_date!(date)}, nil}
+    end
+  end
+
+  defp next_weekday(today), do: rem(Date.day_of_week(today), 7) + 1
+
+  defp validate_weekday!(weekday) when weekday in 1..7, do: :ok
+
+  defp validate_weekday!(weekday),
+    do: raise(ArgumentError, "trainingAnnouncement weekday must be 1..7, got #{inspect(weekday)}")
+
+  defp parse_date!(value) do
+    case Date.from_iso8601(String.slice(value, 0, 10)) do
+      {:ok, date} -> date
+      {:error, _} -> raise ArgumentError, "trainingAnnouncement date must be YYYY-MM-DD"
+    end
+  end
+
+  defp parse_time!(value) when is_binary(value) do
+    normalized =
+      case String.split(value, ":") do
+        [_h, _m] -> value <> ":00"
+        [_h, _m, _s] -> value
+        _ -> raise ArgumentError, "trainingAnnouncement postTime must be HH:MM[:SS]"
+      end
+
+    case Time.from_iso8601(normalized) do
+      {:ok, time} -> time
+      {:error, _} -> raise ArgumentError, "trainingAnnouncement postTime must be HH:MM[:SS]"
+    end
+  end
+
+  defp parse_time!(value),
+    do:
+      raise(
+        ArgumentError,
+        "trainingAnnouncement postTime must be HH:MM[:SS], got #{inspect(value)}"
+      )
+
+  defp training_copy!(attrs, kind) do
+    {default_title, default_message} =
+      case kind do
+        "roll_call" ->
+          {"Roll call {{date}}", "Hey! It's {{weekday}}! Who is coming to training tonight? ⚔️"}
+
+        "sparring" ->
+          {"Sparring {{date}}", "Hey! Who is down for sparring this {{weekday}}? ⚔️"}
+      end
+
+    {Map.get(attrs, "title", default_title), Map.get(attrs, "message", default_message)}
+  end
+
+  defp insert_past_evidence!(announcement, today, kind, mention_everyone) do
+    past_date = past_evidence_date!(announcement, today)
+
+    {:ok, copy} =
+      Copy.render(
+        %{
+          title: announcement.title,
+          message: announcement.message,
+          mention_everyone: mention_everyone
+        },
+        past_date
+      )
+
+    # insert_all dumps raw values: whole-second DateTimes carry precision
+    # `:second`, which `:utc_datetime_usec` rejects, so stamp microseconds.
+    usec = fn dt -> %{dt | microsecond: {0, 6}} end
+
+    frozen_at = usec.(DateTime.new!(past_date, ~T[12:00:00], "Etc/UTC"))
+    at = fn seconds -> usec.(DateTime.add(frozen_at, seconds, :second)) end
+
+    row = %{
+      id: Ecto.UUID.generate(),
+      subject: "occurrence",
+      announcement_id: announcement.id,
+      occurrence_date: past_date,
+      post_time: announcement.post_time,
+      kind: kind,
+      mention_everyone: mention_everyone,
+      title_source: announcement.title,
+      message_source: announcement.message,
+      rendered_message: copy.rendered_message,
+      thread_name: copy.thread_name,
+      channel_id: "e2e-channel-id",
+      state: "delivered",
+      resolved_outcome: "post",
+      precedence_chain: evidence_chain(kind),
+      frozen_at: frozen_at,
+      posting_started_at: at.(60),
+      message_posted_at: at.(65),
+      thread_created_at: at.(70),
+      concluded_at: at.(72),
+      discord_message_id: "123456789012345678",
+      discord_thread_id: "234567890123456789",
+      thread_attempts: 1,
+      created_at: frozen_at,
+      updated_at: at.(72)
+    }
+
+    {1, [delivery]} = Repo.insert_all(DiscordAnnouncementDelivery, [row], returning: true)
+
+    announcement |> Ecto.Changeset.change(first_attempted_at: frozen_at) |> Repo.update!()
+
+    delivery
+  end
+
+  defp past_evidence_date!(%{weekday: weekday}, today) when weekday in 1..7 do
+    offset = rem(Date.day_of_week(today) - weekday + 7, 7)
+    offset = if offset == 0, do: 7, else: offset
+    Date.add(today, -offset)
+  end
+
+  defp past_evidence_date!(_announcement, today), do: Date.add(today, -7)
+
+  defp evidence_chain("sparring"), do: ["disablement", "suppression", "override", "defaults"]
+
+  defp evidence_chain(_kind),
+    do: ["holiday", "disablement", "suppression", "override", "defaults"]
+
   def delete_fixture("member", id), do: delete_principal(id)
 
   def delete_fixture("invitation", id) do
@@ -1705,6 +1904,39 @@ defmodule Dhc.E2EHarness do
     case Repo.get(Registration, id) do
       nil -> {:error, :not_found}
       registration -> Repo.delete(registration)
+    end
+  end
+
+  # Teardown for the ALE-334 `trainingAnnouncement` scenario. Retention says
+  # attempted delivery rows are permanent with no domain delete — E2E
+  # teardown breaks this deliberately and narrowly: deletes the announcement's
+  # Oban drivers, delivery rows, and exception rows directly, then the
+  # announcement row itself (bypassing the attempted guard, like the loan
+  # teardown bypasses loan retention). Asserts row absence.
+  def delete_fixture("trainingAnnouncement", id) when is_binary(id) do
+    case Repo.get(Announcement, id) do
+      nil ->
+        {:error, :not_found}
+
+      announcement ->
+        from(job in "oban_jobs",
+          where: fragment("?->>'announcement_id' = ?", field(job, :args), ^id)
+        )
+        |> Repo.delete_all()
+
+        from(d in DiscordAnnouncementDelivery, where: d.announcement_id == ^id)
+        |> Repo.delete_all()
+
+        from(s in AnnouncementSuppression, where: s.announcement_id == ^id)
+        |> Repo.delete_all()
+
+        from(o in AnnouncementOverride, where: o.announcement_id == ^id)
+        |> Repo.delete_all()
+
+        case Repo.delete(announcement) do
+          {:ok, _} -> ensure_absent(Announcement, id, :not_deleted)
+          {:error, changeset} -> {:error, changeset}
+        end
     end
   end
 
