@@ -280,7 +280,11 @@ if config_env() == :prod do
         :workshop_id,
         :announcement_type,
         :discord_jobs,
-        :email_jobs
+        :email_jobs,
+        # Discord guild-join worker (Dhc.Discord.Workers.GuildJoinWorker)
+        :grant_id,
+        :attempt_id,
+        :status
       ]
     ],
     integrations: [
@@ -334,7 +338,11 @@ if config_env() == :prod do
            :pricing_tier,
            # Workshop announcements worker
            :workshop_id,
-           :announcement_type
+           :announcement_type,
+           # Discord guild-join worker (Dhc.Discord.Workers.GuildJoinWorker)
+           :grant_id,
+           :attempt_id,
+           :status
          ],
          # Bandit emits unhandled request exceptions as crash reports. Keep
          # that domain enabled so the logger handler creates Sentry issues;
