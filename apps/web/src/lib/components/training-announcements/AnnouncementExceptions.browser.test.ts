@@ -307,9 +307,62 @@ test("creates a range override replacing the title", async () => {
 		title: "Halloween special",
 	});
 	await expect.element(screen.getByText(/Replaces the title/)).toBeVisible();
+
+	// Removal asks first, for copy changes too.
+	await screen.getByRole("button", { name: /Remove copy change on/ }).click();
+	await screen
+		.getByRole("button", { name: /Confirm removing copy change/ })
+		.click();
+	await expect
+		.poll(() =>
+			api.calls.some(
+				(call) => call.method === "DELETE" && call.url.includes("/overrides/"),
+			),
+		)
+		.toBe(true);
 });
 
-test("overlap and past-date rejections render next to the form", async () => {
+test("past-date rejections render next to the form", async () => {
+	useApi({
+		reject: {
+			status: 422,
+			body: {
+				errors: {
+					detail: "fromDate: must be today or later in Dublin",
+					fields: {
+						fromDate: ["must be today or later in Dublin"],
+					},
+				},
+			},
+		},
+	});
+	const screen = await renderRail();
+	await openDetail(screen);
+
+	await screen
+		.getByRole("button", { name: /Skip dates for Roll call/ })
+		.click();
+	await screen.getByLabelText("First date").fill("2020-01-01");
+	await screen.getByLabelText("Last date, inclusive").fill("2020-01-01");
+	await screen
+		.getByTestId("suppression-sheet")
+		.getByRole("button", { name: "Skip these dates" })
+		.click();
+
+	// The past is never reinterpreted, and the refusal stays in the sheet.
+	await expect
+		.element(screen.getByText("must be today or later in Dublin").first())
+		.toBeVisible();
+	await expect
+		.element(
+			screen
+				.getByTestId("suppression-sheet")
+				.getByRole("button", { name: "Skip these dates" }),
+		)
+		.toBeVisible();
+});
+
+test("overlap rejections render next to the form", async () => {
 	useApi({
 		reject: {
 			status: 422,

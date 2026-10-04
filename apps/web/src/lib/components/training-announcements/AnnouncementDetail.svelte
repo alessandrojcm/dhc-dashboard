@@ -258,7 +258,7 @@ function overrideRows(
 								/>
 								{suppressionRangeLabel(suppression)}
 							</span>
-							{#if confirming?.id === suppression.id}
+							{#if confirming?.kind === "suppression" && confirming?.id === suppression.id}
 								<span class="flex flex-none items-center gap-1">
 									<Button
 										size="sm"
@@ -368,7 +368,7 @@ function overrideRows(
 									>{overrideSummary(override)}</span
 								>
 							</span>
-							{#if confirming?.id === override.id}
+							{#if confirming?.kind === "override" && confirming?.id === override.id}
 								<span class="flex flex-none items-center gap-1">
 									<Button
 										size="sm"
