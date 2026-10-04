@@ -10,7 +10,7 @@ import type { TrainingAnnouncement } from "@dhc/api-client";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import { Switch } from "$lib/components/ui/switch";
-import { Pencil, Trash2 } from "@lucide/svelte";
+import { CalendarDays, Pencil, Trash2 } from "@lucide/svelte";
 import { KIND_LABELS } from "$lib/training-announcements/copy";
 import {
 	ANNOUNCEMENT_LIFECYCLE_LABELS,
@@ -25,6 +25,8 @@ let {
 	onRetire,
 	onDelete,
 	onToggleEnabled,
+	onSelect,
+	selected = false,
 	busy = false,
 }: {
 	announcement: TrainingAnnouncement;
@@ -35,6 +37,8 @@ let {
 		announcement: TrainingAnnouncement,
 		enabled: boolean,
 	) => void;
+	onSelect: (announcement: TrainingAnnouncement) => void;
+	selected?: boolean;
 	busy?: boolean;
 } = $props();
 
@@ -44,6 +48,9 @@ const deleteReason = $derived(deleteBlockedReason(announcement));
 
 <article
 	class="rounded-2xl border border-border/80 bg-card p-4 shadow-sm transition-colors hover:border-primary/30"
+	class:border-primary={selected}
+	class:ring-1={selected}
+	class:ring-primary={selected}
 	class:opacity-70={lifecycle === "retired"}
 >
 	<div class="flex items-start justify-between gap-3">
@@ -76,6 +83,15 @@ const deleteReason = $derived(deleteBlockedReason(announcement));
 			aria-label={`Posting for ${announcement.title}`}
 			onCheckedChange={(enabled) => onToggleEnabled(announcement, enabled)}
 		/>
+		<Button
+			size="sm"
+			variant={selected ? "default" : "outline"}
+			aria-label={`Dates and copy for ${announcement.title}`}
+			aria-pressed={selected}
+			onclick={() => onSelect(announcement)}
+		>
+			<CalendarDays class="size-4" aria-hidden="true" />Dates & copy
+		</Button>
 		<Button
 			size="sm"
 			variant="outline"

@@ -1,9 +1,11 @@
 <!--
-	The Training Announcements rail (ALE-330): every scheduled Discord post
-	about training, and the four commands that shape it — pause/resume, edit,
-	retire, delete. It reads the list through the typed client and owns the
-	lifecycle mutations; the calendar, exceptions and occurrence inspector
-	arrive in ALE-331/332 on top of the same list.
+	The Training Announcements rail (ALE-330) plus the selected
+	announcement's detail column (ALE-331): every scheduled Discord post
+	about training, the four lifecycle commands, and — once a card's
+	"Dates & copy" action picks one — its next post by resolved title with
+	the capped Suppression and Override lists. It reads the list through the
+	typed client and owns the lifecycle mutations; the calendar and
+	occurrence inspector arrive in ALE-332/333 on top of the same list.
 
 	Advisory `warnings[]` from a create or schedule edit are shown here rather
 	than in the sheet: the write already committed, so the notice must not look
@@ -37,6 +39,7 @@ import {
 	warningMessages,
 } from "$lib/training-announcements/announcement";
 import AnnouncementCard from "./AnnouncementCard.svelte";
+import AnnouncementDetail from "./AnnouncementDetail.svelte";
 import AnnouncementSheet from "./AnnouncementSheet.svelte";
 
 let { today }: { today: string } = $props();
@@ -45,6 +48,7 @@ const queryClient = useQueryClient();
 
 let includeRetired = $state(false);
 let sheetFor = $state<TrainingAnnouncement | null | undefined>(undefined);
+let selectedId = $state<string | null>(null);
 let notices = $state<{ title: string; messages: string[] }[]>([]);
 
 const announcements = createQuery(() => ({
@@ -57,6 +61,10 @@ function refreshList() {
 		queryKey: trainingAnnouncementsListQueryKey(),
 	});
 }
+
+const selected = $derived(
+	announcements.data?.find((row) => row.id === selectedId) ?? null,
+);
 
 function commandOptions(fallback: string, successMessage?: string) {
 	return {
@@ -108,6 +116,10 @@ function retireAnnouncement(announcement: TrainingAnnouncement) {
 
 function deleteAnnouncement(announcement: TrainingAnnouncement) {
 	remove.mutate({ path: { id: announcement.id } });
+}
+
+function selectAnnouncement(announcement: TrainingAnnouncement) {
+	selectedId = selectedId === announcement.id ? null : announcement.id;
 }
 
 function saved(save: AnnouncementSave) {
@@ -208,6 +220,8 @@ function saved(save: AnnouncementSave) {
 					<AnnouncementCard
 						{announcement}
 						{busy}
+						selected={selectedId === announcement.id}
+						onSelect={selectAnnouncement}
 						onEdit={(row) => (sheetFor = row)}
 						onRetire={retireAnnouncement}
 						onDelete={deleteAnnouncement}
@@ -216,6 +230,15 @@ function saved(save: AnnouncementSave) {
 				</li>
 			{/each}
 		</ul>
+		{#if selected}
+			{#key selected.id}
+				<AnnouncementDetail
+					announcement={selected}
+					{today}
+					onEdit={(row) => (sheetFor = row)}
+				/>
+			{/key}
+		{/if}
 	{/if}
 </div>
 
