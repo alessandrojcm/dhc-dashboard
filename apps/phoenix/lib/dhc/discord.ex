@@ -274,14 +274,9 @@ defmodule Dhc.Discord do
   defp pending_join_grant_principals do
     now = DateTime.utc_now()
 
-    from(grant in JoinGrant,
-      join: attempt in InvitationAcceptanceAttempt,
-      on: attempt.id == grant.attempt_id,
-      join: invitation in Invitation,
-      on: invitation.id == attempt.invitation_id,
-      where: not is_nil(grant.encrypted_access_token) and grant.expires_at > ^now,
-      select: invitation.prospective_principal_id
-    )
+    join_grant_invitation()
+    |> where([grant], not is_nil(grant.encrypted_access_token) and grant.expires_at > ^now)
+    |> select([_grant, _attempt, invitation], invitation.prospective_principal_id)
     |> Repo.all()
     |> MapSet.new()
   end
@@ -494,6 +489,47 @@ defmodule Dhc.Discord do
       grant ->
         prepare_existing_guild_join(grant)
     end
+  end
+
+  @doc """
+  Returns the member-facing identity behind a guild-join grant.
+
+  The join worker needs this on failure paths: a denied (401/403) or
+  retries-exhausted join must notify the affected principal, but
+  `prepare_guild_join/1` only returns the Discord credentials on success.
+  Returns only identifiers — never tokens, subjects, or contact details.
+  """
+  @spec guild_join_context(Ecto.UUID.t()) ::
+          {:ok,
+           %{principal_id: Ecto.UUID.t(), attempt_id: Ecto.UUID.t(), invitation_id: Ecto.UUID.t()}}
+          | {:error, :not_found}
+  def guild_join_context(grant_id) do
+    query =
+      join_grant_invitation()
+      |> where([grant], grant.id == ^grant_id)
+      |> select([grant, _attempt, invitation], %{
+        principal_id: invitation.prospective_principal_id,
+        attempt_id: grant.attempt_id,
+        invitation_id: invitation.id
+      })
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      context -> {:ok, context}
+    end
+  end
+
+  # Joins a join grant to the acceptance attempt it belongs to and the
+  # Invitation that attempt was opened for. Read-only: nothing here writes or
+  # transitions an acceptance row, so it is not a subject for `Acceptance.Locked`
+  # (the same reasoning as `pending_join_grant_principals/0`).
+  defp join_grant_invitation do
+    from(grant in JoinGrant,
+      join: attempt in InvitationAcceptanceAttempt,
+      on: attempt.id == grant.attempt_id,
+      join: invitation in Invitation,
+      on: invitation.id == attempt.invitation_id
+    )
   end
 
   defp prepare_existing_guild_join(grant) do

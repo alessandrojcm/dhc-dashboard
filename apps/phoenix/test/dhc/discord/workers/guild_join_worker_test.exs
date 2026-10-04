@@ -1,13 +1,30 @@
 defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
+  @moduledoc """
+  A denied (401/403) join and an exhausted join are both terminal: the job
+  never retries them, so neither produces any Oban signal on its own. These
+  tests pin the three signals the worker emits for each — the Sentry capture,
+  the structured log, and the keyed member notification.
+
+  The Sentry capture is asserted through the log rather than through an SDK
+  stub: the worker calls `Sentry.capture_message/2` directly, like every other
+  worker in this app (`docs/agents/notes.md` records the Logger→Sentry
+  integration that carries the same fields), and no other worker stubs the SDK
+  in tests.
+  """
+
   use Dhc.DataCase, async: false
   use Oban.Testing, repo: Dhc.Repo
 
+  import ExUnit.CaptureLog
+
+  alias Dhc.Discord
   alias Dhc.Discord.Adapter.Test, as: TestAdapter
   alias Dhc.Discord.ApiError
   alias Dhc.Discord.JoinGrant
   alias Dhc.Discord.Workers.GuildJoinWorker
   alias Dhc.Discord.Workers.JoinGrantCleanupWorker
   alias Dhc.Invitations.Invitation
+  alias Dhc.Notifications.Notification
   alias Dhc.Onboarding.Acceptance
 
   setup do
@@ -57,6 +74,68 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
       assert :ok = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
       assert Repo.get!(JoinGrant, grant.id).encrypted_access_token == nil
     end
+
+    test "Discord #{status} denial is observable: log, Sentry fields, member notification" do
+      {grant, discord_user_id} = accept_member_with_grant!()
+
+      TestAdapter.script(:add_guild_member, [
+        {:error, %ApiError{status: unquote(status), message: "authorization failed"}}
+      ])
+
+      logs =
+        capture_log(fn ->
+          assert :ok = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
+        end)
+
+      # Zeroize semantics are unchanged: the token is unrecoverable.
+      assert Repo.get!(JoinGrant, grant.id).encrypted_access_token == nil
+
+      # The log carries the denial at warning level with domain identifiers —
+      # the same fields the Sentry capture receives. No token, Discord subject,
+      # or contact detail is in either payload.
+      assert logs =~ "[guild-join-worker] Discord guild join denied"
+      assert logs =~ "[warning]"
+      assert logs =~ grant.id
+      assert logs =~ grant.attempt_id
+      assert logs =~ to_string(unquote(status))
+      assert logs =~ "discord_authorization_denied"
+
+      refute logs =~ "short-lived-access-token"
+      refute logs =~ discord_user_id
+
+      # The affected member is notified through the keyed seam, so a repeated
+      # terminal signal cannot duplicate the row.
+      assert {:ok, %{principal_id: principal_id, invitation_id: invitation_id}} =
+               Discord.guild_join_context(grant.id)
+
+      assert [
+               %Notification{
+                 principal_id: ^principal_id,
+                 notification_key: key,
+                 body: body
+               }
+             ] = Repo.all(Notification)
+
+      assert key == "discord:guild-join:#{grant.id}:denied"
+      assert body =~ "support"
+
+      assert {:ok, %{invitation_id: ^invitation_id}} = Discord.guild_join_context(grant.id)
+    end
+  end
+
+  test "a repeated run after a denial notifies the member once" do
+    {grant, _discord_user_id} = accept_member_with_grant!()
+
+    TestAdapter.script(:add_guild_member, [
+      {:error, %ApiError{status: 403, message: "authorization failed"}}
+    ])
+
+    assert :ok = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
+
+    # The grant is now zeroized, so a second run resolves terminal before ever
+    # reaching Discord — and must not create a second notification row.
+    assert :ok = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
+    assert [_only_one] = Repo.all(Notification)
   end
 
   test "transient Discord failures stay retryable and retain the grant" do
@@ -64,8 +143,73 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
     error = %ApiError{status: 503, message: "Discord unavailable"}
     TestAdapter.script(:add_guild_member, [{:error, error}])
 
-    assert {:error, ^error} = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
+    logs =
+      capture_log(fn ->
+        assert {:error, ^error} = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
+      end)
+
     refute Repo.get!(JoinGrant, grant.id).encrypted_access_token == nil
+
+    # Ordinary retries stay quiet: no terminal signal yet, so nothing is logged
+    # and the member is not notified before the retries are actually spent.
+    refute logs =~ "[guild-join-worker]"
+    assert Repo.all(Notification) == []
+  end
+
+  test "transient failures signal once on the final attempt" do
+    {grant, _discord_user_id} = accept_member_with_grant!()
+    error = %ApiError{status: 503, message: "Discord unavailable"}
+    TestAdapter.script(:add_guild_member, [{:error, error}])
+
+    logs =
+      capture_log(fn ->
+        assert {:error, ^error} =
+                 perform_job(GuildJoinWorker, %{"grant_id" => grant.id}, attempt: 5)
+      end)
+
+    # The grant is retained (Oban owns the discard), but the failure is now
+    # visible at error level with domain context.
+    refute Repo.get!(JoinGrant, grant.id).encrypted_access_token == nil
+    assert logs =~ "[guild-join-worker] Discord guild join retries exhausted"
+    assert logs =~ "[error]"
+    assert logs =~ grant.id
+    assert logs =~ grant.attempt_id
+    assert logs =~ "discord_api_error"
+    refute logs =~ "short-lived-access-token"
+
+    assert {:ok, %{principal_id: principal_id}} = Discord.guild_join_context(grant.id)
+
+    assert [
+             %Notification{
+               principal_id: ^principal_id,
+               notification_key: key,
+               body: body
+             }
+           ] = Repo.all(Notification)
+
+    assert key == "discord:guild-join:#{grant.id}:exhausted"
+    assert body =~ "support"
+  end
+
+  test "a repeated final-attempt signal notifies the member once" do
+    {grant, _discord_user_id} = accept_member_with_grant!()
+    error = %ApiError{status: 503, message: "Discord unavailable"}
+
+    # Two terminal attempts for one grant — a re-executed final attempt, or a
+    # manual replay. Each emits its own log and Sentry event, but the keyed
+    # seam collapses them into one unread row.
+    TestAdapter.script(:add_guild_member, [{:error, error}, {:error, error}])
+
+    logs =
+      capture_log(fn ->
+        for _attempt <- 1..2 do
+          assert {:error, ^error} =
+                   perform_job(GuildJoinWorker, %{"grant_id" => grant.id}, attempt: 5)
+        end
+      end)
+
+    assert [_, _, _] = String.split(logs, "retries exhausted")
+    assert [_only_one] = Repo.all(Notification)
   end
 
   test "cleanup removes expired grants" do

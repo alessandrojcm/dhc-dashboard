@@ -128,6 +128,7 @@ config :logger, :default_formatter,
     :failed,
     :failure_stage,
     :found_count,
+    :grant_id,
     :inactive,
     :inactive_reason,
     :input_count,
@@ -230,7 +231,11 @@ config :sentry,
       :workshop_id,
       :announcement_type,
       :discord_jobs,
-      :email_jobs
+      :email_jobs,
+      # Discord guild-join worker (Dhc.Discord.Workers.GuildJoinWorker)
+      :grant_id,
+      :attempt_id,
+      :status
     ]
   ]
 
