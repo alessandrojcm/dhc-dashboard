@@ -17,6 +17,8 @@
 - `member_management_view` now exposes computed `membership_status` (`active`/`inactive`/`paused`) plus `paused_until` aliasing `member_profiles.subscription_paused_until` for member list filtering.
 - Responsive detail sheets (equipment, my-loans, operator loan queue) use `Sheet.Content side="bottom-right"`. Do not compose `side="bottom"` with `sm:slide-in-from-right`: `tailwindcss-animate`'s `animate-in` keyframes use both `--tw-enter-translate-x` and `--tw-enter-translate-y`, so the two utilities together slide diagonally. Tests: `apps/web/src/lib/components/ui/sheet/sheet-motion.test.ts`.
 - Inventory **UI copy** says quartermaster / item / gear / code — never operator, physical unit, register, or slug. Backend actors, capabilities, and OpenAPI stay `operator`. Voice table: `design-system/dublin-hema-club/pages/inventory.md`.
+- Training Announcement **copy presets** (`apps/web/src/lib/training-announcements/copy.ts`) are frontend constants carrying the retired Discord bot's wording; the stored source omits `@everyone` because Phoenix prepends the mention line from the announcement's mention setting (a typed mention would double up or never ping). The one accepted drift is the thread name: the bot posted `Roll call September 25`, announcements render `Roll call Thursday 25 September`.
+- When stubbing ky `fetch` in browser tests, `request.clone().json()` **rejects on an empty body** — bodiless POST/DELETE mutations then fail like network errors before the stub records anything. Catch it and record `undefined` (see `AnnouncementsRail.browser.test.ts`).
 
 ## Phoenix (in progress)
 

@@ -33,6 +33,13 @@ export const navigation: NavigationDefinition = [
 		requires: "discord.doctor.use",
 	},
 	{
+		// ALE-330: committee-managed Discord posts about training. Sits with
+		// the other club-communication entry rather than inside a group.
+		title: "Training Announcements",
+		url: "/dashboard/training-announcements",
+		requires: "training_announcements.manage",
+	},
+	{
 		title: "Workshops",
 		url: "/dashboard/workshops",
 		requires: "workshops.manage",

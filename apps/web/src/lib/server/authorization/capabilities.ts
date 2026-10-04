@@ -26,6 +26,7 @@ export const CAPABILITIES = [
 	"members.profile.update",
 	"members.settings.edit",
 	"membership.reactivate",
+	"training_announcements.manage",
 	"workshops.manage",
 	"workshops.own.read",
 ] as const;
@@ -84,6 +85,20 @@ const INVENTORY_OPERATORS = ["quartermaster", "admin", "president"];
 
 const BEGINNERS_STAFF = [...OFFICERS, "coach", "beginners_coordinator"];
 
+/**
+ * ALE-330: mirrors the Phoenix `:training_announcements_api` pipeline, i.e.
+ * `Dhc.TrainingAnnouncements.management_roles/0`. There is no read/manage
+ * split: only the committee shapes club communications and no member ever sees
+ * an announcement, so one capability governs the whole page.
+ */
+const TRAINING_ANNOUNCEMENT_MANAGERS = [
+	"sparring_coordinator",
+	"coach",
+	"president",
+	"admin",
+	"committee_coordinator",
+];
+
 /** Every authenticated user carries the `member` role. */
 const MEMBERS = ["member"];
 
@@ -117,6 +132,7 @@ const RULES = {
 	},
 	"members.settings.edit": { roles: OFFICERS },
 	"membership.reactivate": { roles: BILLING_AUTHORITY },
+	"training_announcements.manage": { roles: TRAINING_ANNOUNCEMENT_MANAGERS },
 	"workshops.manage": { roles: WORKSHOP_COORDINATORS },
 	"workshops.own.read": { roles: MEMBERS },
 } satisfies Record<Capability, CapabilityRule>;
