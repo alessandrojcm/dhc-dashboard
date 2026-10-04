@@ -2,6 +2,7 @@ import {
 	configureClient,
 	getClient,
 	type TrainingAnnouncement,
+	type TrainingAnnouncementOccurrence,
 } from "@dhc/api-client";
 import { QueryClient } from "@tanstack/svelte-query";
 import { expect, test } from "vitest";
@@ -46,6 +47,7 @@ type AnnouncementApi = {
 /** Every body the in-memory Phoenix can answer with. */
 type StubPayload =
 	| { data: TrainingAnnouncement | TrainingAnnouncement[] }
+	| { data: TrainingAnnouncementOccurrence[] }
 	| {
 			data: {
 				announcement: TrainingAnnouncement;
@@ -67,6 +69,11 @@ type Script = {
 	/** A rejected write, as Phoenix renders problem details. */
 	reject?: { status: number; body: StubPayload };
 	preview?: { renderedMessage: string; threadName: string };
+	/** What `listForAnnouncement` answers per direction. */
+	occurrences?: {
+		upcoming?: TrainingAnnouncementOccurrence[];
+		recent?: TrainingAnnouncementOccurrence[];
+	};
 };
 
 /**
@@ -79,6 +86,7 @@ function useApi(script: Script = {}): AnnouncementApi {
 		rows: seeded = [],
 		warnings = [],
 		reject,
+		occurrences = {},
 		preview = {
 			renderedMessage: "@everyone\nRoll call Thursday 8 October 2026",
 			threadName: "Roll call Thursday 8 October 2026",
@@ -125,6 +133,18 @@ function useApi(script: Script = {}): AnnouncementApi {
 
 				if (reject) return json(reject.body, reject.status);
 
+				// ALE-332: the calendar reads every occurrence in view through
+				// `window`, and each card reads its next posts and recent
+				// deliveries. These tests assert the rail, not those reads.
+				if (method === "GET" && url.includes("/occurrences/window")) {
+					return json({ data: [] });
+				}
+				if (method === "GET" && url.includes("/occurrences")) {
+					const direction = new URL(url).searchParams.get("direction");
+					if (direction === "recent")
+						return json({ data: occurrences.recent ?? [] });
+					return json({ data: occurrences.upcoming ?? [] });
+				}
 				if (method === "GET" && url.includes("/training-announcements")) {
 					// `list` excludes retired unless asked, like Phoenix's own default.
 					return json({
@@ -509,4 +529,82 @@ test("deletes an announcement that has never posted", async () => {
 			gone(screen.getByRole("heading", { name: "Roll call {{date}}" })),
 		)
 		.toBe(true);
+});
+
+function occurrence(
+	overrides: Partial<TrainingAnnouncementOccurrence> = {},
+): TrainingAnnouncementOccurrence {
+	return {
+		subject: "occurrence",
+		date: "2026-10-08",
+		announcementId: ROLL_CALL_ID,
+		appliedSuppressionId: null,
+		appliedOverrideId: null,
+		holidayDate: null,
+		phase: null,
+		postTime: "10:00:00",
+		kind: "roll_call",
+		outcome: "post",
+		chain: ["disablement", "suppression", "override", "defaults"],
+		decidedBy: "defaults",
+		titleSource: "Roll call {{date}}",
+		messageSource: "Who is coming?",
+		mentionEveryone: true,
+		renderedMessage: "@everyone\nRoll call Thursday 8 October 2026",
+		threadName: "Roll call Thursday 8 October 2026",
+		readOnly: false,
+		renderErrors: [],
+		delivery: null,
+		...overrides,
+	};
+}
+
+test("each card shows next posts and recent deliveries with display statuses", async () => {
+	useApi({
+		rows: [announcement()],
+		occurrences: {
+			upcoming: [occurrence()],
+			recent: [
+				occurrence({
+					date: "2026-09-24",
+					outcome: "post_override",
+					threadName: "Special roll call Thursday 24 September 2026",
+					delivery: {
+						id: "33333333-3333-3333-3333-333333333333",
+						state: "delivered",
+						reason: "unknown",
+						frozenAt: "2026-09-24T09:59:00Z",
+						postingStartedAt: "2026-09-24T10:00:00Z",
+						messagePostedAt: "2026-09-24T10:00:05Z",
+						threadCreatedAt: "2026-09-24T10:00:09Z",
+						concludedAt: "2026-09-24T10:00:10Z",
+						discordMessageId: "234567890123456789",
+						discordThreadId: "345678901234567890",
+						permalink: "https://discord.com/channels/1/2/234567890123456789",
+						errorDetail: null,
+						threadAttempts: 1,
+						lastThreadError: null,
+						appliedSuppressionId: null,
+						appliedOverrideId: null,
+					},
+				}),
+			],
+		},
+	});
+	const screen = await renderRail();
+
+	// The card names the next post by its resolved title with the grouped
+	// display status — never the announcement's template.
+	await expect
+		.element(screen.getByText("Roll call Thursday 8 October 2026").first())
+		.toBeVisible();
+	await expect.element(screen.getByText("scheduled").first()).toBeVisible();
+
+	// …and the recent delivery reads from its evidence, not the projection.
+	await expect
+		.element(
+			screen.getByText("Special roll call Thursday 24 September 2026").first(),
+		)
+		.toBeVisible();
+	await expect.element(screen.getByText("posted").first()).toBeVisible();
 });

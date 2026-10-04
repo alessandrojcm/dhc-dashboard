@@ -298,7 +298,7 @@ Generated output: `packages/api-client/src/client/` (gitignored — auto-regener
 
 `packages/api-client/openapi-ts.config.ts` explicitly points `output.tsConfigPath` at `packages/api-client/tsconfig.json` so postinstall generation works in deployment environments that do not expose the repo-root SvelteKit `tsconfig.json`.
 
-`@hey-api/openapi-ts` + Valibot currently emits invalid TypeScript for boolean schemas expressed as `enum: [true]`/`enum: [false]` (it generates `v.picklist([true])`, but Valibot picklists are typed for string/number/bigint). For response flags that are always true on success, use `type: boolean` plus a description instead of a single-value boolean enum.
+`@hey-api/openapi-ts` + Valibot currently emits invalid TypeScript for boolean schemas expressed as `enum: [true]`/`enum: [false]` (it generates `v.picklist([true])`, but Valibot picklists are typed for string/number/bigint). For response flags that are always true on success, use `type: boolean` plus a description instead of a single-value boolean enum. Nullable enums need the reverse care: the generator only honours the null when it is listed *inside* `enum` (e.g. `enum: [a, b, null]` with `nullable: true`) — a bare `nullable: true` beside an enum silently generates a non-nullable validator, which then rejects the real Phoenix response at runtime. The parity test pins the generated `v.nullable(v.picklist(...))` shape for every such field.
 
 Usage in SvelteKit:
 ```ts

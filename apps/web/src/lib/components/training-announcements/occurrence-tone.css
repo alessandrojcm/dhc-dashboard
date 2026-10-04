@@ -1,0 +1,46 @@
+/*
+ * Shared occurrence tone vocabulary for Training Announcements (ALE-332).
+ *
+ * One `--ta-tone` colour per grouped display status from
+ * `$lib/training-announcements/status.ts`. Calendar chips and rail pills both
+ * key off the same tone token, so the two cannot drift apart. Domain-specific
+ * on purpose: the shared `$lib/components/calendar/dhc-calendar.css` stays
+ * chrome-only and knows nothing about announcements.
+ */
+
+.ta-tone--scheduled {
+	--ta-tone: hsl(var(--primary));
+}
+
+.ta-tone--override {
+	--ta-tone: hsl(var(--secondary));
+}
+
+.ta-tone--skipped {
+	--ta-tone: hsl(var(--muted-foreground));
+}
+
+.ta-tone--posting {
+	--ta-tone: hsl(217 90% 55%);
+}
+
+.ta-tone--posted {
+	--ta-tone: hsl(142 60% 38%);
+}
+
+.ta-tone--uncertain {
+	--ta-tone: hsl(280 60% 50%);
+}
+
+.ta-tone--blocked,
+.ta-tone--missed {
+	--ta-tone: hsl(var(--destructive));
+}
+
+.ta-tone--unknown {
+	--ta-tone: hsl(var(--muted-foreground) / 0.6);
+}
+
+.ta-tone--holiday {
+	--ta-tone: hsl(38 92% 45%);
+}

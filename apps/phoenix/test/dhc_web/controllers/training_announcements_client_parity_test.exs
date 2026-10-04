@@ -75,6 +75,32 @@ defmodule DhcWeb.TrainingAnnouncementsClientParityTest do
     assert response =~ "oneOffDate: v.nullable("
   end
 
+  test "occurrence enums keep their nullability in the generated validator", context do
+    # Projected occurrences carry a null phase, projected holidays a null
+    # kind; openapi-ts only honours the null when it is listed inside the
+    # enum, so the spec names it alongside `nullable: true` and this test
+    # pins the generated shape (ALE-332).
+    validators = File.read!(Path.join(context.generated, "valibot.gen.ts"))
+
+    [_before, occurrence] =
+      String.split(validators, "export const vTrainingAnnouncementOccurrence = ", parts: 2)
+
+    occurrence = occurrence |> String.split("\nexport ", parts: 2) |> hd()
+    assert occurrence =~ "phase: v.nullable(v.picklist("
+    assert occurrence =~ "kind: v.nullable(v.picklist("
+    assert occurrence =~ "decidedBy: v.nullable(v.picklist("
+
+    [_before, evidence] =
+      String.split(
+        validators,
+        "export const vTrainingAnnouncementDeliveryEvidence = ",
+        parts: 2
+      )
+
+    evidence = evidence |> String.split("\nexport ", parts: 2) |> hd()
+    assert evidence =~ "reason: v.nullable(v.picklist("
+  end
+
   test "every Training Announcement schema and validator is publicly exported", context do
     {:ok, spec} = YamlElixir.read_from_file(Application.app_dir(:dhc, "priv/api/openapi.yaml"))
     types = File.read!(Path.join(context.generated, "types.gen.ts"))

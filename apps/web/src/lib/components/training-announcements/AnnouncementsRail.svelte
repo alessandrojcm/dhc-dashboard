@@ -1,11 +1,12 @@
 <!--
 	The Training Announcements rail (ALE-330) plus the selected
-	announcement's detail column (ALE-331): every scheduled Discord post
-	about training, the four lifecycle commands, and — once a card's
-	"Dates & copy" action picks one — its next post by resolved title with
-	the capped Suppression and Override lists. It reads the list through the
-	typed client and owns the lifecycle mutations; the calendar and
-	occurrence inspector arrive in ALE-332/333 on top of the same list.
+	announcement's detail column (ALE-331) and the Month/Week calendar of every
+	occurrence in view (ALE-332): every scheduled Discord post about training,
+	the four lifecycle commands, and — once a card's "Dates & copy" action
+	picks one — its next post by resolved title with the capped Suppression and
+	Override lists. It reads the list through the typed client and owns the
+	lifecycle mutations; the occurrence inspector arrives in ALE-333 on top of
+	the same reads.
 
 	Advisory `warnings[]` from a create or schedule edit are shown here rather
 	than in the sheet: the write already committed, so the notice must not look
@@ -21,6 +22,7 @@ import {
 	trainingAnnouncementsRetireMutation,
 	type TrainingAnnouncement,
 	type TrainingAnnouncementError,
+	type TrainingAnnouncementOccurrence,
 } from "@dhc/api-client";
 import {
 	createMutation,
@@ -41,6 +43,7 @@ import {
 import AnnouncementCard from "./AnnouncementCard.svelte";
 import AnnouncementDetail from "./AnnouncementDetail.svelte";
 import AnnouncementSheet from "./AnnouncementSheet.svelte";
+import TrainingCalendar from "./TrainingCalendar.svelte";
 
 let { today }: { today: string } = $props();
 
@@ -120,6 +123,15 @@ function deleteAnnouncement(announcement: TrainingAnnouncement) {
 
 function selectAnnouncement(announcement: TrainingAnnouncement) {
 	selectedId = selectedId === announcement.id ? null : announcement.id;
+}
+
+/**
+ * A calendar chip was picked: jump the rail to its announcement. Holiday
+ * announcements are read-only items with no announcement, so they select
+ * nothing — their inspector arrives in ALE-333.
+ */
+function selectCalendarItem(item: TrainingAnnouncementOccurrence) {
+	if (item.announcementId !== null) selectedId = item.announcementId;
 }
 
 function saved(save: AnnouncementSave) {
@@ -230,6 +242,7 @@ function saved(save: AnnouncementSave) {
 				</li>
 			{/each}
 		</ul>
+		<TrainingCalendar {today} onSelectItem={selectCalendarItem} />
 		{#if selected}
 			{#key selected.id}
 				<AnnouncementDetail

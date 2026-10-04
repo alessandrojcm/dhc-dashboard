@@ -31,7 +31,8 @@ let { data }: PageProps = $props();
 				>
 					Every Discord post the club schedules about training: the weekly roll
 					call and sparring calls, and one-offs for a special session. The
-					calendar of upcoming and past occurrences lands here next.
+					calendar below shows every upcoming and past occurrence; pick a chip
+					to jump to its announcement.
 				</p>
 			</div>
 		</div>

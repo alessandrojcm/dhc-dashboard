@@ -6673,14 +6673,14 @@ components:
         appliedSuppressionId: {type: string, format: uuid, nullable: true}
         appliedOverrideId: {type: string, format: uuid, nullable: true}
         holidayDate: {type: string, format: date, nullable: true}
-        phase: {type: string, enum: [day_before, same_day], nullable: true}
+        phase: {type: string, enum: [day_before, same_day, null], nullable: true}
         postTime: {type: string, nullable: true}
-        kind: {type: string, enum: [roll_call, sparring], nullable: true}
+        kind: {type: string, enum: [roll_call, sparring, null], nullable: true}
         outcome: {type: string, enum: [post, post_override, skipped_holiday, skipped_disabled, skipped_suppressed, missed, unknown]}
         chain:
           type: array
           items: {type: string, enum: [holiday, disablement, suppression, override, defaults]}
-        decidedBy: {type: string, enum: [holiday, disablement, suppression, override, defaults], nullable: true}
+        decidedBy: {type: string, enum: [holiday, disablement, suppression, override, defaults, null], nullable: true}
         titleSource: {type: string, nullable: true}
         messageSource: {type: string, nullable: true}
         mentionEveryone: {type: boolean, nullable: true}
@@ -6698,7 +6698,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         state: {type: string, enum: [frozen, posting_message, message_posted, creating_thread, delivered, message_uncertain, thread_failed, blocked, skipped, missed]}
-        reason: {type: string, enum: [holiday, disabled, suppressed, unconfigured_channel, invalid_copy, late, permission, unknown_channel, payload_rejected, timeout, server_error, worker_lost, unknown], nullable: true}
+        reason: {type: string, enum: [holiday, disabled, suppressed, unconfigured_channel, invalid_copy, late, permission, unknown_channel, payload_rejected, timeout, server_error, worker_lost, unknown, null], nullable: true}
         frozenAt: {type: string, format: date-time, nullable: true}
         postingStartedAt: {type: string, format: date-time, nullable: true}
         messagePostedAt: {type: string, format: date-time, nullable: true}
