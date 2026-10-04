@@ -1,12 +1,13 @@
 <!--
 	The Training Announcements rail (ALE-330) plus the selected
-	announcement's detail column (ALE-331) and the Month/Week calendar of every
-	occurrence in view (ALE-332): every scheduled Discord post about training,
-	the four lifecycle commands, and — once a card's "Dates & copy" action
-	picks one — its next post by resolved title with the capped Suppression and
-	Override lists. It reads the list through the typed client and owns the
-	lifecycle mutations; the occurrence inspector arrives in ALE-333 on top of
-	the same reads.
+	announcement's detail column (ALE-331), the Month/Week calendar of every
+	occurrence in view (ALE-332) and the occurrence inspector (ALE-333):
+	every scheduled Discord post about training, the four lifecycle
+	commands, and — once a card's "Dates & copy" action picks one — its next
+	post by resolved title with the capped Suppression and Override lists.
+	It reads the list through the typed client and owns the lifecycle
+	mutations; a calendar chip opens the inspector on the item's payload
+	while jumping the rail to its announcement.
 
 	Advisory `warnings[]` from a create or schedule edit are shown here rather
 	than in the sheet: the write already committed, so the notice must not look
@@ -43,6 +44,7 @@ import {
 import AnnouncementCard from "./AnnouncementCard.svelte";
 import AnnouncementDetail from "./AnnouncementDetail.svelte";
 import AnnouncementSheet from "./AnnouncementSheet.svelte";
+import OccurrenceInspector from "./OccurrenceInspector.svelte";
 import TrainingCalendar from "./TrainingCalendar.svelte";
 
 let { today }: { today: string } = $props();
@@ -52,6 +54,7 @@ const queryClient = useQueryClient();
 let includeRetired = $state(false);
 let sheetFor = $state<TrainingAnnouncement | null | undefined>(undefined);
 let selectedId = $state<string | null>(null);
+let inspected = $state<TrainingAnnouncementOccurrence | null>(null);
 let notices = $state<{ title: string; messages: string[] }[]>([]);
 
 const announcements = createQuery(() => ({
@@ -126,13 +129,23 @@ function selectAnnouncement(announcement: TrainingAnnouncement) {
 }
 
 /**
- * A calendar chip was picked: jump the rail to its announcement. Holiday
- * announcements are read-only items with no announcement, so they select
- * nothing — their inspector arrives in ALE-333.
+ * A calendar chip was picked: jump the rail to its announcement and open
+ * the occurrence inspector on the item's payload. Holiday announcements are
+ * read-only items with no announcement, so they select nothing but still
+ * open the inspector.
  */
 function selectCalendarItem(item: TrainingAnnouncementOccurrence) {
 	if (item.announcementId !== null) selectedId = item.announcementId;
+	inspected = item;
 }
+
+const inspectedAnnouncement = $derived(
+	inspected?.announcementId
+		? (announcements.data?.find(
+				(row) => row.id === inspected?.announcementId,
+			) ?? null)
+		: null,
+);
 
 function saved(save: AnnouncementSave) {
 	if (save.warnings.length === 0) {
@@ -261,5 +274,14 @@ function saved(save: AnnouncementSave) {
 		{today}
 		onClose={() => (sheetFor = undefined)}
 		onSaved={saved}
+	/>
+{/if}
+
+{#if inspected}
+	<OccurrenceInspector
+		item={inspected}
+		{today}
+		announcement={inspectedAnnouncement}
+		onClose={() => (inspected = null)}
 	/>
 {/if}

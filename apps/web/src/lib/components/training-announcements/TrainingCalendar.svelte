@@ -18,7 +18,7 @@
 	  explanation; the API is never called with an invalid `from`.
 
 	Clicking a chip reports the item to the rail (which selects its
-	announcement); the occurrence inspector arrives in ALE-333.
+	announcement and opens the occurrence inspector on the payload).
 -->
 <script lang="ts">
 import {
