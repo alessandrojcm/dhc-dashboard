@@ -37,6 +37,7 @@ import { Switch } from "$lib/components/ui/switch";
 import { Megaphone, Plus, TriangleAlert, X } from "@lucide/svelte";
 import { apiErrorMessage } from "$lib/api-error";
 import { toast } from "svelte-sonner";
+import { tick } from "svelte";
 import {
 	type AnnouncementSave,
 	warningMessages,
@@ -54,6 +55,7 @@ const queryClient = useQueryClient();
 let includeRetired = $state(false);
 let sheetFor = $state<TrainingAnnouncement | null | undefined>(undefined);
 let selectedId = $state<string | null>(null);
+let detailPanel: HTMLElement | undefined = $state();
 let inspected = $state<TrainingAnnouncementOccurrence | null>(null);
 let notices = $state<{ title: string; messages: string[] }[]>([]);
 
@@ -124,8 +126,11 @@ function deleteAnnouncement(announcement: TrainingAnnouncement) {
 	remove.mutate({ path: { id: announcement.id } });
 }
 
-function selectAnnouncement(announcement: TrainingAnnouncement) {
-	selectedId = selectedId === announcement.id ? null : announcement.id;
+async function selectAnnouncement(announcement: TrainingAnnouncement) {
+	selectedId = announcement.id;
+	await tick();
+	detailPanel?.focus({ preventScroll: true });
+	detailPanel?.scrollIntoView({ block: "start" });
 }
 
 /**
@@ -230,8 +235,7 @@ function saved(save: AnnouncementSave) {
 			<div>
 				<p class="font-semibold">No announcements yet</p>
 				<p class="mt-1 text-sm text-muted-foreground">
-					Create the weekly roll call and sparring posts the club used to get
-					from the retired Discord bot.
+					Create an announcement to schedule a Discord post.
 				</p>
 			</div>
 			<Button variant="outline" onclick={() => (sheetFor = null)}>
@@ -255,16 +259,24 @@ function saved(save: AnnouncementSave) {
 				</li>
 			{/each}
 		</ul>
-		<TrainingCalendar {today} onSelectItem={selectCalendarItem} />
 		{#if selected}
-			{#key selected.id}
-				<AnnouncementDetail
-					announcement={selected}
-					{today}
-					onEdit={(row) => (sheetFor = row)}
-				/>
-			{/key}
+			<section
+				bind:this={detailPanel}
+				id="announcement-dates-and-copy"
+				aria-label={`Manage posts for ${selected.title}`}
+				tabindex="-1"
+				class="scroll-mt-20 rounded-2xl focus-visible:outline-2 focus-visible:outline-ring"
+			>
+				{#key selected.id}
+					<AnnouncementDetail
+						announcement={selected}
+						{today}
+						onEdit={(row) => (sheetFor = row)}
+					/>
+				{/key}
+			</section>
 		{/if}
+		<TrainingCalendar {today} onSelectItem={selectCalendarItem} />
 	{/if}
 </div>
 

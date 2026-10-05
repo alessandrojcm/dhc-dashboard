@@ -5,6 +5,7 @@ import {
 	hasEvaluatedChain,
 	inspectorActionsAllowed,
 	isInFlightDelivery,
+	occurrenceNotSentReason,
 	precedenceRows,
 	PRECEDENCE_ORDER,
 } from "./inspector";
@@ -62,6 +63,51 @@ function delivery(
 		...overrides,
 	};
 }
+
+describe("occurrenceNotSentReason", () => {
+	it("shows only the reason for a non-posting outcome", () => {
+		expect(occurrenceNotSentReason(item())).toBeNull();
+		expect(
+			occurrenceNotSentReason(item({ outcome: "post_override" })),
+		).toBeNull();
+		expect(occurrenceNotSentReason(item({ outcome: "skipped_holiday" }))).toBe(
+			"Roll call isn’t sent on bank holidays.",
+		);
+		expect(occurrenceNotSentReason(item({ outcome: "skipped_disabled" }))).toBe(
+			"This announcement is paused.",
+		);
+		expect(
+			occurrenceNotSentReason(item({ outcome: "skipped_suppressed" })),
+		).toBe("Skipped for this date.");
+		expect(occurrenceNotSentReason(item({ outcome: "missed" }))).toBe(
+			"The scheduled posting time was missed.",
+		);
+	});
+	it("uses delivery facts over projected outcomes", () => {
+		expect(
+			occurrenceNotSentReason(
+				item({
+					outcome: "skipped_holiday",
+					delivery: delivery({ state: "delivered" }),
+				}),
+			),
+		).toBeNull();
+		expect(
+			occurrenceNotSentReason(
+				item({
+					delivery: delivery({ state: "skipped", reason: "suppressed" }),
+				}),
+			),
+		).toBe("Skipped for this date.");
+		expect(
+			occurrenceNotSentReason(
+				item({
+					delivery: delivery({ state: "blocked", reason: "permission" }),
+				}),
+			),
+		).toBe("Post not sent: Discord refused.");
+	});
+});
 
 describe("precedenceRows", () => {
 	it("follows the canonical order from bank holiday down to defaults", () => {
@@ -138,11 +184,11 @@ describe("evidenceCheckpoints", () => {
 	it("lists the checkpoints that happened, oldest first", () => {
 		const checkpoints = evidenceCheckpoints(delivery());
 		expect(checkpoints.map((checkpoint) => checkpoint.label)).toEqual([
-			"Frozen",
+			"Message prepared",
 			"Posting started",
 			"Message posted",
 			"Thread created",
-			"Concluded",
+			"Finished",
 		]);
 	});
 
@@ -156,7 +202,7 @@ describe("evidenceCheckpoints", () => {
 			}),
 		);
 		expect(checkpoints.map((checkpoint) => checkpoint.label)).toEqual([
-			"Frozen",
+			"Message prepared",
 			"Posting started",
 		]);
 	});

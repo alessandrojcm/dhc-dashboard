@@ -7,7 +7,7 @@
 	  `$lib/components/calendar/dhc-calendar.css`, chips styled here. The view
 	  switch is owned by Svelte state and remounts the calendar (`{#key}`):
 	  pushing `view` through the reactive options leaves event-calendar's root
-	  view classes stale, so TimeGrid renders without its CSS.
+	  view classes stale, so the next plugin renders without its CSS.
 	- Events are whole days (`start`/`end` as `YYYY-MM-DD`, which event-calendar
 	  reads as all-day): a post is an instant on a date, never a timed span.
 	- `datesSet` only writes the range when the window actually moved — a fresh
@@ -26,14 +26,16 @@ import {
 	type TrainingAnnouncementOccurrence,
 } from "@dhc/api-client";
 import { createQuery } from "@tanstack/svelte-query";
-import { Calendar, DayGrid, Interaction, TimeGrid } from "@event-calendar/core";
+import { Calendar, DayGrid, Interaction, List } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
 import "$lib/components/calendar/dhc-calendar.css";
 import "./occurrence-tone.css";
 import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "$lib/components/ui/toggle-group";
 import { TriangleAlert } from "@lucide/svelte";
 import { apiErrorMessage } from "$lib/api-error";
+import { announcementDateLabel } from "$lib/training-announcements/announcement";
 import {
 	occurrenceKey,
 	occurrenceStatus,
@@ -58,10 +60,7 @@ let {
 	onSelectItem?: (item: TrainingAnnouncementOccurrence) => void;
 } = $props();
 
-/** Pinned height: switching Month/Week never moves the content below. */
-const CALENDAR_HEIGHT = "40rem";
-
-let view = $state<"dayGridMonth" | "timeGridWeek">("dayGridMonth");
+let view = $state<"dayGridMonth" | "listWeek">("dayGridMonth");
 let anchor = $state(initialDate);
 let range = $state<WindowRange | null>(null);
 
@@ -130,8 +129,15 @@ const options = $derived({
 		center: "",
 		end: "today prev,next",
 	},
+	// Full weekday names would wrap to two lines in a ~48px phone column; the
+	// narrow header stays one line. Month cells carry the day number instead.
+	dayHeaderFormat: { weekday: "short" as const },
 	buttonText: { today: "Today" },
-	height: CALENDAR_HEIGHT,
+	// Month rows must grow with the shared day-cell minimum height, as in the
+	// workshop calendar. A fixed height squeezes rows below their cells and
+	// exposes both the row border and the overflowing cell border.
+	height: "auto",
+	noEventsContent: "No announcement posts this week",
 	dayMaxEvents: true,
 	moreLinkContent: (arg: { num: number }) => `+${arg.num} more`,
 	firstDay: 1 as const,
@@ -166,6 +172,10 @@ const options = $derived({
 	theme: (defaultTheme: Record<string, string | string[]>) => ({
 		...defaultTheme,
 		calendar: "ec dhc-calendar",
+		view:
+			view === "dayGridMonth"
+				? "ec-day-grid ec-month-view"
+				: "ec-list ec-week-view",
 		header: "ec-header dhc-calendar-weekdays",
 		toolbar: "ec-toolbar dhc-calendar-toolbar",
 		button: "ec-button dhc-calendar-control",
@@ -196,34 +206,33 @@ function backToToday() {
 	class="overflow-hidden rounded-2xl border border-border/80 bg-card shadow-sm"
 	data-testid="training-calendar"
 >
-	<div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-4">
-		<div
-			class="inline-flex rounded-xl border p-1 text-xs font-semibold"
-			role="group"
+	<div
+		class="flex flex-wrap items-center justify-between gap-3 px-4 pt-4 sm:px-5"
+	>
+		<ToggleGroup
+			type="single"
+			bind:value={view}
+			variant="outline"
+			size="sm"
 			aria-label="Calendar view"
+			data-testid="calendar-view"
 		>
-			<button
-				type="button"
-				class="cursor-pointer rounded-lg px-3 py-1.5 transition-colors {view ===
-				'dayGridMonth'
-					? 'bg-primary text-primary-foreground'
-					: ''}"
-				aria-pressed={view === "dayGridMonth"}
-				onclick={() => (view = "dayGridMonth")}>Month</button
+			<ToggleGroupItem
+				value="dayGridMonth"
+				aria-label="Month"
+				class="px-3 font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+				>Month</ToggleGroupItem
 			>
-			<button
-				type="button"
-				class="cursor-pointer rounded-lg px-3 py-1.5 transition-colors {view ===
-				'timeGridWeek'
-					? 'bg-primary text-primary-foreground'
-					: ''}"
-				aria-pressed={view === "timeGridWeek"}
-				onclick={() => (view = "timeGridWeek")}>Week</button
+			<ToggleGroupItem
+				value="listWeek"
+				aria-label="Week"
+				class="px-3 font-semibold data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+				>Week</ToggleGroupItem
 			>
-		</div>
+		</ToggleGroup>
 		<p class="text-xs text-muted-foreground" data-testid="calendar-count">
 			{#if refused}
-				Showing no history before the retention horizon
+				History unavailable
 			{:else if occurrences.data}
 				{occurrences.data.length}
 				{occurrences.data.length === 1 ? "post" : "posts"} in view
@@ -234,14 +243,16 @@ function backToToday() {
 	</div>
 
 	{#if refused && range}
-		<div class="px-5 pt-4">
+		<div class="px-4 pt-4 sm:px-5">
 			<Alert data-testid="horizon-refusal">
 				<TriangleAlert aria-hidden="true" />
-				<AlertTitle>History before {range.from} is not kept</AlertTitle>
+				<AlertTitle
+					>History is available from {announcementDateLabel(
+						horizon,
+					)}</AlertTitle
+				>
 				<AlertDescription>
-					The club keeps {horizon} onwards — 400 days of announcement history. Anything
-					earlier expired and is gone, so the calendar refuses to show recomputed
-					or empty history instead of misleading you.
+					Posts older than 400 days are no longer available.
 					<Button
 						size="sm"
 						variant="outline"
@@ -255,7 +266,7 @@ function backToToday() {
 		</div>
 	{/if}
 
-	<div class="p-5">
+	<div class="p-4 sm:p-5">
 		{#if occurrences.isError && !refused}
 			<Alert variant="destructive" class="mb-4">
 				<AlertDescription class="flex items-center justify-between gap-4">
@@ -276,9 +287,9 @@ function backToToday() {
 		     very read the loader waits for. -->
 		<!-- Remount on view or anchor change: switching `view` through the
 		     reactive options prop leaves event-calendar's root view classes
-		     stale, so TimeGrid renders without its CSS. -->
+		     stale, so the next plugin renders without its CSS. -->
 		{#key `${view}:${anchor}`}
-			<Calendar plugins={[DayGrid, TimeGrid, Interaction]} {options} />
+			<Calendar plugins={[DayGrid, List, Interaction]} {options} />
 		{/key}
 	</div>
 </section>
@@ -382,5 +393,95 @@ function backToToday() {
 	line-height: 1;
 	letter-spacing: 0.04em;
 	text-transform: uppercase;
+}
+
+/* Week-list rows have room for readable copy; do not reuse month-chip sizing. */
+:global(.ec-list .ta-event) {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 0.375rem 1rem;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	padding: 1rem;
+	box-shadow: none;
+}
+
+:global(.ec-list .ta-event-meta) {
+	display: contents;
+	font-size: 0.75rem;
+	font-weight: 600;
+	letter-spacing: 0;
+	text-transform: none;
+}
+
+:global(.ec-list .ta-event-status) {
+	grid-column: 1;
+	grid-row: 2;
+}
+
+:global(.ec-list .ta-event-meta time) {
+	grid-column: 2;
+	grid-row: 1 / 3;
+	align-self: center;
+	font-size: 0.875rem;
+}
+
+:global(.ec-list .ta-event-title) {
+	grid-column: 1;
+	grid-row: 1;
+	margin-top: 0;
+	font-size: 0.9375rem;
+	font-weight: 600;
+	line-height: 1.4;
+}
+
+:global(.ec-list .ta-event-title-text) {
+	white-space: normal;
+	overflow-wrap: anywhere;
+}
+
+/* Phone widths: a chip in a ~44px column cannot hold a status word and a title.
+ * The word goes and the tone stays — the dot keeps the status colour and the
+ * chip's `title` attribute keeps the full "title — status" pair for a hover or
+ * a screen reader. The title keeps the desktop single-line ellipsis: letting it
+ * wrap makes the chip tall enough that event-calendar hides it behind "+N more",
+ * which loses the post entirely rather than shortening it. */
+@media (max-width: 640px) {
+	:global(.ec-day-grid .ta-event) {
+		padding: 0.2rem 0.3rem;
+	}
+
+	:global(.ec-day-grid .ta-event-meta) {
+		font-size: 0.5rem;
+		letter-spacing: 0.02em;
+	}
+
+	:global(.ec-day-grid .ta-event-dot) {
+		width: 0.35rem;
+		height: 0.35rem;
+	}
+
+	/* The status label is the first child of `.ta-event-status`, the dot the
+	 * second; hiding only the word leaves the tone marker in place. */
+	:global(.ec-day-grid .ta-event-status) {
+		font-size: 0;
+	}
+
+	:global(.ec-day-grid .ta-event-status .ta-event-dot) {
+		font-size: 0.5rem;
+	}
+
+	:global(.ec-day-grid .ta-event-title) {
+		margin-top: 0.1rem;
+		font-size: 0.65rem;
+		line-height: 1.2;
+	}
+
+	/* Same for the read-only pill: the dashed border and the `title` still say
+	 * read-only, and the width goes to the title instead. */
+	:global(.ec-day-grid .ta-event-holiday) {
+		display: none;
+	}
 }
 </style>

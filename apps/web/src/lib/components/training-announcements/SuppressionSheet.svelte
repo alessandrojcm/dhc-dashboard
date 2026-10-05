@@ -15,10 +15,14 @@ import {
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
+import * as Field from "$lib/components/ui/field";
 import * as Sheet from "$lib/components/ui/sheet";
+import DatePicker from "$lib/components/ui/date-picker.svelte";
 import { TriangleAlert } from "@lucide/svelte";
+import {
+	draftCalendarDate,
+	draftIsoDate,
+} from "$lib/training-announcements/announcement";
 import {
 	hasDraftErrors,
 	newSuppressionDraft,
@@ -109,8 +113,8 @@ async function save() {
 		<Sheet.Header>
 			<Sheet.Title>Skip “{announcement.title}”</Sheet.Title>
 			<Sheet.Description>
-				No post goes out on these Dublin dates. Removing the skip later restores
-				the posts; past deliveries keep their evidence.
+				Do not send posts on these dates. Remove the skip to resume future
+				posts.
 			</Sheet.Description>
 		</Sheet.Header>
 		<div class="space-y-5 px-4 pb-2">
@@ -120,48 +124,47 @@ async function save() {
 				</Alert>
 			{/if}
 
+			<!-- Two single-date pickers rather than a RangeCalendar: the draft is
+			     two independent fields Phoenix validates separately, and each
+			     carries its own `fromDate`/`toDate` message. -->
 			<div class="grid gap-3 sm:grid-cols-2">
-				<div class="space-y-1.5">
-					<Label for="suppression-from-date">First date</Label>
-					<Input
+				<Field.Field data-invalid={fieldMessage("fromDate") !== undefined}>
+					<Field.Label for="suppression-from-date">First date</Field.Label>
+					<DatePicker
 						id="suppression-from-date"
-						type="date"
-						min={today}
-						value={draft.fromDate}
-						aria-invalid={fieldMessage("fromDate") !== undefined}
-						oninput={(event) => {
-							draft.fromDate = event.currentTarget.value;
+						value={draftCalendarDate(draft.fromDate)}
+						minValue={draftCalendarDate(today)}
+						ariaInvalid={fieldMessage("fromDate") !== undefined}
+						onValueChange={(value) => {
+							draft.fromDate = draftIsoDate(value);
 						}}
 					/>
 					{#if fieldMessage("fromDate")}
-						<p class="text-xs font-semibold text-destructive">
-							{fieldMessage("fromDate")}
-						</p>
+						<Field.Error>{fieldMessage("fromDate")}</Field.Error>
 					{/if}
-				</div>
-				<div class="space-y-1.5">
-					<Label for="suppression-to-date">Last date, inclusive</Label>
-					<Input
+				</Field.Field>
+				<Field.Field data-invalid={fieldMessage("toDate") !== undefined}>
+					<Field.Label for="suppression-to-date"
+						>Last date, inclusive</Field.Label
+					>
+					<DatePicker
 						id="suppression-to-date"
-						type="date"
-						min={draft.fromDate || today}
-						value={draft.toDate}
-						aria-invalid={fieldMessage("toDate") !== undefined}
-						oninput={(event) => {
-							draft.toDate = event.currentTarget.value;
+						value={draftCalendarDate(draft.toDate)}
+						minValue={draftCalendarDate(draft.fromDate || today)}
+						ariaInvalid={fieldMessage("toDate") !== undefined}
+						onValueChange={(value) => {
+							draft.toDate = draftIsoDate(value);
 						}}
 					/>
 					{#if fieldMessage("toDate")}
-						<p class="text-xs font-semibold text-destructive">
-							{fieldMessage("toDate")}
-						</p>
+						<Field.Error>{fieldMessage("toDate")}</Field.Error>
 					{/if}
-				</div>
+				</Field.Field>
 			</div>
 			<p class="flex items-start gap-1.5 text-xs text-muted-foreground">
 				<TriangleAlert aria-hidden="true" class="mt-0.5 size-3.5 flex-none" />
-				Use the same date twice to skip one night; a range skips every occurrence
-				between them. Dates are Europe/Dublin days.
+				For one date, set both fields to that date. A range includes the first and
+				last dates.
 			</p>
 		</div>
 

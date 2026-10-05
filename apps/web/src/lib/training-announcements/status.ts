@@ -125,7 +125,7 @@ export function deliveryReasonLabel(reason: DeliveryReason): string {
 		case "unconfigured_channel":
 			return "channel not configured";
 		case "invalid_copy":
-			return "invalid copy";
+			return "invalid message text";
 		case "late":
 			return "too late to post";
 		case "permission":
@@ -139,7 +139,7 @@ export function deliveryReasonLabel(reason: DeliveryReason): string {
 		case "server_error":
 			return "Discord error";
 		case "worker_lost":
-			return "worker lost";
+			return "posting process interrupted";
 		case "unknown":
 			return "unknown reason";
 	}
@@ -159,7 +159,7 @@ export function occurrenceStatus(
 		case "post":
 			return { label: "scheduled", tone: "scheduled" };
 		case "post_override":
-			return { label: "override", tone: "override" };
+			return { label: "text changed", tone: "override" };
 		case "skipped_holiday":
 			return { label: "bank holiday", tone: "skipped" };
 		case "skipped_disabled":

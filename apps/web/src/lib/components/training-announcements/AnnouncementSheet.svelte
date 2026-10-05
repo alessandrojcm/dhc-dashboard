@@ -25,22 +25,29 @@ import {
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
+import * as Field from "$lib/components/ui/field";
 import { Input } from "$lib/components/ui/input";
 import { Label } from "$lib/components/ui/label";
+import * as RadioGroup from "$lib/components/ui/radio-group";
+import * as Select from "$lib/components/ui/select";
 import * as Sheet from "$lib/components/ui/sheet";
 import { Switch } from "$lib/components/ui/switch";
-import { Textarea } from "$lib/components/ui/textarea";
+import TemplateInput from "$lib/components/ui/template-input.svelte";
+import DatePicker from "$lib/components/ui/date-picker.svelte";
 import { TriangleAlert } from "@lucide/svelte";
 import {
 	COPY_PRESETS,
 	KIND_CHANNEL_LABELS,
 	KIND_LABELS,
 	MESSAGE_TOKENS,
+	PLACEHOLDER_LABELS,
 	TITLE_TOKENS,
 	WEEKDAY_OPTIONS,
 } from "$lib/training-announcements/copy";
 import {
 	announcementDraft,
+	draftCalendarDate,
+	draftIsoDate,
 	draftPreviewDate,
 	newAnnouncementDraft,
 	scheduleChanged,
@@ -197,8 +204,7 @@ async function showPreview() {
 	} catch (cause) {
 		preview = null;
 		previewError =
-			announcementProblem(cause)?.detail ??
-			"Could not render a preview for this copy";
+			announcementProblem(cause)?.detail ?? "Could not preview the message";
 	}
 }
 </script>
@@ -236,11 +242,9 @@ async function showPreview() {
 			</Sheet.Title>
 			<Sheet.Description>
 				{#if editing}
-					Schedule changes apply to every future occurrence. Posts already
-					delivered keep the copy they were sent with.
+					Changes apply to future posts. Published posts stay unchanged.
 				{:else}
-					A weekly announcement posts on its weekday until you pause it; a
-					one-off posts once.
+					Choose when to post and write the message.
 				{/if}
 			</Sheet.Description>
 		</Sheet.Header>
@@ -253,101 +257,132 @@ async function showPreview() {
 
 			<div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
 				<div class="space-y-5">
-					<fieldset class="space-y-2">
-						<legend class="text-sm font-semibold">Kind</legend>
-						<div class="grid grid-cols-2 gap-2">
+					<!-- Kind and Repeats are RadioGroups, not native radios: the
+					     choice drives a side effect (the kind preset, the preview
+					     anchor), so the option is the whole clickable card and the
+					     dot is a visual. `disabled` on Kind while editing is what
+					     stops an existing announcement changing channel. -->
+					<Field.Set>
+						<Field.Legend class="text-sm font-semibold">Post type</Field.Legend>
+						<RadioGroup.Root
+							value={draft.kind}
+							onValueChange={(value) => {
+								if (value) applyKindPreset(value as AnnouncementDraft["kind"]);
+							}}
+							disabled={editing}
+							aria-label="Post type"
+							class="grid grid-cols-2 gap-2"
+						>
 							{#each ["roll_call", "sparring"] as const as kind (kind)}
+								<!-- The card is the label and the RadioGroup.Item is its
+								     control, so clicking anywhere on the card picks the kind
+								     while the button keeps the roving focus and arrow keys.
+								     `has-[[data-state=checked]]` is what tints the selected
+								     card: the item sets that state, the label only reads it. -->
 								<label
-									class="flex cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold has-[:checked]:border-primary has-[:checked]:bg-primary/8 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60"
+									class="flex min-h-11 cursor-pointer items-start justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/8 has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60"
 								>
-									<span>
+									<span class="flex min-w-0 flex-col">
 										{KIND_LABELS[kind]}
-										<span
-											class="block text-xs font-medium text-muted-foreground"
+										<span class="text-xs font-medium text-muted-foreground"
 											>{KIND_CHANNEL_LABELS[kind]}</span
 										>
 									</span>
-									<input
-										type="radio"
-										name="announcement-kind"
+									<RadioGroup.Item
 										value={kind}
-										checked={draft.kind === kind}
-										disabled={editing}
-										onchange={() => applyKindPreset(kind)}
-										class="accent-primary"
+										class="mt-0.5"
+										aria-label={KIND_LABELS[kind]}
 									/>
 								</label>
 							{/each}
-						</div>
+						</RadioGroup.Root>
 						{#if editing}
-							<p class="text-xs text-muted-foreground">
-								The kind decides the channel, so it cannot change after
-								creation.
-							</p>
+							<Field.Description>
+								The post type and Discord channel cannot be changed.
+							</Field.Description>
 						{/if}
-					</fieldset>
+					</Field.Set>
 
-					<fieldset class="space-y-2">
-						<legend class="text-sm font-semibold">Repeats</legend>
-						<div class="grid grid-cols-2 gap-2">
+					<Field.Set>
+						<Field.Legend class="text-sm font-semibold">Repeats</Field.Legend>
+						<RadioGroup.Root
+							value={draft.scheduleType}
+							onValueChange={(value) => {
+								if (value) applyScheduleType(value as AnnouncementScheduleType);
+							}}
+							aria-label="Repeats"
+							class="grid grid-cols-2 gap-2"
+						>
 							{#each ["weekly", "one_off"] as const as option (option)}
 								<label
-									class="flex cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold has-[:checked]:border-primary has-[:checked]:bg-primary/8"
+									class="flex min-h-11 cursor-pointer items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/8"
 								>
 									{option === "weekly" ? "Weekly" : "One-off"}
-									<input
-										type="radio"
-										name="announcement-schedule"
+									<RadioGroup.Item
 										value={option}
-										checked={draft.scheduleType === option}
-										onchange={() => applyScheduleType(option)}
-										class="accent-primary"
+										aria-label={option === "weekly" ? "Weekly" : "One-off"}
 									/>
 								</label>
 							{/each}
-						</div>
-					</fieldset>
+						</RadioGroup.Root>
+					</Field.Set>
 
 					<div class="grid gap-3 sm:grid-cols-2">
 						{#if draft.scheduleType === "weekly"}
-							<div class="space-y-1.5">
-								<Label for="announcement-weekday">Weekday</Label>
-								<select
-									id="announcement-weekday"
-									class="focus-visible:border-ring focus-visible:ring-ring/50 h-9 w-full cursor-pointer rounded-md border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px]"
-									value={draft.weekday}
-									onchange={(event) => {
-										draft.weekday = Number(event.currentTarget.value);
+							<Field.Field>
+								<Field.Label for="announcement-weekday">Weekday</Field.Label>
+								<Select.Root
+									type="single"
+									value={String(draft.weekday)}
+									onValueChange={(value) => {
+										draft.weekday = Number(value);
 										syncPreviewDate();
 									}}
 								>
-									{#each WEEKDAY_OPTIONS as option (option.value)}
-										<option value={option.value}>{option.name}</option>
-									{/each}
-								</select>
-							</div>
+									<Select.Trigger
+										id="announcement-weekday"
+										class="w-full"
+										aria-label="Weekday"
+									>
+										{WEEKDAY_OPTIONS.find(
+											(option) => option.value === draft.weekday,
+										)?.name ?? "Pick a weekday"}
+									</Select.Trigger>
+									<Select.Content>
+										{#each WEEKDAY_OPTIONS as option (option.value)}
+											<Select.Item
+												value={String(option.value)}
+												label={option.name}
+											/>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+							</Field.Field>
 						{:else}
-							<div class="space-y-1.5">
-								<Label for="announcement-date">Date</Label>
-								<Input
+							<Field.Field
+								data-invalid={fieldMessage("oneOffDate") !== undefined}
+							>
+								<Field.Label for="announcement-date">Date</Field.Label>
+								<DatePicker
 									id="announcement-date"
-									type="date"
-									min={today}
-									value={draft.oneOffDate}
-									aria-invalid={fieldMessage("oneOffDate") !== undefined}
-									aria-describedby="announcement-date-error"
-									oninput={(event) => {
-										draft.oneOffDate = event.currentTarget.value;
+									dateStyle="medium"
+									value={draftCalendarDate(draft.oneOffDate)}
+									minValue={draftCalendarDate(today)}
+									ariaInvalid={fieldMessage("oneOffDate") !== undefined}
+									ariaDescribedby="announcement-date-error"
+									onValueChange={(value) => {
+										draft.oneOffDate = draftIsoDate(value);
 										syncPreviewDate();
 									}}
 								/>
 								{@render fieldError("oneOffDate", "announcement-date-error")}
-							</div>
+							</Field.Field>
 						{/if}
-						<div class="space-y-1.5">
-							<Label for="announcement-post-time">Post time</Label>
+						<Field.Field data-invalid={fieldMessage("postTime") !== undefined}>
+							<Field.Label for="announcement-post-time">Post time</Field.Label>
 							<Input
 								id="announcement-post-time"
+								class="h-11 min-w-0"
 								type="time"
 								value={draft.postTime}
 								aria-invalid={fieldMessage("postTime") !== undefined}
@@ -357,12 +392,8 @@ async function showPreview() {
 								}}
 							/>
 							{@render fieldError("postTime", "announcement-post-time-error")}
-						</div>
+						</Field.Field>
 					</div>
-					<p class="text-xs text-muted-foreground">
-						Times are Europe/Dublin and follow daylight saving. The post goes
-						out at the post time; there is no separate reminder.
-					</p>
 
 					<div class="space-y-1.5">
 						<Label for="announcement-title">
@@ -370,19 +401,18 @@ async function showPreview() {
 								>(also the thread name)</span
 							>
 						</Label>
-						<Input
+						<TemplateInput
 							id="announcement-title"
-							maxlength={100}
-							value={draft.title}
-							aria-invalid={fieldMessage("title") !== undefined}
-							oninput={(event) => {
-								draft.title = event.currentTarget.value;
-							}}
+							label="Title"
+							maxLength={100}
+							bind:value={draft.title}
+							invalid={fieldMessage("title") !== undefined}
+							tokens={TITLE_TOKENS.map((value) => ({
+								value,
+								label: PLACEHOLDER_LABELS[value],
+							}))}
 						/>
 						{@render fieldError("title")}
-						<p class="text-xs text-muted-foreground">
-							Tokens: {TITLE_TOKENS.map((token) => `"${token}"`).join(", ")}
-						</p>
 					</div>
 
 					<div class="space-y-1.5">
@@ -393,22 +423,23 @@ async function showPreview() {
 								class="cursor-pointer text-xs font-semibold text-primary hover:underline"
 								onclick={() => applyKindPreset(draft.kind)}
 							>
-								Reset to {KIND_LABELS[draft.kind].toLowerCase()} preset
+								Use default message
 							</button>
 						</div>
-						<Textarea
+						<TemplateInput
 							id="announcement-message"
-							rows={5}
-							value={draft.message}
-							aria-invalid={fieldMessage("message") !== undefined}
-							oninput={(event) => {
-								draft.message = event.currentTarget.value;
-							}}
+							label="Message"
+							multiline
+							bind:value={draft.message}
+							invalid={fieldMessage("message") !== undefined}
+							tokens={MESSAGE_TOKENS.map((value) => ({
+								value,
+								label: PLACEHOLDER_LABELS[value],
+							}))}
 						/>
 						{@render fieldError("message")}
 						<p class="text-xs text-muted-foreground">
-							Tokens: {MESSAGE_TOKENS.map((token) => `"${token}"`).join(", ")}.
-							Everything else posts literally.
+							Placeholders fill in automatically when the post is sent.
 						</p>
 					</div>
 
@@ -416,15 +447,14 @@ async function showPreview() {
 						class="flex cursor-pointer items-center justify-between gap-3 rounded-xl border px-3 py-2.5"
 					>
 						<span class="text-sm">
-							<span class="block font-semibold">Ping @everyone</span>
+							<span class="block font-semibold">Notify @everyone</span>
 							<span class="text-xs text-muted-foreground"
-								>Adds the mention line and allows the ping. Off means nobody is
-								notified.</span
+								>Mention @everyone in the Discord post.</span
 							>
 						</span>
 						<Switch
 							checked={draft.mentionEveryone}
-							aria-label="Ping @everyone"
+							aria-label="Notify @everyone"
 							onCheckedChange={(checked) => {
 								draft.mentionEveryone = checked;
 							}}
@@ -433,15 +463,16 @@ async function showPreview() {
 				</div>
 
 				<div class="space-y-2">
-					<div class="space-y-1.5">
-						<Label for="announcement-preview-date">Preview date</Label>
+					<Field.Field>
+						<Field.Label for="announcement-preview-date"
+							>Preview date</Field.Label
+						>
 						<div class="flex gap-2">
-							<Input
+							<DatePicker
 								id="announcement-preview-date"
-								type="date"
-								value={previewDate}
-								oninput={(event) => {
-									previewDate = event.currentTarget.value;
+								value={draftCalendarDate(previewDate)}
+								onValueChange={(value) => {
+									previewDate = draftIsoDate(value);
 								}}
 							/>
 							<Button
@@ -449,10 +480,10 @@ async function showPreview() {
 								disabled={previewCopy.isPending}
 								onclick={showPreview}
 							>
-								Preview copy
+								Preview
 							</Button>
 						</div>
-					</div>
+					</Field.Field>
 					{#if preview}
 						<DiscordMessagePreview
 							channelLabel={KIND_CHANNEL_LABELS[draft.kind]}
@@ -468,8 +499,7 @@ async function showPreview() {
 						</p>
 					{:else}
 						<p class="text-xs text-muted-foreground">
-							Preview renders this copy for the chosen date with the same
-							function delivery uses. Nothing is posted.
+							Preview the message for this date without posting it.
 						</p>
 					{/if}
 				</div>

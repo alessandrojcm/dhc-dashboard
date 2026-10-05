@@ -15,10 +15,19 @@ import {
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
+import * as Field from "$lib/components/ui/field";
 import * as Sheet from "$lib/components/ui/sheet";
-import { Textarea } from "$lib/components/ui/textarea";
+import TemplateInput from "$lib/components/ui/template-input.svelte";
+import {
+	MESSAGE_TOKENS,
+	PLACEHOLDER_LABELS,
+	TITLE_TOKENS,
+} from "$lib/training-announcements/copy";
+import DatePicker from "$lib/components/ui/date-picker.svelte";
+import {
+	draftCalendarDate,
+	draftIsoDate,
+} from "$lib/training-announcements/announcement";
 import {
 	hasDraftErrors,
 	newOverrideDraft,
@@ -90,7 +99,7 @@ async function save() {
 		onClose();
 	} catch (cause) {
 		const problem = announcementProblem(cause);
-		saveError = problem?.detail ?? "Could not change the copy";
+		saveError = problem?.detail ?? "Could not save the text changes";
 		fieldMessages = problem?.fieldMessages ?? [];
 	}
 }
@@ -108,11 +117,10 @@ async function save() {
 		data-testid="override-sheet"
 	>
 		<Sheet.Header>
-			<Sheet.Title>Change copy for “{announcement.title}”</Sheet.Title>
+			<Sheet.Title>Change text for “{announcement.title}”</Sheet.Title>
 			<Sheet.Description>
-				Replace the title, the message, or both on these Dublin dates. A skip
-				still wins over changed copy, and a bank holiday still wins over
-				everything for a roll call.
+				Change the title or message for the selected dates. Skipped posts will
+				not be sent. Roll calls are not sent on bank holidays.
 			</Sheet.Description>
 		</Sheet.Header>
 		<div class="space-y-5 px-4 pb-2">
@@ -122,92 +130,88 @@ async function save() {
 				</Alert>
 			{/if}
 
+			<!-- Two single-date pickers rather than a RangeCalendar: the draft is
+			     two independent fields Phoenix validates separately, and each
+			     carries its own `fromDate`/`toDate` message. -->
 			<div class="grid gap-3 sm:grid-cols-2">
-				<div class="space-y-1.5">
-					<Label for="override-from-date">First date</Label>
-					<Input
+				<Field.Field data-invalid={fieldMessage("fromDate") !== undefined}>
+					<Field.Label for="override-from-date">First date</Field.Label>
+					<DatePicker
 						id="override-from-date"
-						type="date"
-						min={today}
-						value={draft.fromDate}
-						aria-invalid={fieldMessage("fromDate") !== undefined}
-						oninput={(event) => {
-							draft.fromDate = event.currentTarget.value;
+						value={draftCalendarDate(draft.fromDate)}
+						minValue={draftCalendarDate(today)}
+						ariaInvalid={fieldMessage("fromDate") !== undefined}
+						onValueChange={(value) => {
+							draft.fromDate = draftIsoDate(value);
 						}}
 					/>
 					{#if fieldMessage("fromDate")}
-						<p class="text-xs font-semibold text-destructive">
-							{fieldMessage("fromDate")}
-						</p>
+						<Field.Error>{fieldMessage("fromDate")}</Field.Error>
 					{/if}
-				</div>
-				<div class="space-y-1.5">
-					<Label for="override-to-date">Last date, inclusive</Label>
-					<Input
+				</Field.Field>
+				<Field.Field data-invalid={fieldMessage("toDate") !== undefined}>
+					<Field.Label for="override-to-date">Last date, inclusive</Field.Label>
+					<DatePicker
 						id="override-to-date"
-						type="date"
-						min={draft.fromDate || today}
-						value={draft.toDate}
-						aria-invalid={fieldMessage("toDate") !== undefined}
-						oninput={(event) => {
-							draft.toDate = event.currentTarget.value;
+						value={draftCalendarDate(draft.toDate)}
+						minValue={draftCalendarDate(draft.fromDate || today)}
+						ariaInvalid={fieldMessage("toDate") !== undefined}
+						onValueChange={(value) => {
+							draft.toDate = draftIsoDate(value);
 						}}
 					/>
 					{#if fieldMessage("toDate")}
-						<p class="text-xs font-semibold text-destructive">
-							{fieldMessage("toDate")}
-						</p>
+						<Field.Error>{fieldMessage("toDate")}</Field.Error>
 					{/if}
-				</div>
+				</Field.Field>
 			</div>
 
-			<div class="space-y-1.5">
-				<Label for="override-title">Title (also the thread name)</Label>
-				<Input
+			<Field.Field data-invalid={fieldMessage("title") !== undefined}>
+				<Field.Label for="override-title"
+					>Title (also the thread name)</Field.Label
+				>
+				<TemplateInput
 					id="override-title"
-					maxlength={100}
-					placeholder={announcement.title}
-					value={draft.title}
-					aria-invalid={fieldMessage("title") !== undefined}
-					oninput={(event) => {
-						draft.title = event.currentTarget.value;
-					}}
+					label="Title"
+					maxLength={100}
+					bind:value={draft.title}
+					invalid={fieldMessage("title") !== undefined}
+					tokens={TITLE_TOKENS.map((value) => ({
+						value,
+						label: PLACEHOLDER_LABELS[value],
+					}))}
 				/>
 				{#if fieldMessage("title")}
-					<p class="text-xs font-semibold text-destructive">
-						{fieldMessage("title")}
-					</p>
+					<Field.Error>{fieldMessage("title")}</Field.Error>
 				{/if}
-			</div>
+			</Field.Field>
 
-			<div class="space-y-1.5">
-				<Label for="override-message">Message</Label>
-				<Textarea
+			<Field.Field data-invalid={fieldMessage("message") !== undefined}>
+				<Field.Label for="override-message">Message</Field.Label>
+				<TemplateInput
 					id="override-message"
-					rows={4}
-					placeholder={announcement.message}
-					value={draft.message}
-					aria-invalid={fieldMessage("message") !== undefined}
-					oninput={(event) => {
-						draft.message = event.currentTarget.value;
-					}}
+					label="Message"
+					multiline
+					bind:value={draft.message}
+					invalid={fieldMessage("message") !== undefined}
+					tokens={MESSAGE_TOKENS.map((value) => ({
+						value,
+						label: PLACEHOLDER_LABELS[value],
+					}))}
 				/>
 				{#if fieldMessage("message")}
-					<p class="text-xs font-semibold text-destructive">
-						{fieldMessage("message")}
-					</p>
+					<Field.Error>{fieldMessage("message")}</Field.Error>
 				{/if}
-				<p class="text-xs text-muted-foreground">
-					Leave a field empty to keep the announcement's copy. Tokens
-					{"{{date}}"}, {"{{weekday}}"} and (message only) {"{{title}}"}.
-				</p>
-			</div>
+				<Field.Description>
+					Leave a field empty to keep its existing text.
+				</Field.Description>
+			</Field.Field>
 		</div>
 
 		<Sheet.Footer>
 			<Button variant="ghost" onclick={onClose}>Cancel</Button>
 			<Button disabled={create.isPending} onclick={save}>
-				{create.isPending ? "Saving…" : "Change copy"}
+				{create.isPending ? "Saving…" : "Change text"}
 			</Button>
 		</Sheet.Footer>
 	</Sheet.Content>

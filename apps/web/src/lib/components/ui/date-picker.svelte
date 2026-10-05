@@ -20,12 +20,13 @@ type Props = {
 	name?: string;
 	id?: string;
 	label?: string;
+	dateStyle?: "long" | "medium" | "short";
 	type?: string;
+	/** Phoenix's field-scoped refusal for this date, so the trigger reads invalid. */
+	ariaInvalid?: boolean;
+	ariaDescribedby?: string;
+	class?: string;
 };
-
-const df = new DateFormatter("en-US", {
-	dateStyle: "long",
-});
 
 let {
 	value,
@@ -36,32 +37,42 @@ let {
 	name,
 	id,
 	label,
+	dateStyle = "long",
+	ariaInvalid = false,
+	ariaDescribedby,
+	class: className,
 }: Props = $props();
 let open = $state(false);
+const df = $derived(new DateFormatter("en-US", { dateStyle }));
 
 // DatePicker is used for calendar dates (birthdays, resume dates), not instants.
 const formValue = $derived(value ? toCalendarDate(value).toString() : "");
 </script>
 
-<div>
+<div class="w-full min-w-0">
 	<Popover.Root bind:open>
 		<Popover.Trigger>
 			{#snippet child({ props })}
 				<Button
+					{...props}
 					variant="outline"
 					class={cn(
-						"min-h-11 w-full justify-start text-left font-normal",
+						"min-h-11 w-full min-w-0 justify-start text-left font-normal",
 						!value && "text-muted-foreground",
+						className,
 					)}
-					{...props}
 					type="button"
 					{id}
 					aria-label={label}
+					aria-invalid={ariaInvalid}
+					aria-describedby={ariaDescribedby}
 				>
-					<CalendarIcon class="mr-2 size-4" />
-					{value
-						? df.format(value.toDate(getLocalTimeZone()))
-						: "Select a date"}
+					<CalendarIcon class="size-4 shrink-0" />
+					<span class="truncate"
+						>{value
+							? df.format(value.toDate(getLocalTimeZone()))
+							: "Select a date"}</span
+					>
 				</Button>
 			{/snippet}
 		</Popover.Trigger>

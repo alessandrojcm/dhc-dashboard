@@ -8,6 +8,7 @@ import {
 } from "@dhc/api-client";
 import { QueryClient } from "@tanstack/svelte-query";
 import { expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import AnnouncementsRailTestWrapper from "./AnnouncementsRail.test-wrapper.svelte";
 
@@ -215,9 +216,53 @@ function renderRail() {
 
 async function openDetail(screen: Awaited<ReturnType<typeof renderRail>>) {
 	await screen
-		.getByRole("button", { name: /Dates and copy for Roll call/ })
+		.getByRole("button", { name: /Manage posts for Roll call/ })
 		.click();
 	await expect.element(screen.getByTestId("announcement-detail")).toBeVisible();
+	await expect
+		.poll(() => document.activeElement?.id)
+		.toBe("announcement-dates-and-copy");
+	const detail = screen.container.querySelector("#announcement-dates-and-copy");
+	const calendar = screen.container.querySelector(
+		"[data-testid='training-calendar']",
+	);
+	expect(detail).not.toBeNull();
+	expect(calendar).not.toBeNull();
+	// Details are revealed before the calendar rather than below its entire grid.
+	expect(
+		detail!.compareDocumentPosition(calendar!) &
+			Node.DOCUMENT_POSITION_FOLLOWING,
+	).toBeTruthy();
+}
+
+/**
+ * Pick a Dublin date through the shared date picker the way a reader does:
+ * open the popover, then click the day cell. Replaces the `fill()` these tests
+ * used on a native `type="date"` input, which no longer exists.
+ */
+async function pickDate(
+	screen: Awaited<ReturnType<typeof renderRail>>,
+	label: string,
+	isoDate: string,
+) {
+	await screen.getByRole("button", { name: label, exact: true }).click();
+	// bits-ui labels each day button with its full date, which disambiguates a
+	// day number that an adjacent month repeats.
+	await screen.getByRole("button", { name: dayLabel(isoDate) }).click();
+}
+
+/** The accessible name bits-ui gives a `Calendar` day button. */
+function dayLabel(isoDate: string): string {
+	const [year, month, day] = isoDate.split("-").map(Number);
+	// SAFETY: every caller passes a `YYYY-MM-DD` literal, so the parts are
+	// numbers; `!` keeps the destructuring honest without a runtime guard.
+	const date = new Date(year!, month! - 1, day!);
+	return new Intl.DateTimeFormat("en-US", {
+		weekday: "long",
+		month: "long",
+		day: "numeric",
+		year: "numeric",
+	}).format(date);
 }
 
 test("detail lists render the resolved next title with capped counts", async () => {
@@ -239,7 +284,7 @@ test("detail lists render the resolved next title with capped counts", async () 
 	// Seven skips collapse to the cap with a count.
 	await expect.element(screen.getByText("Skipped dates")).toBeVisible();
 	await expect.element(screen.getByText(/Showing 5 of 7 skips/)).toBeVisible();
-	await expect.element(screen.getByText("Copy changes")).toBeVisible();
+	await expect.element(screen.getByText("Text changes")).toBeVisible();
 });
 
 test("creates a single-date suppression and removes it with confirmation", async () => {
@@ -250,8 +295,8 @@ test("creates a single-date suppression and removes it with confirmation", async
 	await screen
 		.getByRole("button", { name: /Skip dates for Roll call/ })
 		.click();
-	await screen.getByLabelText("First date").fill("2026-10-15");
-	await screen.getByLabelText("Last date, inclusive").fill("2026-10-15");
+	await pickDate(screen, "First date", "2026-10-15");
+	await pickDate(screen, "Last date, inclusive", "2026-10-15");
 	await screen.getByRole("button", { name: "Skip these dates" }).click();
 
 	await expect
@@ -275,20 +320,78 @@ test("creates a single-date suppression and removes it with confirmation", async
 		.toBe(true);
 });
 
+test("change copy inserts inline tags and removes them atomically before saving", async () => {
+	const api = useApi({ suppressions: [], overrides: [] });
+	const screen = await renderRail();
+	await openDetail(screen);
+	await screen
+		.getByRole("button", { name: /Change text for Roll call/ })
+		.click();
+	const title = screen.getByRole("textbox", { name: "Title", exact: true });
+	await title.fill("Special ");
+	await screen
+		.getByRole("button", { name: "Insert date into title", exact: true })
+		.click();
+	await expect.element(title).toHaveTextContent("Special Date");
+	expect(
+		screen
+			.getByRole("button", { name: "Insert date into title", exact: true })
+			.element()
+			.getBoundingClientRect().height,
+	).toBeLessThanOrEqual(24);
+	expect(
+		title
+			.element()
+			.querySelector('[data-placeholder="{{date}}"]')
+			?.getAttribute("contenteditable"),
+	).toBe("false");
+	await userEvent.keyboard("{Backspace}");
+	expect(title.element().querySelector("[data-placeholder]")).toBeNull();
+	await screen
+		.getByRole("button", { name: "Insert weekday into title", exact: true })
+		.click();
+	await screen
+		.getByRole("button", { name: "Insert title into message", exact: true })
+		.click();
+	const message = screen.getByRole("textbox", { name: "Message", exact: true });
+	await expect.element(message).toHaveTextContent("Title");
+	await screen
+		.getByTestId("override-sheet")
+		.getByRole("button", { name: "Change text", exact: true })
+		.click();
+	await expect
+		.poll(() =>
+			api.calls.some(
+				(call) => call.method === "POST" && call.url.includes("/overrides"),
+			),
+		)
+		.toBe(true);
+	expect(
+		api.calls.find(
+			(call) => call.method === "POST" && call.url.includes("/overrides"),
+		)?.body,
+	).toMatchObject({
+		title: "Special {{weekday}}",
+		message: "{{title}}",
+	});
+});
+
 test("creates a range override replacing the title", async () => {
 	const api = useApi({ suppressions: [], overrides: [] });
 	const screen = await renderRail();
 	await openDetail(screen);
 
 	await screen
-		.getByRole("button", { name: /Change copy for Roll call/ })
+		.getByRole("button", { name: /Change text for Roll call/ })
 		.click();
-	await screen.getByLabelText("First date").fill("2026-10-08");
-	await screen.getByLabelText("Last date, inclusive").fill("2026-10-09");
-	await screen.getByLabelText(/Title/).fill("Halloween special");
+	await pickDate(screen, "First date", "2026-10-08");
+	await pickDate(screen, "Last date, inclusive", "2026-10-09");
+	await screen
+		.getByRole("textbox", { name: "Title", exact: true })
+		.fill("Halloween special");
 	await screen
 		.getByTestId("override-sheet")
-		.getByRole("button", { name: "Change copy", exact: true })
+		.getByRole("button", { name: "Change text", exact: true })
 		.click();
 
 	await expect
@@ -305,13 +408,14 @@ test("creates a range override replacing the title", async () => {
 		fromDate: "2026-10-08",
 		toDate: "2026-10-09",
 		title: "Halloween special",
+		message: null,
 	});
 	await expect.element(screen.getByText(/Replaces the title/)).toBeVisible();
 
 	// Removal asks first, for copy changes too.
-	await screen.getByRole("button", { name: /Remove copy change on/ }).click();
+	await screen.getByRole("button", { name: /Remove text change on/ }).click();
 	await screen
-		.getByRole("button", { name: /Confirm removing copy change/ })
+		.getByRole("button", { name: /Confirm removing text change/ })
 		.click();
 	await expect
 		.poll(() =>
@@ -342,8 +446,12 @@ test("past-date rejections render next to the form", async () => {
 	await screen
 		.getByRole("button", { name: /Skip dates for Roll call/ })
 		.click();
-	await screen.getByLabelText("First date").fill("2020-01-01");
-	await screen.getByLabelText("Last date, inclusive").fill("2020-01-01");
+	// A date before the retention-relevant past is now unreachable through the
+	// picker (`minValue` is today), so the refusal is still Phoenix's to make —
+	// it can fire on a date that elapsed while the sheet was open. What this
+	// asserts is unchanged: the field-scoped message renders against the field.
+	await pickDate(screen, "First date", "2026-10-01");
+	await pickDate(screen, "Last date, inclusive", "2026-10-01");
 	await screen
 		.getByTestId("suppression-sheet")
 		.getByRole("button", { name: "Skip these dates" })
@@ -380,12 +488,14 @@ test("overlap rejections render next to the form", async () => {
 	await openDetail(screen);
 
 	await screen
-		.getByRole("button", { name: /Change copy for Roll call/ })
+		.getByRole("button", { name: /Change text for Roll call/ })
 		.click();
-	await screen.getByLabelText(/Title/).fill("Special session");
+	await screen
+		.getByRole("textbox", { name: "Title", exact: true })
+		.fill("Special session");
 	await screen
 		.getByTestId("override-sheet")
-		.getByRole("button", { name: "Change copy", exact: true })
+		.getByRole("button", { name: "Change text", exact: true })
 		.click();
 
 	// The rejection stays in the sheet, against the form — never a toast.
@@ -400,7 +510,7 @@ test("overlap rejections render next to the form", async () => {
 		.element(
 			screen
 				.getByTestId("override-sheet")
-				.getByRole("button", { name: "Change copy", exact: true }),
+				.getByRole("button", { name: "Change text", exact: true }),
 		)
 		.toBeVisible();
 });

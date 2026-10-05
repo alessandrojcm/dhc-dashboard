@@ -4,6 +4,7 @@ import {
 	type TrainingAnnouncementOccurrence,
 } from "@dhc/api-client";
 import { QueryClient } from "@tanstack/svelte-query";
+import { page } from "vitest/browser";
 import { expect, test } from "vitest";
 import { render } from "vitest-browser-svelte";
 import TrainingCalendarTestWrapper from "./TrainingCalendar.test-wrapper.svelte";
@@ -184,12 +185,42 @@ test("month view lists occurrences and holiday items from the window", async () 
 	await expect
 		.element(screen.getByText("No training Monday 26 October 2026").first())
 		.toBeVisible();
-	await expect.element(screen.getByText("read-only").first()).toBeVisible();
+	// The chip's `title` carries the read-only marker on phone widths, where the
+	// pill has no room beside a wrapped title.
+	await expect
+		.poll(() => screen.container.querySelector(".ta-event[title*='read-only']"))
+		.not.toBeNull();
 	expect(screen.container.querySelector(".ta-holiday-day")).not.toBeNull();
 
 	// The visible grid drives one window read with inclusive Dublin bounds.
 	expect(windowCalls(api.calls)).toHaveLength(1);
 	expect(windowCalls(api.calls)[0]).toContain("from=2026-09-28");
+});
+
+test("month rows contain their day cells at desktop width", async () => {
+	const viewport = { width: window.innerWidth, height: window.innerHeight };
+	try {
+		await page.viewport(1280, 900);
+		useApi();
+		const screen = await renderCalendar();
+		await expect
+			.element(screen.getByText("Roll call Thursday 8 October 2026").first())
+			.toBeVisible();
+		const rows = screen.container.querySelectorAll(
+			".dhc-calendar-body .ec-days",
+		);
+		expect(rows.length).toBeGreaterThan(0);
+		for (const row of rows) {
+			const rowBox = row.getBoundingClientRect();
+			for (const cell of row.querySelectorAll(".dhc-calendar-day")) {
+				expect(cell.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+					rowBox.bottom + 1,
+				);
+			}
+		}
+	} finally {
+		await page.viewport(viewport.width, viewport.height);
+	}
 });
 
 test("week view renders the same posts without refetch loops", async () => {
@@ -201,7 +232,9 @@ test("week view renders the same posts without refetch loops", async () => {
 		.toBeVisible();
 	expect(windowCalls(api.calls)).toHaveLength(1);
 
-	await screen.getByRole("button", { name: "Week" }).click();
+	// bits-ui renders single-select ToggleGroup items as role=radio, which is
+	// what a two-option exclusive choice should announce.
+	await screen.getByRole("radio", { name: "Week" }).click();
 
 	// The week asks for its own (narrower) range exactly once, and shows only
 	// the posts whose send date falls inside it.
@@ -210,11 +243,18 @@ test("week view renders the same posts without refetch loops", async () => {
 			screen.getByText("Special sparring Thursday 1 October 2026").first(),
 		)
 		.toBeVisible();
+	expect(
+		screen.container.querySelector(".ec-list.ec-week-view"),
+	).not.toBeNull();
+	expect(screen.container.querySelector(".ec-time-grid")).toBeNull();
+	await expect
+		.element(screen.getByRole("heading", { name: /Thursday.*October 1, 2026/ }))
+		.toBeVisible();
 	expect(windowCalls(api.calls)).toHaveLength(2);
 	expect(windowCalls(api.calls)[1]).toContain("from=2026-09-28");
 	expect(windowCalls(api.calls)[1]).toContain("to=2026-10-04");
 
-	await screen.getByRole("button", { name: "Month" }).click();
+	await screen.getByRole("radio", { name: "Month" }).click();
 	await expect
 		.element(screen.getByText("Roll call Thursday 8 October 2026").first())
 		.toBeVisible();
@@ -243,7 +283,7 @@ test("navigation before the retention horizon is refused without calling the api
 	// SAFETY: asserted non-null above; the toolbar always renders prev/next.
 	(prev as HTMLElement).click();
 	await expect
-		.element(screen.getByText(/History before .* is not kept/))
+		.element(screen.getByText(/History is available from/))
 		.toBeVisible();
 
 	for (const url of windowCalls(api.calls)) {

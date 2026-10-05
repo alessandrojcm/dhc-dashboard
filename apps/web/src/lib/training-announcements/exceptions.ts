@@ -131,10 +131,10 @@ export function validateSuppressionDraft(
 	draft: SuppressionDraft,
 ): SuppressionFieldErrors {
 	const errors: SuppressionFieldErrors = {};
-	if (!draft.fromDate) errors.fromDate = "Choose the first Dublin date.";
-	if (!draft.toDate) errors.toDate = "Choose the last Dublin date.";
+	if (!draft.fromDate) errors.fromDate = "Choose the first date.";
+	if (!draft.toDate) errors.toDate = "Choose the last date.";
 	if (draft.fromDate && draft.toDate && draft.fromDate > draft.toDate) {
-		errors.toDate = "The range ends before it starts.";
+		errors.toDate = "The last date must be on or after the first date.";
 	}
 	return errors;
 }
@@ -148,7 +148,7 @@ export function validateOverrideDraft(
 		...range,
 	};
 	if (draft.title.trim() === "" && draft.message.trim() === "") {
-		errors.title = "An override replaces the title, the message, or both.";
+		errors.title = "Enter a title or message to save a change.";
 	}
 	return errors;
 }

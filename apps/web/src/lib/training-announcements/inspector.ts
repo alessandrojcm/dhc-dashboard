@@ -22,6 +22,43 @@
  */
 
 import type { TrainingAnnouncementOccurrence } from "@dhc/api-client";
+import { deliveryReasonLabel } from "./status";
+
+/** Explain only an authoritative non-posting outcome; never infer from checks. */
+export function occurrenceNotSentReason(
+	item: Pick<
+		TrainingAnnouncementOccurrence,
+		"delivery" | "outcome" | "subject"
+	>,
+): string | null {
+	if (item.delivery) {
+		if (!["skipped", "blocked", "missed"].includes(item.delivery.state))
+			return null;
+		switch (item.delivery.reason) {
+			case "holiday":
+				return "Roll call isn’t sent on bank holidays.";
+			case "disabled":
+				return "This announcement is paused.";
+			case "suppressed":
+				return "Skipped for this date.";
+			default:
+				return `Post not sent: ${deliveryReasonLabel(item.delivery.reason)}.`;
+		}
+	}
+	if (item.subject === "holiday") return null;
+	switch (item.outcome) {
+		case "skipped_holiday":
+			return "Roll call isn’t sent on bank holidays.";
+		case "skipped_disabled":
+			return "This announcement is paused.";
+		case "skipped_suppressed":
+			return "Skipped for this date.";
+		case "missed":
+			return "The scheduled posting time was missed.";
+		default:
+			return null;
+	}
+}
 
 /** One precedence step, highest first. */
 export type PrecedenceStep =
@@ -44,8 +81,8 @@ export const PRECEDENCE_LABELS = {
 	holiday: "Bank holiday",
 	disablement: "Paused announcement",
 	suppression: "Skipped dates",
-	override: "Copy change",
-	defaults: "Announcement defaults",
+	override: "Text change",
+	defaults: "Default message",
 } satisfies Record<PrecedenceStep, string>;
 
 /**
@@ -54,13 +91,12 @@ export const PRECEDENCE_LABELS = {
  */
 export const PRECEDENCE_DESCRIPTIONS = {
 	holiday:
-		"Roll calls never post on a bank holiday. Sparring ignores this step.",
-	disablement: "A paused announcement posts nothing until it is resumed.",
+		"Roll calls are not sent on bank holidays. Sparring posts are unaffected.",
+	disablement: "Posts are paused until the announcement is resumed.",
 	suppression:
-		"A skipped date posts nothing, even when changed copy covers it.",
-	override:
-		"Changed copy replaces the title, the message, or both on its dates.",
-	defaults: "The announcement's own title, message and @everyone setting.",
+		"No post is sent on a skipped date, even if its text has been changed.",
+	override: "Use the title or message set for this date.",
+	defaults: "Use the announcement's saved title and message.",
 } satisfies Record<PrecedenceStep, string>;
 
 /** One precedence row as the inspector shows it. */
@@ -143,7 +179,7 @@ export function evidenceCheckpoints(
 ): EvidenceCheckpoint[] {
 	const checkpoints: EvidenceCheckpoint[] = [];
 	if (delivery.frozenAt !== null)
-		checkpoints.push({ label: "Frozen", at: delivery.frozenAt });
+		checkpoints.push({ label: "Message prepared", at: delivery.frozenAt });
 	if (delivery.postingStartedAt !== null)
 		checkpoints.push({
 			label: "Posting started",
@@ -154,7 +190,7 @@ export function evidenceCheckpoints(
 	if (delivery.threadCreatedAt !== null)
 		checkpoints.push({ label: "Thread created", at: delivery.threadCreatedAt });
 	if (delivery.concludedAt !== null)
-		checkpoints.push({ label: "Concluded", at: delivery.concludedAt });
+		checkpoints.push({ label: "Finished", at: delivery.concludedAt });
 	return checkpoints;
 }
 

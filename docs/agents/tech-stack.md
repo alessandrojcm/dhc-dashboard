@@ -2,7 +2,7 @@
 
 ## Active (SvelteKit + Phoenix API)
 
-- **Frontend**: SvelteKit 2.x, Svelte 5 (runes), Tailwind CSS, shadcn-svelte
+- **Frontend**: SvelteKit 2.x, Svelte 5 (runes), Tailwind CSS 4, shadcn-svelte on `bits-ui` 2.18.1. `$lib/components/ui` owns every interactive primitive — see "UI" in [critical-patterns.md](critical-patterns.md)
 - **Backend**: Phoenix JSON API (see below); the SvelteKit app talks to it only through the generated `@dhc/api-client` (`packages/api-client`, generated from `apps/phoenix/priv/api/openapi.yaml`)
 - **Types**: every API shape comes from `@dhc/api-client`. The Supabase-generated `apps/web/src/database.types.ts` and the `$database` Vite alias were deleted after the Phoenix migration; do not reintroduce a database-schema type file — add the shape to the OpenAPI contract and regenerate (`mise run api-gen`).
 - **State**: TanStack Query (`createQuery(() => ({}))` thunk pattern)

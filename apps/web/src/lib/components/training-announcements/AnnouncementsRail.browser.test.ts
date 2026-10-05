@@ -7,6 +7,7 @@ import {
 import { QueryClient } from "@tanstack/svelte-query";
 import { expect, test } from "vitest";
 import type { Locator } from "vitest/browser";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import AnnouncementsRailTestWrapper from "./AnnouncementsRail.test-wrapper.svelte";
 
@@ -259,6 +260,38 @@ async function gone(locator: Locator): Promise<boolean> {
 	return (await locator.query()) === null;
 }
 
+/**
+ * Pick a Dublin date through the shared date picker the way a reader does: open
+ * the popover, then click the day cell. Replaces the `fill()` these tests used
+ * on a native `type="date"` input, which no longer exists.
+ */
+async function pickDate(
+	screen: Awaited<ReturnType<typeof renderRail>>,
+	label: string,
+	isoDate: string,
+) {
+	// Scoped to the button's exact accessible name: "Date" is a prefix of
+	// "Preview date", and both are date pickers on this form.
+	await screen.getByRole("button", { name: label, exact: true }).click();
+	// bits-ui labels each day button with its full date, which disambiguates a
+	// day number that an adjacent month repeats.
+	await screen.getByRole("button", { name: dayLabel(isoDate) }).click();
+}
+
+/** The accessible name bits-ui gives a `Calendar` day button. */
+function dayLabel(isoDate: string): string {
+	const [year, month, day] = isoDate.split("-").map(Number);
+	// SAFETY: every caller passes a `YYYY-MM-DD` literal, so the parts are
+	// numbers; `!` keeps the destructuring honest without a runtime guard.
+	const date = new Date(year!, month! - 1, day!);
+	return new Intl.DateTimeFormat("en-US", {
+		weekday: "long",
+		month: "long",
+		day: "numeric",
+		year: "numeric",
+	}).format(date);
+}
+
 test("creates a weekly roll call pre-filled with the kind's preset", async () => {
 	const api = useApi({ rows: [] });
 	const screen = await renderRail();
@@ -269,13 +302,19 @@ test("creates a weekly roll call pre-filled with the kind's preset", async () =>
 		.click();
 
 	// The kind's copy is pre-filled, so cutover needs no wording.
+	expect(
+		screen.getByTestId("announcement-sheet").element().textContent,
+	).not.toContain("Europe/Dublin");
 	await expect
-		.element(screen.getByLabelText("Title"))
-		.toHaveValue("Roll call {{date}}");
+		.element(screen.getByText("Choose when to post and write the message."))
+		.toBeVisible();
 	await expect
-		.element(screen.getByLabelText("Message"))
-		.toHaveValue(
-			"Hey! It's {{weekday}}! Who is coming to training tonight? ⚔️",
+		.element(screen.getByRole("textbox", { name: "Title" }))
+		.toHaveTextContent("Roll call Date");
+	await expect
+		.element(screen.getByRole("textbox", { name: "Message", exact: true }))
+		.toHaveTextContent(
+			"Hey! It's Weekday! Who is coming to training tonight? ⚔️",
 		);
 	await expect
 		.element(screen.getByRole("radio", { name: /^Roll call/ }))
@@ -298,6 +337,150 @@ test("creates a weekly roll call pre-filled with the kind's preset", async () =>
 	await expect
 		.element(screen.getByRole("heading", { name: "Roll call {{date}}" }))
 		.toBeVisible();
+	await expect
+		.element(screen.getByRole("button", { name: /Manage posts for Roll call/ }))
+		.toBeVisible();
+	expect(screen.container.textContent).not.toContain("Europe/Dublin");
+});
+
+test("placeholder buttons insert at the cursor, replace selections, and save template copy", async () => {
+	const api = useApi();
+	const screen = await renderRail();
+	await screen
+		.getByRole("button", { name: "New announcement" })
+		.first()
+		.click();
+	await screen
+		.getByRole("textbox", { name: "Title" })
+		.fill("Roll call tonight");
+	const title = screen.getByRole("textbox", { name: "Title" }).element();
+	const titleRange = document.createRange();
+	titleRange.setStart(title.firstChild!, 10);
+	titleRange.setEnd(title.firstChild!, 17);
+	window.getSelection()!.removeAllRanges();
+	window.getSelection()!.addRange(titleRange);
+	await screen
+		.getByRole("button", { name: "Insert date into title", exact: true })
+		.click();
+	await expect
+		.element(screen.getByRole("textbox", { name: "Title" }))
+		.toHaveTextContent("Roll call Date");
+	expect(document.activeElement).toBe(title);
+	expect(
+		title
+			.querySelector('[data-placeholder="{{date}}"]')
+			?.getAttribute("contenteditable"),
+	).toBe("false");
+
+	await screen
+		.getByRole("textbox", { name: "Message", exact: true })
+		.fill("Join us on  for training");
+	const message = screen
+		.getByRole("textbox", { name: "Message", exact: true })
+		.element();
+	const messageRange = document.createRange();
+	messageRange.setStart(message.firstChild!, 11);
+	messageRange.collapse(true);
+	window.getSelection()!.removeAllRanges();
+	window.getSelection()!.addRange(messageRange);
+	// Keyboard activation works too, and returns focus to the text field.
+	const weekday = screen.getByRole("button", {
+		name: "Insert weekday into message",
+		exact: true,
+	});
+	const weekdayButton = weekday.element();
+	if (!(weekdayButton instanceof HTMLButtonElement))
+		throw new Error("Expected a placeholder button");
+	weekdayButton.focus();
+	await userEvent.keyboard("{Enter}");
+	await expect
+		.element(screen.getByRole("textbox", { name: "Message", exact: true }))
+		.toHaveTextContent("Join us on Weekday for training");
+	expect(document.activeElement).toBe(message);
+	expect(
+		message.querySelector('[data-placeholder="{{weekday}}"]'),
+	).not.toBeNull();
+
+	await screen.getByRole("button", { name: "Create announcement" }).click();
+	await expect.poll(() => api.rows().length).toBe(1);
+	expect(callBody(api, "POST", "/training-announcements")).toMatchObject({
+		title: "Roll call {{date}}",
+		message: "Join us on {{weekday}} for training",
+	});
+});
+
+test("placeholder insertion preserves the title length limit", async () => {
+	useApi();
+	const screen = await renderRail();
+	await screen
+		.getByRole("button", { name: "New announcement" })
+		.first()
+		.click();
+	await screen.getByRole("textbox", { name: "Title" }).fill("a".repeat(100));
+	await screen
+		.getByRole("button", { name: "Insert date into title", exact: true })
+		.click();
+	await expect
+		.element(screen.getByRole("textbox", { name: "Title" }))
+		.toHaveTextContent("a".repeat(100));
+	await expect
+		.element(screen.getByText(/Make room in the title/))
+		.toBeVisible();
+});
+
+test("inline placeholder tags delete atomically and undo restores them", async () => {
+	const api = useApi();
+	const screen = await renderRail();
+	await screen
+		.getByRole("button", { name: "New announcement" })
+		.first()
+		.click();
+	const title = screen.getByRole("textbox", { name: "Title", exact: true });
+	await title.fill("Training: ");
+	await screen
+		.getByRole("button", { name: "Insert date into title", exact: true })
+		.click();
+	await expect.element(title).toHaveTextContent("Training: Date");
+	await userEvent.keyboard("{Backspace}");
+	await expect.element(title).toHaveTextContent("Training:");
+	expect(title.element().querySelector("[data-placeholder]")).toBeNull();
+	await userEvent.keyboard("{Control>}z{/Control}");
+	await expect.element(title).toHaveTextContent("Training: Date");
+	await userEvent.keyboard("{ArrowLeft}{Delete}");
+	await expect.element(title).toHaveTextContent("Training:");
+	await screen.getByRole("button", { name: "Create announcement" }).click();
+	await expect.poll(() => api.rows().length).toBe(1);
+	expect(callBody(api, "POST", "/training-announcements")).toMatchObject({
+		title: "Training: ",
+	});
+});
+
+test("message tags preserve line breaks and preset changes reset editing history", async () => {
+	const api = useApi();
+	const screen = await renderRail();
+	await screen
+		.getByRole("button", { name: "New announcement" })
+		.first()
+		.click();
+	const message = screen.getByRole("textbox", { name: "Message", exact: true });
+	await message.fill("Hello");
+	await userEvent.keyboard("{Enter}");
+	await screen
+		.getByRole("button", { name: "Insert title into message", exact: true })
+		.click();
+	await screen.getByRole("button", { name: "Preview", exact: true }).click();
+	await expect
+		.poll(() => api.calls.some((call) => call.url.endsWith("/preview-copy")))
+		.toBe(true);
+	expect(callBody(api, "POST", "/preview-copy")).toMatchObject({
+		message: "Hello\n{{title}}",
+	});
+	await screen.getByRole("radio", { name: /^Sparring/ }).click();
+	await message.click();
+	await userEvent.keyboard("{Control>}z{/Control}");
+	await expect
+		.element(message)
+		.toHaveTextContent("Hey! Who is down for sparring this Weekday? ⚔️");
 });
 
 test("creates a one-off with the sparring copy", async () => {
@@ -310,7 +493,7 @@ test("creates a one-off with the sparring copy", async () => {
 		.click();
 	await screen.getByRole("radio", { name: /^Sparring/ }).click();
 	await screen.getByRole("radio", { name: "One-off" }).click();
-	await screen.getByLabelText("Date", { exact: true }).fill("2026-10-09");
+	await pickDate(screen, "Date", "2026-10-09");
 	await screen.getByLabelText("Post time").fill("18:30");
 
 	await screen.getByRole("button", { name: "Create announcement" }).click();
@@ -341,9 +524,14 @@ test("previews the rendered message and thread name without posting", async () =
 		.getByRole("button", { name: "New announcement" })
 		.first()
 		.click();
-	await screen.getByRole("button", { name: "Preview copy" }).click();
+	await screen.getByRole("button", { name: "Preview", exact: true }).click();
 
 	const preview = screen.getByRole("group", { name: "Discord preview" });
+	await expect
+		.element(preview.getByText("The Muffin Man", { exact: true }))
+		.toBeVisible();
+	expect(preview.element().querySelector("img")).not.toBeNull();
+	expect(preview.element().textContent).not.toContain("Dublin HEMA Club");
 	await expect.element(preview.getByText(/@everyone/)).toBeVisible();
 	await expect
 		.element(preview.getByText("Roll call Thursday 8 October 2026").first())
@@ -389,7 +577,9 @@ test("shows create warnings without blocking the saved announcement", async () =
 	await screen.getByRole("button", { name: "Create announcement" }).click();
 
 	await expect
-		.element(screen.getByText(/Another announcement already posts/))
+		.element(
+			screen.getByText(/Another announcement is scheduled for the same time/),
+		)
 		.toBeVisible();
 	await expect
 		.element(screen.getByRole("heading", { name: "Roll call {{date}}" }))
@@ -474,7 +664,9 @@ test("explains why an announcement that already posted cannot be deleted", async
 	await expect
 		.element(screen.getByRole("button", { name: /^Delete Roll call/ }))
 		.toBeDisabled();
-	await expect.element(screen.getByText(/has already posted/)).toBeVisible();
+	await expect
+		.element(screen.getByText(/Posting has already been attempted/))
+		.toBeVisible();
 	await expect
 		.element(screen.getByRole("button", { name: /^Retire Roll call/ }))
 		.toBeEnabled();

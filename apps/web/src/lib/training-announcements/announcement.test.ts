@@ -145,7 +145,11 @@ describe("warningMessages", () => {
 		];
 		const messages = warningMessages(warnings);
 		expect(messages).toHaveLength(2);
-		expect(messages[0]).toMatch(/slots/i);
-		expect(messages[1]).toMatch(/skipped|copy/i);
+		expect(messages[0]).toBe(
+			"Another announcement is scheduled for the same time. Review the schedules to avoid duplicate posts.",
+		);
+		expect(messages[1]).toBe(
+			"The schedule has changed. Review skipped dates and text changes; they may apply to different posts now.",
+		);
 	});
 });

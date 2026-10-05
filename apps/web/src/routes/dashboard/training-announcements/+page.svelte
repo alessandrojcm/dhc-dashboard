@@ -10,7 +10,9 @@ let { data }: PageProps = $props();
 	<title>Training Announcements | Dublin HEMA Club</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-5xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+<div
+	class="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
+>
 	<header class="border-b border-border/80 pb-5">
 		<div class="flex items-start gap-4">
 			<div
@@ -29,10 +31,8 @@ let { data }: PageProps = $props();
 				<p
 					class="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base"
 				>
-					Every Discord post the club schedules about training: the weekly roll
-					call and sparring calls, and one-offs for a special session. The
-					calendar below shows every upcoming and past occurrence; pick a chip
-					to jump to its announcement.
+					Schedule Discord posts for roll call, sparring and one-off sessions.
+					Select a calendar entry to view or manage that post.
 				</p>
 			</div>
 		</div>

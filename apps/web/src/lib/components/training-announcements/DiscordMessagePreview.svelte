@@ -6,6 +6,7 @@
 -->
 <script lang="ts">
 import { MessageSquareText } from "@lucide/svelte";
+import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 
 let {
 	channelLabel,
@@ -32,14 +33,14 @@ const lines = $derived(renderedMessage.split("\n"));
 	</p>
 	<div class="flex gap-3">
 		<div
-			class="mt-0.5 grid size-9 flex-none place-items-center rounded-full bg-primary text-xs font-black text-primary-foreground"
+			class="mt-0.5 size-9 flex-none overflow-hidden rounded-full"
 			aria-hidden="true"
 		>
-			DHC
+			<enhanced:img src={DHCLogo} alt="" class="size-full object-cover" />
 		</div>
 		<div class="min-w-0 flex-1">
 			<div class="flex items-baseline gap-2">
-				<span class="font-bold">Dublin HEMA Club</span>
+				<span class="font-bold">The Muffin Man</span>
 				<span
 					class="rounded bg-primary/15 px-1 text-[0.625rem] font-black tracking-wide text-primary uppercase"
 					>bot</span
@@ -59,7 +60,7 @@ const lines = $derived(renderedMessage.split("\n"));
 				>
 					<MessageSquareText class="size-3.5 flex-none" aria-hidden="true" />
 					<span class="truncate">{threadName}</span>
-					<span class="text-muted-foreground">· thread, 24 h auto-archive</span>
+					<span class="text-muted-foreground">· archives after 24 hours</span>
 				</div>
 			{/if}
 		</div>

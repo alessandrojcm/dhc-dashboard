@@ -91,12 +91,12 @@ const recent = createQuery(() => ({
 			</p>
 			<h3 class="mt-0.5 truncate font-semibold">{announcement.title}</h3>
 			<p class="mt-1 text-sm text-muted-foreground">
-				{scheduleLabel(announcement)} · Europe/Dublin
+				{scheduleLabel(announcement)}
 			</p>
 			<p class="text-sm text-muted-foreground">
 				{announcement.mentionEveryone
-					? "Pings @everyone"
-					: "No ping — only the bot posts"}
+					? "Notifies @everyone"
+					: "No @everyone notification"}
 			</p>
 		</div>
 		<Badge variant={lifecycle === "live" ? "default" : "outline"}>
@@ -114,11 +114,12 @@ const recent = createQuery(() => ({
 		<Button
 			size="sm"
 			variant={selected ? "default" : "outline"}
-			aria-label={`Dates and copy for ${announcement.title}`}
-			aria-pressed={selected}
+			aria-label={`Manage posts for ${announcement.title}`}
+			aria-expanded={selected}
+			aria-controls={selected ? "announcement-dates-and-copy" : undefined}
 			onclick={() => onSelect(announcement)}
 		>
-			<CalendarDays class="size-4" aria-hidden="true" />Dates & copy
+			<CalendarDays class="size-4" aria-hidden="true" />Manage posts
 		</Button>
 		<Button
 			size="sm"
@@ -205,7 +206,7 @@ const recent = createQuery(() => ({
 					Could not load recent deliveries.
 				</p>
 			{:else if recent.data.length === 0}
-				<p class="mt-1.5 text-xs text-muted-foreground">Nothing posted yet.</p>
+				<p class="mt-1.5 text-xs text-muted-foreground">No posts yet.</p>
 			{:else}
 				<ul class="mt-1.5 space-y-1.5" data-testid="card-recent">
 					{#each recent.data as occurrence (occurrence.date)}

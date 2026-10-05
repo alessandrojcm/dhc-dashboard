@@ -29,6 +29,12 @@ export const MESSAGE_TOKENS = ["{{title}}", "{{date}}", "{{weekday}}"] as const;
  */
 export const TITLE_TOKENS = ["{{date}}", "{{weekday}}"] as const;
 
+export const PLACEHOLDER_LABELS = {
+	"{{date}}": "Date",
+	"{{weekday}}": "Weekday",
+	"{{title}}": "Title",
+};
+
 export const COPY_PRESETS = {
 	roll_call: {
 		title: "Roll call {{date}}",

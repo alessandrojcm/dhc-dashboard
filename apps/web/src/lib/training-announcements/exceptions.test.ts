@@ -88,7 +88,9 @@ describe("drafts", () => {
 			fromDate: "2026-10-09",
 			toDate: "2026-10-08",
 		});
-		expect(errors.toDate).toMatch(/ends before/);
+		expect(errors.toDate).toBe(
+			"The last date must be on or after the first date.",
+		);
 		expect(hasDraftErrors(errors)).toBe(true);
 	});
 
@@ -99,6 +101,6 @@ describe("drafts", () => {
 			title: "  ",
 			message: "",
 		});
-		expect(errors.title).toMatch(/title, the message, or both/);
+		expect(errors.title).toBe("Enter a title or message to save a change.");
 	});
 });

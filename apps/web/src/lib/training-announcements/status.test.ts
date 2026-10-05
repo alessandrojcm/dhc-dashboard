@@ -180,7 +180,7 @@ describe("occurrenceStatus", () => {
 		expect(deliveryReasonLabel("disabled")).toContain("paus");
 		expect(deliveryReasonLabel("suppressed")).toContain("skip");
 		expect(deliveryReasonLabel("unconfigured_channel")).toContain("channel");
-		expect(deliveryReasonLabel("invalid_copy")).toContain("copy");
+		expect(deliveryReasonLabel("invalid_copy")).toBe("invalid message text");
 	});
 
 	it("covers every raw delivery state", () => {
@@ -201,7 +201,7 @@ describe("occurrenceStatus", () => {
 	it("labels every projected outcome without evidence", () => {
 		const labels = {
 			post: "scheduled",
-			post_override: "override",
+			post_override: "text changed",
 			skipped_holiday: "bank holiday",
 			skipped_disabled: "paused",
 			skipped_suppressed: "skipped",

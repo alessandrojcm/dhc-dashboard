@@ -127,7 +127,7 @@ const deleteSuppression = createMutation(() => ({
 
 const deleteOverride = createMutation(() => ({
 	...trainingAnnouncementExceptionsDeleteOverrideMutation(),
-	...removeOptions("Could not remove this copy change"),
+	...removeOptions("Could not remove this text change"),
 }));
 
 const removing = $derived(
@@ -169,7 +169,7 @@ function overrideRows(
 </script>
 
 <section
-	aria-label={`Dates and copy for ${announcement.title}`}
+	aria-label={`Manage posts for ${announcement.title}`}
 	class="rounded-2xl border border-border/80 bg-card p-4 shadow-sm sm:p-5"
 	data-testid="announcement-detail"
 >
@@ -191,10 +191,7 @@ function overrideRows(
 					on {announcementDateLabel(nextDate)}
 				</p>
 			{:else}
-				<p class="mt-1 text-sm text-muted-foreground">
-					No upcoming post — the next slot already elapsed or the announcement
-					is paused.
-				</p>
+				<p class="mt-1 text-sm text-muted-foreground">No upcoming posts.</p>
 			{/if}
 		</div>
 		<Button
@@ -241,9 +238,7 @@ function overrideRows(
 			{:else if suppressions.isPending}
 				<Skeleton class="mt-2 h-16 w-full" />
 			{:else if suppressions.data.length === 0}
-				<p class="mt-2 text-sm text-muted-foreground">
-					Every occurrence posts unless paused or skipped.
-				</p>
+				<p class="mt-2 text-sm text-muted-foreground">No skipped dates.</p>
 			{:else}
 				{@const rows = suppressionRows(suppressions.data)}
 				<ul class="mt-2 space-y-2">
@@ -321,7 +316,7 @@ function overrideRows(
 		<div>
 			<div class="flex items-center justify-between gap-2">
 				<h3 class="text-sm font-bold">
-					Copy changes
+					Text changes
 					{#if overrides.data}
 						<span class="font-medium text-muted-foreground"
 							>({overrides.data.length})</span
@@ -332,10 +327,10 @@ function overrideRows(
 					size="sm"
 					variant="outline"
 					disabled={announcement.retired}
-					aria-label={`Change copy for ${announcement.title}`}
+					aria-label={`Change text for ${announcement.title}`}
 					onclick={() => (overrideSheetOpen = true)}
 				>
-					<Plus class="size-4" aria-hidden="true" />Change copy
+					<Plus class="size-4" aria-hidden="true" />Change text
 				</Button>
 			</div>
 			{#if overrides.isError}
@@ -343,7 +338,7 @@ function overrideRows(
 					<AlertDescription
 						>{apiErrorMessage(
 							overrides.error,
-							"Could not load the copy changes",
+							"Could not load the text changes",
 						)}</AlertDescription
 					>
 				</Alert>
@@ -351,7 +346,7 @@ function overrideRows(
 				<Skeleton class="mt-2 h-16 w-full" />
 			{:else if overrides.data.length === 0}
 				<p class="mt-2 text-sm text-muted-foreground">
-					Special sessions get their own wording here.
+					No date-specific text changes.
 				</p>
 			{:else}
 				{@const rows = overrideRows(overrides.data)}
@@ -374,7 +369,7 @@ function overrideRows(
 										size="sm"
 										variant="destructive"
 										disabled={removing}
-										aria-label={`Confirm removing copy change on ${overrideRangeLabel(override)}`}
+										aria-label={`Confirm removing text change on ${overrideRangeLabel(override)}`}
 										onclick={confirmRemove}
 									>
 										{removing ? "Removing…" : "Confirm"}
@@ -383,7 +378,7 @@ function overrideRows(
 										size="sm"
 										variant="ghost"
 										disabled={removing}
-										aria-label="Keep this copy change"
+										aria-label="Keep this text change"
 										onclick={() => (confirming = null)}
 									>
 										Keep
@@ -394,7 +389,7 @@ function overrideRows(
 									size="sm"
 									variant="ghost"
 									class="flex-none text-destructive"
-									aria-label={`Remove copy change on ${overrideRangeLabel(override)}`}
+									aria-label={`Remove text change on ${overrideRangeLabel(override)}`}
 									onclick={() => askRemove("override", override.id)}
 								>
 									<Trash2 class="size-4" aria-hidden="true" />Remove
@@ -405,7 +400,7 @@ function overrideRows(
 				</ul>
 				{#if rows.hidden > 0}
 					<p class="mt-1.5 text-xs text-muted-foreground">
-						Showing {EXCEPTION_LIST_LIMIT} of {overrides.data.length} copy changes.
+						Showing {EXCEPTION_LIST_LIMIT} of {overrides.data.length} text changes.
 						<button
 							type="button"
 							class="cursor-pointer font-semibold text-primary hover:underline"

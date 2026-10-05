@@ -322,22 +322,21 @@ async function openInspector(
 	await expect.element(inspector(screen)).toBeVisible();
 }
 
-test("inspector shows the precedence chain, rendered message and thread name", async () => {
+test("scheduled posts show the preview without a posting checklist", async () => {
 	useApi(defaultSeed());
 	const screen = await renderRail();
 	await openInspector(screen, "Roll call Thursday 8 October 2026");
 
 	const dialog = inspector(screen);
-	// The precedence chain runs from bank holiday down to defaults, with the
-	// winning step highlighted — straight from the payload, never recomputed.
 	await expect
-		.element(dialog.getByText("Bank holiday", { exact: true }))
-		.toBeVisible();
-	await expect.element(dialog.getByText("Announcement defaults")).toBeVisible();
+		.element(dialog.getByTestId("precedence-chain"))
+		.not.toBeInTheDocument();
 	await expect
-		.element(dialog.getByText("Announcement defaults — decided this"))
-		.toBeVisible();
-	await expect.element(dialog.getByTestId("precedence-winner")).toBeVisible();
+		.element(dialog.getByText("Posting rules"))
+		.not.toBeInTheDocument();
+	await expect
+		.element(dialog.getByTestId("not-sent-reason"))
+		.not.toBeInTheDocument();
 
 	// The Discord-rendered message and thread name, including @everyone.
 	await expect.element(dialog.getByText("@everyone").first()).toBeVisible();
@@ -350,9 +349,32 @@ test("inspector shows the precedence chain, rendered message and thread name", a
 		.element(dialog.getByRole("button", { name: "Skip this date" }))
 		.toBeVisible();
 	await expect
-		.element(dialog.getByRole("button", { name: "Change copy for this date" }))
+		.element(dialog.getByRole("button", { name: "Change text for this date" }))
 		.toBeVisible();
 });
+
+test.each([
+	["skipped_holiday", "Roll call isn’t sent on bank holidays."],
+	["skipped_disabled", "This announcement is paused."],
+	["skipped_suppressed", "Skipped for this date."],
+] as const)(
+	"%s shows only the reason, not an unsent preview",
+	async (outcome, reason) => {
+		useApi([occurrence({ outcome })]);
+		const screen = await renderRail();
+		await openInspector(screen, "Roll call Thursday 8 October 2026");
+		const dialog = inspector(screen);
+		await expect
+			.element(dialog.getByTestId("not-sent-reason"))
+			.toHaveTextContent(reason);
+		await expect
+			.element(dialog.getByTestId("inspector-message"))
+			.not.toBeInTheDocument();
+		await expect
+			.element(dialog.getByTestId("precedence-chain"))
+			.not.toBeInTheDocument();
+	},
+);
 
 test("past items show evidence with permalink and applied exception", async () => {
 	useApi(defaultSeed());
@@ -393,10 +415,11 @@ test("skip-this-date creates a suppression and the calendar chip updates to skip
 		.click();
 	const sheet = screen.getByTestId("suppression-sheet");
 	await expect.element(sheet).toBeVisible();
-	// The form arrives pre-filled for the occurrence's date.
+	// The form arrives pre-filled for the occurrence's date. The picker renders
+	// the resolved Dublin day, not an `YYYY-MM-DD` input value.
 	await expect
 		.element(sheet.getByLabelText("First date"))
-		.toHaveValue("2026-10-08");
+		.toHaveTextContent("October 8, 2026");
 
 	await sheet.getByRole("button", { name: "Skip these dates" }).click();
 	await expect
@@ -425,19 +448,21 @@ test("change-copy opens the override form pre-filled for that date", async () =>
 	await openInspector(screen, "Roll call Thursday 8 October 2026");
 
 	await inspector(screen)
-		.getByRole("button", { name: "Change copy for this date" })
+		.getByRole("button", { name: "Change text for this date" })
 		.click();
 	const sheet = screen.getByTestId("override-sheet");
 	await expect.element(sheet).toBeVisible();
 	await expect
 		.element(sheet.getByLabelText("First date"))
-		.toHaveValue("2026-10-08");
+		.toHaveTextContent("October 8, 2026");
 	await expect
 		.element(sheet.getByLabelText("Last date, inclusive"))
-		.toHaveValue("2026-10-08");
+		.toHaveTextContent("October 8, 2026");
 
-	await sheet.getByLabelText(/Title/).fill("Halloween special");
-	await sheet.getByRole("button", { name: "Change copy", exact: true }).click();
+	await sheet
+		.getByRole("textbox", { name: "Title", exact: true })
+		.fill("Halloween special");
+	await sheet.getByRole("button", { name: "Change text", exact: true }).click();
 	await expect
 		.poll(() =>
 			api.calls.some(
@@ -462,22 +487,18 @@ test("holiday items open read-only with no actions", async () => {
 
 	const dialog = inspector(screen);
 	await expect
-		.element(dialog.getByText("Bank holiday — decided this"))
-		.toBeVisible();
+		.element(dialog.getByTestId("precedence-chain"))
+		.not.toBeInTheDocument();
 	await expect
 		.element(dialog.getByText("No training — bank holiday"))
 		.toBeVisible();
 	await expect
-		.element(
-			dialog.getByText(
-				"Holiday notices are read-only — there is nothing to skip or reword.",
-			),
-		)
+		.element(dialog.getByText("Holiday notices cannot be edited or skipped."))
 		.toBeVisible();
 	await expect
 		.element(dialog.getByRole("button", { name: "Skip this date" }))
 		.not.toBeInTheDocument();
 	await expect
-		.element(dialog.getByRole("button", { name: "Change copy for this date" }))
+		.element(dialog.getByRole("button", { name: "Change text for this date" }))
 		.not.toBeInTheDocument();
 });

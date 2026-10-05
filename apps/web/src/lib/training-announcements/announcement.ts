@@ -14,6 +14,8 @@ import type {
 	TrainingAnnouncementKind,
 	TrainingAnnouncementWarning,
 } from "@dhc/api-client";
+import { CalendarDate, type DateValue } from "@internationalized/date";
+import dayjs from "dayjs";
 import { COPY_PRESETS, WEEKDAY_NAMES } from "./copy";
 
 /** Live, paused by an Announcement Disablement, or terminally retired. */
@@ -51,6 +53,38 @@ export function dublinToday(now: Date = new Date()): string {
 		month: "2-digit",
 		day: "2-digit",
 	}).format(now);
+}
+
+/**
+ * The `DateValue` the shared `date-picker.svelte` speaks, for a draft's
+ * `YYYY-MM-DD`.
+ *
+ * Every announcement date is a Dublin *civil* day, never an instant, so this
+ * goes through dayjs, which parses a bare ISO date as local midnight. Going via
+ * `new Date(iso)` would read that instant back in the reader's own zone and
+ * shift the day for anyone west of UTC. An empty or unparseable draft returns
+ * `undefined` rather than throwing, so a cleared field still reaches Phoenix's
+ * own refusal instead of crashing the picker.
+ */
+export function draftCalendarDate(isoDate: string): CalendarDate | undefined {
+	const day = dayjs(isoDate);
+	if (!day.isValid()) return undefined;
+	// Built from dayjs's own Y/M/D parts rather than a Date instant: this keeps
+	// the civil day the string named. toCalendarDate/fromDate would read an
+	// instant in the reader's zone and shift it for anyone west of UTC.
+	return new CalendarDate(day.year(), day.month() + 1, day.date());
+}
+
+/**
+ * The draft's `YYYY-MM-DD` back from a picked calendar date.
+ *
+ * `Calendar` is configured `type="single"` without a time zone, so what comes
+ * back is a `CalendarDate` whose `toString()` is already the ISO date. The
+ * narrowing is the guard, not a cast: a `ZonedDateTime` or `Time` reaching here
+ * would stringify to something the API's `format: date` rejects.
+ */
+export function draftIsoDate(value: DateValue | undefined): string {
+	return value instanceof CalendarDate ? value.toString() : "";
 }
 
 /** The side sheet's editable copy of one announcement's schedule and copy. */
@@ -154,7 +188,7 @@ export function deleteBlockedReason(
 		return "Retired announcements keep their history and cannot be deleted.";
 	}
 	if (announcement.firstAttemptedAt !== null) {
-		return "This announcement has already posted, so its history is kept. Retire it instead.";
+		return "Posting has already been attempted. Retire this announcement to keep its history.";
 	}
 	return undefined;
 }
@@ -238,7 +272,7 @@ export function warningMessages(
 ): string[] {
 	return warnings.map((warning) =>
 		warning === "slot_collision"
-			? "Another announcement already posts in one of these slots. Nothing was blocked — check the times still make sense."
-			: "A schedule change moved which future skipped dates or copy changes still apply. Dormant exceptions can start applying again.",
+			? "Another announcement is scheduled for the same time. Review the schedules to avoid duplicate posts."
+			: "The schedule has changed. Review skipped dates and text changes; they may apply to different posts now.",
 	);
 }

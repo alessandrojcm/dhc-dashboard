@@ -3,10 +3,8 @@
 	and why, built from the item's `window` payload — never refetched, never
 	recomputed.
 
-	- *Why this outcome* lists the canonical precedence from bank holiday
-	  down to defaults, marking the steps Phoenix evaluated and highlighting
-	  the `decidedBy` winner. Legacy rows kept only their outcome, so an
-	  empty chain reads as such instead of inventing steps.
+	- Posts that will not be sent show only their reason, not the backend's
+	  precedence checklist.
 	- *What members see* is Phoenix's rendered message and thread name,
 	  including the `@everyone` line, through the shared Discord preview.
 	- Past items show their delivery evidence: display status and reason,
@@ -32,10 +30,9 @@ import { announcementDateLabel } from "$lib/training-announcements/announcement"
 import { KIND_CHANNEL_LABELS } from "$lib/training-announcements/copy";
 import {
 	evidenceCheckpoints,
-	hasEvaluatedChain,
+	occurrenceNotSentReason,
 	inspectorActionsAllowed,
 	isInFlightDelivery,
-	precedenceRows,
 } from "$lib/training-announcements/inspector";
 import {
 	deliveryReasonLabel,
@@ -65,7 +62,7 @@ let {
 
 const status = $derived(occurrenceStatus(item));
 const title = $derived(occurrenceTitle(item));
-const rows = $derived(precedenceRows(item));
+const notSentReason = $derived(occurrenceNotSentReason(item));
 const actionsAllowed = $derived(inspectorActionsAllowed(item, today));
 const inFlight = $derived(isInFlightDelivery(item.delivery));
 const checkpoints = $derived(
@@ -127,82 +124,41 @@ function refreshOccurrenceReads() {
 		</Sheet.Header>
 
 		<div class="space-y-6 px-4 pb-2">
-			<section aria-label="Why this outcome" data-testid="precedence-chain">
-				<h3 class="text-sm font-bold">Why this outcome</h3>
-				{#if hasEvaluatedChain(item)}
-					<ol class="mt-2 space-y-1.5">
-						{#each rows as row (row.step)}
-							<li
-								class="rounded-xl border px-3 py-2 text-sm {row.decided
-									? 'border-primary/60 bg-primary/5'
-									: 'border-border/70'}"
-								aria-current={row.decided ? "true" : undefined}
-								data-testid={row.decided
-									? "precedence-winner"
-									: "precedence-step"}
-							>
-								<div class="flex items-baseline justify-between gap-2">
-									<span class="font-semibold">
-										{#if row.decided}
-											<span aria-hidden="true">★ </span>{row.label} — decided this
-										{:else}
-											{row.label}
-										{/if}
-									</span>
-									<span class="flex-none text-xs text-muted-foreground">
-										{#if row.decided}
-											Decided
-										{:else if row.evaluated}
-											Checked
-										{:else}
-											Not reached
-										{/if}
-									</span>
-								</div>
-								<p class="mt-0.5 text-xs text-muted-foreground">
-									{row.description}
-								</p>
-							</li>
-						{/each}
-					</ol>
-				{:else}
-					<p class="mt-2 text-sm text-muted-foreground">
-						Phoenix kept only this post's outcome — the original resolution
-						steps are gone, so there is no chain to show.
-					</p>
-				{/if}
-			</section>
-
-			<section aria-label="What members see" data-testid="inspector-message">
-				<h3 class="text-sm font-bold">What members see</h3>
-				<div class="mt-2">
-					{#if item.renderedMessage}
-						<DiscordMessagePreview
-							{channelLabel}
-							renderedMessage={item.renderedMessage}
-							threadName={item.threadName}
-						/>
-					{:else}
-						<Alert variant="destructive">
-							<AlertDescription>
-								The message could not be rendered{#if item.renderErrors.length > 0}:
-									{item.renderErrors.join("; ")}{/if}.
-							</AlertDescription>
-						</Alert>
-					{/if}
-				</div>
-			</section>
+			{#if notSentReason}
+				<Alert data-testid="not-sent-reason">
+					<AlertDescription>{notSentReason}</AlertDescription>
+				</Alert>
+			{:else}
+				<section aria-label="What members see" data-testid="inspector-message">
+					<h3 class="text-sm font-bold">What members see</h3>
+					<div class="mt-2">
+						{#if item.renderedMessage}
+							<DiscordMessagePreview
+								{channelLabel}
+								renderedMessage={item.renderedMessage}
+								threadName={item.threadName}
+							/>
+						{:else}
+							<Alert variant="destructive">
+								<AlertDescription>
+									The message could not be rendered{#if item.renderErrors.length > 0}:
+										{item.renderErrors.join("; ")}{/if}.
+								</AlertDescription>
+							</Alert>
+						{/if}
+					</div>
+				</section>
+			{/if}
 
 			{#if item.delivery}
-				<section aria-label="Delivery evidence" data-testid="delivery-evidence">
-					<h3 class="text-sm font-bold">Delivery evidence</h3>
+				<section aria-label="Delivery details" data-testid="delivery-evidence">
+					<h3 class="text-sm font-bold">Delivery details</h3>
 					{#if inFlight}
 						<p
 							class="mt-2 text-sm text-muted-foreground"
 							data-testid="delivery-inflight"
 						>
-							Posting… delivery is in progress — evidence lands here once
-							Discord answers.
+							Posting to Discord. Delivery details will update when it finishes.
 						</p>
 					{/if}
 					<dl class="mt-2 space-y-1.5 text-sm">
@@ -275,22 +231,22 @@ function refreshOccurrenceReads() {
 					</dl>
 				</section>
 			{:else if isPastWithoutEvidence}
-				<section aria-label="Delivery evidence" data-testid="delivery-evidence">
-					<h3 class="text-sm font-bold">Delivery evidence</h3>
+				<section aria-label="Delivery details" data-testid="delivery-evidence">
+					<h3 class="text-sm font-bold">Delivery details</h3>
 					<p class="mt-2 text-sm text-muted-foreground">
-						No delivery evidence was kept for this date.
+						No delivery details are available for this date.
 					</p>
 				</section>
 			{/if}
 
 			{#if item.subject === "holiday"}
 				<p class="text-xs text-muted-foreground">
-					Holiday notices are read-only — there is nothing to skip or reword.
+					Holiday notices cannot be edited or skipped.
 				</p>
 			{:else if actionsAllowed}
 				{#if actionsBlocked}
 					<p class="text-xs text-muted-foreground">
-						Per-date actions are unavailable for this announcement.
+						This announcement is no longer available to edit.
 					</p>
 				{:else}
 					<div class="flex flex-wrap gap-2">
@@ -308,7 +264,7 @@ function refreshOccurrenceReads() {
 							data-testid="inspector-change-copy"
 							onclick={() => (action = "override")}
 						>
-							Change copy for this date
+							Change text for this date
 						</Button>
 					</div>
 				{/if}
