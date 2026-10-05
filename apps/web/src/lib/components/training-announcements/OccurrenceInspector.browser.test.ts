@@ -458,6 +458,15 @@ test("change-copy opens the override form pre-filled for that date", async () =>
 	await expect
 		.element(sheet.getByLabelText("Last date, inclusive"))
 		.toHaveTextContent("October 8, 2026");
+	// The copy arrives pre-filled with what the date currently resolves
+	// to, so editing starts from the members' view rather than a blank
+	// field. The `{{date}}` token reads as its `Date` chip.
+	await expect
+		.element(sheet.getByRole("textbox", { name: "Title", exact: true }))
+		.toHaveTextContent("Roll call Date");
+	await expect
+		.element(sheet.getByRole("textbox", { name: "Message", exact: true }))
+		.toHaveTextContent("Who is coming?");
 
 	await sheet
 		.getByRole("textbox", { name: "Title", exact: true })
@@ -477,6 +486,7 @@ test("change-copy opens the override form pre-filled for that date", async () =>
 		fromDate: "2026-10-08",
 		toDate: "2026-10-08",
 		title: "Halloween special",
+		message: "Who is coming?",
 	});
 });
 

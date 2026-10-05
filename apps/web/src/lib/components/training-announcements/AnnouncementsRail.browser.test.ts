@@ -43,6 +43,8 @@ type AnnouncementApi = {
 	calls: Call[];
 	/** The list Phoenix would answer with right now. */
 	rows: () => TrainingAnnouncement[];
+	/** Answers a deferred create (only when `deferCreate` is set). */
+	releaseCreate: () => void;
 };
 
 /** Every body the in-memory Phoenix can answer with. */
@@ -70,6 +72,9 @@ type Script = {
 	/** A rejected write, as Phoenix renders problem details. */
 	reject?: { status: number; body: StubPayload };
 	preview?: { renderedMessage: string; threadName: string };
+	/** Holds the create response until `releaseCreate` runs, so tests can
+	 * read the rail while the write is still in flight. */
+	deferCreate?: boolean;
 	/** What `listForAnnouncement` answers per direction. */
 	occurrences?: {
 		upcoming?: TrainingAnnouncementOccurrence[];
@@ -88,12 +93,14 @@ function useApi(script: Script = {}): AnnouncementApi {
 		warnings = [],
 		reject,
 		occurrences = {},
+		deferCreate = false,
 		preview = {
 			renderedMessage: "@everyone\nRoll call Thursday 8 October 2026",
 			threadName: "Roll call Thursday 8 October 2026",
 		},
 	} = script;
 	let rows = seeded;
+	let releaseCreate: (() => void) | undefined;
 	const calls: Call[] = [];
 	configureClient({ baseUrl: "/api", credentials: "include", retry: 0 });
 
@@ -158,6 +165,13 @@ function useApi(script: Script = {}): AnnouncementApi {
 					return json({ data: preview });
 				}
 				if (method === "POST" && url.endsWith("/training-announcements")) {
+					if (deferCreate) {
+						// The executor runs synchronously, so the releaser is
+						// set before the recorded call is visible to the test.
+						await new Promise<void>((resolve) => {
+							releaseCreate = resolve;
+						});
+					}
 					const created = announcement({
 						...(body ?? {}),
 						id: SPARRING_ID,
@@ -226,7 +240,7 @@ function useApi(script: Script = {}): AnnouncementApi {
 		return updated;
 	}
 
-	return { calls, rows: () => rows };
+	return { calls, rows: () => rows, releaseCreate: () => releaseCreate?.() };
 }
 
 function renderRail() {
@@ -341,6 +355,39 @@ test("creates a weekly roll call pre-filled with the kind's preset", async () =>
 		.element(screen.getByRole("button", { name: /Manage posts for Roll call/ }))
 		.toBeVisible();
 	expect(screen.container.textContent).not.toContain("Europe/Dublin");
+});
+
+test("new announcements appear optimistically while the create is in flight", async () => {
+	const api = useApi({ rows: [], deferCreate: true });
+	const screen = await renderRail();
+
+	await screen
+		.getByRole("button", { name: "New announcement" })
+		.first()
+		.click();
+	await screen.getByRole("button", { name: "Create announcement" }).click();
+
+	// The write has reached Phoenix but Phoenix has not answered yet.
+	await expect
+		.poll(() =>
+			api.calls.some(
+				(call) =>
+					call.method === "POST" &&
+					call.url.endsWith("/training-announcements"),
+			),
+		)
+		.toBe(true);
+	// The card is already in the rail, with the draft's copy.
+	await expect
+		.element(screen.getByRole("heading", { name: "Roll call {{date}}" }))
+		.toBeVisible();
+
+	// Phoenix answers: the temporary card resolves to the saved row and the
+	// sheet closes.
+	api.releaseCreate();
+	await expect
+		.element(screen.getByRole("button", { name: /Manage posts for Roll call/ }))
+		.toBeVisible();
 });
 
 test("placeholder buttons insert at the cursor, replace selections, and save template copy", async () => {
@@ -480,7 +527,7 @@ test("message tags preserve line breaks and preset changes reset editing history
 	await userEvent.keyboard("{Control>}z{/Control}");
 	await expect
 		.element(message)
-		.toHaveTextContent("Hey! Who is down for sparring this Weekday? ⚔️");
+		.toHaveTextContent("Hey! Who is down for sparring next Sunday? ⚔️");
 });
 
 test("creates a one-off with the sparring copy", async () => {
@@ -550,7 +597,7 @@ test("keeps the kind fixed when editing an existing announcement", async () => {
 				id: SPARRING_ID,
 				kind: "sparring",
 				title: "Sparring {{date}}",
-				message: "Hey! Who is down for sparring this {{weekday}}? ⚔️",
+				message: "Hey! Who is down for sparring next Sunday? ⚔️",
 			}),
 		],
 	});

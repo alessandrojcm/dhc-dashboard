@@ -350,6 +350,8 @@ test("change copy inserts inline tags and removes them atomically before saving"
 	await screen
 		.getByRole("button", { name: "Insert weekday into title", exact: true })
 		.click();
+	// The message arrives pre-filled with the announcement's current copy,
+	// so the token appends to it rather than filling an empty field.
 	await screen
 		.getByRole("button", { name: "Insert title into message", exact: true })
 		.click();
@@ -372,7 +374,8 @@ test("change copy inserts inline tags and removes them atomically before saving"
 		)?.body,
 	).toMatchObject({
 		title: "Special {{weekday}}",
-		message: "{{title}}",
+		message:
+			"Hey! It's {{weekday}}! Who is coming to training tonight? ⚔️{{title}}",
 	});
 });
 
@@ -389,6 +392,9 @@ test("creates a range override replacing the title", async () => {
 	await screen
 		.getByRole("textbox", { name: "Title", exact: true })
 		.fill("Halloween special");
+	// A title-only change: emptying the pre-filled message keeps the
+	// announcement's existing message for these dates.
+	await screen.getByRole("textbox", { name: "Message", exact: true }).fill("");
 	await screen
 		.getByTestId("override-sheet")
 		.getByRole("button", { name: "Change text", exact: true })
@@ -498,11 +504,15 @@ test("overlap rejections render next to the form", async () => {
 		.getByRole("button", { name: "Change text", exact: true })
 		.click();
 
-	// The rejection stays in the sheet, against the form — never a toast.
+	// The rejection stays in the sheet, against the form — never a toast —
+	// reworded as the way out: the existing text change must be deleted
+	// before a new one can cover its dates.
 	await expect
 		.element(
 			screen
-				.getByText("overlaps another override for this announcement")
+				.getByText(
+					"These dates overlap an existing text change. Delete the existing text change before creating a new one.",
+				)
 				.first(),
 		)
 		.toBeVisible();

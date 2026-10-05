@@ -32,6 +32,8 @@ import {
 	hasDraftErrors,
 	newOverrideDraft,
 	validateOverrideDraft,
+	friendlyOverrideDetail,
+	friendlyOverrideFieldMessage,
 	type OverrideDraft,
 	type OverrideField,
 	type OverrideFieldErrors,
@@ -47,6 +49,8 @@ let {
 	announcement,
 	today,
 	initialDate,
+	initialTitle,
+	initialMessage,
 	onClose,
 	onSaved,
 }: {
@@ -55,11 +59,21 @@ let {
 	today: string;
 	/** A date the caller pre-filled (e.g. an inspector's "change copy"). */
 	initialDate?: string;
+	/** The copy the caller pre-filled: the occurrence's resolved templates
+	 * from the inspector, or the announcement's own copy from the detail
+	 * column. Empty stays empty so it keeps the existing text. */
+	initialTitle?: string | null;
+	initialMessage?: string | null;
 	onClose: () => void;
 	onSaved: () => void;
 } = $props();
 
-let draft = $state<OverrideDraft>(newOverrideDraft(today, initialDate));
+let draft = $state<OverrideDraft>(
+	newOverrideDraft(today, initialDate, {
+		title: initialTitle ?? undefined,
+		message: initialMessage ?? undefined,
+	}),
+);
 let saveError = $state<string | null>(null);
 let fieldMessages = $state<AnnouncementFieldMessages[]>([]);
 let localErrors = $state<OverrideFieldErrors>({});
@@ -99,8 +113,15 @@ async function save() {
 		onClose();
 	} catch (cause) {
 		const problem = announcementProblem(cause);
-		saveError = problem?.detail ?? "Could not save the text changes";
-		fieldMessages = problem?.fieldMessages ?? [];
+		// An overlap refusal names the database rule, never the way out:
+		// the existing text change must be deleted first.
+		saveError =
+			friendlyOverrideDetail(problem?.detail) ??
+			"Could not save the text changes";
+		fieldMessages = (problem?.fieldMessages ?? []).map((entry) => ({
+			field: entry.field,
+			messages: entry.messages.map(friendlyOverrideFieldMessage),
+		}));
 	}
 }
 </script>

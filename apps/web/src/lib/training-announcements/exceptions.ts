@@ -121,9 +121,18 @@ export function newSuppressionDraft(today: string): SuppressionDraft {
 	return { fromDate: today, toDate: today };
 }
 
-export function newOverrideDraft(today: string, date?: string): OverrideDraft {
+export function newOverrideDraft(
+	today: string,
+	date?: string,
+	initial?: { title?: string; message?: string },
+): OverrideDraft {
 	const day = date ?? today;
-	return { fromDate: day, toDate: day, title: "", message: "" };
+	return {
+		fromDate: day,
+		toDate: day,
+		title: initial?.title ?? "",
+		message: initial?.message ?? "",
+	};
 }
 
 /** Client-side shape checks only; Phoenix re-decides every refusal. */
@@ -157,4 +166,32 @@ export function hasDraftErrors(
 	errors: Record<string, string | undefined>,
 ): boolean {
 	return Object.values(errors).some((message) => message !== undefined);
+}
+
+/**
+ * What an overlapping-override refusal means, in committee words. Phoenix
+ * rejects the write with `overlaps another override for this announcement`
+ * (the GiST exclusion), which never names the way out: the existing text
+ * change must be deleted before a new one can cover its dates.
+ */
+export const OVERRIDE_OVERLAP_GUIDANCE =
+	"These dates overlap an existing text change. Delete the existing text change before creating a new one.";
+
+function isOverrideOverlapMessage(message: string): boolean {
+	return message.includes("overlaps another override");
+}
+
+/** Rewords an overlap refusal; every other message passes through untouched. */
+export function friendlyOverrideFieldMessage(message: string): string {
+	return isOverrideOverlapMessage(message)
+		? OVERRIDE_OVERLAP_GUIDANCE
+		: message;
+}
+
+/** Rewords an overlap refusal detail; every other detail passes through. */
+export function friendlyOverrideDetail(
+	detail: string | undefined,
+): string | undefined {
+	if (!detail) return detail;
+	return isOverrideOverlapMessage(detail) ? OVERRIDE_OVERLAP_GUIDANCE : detail;
 }

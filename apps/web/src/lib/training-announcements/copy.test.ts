@@ -20,6 +20,13 @@ describe("copy presets", () => {
 		expect(COPY_PRESETS.sparring.message).toContain("sparring");
 	});
 
+	it("asks for next Sunday in the sparring preset, with no weekday token", () => {
+		// Sparring is always on Sundays, so the preset names the day in
+		// plain words instead of spending the `{{weekday}}` token.
+		expect(COPY_PRESETS.sparring.message).toContain("next Sunday");
+		expect(COPY_PRESETS.sparring.message).not.toContain("{{weekday}}");
+	});
+
 	it("keeps the @everyone ping out of stored copy", () => {
 		// The toggle owns the mention: `Copy.render/2` prepends the line, so a
 		// stored literal would render twice when the toggle is on and read as a
