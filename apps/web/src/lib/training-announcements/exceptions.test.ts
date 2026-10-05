@@ -3,10 +3,13 @@ import {
 	cappedExceptions,
 	EXCEPTION_LIST_LIMIT,
 	exceptionRangeLabel,
+	friendlyOverrideDetail,
+	friendlyOverrideFieldMessage,
 	hasDraftErrors,
 	newOverrideDraft,
 	newSuppressionDraft,
 	nextResolvedTitle,
+	OVERRIDE_OVERLAP_GUIDANCE,
 	overrideSummary,
 	validateOverrideDraft,
 	validateSuppressionDraft,
@@ -83,6 +86,29 @@ describe("drafts", () => {
 		);
 	});
 
+	it("starts an override pre-filled with the current copy", () => {
+		expect(
+			newOverrideDraft("2026-10-01", "2026-10-08", {
+				title: "Roll call {{date}}",
+				message: "Who is coming?",
+			}),
+		).toEqual({
+			fromDate: "2026-10-08",
+			toDate: "2026-10-08",
+			title: "Roll call {{date}}",
+			message: "Who is coming?",
+		});
+	});
+
+	it("starts an override with empty copy when there is nothing to pre-fill", () => {
+		expect(newOverrideDraft("2026-10-01")).toEqual({
+			fromDate: "2026-10-01",
+			toDate: "2026-10-01",
+			title: "",
+			message: "",
+		});
+	});
+
 	it("rejects a range that ends before it starts", () => {
 		const errors = validateSuppressionDraft({
 			fromDate: "2026-10-09",
@@ -102,5 +128,31 @@ describe("drafts", () => {
 			message: "",
 		});
 		expect(errors.title).toBe("Enter a title or message to save a change.");
+	});
+});
+
+describe("overlap guidance", () => {
+	it("rewords the overlap refusal as delete-first guidance", () => {
+		expect(
+			friendlyOverrideFieldMessage(
+				"overlaps another override for this announcement",
+			),
+		).toBe(OVERRIDE_OVERLAP_GUIDANCE);
+		expect(
+			friendlyOverrideDetail(
+				"fromDate: overlaps another override for this announcement",
+			),
+		).toBe(OVERRIDE_OVERLAP_GUIDANCE);
+		expect(OVERRIDE_OVERLAP_GUIDANCE).toMatch(/Delete the existing/i);
+	});
+
+	it("leaves every other message untouched", () => {
+		expect(friendlyOverrideFieldMessage("must be today or later")).toBe(
+			"must be today or later",
+		);
+		expect(friendlyOverrideDetail(undefined)).toBeUndefined();
+		expect(friendlyOverrideDetail("Something else went wrong")).toBe(
+			"Something else went wrong",
+		);
 	});
 });

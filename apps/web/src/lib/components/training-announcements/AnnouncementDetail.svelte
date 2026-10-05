@@ -438,6 +438,8 @@ function overrideRows(
 	<OverrideSheet
 		{announcement}
 		{today}
+		initialTitle={announcement.title}
+		initialMessage={announcement.message}
 		onClose={() => (overrideSheetOpen = false)}
 		onSaved={refreshExceptions}
 	/>

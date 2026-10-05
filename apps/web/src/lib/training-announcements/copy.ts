@@ -5,9 +5,11 @@
  * cutover changes nothing members see. The stored *source* omits the
  * `@everyone` mention on purpose: `Dhc.TrainingAnnouncements.Copy` prepends
  * that line from the announcement's mention setting, so a typed mention would
- * either double up or read as a mention that never pings. The one accepted
- * drift is the thread name — the bot posted `Roll call September 25`, the
- * announcement renders `Roll call Thursday 25 September`.
+ * either double up or read as a mention that never pings. The accepted drifts
+ * are the thread name — the bot posted `Roll call September 25`, the
+ * announcement renders `Roll call Thursday 25 September` — and the sparring
+ * message, which asks for next Sunday in plain words instead of the
+ * `{{weekday}}` token because sparring is always on Sundays.
  *
  * Everything here is presentation: no component reaches for Phoenix's renderer
  * to decide what a token means, and the preview endpoint stays the authority
@@ -42,7 +44,7 @@ export const COPY_PRESETS = {
 	},
 	sparring: {
 		title: "Sparring {{date}}",
-		message: "Hey! Who is down for sparring this {{weekday}}? ⚔️",
+		message: "Hey! Who is down for sparring next Sunday? ⚔️",
 	},
 } satisfies Record<TrainingAnnouncementKind, CopyPreset>;
 

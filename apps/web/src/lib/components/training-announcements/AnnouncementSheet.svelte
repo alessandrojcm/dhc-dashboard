@@ -21,6 +21,7 @@ import {
 	trainingAnnouncementsUpdateCopyMutation,
 	trainingAnnouncementsUpdateScheduleMutation,
 	type TrainingAnnouncement,
+	type TrainingAnnouncementListResponse,
 } from "@dhc/api-client";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
@@ -92,7 +93,63 @@ let saveError = $state<string | null>(null);
 let previewError = $state<string | null>(null);
 let fieldMessages = $state<AnnouncementFieldMessages[]>([]);
 
-const create = createMutation(() => trainingAnnouncementsCreateMutation());
+const create = createMutation(() => ({
+	...trainingAnnouncementsCreateMutation(),
+	/**
+	 * The new card appears while the write is still in flight: the draft's
+	 * copy is already on screen in the sheet, so the list can show it
+	 * immediately behind the form. The temporary row is swapped for
+	 * Phoenix's answer on success and removed on refusal, where the sheet
+	 * stays open on the field that caused it.
+	 */
+	onMutate: (variables) => {
+		const previous =
+			queryClient.getQueriesData<TrainingAnnouncementListResponse>({
+				queryKey: [{ _id: "trainingAnnouncementsList" }],
+			});
+		const tempId = `optimistic-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.floor(Math.random() * 1_000_000)}`}`;
+		const now = new Date().toISOString();
+		const optimistic: TrainingAnnouncement = {
+			id: tempId,
+			kind: draft.kind,
+			weekday: variables.body.weekday ?? null,
+			oneOffDate: variables.body.oneOffDate ?? null,
+			postTime: variables.body.postTime,
+			title: variables.body.title,
+			message: variables.body.message,
+			mentionEveryone: variables.body.mentionEveryone,
+			enabled: true,
+			retired: false,
+			firstAttemptedAt: null,
+			createdAt: now,
+			updatedAt: now,
+		};
+		queryClient.setQueriesData<TrainingAnnouncementListResponse>(
+			{ queryKey: [{ _id: "trainingAnnouncementsList" }] },
+			(old) => (old ? { ...old, data: [...old.data, optimistic] } : old),
+		);
+		return { previous, tempId };
+	},
+	onError: (_error, _variables, context) => {
+		for (const [key, data] of context?.previous ?? [])
+			queryClient.setQueryData(key, data);
+	},
+	onSuccess: (response, _variables, context) => {
+		const tempId = context?.tempId;
+		if (!tempId) return;
+		const saved = response.data.announcement;
+		queryClient.setQueriesData<TrainingAnnouncementListResponse>(
+			{ queryKey: [{ _id: "trainingAnnouncementsList" }] },
+			(old) =>
+				old
+					? {
+							...old,
+							data: old.data.map((row) => (row.id === tempId ? saved : row)),
+						}
+					: old,
+		);
+	},
+}));
 const updateSchedule = createMutation(() =>
 	trainingAnnouncementsUpdateScheduleMutation(),
 );

@@ -292,6 +292,8 @@ function refreshOccurrenceReads() {
 		{announcement}
 		{today}
 		initialDate={item.date}
+		initialTitle={item.titleSource ?? announcement.title}
+		initialMessage={item.messageSource ?? announcement.message}
 		onClose={() => (action = null)}
 		onSaved={refreshOccurrenceReads}
 	/>
