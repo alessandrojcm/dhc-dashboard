@@ -27,7 +27,9 @@ import {
 	createMutation,
 	createQuery,
 	useQueryClient,
+	type QueryKey,
 } from "@tanstack/svelte-query";
+import { withoutRow } from "$lib/training-announcements/optimistic";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
 import { Skeleton } from "$lib/components/ui/skeleton";
@@ -107,27 +109,61 @@ function refreshExceptions() {
 	});
 }
 
-function removeOptions(fallback: string) {
+/**
+ * Removals are optimistic: the row leaves its list as soon as the removal is
+ * confirmed, comes back if Phoenix refuses it, and the list is refetched
+ * once the command settles.
+ */
+function removeOptions(queryKey: QueryKey, fallback: string) {
 	return {
-		onSuccess: () => {
+		onMutate: async (variables: { path: { exceptionId: string } }) => {
+			await queryClient.cancelQueries({ queryKey });
+			const previous = queryClient.getQueryData<{ data: { id: string }[] }>(
+				queryKey,
+			);
+			if (previous) {
+				queryClient.setQueryData(queryKey, {
+					...previous,
+					data: withoutRow(previous.data, variables.path.exceptionId),
+				});
+			}
 			confirming = null;
-			refreshExceptions();
-			toast.success("Removed.");
+			return { previous };
 		},
-		onError: (cause: TrainingAnnouncementError) => {
+		onError: (
+			cause: TrainingAnnouncementError,
+			_variables: unknown,
+			context: { previous: unknown } | undefined,
+		) => {
+			if (context?.previous !== undefined)
+				queryClient.setQueryData(queryKey, context.previous);
 			toast.error(apiErrorMessage(cause, fallback));
 		},
+		onSuccess: () => {
+			toast.success("Removed.");
+		},
+		onSettled: () => refreshExceptions(),
 	};
 }
 
 const deleteSuppression = createMutation(() => ({
 	...trainingAnnouncementExceptionsDeleteSuppressionMutation(),
-	...removeOptions("Could not remove this skip"),
+	...removeOptions(
+		trainingAnnouncementExceptionsListSuppressionsQueryKey({
+			path: { id: announcement.id },
+		}),
+		"Could not remove this skip",
+	),
 }));
 
 const deleteOverride = createMutation(() => ({
 	...trainingAnnouncementExceptionsDeleteOverrideMutation(),
-	...removeOptions("Could not remove this text change"),
+	...removeOptions(
+		trainingAnnouncementExceptionsListOverridesQueryKey({
+			path: { id: announcement.id },
+		}),
+		"Could not remove this text change",
+	),
 }));
 
 const removing = $derived(

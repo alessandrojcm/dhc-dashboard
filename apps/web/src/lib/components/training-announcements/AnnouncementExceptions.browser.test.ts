@@ -84,6 +84,10 @@ type Script = {
 	overrides?: TrainingAnnouncementOverride[];
 	upcoming?: TrainingAnnouncementOccurrence[];
 	reject?: { status: number; body: StubPayload };
+	/** Holds removals until `releaseDelete` runs, then answers with `deleteReject`
+	 * when set, so tests can read the optimistic list and its rollback. */
+	deferDelete?: boolean;
+	deleteReject?: { status: number; body: StubPayload };
 };
 
 function suppression(
@@ -123,6 +127,7 @@ function useApi(script: Script = {}) {
 	let overridesList = script.overrides ?? [];
 	const upcoming = script.upcoming ?? [occurrence()];
 	const calls: Call[] = [];
+	let releaseDelete: (() => void) | undefined;
 	configureClient({ baseUrl: "/api", credentials: "include", retry: 0 });
 
 	getClient().setConfig({
@@ -186,6 +191,13 @@ function useApi(script: Script = {}) {
 					overridesList = [...overridesList, created];
 					return json({ data: created }, 201);
 				}
+				if (method === "DELETE" && script.deferDelete) {
+					await new Promise<void>((resolve) => {
+						releaseDelete = resolve;
+					});
+				}
+				if (method === "DELETE" && script.deleteReject)
+					return json(script.deleteReject.body, script.deleteReject.status);
 				if (method === "DELETE" && url.includes("/suppressions/")) {
 					const id = url.split("/").at(-1) ?? "";
 					suppressions = suppressions.filter((row) => row.id !== id);
@@ -201,7 +213,7 @@ function useApi(script: Script = {}) {
 		},
 	});
 
-	return { calls };
+	return { calls, releaseDelete: () => releaseDelete?.() };
 }
 
 function renderRail() {
@@ -318,6 +330,35 @@ test("creates a single-date suppression and removes it with confirmation", async
 	await expect
 		.poll(() => api.calls.some((call) => call.method === "DELETE"))
 		.toBe(true);
+});
+
+test("a removed skip leaves the list at once and returns if Phoenix refuses", async () => {
+	const api = useApi({
+		suppressions: [suppression()],
+		overrides: [],
+		deferDelete: true,
+		deleteReject: {
+			status: 422,
+			body: { errors: { detail: "Delivery for this date has begun" } },
+		},
+	});
+	const screen = await renderRail();
+	await openDetail(screen);
+
+	await screen
+		.getByRole("button", { name: /Remove skip on Thursday 8/ })
+		.click();
+	await screen.getByRole("button", { name: /Confirm removing skip/ }).click();
+	await expect
+		.poll(() => api.calls.some((call) => call.method === "DELETE"))
+		.toBe(true);
+	// Phoenix has not answered, but the skip is already gone.
+	await expect.element(screen.getByText("No skipped dates.")).toBeVisible();
+
+	api.releaseDelete();
+	await expect
+		.element(screen.getByRole("button", { name: /Remove skip on Thursday 8/ }))
+		.toBeVisible();
 });
 
 test("change copy inserts inline tags and removes them atomically before saving", async () => {

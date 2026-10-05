@@ -102,7 +102,11 @@ const create = createMutation(() => ({
 	 * Phoenix's answer on success and removed on refusal, where the sheet
 	 * stays open on the field that caused it.
 	 */
-	onMutate: (variables) => {
+	onMutate: async (variables) => {
+		// An in-flight list read would land on top of the temporary row.
+		await queryClient.cancelQueries({
+			queryKey: [{ _id: "trainingAnnouncementsList" }],
+		});
 		const previous =
 			queryClient.getQueriesData<TrainingAnnouncementListResponse>({
 				queryKey: [{ _id: "trainingAnnouncementsList" }],
@@ -111,7 +115,7 @@ const create = createMutation(() => ({
 		const now = new Date().toISOString();
 		const optimistic: TrainingAnnouncement = {
 			id: tempId,
-			kind: draft.kind,
+			kind: variables.body.kind,
 			weekday: variables.body.weekday ?? null,
 			oneOffDate: variables.body.oneOffDate ?? null,
 			postTime: variables.body.postTime,
