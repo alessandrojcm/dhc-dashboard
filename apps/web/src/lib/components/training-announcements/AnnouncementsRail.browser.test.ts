@@ -45,6 +45,8 @@ type AnnouncementApi = {
 	rows: () => TrainingAnnouncement[];
 	/** Answers a deferred create (only when `deferCreate` is set). */
 	releaseCreate: () => void;
+	/** Answers a deferred lifecycle command (only when `deferCommands` is set). */
+	releaseCommand: () => void;
 };
 
 /** Every body the in-memory Phoenix can answer with. */
@@ -75,6 +77,11 @@ type Script = {
 	/** Holds the create response until `releaseCreate` runs, so tests can
 	 * read the rail while the write is still in flight. */
 	deferCreate?: boolean;
+	/** Holds lifecycle commands (disable/enable/retire/delete) until
+	 * `releaseCommand` runs, so tests can read the optimistic rail. */
+	deferCommands?: boolean;
+	/** Refuses only lifecycle commands; reads keep answering, unlike `reject`. */
+	rejectCommands?: { status: number; body: StubPayload };
 	/** What `listForAnnouncement` answers per direction. */
 	occurrences?: {
 		upcoming?: TrainingAnnouncementOccurrence[];
@@ -94,6 +101,8 @@ function useApi(script: Script = {}): AnnouncementApi {
 		reject,
 		occurrences = {},
 		deferCreate = false,
+		deferCommands = false,
+		rejectCommands,
 		preview = {
 			renderedMessage: "@everyone\nRoll call Thursday 8 October 2026",
 			threadName: "Roll call Thursday 8 October 2026",
@@ -101,6 +110,7 @@ function useApi(script: Script = {}): AnnouncementApi {
 	} = script;
 	let rows = seeded;
 	let releaseCreate: (() => void) | undefined;
+	let releaseCommand: (() => void) | undefined;
 	const calls: Call[] = [];
 	configureClient({ baseUrl: "/api", credentials: "include", retry: 0 });
 
@@ -138,6 +148,17 @@ function useApi(script: Script = {}): AnnouncementApi {
 						status,
 						headers: { "content-type": "application/json" },
 					});
+
+				const isCommand =
+					(method === "POST" && /\/(disable|enable|retire)$/.test(url)) ||
+					(method === "DELETE" && url.includes("/training-announcements/"));
+				if (deferCommands && isCommand) {
+					await new Promise<void>((resolve) => {
+						releaseCommand = resolve;
+					});
+				}
+				if (rejectCommands && isCommand)
+					return json(rejectCommands.body, rejectCommands.status);
 
 				if (reject) return json(reject.body, reject.status);
 
@@ -240,7 +261,12 @@ function useApi(script: Script = {}): AnnouncementApi {
 		return updated;
 	}
 
-	return { calls, rows: () => rows, releaseCreate: () => releaseCreate?.() };
+	return {
+		calls,
+		rows: () => rows,
+		releaseCreate: () => releaseCreate?.(),
+		releaseCommand: () => releaseCommand?.(),
+	};
 }
 
 function renderRail() {
@@ -768,6 +794,74 @@ test("deletes an announcement that has never posted", async () => {
 			gone(screen.getByRole("heading", { name: "Roll call {{date}}" })),
 		)
 		.toBe(true);
+});
+
+test("lifecycle commands update the rail before Phoenix answers", async () => {
+	const api = useApi({
+		rows: [
+			announcement(),
+			announcement({ id: SPARRING_ID, title: "Sparring" }),
+		],
+		deferCommands: true,
+	});
+	const screen = await renderRail();
+
+	await screen.getByRole("switch", { name: /Posting for Roll call/ }).click();
+	await expect
+		.poll(() => api.calls.some((call) => call.url.endsWith("/disable")))
+		.toBe(true);
+	// Phoenix has not answered, but the card already reads as paused.
+	await expect
+		.element(screen.getByText("Paused", { exact: true }))
+		.toBeVisible();
+	api.releaseCommand();
+
+	await screen.getByRole("button", { name: /^Delete Sparring/ }).click();
+	await expect
+		.poll(() => api.calls.some((call) => call.method === "DELETE"))
+		.toBe(true);
+	await expect
+		.poll(() => gone(screen.getByRole("heading", { name: "Sparring" })))
+		.toBe(true);
+	api.releaseCommand();
+
+	await screen.getByRole("button", { name: /^Retire Roll call/ }).click();
+	await expect
+		.poll(() => api.calls.some((call) => call.url.endsWith("/retire")))
+		.toBe(true);
+	await expect
+		.poll(() =>
+			gone(screen.getByRole("heading", { name: "Roll call {{date}}" })),
+		)
+		.toBe(true);
+	api.releaseCommand();
+});
+
+test("a refused lifecycle command restores the card", async () => {
+	const api = useApi({
+		rows: [announcement()],
+		deferCommands: true,
+		rejectCommands: {
+			status: 409,
+			body: { errors: { detail: "Posting has already been attempted" } },
+		},
+	});
+	const screen = await renderRail();
+
+	await screen.getByRole("button", { name: /^Delete Roll call/ }).click();
+	await expect
+		.poll(() => api.calls.some((call) => call.method === "DELETE"))
+		.toBe(true);
+	await expect
+		.poll(() =>
+			gone(screen.getByRole("heading", { name: "Roll call {{date}}" })),
+		)
+		.toBe(true);
+
+	api.releaseCommand();
+	await expect
+		.element(screen.getByRole("heading", { name: "Roll call {{date}}" }))
+		.toBeVisible();
 });
 
 function occurrence(

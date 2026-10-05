@@ -23,13 +23,20 @@ import {
 	trainingAnnouncementsRetireMutation,
 	type TrainingAnnouncement,
 	type TrainingAnnouncementError,
+	type TrainingAnnouncementListResponse,
 	type TrainingAnnouncementOccurrence,
 } from "@dhc/api-client";
 import {
 	createMutation,
 	createQuery,
 	useQueryClient,
+	type QueryKey,
 } from "@tanstack/svelte-query";
+import {
+	applyLifecycle,
+	listIncludesRetired,
+	type LifecycleCommand,
+} from "$lib/training-announcements/optimistic";
 import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
 import { Skeleton } from "$lib/components/ui/skeleton";
@@ -74,36 +81,72 @@ const selected = $derived(
 	announcements.data?.find((row) => row.id === selectedId) ?? null,
 );
 
-function commandOptions(fallback: string, successMessage?: string) {
+/**
+ * Lifecycle commands are optimistic: every cached list shows the predicted
+ * row the moment the command is sent, is restored if Phoenix refuses it, and
+ * is refetched once it settles so Phoenix's row replaces the prediction.
+ */
+function commandOptions(
+	command: LifecycleCommand,
+	fallback: string,
+	successMessage?: string,
+) {
+	const lists = { queryKey: trainingAnnouncementsListQueryKey() };
 	return {
-		onSuccess: () => {
-			void refreshList();
-			if (successMessage) toast.success(successMessage);
+		onMutate: async (variables: { path: { id: string } }) => {
+			// An in-flight list read would land on top of the prediction.
+			await queryClient.cancelQueries(lists);
+			const previous =
+				queryClient.getQueriesData<TrainingAnnouncementListResponse>(lists);
+			for (const [key, data] of previous) {
+				if (!data) continue;
+				queryClient.setQueryData<TrainingAnnouncementListResponse>(key, {
+					...data,
+					data: applyLifecycle(
+						data.data,
+						variables.path.id,
+						command,
+						listIncludesRetired(key),
+					),
+				});
+			}
+			return { previous };
 		},
-		onError: (cause: TrainingAnnouncementError) => {
+		onError: (
+			cause: TrainingAnnouncementError,
+			_variables: unknown,
+			context: { previous: [QueryKey, unknown][] } | undefined,
+		) => {
+			for (const [key, data] of context?.previous ?? [])
+				queryClient.setQueryData(key, data);
 			toast.error(apiErrorMessage(cause, fallback));
 		},
+		onSuccess: () => {
+			if (successMessage) toast.success(successMessage);
+		},
+		onSettled: () => refreshList(),
 	};
 }
 
 const disable = createMutation(() => ({
 	...trainingAnnouncementsDisableMutation(),
-	...commandOptions("Could not pause this announcement"),
+	...commandOptions("disable", "Could not pause this announcement"),
 }));
 
 const enable = createMutation(() => ({
 	...trainingAnnouncementsEnableMutation(),
-	...commandOptions("Could not resume this announcement"),
+	...commandOptions("enable", "Could not resume this announcement"),
 }));
 
 const retire = createMutation(() => ({
 	...trainingAnnouncementsRetireMutation(),
-	...commandOptions("Could not retire this announcement"),
+	...commandOptions("retire", "Could not retire this announcement"),
 }));
 
 const remove = createMutation(() => ({
 	...trainingAnnouncementsDeleteMutation(),
 	...commandOptions(
+		"delete",
 		"Could not delete this announcement",
 		"Announcement deleted.",
 	),
