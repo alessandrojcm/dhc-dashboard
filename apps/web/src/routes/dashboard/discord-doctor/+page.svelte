@@ -857,9 +857,27 @@ async function refreshMembers() {
 											</Badge>
 										</Table.Cell>
 										<Table.Cell class="p-4 sm:p-5">
-											<Badge variant="secondary">
-												{linkStatusLabels[row.linkStatus]}
-											</Badge>
+											<div class="flex flex-col items-start gap-1">
+												<Badge variant="secondary">
+													{linkStatusLabels[row.linkStatus]}
+												</Badge>
+												{#if row.discordUsername}
+													<p class="text-sm font-medium text-foreground">
+														@{row.discordUsername}
+													</p>
+												{/if}
+												{#if row.discordUserId}
+													<p
+														class="font-mono text-xs break-all text-muted-foreground"
+													>
+														{row.discordUserId}
+													</p>
+												{:else}
+													<p class="text-xs text-muted-foreground">
+														No linked account
+													</p>
+												{/if}
+											</div>
 										</Table.Cell>
 										<Table.Cell class="p-4 sm:p-5">
 											{#if row.autoJoinPending}

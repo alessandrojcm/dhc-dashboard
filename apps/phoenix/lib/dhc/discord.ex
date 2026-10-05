@@ -353,7 +353,8 @@ defmodule Dhc.Discord do
         where: identity.provider == "discord" and is_nil(identity.retired_at),
         select: %{
           principal_id: identity.principal_id,
-          provider_subject: identity.provider_subject
+          provider_subject: identity.provider_subject,
+          metadata: identity.metadata
         }
       )
     )
@@ -465,16 +466,16 @@ defmodule Dhc.Discord do
          guild_user_ids,
          pending_grants
        ) do
-    {link_status, discord_user_id} =
+    {link_status, discord_user_id, discord_username} =
       cond do
         identity = Map.get(identities_by_principal, member.principal_id) ->
-          {:linked, identity.provider_subject}
+          {:linked, identity.provider_subject, discord_username_from_metadata(identity.metadata)}
 
         assignment = Map.get(assignments_by_principal, member.principal_id) ->
-          {:pending, assignment.provider_subject}
+          {:pending, assignment.provider_subject, assignment.username_snapshot}
 
         true ->
-          {:never_linked, nil}
+          {:never_linked, nil, nil}
       end
 
     if discord_user_id && MapSet.member?(guild_user_ids, discord_user_id) do
@@ -486,11 +487,22 @@ defmodule Dhc.Discord do
           membership_status: member.membership_status,
           link_status: link_status,
           discord_user_id: discord_user_id,
+          discord_username: discord_username,
           auto_join_pending: MapSet.member?(pending_grants, member.principal_id)
         }
       ]
     end
   end
+
+  defp discord_username_from_metadata(%{"username" => username})
+       when is_binary(username) and username != "",
+       do: username
+
+  defp discord_username_from_metadata(%{"preferred_username" => username})
+       when is_binary(username) and username != "",
+       do: username
+
+  defp discord_username_from_metadata(_metadata), do: nil
 
   defp member_summary(nil), do: nil
 

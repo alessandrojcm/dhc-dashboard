@@ -7642,7 +7642,7 @@ components:
           type: string
     DiscordDoctorMissingMember:
       type: object
-      required: [member, membershipStatus, linkStatus, discordUserId, autoJoinPending]
+      required: [member, membershipStatus, linkStatus, discordUserId, discordUsername, autoJoinPending]
       properties:
         member:
           $ref: "#/components/schemas/DiscordDoctorMemberSummary"
@@ -7652,6 +7652,9 @@ components:
           type: string
           enum: [linked, pending, never_linked]
         discordUserId:
+          type: string
+          nullable: true
+        discordUsername:
           type: string
           nullable: true
         autoJoinPending:

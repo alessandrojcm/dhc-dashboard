@@ -55,6 +55,7 @@ defmodule DhcWeb.DiscordDoctorJSON do
       membershipStatus: row.membership_status,
       linkStatus: row.link_status,
       discordUserId: row.discord_user_id,
+      discordUsername: row.discord_username,
       autoJoinPending: row.auto_join_pending
     }
   end
