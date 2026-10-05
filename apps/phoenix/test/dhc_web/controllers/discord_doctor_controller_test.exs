@@ -160,7 +160,7 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
     never_linked = member("Never", "Linked")
     present = member("Present", "Linked")
 
-    link(linked, "missing-linked")
+    link(linked, "missing-linked", metadata: %{"username" => "missing.linked"})
     link(present, "present-linked")
     Dhc.DiscordAssignmentFixtures.assignment_fixture(pending.principal_id, "missing-pending")
     pending_join_grant(never_linked.principal_id)
@@ -176,16 +176,21 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
 
     assert Enum.any?(rows, fn row ->
              row["member"]["lastName"] == "Linked" and row["linkStatus"] == "linked" and
-               row["discordUserId"] == "missing-linked"
+               row["discordUserId"] == "missing-linked" and
+               row["discordUsername"] == "missing.linked"
            end)
 
     assert Enum.any?(rows, fn row ->
              row["member"]["lastName"] == "Pending" and row["linkStatus"] == "pending" and
-               row["discordUserId"] == "missing-pending"
+               row["discordUserId"] == "missing-pending" and is_binary(row["discordUsername"])
            end)
 
-    assert %{"linkStatus" => "never_linked", "autoJoinPending" => true, "discordUserId" => nil} =
-             by_name[{"Never", "Linked"}]
+    assert %{
+             "linkStatus" => "never_linked",
+             "autoJoinPending" => true,
+             "discordUserId" => nil,
+             "discordUsername" => nil
+           } = by_name[{"Never", "Linked"}]
 
     refute Enum.any?(rows, &(&1["member"]["firstName"] == "Present"))
   end
@@ -517,7 +522,7 @@ defmodule DhcWeb.DiscordDoctorControllerTest do
       principal_id: member.principal_id,
       provider: "discord",
       provider_subject: subject,
-      metadata: %{},
+      metadata: attrs[:metadata] || %{},
       retired_at: attrs[:retired_at]
     }
     |> Repo.insert!()

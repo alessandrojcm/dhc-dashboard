@@ -128,6 +128,7 @@ const report = {
 				membershipStatus: "active",
 				linkStatus: "linked",
 				discordUserId: "discord-missing",
+				discordUsername: "maeve.doyle",
 				autoJoinPending: false,
 			},
 			{
@@ -139,6 +140,7 @@ const report = {
 				membershipStatus: "active",
 				linkStatus: "never_linked",
 				discordUserId: null,
+				discordUsername: null,
 				autoJoinPending: true,
 			},
 		],
@@ -307,6 +309,8 @@ test.describe("Discord Doctor report", () => {
 			page.getByRole("heading", { name: "Missing from server (2)" }),
 		).toBeVisible();
 		await expect(page.getByText("Maeve Doyle", { exact: true })).toBeVisible();
+		await expect(page.getByText("@maeve.doyle", { exact: true })).toBeVisible();
+		await expect(page.getByText("discord-missing", { exact: true })).toBeVisible();
 		await expect(page.getByText("Never linked", { exact: true })).toBeVisible();
 		await expect(
 			page.getByText("Auto-join pending", { exact: true }),
