@@ -37,6 +37,8 @@ retains them just like membership prices.
 
 Docker and the Playwright Chromium/Firefox binaries are required. Install browsers with `pnpm --filter @dhc/web exec playwright install chromium firefox`.
 
+On a macOS Docker VM (Colima, OrbStack, Lima, or Docker Desktop) the testcontainers harness needs the socket named on both sides, because the client and the container see different filesystems: `DOCKER_HOST` must be the client-side socket (e.g. `unix://$HOME/.colima/default/docker.sock`, since `DOCKER_HOST` is unset and `/var/run/docker.sock` is only a dangling symlink to Docker Desktop), and `TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock` must be the VM-side path that `mix e2e.server` bind-mounts into the Postgres container. Without them the harness fails before any test runs, with `{:docker_socket_not_found, ...}` and then `error while creating mount source path ... operation not supported`.
+
 ## Phoenix test harness
 
 The `/api/e2e/*` routes exist only when Phoenix compiles with `E2E_SERVER=true` under `MIX_ENV=test`. Every request requires the `x-e2e-harness-key` header. Never expose these routes in dev or production.

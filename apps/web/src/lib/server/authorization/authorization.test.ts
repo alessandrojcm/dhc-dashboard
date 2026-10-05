@@ -111,6 +111,13 @@ const POLICY = {
 		"treasurer",
 		"committee_coordinator",
 	],
+	"training_announcements.manage": [
+		"admin",
+		"president",
+		"committee_coordinator",
+		"sparring_coordinator",
+		"coach",
+	],
 	"workshops.manage": ["workshop_coordinator", "president", "admin"],
 	"workshops.own.read": ["member"],
 } satisfies Record<Capability, readonly string[]>;
@@ -499,6 +506,25 @@ describe("guardRoute — request-hook gating", () => {
 		expect(
 			guardRoute(session("member"), {
 				id: "/dashboard/inventory/items",
+				params: {},
+			}),
+		).toEqual({ kind: "redirect", location: `/dashboard/members/${SELF}` });
+	});
+
+	it("keeps Training Announcements committee-only (ALE-330)", () => {
+		const member = session("member");
+		expect(authorizationFor(member).can("training_announcements.manage")).toBe(
+			false,
+		);
+		const titlesFor = (roles: string[]) =>
+			authorizationFor(session(...roles))
+				.navigation()
+				.navMain.map((group) => group.title);
+		expect(titlesFor(["member"])).not.toContain("Training Announcements");
+		expect(titlesFor(["coach"])).toContain("Training Announcements");
+		expect(
+			guardRoute(member, {
+				id: "/dashboard/training-announcements",
 				params: {},
 			}),
 		).toEqual({ kind: "redirect", location: `/dashboard/members/${SELF}` });

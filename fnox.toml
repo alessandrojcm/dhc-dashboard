@@ -14,6 +14,12 @@ DISCORD_CLIENT_SECRET = { provider = "1Password", value = "DISCORD_CLIENT_SECRET
 DISCORD_SUBJECT_FINGERPRINT_KEY = { provider = "1Password", value = "DISCORD_SUBJECT_FINGERPRINT_KEY" }
 DISCORD_BOT_TOKEN = { provider = "1Password", value = "DISCORD_BOT_TOKEN" }
 DISCORD_GUILD_ID = { provider = "1Password", value = "DISCORD_GUILD_ID" }
+# Optional Training Announcement destinations. Leave unset until cutover;
+# absence blocks only the corresponding kind and does not fail Phoenix boot.
+# Uncomment each mapping after provisioning its production 1Password item.
+DISCORD_ROLL_CALL_CHANNEL_ID = { provider = "1Password", value = "DISCORD_ROLL_CALL_CHANNEL_ID" }
+DISCORD_SPARRING_CHANNEL_ID = { provider = "1Password", value = "DISCORD_SPARRING_CHANNEL_ID" }
+DISCORD_TRAINING_ANNOUNCEMENTS_CHANNEL_ID = { provider = "1Password", value = "DISCORD_TRAINING_ANNOUNCEMENTS_CHANNEL_ID" }
 STRIPE_SECRET_KEY = { provider = "1Password", value = "STRIPE_SECRET_KEY" }
 STRIPE_WEBHOOK_SIGNING_SECRET = { provider = "1Password", value = "STRIPE_WEBHOOK_SIGNING_SECRET" }
 SENTRY_DSN = { provider = "1Password", value = "SENTRY_DSN" }
@@ -22,6 +28,7 @@ INVITATION_ACCEPTANCE_SUBJECT_FINGERPRINT_SECRET = { provider = "1Password", val
 RESEND_API_KEY = { provider = "1Password", value = "RESEND_API_KEY" }
 STRIPE_STUDENT_COUPON_ID = { provider = "1Password", value = "STRIPE_STUDENT_COUPON_ID" }
 STRIPE_COACH_COUPON_ID = { provider = "1Password", value = "STRIPE_COACH_COUPON_ID" }
+OPENHOLIDAYS_API_URL = { provider = "1Password", value = "OPENHOLIDAYS_API_URL" }
 WEB_PUSH_VAPID_PRIVATE_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PRIVATE_KEY" }
 WEB_PUSH_VAPID_PUBLIC_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PUBLIC_KEY" }
 WEB_PUSH_VAPID_SUBJECT= { provider = "1Password", value = "WEB_PUSH_VAPID_SUBJECT" }

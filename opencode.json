@@ -4,6 +4,12 @@
   "lsp": false,
   "mcp": {
     "servers": {
+      "linear": {
+        "type": "remote",
+        "url": "https://mcp.linear.app/mcp",
+        "disabled": false,
+        "oauth": {}
+      },
       "sentry": {
         "type": "remote",
         "url": "https://mcp.sentry.dev/mcp",

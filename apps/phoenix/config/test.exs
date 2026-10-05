@@ -1,5 +1,8 @@
 import Config
 
+# Isolated per-test Sentry collectors can observe terminal delivery reports.
+config :sentry, test_mode: true
+
 # Configure your database
 #
 # The MIX_TEST_PARTITION environment variable can be used

@@ -12,7 +12,7 @@ defmodule DhcWeb.InventoryOperatorLoanQueueControllerTest do
   use DhcWeb.ConnCase, async: false
 
   alias Dhc.Inventory
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias DhcWeb.OpenApiVerifier
 
   @actor_id "66666666-6666-6666-6666-666666666666"

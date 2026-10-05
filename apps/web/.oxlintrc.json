@@ -20,6 +20,36 @@
 				"vitest": true,
 				"node": true
 			}
+		},
+		{
+			"files": [
+				"src/routes/dashboard/training-announcements/**",
+				"src/lib/components/training-announcements/**",
+				"src/lib/training-announcements/**"
+			],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"**/components/workshops",
+									"**/components/workshops/*"
+								],
+								"message": "Training Announcements is not a Workshop. ADR 0026 keeps the two domains apart; only the calendar stylesheet in $lib/components/calendar is shared (docs/ale-311-training-announcements-boundary.md)."
+							},
+							{
+								"group": [
+									"**/routes/dashboard/workshops",
+									"**/routes/dashboard/workshops/*"
+								],
+								"message": "Training Announcements is not a Workshop. Build the component under $lib/components/training-announcements instead."
+							}
+						]
+					}
+				]
+			}
 		}
 	]
 }

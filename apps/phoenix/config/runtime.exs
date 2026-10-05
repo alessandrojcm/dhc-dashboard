@@ -6,6 +6,15 @@ discord_guild_id = System.get_env("DISCORD_GUILD_ID")
 config :dhc, :discord_bot_token, discord_bot_token
 config :dhc, :discord_guild_id, discord_guild_id
 
+# Training Announcement routing is independently optional, with no fallback.
+# An absent destination records a pre-freeze blocked delivery, not a boot error.
+config :dhc, :discord_roll_call_channel_id, System.get_env("DISCORD_ROLL_CALL_CHANNEL_ID")
+config :dhc, :discord_sparring_channel_id, System.get_env("DISCORD_SPARRING_CHANNEL_ID")
+
+config :dhc,
+       :discord_training_announcements_channel_id,
+       System.get_env("DISCORD_TRAINING_ANNOUNCEMENTS_CHANNEL_ID")
+
 membership_tier_coupons =
   [
     coach: System.get_env("STRIPE_COACH_COUPON_ID"),
@@ -184,6 +193,12 @@ if config_env() == :prod do
   config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
   config :dhc, :stripe_api_version, "2025-10-29.clover"
   config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
+
+  # Irish bank-holiday source (ALE-319). Optional override; the compiled
+  # default in config.exs is the public OpenHolidays API.
+  config :dhc,
+         :openholidays_api_url,
+         System.get_env("OPENHOLIDAYS_API_URL", "https://openholidaysapi.org")
 
   stripe_membership_lookup_keys =
     [

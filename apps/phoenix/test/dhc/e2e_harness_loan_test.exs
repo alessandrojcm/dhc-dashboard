@@ -15,7 +15,7 @@ defmodule Dhc.E2EHarnessLoanTest do
   alias Dhc.Auth.Principal
   alias Dhc.E2EHarness
   alias Dhc.Inventory
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Repo
 
   test "requested seeds with no container path and deletes" do

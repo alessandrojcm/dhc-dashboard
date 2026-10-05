@@ -12,7 +12,7 @@ defmodule Dhc.Inventory.LoanPolicy do
   different rule.
 
   Every function here is pure. `today` is always a parameter — resolving the
-  club's calendar day (`Dhc.Inventory.ClubCalendar.today/0`) is the caller's
+  club's calendar day (`Dhc.ClubCalendar.today/0`) is the caller's
   job, so a batch read judges every row against one day.
   """
 

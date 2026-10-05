@@ -515,3 +515,36 @@ export function createUniqueEmail(
 	const retryPart = retry === undefined ? "" : `-r${retry}`;
 	return `${prefix}-${Date.now()}${indexPart}-${Math.random().toString(36).slice(2, 7)}${retryPart}@test.com`;
 }
+
+/**
+ * ALE-334: thin wrapper over the `trainingAnnouncement` harness scenario.
+ * Seeds a weekly announcement (unique title by default, so calendar chips
+ * are targetable) plus one past `delivered` delivery row with evidence.
+ * The operator must hold a management role — seed one via `createMember`.
+ */
+export async function createTrainingAnnouncement(params: {
+	operatorMemberId: string;
+	title?: string;
+	message?: string;
+	kind?: "roll_call" | "sparring";
+	weekday?: number;
+	postTime?: string;
+}) {
+	const rand = Math.random().toString(36).slice(2, 7);
+	const seeded = await seedE2EScenario("trainingAnnouncement", {
+		actorId: params.operatorMemberId,
+		kind: params.kind ?? "roll_call",
+		title: params.title ?? `E2E smoke ${rand} {{date}}`,
+		message:
+			params.message ?? `E2E smoke ${rand} {{weekday}} — who is coming? ⚔️`,
+		weekday: params.weekday,
+		postTime: params.postTime,
+	});
+
+	return {
+		...seeded,
+		async cleanUp() {
+			await deleteE2EFixture("trainingAnnouncement", seeded.announcementId);
+		},
+	};
+}

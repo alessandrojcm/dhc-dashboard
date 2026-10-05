@@ -1,6 +1,7 @@
 <script lang="ts">
 import { Calendar, DayGrid, Interaction } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
+import "$lib/components/calendar/dhc-calendar.css";
 import * as Dialog from "$lib/components/ui/dialog";
 import dayjs from "dayjs";
 import WorkshopEventModal from "./workshop-event-modal.svelte";
@@ -175,23 +176,23 @@ const options = $derived({
 	editable: false,
 	theme: (defaultTheme: Record<string, string | string[]>) => ({
 		...defaultTheme,
-		calendar: "ec workshop-calendar",
-		header: "ec-header workshop-calendar-weekdays",
-		toolbar: "ec-toolbar workshop-calendar-toolbar",
-		button: "ec-button workshop-calendar-control",
-		buttonGroup: "ec-button-group workshop-calendar-control-group",
+		calendar: "ec dhc-calendar",
+		header: "ec-header dhc-calendar-weekdays",
+		toolbar: "ec-toolbar dhc-calendar-toolbar",
+		button: "ec-button dhc-calendar-control",
+		buttonGroup: "ec-button-group dhc-calendar-control-group",
 		active: "ec-active",
-		title: "ec-title workshop-calendar-title",
-		body: "ec-body workshop-calendar-body",
-		dayHead: "ec-day-head workshop-calendar-day-number",
-		day: "ec-day workshop-calendar-day",
-		today: "ec-today workshop-calendar-today",
-		otherMonth: "ec-other-month workshop-calendar-other-month",
-		event: "ec-event workshop-calendar-event",
-		eventBody: "ec-event-body workshop-calendar-event-body",
+		title: "ec-title dhc-calendar-title",
+		body: "ec-body dhc-calendar-body",
+		dayHead: "ec-day-head dhc-calendar-day-number",
+		day: "ec-day dhc-calendar-day",
+		today: "ec-today dhc-calendar-today",
+		otherMonth: "ec-other-month dhc-calendar-other-month",
+		event: "ec-event dhc-calendar-event",
+		eventBody: "ec-event-body dhc-calendar-event-body",
 		eventTitle: "ec-event-title",
 		eventTime: "ec-event-time",
-		popup: "ec-popup workshop-calendar-popup",
+		popup: "ec-popup dhc-calendar-popup",
 		nowIndicator: "ec-now-indicator bg-destructive",
 	}),
 });
@@ -267,188 +268,9 @@ const options = $derived({
 </Dialog.Root>
 
 <style>
-:global(.workshop-calendar) {
-	--ec-bg-color: hsl(var(--card));
-	--ec-border-color: hsl(var(--border) / 0.72);
-	--ec-button-bg-color: hsl(var(--background));
-	--ec-button-border-color: hsl(var(--border));
-	--ec-button-text-color: hsl(var(--foreground));
-	--ec-today-bg-color: hsl(var(--secondary) / 0.12);
-	width: 100%;
-	border: 0;
-	background: hsl(var(--card));
-	color: hsl(var(--foreground));
-	font-family: inherit;
-}
-
-:global(.workshop-calendar .workshop-calendar-toolbar) {
-	display: grid;
-	grid-template-columns: minmax(0, 1fr) auto;
-	gap: 1rem;
-	align-items: center;
-	padding: 1.25rem;
-	border-bottom: 1px solid hsl(var(--border) / 0.72);
-	background:
-		linear-gradient(90deg, hsl(var(--primary) / 0.08), transparent 58%),
-		hsl(var(--card));
-}
-
-:global(.workshop-calendar .ec-center:empty) {
-	display: none;
-}
-
-:global(.workshop-calendar .ec-end) {
-	display: flex;
-	align-items: center;
-	justify-content: flex-end;
-	gap: 0.75rem;
-}
-
-:global(.workshop-calendar .workshop-calendar-title) {
-	font-family: var(--font-heading), serif;
-	font-size: 1.5rem;
-	font-weight: 700;
-	letter-spacing: -0.02em;
-	color: hsl(var(--foreground));
-}
-
-:global(.workshop-calendar .workshop-calendar-control-group) {
-	display: flex;
-	gap: 0.5rem;
-}
-
-:global(.workshop-calendar .workshop-calendar-control) {
-	display: inline-flex;
-	min-width: 2.75rem;
-	min-height: 2.75rem;
-	align-items: center;
-	justify-content: center;
-	border: 1px solid hsl(var(--border));
-	border-radius: 0.75rem;
-	background: hsl(var(--background));
-	padding: 0.625rem 0.875rem;
-	color: hsl(var(--foreground));
-	font-size: 0.875rem;
-	font-weight: 700;
-	box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
-	cursor: pointer;
-	transition:
-		border-color 180ms ease,
-		background-color 180ms ease,
-		color 180ms ease,
-		box-shadow 180ms ease;
-}
-
-:global(.workshop-calendar .workshop-calendar-control:hover) {
-	border-color: hsl(var(--primary) / 0.45);
-	background: hsl(var(--primary) / 0.08);
-	color: hsl(var(--primary));
-}
-
-:global(.workshop-calendar .workshop-calendar-control:focus-visible) {
-	outline: 2px solid hsl(var(--ring));
-	outline-offset: 2px;
-}
-
-:global(.workshop-calendar .workshop-calendar-weekdays) {
-	border-bottom: 1px solid hsl(var(--border) / 0.72);
-	background: hsl(var(--muted) / 0.45);
-}
-
-:global(.workshop-calendar .workshop-calendar-weekdays .workshop-calendar-day) {
-	display: flex;
-	min-height: 2.75rem;
-	align-items: center;
-	justify-content: center;
-	border-right: 1px solid hsl(var(--border) / 0.72);
-	color: hsl(var(--muted-foreground));
-	font-size: 0.6875rem;
-	font-weight: 800;
-	letter-spacing: 0.12em;
-	text-transform: uppercase;
-}
-
-:global(.workshop-calendar .workshop-calendar-body .workshop-calendar-day) {
-	min-height: 7.5rem;
-	border-right: 1px solid hsl(var(--border) / 0.72);
-	border-bottom: 1px solid hsl(var(--border) / 0.72);
-	background: hsl(var(--card));
-	transition: background-color 180ms ease;
-}
-
-:global(
-	.workshop-calendar .workshop-calendar-body .workshop-calendar-day:hover
-) {
-	background: hsl(var(--muted) / 0.2);
-}
-
-:global(
-	.workshop-calendar .workshop-calendar-body .workshop-calendar-day.ec-sat,
-	.workshop-calendar .workshop-calendar-body .workshop-calendar-day.ec-sun
-) {
-	background: hsl(var(--muted) / 0.12);
-}
-
-:global(.workshop-calendar .workshop-calendar-day-number) {
-	display: flex;
-	justify-content: flex-end;
-	border: 0;
-	background: transparent;
-	padding: 0.625rem 0.75rem 0.375rem;
-	color: hsl(var(--foreground));
-	font-size: 0.75rem;
-	font-weight: 700;
-	font-variant-numeric: tabular-nums;
-}
-
-:global(.workshop-calendar .workshop-calendar-day-number time) {
-	display: inline-flex;
-	width: 1.75rem;
-	height: 1.75rem;
-	align-items: center;
-	justify-content: center;
-	border-radius: 9999px;
-}
-
-:global(
-	.workshop-calendar
-		.workshop-calendar-today
-		.workshop-calendar-day
-		.workshop-calendar-day-number
-		time
-) {
-	background: hsl(var(--primary));
-	color: hsl(var(--primary-foreground));
-	box-shadow: 0 0 0 3px hsl(var(--secondary) / 0.35);
-}
-
-:global(
-	.workshop-calendar .workshop-calendar-body .workshop-calendar-other-month
-) {
-	background: hsl(var(--muted) / 0.28);
-}
-
-:global(
-	.workshop-calendar
-		.workshop-calendar-other-month
-		.workshop-calendar-day-number
-) {
-	color: hsl(var(--muted-foreground) / 0.48);
-}
-
-:global(.workshop-calendar .workshop-calendar-event) {
-	margin: 0 0.375rem 0.375rem;
-	border: 0 !important;
-	background: transparent !important;
-	color: inherit !important;
-	box-shadow: none !important;
-	cursor: pointer;
-}
-
-:global(.workshop-calendar .workshop-calendar-event-body) {
-	padding: 0;
-}
-
+/* Event chips only. Chrome (toolbar, weekday header, day cells, today ring,
+ * event wrapper reset, more-link, popup) lives in the shared
+ * $lib/components/calendar/dhc-calendar.css imported above. */
 :global(.workshop-event) {
 	width: 100%;
 	min-width: 0;
@@ -465,15 +287,10 @@ const options = $derived({
 		background-color 180ms ease;
 }
 
-:global(.workshop-calendar-event:hover .workshop-event) {
+:global(.dhc-calendar-event:hover .workshop-event) {
 	border-color: hsl(var(--primary) / 0.5);
 	background: hsl(var(--primary) / 0.04);
 	box-shadow: 0 4px 10px rgb(0 0 0 / 8%);
-}
-
-:global(.workshop-calendar-event:focus-visible) {
-	outline: 2px solid hsl(var(--ring));
-	outline-offset: 1px;
 }
 
 :global(.workshop-event--planned) {
@@ -580,59 +397,9 @@ const options = $derived({
 	text-transform: uppercase;
 }
 
-:global(.workshop-calendar .ec-more-link) {
-	display: inline-flex;
-	min-height: 2rem;
-	align-items: center;
-	margin: 0 0.375rem 0.375rem;
-	border-radius: 0.5rem;
-	padding: 0.25rem 0.5rem;
-	color: hsl(var(--primary));
-	font-size: 0.6875rem;
-	font-weight: 800;
-	text-decoration: none;
-	transition:
-		background-color 180ms ease,
-		color 180ms ease;
-}
-
-:global(.workshop-calendar .ec-more-link:hover) {
-	background: hsl(var(--primary) / 0.1);
-}
-
-:global(.workshop-calendar .ec-more-link:focus-visible) {
-	outline: 2px solid hsl(var(--ring));
-	outline-offset: 1px;
-}
-
-:global(.workshop-calendar .workshop-calendar-popup) {
-	border: 1px solid hsl(var(--border));
-	border-radius: 1rem;
-	background: hsl(var(--popover));
-	color: hsl(var(--popover-foreground));
-	box-shadow: 0 14px 30px rgb(0 0 0 / 14%);
-}
-
 @media (max-width: 900px) {
-	:global(.workshop-calendar .workshop-calendar-toolbar) {
-		grid-template-columns: 1fr;
-	}
-
-	:global(.workshop-calendar .ec-end) {
-		justify-content: space-between;
-	}
-
 	:global(.workshop-event-footer) {
 		display: none;
-	}
-}
-
-@media (prefers-reduced-motion: reduce) {
-	:global(.workshop-calendar *),
-	:global(.workshop-calendar *::before),
-	:global(.workshop-calendar *::after) {
-		scroll-behavior: auto !important;
-		transition-duration: 0.01ms !important;
 	}
 }
 </style>

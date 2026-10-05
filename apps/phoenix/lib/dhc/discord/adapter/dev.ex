@@ -28,4 +28,22 @@ defmodule Dhc.Discord.Adapter.Dev do
     Logger.info("[discord-dev] skipped guild kick for #{user_id}: #{inspect(reason)}")
     :ok
   end
+
+  @impl true
+  def create_message(channel_id, params) when is_map(params) do
+    Logger.info(
+      "[discord-dev] skipped message create in #{channel_id}: #{inspect(Map.get(params, :content))}"
+    )
+
+    {:ok, %{message_id: "dev-message-id"}}
+  end
+
+  @impl true
+  def create_thread_from_message(channel_id, message_id, params) when is_map(params) do
+    Logger.info(
+      "[discord-dev] skipped thread create in #{channel_id} for #{message_id}: #{inspect(Map.get(params, :name))}"
+    )
+
+    {:ok, %{thread_id: "dev-thread-id"}}
+  end
 end

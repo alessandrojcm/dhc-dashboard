@@ -66,6 +66,52 @@ Choose one client/server boundary for each operation:
 
 All remote functions that accept input use a Valibot schema. Authenticated handlers obtain the request with `getRequestEvent()` and authorize through `authorize(locals, <capability>)` or `authorizationFor(session).require(<capability>)` from `$lib/server/authorization` (never by intersecting role sets). Phoenix calls forward request cookies through `apiClientOptions(event.cookies)`. Domain mutations belong in Phoenix contexts; remote functions must not access Kysely or `executeWithRLS` directly.
 
+## UI: `$lib/components/ui` Owns Every Interactive Primitive
+
+Compose, don't reinvent: reach for the shared component first and style only what it does not cover. A hand-rolled control diverges from the theme, drops the focus and keyboard behaviour the shared one already implements, and no one updates it when the theme moves.
+
+Substitute the control you are about to type for the component that owns it:
+
+| Instead of | Render |
+|------------|--------|
+| `<button>` | `Button` (`variant`, `size`) |
+| `<input type="text\|email\|tel\|password">` | `Input`, or `PhoneInput` for a phone field |
+| `<textarea>` | `Textarea` |
+| `<select>` | `Select.*`; `NativeSelect` for the native dropdown (mobile, many options) |
+| `<input type="checkbox">` | `Checkbox` |
+| `<input type="radio">` | `RadioGroup.*` |
+| `<input type="date">`, `type="time"` | `date-picker.svelte`; a date range is `Popover` + `RangeCalendar` |
+| `<dialog>`, a modal | `Dialog.*`; `AlertDialog.*` to confirm, `Sheet.*` for a side or bottom panel |
+| `<details>` / `<summary>` | `Collapsible.*` or `Accordion.*` |
+| a filterable dropdown | `Popover` + `Command` |
+| a label + control + error trio | `Field.Field` + `Field.Label` + `Field.Error` (see "Remote Forms") |
+| a bare `<label for>` on a custom control | `Label` bound to the trigger's `id` |
+
+The same rule covers hand-built blocks: `Empty` for an empty result, `Skeleton` or `Spinner` for loading, `Separator` for a divider, `Badge` for a pill, `Alert` for a callout, `sonner`'s `toast()` for a notification.
+
+Every other name comes from the registry — add a missing one rather than writing a local variant:
+
+```bash
+pnpm dlx shadcn-svelte@latest add <name> -c apps/web -y
+```
+
+Two rows are compositions that already exist rather than registry items, so they are not `add` targets: `date-picker.svelte` (this project's `Popover` + `Calendar`) and a combobox (`Popover` + `Command`). `apps/web/components.json` holds the alias map (`ui` → `$lib/components/ui`) and the registry URL; the primitives underneath are `bits-ui` 2.18.1, which feature code imports only through `ui/`. Not yet vendored and worth adding: `native-select`, `empty`, `spinner`, `input-group`.
+
+Copy the shape from a page that already does it: `apps/web/src/routes/(public)/waitlist/+page.svelte` (Field + Input + Select + RadioGroup + date picker in one remote form), `apps/web/src/routes/dashboard/members/[memberId]/+page.svelte`, and `apps/web/src/lib/components/ui/pause-subscription-modal.svelte` for a dialog over a date field.
+
+Two boundaries: `apps/web/src/lib/components/ui/**` is vendored registry code and keeps its own native `<select>` internals (the calendar's month and year pickers), and `apps/web/src/routes/prototype/**` plus `routes/dashboard/prototype/**` are throwaway comparison surfaces. Everything a member or operator sees goes through `ui/`.
+
+Before finishing a UI change, walk the diff for interactive elements and confirm each maps to a row above.
+
+Four consequences of that rule that cost real debugging time, all now settled:
+
+- **`type="time"` stays an `Input`.** shadcn-svelte has no time picker; its documented "Time Picker" recipe is `<Input type="time">` inside a `Field.Field`. The substitution table groups it with `type="date"`, but only the date half means `date-picker.svelte` — do not go looking for a time component to add.
+- **A segmented single-choice switch is `ToggleGroup type="single"`, not two `Button`s and not `RadioGroup`.** bits-ui renders single-mode items as `role="radio"` with `aria-checked`, so browser tests must query `getByRole("radio", …)`; the old `getByRole("button")` + `aria-pressed` selectors fail against it.
+- **`RadioGroup.Item` cannot render a card via a `child` snippet.** The vendored wrapper types it `WithoutChildrenOrChild` and hard-codes `role="radio"` on its own `<button>`. To make a whole card the radio, put the `RadioGroup.Item` *inside* a `<label>` and select it with `has-[[data-state=checked]]:…` — the item owns the state and keyboard wiring, the label only reads it.
+- **`date-picker.svelte` takes `DateValue`, but drafts hold `YYYY-MM-DD` strings.** Bridge with `draftCalendarDate`/`draftIsoDate` in `apps/web/src/lib/training-announcements/announcement.ts`, which go through dayjs (`dayjs(iso)` parses a bare ISO date as *local* midnight). Never route a civil date through `new Date(iso)`, which reads back as the previous day west of UTC, and never use `fromDate`, which returns a `ZonedDateTime` rather than a `CalendarDate`. `draftIsoDate` narrows with `instanceof CalendarDate` so a time value can never stringify into a field the API's `format: date` rejects.
+
+Browser tests drive a date field by opening the popover and clicking the day whose accessible name is its full date (`"Thursday, October 15, 2026"`). Do not target `role="dialog"` — the surrounding `Sheet` is a dialog too, and bits-ui renders each day twice (a `gridcell` plus a `[data-bits-day]` button) carrying the same `data-value`.
+
 ## Remote Forms
 
 Spread the remote form or its preflight-enhanced variant onto the native form element, and use the generated field APIs so names, restored values, and `aria-invalid` remain connected:
@@ -99,7 +145,7 @@ Spread the remote form or its preflight-enhanced variant onto the native form el
 - **Lock order is part of the contract, not just lock presence.** Commands that depend on a container lock that container chain `FOR SHARE` **before** the item `FOR UPDATE` (root first): a move locks the destination chain first; a restore locks the item's current chain first. That matches container archive, which locks the container (and its subtree) before any item row. Reversing either pair deadlocks. After the item lock come the dependent rows (the loan, the open maintenance period, the item's live loans). A command that locked the loan first — e.g. a member cancelling by loan id — deadlocks against one holding the item and wanting the loan. Since GH-508 (ADR 0023) this order is encoded **once**, in `Dhc.Inventory.AvailabilityCommands.with_locked_item/2`: a command reached by a loan id resolves the loan's `item_id` unlocked purely to learn *which* item to lock, takes the item lock, then re-reads the loan `FOR UPDATE` under it, so nothing is decided from the unlocked read. A restore peeks the item only to learn which chain to share-lock; if the locked row sits in a different container, the transaction rolls back and retries from a fresh peek rather than locking a new chain while holding the item. Add a new transition as a `run/4` clause under that primitive; do not open a new `Repo.transaction` with its own locking in `OperatorLoans`, `MemberLoans`, or `OperatorItemLifecycle` — those are facades.
 - **Constraint translation is centralized in `AvailabilityCommands.persist/1`.** It declares the partial unique indexes and the principal foreign keys on every changeset and maps them to domain reasons, and never uses a bang write. A race or an out-of-seam writer is `{:error, :already_allocated | :duplicate_request | :maintenance_open | :unknown_actor}`, never a `Postgrex.Error`.
 - **Advisory reads reuse the command's predicates.** The queue's `ready_for_checkout?` and the checkout gate both call `Dhc.Inventory.LoanPolicy`; an advisory value may be stale but must never be computed by a different rule.
-- **Comparing a stored UTC timestamp against a loan date goes through `ClubCalendar.on_date/1`, not `DateTime.to_date/1`.** A handover at 23:30 UTC is already the next day in Dublin summer time, so `to_date/1` compares the wrong calendar day. `today/0` and `on_date/1` both convert in Postgres because the application ships no time-zone database.
+- **Comparing a stored UTC timestamp against a loan date goes through `ClubCalendar.on_date/1`, not `DateTime.to_date/1`.** A handover at 23:30 UTC is already the next day in Dublin summer time, so `to_date/1` compares the wrong calendar day. `today/0`, `on_date/1`, and `to_utc/2` convert with the `tz` time-zone database owned by `Dhc.ClubCalendar`.
 - Guards that run raw SQL must not pattern-match a single expected row shape (`%{rows: [[value]]}`); a recursive CTE over a missing row returns no rows and raises `MatchError` instead of the intended domain error. Match the result and map "missing" onto the same domain reason as "inactive".
 
 ## Discord External Identities

@@ -29,10 +29,12 @@ const connectionResetErrorSchema = v.object({
 
 export type E2ERole =
 	| "admin"
+	| "coach"
 	| "committee_coordinator"
 	| "member"
 	| "president"
 	| "quartermaster"
+	| "sparring_coordinator"
 	| "workshop_coordinator";
 
 type MemberSeed = {
@@ -317,6 +319,35 @@ type RegistrationSeed = {
 	result: E2ERegistrationSeedResult;
 };
 
+export type TrainingAnnouncementSeed = {
+	attrs: {
+		/** Management-role operator principal id (seed one via `member`). */
+		actorId: string;
+		kind?: "roll_call" | "sparring";
+		/** Weekly schedule; defaults to tomorrow's weekday. */
+		weekday?: number;
+		/** One-off schedule; takes precedence over `weekday` when set. */
+		oneOffDate?: string;
+		/** Europe/Dublin post time `HH:MM[:SS]`; defaults to `19:00`. */
+		postTime?: string;
+		title?: string;
+		message?: string;
+		mentionEveryone?: boolean;
+	};
+	result: {
+		announcementId: string;
+		kind: "roll_call" | "sparring";
+		title: string;
+		postTime: string;
+		weekday: number | null;
+		oneOffDate: string | null;
+		/** Past Dublin date carrying the seeded `delivered` evidence. */
+		occurrenceDate: string;
+		deliveryId: string;
+		threadName: string;
+	};
+};
+
 type WaitlistStatusSeed = {
 	attrs: { isOpen: boolean };
 	result: { isOpen: boolean };
@@ -344,6 +375,7 @@ type E2EScenarios = {
 	inventoryMaintenance: InventoryMaintenanceSeed;
 	inventoryArchive: InventoryArchiveSeed;
 	registration: RegistrationSeed;
+	trainingAnnouncement: TrainingAnnouncementSeed;
 	waitlistStatus: WaitlistStatusSeed;
 	setting: SettingSeed;
 };

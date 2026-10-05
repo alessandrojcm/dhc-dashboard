@@ -18,7 +18,7 @@ defmodule DhcWeb.InventoryCatalogControllerTest do
   use Oban.Testing, repo: Dhc.Repo
 
   alias Dhc.Inventory
-  alias Dhc.Inventory.ClubCalendar
+  alias Dhc.ClubCalendar
   alias Dhc.Notifications.Notification
   alias Dhc.Notifications.Workers.KeyedCreateWorker
   alias Dhc.Repo

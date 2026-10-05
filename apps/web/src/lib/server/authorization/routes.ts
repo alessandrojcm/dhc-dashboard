@@ -64,6 +64,12 @@ export const protectedRoutes: ProtectedRoute[] = [
 		requires: "discord.doctor.use",
 		onDeny: "redirect-to-own-profile",
 	}),
+	protect("/dashboard/training-announcements", {
+		// ALE-330: the whole Training Announcements route family, including the
+		// exceptions and calendar routes added by ALE-331/332.
+		requires: "training_announcements.manage",
+		onDeny: "redirect-to-own-profile",
+	}),
 	protect("/dashboard/workshops", {
 		requires: "workshops.manage",
 		onDeny: "redirect-to-own-profile",

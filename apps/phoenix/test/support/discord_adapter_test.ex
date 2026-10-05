@@ -29,17 +29,30 @@ defmodule Dhc.Discord.Adapter.Test do
     record_and_pop(:kick_guild_member, [guild_id, user_id, reason])
   end
 
+  @impl true
+  def create_message(channel_id, params) do
+    record_and_pop(:create_message, [channel_id, params])
+  end
+
+  @impl true
+  def create_thread_from_message(channel_id, message_id, params) do
+    record_and_pop(:create_thread_from_message, [channel_id, message_id, params])
+  end
+
   defp record_and_pop(operation, arguments) do
-    Agent.get_and_update(__MODULE__, fn state ->
-      send(state.owner, {operation, arguments})
+    outcome =
+      Agent.get_and_update(__MODULE__, fn state ->
+        send(state.owner, {operation, arguments})
 
-      case Map.get(state.scripts, operation, []) do
-        [outcome | remaining] ->
-          {outcome, put_in(state, [:scripts, operation], remaining)}
+        case Map.get(state.scripts, operation, []) do
+          [outcome | remaining] ->
+            {outcome, put_in(state, [:scripts, operation], remaining)}
 
-        [] ->
-          raise "no scripted Discord adapter outcome for #{operation}"
-      end
-    end)
+          [] ->
+            raise "no scripted Discord adapter outcome for #{operation}"
+        end
+      end)
+
+    if is_function(outcome, 1), do: outcome.(arguments), else: outcome
   end
 end

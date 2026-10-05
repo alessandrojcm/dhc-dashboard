@@ -1,0 +1,338 @@
+/* Shared @event-calendar/core chrome: toolbar, weekday header, day cells,
+ * today ring, event wrapper reset, more-link, and popup.
+ *
+ * Domain-agnostic: no domain-specific selectors live here. Event chips stay
+ * in their domain components. Any calendar mounts this stylesheet and maps
+ * the event-calendar theme slots to the dhc-calendar-* classes.
+ *
+ * Import after "@event-calendar/core/index.css" so these rules win.
+ */
+
+.dhc-calendar {
+	--ec-bg-color: hsl(var(--card));
+	--ec-border-color: hsl(var(--border) / 0.72);
+	--ec-button-bg-color: hsl(var(--background));
+	--ec-button-border-color: hsl(var(--border));
+	--ec-button-text-color: hsl(var(--foreground));
+	--ec-today-bg-color: hsl(var(--secondary) / 0.12);
+	width: 100%;
+	border: 0;
+	background: hsl(var(--card));
+	color: hsl(var(--foreground));
+	font-family: inherit;
+}
+
+.dhc-calendar .dhc-calendar-toolbar {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 1rem;
+	align-items: center;
+	padding: 1.25rem;
+	border-bottom: 1px solid hsl(var(--border) / 0.72);
+	background: hsl(var(--card));
+}
+
+.dhc-calendar .ec-center:empty {
+	display: none;
+}
+
+.dhc-calendar .ec-end {
+	display: flex;
+	align-items: center;
+	justify-content: flex-end;
+	gap: 0.75rem;
+}
+
+.dhc-calendar .dhc-calendar-title {
+	font-family: var(--font-heading), serif;
+	font-size: 1.5rem;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+	color: hsl(var(--foreground));
+}
+
+.dhc-calendar .dhc-calendar-control-group {
+	display: flex;
+	gap: 0.5rem;
+}
+
+.dhc-calendar .dhc-calendar-control {
+	display: inline-flex;
+	min-width: 2.75rem;
+	min-height: 2.75rem;
+	align-items: center;
+	justify-content: center;
+	border: 1px solid hsl(var(--border));
+	border-radius: 0.75rem;
+	background: hsl(var(--background));
+	padding: 0.625rem 0.875rem;
+	color: hsl(var(--foreground));
+	font-size: 0.875rem;
+	font-weight: 700;
+	box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+	cursor: pointer;
+	transition:
+		border-color 180ms ease,
+		background-color 180ms ease,
+		color 180ms ease,
+		box-shadow 180ms ease;
+}
+
+.dhc-calendar .dhc-calendar-control:hover {
+	border-color: hsl(var(--primary) / 0.45);
+	background: hsl(var(--primary) / 0.08);
+	color: hsl(var(--primary));
+}
+
+.dhc-calendar .dhc-calendar-control:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 2px;
+}
+
+.dhc-calendar .dhc-calendar-weekdays {
+	border-bottom: 1px solid hsl(var(--border) / 0.72);
+	background: hsl(var(--muted) / 0.45);
+}
+
+.dhc-calendar .dhc-calendar-weekdays .dhc-calendar-day {
+	display: flex;
+	min-height: 2.75rem;
+	align-items: center;
+	justify-content: center;
+	border-right: 1px solid hsl(var(--border) / 0.72);
+	color: hsl(var(--muted-foreground));
+	font-size: 0.6875rem;
+	font-weight: 800;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+}
+
+.dhc-calendar.ec-day-grid .dhc-calendar-body .dhc-calendar-day {
+	min-height: 7.5rem;
+	border-right: 1px solid hsl(var(--border) / 0.72);
+	border-bottom: 1px solid hsl(var(--border) / 0.72);
+	background: hsl(var(--card));
+	transition: background-color 180ms ease;
+}
+
+.dhc-calendar .dhc-calendar-body .dhc-calendar-day:hover {
+	background: hsl(var(--muted) / 0.2);
+}
+
+.dhc-calendar .dhc-calendar-body .dhc-calendar-day.ec-sat,
+.dhc-calendar .dhc-calendar-body .dhc-calendar-day.ec-sun {
+	background: hsl(var(--muted) / 0.12);
+}
+
+.dhc-calendar .dhc-calendar-day-number {
+	display: flex;
+	justify-content: flex-end;
+	border: 0;
+	background: transparent;
+	padding: 0.625rem 0.75rem 0.375rem;
+	color: hsl(var(--foreground));
+	font-size: 0.75rem;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+}
+
+.dhc-calendar .dhc-calendar-day-number time {
+	display: inline-flex;
+	width: 1.75rem;
+	height: 1.75rem;
+	align-items: center;
+	justify-content: center;
+	border-radius: 9999px;
+}
+
+.dhc-calendar
+	.dhc-calendar-today
+	.dhc-calendar-day
+	.dhc-calendar-day-number
+	time {
+	background: hsl(var(--primary));
+	color: hsl(var(--primary-foreground));
+	box-shadow: 0 0 0 3px hsl(var(--secondary) / 0.35);
+}
+
+.dhc-calendar .dhc-calendar-body .dhc-calendar-other-month {
+	background: hsl(var(--muted) / 0.28);
+}
+
+.dhc-calendar .dhc-calendar-other-month .dhc-calendar-day-number {
+	color: hsl(var(--muted-foreground) / 0.48);
+}
+
+.dhc-calendar .dhc-calendar-event {
+	margin: 0 0.375rem 0.375rem;
+	border: 0 !important;
+	background: transparent !important;
+	color: inherit !important;
+	box-shadow: none !important;
+	cursor: pointer;
+}
+
+.dhc-calendar .dhc-calendar-event-body {
+	padding: 0;
+}
+
+.dhc-calendar .dhc-calendar-event:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 1px;
+}
+
+.dhc-calendar .ec-more-link {
+	display: inline-flex;
+	min-height: 2rem;
+	align-items: center;
+	margin: 0 0.375rem 0.375rem;
+	border-radius: 0.5rem;
+	padding: 0.25rem 0.5rem;
+	color: hsl(var(--primary));
+	font-size: 0.6875rem;
+	font-weight: 800;
+	text-decoration: none;
+	transition:
+		background-color 180ms ease,
+		color 180ms ease;
+}
+
+.dhc-calendar .ec-more-link:hover {
+	background: hsl(var(--primary) / 0.1);
+}
+
+.dhc-calendar .ec-more-link:focus-visible {
+	outline: 2px solid hsl(var(--ring));
+	outline-offset: 1px;
+}
+
+.dhc-calendar .dhc-calendar-popup {
+	border: 1px solid hsl(var(--border));
+	border-radius: 1rem;
+	background: hsl(var(--popover));
+	color: hsl(var(--popover-foreground));
+	box-shadow: 0 14px 30px rgb(0 0 0 / 14%);
+}
+
+@media (max-width: 900px) {
+	.dhc-calendar .dhc-calendar-toolbar {
+		grid-template-columns: 1fr;
+	}
+
+	.dhc-calendar .ec-end {
+		justify-content: space-between;
+	}
+}
+
+/* Phone widths. A month grid is seven columns of ~48px at 375px, so the desktop
+ * chrome spends the width it has on padding and on 120px day cells that push the
+ * rest of the page off-screen. Tighten the frame and shrink each cell to what a
+ * date number and one chip actually need. */
+@media (max-width: 640px) {
+	.dhc-calendar .dhc-calendar-toolbar {
+		gap: 0.75rem;
+		padding: 1rem;
+	}
+
+	.dhc-calendar .dhc-calendar-title {
+		font-size: 1.25rem;
+	}
+
+	.dhc-calendar .dhc-calendar-control {
+		min-height: 2.5rem;
+		padding: 0.5rem 0.75rem;
+	}
+
+	/* Already "Mon" via dayHeaderFormat; just tighten it so the row stops
+	 * competing with the cells for height on a short phone viewport. */
+	.dhc-calendar .dhc-calendar-weekdays .dhc-calendar-day {
+		min-height: 2rem;
+		font-size: 0.625rem;
+		letter-spacing: 0.04em;
+	}
+
+	.dhc-calendar.ec-day-grid .dhc-calendar-body .dhc-calendar-day {
+		min-height: 6rem;
+	}
+
+	.dhc-calendar .dhc-calendar-day-number {
+		padding: 0.25rem 0.25rem 0.125rem;
+		font-size: 0.6875rem;
+	}
+
+	.dhc-calendar .dhc-calendar-day-number time {
+		width: 1.5rem;
+		height: 1.5rem;
+	}
+
+	/* The today ring's spread eats a quarter of a 48px cell. */
+	.dhc-calendar
+		.dhc-calendar-today
+		.dhc-calendar-day
+		.dhc-calendar-day-number
+		time {
+		box-shadow: 0 0 0 2px hsl(var(--secondary) / 0.35);
+	}
+
+	.dhc-calendar .dhc-calendar-event {
+		margin: 0 0.125rem 0.125rem;
+	}
+
+	.dhc-calendar .ec-more-link {
+		min-height: 1.5rem;
+		margin: 0 0.125rem 0.125rem;
+		padding: 0.125rem 0.25rem;
+	}
+}
+
+/* List-week day headings contain full dates, not month-grid date circles. */
+.dhc-calendar.ec-list .dhc-calendar-day-number {
+	justify-content: space-between;
+	gap: 0.75rem;
+	padding: 0.75rem 1rem;
+	background: hsl(var(--muted) / 0.3);
+	font-size: 0.875rem;
+}
+
+.dhc-calendar.ec-list .dhc-calendar-day-number time {
+	width: auto;
+	height: auto;
+	border-radius: 0;
+}
+
+.dhc-calendar.ec-list .dhc-calendar-event {
+	margin: 0;
+}
+
+.dhc-calendar.ec-list .dhc-calendar-body {
+	border: 0;
+}
+
+.dhc-calendar.ec-list .dhc-calendar-day {
+	flex: 0 0 auto;
+	margin-bottom: 0.75rem;
+	overflow: hidden;
+	border: 1px solid hsl(var(--border) / 0.72);
+	border-radius: 0.75rem;
+}
+
+.dhc-calendar.ec-list .dhc-calendar-day:last-child {
+	margin-bottom: 0;
+}
+
+.dhc-calendar.ec-list .ec-event-tag {
+	display: none;
+}
+
+.dhc-calendar.ec-list .dhc-calendar-event:hover {
+	background: hsl(var(--muted) / 0.2) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.dhc-calendar *,
+	.dhc-calendar *::before,
+	.dhc-calendar *::after {
+		scroll-behavior: auto !important;
+		transition-duration: 0.01ms !important;
+	}
+}
