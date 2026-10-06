@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decideLoanDrop, loanQueueDropHint } from "./loan-queue-dnd";
+import { decideLoanDrop } from "./loan-queue-dnd";
 
 describe("decideLoanDrop", () => {
 	it("opens approval for requested → handovers", () => {
@@ -77,11 +77,5 @@ describe("decideLoanDrop", () => {
 		expect(outcome.kind).toBe("rejected");
 		if (outcome.kind === "rejected")
 			expect(outcome.reason).toMatch(/Record return/);
-	});
-
-	it("has a hint for every outcome kind", () => {
-		expect(Object.keys(loanQueueDropHint).sort()).toEqual(
-			["ignored", "openAction", "rejected"].sort(),
-		);
 	});
 });

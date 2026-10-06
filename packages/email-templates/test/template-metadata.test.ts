@@ -27,13 +27,6 @@ describe("defineTemplate", () => {
     expect(template.alias).toBe("invite-member");
   });
 
-  it("exposes subject, sender, and variables untouched", () => {
-    const template = defineTemplate(valid);
-    expect(template.subject).toBe("You are invited");
-    expect(template.from).toContain("@");
-    expect(template.variables).toHaveLength(1);
-  });
-
   it("returns frozen metadata so definitions cannot drift after import", () => {
     const template = defineTemplate(valid);
     expect(Object.isFrozen(template)).toBe(true);

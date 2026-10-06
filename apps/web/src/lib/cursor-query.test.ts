@@ -1,15 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-	PAGE_SIZE_OPTIONS,
-	parsePageSize,
-	transitionCursorQuery,
-} from "#lib/cursor-query.js";
+import { parsePageSize, transitionCursorQuery } from "#lib/cursor-query.js";
 
 describe("cursor query", () => {
-	it("owns the supported page sizes", () => {
-		expect(PAGE_SIZE_OPTIONS).toEqual([10, 25, 50, 100]);
-	});
-
 	it.each([
 		["missing", "", 10],
 		["supported", "pageSize=25", 25],

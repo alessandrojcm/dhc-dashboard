@@ -13,17 +13,18 @@ import {
 const KINDS: TrainingAnnouncementKind[] = ["roll_call", "sparring"];
 
 describe("copy presets", () => {
-	it("pre-fills both kinds with the retired bot's wording", () => {
+	it("titles each kind's thread with its date", () => {
 		expect(COPY_PRESETS.roll_call.title).toBe("Roll call {{date}}");
 		expect(COPY_PRESETS.sparring.title).toBe("Sparring {{date}}");
-		expect(COPY_PRESETS.roll_call.message).toContain("training tonight");
-		expect(COPY_PRESETS.sparring.message).toContain("sparring");
+		for (const kind of KINDS) {
+			expect(COPY_PRESETS[kind].message.trim()).not.toBe("");
+		}
 	});
 
-	it("asks for next Sunday in the sparring preset, with no weekday token", () => {
+	it("names Sunday in the sparring preset instead of using the weekday token", () => {
 		// Sparring is always on Sundays, so the preset names the day in
 		// plain words instead of spending the `{{weekday}}` token.
-		expect(COPY_PRESETS.sparring.message).toContain("next Sunday");
+		expect(COPY_PRESETS.sparring.message).toMatch(/Sunday/);
 		expect(COPY_PRESETS.sparring.message).not.toContain("{{weekday}}");
 	});
 

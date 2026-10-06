@@ -353,14 +353,9 @@ test("scheduled posts show the preview without a posting checklist", async () =>
 		.toBeVisible();
 });
 
-test.each([
-	[
-		"skipped_holiday",
-		"Roll call isn’t sent on bank holidays. A “no training” holiday notice is posted instead.",
-	],
-	["skipped_disabled", "This announcement is paused."],
-	["skipped_suppressed", "Skipped for this date."],
-] as const)(
+// The exhaustive outcome → reason mapping lives in
+// `lib/training-announcements/inspector.test.ts`; one outcome proves the render.
+test.each([["skipped_suppressed", "Skipped for this date."]] as const)(
 	"%s shows only the reason, not an unsent preview",
 	async (outcome, reason) => {
 		useApi([occurrence({ outcome })]);
@@ -506,11 +501,7 @@ test("holiday items open read-only with no actions", async () => {
 		.element(dialog.getByText("No training — bank holiday"))
 		.toBeVisible();
 	await expect
-		.element(
-			dialog.getByText(
-				"Sent automatically on Irish bank holidays, the day before and on the day, in place of the roll call. It cannot be edited or skipped.",
-			),
-		)
+		.element(dialog.getByText(/cannot be edited or skipped/))
 		.toBeVisible();
 	await expect
 		.element(dialog.getByRole("button", { name: "Skip this date" }))

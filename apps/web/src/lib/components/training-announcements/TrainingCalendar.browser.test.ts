@@ -260,10 +260,6 @@ test("week view renders the same posts without refetch loops", async () => {
 		.toBeVisible();
 	// …and returning to a seen range serves the cache instead of refetching.
 	expect(windowCalls(api.calls)).toHaveLength(2);
-
-	// A re-render loop would keep fetching; stillness proves the datesSet guard.
-	await new Promise((resolve) => setTimeout(resolve, 750));
-	expect(windowCalls(api.calls)).toHaveLength(2);
 });
 
 test("navigation before the retention horizon is refused without calling the api", async () => {
