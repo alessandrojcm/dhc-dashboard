@@ -430,6 +430,127 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
     end
   end
 
+  describe "archived Workshops" do
+    setup do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          status: "published",
+          is_public: true,
+          price_member: 1800.0,
+          price_non_member: 2400.0
+        )
+        |> Ecto.Changeset.change(archived_at: DateTime.utc_now() |> DateTime.truncate(:second))
+        |> Repo.update!()
+
+      test_pid = self()
+
+      StripeStub.put(:create_refund, fn params ->
+        send(test_pid, {:create_refund, params})
+        {:ok, %{"id" => "re_unexpected", "status" => "pending"}}
+      end)
+
+      %{workshop: workshop}
+    end
+
+    test "refuse member initiation and durably compensate a completed payment without calling Stripe",
+         %{workshop: workshop} do
+      %{auth_user_id: member_id} = WorkshopFixtures.member_fixture()
+
+      assert {:error, :not_found} =
+               Workshops.create_member_payment_intent(workshop.id, member_id, %{})
+
+      pi = "pi_archived_#{System.unique_integer([:positive])}"
+      put_payment_intent(pi, workshop, member_id)
+
+      assert {:error, :compensation_pending} = complete_member(workshop, member_id, pi)
+
+      assert %Refund{status: "pending"} =
+               Repo.get_by!(Refund, payment_attempt_id: attempt_for(pi).id)
+
+      refute_received {:create_refund, _}
+    end
+
+    test "close the external gate and compensate an in-flight paid Checkout from its Payment Intent",
+         %{workshop: workshop} do
+      assert %{can_register: false, reason: "NOT_FOUND"} =
+               Workshops.external_registration_gate(workshop.id)
+
+      assert {:error, :not_found} =
+               Workshops.create_external_checkout_session(
+                 workshop.id,
+                 Ecto.UUID.generate(),
+                 "https://example.com/return?session={CHECKOUT_SESSION_ID}"
+               )
+
+      cs = "cs_archived_#{System.unique_integer([:positive])}"
+      attempt_id = Ecto.UUID.generate()
+
+      Repo.insert!(%PaymentAttempt{
+        id: attempt_id,
+        club_activity_id: workshop.id,
+        actor_type: "external",
+        amount: 2400,
+        currency: "eur",
+        status: "paid",
+        stripe_checkout_session_id: cs,
+        paid_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+      StripeStub.put_object(
+        :checkout_sessions,
+        StripeStub.checkout_session(cs, workshop.id, attempt_id)
+      )
+
+      assert {:error, :compensation_pending} =
+               Workshops.complete_external_registration(workshop.id, cs)
+
+      refund = Repo.get_by!(Refund, payment_attempt_id: attempt_id)
+      assert refund.status == "pending"
+      assert refund.stripe_payment_intent_id == "pi_for_#{cs}"
+      refute_received {:create_refund, _}
+    end
+  end
+
+  describe "external Registration Refunds" do
+    test "resolve the Payment Intent from the Checkout Session at submission" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published", is_public: true)
+      external = WorkshopFixtures.external_user_fixture()
+      %{principal_id: coordinator} = WorkshopFixtures.member_fixture()
+      cs = "cs_refund_external_#{System.unique_integer([:positive])}"
+
+      StripeStub.put_object(
+        :checkout_sessions,
+        StripeStub.checkout_session(cs, workshop.id, Ecto.UUID.generate())
+      )
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          external_user_id: external.id,
+          status: "confirmed",
+          amount_paid: 2400,
+          stripe_checkout_session_id: cs
+        )
+
+      assert {:ok, %Refund{status: "pending", stripe_payment_intent_id: nil} = refund} =
+               Workshops.process_refund(workshop.id, registration.id, "External", coordinator)
+
+      test_pid = self()
+
+      StripeStub.put(:create_refund, fn params ->
+        send(test_pid, {:create_refund, params})
+        {:ok, %{"id" => "re_external", "status" => "pending"}}
+      end)
+
+      assert {:ok, :submitted} = PaymentCommands.execute(:system, {:submit_refund, refund.id})
+
+      expected_pi = "pi_for_#{cs}"
+      assert_received {:create_refund, %{body: body}}
+      assert body[:payment_intent] == expected_pi
+      assert %Refund{stripe_payment_intent_id: ^expected_pi} = Repo.get!(Refund, refund.id)
+    end
+  end
+
   describe "refund eligibility" do
     test "the advisory read and the locked command apply the same rule" do
       start = DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second)

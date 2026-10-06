@@ -32,7 +32,6 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
     only: [
       hold_lock_then: 3,
       outside_sandbox: 1,
-      wait_for_lock_waiter: 0,
       wait_for_lock_waiter: 1
     ]
 
@@ -124,6 +123,29 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
                )
     end
 
+    test "trims the request note, drops a blank one, and snapshots the item label" do
+      %{item: item} = fixture()
+      member = principal_id()
+
+      assert {:ok, {:loan, noted}} =
+               AvailabilityCommands.execute(
+                 {:member, member},
+                 {:request_loan, item.slug, Map.put(dates(), "note", "  For Saturday  ")}
+               )
+
+      assert noted.request_note == "For Saturday"
+      assert noted.item_label == item.label
+
+      # One member may hold pending requests on several items.
+      assert {:ok, {:loan, blank}} =
+               AvailabilityCommands.execute(
+                 {:member, member},
+                 {:request_loan, create_item!().slug, Map.put(dates(), "note", "   ")}
+               )
+
+      assert blank.request_note == nil
+    end
+
     test "translates the pending-request index into a stable domain error" do
       %{item: item} = fixture()
       member = principal_id()
@@ -150,6 +172,24 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
       assert cancelled.status == "cancelled"
       assert {:ok, {:loan, again}} = cancel_request(loan.id, owner)
       assert again.status == "cancelled"
+    end
+
+    test "records the member's note and refuses a closed loan" do
+      %{item: item} = fixture()
+      owner = principal_id()
+      {:ok, {:loan, loan}} = request(item, owner)
+
+      assert {:ok, {:loan, cancelled}} =
+               AvailabilityCommands.execute(
+                 {:member, owner},
+                 {:cancel_request, loan.id, %{"note" => "Plans changed"}}
+               )
+
+      assert cancelled.decision_note == "Plans changed"
+
+      returned = loan_in_state(item, owner, "checked_out")
+      assert {:ok, _} = return(returned.id)
+      assert {:error, :not_cancellable} = cancel_request(returned.id, owner)
     end
 
     test "releases an approved loan but not a checked-out one" do
@@ -219,6 +259,27 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
       assert {:ok, _} = request(other, principal_id())
     end
 
+    test "approval records the operator, keeps the requested dates, and notes why competitors lost" do
+      %{item: item} = fixture()
+      today = ClubCalendar.today()
+      {:ok, {:loan, winning}} = request(item, principal_id(), today, Date.add(today, 3))
+      {:ok, {:loan, losing}} = request(item, principal_id())
+      approver = principal_id()
+
+      assert {:ok, {:loan, approved}} =
+               operator(
+                 {:approve_loan, winning.id, %{"dueOn" => Date.to_iso8601(Date.add(today, 10))}},
+                 approver
+               )
+
+      assert approved.decided_by_principal_id == approver
+      assert %DateTime{} = approved.decided_at
+      assert approved.approved_due_on == Date.add(today, 10)
+      # The requested dates are a retained fact and are never rewritten.
+      assert approved.requested_due_on == Date.add(today, 3)
+      assert operator_loan(losing.id).decision_note =~ "another request"
+    end
+
     test "approval refuses an item that maintenance or archival made unavailable" do
       %{item: item} = fixture()
       {:ok, {:loan, request}} = request(item, principal_id())
@@ -241,6 +302,12 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
       assert cancelled.status == "cancelled"
       assert cancelled.decision_note == "Needed"
       assert active_allocation_count(item) == 0
+      # A cancelled loan's dates are closed to edits.
+      assert {:error, :not_editable} = edit_dates(loan.id, %{"dueOn" => far_due()})
+
+      # After checkout the member holds the item, so release is a return.
+      checked_out = loan_in_state(item, principal_id(), "checked_out")
+      assert {:error, :not_approved} = cancel_loan(checked_out.id)
     end
   end
 
@@ -444,6 +511,105 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
       assert moved.container_id == destination.id
       assert {:error, :not_found} = move(item, Ecto.UUID.generate())
       assert {:error, :not_found} = move(item, nil)
+      # Moving does not end the maintenance period.
+      assert [%{open?: true}] = periods(item)
+    end
+
+    test "refuses an archived destination and leaves requests and every other field alone" do
+      %{item: item, category: category} = fixture()
+      {:ok, {:loan, pending}} = request(item, principal_id())
+
+      archived = create_container!()
+      {:ok, _} = Inventory.archive_container(archived.id)
+      assert {:error, :archived_container} = move(item, archived.id)
+
+      destination = create_container!()
+
+      assert {:ok, {:item, moved}} =
+               operator(
+                 {:move_item, item.id,
+                  %{
+                    "containerId" => destination.id,
+                    "notes" => "overwritten?",
+                    "categoryId" => create_category!().id,
+                    "values" => %{}
+                  }}
+               )
+
+      assert moved.container_id == destination.id
+      assert moved.category_id == category.id
+      assert moved.notes == item.notes
+      # Movement is not an allocation decision: the request survives.
+      assert loan_status(pending.id) == "requested"
+    end
+  end
+
+  describe "item lifecycle bookkeeping" do
+    test "maintenance and retirement record their operator and reject pending requests with a reason" do
+      %{item: item} = fixture()
+      opener = principal_id()
+      {:ok, {:loan, pending}} = request(item, principal_id())
+
+      for attrs <- [%{}, %{"reason" => nil}, %{"reason" => 42}] do
+        assert {:error, :reason_required} = open_maintenance(item, attrs)
+      end
+
+      assert {:ok, _} = operator({:open_maintenance, item.id, %{"reason" => "Chipped"}}, opener)
+      assert %{decided_by_principal_id: ^opener, decision_note: note} = operator_loan(pending.id)
+      assert note =~ "maintenance"
+
+      closer = principal_id()
+      assert {:ok, _} = operator({:close_maintenance, item.id, %{}}, closer)
+
+      assert [
+               %{
+                 start_reason: "Chipped",
+                 started_by_principal_id: ^opener,
+                 ended_by_principal_id: ^closer,
+                 end_note: nil
+               }
+             ] = periods(item)
+
+      {:ok, {:loan, waiting}} = request(item, principal_id())
+      retirer = principal_id()
+      assert {:ok, {:item, archived}} = operator({:retire_item, item.id, %{}}, retirer)
+      assert archived.archived_by_principal_id == retirer
+      assert %{decided_by_principal_id: ^retirer, decision_note: note} = operator_loan(waiting.id)
+      assert note =~ "archiv"
+
+      assert {:ok, {:item, restored}} = reactivate(item)
+      assert restored.archived_by_principal_id == nil
+      assert {:error, :not_found} = open_maintenance(%{id: "item-999999"})
+    end
+
+    test "a checked-out loan blocks maintenance, retirement, and movement" do
+      %{item: item} = fixture()
+      loan = loan_in_state(item, principal_id(), "checked_out")
+
+      assert {:error, :loan_active} = open_maintenance(item)
+      assert {:error, :loan_active} = retire(item)
+      assert {:error, :loan_active} = move(item, create_container!().id)
+      assert loan_status(loan.id) == "checked_out"
+    end
+
+    test "reactivation is refused while the container chain is archived" do
+      parent = create_container!()
+
+      {:ok, child} =
+        Inventory.create_container(
+          %{
+            "name" => "Shelf #{System.unique_integer([:positive])}",
+            "parentContainerId" => parent.id
+          },
+          principal_id()
+        )
+
+      {:ok, item} = create_operator_item(child.id, create_category!().id)
+      {:ok, _} = retire(item)
+      {:ok, _} = Inventory.archive_container(child.id)
+      {:ok, _} = Inventory.archive_container(parent.id)
+
+      assert {:error, :archived_container} = reactivate(item)
     end
   end
 
@@ -973,6 +1139,11 @@ defmodule Dhc.Inventory.AvailabilityCommandsTest do
     do: operator({:move_item, item.id, %{"containerId" => container_id}})
 
   defp periods(item), do: Inventory.list_operator_item_maintenance_periods(item.id)
+
+  defp operator_loan(loan_id) do
+    {:ok, view} = Inventory.get_operator_loan(loan_id)
+    view
+  end
 
   defp far_due, do: Date.to_iso8601(Date.add(ClubCalendar.today(), 30))
 

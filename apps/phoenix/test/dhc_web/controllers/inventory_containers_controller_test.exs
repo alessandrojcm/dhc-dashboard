@@ -119,10 +119,7 @@ defmodule DhcWeb.InventoryContainersControllerTest do
       # Root room: parentContainer nil, parentContainerId nil, itemCount 0.
       root_payload = Enum.find(containers, &(&1["name"] == "Root Room"))
 
-      assert root_payload["parentContainerId"] == to_uuid(root.id) or
-               root_payload["parentContainerId"] == nil
-
-      # parentContainerId is nil for a root container this test created with no parent.
+      assert root_payload["parentContainerId"] == nil
       assert root_payload["parentContainer"] == nil
       assert root_payload["itemCount"] == 0
       assert Map.has_key?(root_payload, "id")

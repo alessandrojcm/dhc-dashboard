@@ -33,9 +33,8 @@ subjects, cookies, or token material as evidence.
    [`auth-m1-rehearsal.md`](auth-m1-rehearsal.md), including its rollback.
 2. Rehearse M2 and its rollback from the repository root:
 
-   ```sh
-   mise run phx-test test/dhc/auth/m2_cutover_rehearsal_test.exs
-   ```
+   (Historical: the `test/dhc/auth/m2_cutover_rehearsal_test.exs` suite was
+   deleted after cutover; restore it from history to rehearse again.)
 
 3. Verify the release candidates contain the matching Phoenix-auth API and
    frontend, and retain the previous Supabase-auth release identifiers for

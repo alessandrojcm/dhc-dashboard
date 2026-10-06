@@ -347,7 +347,7 @@ defmodule Dhc.Inventory.OperatorItemsTest do
       archived_container = create_container!()
       {:ok, _} = Inventory.archive_container(archived_container.id)
 
-      assert {:error, :not_found} =
+      assert {:error, :container_not_found} =
                Inventory.create_operator_item(
                  %{"container_id" => Ecto.UUID.generate(), "category_id" => category.id},
                  principal_id()
@@ -359,7 +359,7 @@ defmodule Dhc.Inventory.OperatorItemsTest do
                  principal_id()
                )
 
-      assert {:error, :not_found} =
+      assert {:error, :category_not_found} =
                Inventory.create_operator_item(
                  %{"container_id" => container_id, "category_id" => Ecto.UUID.generate()},
                  principal_id()
@@ -688,7 +688,7 @@ defmodule Dhc.Inventory.OperatorItemsTest do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
 
-      assert {:error, :not_found} =
+      assert {:error, :category_not_found} =
                Inventory.change_operator_item_category(
                  item.id,
                  %{"category_id" => Ecto.UUID.generate(), "values" => %{}},
@@ -707,47 +707,7 @@ defmodule Dhc.Inventory.OperatorItemsTest do
     end
   end
 
-  describe "legacy slice is gone" do
-    test "target writes touch only target columns" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, brand} = create_definition(category.id, "Brand", "text")
-
-      {:ok, item} =
-        Inventory.create_operator_item(
-          %{
-            "container_id" => container_id,
-            "category_id" => category.id,
-            "notes" => "target only",
-            "values" => %{brand.id => "Regenyei"}
-          },
-          principal_id()
-        )
-
-      {:ok, _} =
-        Inventory.update_operator_item(
-          item.id,
-          %{"notes" => "still target only", "values" => %{brand.id => "Ensifer"}},
-          principal_id()
-        )
-
-      # ALE-289 dropped the legacy columns and the inventory_history table:
-      # the row carries only target facts. Assert at the catalog level so
-      # the test names columns, not their absence.
-      assert %{rows: [[slug, notes]]} =
-               Repo.query!("SELECT slug, notes FROM inventory_items WHERE id = $1", [
-                 Ecto.UUID.dump!(item.id)
-               ])
-
-      assert slug == item.slug
-      assert notes == "still target only"
-
-      assert %{rows: [[false]]} =
-               Repo.query!(
-                 "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_history')",
-                 []
-               )
-    end
-
+  describe "database backstops" do
     test "the minted slug is rejected as a duplicate by the database" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, first} = create_item(container_id, category.id)

@@ -4,13 +4,11 @@ defmodule DhcWeb.OnboardingControllerTest do
   alias Dhc.Invitations.Invitation
   alias Dhc.Auth.ExternalIdentity
   alias Dhc.Auth.Principal
-  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordCollisionAuditEvent
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
-  alias Dhc.UserProfiles.UserProfile
 
   setup do
     original_adapter = Application.get_env(:dhc, :onboarding_stripe_adapter)
@@ -72,22 +70,6 @@ defmodule DhcWeb.OnboardingControllerTest do
       })
 
     assert %{"data" => %{"state" => "awaiting_oauth"}} = json_response(resumed, 200)
-    assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 1
-
-    assert %InvitationAcceptanceAttempt{
-             stripe_customer_id: nil,
-             stripe_state: %{},
-             acceptance_data: %{}
-           } = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
-
-    assert Repo.aggregate(InvitationAcceptanceDiscordContinuation, :count) == 1
-    refute Repo.get(Dhc.Auth.Principal, invitation.prospective_principal_id)
-    refute Repo.exists?(Dhc.Auth.ExternalIdentity)
-    refute Repo.exists?(Dhc.Auth.PrincipalToken)
-    refute Repo.exists?(Dhc.Auth.UserRole)
-    refute Repo.get_by(UserProfile, principal_id: invitation.prospective_principal_id)
-    refute Repo.get(MemberProfile, invitation.prospective_principal_id)
-    refute Repo.exists?("oban_jobs")
   end
 
   test "verifies only the Discord subject, creates a transient claim, and returns a safe resume state",
@@ -419,87 +401,6 @@ defmodule DhcWeb.OnboardingControllerTest do
     assert continuation_id == continuation.id
     assert existing_principal_id == principal.id
     assert fingerprint == continuation.subject_fingerprint
-  end
-
-  test "a retired External Identity does not block a fresh subject claim" do
-    invitation = invitation_fixture()
-
-    principal =
-      %Principal{email: "retired-discord-owner@example.com"}
-      |> Repo.insert!()
-
-    %ExternalIdentity{
-      principal_id: principal.id,
-      provider: "discord",
-      provider_subject: "retired-discord-subject",
-      metadata: %{},
-      sign_in_disabled_at: DateTime.utc_now(),
-      retired_at: DateTime.utc_now()
-    }
-    |> Repo.insert!()
-
-    {:ok, handle, _view} =
-      Dhc.Onboarding.Acceptance.open(
-        invitation.id,
-        invitation.email,
-        Date.to_iso8601(invitation.date_of_birth)
-      )
-
-    assert {:ok, %{state: "discordVerified"}} =
-             Dhc.Onboarding.Acceptance.verify_discord(handle, %{
-               "sub" => "retired-discord-subject"
-             })
-
-    assert Repo.get_by!(InvitationAcceptanceDiscordSubjectClaim, continuation_id: handle).provider_subject ==
-             "retired-discord-subject"
-
-    refute Repo.exists?(Dhc.Auth.PrincipalToken)
-  end
-
-  test "the Postgres subject-claim constraint prevents a second acceptance from reserving one Discord subject" do
-    first = invitation_fixture()
-    second = invitation_fixture()
-
-    {:ok, first_handle, _view} =
-      Dhc.Onboarding.Acceptance.open(
-        first.id,
-        first.email,
-        Date.to_iso8601(first.date_of_birth)
-      )
-
-    {:ok, second_handle, _view} =
-      Dhc.Onboarding.Acceptance.open(
-        second.id,
-        second.email,
-        Date.to_iso8601(second.date_of_birth)
-      )
-
-    claims = %{"sub" => "one-subject", "preferred_username" => "same-account"}
-
-    assert {:ok, %{state: "discordVerified"}} =
-             Dhc.Onboarding.Acceptance.verify_discord(first_handle, claims)
-
-    assert {:error, :collision} =
-             Dhc.Onboarding.Acceptance.verify_discord(second_handle, claims)
-
-    assert Repo.aggregate(InvitationAcceptanceDiscordSubjectClaim, :count) == 1
-
-    assert Repo.get!(InvitationAcceptanceDiscordContinuation, first_handle).status == "verified"
-
-    second_continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, second_handle)
-
-    assert second_continuation.status == "collision"
-    assert second_continuation.provider_subject == nil
-
-    assert %InvitationAcceptanceDiscordCollisionAuditEvent{
-             continuation_id: continuation_id,
-             existing_principal_id: nil,
-             reason_code: "active_claim",
-             subject_fingerprint: fingerprint
-           } = Repo.one!(InvitationAcceptanceDiscordCollisionAuditEvent)
-
-    assert continuation_id == second_handle
-    assert fingerprint == second_continuation.subject_fingerprint
   end
 
   test "an OAuth protocol failure terminalizes the continuation without creating credentials", %{

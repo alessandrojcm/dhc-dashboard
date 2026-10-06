@@ -356,11 +356,21 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
   end
 
   defp subject_lock_race(task_supervisor, test_process, subject, order, operations) do
+    advisory_lock_race(
+      task_supervisor,
+      test_process,
+      fn -> DiscordSubjectLock.lock!(subject) end,
+      order,
+      operations
+    )
+  end
+
+  defp advisory_lock_race(task_supervisor, test_process, lock_fun, order, operations) do
     race_ref = make_ref()
 
     holder =
       Task.Supervisor.async_nolink(task_supervisor, fn ->
-        hold_subject_lock(subject, test_process, race_ref)
+        hold_advisory_lock(lock_fun, test_process, race_ref)
       end)
 
     assert_receive {:subject_lock_held, ^race_ref, blocker_pid}
@@ -391,15 +401,15 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     Map.new(tasks, fn {label, task} -> {label, Task.await(task, 10_000)} end)
   end
 
-  defp hold_subject_lock(subject, test_process, race_ref) do
+  defp hold_advisory_lock(lock_fun, test_process, race_ref) do
     unboxed(fn ->
-      Repo.transaction(fn -> hold_subject_lock_transaction(subject, test_process, race_ref) end)
+      Repo.transaction(fn -> hold_advisory_lock_transaction(lock_fun, test_process, race_ref) end)
     end)
   end
 
-  defp hold_subject_lock_transaction(subject, test_process, race_ref) do
+  defp hold_advisory_lock_transaction(lock_fun, test_process, race_ref) do
     blocker_pid = postgres_backend_pid()
-    DiscordSubjectLock.lock!(subject)
+    lock_fun.()
     send(test_process, {:subject_lock_held, race_ref, blocker_pid})
 
     receive do
@@ -654,32 +664,36 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
 
     invitation = unboxed(fn -> Repo.get!(Invitation, acceptance.invitation_id) end)
 
-    callback_task =
-      ready_task(task_supervisor, test_process, :callback, fn ->
-        Acceptance.verify_discord(acceptance.continuation_id, %{
-          "sub" => unique_subject("callback-restart"),
-          "preferred_username" => "callback-restart"
-        })
-      end)
+    # Both operations queue behind a held principal advisory lock before either
+    # takes a row lock, so they provably contend; released together, a
+    # divergent row-lock order would surface as a PostgreSQL deadlock error.
+    results =
+      advisory_lock_race(
+        task_supervisor,
+        test_process,
+        fn -> DiscordSubjectLock.lock_principal!(invitation.prospective_principal_id) end,
+        [:callback, :restart],
+        %{
+          callback: fn ->
+            Acceptance.verify_discord(acceptance.continuation_id, %{
+              "sub" => unique_subject("callback-restart"),
+              "preferred_username" => "callback-restart"
+            })
+          end,
+          restart: fn ->
+            Acceptance.open(
+              invitation.id,
+              invitation.email,
+              Date.to_iso8601(invitation.date_of_birth),
+              acceptance.continuation_id
+            )
+          end
+        }
+      )
 
-    restart_task =
-      ready_task(task_supervisor, test_process, :restart, fn ->
-        Acceptance.open(
-          invitation.id,
-          invitation.email,
-          Date.to_iso8601(invitation.date_of_birth),
-          acceptance.continuation_id
-        )
-      end)
+    assert {:ok, %{state: "discordVerified"}} = results.callback
 
-    assert_receive {:ready, :callback, callback_pid}
-    assert_receive {:ready, :restart, restart_pid}
-    send(callback_pid, :go)
-    send(restart_pid, :go)
-
-    assert {:ok, %{state: "discordVerified"}} = Task.await(callback_task)
-
-    assert {:ok, continuation_id, %{state: restart_state}} = Task.await(restart_task)
+    assert {:ok, continuation_id, %{state: restart_state}} = results.restart
     assert continuation_id == acceptance.continuation_id
     assert restart_state in ["awaiting_oauth", "discordVerified"]
 

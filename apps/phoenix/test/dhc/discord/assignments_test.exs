@@ -222,14 +222,30 @@ defmodule Dhc.Discord.AssignmentsTest do
              )
   end
 
-  test "role revocation trigger shares the assignment actor lock namespace" do
-    %{rows: [[definition]]} =
-      Repo.query!(
-        "SELECT pg_get_functiondef('discord_assignment_lock_admin_role_mutation()'::regprocedure)"
+  test "revoking an admin role waits on the principal's Discord assignment lock" do
+    principal_id = Ecto.UUID.generate()
+
+    # The revocation runs in its own rolled-back transaction, so nothing is
+    # committed; the held lock is the one `Dhc.Auth.DiscordSubjectLock` takes.
+    [revocation] =
+      Dhc.ConcurrencyHelpers.hold_lock_then(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        ["discord/principal/" <> principal_id],
+        [
+          fn ->
+            Repo.transaction(fn ->
+              email = "revocation-#{System.unique_integer([:positive])}@example.com"
+              {:ok, _} = Dhc.Auth.register_principal_with_id(principal_id, %{email: email})
+              id = Ecto.UUID.dump!(principal_id)
+              Repo.insert_all("user_roles", [[principal_id: id, role: "admin"]])
+              Repo.query!("DELETE FROM user_roles WHERE principal_id = $1", [id])
+              Repo.rollback(:revoked)
+            end)
+          end
+        ]
       )
 
-    assert definition =~ "discord/principal/"
-    refute definition =~ "discord:principal:"
+    assert revocation == {:error, :revoked}
   end
 
   test "withdrawal and supersession preserve old evidence and require fresh independent review",

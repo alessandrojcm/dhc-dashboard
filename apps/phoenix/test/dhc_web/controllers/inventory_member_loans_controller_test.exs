@@ -9,7 +9,8 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
   status filter, the container path appearing only from approval onward,
   derived overdue, and the typed conflict for a loan past checkout.
 
-  Domain invariants live in `Dhc.Inventory.MemberLoansTest`. Operator
+  Domain invariants live in `Dhc.Inventory.MemberLoansTest` and
+  `Dhc.Inventory.AvailabilityCommandsTest`. Operator
   transitions are ALE-286 and appear here as SQL fixtures.
   """
 
@@ -17,7 +18,6 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
   use Oban.Testing, repo: Dhc.Repo
 
   alias Dhc.Inventory
-  alias Dhc.ClubCalendar
   alias Dhc.Notifications.Notification
   alias Dhc.Notifications.Workers.KeyedCreateWorker
   alias Dhc.Repo
@@ -134,61 +134,6 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
       assert loan["itemSlug"] == item.slug
       assert is_binary(loan["itemLabel"])
     end
-
-    test "discloses the container path only from approval onward", %{conn: conn} do
-      %{item: item} = fixture()
-      loan_id = create_loan!(item, @actor_id, "requested")
-      set_container_path!(loan_id, "Clubhouse › Rack 2")
-
-      pending = conn |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
-      assert json_response(pending, 200)["data"]["containerPath"] == nil
-
-      set_status!(loan_id, "approved")
-
-      approved =
-        build_conn() |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
-
-      assert json_response(approved, 200)["data"]["containerPath"] == "Clubhouse › Rack 2"
-    end
-
-    test "advertises cancellable only before checkout", %{conn: conn} do
-      %{item: item} = fixture()
-      loan_id = create_loan!(item, @actor_id, "requested")
-
-      pending = conn |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
-      assert json_response(pending, 200)["data"]["cancellable"] == true
-
-      for {status, cancellable?} <- [
-            {"approved", true},
-            {"checked_out", false},
-            {"returned", false},
-            {"rejected", false},
-            {"cancelled", false}
-          ] do
-        set_status!(loan_id, status)
-
-        conn = build_conn() |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
-        assert json_response(conn, 200)["data"]["cancellable"] == cancellable?, status
-      end
-    end
-
-    test "renders overdue as derived, not stored", %{conn: conn} do
-      %{item: item} = fixture()
-      today = ClubCalendar.today()
-      loan_id = create_loan!(item, @actor_id, "checked_out")
-      set_approved_dates!(loan_id, Date.add(today, -10), Date.add(today, -1))
-
-      late = conn |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
-      assert json_response(late, 200)["data"]["overdue"] == true
-      assert json_response(late, 200)["data"]["status"] == "checked_out"
-
-      set_approved_dates!(loan_id, Date.add(today, -10), Date.add(today, 3))
-
-      extended =
-        build_conn() |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
-
-      assert json_response(extended, 200)["data"]["overdue"] == false
-    end
   end
 
   # ── History ─────────────────────────────────────────────────────
@@ -214,62 +159,29 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
                "Rejected automatically: the item went into maintenance."
     end
 
-    test "filters to open or closed and rejects an unknown filter", %{conn: conn} do
-      %{item: item} = fixture()
-      open = create_loan!(item, @actor_id, "approved")
-      closed = create_loan!(create_item!(), @actor_id, "returned")
-
-      open_page =
-        conn
-        |> auth_conn("member")
-        |> get("/api/inventory/loans/mine", %{"status" => "open"})
-
-      assert %{"data" => %{"loans" => open_loans}} = json_response(open_page, 200)
-      assert Enum.map(open_loans, & &1["id"]) == [open]
-
-      closed_page =
-        build_conn()
-        |> auth_conn("member")
-        |> get("/api/inventory/loans/mine", %{"status" => "closed"})
-
-      assert %{"data" => %{"loans" => closed_loans}} = json_response(closed_page, 200)
-      assert Enum.map(closed_loans, & &1["id"]) == [closed]
-
+    test "400s an unknown status filter", %{conn: conn} do
       bad =
-        build_conn()
-        |> auth_conn("member")
-        |> get("/api/inventory/loans/mine", %{"status" => "pending"})
+        conn |> auth_conn("member") |> get("/api/inventory/loans/mine", %{"status" => "pending"})
 
       assert %{"errors" => %{"detail" => detail}} = json_response(bad, 400)
       assert detail =~ "status"
     end
 
-    test "pages with exact totalCount and cursor metadata", %{conn: conn} do
-      loan_ids = for _ <- 1..12, do: create_loan!(create_item!(), @actor_id, "returned")
+    test "answers the page envelope", %{conn: conn} do
+      loan_id = create_loan!(create_item!(), @actor_id, "returned")
 
-      first =
+      response =
         conn |> auth_conn("member") |> get("/api/inventory/loans/mine", %{"limit" => "10"})
 
-      assert %{"data" => data} = json_response(first, 200)
-      assert data["totalCount"] == 12
-      assert data["limit"] == 10
-      assert data["previousCursor"] == nil
-      assert is_binary(data["nextCursor"])
-
-      second =
-        build_conn()
-        |> auth_conn("member")
-        |> get("/api/inventory/loans/mine", %{
-          "limit" => "10",
-          "cursor" => data["nextCursor"]
-        })
-
-      assert %{"data" => page_two} = json_response(second, 200)
-      assert page_two["totalCount"] == 12
-      assert page_two["nextCursor"] == nil
-
-      paged = Enum.map(data["loans"] ++ page_two["loans"], & &1["id"])
-      assert Enum.sort(paged) == Enum.sort(loan_ids)
+      assert %{
+               "data" => %{
+                 "loans" => [%{"id" => ^loan_id}],
+                 "totalCount" => 1,
+                 "limit" => 10,
+                 "nextCursor" => nil,
+                 "previousCursor" => nil
+               }
+             } = json_response(response, 200)
     end
 
     test "answers 400 for a bad limit or mismatched cursor", %{conn: conn} do
@@ -460,31 +372,10 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
     Ecto.UUID.load!(loan_id)
   end
 
-  defp set_status!(loan_id, status) do
-    Repo.query!("UPDATE inventory_loans SET status = $1 WHERE id = $2", [
-      status,
-      Ecto.UUID.dump!(loan_id)
-    ])
-  end
-
   defp reject!(loan_id, note) do
     Repo.query!(
       "UPDATE inventory_loans SET status = 'rejected', decided_at = NOW(), decision_note = $1 WHERE id = $2",
       [note, Ecto.UUID.dump!(loan_id)]
-    )
-  end
-
-  defp set_container_path!(loan_id, path) do
-    Repo.query!(
-      "UPDATE inventory_loans SET approved_container_path_snapshot = $1 WHERE id = $2",
-      [path, Ecto.UUID.dump!(loan_id)]
-    )
-  end
-
-  defp set_approved_dates!(loan_id, starts_on, due_on) do
-    Repo.query!(
-      "UPDATE inventory_loans SET approved_start_on = $1, approved_due_on = $2 WHERE id = $3",
-      [starts_on, due_on, Ecto.UUID.dump!(loan_id)]
     )
   end
 

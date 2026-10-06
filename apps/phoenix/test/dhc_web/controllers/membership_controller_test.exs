@@ -325,7 +325,6 @@ defmodule DhcWeb.MembershipControllerTest do
     } do
       member = insert_member(is_active: false, customer_id: "cus_happy")
       start_date = Date.utc_today()
-      prefix = idempotency_prefix(member.auth_user_id, start_date)
 
       expect_reactivation_choreography(%{
         customer_id: "cus_happy",
@@ -334,9 +333,7 @@ defmodule DhcWeb.MembershipControllerTest do
         annual_price_id: "price_annual",
         monthly_subscription_id: "sub_monthly",
         annual_subscription_id: "sub_annual",
-        payment_intent_status: "succeeded",
-        idempotency_prefix: prefix,
-        start_date: start_date
+        payment_intent_status: "succeeded"
       })
 
       conn = post_reactivate(conn, member.auth_user_id, start_date)
@@ -376,8 +373,6 @@ defmodule DhcWeb.MembershipControllerTest do
         monthly_subscription_id: "sub_monthly_reactivated",
         annual_subscription_id: "sub_annual_reactivated",
         payment_intent_status: "succeeded",
-        idempotency_prefix: idempotency_prefix(member.auth_user_id, start_date),
-        start_date: start_date,
         existing_subscriptions: [
           canceled_paused_membership_subscription(
             "standard_membership_fee",
@@ -416,8 +411,6 @@ defmodule DhcWeb.MembershipControllerTest do
         monthly_subscription_id: "sub_monthly",
         annual_subscription_id: "sub_annual",
         payment_intent_status: "succeeded",
-        idempotency_prefix: idempotency_prefix(member.auth_user_id, start_date),
-        start_date: start_date,
         assert_confirm_body: fn body ->
           # The saved method is charged under the member's EXISTING mandate:
           # acceptance is recorded as offline (operator-initiated), never a
@@ -447,9 +440,7 @@ defmodule DhcWeb.MembershipControllerTest do
         annual_price_id: "price_annual",
         monthly_subscription_id: "sub_monthly_pending",
         annual_subscription_id: "sub_annual_pending",
-        payment_intent_status: "processing",
-        idempotency_prefix: idempotency_prefix(member.auth_user_id, start_date),
-        start_date: start_date
+        payment_intent_status: "processing"
       })
 
       conn = post_reactivate(conn, member.auth_user_id, start_date)
@@ -465,53 +456,6 @@ defmodule DhcWeb.MembershipControllerTest do
       # Async SEPA settlement is still a healthy reactivation: subscriptions
       # exist and cover the member while the bank processes the debit.
       assert_member_active("cus_pending")
-    end
-  end
-
-  describe "reactivate idempotency keys" do
-    test "derive from member id and start date and are stable across retries", %{conn: conn} do
-      member = insert_member(is_active: false, customer_id: "cus_idem")
-      start_date = Date.utc_today() |> Date.add(7)
-      prefix = idempotency_prefix(member.auth_user_id, start_date)
-
-      observed_keys = :ets.new(:observed_keys, [:bag, :public])
-
-      expect_reactivation_choreography(%{
-        customer_id: "cus_idem",
-        payment_method_id: "pm_sepa_saved",
-        monthly_price_id: "price_monthly",
-        annual_price_id: "price_annual",
-        monthly_subscription_id: "sub_monthly",
-        annual_subscription_id: "sub_annual",
-        payment_intent_status: "succeeded",
-        idempotency_prefix: prefix,
-        start_date: start_date,
-        observe_keys: observed_keys
-      })
-
-      # Two identical requests — the same deterministic key namespace must be
-      # replayed so Stripe dedupes instead of double-charging.
-      conn1 = post_reactivate(conn, member.auth_user_id, start_date)
-      assert %{"data" => %{"paymentState" => "succeeded"}} = json_response(conn1, 200)
-
-      conn2 = post_rebuild_conn(conn, member.auth_user_id, start_date)
-      assert %{"data" => %{"paymentState" => "succeeded"}} = json_response(conn2, 200)
-
-      keys = observed_keys |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
-
-      # ALE-253: the annual fee mode is part of the key namespace; an absent
-      # field defaults to prorated_now.
-      assert "membership-reactivate:#{member.auth_user_id}:#{Date.to_iso8601(start_date)}:prorated_now:subscription-monthly" in keys
-
-      assert "membership-reactivate:#{member.auth_user_id}:#{Date.to_iso8601(start_date)}:prorated_now:subscription-annual" in keys
-
-      assert Enum.any?(
-               keys,
-               &String.starts_with?(&1, "#{prefix}:prorated_now:payment-intent-pi_")
-             )
-
-      # Every mutating call used the SAME namespace — no invitation-era keys.
-      refute Enum.any?(keys, &String.contains?(&1, "invitation-acceptance"))
     end
   end
 
@@ -542,14 +486,8 @@ defmodule DhcWeb.MembershipControllerTest do
 
   # ── ALE-253: annual fee deferral option ────────────────────────────────
   describe "reactivate annual fee modes" do
-    test "deferred_next_year creates the annual subscription trialing until next January", %{
-      conn: conn
-    } do
+    test "accepts deferred_next_year and returns the reactivation", %{conn: conn} do
       member = insert_member(is_active: false, customer_id: "cus_deferred")
-      start_date = Date.utc_today() |> Date.add(7)
-      prefix = idempotency_prefix(member.auth_user_id, start_date)
-
-      observed_keys = :ets.new(:observed_keys_deferred, [:bag, :public])
 
       expect_reactivation_choreography(%{
         customer_id: "cus_deferred",
@@ -558,18 +496,14 @@ defmodule DhcWeb.MembershipControllerTest do
         annual_price_id: "price_annual",
         monthly_subscription_id: "sub_monthly_d",
         annual_subscription_id: "sub_annual_d",
-        payment_intent_status: "succeeded",
-        idempotency_prefix: prefix,
-        start_date: start_date,
-        annual_trial_end: january_anchor_now_unix(),
-        observe_keys: observed_keys
+        payment_intent_status: "succeeded"
       })
 
       conn =
         conn
         |> put_req_header("authorization", "Bearer admin-token")
         |> post("/api/members/#{member.auth_user_id}/membership/reactivate", %{
-          "startDate" => Date.to_iso8601(start_date),
+          "startDate" => Date.to_iso8601(Date.utc_today() |> Date.add(7)),
           "annualFeeMode" => "deferred_next_year"
         })
 
@@ -580,116 +514,6 @@ defmodule DhcWeb.MembershipControllerTest do
                  "annualSubscriptionId" => "sub_annual_d"
                }
              } = json_response(conn, 200)
-
-      # Both subscriptions begin after this future start date, so neither has a
-      # first invoice to confirm off-session yet.
-      keys = observed_keys |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
-
-      assert "membership-reactivate:#{member.auth_user_id}:#{Date.to_iso8601(start_date)}:deferred_next_year:subscription-annual" in keys
-
-      refute Enum.any?(keys, &String.contains?(&1, ":payment-intent-pi_sub_monthly_d"))
-
-      refute Enum.any?(keys, &String.contains?(&1, "payment-intent-pi_sub_annual_d")),
-             "the deferred annual subscription has no first invoice and must not be confirmed"
-    end
-
-    test "explicit prorated_now keeps the initial-release behaviour (annual charged prorated now)",
-         %{conn: conn} do
-      member = insert_member(is_active: false, customer_id: "cus_prorated")
-      start_date = Date.utc_today() |> Date.add(7)
-      prefix = idempotency_prefix(member.auth_user_id, start_date)
-
-      observed_keys = :ets.new(:observed_keys_prorated, [:bag, :public])
-
-      expect_reactivation_choreography(%{
-        customer_id: "cus_prorated",
-        payment_method_id: "pm_sepa_saved",
-        monthly_price_id: "price_monthly",
-        annual_price_id: "price_annual",
-        monthly_subscription_id: "sub_monthly_p",
-        annual_subscription_id: "sub_annual_p",
-        payment_intent_status: "succeeded",
-        idempotency_prefix: prefix,
-        start_date: start_date,
-        observe_keys: observed_keys
-      })
-
-      conn =
-        conn
-        |> put_req_header("authorization", "Bearer admin-token")
-        |> post("/api/members/#{member.auth_user_id}/membership/reactivate", %{
-          "startDate" => Date.to_iso8601(start_date),
-          "annualFeeMode" => "prorated_now"
-        })
-
-      assert %{"data" => %{"paymentState" => "succeeded"}} = json_response(conn, 200)
-
-      keys = observed_keys |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
-
-      # The future-start monthly subscription has no first invoice yet, while the
-      # prorated annual subscription is still charged immediately.
-      refute Enum.any?(keys, &String.contains?(&1, ":payment-intent-pi_sub_monthly_p"))
-      assert Enum.any?(keys, &String.contains?(&1, ":payment-intent-pi_sub_annual_p"))
-    end
-
-    test "switching modes derives fresh idempotency keys instead of replaying the other mode", %{
-      conn: conn
-    } do
-      member = insert_member(is_active: false, customer_id: "cus_modeswitch")
-      start_date = Date.utc_today() |> Date.add(7)
-      prefix = idempotency_prefix(member.auth_user_id, start_date)
-
-      observed_keys = :ets.new(:observed_keys_switch, [:bag, :public])
-
-      # Deferred runs FIRST: its annual subscription is trialing with no
-      # first invoice, while the follow-up prorated run confirms both —
-      # together every registered route receives at least one request.
-      expect_reactivation_choreography(%{
-        customer_id: "cus_modeswitch",
-        payment_method_id: "pm_sepa_saved",
-        monthly_price_id: "price_monthly",
-        annual_price_id: "price_annual",
-        monthly_subscription_id: "sub_monthly_s",
-        annual_subscription_id: "sub_annual_s",
-        payment_intent_status: "succeeded",
-        idempotency_prefix: prefix,
-        start_date: start_date,
-        observe_keys: observed_keys
-      })
-
-      conn1 =
-        conn
-        |> put_req_header("authorization", "Bearer admin-token")
-        |> post("/api/members/#{member.auth_user_id}/membership/reactivate", %{
-          "startDate" => Date.to_iso8601(start_date),
-          "annualFeeMode" => "deferred_next_year"
-        })
-
-      assert %{"data" => %{"paymentState" => "succeeded"}} = json_response(conn1, 200)
-
-      conn2 =
-        build_conn()
-        |> put_req_header("authorization", "Bearer admin-token")
-        |> post("/api/members/#{member.auth_user_id}/membership/reactivate", %{
-          "startDate" => Date.to_iso8601(start_date),
-          "annualFeeMode" => "prorated_now"
-        })
-
-      assert %{"data" => %{"paymentState" => "succeeded"}} = json_response(conn2, 200)
-
-      keys = observed_keys |> :ets.tab2list() |> Enum.map(&elem(&1, 0)) |> Enum.uniq()
-
-      # Same member + start date, but each mode gets its own key namespace:
-      # a retry after switching modes must reach Stripe as fresh requests —
-      # replaying the other mode's stored responses would silently keep the
-      # old charging behaviour.
-      assert "membership-reactivate:#{member.auth_user_id}:#{Date.to_iso8601(start_date)}:deferred_next_year:subscription-annual" in keys
-
-      assert "membership-reactivate:#{member.auth_user_id}:#{Date.to_iso8601(start_date)}:prorated_now:subscription-annual" in keys
-
-      # The prorated follow-up really charged again: a fresh monthly
-      # subscription key under its own mode segment.
-      assert "membership-reactivate:#{member.auth_user_id}:#{Date.to_iso8601(start_date)}:prorated_now:subscription-monthly" in keys
     end
   end
 
@@ -1280,21 +1104,8 @@ defmodule DhcWeb.MembershipControllerTest do
     |> post("/api/members/#{member_id}/membership/reactivate", payload)
   end
 
-  # A second request must be built on a fresh conn.
-  defp post_rebuild_conn(_conn, member_id, start_date) do
-    build_conn()
-    |> put_req_header("authorization", "Bearer admin-token")
-    |> post("/api/members/#{member_id}/membership/reactivate", %{
-      "startDate" => Date.to_iso8601(start_date)
-    })
-  end
-
   defp midnight_unix(date) do
     date |> DateTime.new!(~T[00:00:00], "Etc/UTC") |> DateTime.to_unix()
-  end
-
-  defp idempotency_prefix(member_id, start_date) do
-    "membership-reactivate:#{member_id}:#{Date.to_iso8601(start_date)}"
   end
 
   defp expect_saved_sepa_method(customer_id, payment_method_id, sepa_debit \\ nil) do
@@ -1351,139 +1162,42 @@ defmodule DhcWeb.MembershipControllerTest do
   #
   # Every mutating call's Idempotency-Key header is asserted to carry the
   # deterministic `membership-reactivate:<member>:<date>` namespace.
+  # Stubs the Stripe calls one reactivation makes and answers with the given
+  # ids. The request protocol (subscription params, idempotency keys, confirm
+  # body) is asserted once in `Dhc.Membership.ReactivationTest`.
   defp expect_reactivation_choreography(opts) do
     expect_subscription_list(opts.customer_id, Map.get(opts, :existing_subscriptions, []))
     expect_saved_sepa_method(opts.customer_id, opts.payment_method_id)
     expect_membership_prices(opts.monthly_price_id, opts.annual_price_id)
-
-    observe_keys = Map.get(opts, :observe_keys)
     assert_confirm_body = Map.get(opts, :assert_confirm_body)
-
-    record_key =
-      &record_idempotency_key(&1, observe_keys, opts.idempotency_prefix)
 
     StripeHTTPStub.stub("POST", "/v1/subscriptions", fn conn ->
       params = StripeHTTPStub.form(conn)
-      record_key.(conn)
 
-      assert params["customer"] == opts.customer_id
-      assert params["payment_behavior"] == "default_incomplete"
-      assert params["collection_method"] == "charge_automatically"
-      assert params["default_payment_method"] == opts.payment_method_id
-      assert params["expand[]"] == "latest_invoice.payments"
-      assert params["metadata[purpose]"] == "membership-reactivation"
+      sub_id =
+        if params["metadata[kind]"] == "monthly",
+          do: opts.monthly_subscription_id,
+          else: opts.annual_subscription_id
 
-      {kind, price_id, sub_id} = subscription_kind(params, opts)
-
-      assert params["items[0][price]"] == price_id
-
-      assert params["metadata[kind]"] ==
-               if(kind == :annual_deferred, do: "annual", else: Atom.to_string(kind))
-
-      if trialing_subscription?(kind, opts) do
-        stripe_json(conn, trialing_subscription_json(sub_id))
-      else
-        stripe_json(conn, incomplete_subscription_json(sub_id))
-      end
+      # A subscription that starts later (a future start date or a deferred
+      # annual fee) is trialing with no first invoice to confirm.
+      if Map.has_key?(params, "trial_end"),
+        do: stripe_json(conn, trialing_subscription_json(sub_id)),
+        else: stripe_json(conn, incomplete_subscription_json(sub_id))
     end)
 
-    sub_ids_with_first_invoice =
-      []
-      |> maybe_add_confirmable_subscription(
-        opts.monthly_subscription_id,
-        Date.compare(opts.start_date, Date.utc_today()) != :gt
-      )
-      |> maybe_add_confirmable_subscription(
-        opts.annual_subscription_id,
-        not Map.has_key?(opts, :annual_trial_end)
-      )
-
-    Enum.each(sub_ids_with_first_invoice, fn sub_id ->
+    for sub_id <- [opts.monthly_subscription_id, opts.annual_subscription_id] do
       payment_intent_id = "pi_#{sub_id}"
 
-      # Repeatable: idempotency tests replay identical requests, and Stripe
-      # would answer the replayed confirm from its stored idempotent response.
       StripeHTTPStub.stub("POST", "/v1/payment_intents/#{payment_intent_id}/confirm", fn conn ->
-        params = StripeHTTPStub.form(conn)
-        record_key.(conn)
-
-        assert_optional_confirm_body(assert_confirm_body, params)
-
-        assert params["payment_method"] == opts.payment_method_id
-
+        assert_optional_confirm_body(assert_confirm_body, StripeHTTPStub.form(conn))
         stripe_json(conn, %{"id" => payment_intent_id, "status" => opts.payment_intent_status})
       end)
-    end)
-  end
-
-  defp record_idempotency_key(conn, observe_keys, prefix) do
-    case Plug.Conn.get_req_header(conn, "idempotency-key") do
-      [key] ->
-        observe_idempotency_key(observe_keys, key)
-
-        assert String.starts_with?(key, "#{prefix}:"),
-               "unexpected idempotency key #{inspect(key)}"
-
-      [] ->
-        flunk("mutating Stripe call missing Idempotency-Key header")
     end
   end
-
-  defp observe_idempotency_key(nil, _key), do: :ok
-  defp observe_idempotency_key(table, key), do: :ets.insert(table, {key})
 
   defp assert_optional_confirm_body(nil, _params), do: :ok
   defp assert_optional_confirm_body(assertion, params), do: assertion.(params)
-
-  defp subscription_kind(params, opts) do
-    result =
-      cond do
-        Map.has_key?(params, "billing_cycle_anchor") ->
-          assert params["billing_cycle_anchor"] ==
-                   Integer.to_string(monthly_anchor_unix(opts.start_date))
-
-          refute Map.has_key?(params, "billing_cycle_anchor_config[month]")
-          assert_monthly_trial_end(params, opts.start_date)
-          {:monthly, opts.monthly_price_id, opts.monthly_subscription_id}
-
-        Map.has_key?(params, "trial_end") ->
-          refute Map.has_key?(params, "billing_cycle_anchor_config[month]")
-          assert String.to_integer(params["trial_end"]) == january_anchor_midnight_unix()
-          {:annual_deferred, opts.annual_price_id, opts.annual_subscription_id}
-
-        true ->
-          assert params["billing_cycle_anchor_config[month]"] == "1"
-          assert params["billing_cycle_anchor_config[day_of_month]"] == "7"
-          refute Map.has_key?(params, "trial_end")
-          {:annual, opts.annual_price_id, opts.annual_subscription_id}
-      end
-
-    assert_expected_annual_mode(result, opts)
-  end
-
-  defp assert_expected_annual_mode({:annual, _, _}, %{annual_trial_end: _}) do
-    flunk("expected a deferred annual subscription (trial_end), got the prorated anchor")
-  end
-
-  defp assert_expected_annual_mode(result, _opts), do: result
-
-  defp assert_monthly_trial_end(params, start_date) do
-    if Date.compare(start_date, Date.utc_today()) == :gt do
-      assert params["trial_end"] == Integer.to_string(midnight_unix(start_date))
-    else
-      refute Map.has_key?(params, "trial_end")
-    end
-  end
-
-  defp trialing_subscription?(:annual_deferred, _opts), do: true
-
-  defp trialing_subscription?(:monthly, opts),
-    do: Date.compare(opts.start_date, Date.utc_today()) == :gt
-
-  defp trialing_subscription?(_kind, _opts), do: false
-
-  defp maybe_add_confirmable_subscription(ids, id, true), do: [id | ids]
-  defp maybe_add_confirmable_subscription(ids, _id, false), do: ids
 
   defp trialing_subscription_json(subscription_id) do
     %{

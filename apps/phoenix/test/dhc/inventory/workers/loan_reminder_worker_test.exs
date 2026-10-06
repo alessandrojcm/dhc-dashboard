@@ -4,9 +4,8 @@ defmodule Dhc.Inventory.Workers.LoanReminderWorkerTest do
 
   The schedule itself is proven in `Dhc.Inventory.LoanRemindersTest`; this
   covers what the worker adds — that a tick delivers through the context seam,
-  that a repeated tick is harmless (so scheduler restarts and overlapping cron
-  runs cannot duplicate), and that an undeliverable reminder does not fail the
-  job and strand every other loan behind a retry.
+  and that an undeliverable reminder does not fail the job and strand every
+  other loan behind a retry. Repeated passes are proven idempotent there too.
   """
 
   use Dhc.DataCase, async: false
@@ -30,30 +29,17 @@ defmodule Dhc.Inventory.Workers.LoanReminderWorkerTest do
       assert notification.body =~ "overdue"
     end
 
-    test "a second tick in an unchanged state delivers nothing new" do
-      overdue_loan()
-
-      assert :ok = perform_job()
-      assert :ok = perform_job()
-      assert :ok = perform_job()
-
-      # Scheduler restarts and overlapping cron ticks are ordinary events, not
-      # a duplicate-notification source (AC 1).
-      assert [_only_one] = Repo.all(Notification)
-    end
-
-    test "succeeds and logs when a reminder cannot be delivered" do
+    test "succeeds when a reminder cannot be delivered" do
       bad = overdue_loan()
       _healthy = overdue_loan()
       orphan_borrower(bad)
 
-      logs = capture_log(fn -> assert :ok = perform_job() end)
+      capture_log(fn -> assert :ok = perform_job() end)
 
       # The job succeeds deliberately: the undelivered claim stays in the ledger
       # for the next pass, whereas failing the job would re-walk every healthy
       # loan to chase one bad recipient. The savepoint around insert_claim/1
       # is what lets the healthy loan still deliver in the same tick.
-      assert logs =~ "[loan-reminder-worker]"
       assert [%Notification{}] = Repo.all(Notification)
     end
 

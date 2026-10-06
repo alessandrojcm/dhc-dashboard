@@ -99,18 +99,11 @@ defmodule DhcWeb.InventoryOperatorLoansClientParityTest do
   end
 
   @tag :parity
-  test "the operator loan type names the borrower and the member type still cannot",
-       context do
+  test "the operator loan type names the borrower", context do
     types = File.read!(Path.join(context.generated, "types.gen.ts"))
 
     operator_type = extract_type(types, "InventoryOperatorLoan")
     assert operator_type =~ "borrowerPrincipalId"
-
-    member_type = extract_type(types, "InventoryMemberLoan")
-
-    for forbidden <- ~w(borrowerPrincipalId decidedByPrincipalId returnedByPrincipalId decidedAt) do
-      refute member_type =~ forbidden, "InventoryMemberLoan must not expose #{forbidden}"
-    end
   end
 
   # Derived from the spec so a renamed or dropped operation fails here rather

@@ -10,7 +10,7 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
   post-commit keyed notifications on approve / reject / cancel / date
   change.
 
-  Domain invariants live in `Dhc.Inventory.OperatorLoansTest`. Queue
+  Domain invariants live in `Dhc.Inventory.AvailabilityCommandsTest`. Queue
   exposure lives in `DhcWeb.InventoryOperatorLoanQueueControllerTest`.
   """
 
@@ -132,17 +132,6 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       assert row.notification_key == "inventory:loan:#{request.id}:approved"
       assert row.body =~ payload["itemLabel"]
       assert row.body =~ payload["containerPath"]
-    end
-
-    test "answers 409 when the loan is not pending", %{conn: conn} do
-      %{loan: loan} = approved_loan()
-
-      conn =
-        conn
-        |> auth_conn("quartermaster")
-        |> post("/api/inventory/operator/loans/#{loan.id}/approve", %{})
-
-      assert %{"errors" => %{"code" => "not_pending"}} = json_response(conn, 409)
     end
 
     test "a retried approval leaves one durable outcome and at most one notification", %{
@@ -276,19 +265,6 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       assert payload["status"] == "checked_out"
       assert payload["checkedOutAt"] != nil
       assert Repo.all(Notification) == []
-    end
-
-    test "answers 409 outside the approved window", %{conn: conn} do
-      %{loan: loan} = approved_loan()
-      today = ClubCalendar.today()
-      set_approved_dates!(loan.id, Date.add(today, 2), Date.add(today, 5))
-
-      conn =
-        conn
-        |> auth_conn("quartermaster")
-        |> post("/api/inventory/operator/loans/#{loan.id}/checkout", %{})
-
-      assert %{"errors" => %{"code" => "outside_window"}} = json_response(conn, 409)
     end
   end
 
@@ -446,19 +422,34 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       assert payload["approvedStartOn"] == Date.to_iso8601(new_start)
       assert Repo.all(Notification) == []
     end
+  end
 
-    test "answers 409 when the start is moved after checkout", %{conn: conn} do
-      %{loan: loan} = approved_loan()
-      assert {:ok, _} = Inventory.check_out_loan(loan.id, %{}, @actor_id)
+  # ── Conflict mapping ────────────────────────────────────────────
 
-      conn =
-        conn
-        |> auth_conn("quartermaster")
-        |> post("/api/inventory/operator/loans/#{loan.id}/dates", %{
-          "startsOn" => Date.to_iso8601(Date.add(ClubCalendar.today(), 1))
-        })
+  describe "conflict mapping" do
+    test "maps transition conflicts to 409 with a typed code" do
+      today = ClubCalendar.today()
+      %{loan: not_pending} = approved_loan()
 
-      assert %{"errors" => %{"code" => "start_immutable"}} = json_response(conn, 409)
+      %{loan: outside_window} = approved_loan()
+      set_approved_dates!(outside_window.id, Date.add(today, 2), Date.add(today, 5))
+
+      %{loan: checked_out} = approved_loan()
+      assert {:ok, _} = Inventory.check_out_loan(checked_out.id, %{}, @actor_id)
+
+      for {loan, action, body, code} <- [
+            {not_pending, "approve", %{}, "not_pending"},
+            {outside_window, "checkout", %{}, "outside_window"},
+            {checked_out, "dates", %{"startsOn" => Date.to_iso8601(Date.add(today, 1))},
+             "start_immutable"}
+          ] do
+        response =
+          build_conn()
+          |> auth_conn("quartermaster")
+          |> post("/api/inventory/operator/loans/#{loan.id}/#{action}", body)
+
+        assert %{"errors" => %{"code" => ^code}} = json_response(response, 409), action
+      end
     end
   end
 

@@ -722,6 +722,10 @@ defmodule Dhc.Onboarding.AcceptanceTest do
     end
 
     test "a second submission while the lease is active makes no provider call" do
+      # Not a database race: Stripe runs outside any transaction, so the
+      # paused owner holds only its committed lease row and sharing the
+      # sandbox connection is sound. The real-connection race is
+      # `assert_single_stripe_progression` in DiscordClaimConcurrencyTest.
       invitation = insert_invitation!()
       {:ok, handle, _view} = ready(invitation, "leased-subject")
       test_pid = self()
@@ -1209,26 +1213,6 @@ defmodule Dhc.Onboarding.AcceptanceTest do
       refute Map.has_key?(attempt.stripe_state, "late")
       assert Repo.get!(Invitation, invitation.id).status == "pending"
       refute Repo.get(Principal, invitation.prospective_principal_id)
-    end
-
-    test "webhook reconciliation racing synchronous completion does not convert twice" do
-      Application.put_env(:dhc, :acceptance_recovery_delay_seconds, 1)
-      invitation = insert_invitation!()
-      {:ok, handle, _view} = ready(invitation, "webhook-race")
-
-      assert {:ok, %{state: "accepted"}} = Acceptance.submit_payment(handle, @payment)
-      flush_stripe_messages()
-      attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
-
-      assert :ok = Acceptance.reconcile_stripe_event(%{"customer" => "cus_onboarding"})
-
-      assert :ok = perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
-      refute_received {:provision_membership, %{confirmation_token: "ctok_success"}}
-
-      principal_id = invitation.prospective_principal_id
-      assert Repo.aggregate(from(p in Principal, where: p.id == ^principal_id), :count) == 1
-      assert Repo.aggregate(from(m in MemberProfile, where: m.id == ^principal_id), :count) == 1
-      assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 1
     end
 
     test "Stripe reconciliation advances one unique scheduled recovery per Attempt" do

@@ -1,13 +1,9 @@
 defmodule Dhc.Inventory.MemberLoansTest do
   @moduledoc """
-  ALE-285: the member loan seam — request, cancel, and own history.
+  ALE-285: the member loan seam — own history.
 
-  Proves the member half of the ALE-273 lifecycle through the public
-  `Dhc.Inventory` interface: date rules in the club's calendar, one pending
-  request per item per member while multiple items stay free, competing
-  requests coexisting with no entitlement, requestability tracking the same
-  availability projection the catalog shows, cancel-until-checkout, and a
-  complete own history whose snapshots survive archival.
+  Proves through the public `Dhc.Inventory` interface a complete own history
+  whose snapshots survive archival.
 
   Privacy is asserted as its own concern: a member's history contains only
   their own loans, and the container path appears only once the loan is
@@ -18,9 +14,10 @@ defmodule Dhc.Inventory.MemberLoansTest do
   `operator_item_lifecycle_test.exs` uses for loan rows.
 
   Since GH-508 `request_loan/3` and `cancel_loan/3` are a facade over
-  `Dhc.Inventory.AvailabilityCommands`, so this file keeps only the member
-  contract. Concurrency, lock order, and the database backstops are proven
-  once in `Dhc.Inventory.AvailabilityCommandsTest`.
+  `Dhc.Inventory.AvailabilityCommands`, whose request and cancel rules,
+  concurrency, lock order, and database backstops are proven once in
+  `Dhc.Inventory.AvailabilityCommandsTest`. This file keeps the member read
+  model.
   """
 
   use Dhc.DataCase, async: false
@@ -29,244 +26,6 @@ defmodule Dhc.Inventory.MemberLoansTest do
   alias Dhc.Inventory
   alias Dhc.ClubCalendar
   alias Dhc.Repo
-
-  describe "request dates" do
-    test "accepts today or later with due on or after start" do
-      %{item: item} = fixture()
-      member = principal_id()
-      today = ClubCalendar.today()
-
-      assert {:ok, loan} = request(item, member, today, today)
-      assert loan.status == "requested"
-      assert loan.requested_start_on == today
-      assert loan.requested_due_on == today
-      assert loan.overdue? == false
-
-      other = create_item!()
-      later = Date.add(today, 7)
-
-      assert {:ok, future} = request(other, member, later, Date.add(later, 3))
-      assert future.requested_start_on == later
-    end
-
-    test "rejects a past start date and an inverted range" do
-      %{item: item} = fixture()
-      member = principal_id()
-      today = ClubCalendar.today()
-
-      assert {:error, :invalid_dates} =
-               request(item, member, Date.add(today, -1), Date.add(today, 3))
-
-      assert {:error, :invalid_dates} =
-               request(item, member, Date.add(today, 3), Date.add(today, 1))
-    end
-
-    test "rejects missing or malformed dates" do
-      %{item: item} = fixture()
-      member = principal_id()
-      today = Date.to_iso8601(ClubCalendar.today())
-
-      assert {:error, :invalid_dates} =
-               Inventory.request_loan(item.slug, %{"dueOn" => today}, member)
-
-      assert {:error, :invalid_dates} =
-               Inventory.request_loan(
-                 item.slug,
-                 %{"startsOn" => "not-a-date", "dueOn" => today},
-                 member
-               )
-    end
-
-    test "uses the club calendar, so today in Dublin is requestable" do
-      %{item: item} = fixture()
-      member = principal_id()
-
-      # Whatever UTC thinks, the club's own "today" must be acceptable.
-      assert {:ok, _loan} =
-               request(item, member, ClubCalendar.today(), ClubCalendar.today())
-    end
-  end
-
-  describe "request allocation" do
-    test "allows one pending request per item and refuses a second from the same member" do
-      %{item: item} = fixture()
-      member = principal_id()
-
-      assert {:ok, _first} = request(item, member)
-      assert {:error, :duplicate_request} = request(item, member)
-    end
-
-    test "lets one member hold pending requests on several items" do
-      %{item: first} = fixture()
-      second = create_item!()
-      member = principal_id()
-
-      assert {:ok, on_first} = request(first, member)
-      assert {:ok, on_second} = request(second, member)
-
-      assert {:ok, page} = Inventory.list_own_loans(member)
-      assert Enum.sort(Enum.map(page.loans, & &1.id)) == Enum.sort([on_first.id, on_second.id])
-    end
-
-    test "competing requests coexist and create no entitlement" do
-      %{item: item} = fixture()
-      first = principal_id()
-      second = principal_id()
-
-      assert {:ok, _} = request(item, first)
-      assert {:ok, _} = request(item, second)
-
-      # A pending request is not an availability input (story 34), so the
-      # item is still requestable and still shows as available.
-      assert {:ok, catalog} = Inventory.resolve_catalog_item(item.slug)
-      assert catalog.availability == %{available?: true, reason: :available}
-    end
-
-    test "records the request note and drops a blank one" do
-      %{item: item} = fixture()
-      member = principal_id()
-      today = ClubCalendar.today()
-
-      assert {:ok, noted} =
-               Inventory.request_loan(
-                 item.slug,
-                 %{
-                   "startsOn" => Date.to_iso8601(today),
-                   "dueOn" => Date.to_iso8601(today),
-                   "note" => "  For Saturday's tournament  "
-                 },
-                 member
-               )
-
-      assert noted.request_note == "For Saturday's tournament"
-
-      blank_item = create_item!()
-
-      assert {:ok, blank} =
-               Inventory.request_loan(
-                 blank_item.slug,
-                 %{
-                   "startsOn" => Date.to_iso8601(today),
-                   "dueOn" => Date.to_iso8601(today),
-                   "note" => "   "
-                 },
-                 member
-               )
-
-      assert blank.request_note == nil
-    end
-
-    test "captures item snapshots at request time" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, brand} = create_definition(category.id, "Brand", "text", identifying_position: 0)
-
-      {:ok, item} =
-        Inventory.create_operator_item(
-          %{
-            "container_id" => container_id,
-            "category_id" => category.id,
-            "values" => %{brand.id => "Regenyei"}
-          },
-          principal_id()
-        )
-
-      assert {:ok, loan} = request(item, principal_id())
-
-      assert loan.item_slug == item.slug
-      assert loan.item_label == "#{category.name} · Regenyei"
-    end
-  end
-
-  describe "requestability" do
-    test "refuses an item in maintenance with a generic reason" do
-      %{item: item} = fixture()
-
-      assert {:ok, _} =
-               Inventory.start_operator_item_maintenance(
-                 item.slug,
-                 %{"reason" => "Blade bent"},
-                 principal_id()
-               )
-
-      # The refusal names no maintenance fact.
-      assert {:error, :item_unavailable} = request(item, principal_id())
-    end
-
-    test "refuses an item held by an approved or checked-out loan" do
-      %{item: item} = fixture()
-      holder = principal_id()
-
-      loan_id = create_loan!(item, holder, "approved")
-      assert {:error, :item_unavailable} = request(item, principal_id())
-
-      set_loan_status!(loan_id, "checked_out")
-      assert {:error, :item_unavailable} = request(item, principal_id())
-
-      # Once the loan closes the item is requestable again — no queue, no
-      # revival of old requests (story 34).
-      set_loan_status!(loan_id, "returned")
-      assert {:ok, _} = request(item, principal_id())
-    end
-
-    test "reports an archived or unknown item as absent, never as archived" do
-      %{item: item} = fixture()
-      assert {:ok, _} = Inventory.archive_operator_item(item.slug, %{}, principal_id())
-
-      assert {:error, :not_found} = request(item, principal_id())
-      assert {:error, :not_found} = Inventory.request_loan("item-999999", %{}, principal_id())
-    end
-  end
-
-  describe "cancel" do
-    test "cancels an own requested loan and is idempotent" do
-      %{item: item} = fixture()
-      member = principal_id()
-
-      assert {:ok, loan} = request(item, member)
-
-      assert {:ok, cancelled} =
-               Inventory.cancel_loan(loan.id, %{"note" => "Plans changed"}, member)
-
-      assert cancelled.status == "cancelled"
-      assert cancelled.decision_note == "Plans changed"
-
-      # A second tap must not be an error.
-      assert {:ok, again} = Inventory.cancel_loan(loan.id, %{}, member)
-      assert again.status == "cancelled"
-
-      # Cancelling releases the item for a fresh request.
-      assert {:ok, _} = request(item, principal_id())
-    end
-
-    test "cancels an own approved loan but not after checkout" do
-      %{item: item} = fixture()
-      member = principal_id()
-      loan_id = create_loan!(item, member, "approved")
-
-      assert {:ok, cancelled} = Inventory.cancel_loan(loan_id, %{}, member)
-      assert cancelled.status == "cancelled"
-
-      checked_out = create_loan!(create_item!(), member, "checked_out")
-      assert {:error, :not_cancellable} = Inventory.cancel_loan(checked_out, %{}, member)
-    end
-
-    test "cannot cancel another member's loan, or a closed one" do
-      %{item: item} = fixture()
-      borrower = principal_id()
-      stranger = principal_id()
-
-      assert {:ok, loan} = request(item, borrower)
-
-      # Someone else's loan is simply not found: its existence is not a
-      # member-visible fact.
-      assert {:error, :not_found} = Inventory.cancel_loan(loan.id, %{}, stranger)
-      assert {:error, :not_found} = Inventory.cancel_loan(Ecto.UUID.generate(), %{}, borrower)
-      assert {:error, :not_found} = Inventory.cancel_loan("not-a-uuid", %{}, borrower)
-
-      returned = create_loan!(create_item!(), borrower, "returned")
-      assert {:error, :not_cancellable} = Inventory.cancel_loan(returned, %{}, borrower)
-    end
-  end
 
   describe "own history" do
     test "is complete, newest first, including rejections and cancellations" do
@@ -461,26 +220,15 @@ defmodule Dhc.Inventory.MemberLoansTest do
     )
   end
 
-  defp request(item, borrower_id, starts_on \\ nil, due_on \\ nil) do
-    starts_on = starts_on || ClubCalendar.today()
-    due_on = due_on || Date.add(starts_on, 7)
+  defp request(item, borrower_id) do
+    starts_on = ClubCalendar.today()
+    due_on = Date.add(starts_on, 7)
 
     Inventory.request_loan(
       item.slug,
       %{"startsOn" => Date.to_iso8601(starts_on), "dueOn" => Date.to_iso8601(due_on)},
       borrower_id
     )
-  end
-
-  defp create_definition(category_id, label, value_type, opts) do
-    attrs = %{"label" => label, "value_type" => value_type}
-
-    attrs =
-      Enum.reduce(opts, attrs, fn
-        {:identifying_position, position}, acc -> Map.put(acc, "identifying_position", position)
-      end)
-
-    Inventory.create_definition(category_id, attrs)
   end
 
   defp create_category! do

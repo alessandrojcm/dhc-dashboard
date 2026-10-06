@@ -333,6 +333,20 @@ defmodule Dhc.StripeSync.RepositoryMarkCustomerActiveTest do
     end
   end
 
+  describe "mark_customer_paused/2" do
+    test "records the resume date on the customer's member profile" do
+      fixture = Dhc.MemberFixtures.member_fixture()
+      resume_date = DateTime.utc_now() |> DateTime.add(30, :day) |> DateTime.truncate(:second)
+
+      assert :ok = Repository.mark_customer_paused(fixture.customer_id, resume_date)
+
+      member =
+        Repo.one!(from(mp in MemberProfile, where: mp.user_profile_id == ^fixture.profile_id))
+
+      assert member.subscription_paused_until == resume_date
+    end
+  end
+
   describe "mark_customer_inactive/1" do
     test "revokes the customer's existing Sessions with access" do
       fixture = Dhc.MemberFixtures.member_fixture(is_active: true)
@@ -345,71 +359,6 @@ defmodule Dhc.StripeSync.RepositoryMarkCustomerActiveTest do
 
       profile = Repo.get!(Dhc.UserProfiles.UserProfile, fixture.profile_id)
       assert profile.is_active == false
-    end
-  end
-end
-
-defmodule Dhc.StripeSync.RepositoryIntegrationTest do
-  @moduledoc """
-  Integration test for Dhc.StripeSync.Repository against the test database.
-
-  Reproduces the Ecto.Query.CastError that occurs when `user_profile_ids_for_customer/1`
-  queries `"user_profiles"` without a schema (returning raw binary UUIDs) and passes
-  them to a schema query expecting `:binary_id` (UUID strings).
-  """
-
-  use Dhc.DataCase, async: false
-
-  alias Dhc.MemberProfiles.MemberProfile
-  alias Dhc.Repo
-  alias Dhc.StripeSync.Repository
-
-  import Ecto.Query
-
-  @moduletag :integration
-
-  describe "mark_customer_active/3" do
-    test "updates member profile without CastError when user_profile_id is a UUID" do
-      fixture = Dhc.MemberFixtures.member_fixture()
-
-      last_payment_date = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      # This call exercises user_profile_ids_for_customer/1 -> update_member_profiles/2
-      assert :ok =
-               Repository.mark_customer_active(
-                 fixture.customer_id,
-                 last_payment_date,
-                 nil
-               )
-
-      member =
-        Repo.one!(
-          from(mp in MemberProfile,
-            where: mp.user_profile_id == ^fixture.profile_id
-          )
-        )
-
-      assert member.last_payment_date == last_payment_date
-      assert is_nil(member.subscription_paused_until)
-      assert is_nil(member.membership_end_date)
-    end
-  end
-
-  describe "mark_customer_paused/2" do
-    test "updates member profile without CastError when user_profile_id is a UUID" do
-      fixture = Dhc.MemberFixtures.member_fixture()
-      resume_date = DateTime.utc_now() |> DateTime.add(30, :day) |> DateTime.truncate(:second)
-
-      assert :ok = Repository.mark_customer_paused(fixture.customer_id, resume_date)
-
-      member =
-        Repo.one!(
-          from(mp in MemberProfile,
-            where: mp.user_profile_id == ^fixture.profile_id
-          )
-        )
-
-      assert member.subscription_paused_until == resume_date
     end
   end
 end

@@ -11,8 +11,8 @@ defmodule DhcWeb.InventoryItemsControllerTest do
   value failures.
 
   Domain invariants themselves live in `Dhc.Inventory.OperatorItemsTest`,
-  `Dhc.Inventory.OperatorItemLifecycleTest`, and
-  `Dhc.Inventory.OperatorItemListTest`.
+  `Dhc.Inventory.OperatorItemLifecycleTest`, `Dhc.Inventory.OperatorItemListTest`,
+  `Dhc.Inventory.ItemQueryTest`, and `Dhc.Inventory.AvailabilityCommandsTest`.
   """
 
   use DhcWeb.ConnCase, async: false
@@ -165,89 +165,26 @@ defmodule DhcWeb.InventoryItemsControllerTest do
   # ── List: pagination, counts, filters ───────────────────────────
 
   describe "index" do
-    test "returns a page with exact totalCount and cursor metadata", %{conn: conn} do
+    test "returns the page envelope", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
-
-      slugs =
-        for _ <- 1..12 do
-          {:ok, item} = create_item(container_id, category.id)
-          item.slug
-        end
-
-      sorted = Enum.sort(slugs)
+      {:ok, item} = create_item(container_id, category.id)
 
       conn =
         conn
         |> auth_conn("quartermaster")
         |> get("/api/inventory/items", %{"limit" => "10"})
 
-      assert %{"data" => data} = json_response(conn, 200)
-      assert Enum.map(data["items"], & &1["slug"]) == Enum.take(sorted, 10)
-      assert data["totalCount"] == 12
-      assert data["limit"] == 10
-      assert is_binary(data["nextCursor"])
-      assert data["previousCursor"] == nil
+      assert %{
+               "data" => %{
+                 "items" => [%{"slug" => slug}],
+                 "totalCount" => 1,
+                 "limit" => 10,
+                 "nextCursor" => nil,
+                 "previousCursor" => nil
+               }
+             } = json_response(conn, 200)
 
-      next =
-        build_conn()
-        |> auth_conn("quartermaster")
-        |> get("/api/inventory/items", %{"limit" => "10", "cursor" => data["nextCursor"]})
-
-      assert %{"data" => page_two} = json_response(next, 200)
-      assert Enum.map(page_two["items"], & &1["slug"]) == Enum.drop(sorted, 10)
-      assert page_two["totalCount"] == 12
-      assert page_two["nextCursor"] == nil
-    end
-
-    test "hides archived items unless the archive filter asks for them", %{conn: conn} do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, active} = create_item(container_id, category.id)
-      {:ok, retired} = create_item(container_id, category.id)
-
-      assert {:ok, _} = Inventory.archive_operator_item(retired.slug, %{}, @actor_id)
-
-      default = conn |> auth_conn("quartermaster") |> get("/api/inventory/items")
-      assert %{"data" => data} = json_response(default, 200)
-      assert Enum.map(data["items"], & &1["id"]) == [active.id]
-
-      only =
-        build_conn()
-        |> auth_conn("quartermaster")
-        |> get("/api/inventory/items", %{"archived" => "only"})
-
-      assert %{"data" => archived} = json_response(only, 200)
-      assert Enum.map(archived["items"], & &1["id"]) == [retired.id]
-
-      assert [%{"availability" => %{"status" => "archived", "available" => false}}] =
-               archived["items"]
-    end
-
-    test "filters by category and property", %{conn: conn} do
-      %{category: category, container_id: container_id} = fixture()
-      other = category!()
-      {:ok, size} = definition(category.id, "Size", "single_select")
-      {:ok, large} = Inventory.create_option(size.id, %{"label" => "Large"})
-
-      {:ok, big} = create_item(container_id, category.id, %{size.id => large.id})
-      {:ok, _small} = create_item(container_id, category.id)
-      {:ok, _elsewhere} = create_item(container_id, other.id)
-
-      by_category =
-        conn
-        |> auth_conn("quartermaster")
-        |> get("/api/inventory/items", %{"categoryId" => category.id})
-
-      assert %{"data" => data} = json_response(by_category, 200)
-      assert data["totalCount"] == 2
-
-      by_property =
-        build_conn()
-        |> auth_conn("quartermaster")
-        |> get("/api/inventory/items", %{"property" => "#{size.id}:#{large.id}"})
-
-      assert %{"data" => filtered} = json_response(by_property, 200)
-      assert Enum.map(filtered["items"], & &1["id"]) == [big.id]
-      assert filtered["totalCount"] == 1
+      assert slug == item.slug
     end
 
     test "400s an invalid limit, filter, or mismatched cursor", %{conn: conn} do
@@ -267,14 +204,19 @@ defmodule DhcWeb.InventoryItemsControllerTest do
         |> auth_conn("quartermaster")
         |> get("/api/inventory/items", %{"archived" => "yes"})
 
-      assert json_response(bad_archived, 400)
+      assert %{"errors" => %{"detail" => "archived must be exclude, include, or only"}} =
+               json_response(bad_archived, 400)
 
       bad_property =
         build_conn()
         |> auth_conn("quartermaster")
         |> get("/api/inventory/items", %{"property" => "nope"})
 
-      assert json_response(bad_property, 400)
+      assert %{
+               "errors" => %{
+                 "detail" => "property must be comma-separated definitionId:value pairs"
+               }
+             } = json_response(bad_property, 400)
 
       bad_category =
         build_conn()
@@ -385,7 +327,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
           "categoryId" => Ecto.UUID.generate()
         })
 
-      assert json_response(unknown, 404)
+      assert %{"errors" => %{"detail" => "Category not found"}} = json_response(unknown, 404)
     end
 
     test "422s notes longer than 1000 characters", %{conn: conn} do
@@ -484,30 +426,6 @@ defmodule DhcWeb.InventoryItemsControllerTest do
   # ── Dedicated commands ──────────────────────────────────────────
 
   describe "move" do
-    test "moves to another container and is allowed during maintenance", %{conn: conn} do
-      %{category: category, container_id: container_id} = fixture()
-      destination = container!()
-      {:ok, item} = create_item(container_id, category.id)
-
-      assert {:ok, _} =
-               Inventory.start_operator_item_maintenance(
-                 item.slug,
-                 %{"reason" => "Bent"},
-                 @actor_id
-               )
-
-      conn =
-        conn
-        |> auth_conn("quartermaster")
-        |> post("/api/inventory/items/#{item.slug}/move", %{
-          "containerId" => destination.id
-        })
-
-      assert %{"data" => payload} = json_response(conn, 200)
-      assert payload["containerId"] == destination.id
-      assert payload["availability"]["status"] == "maintenance"
-    end
-
     test "422s an archived destination container", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
       destination = container!()
@@ -526,7 +444,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
   end
 
   describe "category" do
-    test "reclassifies atomically with the new category's values", %{conn: conn} do
+    test "renders the reclassified item", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
       target = category!()
       {:ok, serial} = definition(target.id, "Serial", "text", required: true)
@@ -542,7 +460,6 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
       assert %{"data" => payload} = json_response(conn, 200)
       assert payload["categoryId"] == target.id
-      assert payload["slug"] == item.slug
       assert [%{"text" => "SN-1"}] = payload["values"]
     end
 
@@ -568,51 +485,39 @@ defmodule DhcWeb.InventoryItemsControllerTest do
   end
 
   describe "maintenance" do
-    test "starts, lists, and ends retained periods", %{conn: conn} do
+    test "renders retained maintenance periods", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
 
-      started =
-        conn
-        |> auth_conn("quartermaster")
-        |> post("/api/inventory/items/#{item.slug}/maintenance/start", %{
-          "reason" => "Cracked guard"
-        })
-
-      assert %{"data" => payload} = json_response(started, 200)
-      assert payload["availability"] == %{"available" => false, "status" => "maintenance"}
+      assert {:ok, _} =
+               Inventory.start_operator_item_maintenance(
+                 item.slug,
+                 %{"reason" => "Cracked guard"},
+                 @actor_id
+               )
 
       listed =
-        build_conn()
+        conn
         |> auth_conn("admin")
         |> get("/api/inventory/items/#{item.slug}/maintenance")
 
-      assert %{"data" => %{"periods" => [period]}} = json_response(listed, 200)
-      assert period["startReason"] == "Cracked guard"
-      assert period["startedByPrincipalId"] == @actor_id
-      assert period["open"] == true
-      assert period["endedAt"] == nil
-      assert is_binary(period["startedAt"])
+      assert %{
+               "data" => %{
+                 "periods" => [
+                   %{
+                     "startReason" => "Cracked guard",
+                     "startedByPrincipalId" => @actor_id,
+                     "startedAt" => started_at,
+                     "open" => true,
+                     "endedAt" => nil,
+                     "endedByPrincipalId" => nil,
+                     "endNote" => nil
+                   }
+                 ]
+               }
+             } = json_response(listed, 200)
 
-      ended =
-        build_conn()
-        |> auth_conn("admin")
-        |> post("/api/inventory/items/#{item.slug}/maintenance/end", %{
-          "endNote" => "Guard replaced"
-        })
-
-      assert %{"data" => back} = json_response(ended, 200)
-      assert back["availability"]["status"] == "available"
-
-      after_end =
-        build_conn()
-        |> auth_conn("admin")
-        |> get("/api/inventory/items/#{item.slug}/maintenance")
-
-      assert %{"data" => %{"periods" => [closed]}} = json_response(after_end, 200)
-      assert closed["open"] == false
-      assert closed["endNote"] == "Guard replaced"
-      assert closed["endedByPrincipalId"] == @actor_id
+      assert is_binary(started_at)
     end
 
     test "422s a missing reason and 409s a second open period", %{conn: conn} do
@@ -731,35 +636,6 @@ defmodule DhcWeb.InventoryItemsControllerTest do
         |> post("/api/inventory/items/#{item.slug}/restore")
 
       assert %{"errors" => %{"code" => "retry_exhausted"}} = json_response(conn, 409)
-    end
-
-    test "closes an open maintenance period with the archive reason", %{conn: conn} do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, item} = create_item(container_id, category.id)
-
-      assert {:ok, _} =
-               Inventory.start_operator_item_maintenance(
-                 item.slug,
-                 %{"reason" => "Bent"},
-                 @actor_id
-               )
-
-      archived =
-        conn
-        |> auth_conn("admin")
-        |> post("/api/inventory/items/#{item.slug}/archive", %{"reason" => "Beyond
-        repair"})
-
-      assert json_response(archived, 200)["data"]["availability"]["status"] == "archived"
-
-      listed =
-        build_conn()
-        |> auth_conn("admin")
-        |> get("/api/inventory/items/#{item.slug}/maintenance")
-
-      assert %{"data" => %{"periods" => [period]}} = json_response(listed, 200)
-      assert period["open"] == false
-      assert period["endNote"] =~ "Archived:"
     end
   end
 

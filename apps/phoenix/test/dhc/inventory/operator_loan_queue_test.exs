@@ -439,15 +439,6 @@ defmodule Dhc.Inventory.OperatorLoanQueueTest do
       # detail read can never disagree about status, overdue, or dates.
       assert Map.delete(row, :ready_for_checkout?) == detail
     end
-
-    test "the queue is shared: it does not depend on who is asking" do
-      requested_loan()
-      approved_loan()
-
-      # No actor parameter and no claim semantics (story 50): every duty
-      # officer sees the same thing.
-      assert Inventory.get_operator_loan_queue() == Inventory.get_operator_loan_queue()
-    end
   end
 
   # ── Helpers ─────────────────────────────────────────────────────

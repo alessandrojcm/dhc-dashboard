@@ -5,6 +5,8 @@ defmodule Dhc.Invitations.AtomicReissueTest do
   alias Dhc.Invitations.Repository
   alias Ecto.Adapters.SQL.Sandbox
 
+  @insert_barrier 7_310_042
+
   # Duplicate invitations are rejected while a `pending` invitation exists
   # for the email. Re-inviting is allowed again once nothing is pending.
   # The partial unique index `invitations_email_pending_unique` remains the
@@ -74,12 +76,16 @@ defmodule Dhc.Invitations.AtomicReissueTest do
       email = "atomic-reissue-#{System.unique_integer([:positive])}@example.com"
       invite_data = invite_data(email)
 
+      # The trigger parks each matching INSERT on an advisory lock the test
+      # holds, so both creates have finished their pre-insert reads before
+      # either inserts. Releasing the lock lets them race on the insert itself.
       outside_sandbox(fn ->
         Repo.query!("""
-        CREATE OR REPLACE FUNCTION delay_pending_invitation_for_concurrency_test() RETURNS trigger AS $$
+        CREATE OR REPLACE FUNCTION park_pending_invitation_for_concurrency_test() RETURNS trigger AS $$
         BEGIN
           IF NEW.email::text LIKE 'atomic-reissue-%' THEN
-            PERFORM pg_sleep(0.1);
+            PERFORM pg_advisory_lock_shared(#{@insert_barrier});
+            PERFORM pg_advisory_unlock_shared(#{@insert_barrier});
           END IF;
           RETURN NEW;
         END;
@@ -87,9 +93,9 @@ defmodule Dhc.Invitations.AtomicReissueTest do
         """)
 
         Repo.query!("""
-        CREATE TRIGGER delay_pending_invitation_for_concurrency_test
+        CREATE TRIGGER park_pending_invitation_for_concurrency_test
         BEFORE INSERT ON invitations
-        FOR EACH ROW EXECUTE FUNCTION delay_pending_invitation_for_concurrency_test()
+        FOR EACH ROW EXECUTE FUNCTION park_pending_invitation_for_concurrency_test()
         """)
       end)
 
@@ -98,24 +104,44 @@ defmodule Dhc.Invitations.AtomicReissueTest do
           Repo.delete_all(from i in Invitation, where: i.email == ^email)
 
           Repo.query!(
-            "DROP TRIGGER IF EXISTS delay_pending_invitation_for_concurrency_test ON invitations"
+            "DROP TRIGGER IF EXISTS park_pending_invitation_for_concurrency_test ON invitations"
           )
 
-          Repo.query!("DROP FUNCTION IF EXISTS delay_pending_invitation_for_concurrency_test()")
+          Repo.query!("DROP FUNCTION IF EXISTS park_pending_invitation_for_concurrency_test()")
         end)
       end)
 
-      results =
-        [invite_data, invite_data]
-        |> Task.async_stream(
-          fn data ->
-            outside_sandbox(fn -> Repository.create_invitation_record(data, data, nil) end)
-          end,
-          max_concurrency: 2,
-          ordered: false,
-          timeout: :infinity
-        )
-        |> Enum.map(fn {:ok, result} -> result end)
+      test_process = self()
+
+      barrier =
+        Task.async(fn ->
+          outside_sandbox(fn ->
+            Repo.query!("SELECT pg_advisory_lock($1)", [@insert_barrier])
+            send(test_process, :barrier_held)
+            receive do: (:release -> :ok)
+            Repo.query!("SELECT pg_advisory_unlock($1)", [@insert_barrier])
+          end)
+        end)
+
+      assert_receive :barrier_held, 5_000
+
+      creates =
+        for _ <- 1..2 do
+          Task.async(fn ->
+            outside_sandbox(fn ->
+              Repository.create_invitation_record(invite_data, invite_data, nil)
+            end)
+          end)
+        end
+
+      try do
+        await_barrier_waiters(2)
+      after
+        send(barrier.pid, :release)
+      end
+
+      Task.await(barrier, 5_000)
+      results = Enum.map(creates, &Task.await(&1, 10_000))
 
       assert 1 == Enum.count(results, &match?({:ok, _invitation_id}, &1))
       assert 1 == Enum.count(results, &match?({:error, {:create_invitation, _reason}}, &1))
@@ -131,6 +157,36 @@ defmodule Dhc.Invitations.AtomicReissueTest do
   end
 
   defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
+
+  defp await_barrier_waiters(expected, attempts \\ 200) do
+    waiting =
+      outside_sandbox(fn ->
+        %{rows: [[count]]} =
+          Repo.query!(
+            """
+            SELECT count(*) FROM pg_locks
+            WHERE locktype = 'advisory' AND NOT granted
+              AND classid = 0 AND objid = $1 AND objsubid = 1
+            """,
+            [@insert_barrier],
+            log: false
+          )
+
+        count
+      end)
+
+    cond do
+      waiting >= expected ->
+        :ok
+
+      attempts > 0 ->
+        Process.sleep(10)
+        await_barrier_waiters(expected, attempts - 1)
+
+      true ->
+        flunk("expected #{expected} inserts parked on the barrier, saw #{waiting}")
+    end
+  end
 
   defp insert_principal!(email) do
     id = Ecto.UUID.generate()
