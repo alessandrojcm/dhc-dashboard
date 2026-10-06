@@ -197,6 +197,8 @@ When a write validates against rows another command may evolve, share-lock **eve
 
 Applies to any future slice that validates item data against definitions/options; extend the lock set when you add a new dependency to a validation path.
 
+**One rule for stored values (ALE-345).** `ItemValues.validate/2` judges *supplied* values; `ItemValues.invalid_stored/2` is the one rule for values *already stored* — the same per-definition checks (required, live option of the definition, retired definition) applied to rows in the database. Both the make-required gate (`Structure.update_definition/2`, judging the proposed definition against every active item) and item restore (`AvailabilityCommands`) call it; do not re-derive "would these stored values still be valid?" with a bespoke query. It reads only values of the definitions passed in, so a value on any other definition is ignored.
+
 **`lock:` is a query option, never a Repo option.** `Repo.get(Schema, id, lock: "FOR UPDATE")` (likewise `get_by/one/all(..., lock:)`) compiles, runs, and silently takes **no lock** — `Ecto.Repo` ignores the unknown option. Seven inventory paths shipped that way and were only caught by reading the logged SQL. Lock a single row with `Dhc.Inventory.Locks.get_for_update/2` (a `from(... lock: "FOR UPDATE")` + `Repo.one/1`) or put `lock:` inside the `from`. `test/dhc/inventory/locks_test.exs` walks the `lib` AST and fails the build if a Repo-option `lock:` reappears.
 
 ## Stripe List Requests Must Expand Nested Objects

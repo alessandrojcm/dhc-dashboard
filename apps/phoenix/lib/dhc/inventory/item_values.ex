@@ -101,8 +101,15 @@ defmodule Dhc.Inventory.ItemValues do
   boolean `false` is a value, a single-select option must be live
   (`:retired_option`) and belong to the definition (`:unknown_option`), a
   required definition needs a value (`:required`), and a value stored
-  against a retired definition is `:retired_definition`. Only values of the
-  given definitions are read, so `:unknown_definition` never arises.
+  against a retired definition is `:retired_definition`.
+
+  Only values stored against the given `definitions` are read: a value on
+  any other definition is ignored, never reported. Unlike `validate/2`,
+  `:unknown_definition` therefore cannot arise. Restore relies on that being
+  unreachable rather than checked — a category change calls
+  `replace_all/2` first, so an item never keeps values from a category it
+  left. The make-required gate passes the one proposed definition on
+  purpose.
 
   Returns only the items that fail, each with its per-definition errors.
   Option membership comes from each definition's loaded `options`.

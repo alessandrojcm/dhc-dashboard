@@ -6,7 +6,7 @@ defmodule Dhc.Inventory.ItemValuesTest do
 
   use Dhc.DataCase, async: true
 
-  alias Dhc.Auth.Principal
+  alias Dhc.AuthFixtures
   alias Dhc.Inventory
   alias Dhc.Inventory.ItemValues
   alias Dhc.Repo
@@ -176,13 +176,7 @@ defmodule Dhc.Inventory.ItemValuesTest do
   end
 
   defp insert_container! do
-    principal_id =
-      %Principal{id: Ecto.UUID.generate()}
-      |> Principal.email_changeset(%{
-        email: "values-#{System.unique_integer([:positive])}@example.com"
-      })
-      |> Repo.insert!()
-      |> Map.fetch!(:id)
+    principal_id = AuthFixtures.principal_fixture().id
 
     container_id = Ecto.UUID.generate()
 
