@@ -1,19 +1,23 @@
-import { form, getRequestEvent } from "$app/server";
+import { form } from "$app/server";
 import {
 	inventoryItemsChangeCategory,
 	inventoryItemsCreate,
 	inventoryItemsEndMaintenance,
 	inventoryItemsMove,
+	inventoryItemsShow,
 	inventoryItemsStartMaintenance,
 	inventoryItemsUpdate,
+	inventoryStructureListDefinitions,
 	vInventoryMaintenanceEndRequest,
 	vInventoryMaintenanceStartRequest,
 	vInventoryOperatorItemCreateRequest,
 	vInventoryOperatorItemUpdateRequest,
 } from "@dhc/api-client";
-import { apiErrorMessage } from "#lib/api-error.js";
-import { apiClientOptions } from "#lib/server/api-client.js";
-import { authorize } from "#lib/server/auth.js";
+import { inventoryCommand } from "#lib/server/api/inventory-command.js";
+import {
+	type InventoryManageOptions,
+	inventoryManageOptions,
+} from "#lib/server/api/inventory-manage-options.js";
 import * as v from "valibot";
 
 const uuid = v.pipe(v.string(), v.uuid("Choose a valid record"));
@@ -76,89 +80,112 @@ const endMaintenanceSchema = v.object({
 	),
 });
 
-function failure(cause: unknown, fallback: string) {
-	return { ok: false as const, error: apiErrorMessage(cause, fallback) };
+/** Labels of the category's Property Definitions, for value rejections. */
+function categoryPropertyLabels(
+	options: InventoryManageOptions,
+	categoryId: string,
+) {
+	return async () => {
+		const response = await inventoryStructureListDefinitions({
+			...options,
+			path: { categoryId },
+		});
+		const definitions = response.data?.data.definitions ?? [];
+		return new Map(
+			definitions.map((definition) => [definition.id, definition.label]),
+		);
+	};
 }
 
-async function requestOptions() {
-	const event = getRequestEvent();
-	await authorize(event.locals, "inventory.manage");
-	return apiClientOptions(event.cookies);
+/** The item's current category's labels, for an update that keeps it. */
+function itemPropertyLabels(options: InventoryManageOptions, slugOrId: string) {
+	return async () => {
+		const response = await inventoryItemsShow({
+			...options,
+			path: { slugOrId },
+		});
+		if (!response.data) return new Map<string, string>();
+		return categoryPropertyLabels(options, response.data.data.categoryId)();
+	};
 }
 
-export const createItem = form(createItemSchema, async (body) => {
-	const response = await inventoryItemsCreate({
-		...(await requestOptions()),
-		body,
+export const createItem = form(createItemSchema, async (body, issue) => {
+	const options = await inventoryManageOptions();
+	return inventoryCommand(inventoryItemsCreate({ ...options, body }), {
+		fallback: "Could not create item",
+		fields: ["categoryId", "containerId", "notes", "values"],
+		issue,
+		propertyLabels: categoryPropertyLabels(options, body.categoryId),
 	});
-	if (response.error) return failure(response.error, "Could not create item");
-	return { ok: true as const, data: response.data.data };
 });
 
 export const updateItem = form(
 	updateItemSchema,
-	async ({ slugOrId, ...body }) => {
-		const response = await inventoryItemsUpdate({
-			...(await requestOptions()),
-			path: { slugOrId },
-			body,
-		});
-		if (response.error) return failure(response.error, "Could not update item");
-		return { ok: true as const, data: response.data.data };
+	async ({ slugOrId, ...body }, issue) => {
+		const options = await inventoryManageOptions();
+		return inventoryCommand(
+			inventoryItemsUpdate({ ...options, path: { slugOrId }, body }),
+			{
+				fallback: "Could not update item",
+				fields: ["notes", "values"],
+				issue,
+				propertyLabels: itemPropertyLabels(options, slugOrId),
+			},
+		);
 	},
 );
 
 export const moveItem = form(
 	moveItemSchema,
-	async ({ slugOrId, ...fields }) => {
-		const response = await inventoryItemsMove({
-			...(await requestOptions()),
-			path: { slugOrId },
-			body: fields,
-		});
-		if (response.error) return failure(response.error, "Could not move item");
-		return { ok: true as const, data: response.data.data };
-	},
+	async ({ slugOrId, ...fields }, issue) =>
+		inventoryCommand(
+			inventoryItemsMove({
+				...(await inventoryManageOptions()),
+				path: { slugOrId },
+				body: fields,
+			}),
+			{ fallback: "Could not move item", fields: ["containerId"], issue },
+		),
 );
 
 export const changeItemCategory = form(
 	changeCategorySchema,
-	async ({ slugOrId, ...body }) => {
-		const response = await inventoryItemsChangeCategory({
-			...(await requestOptions()),
-			path: { slugOrId },
-			body,
-		});
-		if (response.error)
-			return failure(response.error, "Could not change category");
-		return { ok: true as const, data: response.data.data };
+	async ({ slugOrId, ...body }, issue) => {
+		const options = await inventoryManageOptions();
+		return inventoryCommand(
+			inventoryItemsChangeCategory({ ...options, path: { slugOrId }, body }),
+			{
+				fallback: "Could not change category",
+				fields: ["categoryId", "values"],
+				issue,
+				propertyLabels: categoryPropertyLabels(options, body.categoryId),
+			},
+		);
 	},
 );
 
 export const startItemMaintenance = form(
 	startMaintenanceSchema,
-	async ({ slugOrId, ...fields }) => {
-		const response = await inventoryItemsStartMaintenance({
-			...(await requestOptions()),
-			path: { slugOrId },
-			body: fields,
-		});
-		if (response.error)
-			return failure(response.error, "Could not start maintenance");
-		return { ok: true as const, data: response.data.data };
-	},
+	async ({ slugOrId, ...fields }, issue) =>
+		inventoryCommand(
+			inventoryItemsStartMaintenance({
+				...(await inventoryManageOptions()),
+				path: { slugOrId },
+				body: fields,
+			}),
+			{ fallback: "Could not start maintenance", fields: ["reason"], issue },
+		),
 );
 
 export const endItemMaintenance = form(
 	endMaintenanceSchema,
-	async ({ slugOrId, ...fields }) => {
-		const response = await inventoryItemsEndMaintenance({
-			...(await requestOptions()),
-			path: { slugOrId },
-			body: fields,
-		});
-		if (response.error)
-			return failure(response.error, "Could not end maintenance");
-		return { ok: true as const, data: response.data.data };
-	},
+	async ({ slugOrId, ...fields }, issue) =>
+		inventoryCommand(
+			inventoryItemsEndMaintenance({
+				...(await inventoryManageOptions()),
+				path: { slugOrId },
+				body: fields,
+			}),
+			{ fallback: "Could not end maintenance", fields: ["endNote"], issue },
+		),
 );

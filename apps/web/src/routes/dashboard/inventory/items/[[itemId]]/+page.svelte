@@ -34,6 +34,7 @@ import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
 import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+import * as Field from "#lib/components/ui/field/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import { Label } from "#lib/components/ui/label/index.js";
 import * as Select from "#lib/components/ui/select/index.js";
@@ -366,6 +367,15 @@ function handleItemCommand(
 	flashSuccess(setter);
 }
 
+type FormIssue = NonNullable<
+	ReturnType<typeof createItem.fields.allIssues>
+>[number];
+
+/** Form-level issues; property value issues render under the properties. */
+function formIssues(issues: FormIssue[] | undefined) {
+	return (issues ?? []).filter((issue) => issue.path[0] !== "values");
+}
+
 function setValue(
 	target: InventoryOperatorItemValues,
 	id: string,
@@ -387,6 +397,7 @@ function displayValue(item: InventoryOperatorItem) {
 	definitions: InventoryPropertyDefinition[],
 	target: InventoryOperatorItemValues,
 	prefix: string,
+	valueIssues: FormIssue[] | undefined,
 )}
 	{#each definitions.filter((definition) => !definition.retiredAt) as definition (definition.id)}
 		<div>
@@ -471,6 +482,7 @@ function displayValue(item: InventoryOperatorItem) {
 			{/if}
 		</div>
 	{/each}
+	<Field.Error errors={valueIssues} />
 {/snippet}
 
 <svelte:head>
@@ -548,7 +560,7 @@ function displayValue(item: InventoryOperatorItem) {
 							.name}
 						value={JSON.stringify(values)}
 					/>
-					{#each createItem.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+					{#each formIssues(createItem.fields.allIssues()) as issue, index (`${issue.message}-${index}`)}<p
 							role="alert"
 							class="mx-5 mt-4 text-sm text-destructive sm:mx-8"
 						>
@@ -705,7 +717,12 @@ function displayValue(item: InventoryOperatorItem) {
 									Loading category details…
 								</div>
 							{:else if categoryId}
-								{@render fields(definitionsQuery.data ?? [], values, "create")}
+								{@render fields(
+									definitionsQuery.data ?? [],
+									values,
+									"create",
+									createItem.fields.values.issues(),
+								)}
 							{:else}
 								<p
 									class="rounded-xl border border-dashed bg-muted/35 p-3 text-xs leading-relaxed text-muted-foreground"
@@ -1158,7 +1175,7 @@ function displayValue(item: InventoryOperatorItem) {
 							).name}
 							value={JSON.stringify(editValues)}
 						/>
-						{#each updateItem.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+						{#each formIssues(updateItem.fields.allIssues()) as issue, index (`${issue.message}-${index}`)}<p
 								role="alert"
 								class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
 							>
@@ -1191,6 +1208,7 @@ function displayValue(item: InventoryOperatorItem) {
 										editDefinitionsQuery.data ?? [],
 										editValues,
 										"edit",
+										updateItem.fields.values.issues(),
 									)}
 								{/if}
 								<div>
@@ -1406,7 +1424,7 @@ function displayValue(item: InventoryOperatorItem) {
 								).name}
 								value={JSON.stringify(newCategoryValues)}
 							/>
-							{#each changeItemCategory.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
+							{#each formIssues(changeItemCategory.fields.allIssues()) as issue, index (`${issue.message}-${index}`)}<p
 									role="alert"
 									class="text-sm text-destructive"
 								>
@@ -1459,6 +1477,7 @@ function displayValue(item: InventoryOperatorItem) {
 									newDefinitionsQuery.data ?? [],
 									newCategoryValues,
 									"category",
+									changeItemCategory.fields.values.issues(),
 								)}
 							{/if}
 							<SubmitButton
