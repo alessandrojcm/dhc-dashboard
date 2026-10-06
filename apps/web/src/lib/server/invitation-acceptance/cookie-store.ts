@@ -1,6 +1,6 @@
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import type { Cookies } from "@sveltejs/kit";
-import { trustedResponseCookie } from "$lib/server/trusted-cookie-forwarding";
+import { trustedResponseCookie } from "#lib/server/trusted-cookie-forwarding.js";
 import type { AcceptanceCookieStore, AcceptanceProof } from "./ports";
 
 /**

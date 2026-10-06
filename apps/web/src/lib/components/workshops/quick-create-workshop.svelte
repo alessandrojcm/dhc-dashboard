@@ -1,13 +1,13 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
-import { Button, buttonVariants } from "$lib/components/ui/button";
-import { Textarea } from "$lib/components/ui/textarea";
+import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
 import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
-} from "$lib/components/ui/popover";
+} from "#lib/components/ui/popover/index.js";
 import { createMutation } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
 import { Sparkles, LoaderCircle } from "@lucide/svelte";
@@ -30,7 +30,7 @@ const generateWorkshopMutation = createMutation(() => ({
 
 		open = false;
 		prompt = "";
-		goto(resolve(`/dashboard/workshops/create?generated=${encodedData}`));
+		goto(resolve(`dashboard/workshops/create?generated=${encodedData}`));
 	},
 	onError: (error) => {
 		toast.error(

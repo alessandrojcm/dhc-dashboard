@@ -7,7 +7,7 @@
 -->
 <script lang="ts">
 import { page } from "$app/state";
-import PrototypeSwitcher from "$lib/components/ui/prototype-switcher.svelte";
+import PrototypeSwitcher from "#lib/components/ui/prototype-switcher.svelte";
 import "./training-prototype.css";
 import VariantA from "./variant-a-month-grid.svelte";
 import VariantB from "./variant-b-rail-week.svelte";

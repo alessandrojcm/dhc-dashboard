@@ -1,7 +1,7 @@
 import { error } from "@sveltejs/kit";
 import { workshopsAttendees } from "@dhc/api-client";
-import { apiClientOptions } from "$lib/server/api-client";
-import { authorizationFor } from "$lib/server/authorization";
+import { apiClientOptions } from "#lib/server/api-client.js";
+import { authorizationFor } from "#lib/server/authorization/index.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ params, locals, cookies }) => {
@@ -30,12 +30,12 @@ export const load: PageServerLoad = async ({ params, locals, cookies }) => {
 		// Surface Phoenix's 404 (missing Workshop) and 403 (insufficient role)
 		// to the user; fall back to 503 for auth/network/5xx failures.
 		if (response?.status === 404) {
-			error(404, { message: "Workshop not found" });
+			error(404, "Workshop not found");
 		}
 		if (response?.status === 403) {
-			error(403, { message: "Insufficient role" });
+			error(403, "Insufficient role");
 		}
-		error(503, { message: "Unable to load workshop attendees" });
+		error(503, "Unable to load workshop attendees");
 	}
 
 	// `data` is the full `WorkshopAttendeesResponse` envelope

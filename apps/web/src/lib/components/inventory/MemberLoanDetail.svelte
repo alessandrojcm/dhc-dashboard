@@ -4,12 +4,12 @@ import {
 	createQuery,
 	useQueryClient,
 } from "@tanstack/svelte-query";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Label } from "$lib/components/ui/label";
-import { Textarea } from "$lib/components/ui/textarea";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Skeleton } from "$lib/components/ui/skeleton";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import { CalendarDays, MapPin, RefreshCw, TriangleAlert } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import {

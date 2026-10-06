@@ -1,5 +1,5 @@
 <script lang="ts">
-import PublicShell from "$lib/components/layout/PublicShell.svelte";
+import PublicShell from "#lib/components/layout/PublicShell.svelte";
 const { children } = $props();
 </script>
 

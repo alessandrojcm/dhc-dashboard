@@ -5,7 +5,7 @@ import {
 	cn,
 	type WithoutChild,
 	type WithoutChildrenOrChild,
-} from "$lib/utils.js";
+} from "#lib/utils.js";
 
 let {
 	ref = $bindable(null),

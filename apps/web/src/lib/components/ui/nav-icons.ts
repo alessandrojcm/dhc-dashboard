@@ -1,5 +1,5 @@
 import type { Component } from "svelte";
-import type { Pathname } from "$app/types";
+import type { ResolvedPathname } from "$app/types";
 import {
 	Boxes,
 	CalendarDays,
@@ -23,7 +23,7 @@ export type NavIcon = Component<IconProps>;
  * Sidebar icon per navigation URL. Keyed by URL rather than title because
  * titles are copy and get reworded; a URL is the entry's identity.
  *
- * Every entry in `$lib/server/authorization/navigation` must have an icon —
+ * Every entry in `#lib/server/authorization/navigation.js` must have an icon —
  * `nav-icons.test.ts` enforces it. There is deliberately no fallback: an
  * unknown entry used to render a chevron, which reads as "expandable" on a
  * plain link.
@@ -43,13 +43,13 @@ export const navIcons = {
 	"/dashboard/inventory/items": Package,
 	"/dashboard/inventory/categories": Tags,
 	"/dashboard/inventory/containers": Boxes,
-} satisfies Partial<Record<Pathname, NavIcon>>;
+} satisfies Partial<Record<ResolvedPathname, NavIcon>>;
 
-export function navIconFor(url: Pathname): NavIcon {
+export function navIconFor(url: ResolvedPathname): NavIcon {
 	if (!(url in navIcons)) {
 		throw new Error(`No sidebar icon for navigation entry ${url}`);
 	}
 	// SAFETY: the `in` check above proves `url` is one of `navIcons`' keys;
-	// TypeScript does not narrow a `Pathname` through `in` on a const object.
+	// TypeScript does not narrow a `ResolvedPathname` through `in` on a const object.
 	return navIcons[url as keyof typeof navIcons];
 }

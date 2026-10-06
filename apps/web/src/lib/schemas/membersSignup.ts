@@ -1,7 +1,7 @@
 import * as v from "valibot";
 import beginnersWaitlist from "./beginnersWaitlist";
 import { phoneNumberValidator } from "./commonValidators";
-import { SocialMediaConsent } from "$lib/types";
+import { SocialMediaConsent } from "#lib/types.js";
 
 export const memberSignupSchema = v.object({
 	nextOfKin: v.pipe(v.string(), v.nonEmpty("Please enter your next of kin.")),

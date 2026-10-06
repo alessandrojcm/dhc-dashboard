@@ -2,7 +2,7 @@
  * ALE-299: the decisions the service worker makes for a push message, kept
  * free of worker globals so they run under plain Vitest.
  *
- * The worker itself (`src/service-worker.ts`) only wires events to these:
+ * The worker itself (`src/service-worker/index.ts`) only wires events to these:
  * `push` → `parsePushPayload` → `showNotification`, `notificationclick` →
  * `resolveClickTarget` → focus-or-open.
  */

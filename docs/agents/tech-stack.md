@@ -2,7 +2,7 @@
 
 ## Active (SvelteKit + Phoenix API)
 
-- **Frontend**: SvelteKit 2.x, Svelte 5 (runes), Tailwind CSS 4, shadcn-svelte on `bits-ui` 2.18.1. `$lib/components/ui` owns every interactive primitive — see "UI" in [critical-patterns.md](critical-patterns.md)
+- **Frontend**: SvelteKit 3.x, Svelte 5 (runes), Tailwind CSS 4, shadcn-svelte on `bits-ui` 2.18.1. `#lib/components/ui` owns every interactive primitive — see "UI" in [critical-patterns.md](critical-patterns.md)
 - **Backend**: Phoenix JSON API (see below); the SvelteKit app talks to it only through the generated `@dhc/api-client` (`packages/api-client`, generated from `apps/phoenix/priv/api/openapi.yaml`)
 - **Types**: every API shape comes from `@dhc/api-client`. The Supabase-generated `apps/web/src/database.types.ts` and the `$database` Vite alias were deleted after the Phoenix migration; do not reintroduce a database-schema type file — add the shape to the OpenAPI contract and regenerate (`mise run api-gen`).
 - **State**: TanStack Query (`createQuery(() => ({}))` thunk pattern)
@@ -12,9 +12,9 @@
 - **Validation**: Valibot
 - **Workflow state machines**: XState v5 (`xstate`, `@xstate/svelte`). Two shapes only: pure `initialTransition`/`transition` on the server (Invitation Acceptance, ADR 0024), and per-component `useMachine` actors in the browser (Invitation Acceptance payment, workshop express checkout). Never a module-scope actor. Adopt a browser machine only for a temporal protocol with mutually exclusive phases, stage-aware retry/cancel, and coordinated async work — not to wrap TanStack Query or independent form values.
 - **Realtime (browser)**: official `phoenix` JS client (~1.8.x) for Notification invalidation signals over the WebSocket `/socket`; local to `NotificationCenter` via `notification-realtime.svelte.ts`. Best-effort only; HTTP API remains authoritative. `authToken` is captured at `Socket` construction, so `TOKEN_REFRESHED` rebuilds the socket/channel. Web Push (ADR 0025) is a second best-effort channel behind the same notification row.
-- **Authentication (browser side)**: the `_dhc_session` cookie issued by Phoenix; `hooks.server.ts` forwards it to `GET /api/auth/session` and exposes the projection as `locals.session`. Frontend authorization is advisory UX policy in `$lib/server/authorization` (GH-510); Phoenix is authoritative.
+- **Authentication (browser side)**: the `_dhc_session` cookie issued by Phoenix; `hooks.server.ts` forwards it to `GET /api/auth/session` and exposes the projection as `locals.session`. Frontend authorization is advisory UX policy in `#lib/server/authorization` (GH-510); Phoenix is authoritative.
 - **Deployment**: Cloudflare Workers via `@sveltejs/adapter-cloudflare`. The `HYPERDRIVE` binding still declared in `wrangler.jsonc` is a Supabase-era leftover that no application code reads.
-- **Monitoring**: Sentry (`@sentry/sveltekit`)
+- **Monitoring**: Sentry 11 (`@sentry/sveltekit`; the Vite plugin is imported from `@sentry/sveltekit/vite`). Logs and metrics are on by usage — there is no `enableLogs`/`enableMetrics` option. Sentry 11 is the first line that understands SvelteKit 3's `kind`-tagged `handleError` input (it skips `error()` app errors and 4xx framework errors); do not drop back to 10.x.
 
 ## Backend (Phoenix + Ecto + Oban)
 

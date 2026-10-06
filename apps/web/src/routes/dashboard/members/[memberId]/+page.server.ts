@@ -1,9 +1,9 @@
 import { membersOptions, membersShow } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import { error } from "@sveltejs/kit";
-import { apiClientOptions } from "$lib/server/api-client";
-import { authorizationFor } from "$lib/server/authorization";
-import { SocialMediaConsent as SocialMediaConsentValues } from "$lib/types";
+import { apiClientOptions } from "#lib/server/api-client.js";
+import { authorizationFor } from "#lib/server/authorization/index.js";
+import { SocialMediaConsent as SocialMediaConsentValues } from "#lib/types.js";
 import type { PageServerLoad } from "./$types";
 import * as v from "valibot";
 
@@ -79,8 +79,6 @@ export const load: PageServerLoad = async (event) => {
 		};
 	} catch (e) {
 		Sentry.captureMessage(`Error loading member data: ${e}`, "error");
-		error(404, {
-			message: "Member not found",
-		});
+		error(404, "Member not found");
 	}
 };

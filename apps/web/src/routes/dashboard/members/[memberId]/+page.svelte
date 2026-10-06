@@ -1,17 +1,17 @@
 <script lang="ts">
 import { page } from "$app/state";
 import { invalidate } from "$app/navigation";
-import { Button } from "$lib/components/ui/button";
-import * as Card from "$lib/components/ui/card";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Card from "#lib/components/ui/card/index.js";
 import dayjs from "dayjs";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import PhoneInput from "$lib/components/ui/phone-input.svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
-import * as Select from "$lib/components/ui/select";
-import { Textarea } from "$lib/components/ui/textarea";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
+import * as Field from "#lib/components/ui/field/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import PhoneInput from "#lib/components/ui/phone-input.svelte";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
+import * as Select from "#lib/components/ui/select/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import {
@@ -26,19 +26,19 @@ import {
 	UserRound,
 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
-import { Badge } from "$lib/components/ui/badge";
-import PauseSubscriptionModal from "$lib/components/ui/pause-subscription-modal.svelte";
-import * as ButtonGroup from "$lib/components/ui/button-group";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import PauseSubscriptionModal from "#lib/components/ui/pause-subscription-modal.svelte";
+import * as ButtonGroup from "#lib/components/ui/button-group/index.js";
 import { updateProfile } from "./data.remote";
-import { Label } from "$lib/components/ui/label";
-import { initForm } from "$lib/utils/init-form.svelte";
-import { whyThisField } from "$lib/components/ui/why-this-field.svelte";
-import FormDebug from "$lib/components/form-debug.svelte";
-import { memberProfileClientSchema } from "$lib/schemas/membersSignup";
-import { dev } from "$app/environment";
+import { Label } from "#lib/components/ui/label/index.js";
+import { initForm } from "#lib/utils/init-form.svelte.js";
+import { whyThisField } from "#lib/components/ui/why-this-field.svelte";
+import FormDebug from "#lib/components/form-debug.svelte";
+import { memberProfileClientSchema } from "#lib/schemas/membersSignup.js";
+import { dev } from "$app/env";
 import { untrack } from "svelte";
 import { DiscordLogo } from "svelte-radix";
-import { publicApiUrl } from "$lib/api-client";
+import { publicApiUrl } from "#lib/api-client.js";
 import * as v from "valibot";
 import {
 	membershipBillingPortalMutation,
@@ -49,8 +49,8 @@ import {
 	membersMeQueryKey,
 	membersShowQueryKey,
 } from "@dhc/api-client";
-import ReactivateMemberDialog from "$lib/components/ui/reactivate-member-dialog.svelte";
-import { SocialMediaConsent } from "$lib/types";
+import ReactivateMemberDialog from "#lib/components/ui/reactivate-member-dialog.svelte";
+import { SocialMediaConsent } from "#lib/types.js";
 
 const { data } = $props();
 const queryClient = useQueryClient();
@@ -240,9 +240,11 @@ let showReactivateModal = $state(false);
 		<p class="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
 			{isOwnProfile ? "Account & membership" : "Member administration"}
 		</p>
+
 		<h1 class="font-heading text-3xl text-foreground sm:text-4xl">
 			{pageTitle}
 		</h1>
+
 		<p
 			class="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base"
 		>
@@ -358,7 +360,9 @@ let showReactivateModal = $state(false);
 								);
 							}}
 						/>
-						<input type="hidden" name="dateOfBirth" value={dateOfBirth} />
+						<input
+							{...updateProfile.fields.dateOfBirth.as("hidden", dateOfBirth)}
+						/>
 						{#each updateProfile.fields.dateOfBirth.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
@@ -395,7 +399,6 @@ let showReactivateModal = $state(false);
 							type="single"
 							value={gender}
 							onValueChange={(value) => updateProfile.fields.gender.set(value)}
-							name="gender"
 						>
 							<Select.Trigger id="gender" class="w-full capitalize">
 								{gender || "Select your gender"}
@@ -408,6 +411,9 @@ let showReactivateModal = $state(false);
 								{/each}
 							</Select.Content>
 						</Select.Root>
+						<!-- SvelteKit 3 rejects remote-form controls not bound through
+						     `field.as(...)`, so the select stays unnamed. -->
+						<input {...updateProfile.fields.gender.as("hidden", gender)} />
 						{#each updateProfile.fields.gender.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
@@ -489,7 +495,6 @@ let showReactivateModal = $state(false);
 							Choose how club photos may be used on social media.
 						</p>
 						<RadioGroup.Root
-							name="socialMediaConsent"
 							class="grid gap-2"
 							value={socialMediaConsent}
 							onValueChange={(value) => {
@@ -552,6 +557,16 @@ let showReactivateModal = $state(false);
 								</span>
 							</Label>
 						</RadioGroup.Root>
+						<!-- Unnamed radio group: SvelteKit 3 only accepts remote-form
+						     controls bound through `field.as(...)`. -->
+						{#if socialMediaConsent}
+							<input
+								{...updateProfile.fields.socialMediaConsent.as(
+									"hidden",
+									socialMediaConsent,
+								)}
+							/>
+						{/if}
 						{#each updateProfile.fields.socialMediaConsent.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}

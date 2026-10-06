@@ -4,11 +4,11 @@ import { Lock, LockOpen } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { goto, invalidate } from "$app/navigation";
 import { page } from "$app/state";
-import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
-import Button from "$lib/components/ui/button/button.svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as Select from "$lib/components/ui/select";
-import { Content, List, Root, Trigger } from "$lib/components/ui/tabs/index.js";
+import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+import Button from "#lib/components/ui/button/button.svelte";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import * as Select from "#lib/components/ui/select/index.js";
+import { Content, List, Root, Trigger } from "#lib/components/ui/tabs/index.js";
 import WaitlistTable from "./waitlist-table.svelte";
 import Analytics from "./workshop-analytics.svelte";
 import { waitlistUpdateStatusMutation } from "@dhc/api-client";
@@ -34,7 +34,7 @@ const toggleWaitlistMutation = createMutation(() => ({
 }));
 
 function onTabChange(value: string) {
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	const newParams = new SvelteURLSearchParams(page.url.search);
 	newParams.set("tab", value);
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
 	goto(url);

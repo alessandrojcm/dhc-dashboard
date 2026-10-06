@@ -1,4 +1,4 @@
-import { authorizationFor } from "$lib/server/authorization";
+import { authorizationFor } from "#lib/server/authorization/index.js";
 import type { LayoutServerLoad } from "./$types";
 
 export const load: LayoutServerLoad = async ({ locals }) => {

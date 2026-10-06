@@ -1,7 +1,7 @@
 <script lang="ts">
 import type { SortDirection } from "@tanstack/table-core";
 import type { ComponentProps } from "svelte";
-import { Button } from "$lib/components/ui/button/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "@lucide/svelte";
 
 const {

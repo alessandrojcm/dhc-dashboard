@@ -1,5 +1,5 @@
-import type { AcceptanceApiResult } from "$lib/invitation-acceptance/vocabulary";
-import type { PlanPricing } from "$lib/types";
+import type { AcceptanceApiResult } from "#lib/invitation-acceptance/vocabulary.js";
+import type { PlanPricing } from "#lib/types.js";
 
 /**
  * Ports for the Invitation Acceptance workflow (GH-509, "remote but owned").

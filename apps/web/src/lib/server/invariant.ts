@@ -6,7 +6,7 @@ function invariant(
 	errorCode?: number,
 ): asserts condition is false {
 	if (condition) {
-		error(errorCode ?? 401, { message });
+		error(errorCode ?? 401, message);
 	}
 }
 

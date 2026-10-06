@@ -1,9 +1,9 @@
 <script lang="ts" module>
-import type { PushEnvironment } from "$lib/notifications/web-push/availability";
+import type { PushEnvironment } from "#lib/notifications/web-push/availability.js";
 import type {
 	PushBrowser,
 	PushServer,
-} from "$lib/notifications/web-push/workflow";
+} from "#lib/notifications/web-push/workflow.js";
 
 /**
  * Everything the toggle needs from outside the component. Defaults are the
@@ -26,21 +26,21 @@ import {
 	notificationsPushUnsubscribeMutation,
 } from "@dhc/api-client";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
-import { readPushEnvironment } from "$lib/notifications/web-push/availability";
-import { browserPushManager } from "$lib/notifications/web-push/browser";
+import { readPushEnvironment } from "#lib/notifications/web-push/availability.js";
+import { browserPushManager } from "#lib/notifications/web-push/browser.js";
 import {
 	determinePushStatus,
 	disablePush,
 	enablePush,
 	forgetPushSubscription,
 	type PushStatus,
-} from "$lib/notifications/web-push/workflow";
-import { Switch } from "$lib/components/ui/switch";
+} from "#lib/notifications/web-push/workflow.js";
+import { Switch } from "#lib/components/ui/switch/index.js";
 
 let { deps: providedDeps }: { deps?: Partial<WebPushToggleDeps> } = $props();
 
 // ALE-299. The component owns only presentation and the busy flag; every
-// decision is in `$lib/notifications/web-push/*`, where it is unit-tested.
+// decision is in `#lib/notifications/web-push/*`, where it is unit-tested.
 //
 // The Phoenix adapter goes through the generated TanStack helpers (the
 // repo's rule for direct Phoenix client calls) and is built only when a test

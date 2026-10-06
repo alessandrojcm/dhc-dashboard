@@ -1,7 +1,7 @@
 import dayjs from "dayjs";
 import { parsePhoneNumber } from "libphonenumber-js/min";
 import * as v from "valibot";
-import { SocialMediaConsent } from "$lib/types";
+import { SocialMediaConsent } from "#lib/types.js";
 import { dobValidator, phoneNumberValidator } from "./commonValidators";
 
 const calculateAge = (dateOfBirth: Date) => dayjs().diff(dateOfBirth, "years");

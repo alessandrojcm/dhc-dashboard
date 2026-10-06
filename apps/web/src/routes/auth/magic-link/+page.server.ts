@@ -1,7 +1,7 @@
 import { authSessionVerifyMagicLink } from "@dhc/api-client";
 import { redirect } from "@sveltejs/kit";
-import { apiClientOptions } from "$lib/server/api-client";
-import { forwardTrustedResponseCookies } from "$lib/server/trusted-cookie-forwarding";
+import { apiClientOptions } from "#lib/server/api-client.js";
+import { forwardTrustedResponseCookies } from "#lib/server/trusted-cookie-forwarding.js";
 import type { PageServerLoad } from "./$types";
 
 /**

@@ -2,12 +2,12 @@
 import "../app.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
 import { SvelteQueryDevtools } from "@tanstack/svelte-query-devtools";
-import { Toaster } from "$lib/components/ui/sonner/index";
+import { Toaster } from "#lib/components/ui/sonner/index.js";
 import posthog from "posthog-js";
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
-import { browser, dev } from "$app/environment";
-import { configureBrowserApiClient } from "$lib/api-client";
+import { browser, dev } from "$app/env";
+import { configureBrowserApiClient } from "#lib/api-client.js";
 import type { LayoutData } from "./$types";
 
 const { children, data }: { children: Snippet; data: LayoutData } = $props();
@@ -48,7 +48,7 @@ onMount(() => {
 // is explicit: `invalidate("phoenix:session")` (e.g. after sign-in or
 // sign-out) re-runs the root layout load, which re-reads the session
 // projection from Phoenix. Child components (e.g. the dashboard logout
-// handler) call `invalidateAll()` directly.
+// handler) call `refreshAll()` directly.
 </script>
 
 <div class="app" data-app-hydrated={hydrated}>

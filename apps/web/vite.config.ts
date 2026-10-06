@@ -1,4 +1,4 @@
-import { sentrySvelteKit } from "@sentry/sveltekit";
+import { sentrySvelteKit } from "@sentry/sveltekit/vite";
 import { sveltekit } from "@sveltejs/kit/vite";
 import { defineConfig } from "vitest/config";
 import tailwindcss from "@tailwindcss/vite";
@@ -26,6 +26,11 @@ export default defineConfig(({ command }) => ({
 		}),
 		sveltekit({
 			adapter: adapter(),
+			// Same directory as Vite's `envDir`: SvelteKit 3 loads and validates
+			// `src/env.ts` variables from its own `env.dir`, not from `envDir`.
+			env: {
+				dir: "../..",
+			},
 			compilerOptions: {
 				experimental: {
 					async: true,
@@ -33,15 +38,9 @@ export default defineConfig(({ command }) => ({
 			},
 			experimental: {
 				remoteFunctions: true,
-				instrumentation: {
-					server: true,
-				},
-				tracing: {
-					server: true,
-				},
 			},
-			alias: {
-				$assets: "./src/assets",
+			tracing: {
+				server: true,
 			},
 		}),
 		enhancedImages(),
@@ -74,7 +73,10 @@ export default defineConfig(({ command }) => ({
 				test: {
 					name: "browser",
 					include: ["src/**/*.browser.{test,spec}.{js,ts}"],
-					setupFiles: ["vitest-browser-svelte"],
+					setupFiles: [
+						"vitest-browser-svelte",
+						"./src/vitest-browser-setup.ts",
+					],
 					browser: {
 						enabled: true,
 						headless: true,

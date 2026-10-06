@@ -1,10 +1,10 @@
 import { redirect, type RequestHandler } from "@sveltejs/kit";
-import { invitationPaths } from "$lib/invitation-acceptance/paths";
+import { invitationPaths } from "#lib/invitation-acceptance/paths.js";
 import {
 	invitationAcceptanceRequestOptions,
 	sveltekitAcceptanceCookies,
-} from "$lib/server/invitation-acceptance";
-import { forwardTrustedResponseCookie } from "$lib/server/trusted-cookie-forwarding";
+} from "#lib/server/invitation-acceptance/index.js";
+import { forwardTrustedResponseCookie } from "#lib/server/trusted-cookie-forwarding.js";
 
 const OAUTH_SESSION_COOKIE = "_dhc_key";
 const ACCEPTANCE_RECOVERY_COOKIE = "discord-acceptance-invitation";
@@ -42,5 +42,8 @@ export const GET: RequestHandler = async ({ cookies, fetch, params, url }) => {
 		sameSite: "lax",
 		maxAge: 15 * 60,
 	});
-	throw redirect(302, location);
+	// The provider URL is external by design (Discord in production, a stub
+	// origin in dev/E2E) and comes from trusted Phoenix, which owns the OAuth
+	// decision; SvelteKit 3 requires external redirects to be opted into.
+	throw redirect(302, location, { external: true });
 };

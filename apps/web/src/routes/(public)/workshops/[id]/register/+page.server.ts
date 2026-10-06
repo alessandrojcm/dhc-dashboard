@@ -4,7 +4,7 @@ import {
 	createExternalWorkshopCheckoutSession,
 	ExternalWorkshopRegistrationApiError,
 	getExternalWorkshopRegistrationGate,
-} from "$lib/server/api/external-workshop-registration";
+} from "#lib/server/api/external-workshop-registration.js";
 import type { PageServerLoad } from "./$types";
 
 /**

@@ -10,6 +10,7 @@
  */
 import type { TrainingAnnouncement } from "@dhc/api-client";
 import type { QueryKey } from "@tanstack/svelte-query";
+import * as v from "valibot";
 
 export type LifecycleCommand = "disable" | "enable" | "retire" | "delete";
 
@@ -49,18 +50,19 @@ export function withoutRow<T extends { id: string }>(
 }
 
 /**
+ * The part of a generated `trainingAnnouncementsList` key this module reads:
+ * the request options in its first element. Other options are ignored, and a
+ * key without a `query` is a request that did not ask for retired rows.
+ */
+const listKeyParamsSchema = v.object({
+	query: v.object({ includeRetired: v.optional(v.boolean()) }),
+});
+
+/**
  * Whether a cached `trainingAnnouncementsList` query asked for retired rows.
  * The generated key carries the request's `query` in its first element.
  */
 export function listIncludesRetired(key: QueryKey): boolean {
-	const [params] = key;
-	if (typeof params !== "object" || params === null || !("query" in params))
-		return false;
-	const { query } = params;
-	return (
-		typeof query === "object" &&
-		query !== null &&
-		"includeRetired" in query &&
-		query.includeRetired === true
-	);
+	const params = v.safeParse(listKeyParamsSchema, key[0]);
+	return params.success && params.output.query.includeRetired === true;
 }

@@ -4,9 +4,9 @@ import {
 	inventoryContainersUpdate,
 	vInventoryContainerCreateRequest,
 } from "@dhc/api-client";
-import { apiErrorMessage } from "$lib/api-error";
-import { apiClientOptions } from "$lib/server/api-client";
-import { authorize } from "$lib/server/auth";
+import { apiErrorMessage } from "#lib/api-error.js";
+import { apiClientOptions } from "#lib/server/api-client.js";
+import { authorize } from "#lib/server/auth.js";
 import * as v from "valibot";
 
 const uuid = v.pipe(v.string(), v.uuid("Choose a valid container"));

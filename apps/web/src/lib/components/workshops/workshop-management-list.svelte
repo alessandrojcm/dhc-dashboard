@@ -1,12 +1,12 @@
 <script lang="ts">
 import { resolve } from "$app/paths";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
-import { Input } from "$lib/components/ui/input";
-import { Progress } from "$lib/components/ui/progress";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import type { WorkshopCalendarEvent } from "$lib/types";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Progress } from "#lib/components/ui/progress/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import type { WorkshopCalendarEvent } from "#lib/types.js";
 import type { WorkshopCalendarItem } from "@dhc/api-client";
 import {
 	CalendarDays,

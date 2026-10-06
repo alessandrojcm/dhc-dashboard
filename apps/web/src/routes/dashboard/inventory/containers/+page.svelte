@@ -9,26 +9,26 @@ import {
 	inventoryContainersRestoreMutation,
 } from "@dhc/api-client";
 import { saveContainer } from "./data.remote";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import * as Select from "$lib/components/ui/select";
-import * as Sheet from "$lib/components/ui/sheet";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import * as Select from "#lib/components/ui/select/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
 import {
 	dndState,
 	draggable,
 	droppable,
 	type DragDropState,
 } from "@thisux/sveltednd";
-import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
 import {
 	decideContainerDrop,
 	type ContainerSnapshot,
-} from "$lib/components/inventory/container-dnd";
-import SubmitButton from "$lib/components/ui/submit-button.svelte";
-import { apiErrorMessage } from "$lib/api-error";
+} from "#lib/components/inventory/container-dnd.js";
+import SubmitButton from "#lib/components/ui/submit-button.svelte";
+import { apiErrorMessage } from "#lib/api-error.js";
 import {
 	Archive,
 	FolderTree,

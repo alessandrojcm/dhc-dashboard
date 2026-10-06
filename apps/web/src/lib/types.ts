@@ -1,5 +1,5 @@
 import type { WorkshopCalendarItem } from "@dhc/api-client";
-import type { Pathname } from "$app/types";
+import type { ResolvedPathname } from "$app/types";
 
 // Removed Schedule-X import - using vkurko/calendar now
 
@@ -14,19 +14,15 @@ export type UserData = {
 
 export type NavigationItem = {
 	title: string;
-	url: Pathname;
+	url: ResolvedPathname;
 	isActive?: boolean;
 };
-
 export type NavigationGroup = {
 	title: string;
-	url: Pathname;
+	url: ResolvedPathname;
 	items?: NavigationItem[];
 };
-
-export type NavData = {
-	navMain: NavigationGroup[];
-};
+export type NavData = { navMain: NavigationGroup[] };
 
 export enum SocialMediaConsent {
 	no = "no",

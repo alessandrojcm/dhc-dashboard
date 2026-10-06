@@ -36,24 +36,24 @@ import { toast } from "svelte-sonner";
 import * as v from "valibot";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import * as Checkbox from "$lib/components/ui/checkbox/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Checkbox from "#lib/components/ui/checkbox/index.js";
 import {
 	createSvelteTable,
 	FlexRender,
 	renderComponent,
 	renderSnippet,
-} from "$lib/components/ui/data-table/index.js";
-import { Input } from "$lib/components/ui/input";
-import * as Select from "$lib/components/ui/select";
-import * as Table from "$lib/components/ui/table/index.js";
-import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+} from "#lib/components/ui/data-table/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import * as Select from "#lib/components/ui/select/index.js";
+import * as Table from "#lib/components/ui/table/index.js";
+import SortHeader from "#lib/components/ui/table/sort-header.svelte";
 import {
 	PAGE_SIZE_OPTIONS,
 	parsePageSize,
 	transitionCursorQuery,
-} from "$lib/cursor-query";
+} from "#lib/cursor-query.js";
 import ActionButtons from "./actions-buttons.svelte";
 import WaitlistStatusSelect from "./waitlist-status-select.svelte";
 
@@ -299,7 +299,7 @@ const updateWaitlistEntry = createMutation(() => ({
 
 function navigateToBeginnersWorkshop(searchParams: URLSearchParams) {
 	const url = `/dashboard/beginners-workshop?${searchParams.toString()}`;
-	goto(url, { keepFocus: true, noScroll: true });
+	goto(url, { reset: false });
 }
 
 function onPaginationChange(newPagination: Partial<PaginationState>) {

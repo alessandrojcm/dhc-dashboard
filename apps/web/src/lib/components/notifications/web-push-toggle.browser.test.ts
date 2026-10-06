@@ -2,11 +2,11 @@ import { expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import WebPushToggle, { type WebPushToggleDeps } from "./WebPushToggle.svelte";
-import type { PushEnvironment } from "$lib/notifications/web-push/availability";
+import type { PushEnvironment } from "#lib/notifications/web-push/availability.js";
 import type {
 	BrowserSubscription,
 	PushBrowser,
-} from "$lib/notifications/web-push/workflow";
+} from "#lib/notifications/web-push/workflow.js";
 
 // ALE-299: the toggle's job is to explain each state without prompting and to
 // hand a click to the workflow. The Push API and Phoenix are faked; the

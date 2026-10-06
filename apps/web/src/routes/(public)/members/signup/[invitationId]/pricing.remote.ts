@@ -7,8 +7,8 @@ import {
 	invitationAcceptanceDeps,
 	previewPricing,
 	type InvitationRouteOutcome,
-} from "$lib/server/invitation-acceptance";
-import type { PlanPricing } from "$lib/types";
+} from "#lib/server/invitation-acceptance/index.js";
+import type { PlanPricing } from "#lib/types.js";
 
 const pricingSchema = v.object({
 	code: v.optional(v.string()),

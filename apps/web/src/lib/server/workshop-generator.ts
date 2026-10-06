@@ -2,11 +2,11 @@ import { valibotSchema } from "@ai-sdk/valibot";
 import { generateObject } from "ai";
 import dayjs from "dayjs";
 import * as v from "valibot";
-import { env } from "$env/dynamic/private";
+import { GROQ_API_KEY } from "$app/env/private";
 import {
 	BaseWorkshopSchema,
 	CreateWorkshopSchema,
-} from "$lib/schemas/workshop";
+} from "#lib/schemas/workshop.js";
 
 export const LLMCreateWrokshopSchema = v.object({
 	...v.omit(BaseWorkshopSchema, ["workshop_date", "workshop_end_date"]).entries,
@@ -167,12 +167,12 @@ export async function generateWorkshopData(
 				groq("meta-llama/llama-4-scout-17b-16e-instruct"),
 			);
 	return generateObject({
-		model: model,
+		model,
 		schema: valibotSchema(LLMCreateWrokshopSchema),
 		system,
 		temperature: 0.5,
 		prompt,
-		...(env?.GROQ_API_KEY && { apiKey: env.GROQ_API_KEY }),
+		...(GROQ_API_KEY && { apiKey: GROQ_API_KEY }),
 		...(signal && { abortSignal: signal }),
 		experimental_repairText: ({ text, error }) => {
 			try {

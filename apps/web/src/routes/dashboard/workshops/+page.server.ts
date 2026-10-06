@@ -1,4 +1,4 @@
-import { authorize } from "$lib/server/auth";
+import { authorize } from "#lib/server/auth.js";
 import type { PageServerLoad } from "./$types";
 
 export const ssr = false;

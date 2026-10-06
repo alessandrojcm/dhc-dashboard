@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { Component } from "svelte";
-import { cn } from "$lib/utils.js";
+import { cn } from "#lib/utils.js";
 
 let {
 	eyebrow,

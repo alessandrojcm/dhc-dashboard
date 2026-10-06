@@ -4,12 +4,12 @@ import {
 	createQuery,
 	useQueryClient,
 } from "@tanstack/svelte-query";
-import WorkshopList from "$lib/components/workshops/workshop-list.svelte";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import * as Tabs from "$lib/components/ui/tabs";
+import WorkshopList from "#lib/components/workshops/workshop-list.svelte";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import * as Tabs from "#lib/components/ui/tabs/index.js";
 import { toast } from "svelte-sonner";
 import { CalendarCheck2, Heart, RefreshCw, TicketCheck } from "@lucide/svelte";
 import {

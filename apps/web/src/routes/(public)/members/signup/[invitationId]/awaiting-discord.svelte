@@ -1,6 +1,6 @@
 <script lang="ts">
 import { page } from "$app/state";
-import { Button } from "$lib/components/ui/button";
+import { Button } from "#lib/components/ui/button/index.js";
 </script>
 
 <div class="max-w-xl space-y-6">

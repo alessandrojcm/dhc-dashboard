@@ -23,22 +23,22 @@ import type {
 	TrainingAnnouncementOccurrence,
 } from "@dhc/api-client";
 import { useQueryClient } from "@tanstack/svelte-query";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import * as Sheet from "$lib/components/ui/sheet";
-import { announcementDateLabel } from "$lib/training-announcements/announcement";
-import { KIND_CHANNEL_LABELS } from "$lib/training-announcements/copy";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import { announcementDateLabel } from "#lib/training-announcements/announcement.js";
+import { KIND_CHANNEL_LABELS } from "#lib/training-announcements/copy.js";
 import {
 	evidenceCheckpoints,
 	occurrenceNotSentReason,
 	inspectorActionsAllowed,
 	isInFlightDelivery,
-} from "$lib/training-announcements/inspector";
+} from "#lib/training-announcements/inspector.js";
 import {
 	deliveryReasonLabel,
 	occurrenceStatus,
 	occurrenceTitle,
-} from "$lib/training-announcements/status";
+} from "#lib/training-announcements/status.js";
 import DiscordMessagePreview from "./DiscordMessagePreview.svelte";
 import OverrideSheet from "./OverrideSheet.svelte";
 import SuppressionSheet from "./SuppressionSheet.svelte";

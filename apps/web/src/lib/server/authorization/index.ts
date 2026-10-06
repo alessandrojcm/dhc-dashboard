@@ -31,8 +31,8 @@
  * ```
  */
 import { error } from "@sveltejs/kit";
-import type { PhoenixSessionProjection } from "$lib/server/auth";
-import type { NavData } from "$lib/types";
+import type { PhoenixSessionProjection } from "#lib/server/auth.js";
+import type { NavData } from "#lib/types.js";
 import {
 	CAPABILITIES,
 	decide,
@@ -85,7 +85,7 @@ export function authorizationFor(
 		require(capability, resource) {
 			const decision = decideFor(capability, resource);
 			if (!decision.allowed) {
-				error(decision.status, { message: DENIAL_MESSAGES[decision.status] });
+				error(decision.status, DENIAL_MESSAGES[decision.status]);
 			}
 		},
 		navigation: () =>

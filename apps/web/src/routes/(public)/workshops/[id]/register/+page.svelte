@@ -1,12 +1,12 @@
 <script lang="ts">
-import { PUBLIC_STRIPE_KEY } from "$env/static/public";
+import { PUBLIC_STRIPE_KEY } from "$app/env/public";
 import { loadStripe, type StripeEmbeddedCheckout } from "@stripe/stripe-js";
 import dayjs from "dayjs";
 import Dinero from "dinero.js";
 import { onMount } from "svelte";
-import * as Alert from "$lib/components/ui/alert";
-import * as Card from "$lib/components/ui/card";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import * as Card from "#lib/components/ui/card/index.js";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();

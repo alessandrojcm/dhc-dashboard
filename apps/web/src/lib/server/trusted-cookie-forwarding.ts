@@ -2,7 +2,9 @@ import type { Cookies } from "@sveltejs/kit";
 
 export type CookieWriter = Pick<Cookies, "set">;
 
-type CookieOptions = Parameters<Cookies["set"]>[2];
+// Optional since SvelteKit 3 (path defaults to "/"); this module always
+// passes the upstream's explicit path, so it works with the defined shape.
+type CookieOptions = NonNullable<Parameters<Cookies["set"]>[2]>;
 
 const cookieNamePattern = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 const cookieValuePattern = /^[\u0021-\u003A\u003C-\u007E]*$/;

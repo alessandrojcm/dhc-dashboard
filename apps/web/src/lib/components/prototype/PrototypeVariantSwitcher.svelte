@@ -12,12 +12,11 @@ let { variants, current }: { variants: Variant[]; current: string } = $props();
 
 function selectVariant(index: number) {
 	const variant = variants[(index + variants.length) % variants.length];
-	const url = new URL(page.url);
+	const url = new URL(page.url.href);
 	url.searchParams.set("variant", variant.id);
 	void goto(`${url.pathname}${url.search}`, {
-		replaceState: true,
-		keepFocus: true,
-		noScroll: true,
+		replace: true,
+		reset: false,
 	});
 }
 

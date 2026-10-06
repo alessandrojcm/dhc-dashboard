@@ -5,20 +5,20 @@ import { submitWaitlist } from "./data.remote";
 import {
 	beginnersWaitlistClientSchema,
 	isMinor,
-} from "$lib/schemas/beginnersWaitlist";
+} from "#lib/schemas/beginnersWaitlist.js";
 
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Textarea } from "$lib/components/ui/textarea";
-import * as Card from "$lib/components/ui/card";
-import * as Alert from "$lib/components/ui/alert";
-import * as Field from "$lib/components/ui/field";
-import * as Select from "$lib/components/ui/select";
-import * as RadioGroup from "$lib/components/ui/radio-group";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
+import * as Card from "#lib/components/ui/card/index.js";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import * as Field from "#lib/components/ui/field/index.js";
+import * as Select from "#lib/components/ui/select/index.js";
+import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
 import { CheckCircled } from "svelte-radix";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import PhoneInput from "$lib/components/ui/phone-input.svelte";
-import { SocialMediaConsent } from "$lib/types";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
+import PhoneInput from "#lib/components/ui/phone-input.svelte";
+import { SocialMediaConsent } from "#lib/types.js";
 import * as v from "valibot";
 
 let { data } = $props();
@@ -248,7 +248,6 @@ function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 						)}
 					</span>
 					<RadioGroup.Root
-						name="socialMediaConsent"
 						value={submitWaitlist.fields.socialMediaConsent.value()}
 						onValueChange={(value) => {
 							if (isSocialMediaConsent(value)) {
@@ -275,6 +274,19 @@ function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 							<Field.Label for="yes_recognizable">Yes</Field.Label>
 						</div>
 					</RadioGroup.Root>
+					<!-- SvelteKit 3 rejects remote-form controls not bound through
+					     `field.as(...)`, so the radio group stays unnamed and its value
+					     is submitted here. -->
+					{@const socialMediaConsent =
+						submitWaitlist.fields.socialMediaConsent.value()}
+					{#if socialMediaConsent}
+						<input
+							{...submitWaitlist.fields.socialMediaConsent.as(
+								"hidden",
+								socialMediaConsent,
+							)}
+						/>
+					{/if}
 					{#each submitWaitlist.fields.socialMediaConsent.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}

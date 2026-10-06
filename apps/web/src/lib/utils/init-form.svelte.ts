@@ -1,4 +1,4 @@
-import type { RemoteForm, RemoteFormInput } from "@sveltejs/kit";
+import type { RemoteForm, RemoteFormInput } from "$app/server";
 
 export function initForm<T extends RemoteFormInput, R = unknown>(
 	form: RemoteForm<T, R>,

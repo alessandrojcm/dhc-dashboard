@@ -3,7 +3,7 @@ import {
 	applyInvitationRouteOutcome,
 	invitationAcceptanceDeps,
 	restartDiscordVerification,
-} from "$lib/server/invitation-acceptance";
+} from "#lib/server/invitation-acceptance/index.js";
 
 // Deliberately no continuation in this URL: the protected cookie is the only
 // browser-held reference used to release the claim.

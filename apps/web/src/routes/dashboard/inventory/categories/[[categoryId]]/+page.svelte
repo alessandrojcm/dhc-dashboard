@@ -18,19 +18,19 @@ import {
 	saveDefinition,
 	updateOption,
 } from "./data.remote";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import * as AlertDialog from "$lib/components/ui/alert-dialog";
-import { Badge } from "$lib/components/ui/badge";
-import { Button, buttonVariants } from "$lib/components/ui/button";
-import { Checkbox } from "$lib/components/ui/checkbox";
-import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import * as Select from "$lib/components/ui/select";
-import * as Sheet from "$lib/components/ui/sheet";
-import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
-import SubmitButton from "$lib/components/ui/submit-button.svelte";
-import { apiErrorMessage } from "$lib/api-error";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import * as Select from "#lib/components/ui/select/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
+import SubmitButton from "#lib/components/ui/submit-button.svelte";
+import { apiErrorMessage } from "#lib/api-error.js";
 import {
 	ArrowLeft,
 	Braces,
@@ -103,6 +103,7 @@ const filteredCategories = $derived.by(() => {
 			category.description?.toLocaleLowerCase().includes(query),
 	);
 });
+
 const totalItemCount = $derived(
 	(categoriesQuery.data ?? []).reduce(
 		(total, category) => total + category.itemCount,
@@ -116,7 +117,9 @@ const retiredDefinitionCount = $derived(
 	(definitionsQuery.data?.length ?? 0) - activeDefinitions.length,
 );
 
-afterNavigate(({ from, to }) => {
+afterNavigate(({ from, to, shallow }) => {
+	if (shallow) return;
+
 	if (from?.url.pathname !== to?.url.pathname) {
 		resetDefinition();
 		editingOptionId = undefined;
@@ -221,6 +224,7 @@ function optionDraft(option: { id: string; label: string; position: number }) {
 		}
 	);
 }
+
 function setOptionDraft(
 	option: { id: string; label: string; position: number },
 	field: "label" | "position",
@@ -442,9 +446,8 @@ function handleOptionUpdate(result: typeof updateOption.result) {
 								<DropdownMenu.Item
 									class="text-destructive focus:text-destructive"
 									onSelect={() => (categoryPendingDelete = category)}
+									><Trash2 />Delete</DropdownMenu.Item
 								>
-									<Trash2 />Delete
-								</DropdownMenu.Item>
 							</DropdownMenu.Content>
 						</DropdownMenu.Root>
 					</article>

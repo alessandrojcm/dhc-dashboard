@@ -7,7 +7,13 @@
 
 ## SvelteKit (current)
 
-- Type check with `pnpm check` not `tsc` (Svelte compiler required)
+- Type check with `pnpm check` not `tsc` (Svelte compiler required). It also runs `check:sw`, because the service worker (`src/service-worker/index.ts`) is a separate TS project extending `$app/tsconfig/service-worker` and is excluded from the root `tsconfig.json`.
+- Imports use `#lib/...` Node subpath imports (`package.json` `imports`), not `$lib`, and must name the file: `#lib/utils.js`, `#lib/components/ui/button/index.js`. `components.json` aliases use `#lib` so shadcn-svelte generates the same.
+- Environment variables are declared once in `src/env.ts` (`defineEnvVars`) and imported from `$app/env/public` / `$app/env/private`; `$env/*` is not used. Optional variables use a pass-through schema so they are `undefined` when unset (call sites rely on `??`). SvelteKit reads them from its own `env.dir`, set to `../..` in `vite.config.ts` to match Vite's `envDir` — keep the two in sync.
+- Vitest browser tests run `src/vitest-browser-setup.ts`, which defines the `globalThis.__sveltekit_dev` bootstrap that SvelteKit-rendered pages provide; without it any component importing a dynamic `$app/env/public` variable fails to load. Do not replace it with `vi.mock` (the anti-slop lint bans module mocking).
+- `redirect(...)` to an external URL needs `{ external: true }` (or an origin allowlist); the Discord OAuth hop in `members/signup/[invitationId]/discord/+server.ts` uses `external: true` because Phoenix owns the provider URL, which differs per environment.
+- Server `handleError` receives every error in SvelteKit 3, discriminated by `kind`; `hooks.server.ts` only console-logs `kind: "unknown"`. `error(status, message)` takes the message as a string; extra `App.Error` properties go in a third argument.
+- `pnpm-workspace.yaml` allows Kit 3 for `runed`'s optional `@sveltejs/kit` peer until runed widens its range; remove the rule once it does.
 - E2E tests need unique data: `test-${Date.now()}-${randomSuffix}@example.com`
 - Use `dinero.js` for money, `day.js` for dates
 - TanStack Query uses thunk pattern: `createQuery(() => ({...}))`
@@ -42,7 +48,7 @@
 - **Phoenix dev authentication**: local authentication uses Phoenix Principals, magic links, opaque Sessions, and Discord OAuth. It does not require Supabase Auth URL, anon-key, or service-role credentials.
 - **Migrated Supabase timestamp columns**: legacy tables such as `user_profiles` and `invitations` use `created_at`/`updated_at`, not Ecto's default `inserted_at`/`updated_at`; schemas should use `timestamps(inserted_at: :created_at, type: :utc_datetime)` when mapping those tables.
 - **Invitation API routes**: model invitations as resources. Use `POST /api/invitations` to enqueue invitation creation and `POST /api/invitations/resend` to resend existing invitations; avoid verb/resource names such as `/bulk-invitations` or `/invitation-resends`.
-- **SvelteKit → API remotes**: server-side remote functions call generated `@dhc/api-client` SDK functions using `apiClientOptions(session)` from `$lib/server/api-client`; the centralized base URL reads `API_BASE_URL`, then legacy `PHOENIX_API_BASE_URL`/`PHOENIX_API_URL`, with dev fallback `http://localhost:4000/api`.
+- **SvelteKit → API remotes**: server-side remote functions call generated `@dhc/api-client` SDK functions using `apiClientOptions(session)` from `#lib/server/api-client`; the centralized base URL reads `API_BASE_URL`, then legacy `PHOENIX_API_BASE_URL`/`PHOENIX_API_URL`, with dev fallback `http://localhost:4000/api`.
 - **Phoenix-generated frontend links**: use configured `:app_url` (`APP_URL` in prod/runtime, dev may fall back to `PUBLIC_SITE_URL`/`SITE_URL`); domain code should call `Application.fetch_env!(:dhc, :app_url)` rather than hardcoding localhost fallbacks.
 - **Phoenix integration tests** are tagged `:integration` and excluded from the default `mix test` run. Run them with `mix test --include integration`; the Stripe sync integration test hits Stripe test mode, creates its own customers/subscriptions, and requires `STRIPE_SECRET_KEY` plus either `STRIPE_SYNC_TEST_PRICE_ID` or a Stripe test price with `lookup_key=standard_membership_fee`.
 - **`mix dhc.seed_members [COUNT]`** creates Phoenix Principals, waitlist entries, user profiles, member profiles, user roles, and Stripe customers. It does not call the Supabase Admin API.

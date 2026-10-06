@@ -1,13 +1,13 @@
 <script lang="ts">
 import { createWorkshop, updateWorkshop } from "./workshop-form.remote";
-import { initForm } from "$lib/utils/init-form.svelte";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Textarea } from "$lib/components/ui/textarea";
-import { Switch } from "$lib/components/ui/switch";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import * as Field from "$lib/components/ui/field";
-import Calendar25 from "$lib/components/calendar-25.svelte";
+import { initForm } from "#lib/utils/init-form.svelte.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
+import { Switch } from "#lib/components/ui/switch/index.js";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import * as Field from "#lib/components/ui/field/index.js";
+import Calendar25 from "#lib/components/calendar-25.svelte";
 import {
 	BellRing,
 	CalendarDays,
@@ -23,7 +23,7 @@ import {
 	ShieldCheck,
 	Users,
 } from "@lucide/svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import {
 	type CalendarDate,
 	fromDate,
@@ -424,11 +424,17 @@ const successMessage = $derived(remoteForm.result?.success);
 							disabled={!isWorkshopEditable}
 						/>
 					</div>
-					<input name="workshop_date" type="hidden" value={workshopDate} />
 					<input
-						name="workshop_end_date"
-						type="hidden"
-						value={workshopEndDate}
+						{...remoteForm.fields.workshop_date.as(
+							"hidden",
+							workshopDate ?? "",
+						)}
+					/>
+					<input
+						{...remoteForm.fields.workshop_end_date.as(
+							"hidden",
+							workshopEndDate ?? "",
+						)}
 					/>
 					{#each remoteForm.fields.workshop_date.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
@@ -559,9 +565,10 @@ const successMessage = $derived(remoteForm.result?.success);
 								/>
 							</div>
 							<input
-								type="hidden"
-								name="announce_discord"
-								value={String(announceDiscord)}
+								{...createWorkshop.fields.announce_discord.as(
+									"hidden",
+									String(announceDiscord),
+								)}
 							/>
 						</div>
 
@@ -593,9 +600,10 @@ const successMessage = $derived(remoteForm.result?.success);
 								/>
 							</div>
 							<input
-								type="hidden"
-								name="announce_email"
-								value={String(announceEmail)}
+								{...createWorkshop.fields.announce_email.as(
+									"hidden",
+									String(announceEmail),
+								)}
 							/>
 						</div>
 					</div>
@@ -676,7 +684,9 @@ const successMessage = $derived(remoteForm.result?.success);
 							disabled={!isWorkshopEditable}
 						/>
 					</div>
-					<input type="hidden" name="is_public" value={String(isPublic)} />
+					<input
+						{...remoteForm.fields.is_public.as("hidden", String(isPublic))}
+					/>
 					{#each remoteForm.fields.is_public.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error class="mt-3">{issue.message}</Field.Error>
 					{/each}

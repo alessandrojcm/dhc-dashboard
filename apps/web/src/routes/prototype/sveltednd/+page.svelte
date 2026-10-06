@@ -4,7 +4,7 @@
 -->
 <script lang="ts">
 import { page } from "$app/state";
-import PrototypeSwitcher from "$lib/components/ui/prototype-switcher.svelte";
+import PrototypeSwitcher from "#lib/components/ui/prototype-switcher.svelte";
 import { dndState } from "@thisux/sveltednd";
 import VariantA from "./variant-a-list.svelte";
 import VariantB from "./variant-b-nested.svelte";

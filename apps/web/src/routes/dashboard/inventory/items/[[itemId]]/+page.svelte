@@ -30,19 +30,19 @@ import {
 	startItemMaintenance,
 	updateItem,
 } from "./data.remote";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import * as AlertDialog from "$lib/components/ui/alert-dialog";
-import { Badge } from "$lib/components/ui/badge";
-import { Button, buttonVariants } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import * as Select from "$lib/components/ui/select";
-import * as Sheet from "$lib/components/ui/sheet";
-import * as Tabs from "$lib/components/ui/tabs";
-import { Textarea } from "$lib/components/ui/textarea";
-import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
-import SubmitButton from "$lib/components/ui/submit-button.svelte";
-import { apiErrorMessage } from "$lib/api-error";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import * as Select from "#lib/components/ui/select/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import * as Tabs from "#lib/components/ui/tabs/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
+import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
+import SubmitButton from "#lib/components/ui/submit-button.svelte";
+import { apiErrorMessage } from "#lib/api-error.js";
 import {
 	Archive,
 	ArrowLeft,

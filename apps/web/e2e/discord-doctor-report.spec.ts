@@ -310,7 +310,9 @@ test.describe("Discord Doctor report", () => {
 		).toBeVisible();
 		await expect(page.getByText("Maeve Doyle", { exact: true })).toBeVisible();
 		await expect(page.getByText("@maeve.doyle", { exact: true })).toBeVisible();
-		await expect(page.getByText("discord-missing", { exact: true })).toBeVisible();
+		await expect(
+			page.getByText("discord-missing", { exact: true }),
+		).toBeVisible();
 		await expect(page.getByText("Never linked", { exact: true })).toBeVisible();
 		await expect(
 			page.getByText("Auto-join pending", { exact: true }),

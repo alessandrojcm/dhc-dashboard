@@ -1,10 +1,10 @@
 <script lang="ts">
 import type { CalendarDate } from "@internationalized/date";
-import { Label } from "$lib/components/ui/label";
-import * as Popover from "$lib/components/ui/popover";
-import { Button } from "$lib/components/ui/button";
-import { Calendar } from "$lib/components/ui/calendar";
-import { Input } from "$lib/components/ui/input";
+import { Label } from "#lib/components/ui/label/index.js";
+import * as Popover from "#lib/components/ui/popover/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Calendar } from "#lib/components/ui/calendar/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
 import { getLocalTimeZone } from "@internationalized/date";
 import { ChevronDownIcon } from "@lucide/svelte";
 import { onMount } from "svelte";

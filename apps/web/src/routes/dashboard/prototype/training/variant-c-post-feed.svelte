@@ -9,11 +9,11 @@
 <script lang="ts">
 import { Calendar, List } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import { Switch } from "$lib/components/ui/switch";
-import { Textarea } from "$lib/components/ui/textarea";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import { Switch } from "#lib/components/ui/switch/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
 import dayjs from "dayjs";
 import { ChevronDown, Plus, X } from "@lucide/svelte";
 import DiscordPreview from "./discord-preview.svelte";

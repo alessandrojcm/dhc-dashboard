@@ -2,12 +2,12 @@
 import { membersAnalyticsOptions } from "@dhc/api-client";
 import { createQuery } from "@tanstack/svelte-query";
 import { ChartColumn, CalendarDays, Swords, Users } from "@lucide/svelte";
-import * as Card from "$lib/components/ui/card/index.js";
-import { Skeleton } from "$lib/components/ui/skeleton/index.js";
+import * as Card from "#lib/components/ui/card/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import {
 	formatLabel,
 	formatNumber,
-} from "$lib/components/chart-conventions.js";
+} from "#lib/components/chart-conventions.js";
 
 const ageRanges = [
 	{ label: "Under 18", shortLabel: "<18", min: 0, max: 17 },

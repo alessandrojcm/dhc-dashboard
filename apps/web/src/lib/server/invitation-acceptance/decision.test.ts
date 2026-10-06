@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { decideInvitationRoute, type InvitationRouteOutcome } from "./decision";
-import type { AcceptanceApiResult } from "$lib/invitation-acceptance/vocabulary";
+import type { AcceptanceApiResult } from "#lib/invitation-acceptance/vocabulary.js";
 import { acceptanceView as view } from "./testing";
 
 const effectTypes = (outcome: InvitationRouteOutcome) =>

@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPhoenixSession, type PhoenixSessionClient } from "$lib/server/auth";
+import {
+	getPhoenixSession,
+	type PhoenixSessionClient,
+} from "#lib/server/auth.js";
 
 const authSessionShowSession = vi.fn<PhoenixSessionClient["showSession"]>();
 const client: PhoenixSessionClient = { showSession: authSessionShowSession };

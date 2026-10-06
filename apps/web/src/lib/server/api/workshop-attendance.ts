@@ -2,8 +2,8 @@ import {
 	workshopsUpdateAttendance,
 	type WorkshopAttendanceUpdateResponse,
 } from "@dhc/api-client";
-import { apiClientOptions, type Cookies } from "$lib/server/api-client";
-import { apiErrorMessage } from "$lib/api-error";
+import { apiClientOptions, type Cookies } from "#lib/server/api-client.js";
+import { apiErrorMessage } from "#lib/api-error.js";
 
 export interface WorkshopAttendanceClient {
 	updateAttendance(options: {

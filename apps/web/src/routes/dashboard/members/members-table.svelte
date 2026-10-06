@@ -22,23 +22,23 @@ import {
 } from "@lucide/svelte";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { Button } from "$lib/components/ui/button";
+import { Button } from "#lib/components/ui/button/index.js";
 import {
 	createSvelteTable,
 	FlexRender,
 	renderComponent,
-} from "$lib/components/ui/data-table/index.js";
-import { Input } from "$lib/components/ui/input";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as Select from "$lib/components/ui/select";
-import * as Table from "$lib/components/ui/table/index.js";
-import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+} from "#lib/components/ui/data-table/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import * as Select from "#lib/components/ui/select/index.js";
+import * as Table from "#lib/components/ui/table/index.js";
+import SortHeader from "#lib/components/ui/table/sort-header.svelte";
 import {
 	PAGE_SIZE_OPTIONS,
 	parsePageSize,
 	transitionCursorQuery,
-} from "$lib/cursor-query";
-import { cn } from "$lib/utils";
+} from "#lib/cursor-query.js";
+import { cn } from "#lib/utils.js";
 import MemberActions from "./member-actions.svelte";
 import MemberDateCell from "./member-date-cell.svelte";
 import MemberDetails from "./member-details.svelte";
@@ -47,7 +47,7 @@ import MemberPhoneCell from "./member-phone-cell.svelte";
 import MemberStatusBadge from "./member-status-badge.svelte";
 import type { MemberStatus, MemberTableRow } from "./member-table.types";
 import MemberWeapons from "./member-weapons.svelte";
-import ReactivateMemberDialog from "$lib/components/ui/reactivate-member-dialog.svelte";
+import ReactivateMemberDialog from "#lib/components/ui/reactivate-member-dialog.svelte";
 
 type MemberTableQueryParams = {
 	searchQuery: string;
@@ -101,9 +101,8 @@ function navigateToMembers(
 	const query = searchParams.toString();
 	const url = `${page.url.pathname}${query ? `?${query}` : ""}`;
 	void goto(url, {
-		keepFocus: true,
-		noScroll: true,
-		replaceState: options.replaceState,
+		reset: false,
+		replace: options.replaceState,
 	});
 }
 

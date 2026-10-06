@@ -6,8 +6,8 @@ import {
 	type StripeElementsOptionsClientSecret,
 	type StripePaymentElement,
 } from "@stripe/stripe-js";
-import { PUBLIC_STRIPE_KEY } from "$env/static/public";
-import { browser } from "$app/environment";
+import { PUBLIC_STRIPE_KEY } from "$app/env/public";
+import { browser } from "$app/env";
 import { onDestroy, tick, untrack } from "svelte";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import { fromPromise } from "xstate";
@@ -17,7 +17,7 @@ import {
 	workshopsCreateRegistrationPaymentIntentMutation,
 	workshopsListQueryKey,
 } from "@dhc/api-client";
-import { apiErrorDetail } from "$lib/api-error";
+import { apiErrorDetail } from "#lib/api-error.js";
 import WorkshopCheckoutView from "./workshop-checkout-view.svelte";
 import {
 	workshopCheckoutMachine,

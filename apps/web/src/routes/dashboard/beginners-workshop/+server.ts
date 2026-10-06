@@ -1,8 +1,7 @@
 import * as Sentry from "@sentry/sveltekit";
 import { waitlistUpdateStatus } from "@dhc/api-client";
-import { json } from "@sveltejs/kit";
-import { apiClientOptions } from "$lib/server/api-client";
-import { authorizationFor } from "$lib/server/authorization";
+import { apiClientOptions } from "#lib/server/api-client.js";
+import { authorizationFor } from "#lib/server/authorization/index.js";
 import type { RequestHandler } from "./$types";
 import * as v from "valibot";
 
@@ -17,17 +16,17 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 			"beginners.waitlist.toggle",
 		);
 		if (!decision.allowed && decision.status === 401) {
-			return json({ success: false }, { status: 401 });
+			return Response.json({ success: false }, { status: 401 });
 		}
 		const body = v.safeParse(ToggleWaitlistSchema, await request.json());
 		if (!body.success) {
-			return json(
+			return Response.json(
 				{ success: false, error: "Invalid waitlist status" },
 				{ status: 400 },
 			);
 		}
 		if (!decision.allowed) {
-			return json({ success: false }, { status: decision.status });
+			return Response.json({ success: false }, { status: decision.status });
 		}
 
 		const response = await waitlistUpdateStatus({
@@ -39,10 +38,10 @@ export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 			throw new Error("Failed to update waitlist status");
 		}
 
-		return json({ success: true });
+		return Response.json({ success: true });
 	} catch (error) {
 		Sentry.captureMessage(`Error toggling waitlist: ${error}`, "error");
-		return json(
+		return Response.json(
 			{ success: false, error: "Internal server error" },
 			{ status: 500 },
 		);

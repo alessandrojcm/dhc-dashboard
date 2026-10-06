@@ -2,10 +2,10 @@
 	lang="ts"
 	generics="T extends RemoteFormFieldValue = RemoteFormFieldValue"
 >
-import { cn, type WithElementRef, type WithoutChildren } from "$lib/utils.js";
+import type { RemoteFormField, RemoteFormFieldValue } from "$app/server";
+import { cn, type WithElementRef, type WithoutChildren } from "#lib/utils.js";
 import type { HTMLAttributes } from "svelte/elements";
 import type { Snippet } from "svelte";
-import type { RemoteFormField, RemoteFormFieldValue } from "@sveltejs/kit";
 
 interface Props extends WithoutChildren<
 	WithElementRef<HTMLAttributes<HTMLDivElement>>

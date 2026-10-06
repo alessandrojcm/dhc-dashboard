@@ -4,7 +4,7 @@
 	`window` read model across all announcements.
 
 	- Month/Week views over `@event-calendar/core`, chrome from the shared
-	  `$lib/components/calendar/dhc-calendar.css`, chips styled here. The view
+	  `#lib/components/calendar/dhc-calendar.css`, chips styled here. The view
 	  switch is owned by Svelte state and remounts the calendar (`{#key}`):
 	  pushing `view` through the reactive options leaves event-calendar's root
 	  view classes stale, so the next plugin renders without its CSS.
@@ -28,25 +28,32 @@ import {
 import { createQuery } from "@tanstack/svelte-query";
 import { Calendar, DayGrid, Interaction, List } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
-import "$lib/components/calendar/dhc-calendar.css";
+import "#lib/components/calendar/dhc-calendar.css";
 import "./occurrence-tone.css";
-import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "$lib/components/ui/toggle-group";
+import {
+	Alert,
+	AlertDescription,
+	AlertTitle,
+} from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import {
+	ToggleGroup,
+	ToggleGroupItem,
+} from "#lib/components/ui/toggle-group/index.js";
 import { TriangleAlert } from "@lucide/svelte";
-import { apiErrorMessage } from "$lib/api-error";
-import { announcementDateLabel } from "$lib/training-announcements/announcement";
+import { apiErrorMessage } from "#lib/api-error.js";
+import { announcementDateLabel } from "#lib/training-announcements/announcement.js";
 import {
 	occurrenceKey,
 	occurrenceStatus,
 	occurrenceTitle,
-} from "$lib/training-announcements/status";
+} from "#lib/training-announcements/status.js";
 import {
 	datesSetWindow,
 	retentionHorizon,
 	windowAllowed,
 	type WindowRange,
-} from "$lib/training-announcements/window";
+} from "#lib/training-announcements/window.js";
 
 let {
 	today,

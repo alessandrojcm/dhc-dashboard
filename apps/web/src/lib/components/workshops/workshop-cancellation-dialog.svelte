@@ -1,10 +1,10 @@
 <script lang="ts">
-import * as AlertDialog from "$lib/components/ui/alert-dialog";
+import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 import { createMutation } from "@tanstack/svelte-query";
 import {
 	checkRefundEligibility,
 	type RefundEligibilityResult,
-} from "$lib/utils/refund-eligibility";
+} from "#lib/utils/refund-eligibility.js";
 import {
 	workshopsCancelRegistrationMutation,
 	workshopsRefundRegistrationMutation,

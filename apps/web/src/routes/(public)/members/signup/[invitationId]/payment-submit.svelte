@@ -1,13 +1,13 @@
 <script lang="ts">
 import { ArrowRightIcon } from "@lucide/svelte";
-import * as Alert from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import {
 	paymentSubmitPresentation,
 	type PaymentFailure,
 	type PaymentMachineState,
-} from "$lib/invitation-acceptance/payment-machine";
+} from "#lib/invitation-acceptance/payment-machine.js";
 
 /**
  * Presentational half of the payment step: renders one intentional UI per

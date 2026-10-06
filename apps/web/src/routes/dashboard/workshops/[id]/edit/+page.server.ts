@@ -1,7 +1,7 @@
 import { error } from "@sveltejs/kit";
 import { workshopsShow } from "@dhc/api-client";
-import { authorize } from "$lib/server/auth";
-import { apiClientOptions } from "$lib/server/api-client";
+import { authorize } from "#lib/server/auth.js";
+import { apiClientOptions } from "#lib/server/api-client.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, cookies, params }) => {

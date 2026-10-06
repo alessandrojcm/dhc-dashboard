@@ -1,8 +1,3 @@
-/// <reference no-default-lib="true" />
-/// <reference lib="esnext" />
-/// <reference lib="webworker" />
-/// <reference types="@sveltejs/kit" />
-
 // ALE-270: shell-caching service worker. Caches the app shell (build outputs +
 // static files) keyed by the deployment version; navigation requests fall back
 // to the cached shell when offline. API requests are never intercepted or
@@ -10,34 +5,35 @@
 //
 // ALE-299: also the Web Push receiver. A `push` event displays the persisted
 // notification's body; a click focuses an open dashboard window (or opens
-// one). The decisions live in `$lib/service-worker/push` so they are
+// one). The decisions live in `#lib/service-worker/push.js` so they are
 // unit-tested; this file only wires the events.
 
-import { build, files, version } from "$service-worker";
+import { self } from "$app/service-worker";
+import { version } from "$app/env";
+import { assets, immutable } from "$app/manifest";
+import { asset } from "$app/paths";
 import * as v from "valibot";
 import {
 	DEFAULT_URL,
 	parsePushPayload,
 	resolveClickTarget,
 	sameOriginPath,
-} from "$lib/service-worker/push";
+} from "#lib/service-worker/push.js";
 
 // `notification.data` round-trips through the browser's structured clone, so
 // it is parsed again rather than trusted.
 const notificationDataSchema = v.object({ url: v.string() });
 
-// This file is only ever executed as a service worker, where the global scope
-// is a `ServiceWorkerGlobalScope`; the push handlers below need its
-// `registration` and `clients`. Declared rather than cast so no runtime code
-// is emitted for it.
-declare const self: ServiceWorkerGlobalScope;
-
 // Create a unique cache name for this deployment
 const CACHE = `cache-${version}`;
 
-const ASSETS = [
-	...build, // the app itself
-	...files, // everything in `static`
+// `$app/manifest` paths are relative to the base path; turn them into the
+// absolute pathnames the `fetch` handler compares against `url.pathname`.
+// The worker script is served from the base path, so `immutable` (plain
+// strings) resolves against its own location; `static` files use `asset()`.
+const ASSETS: string[] = [
+	...immutable.map((file) => new URL(file.path, self.location.href).pathname), // the app itself
+	...assets.map((file) => asset(file.path)), // everything in `static`
 ];
 
 self.addEventListener("install", (event) => {
@@ -94,7 +90,8 @@ self.addEventListener("fetch", (event) => {
 				response.status === 200 &&
 				!response.headers.get("cache-control")?.includes("no-store")
 			) {
-				cache.put(event.request, response.clone());
+				// Cache in the background; the response is returned either way.
+				void cache.put(event.request, response.clone());
 			}
 
 			return response;

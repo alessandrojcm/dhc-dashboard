@@ -1,6 +1,5 @@
-<!-- PROTOTYPE — throwaway -->
 <script lang="ts">
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import { ChevronLeft, ChevronRight, FlaskConical } from "@lucide/svelte";
@@ -16,12 +15,11 @@ let { variants, current }: { variants: Variant[]; current: string } = $props();
 function selectVariant(index: number) {
 	const variant = variants[(index + variants.length) % variants.length];
 	if (!variant) return;
-	const url = new URL(page.url);
+	const url = new URL(page.url.href);
 	url.searchParams.set("variant", variant.id);
 	void goto(`${url.pathname}${url.search}`, {
-		replaceState: true,
-		keepFocus: true,
-		noScroll: true,
+		replace: true,
+		reset: false,
 	});
 }
 
@@ -50,6 +48,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 </script>
 
+<!-- PROTOTYPE — throwaway -->
 <svelte:window onkeydown={handleKeydown} />
 
 {#if dev}

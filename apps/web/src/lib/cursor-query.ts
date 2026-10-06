@@ -4,12 +4,16 @@ export type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
 
 const DEFAULT_PAGE_SIZE: PageSize = 10;
 
+// Read-only view, so `page.url.searchParams` (readonly since SvelteKit 3) can
+// be passed directly; the transition always returns a fresh copy.
+type ReadableSearchParams = Pick<URLSearchParams, "get" | "toString">;
+
 export function isPageSize(value: number): value is PageSize {
 	return PAGE_SIZE_OPTIONS.some((pageSize) => pageSize === value);
 }
 
 export function parsePageSize(
-	searchParams: URLSearchParams,
+	searchParams: ReadableSearchParams,
 	pageSizeKey: string,
 ): PageSize {
 	const requestedPageSize = Number(searchParams.get(pageSizeKey));
@@ -27,10 +31,10 @@ type IncompatibleQueryChange = {
 };
 
 export function transitionCursorQuery(
-	searchParams: URLSearchParams,
+	searchParams: ReadableSearchParams,
 	transition: CursorAdvance | IncompatibleQueryChange,
 ): URLSearchParams {
-	const next = new URLSearchParams(searchParams);
+	const next = new URLSearchParams(searchParams.toString());
 
 	if ("cursor" in transition) {
 		next.set(transition.cursorKey, transition.cursor);

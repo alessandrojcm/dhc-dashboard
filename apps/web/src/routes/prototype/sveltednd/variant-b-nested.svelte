@@ -1,7 +1,7 @@
 <!-- PROTOTYPE — throwaway. VariantB — Nested containers -->
 <script lang="ts">
-import { Badge } from "$lib/components/ui/badge/index.js";
-import * as Card from "$lib/components/ui/card/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import * as Card from "#lib/components/ui/card/index.js";
 import { Folder, GripVertical, Package } from "@lucide/svelte";
 import { draggable, droppable, type DragDropState } from "@thisux/sveltednd";
 

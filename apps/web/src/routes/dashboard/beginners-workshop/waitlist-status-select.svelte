@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { WaitlistStatus } from "@dhc/api-client";
-import * as Select from "$lib/components/ui/select";
+import * as Select from "#lib/components/ui/select/index.js";
 
 type Props = {
 	status: WaitlistStatus;

@@ -15,21 +15,21 @@ import {
 	type TrainingAnnouncement,
 } from "@dhc/api-client";
 import { createQuery } from "@tanstack/svelte-query";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import { Switch } from "$lib/components/ui/switch";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import { Switch } from "#lib/components/ui/switch/index.js";
 import { CalendarDays, Pencil, Trash2 } from "@lucide/svelte";
 import "./occurrence-tone.css";
-import { KIND_LABELS } from "$lib/training-announcements/copy";
+import { KIND_LABELS } from "#lib/training-announcements/copy.js";
 import {
 	ANNOUNCEMENT_LIFECYCLE_LABELS,
 	announcementDateLabel,
 	announcementLifecycle,
 	deleteBlockedReason,
 	scheduleLabel,
-} from "$lib/training-announcements/announcement";
-import { occurrenceStatus } from "$lib/training-announcements/status";
+} from "#lib/training-announcements/announcement.js";
+import { occurrenceStatus } from "#lib/training-announcements/status.js";
 
 let {
 	announcement,

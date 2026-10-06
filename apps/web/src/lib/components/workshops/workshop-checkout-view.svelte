@@ -1,8 +1,8 @@
 <script lang="ts">
 import type { Snippet } from "svelte";
-import * as Alert from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import {
 	workshopCheckoutPresentation,
 	type CheckoutFailure,

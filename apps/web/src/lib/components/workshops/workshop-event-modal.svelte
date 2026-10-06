@@ -1,10 +1,10 @@
 <script lang="ts">
 import { resolve } from "$app/paths";
-import { Button, buttonVariants } from "$lib/components/ui/button";
-import { Badge } from "$lib/components/ui/badge";
-import * as Dialog from "$lib/components/ui/dialog";
-import * as Popover from "$lib/components/ui/popover";
-import { Progress } from "$lib/components/ui/progress";
+import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import * as Popover from "#lib/components/ui/popover/index.js";
+import { Progress } from "#lib/components/ui/progress/index.js";
 import {
 	Calendar,
 	Clock3,
@@ -20,7 +20,7 @@ import {
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
 import dayjs from "dayjs";
-import type { WorkshopCalendarEvent } from "$lib/types";
+import type { WorkshopCalendarEvent } from "#lib/types.js";
 import Dinero from "dinero.js";
 import {
 	workshopsCalendarQueryKey,
@@ -52,13 +52,14 @@ const capacityPercentage = $derived(
 				)
 			: 0,
 );
+
 const canViewAttendees = $derived(
 	workshop.status === "published" ||
 		workshop.status === "finished" ||
 		(workshop.status === "cancelled" && registrationCount > 0),
 );
 const publicRegisterPath = $derived(
-	resolve(`/workshops/${workshop.id}/register`),
+	resolve(`workshops/${workshop.id}/register`),
 );
 
 function getStatusVariant(status: typeof workshop.status) {
@@ -520,6 +521,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 										onclick={() => (cancelPopoverOpen = false)}
 										>Keep workshop</Button
 									>
+
 									<Button
 										variant="destructive"
 										onclick={() => {
@@ -565,6 +567,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 										onclick={() => (deletePopoverOpen = false)}
 										>Keep workshop</Button
 									>
+
 									<Button
 										variant="destructive"
 										onclick={() => {

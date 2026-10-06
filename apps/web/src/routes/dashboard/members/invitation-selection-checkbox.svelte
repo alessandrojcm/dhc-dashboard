@@ -1,7 +1,7 @@
 <script lang="ts">
 import CheckIcon from "@lucide/svelte/icons/check";
 import MinusIcon from "@lucide/svelte/icons/minus";
-import { cn } from "$lib/utils";
+import { cn } from "#lib/utils.js";
 
 type Props = {
 	checked: boolean;

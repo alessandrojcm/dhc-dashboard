@@ -340,7 +340,16 @@ test("completes a paid Discord-bound Invitation Acceptance without creating auth
 		const signUpButton = page.getByRole("button", { name: "Sign up" });
 		const formValues = await signUpButton.evaluate((button) => {
 			const form = button instanceof HTMLButtonElement ? button.form : null;
-			return form ? Object.fromEntries(new FormData(form)) : null;
+			// SvelteKit 3 binds remote-form control names as
+			// `<field>/<form id>`; compare by field.
+			return form
+				? Object.fromEntries(
+						[...new FormData(form)].map(([name, value]) => [
+							name.split("/")[0],
+							value,
+						]),
+					)
+				: null;
 		});
 		expect(formValues).toMatchObject({
 			nextOfKin: "Grace Hopper",

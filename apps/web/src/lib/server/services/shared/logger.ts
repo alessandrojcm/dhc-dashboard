@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/sveltekit";
-import { dev } from "$app/environment";
+import { dev } from "$app/env";
 
 export type LogContextValue =
 	| string

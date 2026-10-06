@@ -28,21 +28,21 @@ import { SvelteSet } from "svelte/reactivity";
 import { toast } from "svelte-sonner";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as Select from "$lib/components/ui/select";
-import * as Table from "$lib/components/ui/table/index.js";
-import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+import { Badge, type BadgeVariant } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import * as Select from "#lib/components/ui/select/index.js";
+import * as Table from "#lib/components/ui/table/index.js";
+import SortHeader from "#lib/components/ui/table/sort-header.svelte";
 import {
 	isPageSize,
 	PAGE_SIZE_OPTIONS,
 	parsePageSize,
 	transitionCursorQuery,
-} from "$lib/cursor-query";
-import { cn } from "$lib/utils";
-import { getInvitationLink } from "$lib/utils/invitation";
+} from "#lib/cursor-query.js";
+import { cn } from "#lib/utils.js";
+import { getInvitationLink } from "#lib/utils/invitation.js";
 import InvitationActions from "./invitation-actions.svelte";
 import InvitationSelectionCheckbox from "./invitation-selection-checkbox.svelte";
 
@@ -104,9 +104,8 @@ function navigateToInvitations(
 	const query = searchParams.toString();
 	const url = `${page.url.pathname}${query ? `?${query}` : ""}`;
 	void goto(url, {
-		keepFocus: true,
-		noScroll: true,
-		replaceState: options.replaceState,
+		reset: false,
+		replace: options.replaceState,
 	});
 }
 

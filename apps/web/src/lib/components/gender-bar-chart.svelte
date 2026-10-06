@@ -1,7 +1,7 @@
 <script lang="ts">
 import { scaleBand } from "d3-scale";
 import { BarChart } from "layerchart";
-import * as Chart from "$lib/components/ui/chart/index.js";
+import * as Chart from "#lib/components/ui/chart/index.js";
 import {
 	formatLabel,
 	formatNumber,

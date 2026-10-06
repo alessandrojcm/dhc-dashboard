@@ -1,5 +1,5 @@
 <script lang="ts">
-import { cn } from "$lib/utils.js";
+import { cn } from "#lib/utils.js";
 import type { HTMLFieldsetAttributes } from "svelte/elements";
 
 interface Props extends HTMLFieldsetAttributes {

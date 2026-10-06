@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Megaphone } from "@lucide/svelte";
-import AnnouncementsRail from "$lib/components/training-announcements/AnnouncementsRail.svelte";
+import AnnouncementsRail from "#lib/components/training-announcements/AnnouncementsRail.svelte";
 import type { PageProps } from "./$types";
 
 let { data }: PageProps = $props();

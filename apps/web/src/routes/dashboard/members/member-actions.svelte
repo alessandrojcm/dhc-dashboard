@@ -1,6 +1,6 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button";
-import * as Tooltip from "$lib/components/ui/tooltip";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Tooltip from "#lib/components/ui/tooltip/index.js";
 import { ChevronDown, ChevronUp, RotateCcw, SquarePen } from "@lucide/svelte";
 import type { MemberStatus } from "./member-table.types";
 type Props = {

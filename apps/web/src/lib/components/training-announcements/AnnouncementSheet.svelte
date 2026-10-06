@@ -24,17 +24,17 @@ import {
 	type TrainingAnnouncementListResponse,
 } from "@dhc/api-client";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import * as RadioGroup from "$lib/components/ui/radio-group";
-import * as Select from "$lib/components/ui/select";
-import * as Sheet from "$lib/components/ui/sheet";
-import { Switch } from "$lib/components/ui/switch";
-import TemplateInput from "$lib/components/ui/template-input.svelte";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Field from "#lib/components/ui/field/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
+import * as Select from "#lib/components/ui/select/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import { Switch } from "#lib/components/ui/switch/index.js";
+import TemplateInput from "#lib/components/ui/template-input.svelte";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
 import { TriangleAlert } from "@lucide/svelte";
 import {
 	COPY_PRESETS,
@@ -44,7 +44,7 @@ import {
 	PLACEHOLDER_LABELS,
 	TITLE_TOKENS,
 	WEEKDAY_OPTIONS,
-} from "$lib/training-announcements/copy";
+} from "#lib/training-announcements/copy.js";
 import {
 	announcementDraft,
 	draftCalendarDate,
@@ -55,11 +55,11 @@ import {
 	type AnnouncementDraft,
 	type AnnouncementSave,
 	type AnnouncementScheduleType,
-} from "$lib/training-announcements/announcement";
+} from "#lib/training-announcements/announcement.js";
 import {
 	announcementProblem,
 	type AnnouncementFieldMessages,
-} from "$lib/training-announcements/problem";
+} from "#lib/training-announcements/problem.js";
 import DiscordMessagePreview from "./DiscordMessagePreview.svelte";
 
 const queryClient = useQueryClient();

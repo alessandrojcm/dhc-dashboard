@@ -1,10 +1,14 @@
 <script lang="ts">
 import { resolve } from "$app/paths";
-import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import AttendeeManager from "$lib/components/workshops/attendee-manager.svelte";
+import {
+	Alert,
+	AlertDescription,
+	AlertTitle,
+} from "#lib/components/ui/alert/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import AttendeeManager from "#lib/components/workshops/attendee-manager.svelte";
 import {
 	workshopsAttendeesOptions,
 	workshopsAttendeesQueryKey,
@@ -79,7 +83,7 @@ function formatWorkshopDate(startDate?: string | null) {
 	class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10"
 >
 	<Button
-		href={resolve("/dashboard/workshops")}
+		href={resolve("dashboard/workshops")}
 		variant="ghost"
 		class="-ml-3 w-fit text-muted-foreground hover:text-foreground"
 	>

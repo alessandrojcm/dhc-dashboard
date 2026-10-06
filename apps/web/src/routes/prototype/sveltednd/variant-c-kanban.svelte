@@ -1,7 +1,7 @@
 <!-- PROTOTYPE — throwaway. VariantC — Cross-container kanban -->
 <script lang="ts">
-import { Badge } from "$lib/components/ui/badge/index.js";
-import * as Card from "$lib/components/ui/card/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import * as Card from "#lib/components/ui/card/index.js";
 import {
 	attachDraggable,
 	attachDroppable,

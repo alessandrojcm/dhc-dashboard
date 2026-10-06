@@ -1,12 +1,12 @@
 import { command, form, getRequestEvent } from "$app/server";
 import { invitationsCreate, settingsUpdate } from "@dhc/api-client";
-import { apiClientOptions } from "$lib/server/api-client";
-import { InsuranceFormLinkSchema } from "$lib/schemas/settings";
-import { authorizationFor } from "$lib/server/authorization";
+import { apiClientOptions } from "#lib/server/api-client.js";
+import { InsuranceFormLinkSchema } from "#lib/schemas/settings.js";
+import { authorizationFor } from "#lib/server/authorization/index.js";
 import {
 	bulkInviteRemoteSchema,
 	bulkInviteSchema,
-} from "$lib/schemas/adminInvite";
+} from "#lib/schemas/adminInvite.js";
 import * as v from "valibot";
 
 /**

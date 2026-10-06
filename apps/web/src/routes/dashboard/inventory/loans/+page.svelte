@@ -12,25 +12,25 @@ import {
 	inventoryOperatorLoansRejectMutation,
 	inventoryOperatorLoansReturnMutation,
 } from "@dhc/api-client";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import { Label } from "$lib/components/ui/label";
-import * as Sheet from "$lib/components/ui/sheet";
-import { Textarea } from "$lib/components/ui/textarea";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
+import { Label } from "#lib/components/ui/label/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
 import {
 	dndState,
 	draggable,
 	droppable,
 	type DragDropState,
 } from "@thisux/sveltednd";
-import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
 import {
 	decideLoanDrop,
 	type LoanQueueDropTarget,
-} from "$lib/components/inventory/loan-queue-dnd";
-import { apiErrorMessage } from "$lib/api-error";
+} from "#lib/components/inventory/loan-queue-dnd.js";
+import { apiErrorMessage } from "#lib/api-error.js";
 import {
 	ArrowRight,
 	CalendarClock,
@@ -118,9 +118,9 @@ function parseQueueView(value: string | null): QueueView | undefined {
 function changeQueue(value: string) {
 	const view = parseQueueView(value);
 	if (!view || view === activeQueue) return;
-	const url = new URL(page.url);
+	const url = new URL(page.url.href);
 	url.searchParams.set("view", view);
-	void goto(url, { keepFocus: true, noScroll: true });
+	void goto(url, { reset: false });
 }
 
 function choose(loan: InventoryOperatorLoan, readyForCheckout = false) {

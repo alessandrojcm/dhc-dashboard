@@ -1,24 +1,24 @@
 <script lang="ts">
-import * as Card from "$lib/components/ui/card/index.js";
-import * as Resizable from "$lib/components/ui/resizable/index.js";
-import { Skeleton } from "$lib/components/ui/skeleton/index.js";
+import * as Card from "#lib/components/ui/card/index.js";
+import * as Resizable from "#lib/components/ui/resizable/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import { createQuery } from "@tanstack/svelte-query";
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { onMount } from "svelte";
 import { waitlistAnalyticsOptions } from "@dhc/api-client";
 
 let GenderBarChart:
-	| typeof import("$lib/components/gender-bar-chart.svelte").default
+	| typeof import("#lib/components/gender-bar-chart.svelte").default
 	| null = $state(null);
 let AgeScatterChart:
-	| typeof import("$lib/components/age-scatter-chart.svelte").default
+	| typeof import("#lib/components/age-scatter-chart.svelte").default
 	| null = $state(null);
 
 onMount(async () => {
 	if (browser) {
-		GenderBarChart = (await import("$lib/components/gender-bar-chart.svelte"))
+		GenderBarChart = (await import("#lib/components/gender-bar-chart.svelte"))
 			.default;
-		AgeScatterChart = (await import("$lib/components/age-scatter-chart.svelte"))
+		AgeScatterChart = (await import("#lib/components/age-scatter-chart.svelte"))
 			.default;
 	}
 });

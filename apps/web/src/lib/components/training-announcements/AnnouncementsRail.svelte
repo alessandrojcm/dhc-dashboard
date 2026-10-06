@@ -36,19 +36,23 @@ import {
 	applyLifecycle,
 	listIncludesRetired,
 	type LifecycleCommand,
-} from "$lib/training-announcements/optimistic";
-import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import { Switch } from "$lib/components/ui/switch";
+} from "#lib/training-announcements/optimistic.js";
+import {
+	Alert,
+	AlertDescription,
+	AlertTitle,
+} from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import { Switch } from "#lib/components/ui/switch/index.js";
 import { Megaphone, Plus, TriangleAlert, X } from "@lucide/svelte";
-import { apiErrorMessage } from "$lib/api-error";
+import { apiErrorMessage } from "#lib/api-error.js";
 import { toast } from "svelte-sonner";
 import { tick } from "svelte";
 import {
 	type AnnouncementSave,
 	warningMessages,
-} from "$lib/training-announcements/announcement";
+} from "#lib/training-announcements/announcement.js";
 import AnnouncementCard from "./AnnouncementCard.svelte";
 import AnnouncementDetail from "./AnnouncementDetail.svelte";
 import AnnouncementSheet from "./AnnouncementSheet.svelte";
@@ -86,6 +90,11 @@ const selected = $derived(
  * row the moment the command is sent, is restored if Phoenix refuses it, and
  * is refetched once it settles so Phoenix's row replaces the prediction.
  */
+type LifecycleVariables = { path: { id: string } };
+type LifecycleContext = {
+	previous: [QueryKey, TrainingAnnouncementListResponse | undefined][];
+};
+
 function commandOptions(
 	command: LifecycleCommand,
 	fallback: string,
@@ -93,7 +102,9 @@ function commandOptions(
 ) {
 	const lists = { queryKey: trainingAnnouncementsListQueryKey() };
 	return {
-		onMutate: async (variables: { path: { id: string } }) => {
+		onMutate: async (
+			variables: LifecycleVariables,
+		): Promise<LifecycleContext> => {
 			// An in-flight list read would land on top of the prediction.
 			await queryClient.cancelQueries(lists);
 			const previous =
@@ -114,8 +125,8 @@ function commandOptions(
 		},
 		onError: (
 			cause: TrainingAnnouncementError,
-			_variables: unknown,
-			context: { previous: [QueryKey, unknown][] } | undefined,
+			_variables: LifecycleVariables,
+			context: LifecycleContext | undefined,
 		) => {
 			for (const [key, data] of context?.previous ?? [])
 				queryClient.setQueryData(key, data);
