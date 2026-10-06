@@ -17,11 +17,8 @@ defmodule DhcWeb.MembersController do
         |> put_view(json: DhcWeb.MembersJSON)
         |> render(:index, result: result)
 
-      {:error, :bad_cursor} = error ->
-        error
-
-      {:error, _reason} ->
-        {:error, :invalid_query}
+      error ->
+        DhcWeb.Problem.list_error(error)
     end
   end
 

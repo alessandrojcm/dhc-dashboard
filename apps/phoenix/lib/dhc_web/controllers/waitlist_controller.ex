@@ -50,11 +50,8 @@ defmodule DhcWeb.WaitlistController do
         |> put_view(json: DhcWeb.WaitlistJSON)
         |> render(:entries, result: result)
 
-      {:error, :bad_cursor} = error ->
-        error
-
-      {:error, _reason} ->
-        {:error, :invalid_query}
+      error ->
+        DhcWeb.Problem.list_error(error)
     end
   end
 

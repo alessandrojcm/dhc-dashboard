@@ -4,7 +4,6 @@ defmodule DhcWeb.NotificationsHTTP do
   use DhcWeb.Problem,
     reasons: %{
       not_found: {404, "Notification not found"},
-      bad_cursor: {400, "Invalid or mismatched cursor"},
       invalid_query: {400, "Invalid notifications query"},
       endpoint_required: {422, "endpoint is required"}
     },

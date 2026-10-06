@@ -36,7 +36,7 @@ defmodule DhcWeb.Problem do
   of:
 
     * `{:error, reason}` — a declared reason, or the shared `:not_found`,
-      `:forbidden`, `:unauthorized`;
+      `:forbidden`, `:unauthorized`, `:bad_cursor`;
     * `{:error, reason, fields}` — a declared reason plus field messages
       (`%{"public" => ["message"]}`), e.g. per-definition value failures;
     * `{:error, %Ecto.Changeset{}}` — a 422 with mapped fields;
@@ -55,7 +55,8 @@ defmodule DhcWeb.Problem do
   @default_reasons %{
     unauthorized: {401, "Unauthorized"},
     forbidden: {403, "Insufficient role"},
-    not_found: {404, "Not found"}
+    not_found: {404, "Not found"},
+    bad_cursor: {400, "Invalid or mismatched cursor"}
   }
 
   @coded_statuses [409, 422]
@@ -74,9 +75,6 @@ defmodule DhcWeb.Problem do
 
       @impl Plug
       def call(conn, result), do: DhcWeb.Problem.render_result(conn, result, @problem_config)
-
-      @doc "The reason table and field mapping this module renders with."
-      def problem_config, do: @problem_config
     end
   end
 
@@ -96,14 +94,6 @@ defmodule DhcWeb.Problem do
 
     %{reasons: reasons, fields: fields}
   end
-
-  @doc """
-  Action-fallback entry point for the shared reasons only; plugs can also use
-  it as `DhcWeb.Problem.call(conn, {:error, :forbidden})`.
-  """
-  def init(opts), do: opts
-
-  def call(conn, result), do: render_result(conn, result, config())
 
   @doc """
   Renders a shared reason (`:unauthorized`, `:forbidden`, `:not_found`) and
@@ -151,18 +141,24 @@ defmodule DhcWeb.Problem do
   end
 
   @doc """
-  The body for one status and detail, for renderers that only have a status
-  (`DhcWeb.ErrorJSON`) or a detail chosen outside a reason table.
+  The body for one detail, for renderers that only have a status
+  (`DhcWeb.ErrorJSON`) or a detail chosen outside a reason table. It never
+  carries a `code`: codes belong to declared 409/422 reasons only, so a
+  coded error must go through a reason table. `fields:` adds field messages.
   """
   @spec body(String.t(), keyword()) :: %{errors: map()}
   def body(detail, opts \\ []) when is_binary(detail) do
-    errors =
-      %{detail: detail}
-      |> maybe_put(:code, opts[:code] && to_string(opts[:code]))
-      |> maybe_put(:fields, opts[:fields])
-
-    %{errors: errors}
+    opts = Keyword.validate!(opts, [:fields])
+    %{errors: maybe_put(%{detail: detail}, :fields, opts[:fields])}
   end
+
+  @doc """
+  Normalises a failed list read: `:bad_cursor` keeps its own 400, any other
+  parameter failure becomes the family's `:invalid_query`.
+  """
+  @spec list_error({:error, term()}) :: {:error, :bad_cursor | :invalid_query}
+  def list_error({:error, :bad_cursor} = error), do: error
+  def list_error({:error, _reason}), do: {:error, :invalid_query}
 
   @doc "Sends `body/2` with `status` without halting."
   @spec send_detail(Plug.Conn.t(), Plug.Conn.status(), String.t(), keyword()) :: Plug.Conn.t()

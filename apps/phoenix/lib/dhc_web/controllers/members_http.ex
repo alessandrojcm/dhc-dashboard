@@ -11,7 +11,6 @@ defmodule DhcWeb.MembersHTTP do
   use DhcWeb.Problem,
     reasons: %{
       not_found: {404, "Member not found"},
-      bad_cursor: {400, "Invalid or mismatched cursor"},
       invalid_query: {400, "Invalid members query"},
       invalid_payload: {422, "Invalid member update payload"},
       invalid_pause: {422, "Invalid membership pause payload", :invalid_payload},

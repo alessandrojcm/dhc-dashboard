@@ -7,7 +7,6 @@ defmodule DhcWeb.InvitationsHTTP do
   use DhcWeb.Problem,
     reasons: %{
       not_found: {404, "Invitation not found"},
-      bad_cursor: {400, "Invalid or mismatched cursor"},
       invalid_query: {400, "Invalid invitations query"},
       verification_required: {400, "email and dateOfBirth are required"},
       invites_required: {400, "invites must be a non-empty list"},

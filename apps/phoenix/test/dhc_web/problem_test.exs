@@ -30,7 +30,14 @@ defmodule DhcWeb.ProblemTest do
     end
   end
 
-  defp render(result, module \\ SampleHTTP) do
+  defp render(result, module \\ SampleHTTP)
+
+  defp render(result, :shared) do
+    conn = Problem.render_result(build_conn(), result, Problem.config())
+    {conn.status, Jason.decode!(conn.resp_body)}
+  end
+
+  defp render(result, module) do
     conn = module.call(build_conn(), module.init(result))
     {conn.status, Jason.decode!(conn.resp_body)}
   end
@@ -44,8 +51,12 @@ defmodule DhcWeb.ProblemTest do
     test "body/2 builds the same shape for renderers without a reason table" do
       assert Problem.body("Not Found") == %{errors: %{detail: "Not Found"}}
 
-      assert Problem.body("Nope", code: :nope, fields: %{"a" => ["b"]}) ==
-               %{errors: %{detail: "Nope", code: "nope", fields: %{"a" => ["b"]}}}
+      assert Problem.body("Nope", fields: %{"a" => ["b"]}) ==
+               %{errors: %{detail: "Nope", fields: %{"a" => ["b"]}}}
+    end
+
+    test "body/2 cannot carry a code: codes belong to declared 409/422 reasons" do
+      assert_raise ArgumentError, fn -> Problem.body("Nope", code: :nope) end
     end
   end
 
@@ -77,15 +88,28 @@ defmodule DhcWeb.ProblemTest do
   end
 
   describe "shared reasons" do
+    test "bad_cursor is a shared 400 that a family may override" do
+      assert {400, %{"errors" => %{"detail" => "Invalid or mismatched cursor"}}} =
+               render({:error, :bad_cursor})
+
+      assert {400, %{"errors" => %{"detail" => "cursor does not match the current query"}}} =
+               render({:error, :bad_cursor}, DhcWeb.InventoryHTTP)
+    end
+
+    test "list_error/1 keeps bad_cursor and folds every other list failure into invalid_query" do
+      assert Problem.list_error({:error, :bad_cursor}) == {:error, :bad_cursor}
+      assert Problem.list_error({:error, :invalid_limit}) == {:error, :invalid_query}
+    end
+
     test "not_found, forbidden and unauthorized render without a fallback module" do
       assert {404, %{"errors" => %{"detail" => "Not found"}}} =
-               render({:error, :not_found}, Problem)
+               render({:error, :not_found}, :shared)
 
       assert {403, %{"errors" => %{"detail" => "Insufficient role"}}} =
-               render({:error, :forbidden}, Problem)
+               render({:error, :forbidden}, :shared)
 
       assert {401, %{"errors" => %{"detail" => "Unauthorized"}}} =
-               render({:error, :unauthorized}, Problem)
+               render({:error, :unauthorized}, :shared)
     end
 
     test "send_reason/2 halts for plugs" do

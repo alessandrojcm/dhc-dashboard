@@ -5,7 +5,6 @@ defmodule DhcWeb.WaitlistHTTP do
     reasons: %{
       not_found: {404, "Waitlist entry not found"},
       setting_not_found: {404, "Waitlist setting not found"},
-      bad_cursor: {400, "Invalid or mismatched cursor"},
       invalid_query: {400, "Invalid waitlist entries query"},
       waitlist_closed: {403, "Waitlist is closed"},
       duplicate_email: {409, "This email is already on the waitlist"},
