@@ -362,6 +362,12 @@ async function showPreview() {
 								The post type and Discord channel cannot be changed.
 							</Field.Description>
 						{/if}
+						{#if draft.kind === "roll_call"}
+							<Field.Description data-testid="holiday-notice-hint">
+								On bank holidays a “no training” notice is posted instead, the
+								day before and on the day.
+							</Field.Description>
+						{/if}
 					</Field.Set>
 
 					<Field.Set>

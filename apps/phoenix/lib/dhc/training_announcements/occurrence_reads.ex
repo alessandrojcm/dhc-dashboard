@@ -7,6 +7,7 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
   alias Dhc.TrainingAnnouncements.Announcement
   alias Dhc.TrainingAnnouncements.Copy
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery, as: Evidence
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.HolidayAnnouncements
   alias Dhc.TrainingAnnouncements.Occurrences
   alias Dhc.TrainingAnnouncements.Store
@@ -17,8 +18,9 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
     clock = clock(opts)
 
     with {:ok, dates} <- dates(from, to, clock.today, true) do
+      clock = Execution.load_holidays(clock, Date.add(dates.to, 1))
       announcements = Repo.all(from(a in Announcement, where: not a.retired))
-      {:ok, build_window(announcements, dates.from, dates.to, clock, true)}
+      {:ok, build_window(announcements, dates.from, dates.to, clock, :all)}
     end
   end
 
@@ -26,7 +28,9 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
     clock = clock(opts)
 
     with {:ok, dates} <- dates(date, date, clock.today, false) do
-      case build_window([announcement], dates.from, dates.to, clock, false) do
+      clock = Execution.load_holidays(clock, Date.add(dates.to, 1))
+
+      case build_window([announcement], dates.from, dates.to, clock, :none) do
         [item] -> {:ok, item}
         [] -> {:error, :not_found}
       end
@@ -35,6 +39,7 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
 
   def list(announcement, params, opts) do
     clock = clock(opts)
+    today = clock.today
 
     changeset =
       {%{direction: "upcoming", limit: 3}, %{direction: :string, limit: :integer}}
@@ -45,14 +50,21 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
 
     with {:ok, %{direction: direction, limit: limit}} <-
            Ecto.Changeset.apply_action(changeset, :read) do
-      {from, to} =
+      # Upcoming also lists the Holiday Announcements this announcement
+      # currently drives, so a card shows the bot's "no training" notice in
+      # place of the skipped roll call. A one-off's day-before notice is sent
+      # the day before its date. Recent stays occurrence evidence only:
+      # holiday evidence is owned by its date, not the triggering announcement.
+      {from, to, holidays} =
         if direction == "upcoming",
           do:
-            {announcement.one_off_date || clock.today,
-             announcement.one_off_date || Date.add(clock.today, limit * 7)},
-          else: {TrainingAnnouncements.retention_horizon(clock.today), clock.today}
+            {(announcement.one_off_date && Date.add(announcement.one_off_date, -1)) || today,
+             announcement.one_off_date || Date.add(today, limit * 7),
+             {:driven_by, announcement.id}},
+          else: {TrainingAnnouncements.retention_horizon(today), today, :none}
 
-      items = build_window([announcement], from, to, clock, false)
+      clock = Execution.load_holidays(clock, Date.add(to, 1))
+      items = build_window([announcement], from, to, clock, holidays)
       items = Enum.filter(items, &direction?(&1, direction, clock.now))
       items = if direction == "recent", do: Enum.reverse(items), else: items
       {:ok, Enum.take(items, limit)}
@@ -66,11 +78,9 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
   defp direction?(item, "upcoming", now),
     do: DateTime.compare(ClubCalendar.to_utc(item.date, item.post_time), now) == :gt
 
-  defp clock(opts) do
-    now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
-    civil = DateTime.shift_zone!(now, ClubCalendar.zone(), Tz.TimeZoneDatabase)
-    %{now: now, today: DateTime.to_date(civil), now_time: DateTime.to_time(civil)}
-  end
+  # Holidays load once the read knows its range.
+  defp clock(opts),
+    do: Execution.clock(Keyword.get_lazy(opts, :now, &DateTime.utc_now/0), through: nil)
 
   defp dates(from, to, today, bounded?) do
     changeset =
@@ -95,9 +105,12 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
     end
   end
 
-  defp build_window(announcements, first, last, clock, holidays?) do
+  # `holidays` is `:all` (calendar), `:none` (inspector, recent) or
+  # `{:driven_by, id}` (a card's upcoming posts). Every read runs a fixed
+  # set of batch queries, however many announcements or holidays it covers.
+  defp build_window(announcements, first, last, clock, holidays) do
     ids = Enum.map(announcements, & &1.id)
-    rows = evidence(first, last, ids, holidays?)
+    rows = evidence(first, last, ids, holidays == :all)
     entries = announcements |> Enum.reject(& &1.retired) |> Store.entries()
     future_from = if Date.compare(first, clock.today) == :lt, do: clock.today, else: first
 
@@ -105,20 +118,20 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
       if Date.compare(future_from, last) == :gt do
         []
       else
-        {:ok, holidays} = ClubCalendar.holidays_between(future_from, Date.add(last, 1))
+        holidays_in_view = Execution.holidays_between(clock, future_from, Date.add(last, 1))
 
         opts = [
           today: clock.today,
           now_time: clock.now_time,
-          holidays: MapSet.new(holidays, & &1.date)
+          holidays: MapSet.new(holidays_in_view, & &1.date)
         ]
 
         occurrences = Enum.flat_map(entries, &project(&1, future_from, last, opts))
 
-        holidays =
-          if holidays?, do: project_holidays(holidays, future_from, last, clock), else: []
+        drivers = holiday_drivers(holidays, holidays_in_view, announcements)
+        notices = project_holidays(holidays_in_view, holidays, drivers, future_from, last, clock)
 
-        occurrences ++ holidays
+        occurrences ++ notices
       end
 
     # Project first, then overwrite by the durable identity, including today's rows.
@@ -182,11 +195,28 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
     end)
   end
 
-  defp project_holidays(holidays, first, last, clock) do
+  # Candidate driving roll calls for every holiday in view, in one query at most.
+  defp holiday_drivers(:none, _holidays, _announcements), do: []
+  defp holiday_drivers(_scope, [], _announcements), do: []
+  defp holiday_drivers(:all, _holidays, announcements), do: announcements
+
+  defp holiday_drivers({:driven_by, _id}, _holidays, _announcements),
+    do: HolidayAnnouncements.roll_calls()
+
+  defp project_holidays(_holidays, :none, _drivers, _first, _last, _clock), do: []
+
+  defp project_holidays(holidays, scope, drivers, first, last, clock) do
     Enum.flat_map(holidays, fn holiday ->
-      project_holiday(holiday, HolidayAnnouncements.eligible(holiday.date), first, last, clock)
+      drivers
+      |> HolidayAnnouncements.eligible_among(holiday.date)
+      |> driven_by(scope)
+      |> then(&project_holiday(holiday, &1, first, last, clock))
     end)
   end
+
+  defp driven_by(announcement, :all), do: announcement
+  defp driven_by(%{id: id} = announcement, {:driven_by, id}), do: announcement
+  defp driven_by(_announcement, {:driven_by, _id}), do: nil
 
   defp project_holiday(_holiday, nil, _first, _last, _clock), do: []
 

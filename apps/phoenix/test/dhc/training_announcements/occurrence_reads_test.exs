@@ -4,6 +4,7 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReadsTest do
 
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
 
   setup do
@@ -67,7 +68,7 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReadsTest do
                %Oban.Job{
                  args: %{"announcement_id" => announcement.id, "occurrence_date" => "2030-09-05"}
                },
-               clock: fn -> later end
+               clock: Execution.clock(later)
              )
 
     assert {:ok, [past]} =
@@ -253,7 +254,7 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReadsTest do
 
     assert :ok =
              Dhc.TrainingAnnouncements.Workers.HolidayAnnouncementWorker.perform(job,
-               clock: fn -> ~U[2030-09-04 14:00:00.000000Z] end
+               clock: Execution.clock(~U[2030-09-04 14:00:00.000000Z])
              )
 
     assert :ok = run(announcement.id, "2030-09-05", ~U[2030-09-05 14:00:00.000000Z])
@@ -349,10 +350,62 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReadsTest do
              1
   end
 
+  test "window and list run a constant number of queries however many announcements exist",
+       %{actor: actor, now: now} do
+    for date <- [~D[2030-09-12], ~D[2030-09-19]] do
+      Repo.insert!(%Dhc.ClubCalendar.Holiday{
+        date: date,
+        name: "Holiday #{date}",
+        source_id: Date.to_iso8601(date),
+        fetched_at: DateTime.utc_now()
+      })
+    end
+
+    roll_call = Map.put(attrs(), :kind, "roll_call")
+    {:ok, %{announcement: first}} = TrainingAnnouncements.create(actor, roll_call, now: now)
+
+    reads = fn ->
+      count_queries(fn ->
+        {:ok, _} =
+          TrainingAnnouncements.occurrence_window(actor, ~D[2030-09-05], ~D[2030-09-30], now: now)
+      end) +
+        count_queries(fn ->
+          {:ok, _} =
+            TrainingAnnouncements.list_occurrences(actor, first.id, %{limit: 4}, now: now)
+        end)
+    end
+
+    baseline = reads.()
+
+    for post_time <- [~T[15:00:00], ~T[16:00:00], ~T[17:00:00]] do
+      {:ok, _} =
+        TrainingAnnouncements.create(actor, %{roll_call | post_time: post_time}, now: now)
+
+      {:ok, _} = TrainingAnnouncements.create(actor, %{attrs() | post_time: post_time}, now: now)
+    end
+
+    assert reads.() == baseline
+  end
+
+  defp count_queries(fun) do
+    handler_id = {__MODULE__, :count, self()}
+
+    :ok =
+      :telemetry.attach(handler_id, [:dhc, :repo, :query], &__MODULE__.forward_query/4, self())
+
+    try do
+      fun.()
+    after
+      :telemetry.detach(handler_id)
+    end
+
+    length(receive_queries([]))
+  end
+
   defp run(id, date, now) do
     AnnouncementWorker.perform(
       %Oban.Job{args: %{"announcement_id" => id, "occurrence_date" => date}},
-      clock: fn -> now end
+      clock: Execution.clock(now)
     )
   end
 
@@ -390,6 +443,91 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReadsTest do
       assert [_ | _] = item.render_errors
       assert item.rendered_message == nil
     end
+  end
+
+  test "rail upcoming lists the Holiday Announcements only the driving roll call sends", %{
+    actor: actor,
+    now: now
+  } do
+    Repo.insert!(%Dhc.ClubCalendar.Holiday{
+      date: ~D[2030-09-12],
+      name: "Thursday holiday",
+      source_id: "thursday",
+      fetched_at: DateTime.utc_now()
+    })
+
+    roll_call = Map.put(attrs(), :kind, "roll_call")
+
+    {:ok, %{announcement: driver}} = TrainingAnnouncements.create(actor, roll_call, now: now)
+
+    {:ok, %{announcement: later}} =
+      TrainingAnnouncements.create(actor, %{roll_call | post_time: ~T[18:00:00]}, now: now)
+
+    {:ok, %{announcement: sparring}} = TrainingAnnouncements.create(actor, attrs(), now: now)
+
+    {:ok, items} =
+      TrainingAnnouncements.list_occurrences(actor, driver.id, %{limit: 4}, now: now)
+
+    assert [
+             %{subject: "occurrence", date: ~D[2030-09-05], outcome: "post"},
+             %{subject: "holiday", date: ~D[2030-09-11], phase: "day_before"},
+             %{subject: "holiday", date: ~D[2030-09-12], phase: "same_day"},
+             %{subject: "occurrence", date: ~D[2030-09-12], outcome: "skipped_holiday"}
+           ] = items
+
+    for notice <- Enum.filter(items, &(&1.subject == "holiday")) do
+      assert notice.holiday_date == ~D[2030-09-12]
+      assert notice.read_only
+      assert notice.post_time == ~T[14:00:00]
+      assert notice.rendered_message =~ "Thursday holiday"
+    end
+
+    for other <- [later, sparring] do
+      {:ok, items} =
+        TrainingAnnouncements.list_occurrences(actor, other.id, %{limit: 4}, now: now)
+
+      refute Enum.any?(items, &(&1.subject == "holiday"))
+    end
+
+    # Pausing the driver hands the notices to the next enabled roll call.
+    {:ok, _} = TrainingAnnouncements.disable(actor, driver.id)
+
+    {:ok, items} = TrainingAnnouncements.list_occurrences(actor, later.id, %{limit: 4}, now: now)
+
+    assert [%{post_time: ~T[18:00:00]}, %{post_time: ~T[18:00:00]}] =
+             Enum.filter(items, &(&1.subject == "holiday"))
+
+    {:ok, items} =
+      TrainingAnnouncements.list_occurrences(actor, driver.id, %{limit: 4}, now: now)
+
+    refute Enum.any?(items, &(&1.subject == "holiday"))
+
+    assert {:ok, []} =
+             TrainingAnnouncements.list_occurrences(actor, later.id, %{direction: "recent"},
+               now: now
+             )
+  end
+
+  test "a one-off roll call on a bank holiday lists its day-before notice", %{
+    actor: actor
+  } do
+    now = ~U[2029-12-20 09:00:00Z]
+
+    {:ok, %{announcement: one_off}} =
+      TrainingAnnouncements.create(
+        actor,
+        attrs()
+        |> Map.merge(%{kind: "roll_call", weekday: nil, one_off_date: ~D[2030-01-01]}),
+        now: now
+      )
+
+    assert {:ok,
+            [
+              %{subject: "holiday", date: ~D[2029-12-31], phase: "day_before"},
+              %{subject: "holiday", date: ~D[2030-01-01], phase: "same_day"},
+              %{subject: "occurrence", date: ~D[2030-01-01], outcome: "skipped_holiday"}
+            ]} =
+             TrainingAnnouncements.list_occurrences(actor, one_off.id, %{limit: 5}, now: now)
   end
 
   test "rail includes a distant one-off and honours direction and limit", %{

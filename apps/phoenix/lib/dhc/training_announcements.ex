@@ -41,7 +41,10 @@ defmodule Dhc.TrainingAnnouncements do
   facade commands authorize a live, active committee principal before reading
   announcements. Schedule writes and their pending job commit together.
   The only module that may write Oban jobs is
-  `Dhc.TrainingAnnouncements.Scheduling`.
+  `Dhc.TrainingAnnouncements.Scheduling`. A due occurrence or Holiday
+  Announcement becomes its one Evidence row only through
+  `Dhc.TrainingAnnouncements.Execution.evaluate/2,3` (the optional third
+  argument is the driving job); workers merely call it.
   """
 
   import Ecto.Query

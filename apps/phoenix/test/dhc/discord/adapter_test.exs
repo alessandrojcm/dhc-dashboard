@@ -130,7 +130,7 @@ defmodule Dhc.Discord.AdapterTest do
     assert_receive {:create_thread_from_message, ["222", "111", ^params]}
   end
 
-  test "rate-limit deferral and refused connections classify as retry" do
+  test "rate-limit deferral and refused connections classify as their own retryable failures" do
     TestAdapter.script(:create_message, [
       {:error, %Dhc.Discord.ApiError{status: 429, message: "rate limited"}},
       {:error, {:retry_after, 1_000}},
@@ -140,41 +140,35 @@ defmodule Dhc.Discord.AdapterTest do
 
     params = %{content: "Hello", allowed_mentions: %{parse: []}}
 
-    assert {:error, {:retry, %Dhc.Discord.ApiError{status: 429}}} =
-             Dhc.Discord.create_message("222", params)
-
-    assert {:error, {:retry, %Dhc.Discord.ApiError{}}} =
-             Dhc.Discord.create_message("222", params)
-
-    assert {:error, {:retry, %Dhc.Discord.ApiError{}}} =
-             Dhc.Discord.create_message("222", params)
-
-    assert {:error, {:retry, %Dhc.Discord.ApiError{}}} =
-             Dhc.Discord.create_message("222", params)
+    assert {:error, {:rate_limited, ": rate limited"}} = Dhc.Discord.create_message("222", params)
+    assert {:error, {:rate_limited, _}} = Dhc.Discord.create_message("222", params)
+    assert {:error, {:connection_refused, _}} = Dhc.Discord.create_message("222", params)
+    assert {:error, {:connection_refused, _}} = Dhc.Discord.create_message("222", params)
   end
 
-  test "deterministic rejections classify as blocked" do
+  test "deterministic rejections classify by cause with a code-prefixed detail" do
     TestAdapter.script(:create_message, [
-      {:error, %Dhc.Discord.ApiError{status: 403, message: "forbidden"}},
+      {:error, %Dhc.Discord.ApiError{status: 403, code: 50_013, message: "forbidden"}},
       {:error, %Dhc.Discord.ApiError{status: 404, message: "unknown channel"}},
       {:error, %Dhc.Discord.ApiError{status: 400, message: "payload rejected"}}
     ])
 
     params = %{content: "Hello", allowed_mentions: %{parse: []}}
 
-    assert {:error, {:blocked, %Dhc.Discord.ApiError{status: 403}}} =
+    assert {:error, {:permission, "50013: forbidden"}} =
              Dhc.Discord.create_message("222", params)
 
-    assert {:error, {:blocked, %Dhc.Discord.ApiError{status: 404}}} =
+    assert {:error, {:unknown_channel, ": unknown channel"}} =
              Dhc.Discord.create_message("222", params)
 
-    assert {:error, {:blocked, %Dhc.Discord.ApiError{status: 400}}} =
+    assert {:error, {:payload_rejected, ": payload rejected"}} =
              Dhc.Discord.create_message("222", params)
   end
 
-  test "timeouts, server errors and unknown failures classify as uncertain" do
+  test "timeouts, server errors and unknown failures classify as non-retryable causes" do
     TestAdapter.script(:create_message, [
       {:error, :timeout},
+      {:error, %Dhc.Discord.ApiError{status: 408, message: "timeout"}},
       {:error, {:connection_died, :closed}},
       {:error, %Dhc.Discord.ApiError{status: 500, message: "server error"}},
       {:error, %Dhc.Discord.ApiError{status: 503, message: "unavailable"}},
@@ -184,9 +178,19 @@ defmodule Dhc.Discord.AdapterTest do
 
     params = %{content: "Hello", allowed_mentions: %{parse: []}}
 
-    for _ <- 1..6 do
-      assert {:error, {:uncertain, %Dhc.Discord.ApiError{}}} =
-               Dhc.Discord.create_message("222", params)
+    expected = [
+      :timeout,
+      :timeout,
+      :ambiguous,
+      :server_error,
+      :server_error,
+      :ambiguous,
+      :ambiguous
+    ]
+
+    for classification <- expected do
+      assert {:error, {^classification, detail}} = Dhc.Discord.create_message("222", params)
+      assert is_binary(detail)
     end
   end
 
@@ -199,26 +203,28 @@ defmodule Dhc.Discord.AdapterTest do
 
     params = %{name: "Roll call", auto_archive_duration: 1440}
 
-    assert {:error, {:retry, _}} =
+    assert {:error, {:rate_limited, _}} =
              Dhc.Discord.create_thread_from_message("222", "111", params)
 
-    assert {:error, {:blocked, _}} =
+    assert {:error, {:permission, _}} =
              Dhc.Discord.create_thread_from_message("222", "111", params)
 
-    assert {:error, {:uncertain, _}} =
+    assert {:error, {:timeout, _}} =
              Dhc.Discord.create_thread_from_message("222", "111", params)
   end
 
-  test "success without a trustworthy id ends uncertain, never ok" do
+  test "success without a trustworthy id is ambiguous, never ok" do
     TestAdapter.script(:create_message, [{:ok, %{}}, {:ok, %{message_id: nil}}])
     TestAdapter.script(:create_thread_from_message, [{:ok, %{thread_id: ""}}])
 
     params = %{content: "Hello", allowed_mentions: %{parse: []}}
 
-    assert {:error, {:uncertain, _}} = Dhc.Discord.create_message("222", params)
-    assert {:error, {:uncertain, _}} = Dhc.Discord.create_message("222", params)
+    assert {:error, {:ambiguous, ": invalid Discord message response"}} =
+             Dhc.Discord.create_message("222", params)
 
-    assert {:error, {:uncertain, _}} =
+    assert {:error, {:ambiguous, _}} = Dhc.Discord.create_message("222", params)
+
+    assert {:error, {:ambiguous, ": invalid Discord thread response"}} =
              Dhc.Discord.create_thread_from_message("222", "111", %{
                name: "Roll call",
                auto_archive_duration: 1440
@@ -234,7 +240,7 @@ defmodule Dhc.Discord.AdapterTest do
                allowed_mentions: %{parse: []}
              })
 
-    assert {:error, {:blocked, %Dhc.Discord.ApiError{status: 400}}} =
+    assert {:error, {:payload_rejected, ": invalid Discord channel id"}} =
              Dhc.Discord.create_message("not-a-snowflake", %{
                content: "hi",
                allowed_mentions: %{parse: []}

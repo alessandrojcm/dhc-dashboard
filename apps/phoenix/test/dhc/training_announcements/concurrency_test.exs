@@ -11,6 +11,7 @@ defmodule Dhc.TrainingAnnouncements.ConcurrencyTest do
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.Announcement
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
   alias Dhc.UserProfiles.UserProfile
   alias Ecto.Adapters.SQL.Sandbox
@@ -70,7 +71,7 @@ defmodule Dhc.TrainingAnnouncements.ConcurrencyTest do
         max_attempts: 3
       }
 
-      clock = fn -> ~U[2030-09-05 13:00:00.000000Z] end
+      clock = Execution.clock(~U[2030-09-05 13:00:00.000000Z])
 
       try do
         task =

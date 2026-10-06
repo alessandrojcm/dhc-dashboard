@@ -24,6 +24,10 @@
 import type { TrainingAnnouncementOccurrence } from "@dhc/api-client";
 import { deliveryReasonLabel } from "./status";
 
+/** Why a roll call is not sent on a bank holiday, and what goes out instead. */
+export const HOLIDAY_SKIP_REASON =
+	"Roll call isn’t sent on bank holidays. A “no training” holiday notice is posted instead.";
+
 /** Explain only an authoritative non-posting outcome; never infer from checks. */
 export function occurrenceNotSentReason(
 	item: Pick<
@@ -36,7 +40,7 @@ export function occurrenceNotSentReason(
 			return null;
 		switch (item.delivery.reason) {
 			case "holiday":
-				return "Roll call isn’t sent on bank holidays.";
+				return HOLIDAY_SKIP_REASON;
 			case "disabled":
 				return "This announcement is paused.";
 			case "suppressed":
@@ -48,7 +52,7 @@ export function occurrenceNotSentReason(
 	if (item.subject === "holiday") return null;
 	switch (item.outcome) {
 		case "skipped_holiday":
-			return "Roll call isn’t sent on bank holidays.";
+			return HOLIDAY_SKIP_REASON;
 		case "skipped_disabled":
 			return "This announcement is paused.";
 		case "skipped_suppressed":

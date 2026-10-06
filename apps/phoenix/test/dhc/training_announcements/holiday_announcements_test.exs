@@ -9,7 +9,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery, as: Evidence
-  alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.Workers.HolidayAnnouncementWorker
 
   setup do
@@ -86,9 +86,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
     ])
 
     assert :ok =
-             HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-04 13:00:00.000000Z] end
-             )
+             run_driver(job, Execution.clock(~U[2030-08-04 13:00:00.000000Z]))
 
     assert :ok = run(first)
     assert :ok = run(second)
@@ -125,17 +123,13 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
              )
 
     assert {:snooze, 7200} =
-             HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-04 13:00:00.000000Z] end
-             )
+             run_driver(job, Execution.clock(~U[2030-08-04 13:00:00.000000Z]))
 
     assert holidays() == []
     DiscordAdapter.script(:create_message, [{:ok, %{message_id: "234567890123456789"}}])
 
     assert :ok =
-             HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-04 15:00:00.000000Z] end
-             )
+             run_driver(job, Execution.clock(~U[2030-08-04 15:00:00.000000Z]))
 
     assert [%{state: "delivered", post_time: ~T[16:00:00]}] = holidays()
   end
@@ -374,7 +368,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
       {:ok, %{message_id: "234567890123456789"}}
     ])
 
-    assert {:error, ^error} = run(announcement)
+    assert {:error, {:rate_limited, ": Rate limited"}} = run(announcement)
     assert [frozen] = holidays()
     assert frozen.state == "frozen"
     assert_receive {:create_message, [channel, params]}
@@ -393,9 +387,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
     assert [job] = all_enqueued(worker: HolidayAnnouncementWorker)
 
     assert :ok =
-             HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-05 13:00:00.000000Z] end
-             )
+             run_driver(job, Execution.clock(~U[2030-08-05 13:00:00.000000Z]))
 
     assert [
              %{
@@ -427,9 +419,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
     DiscordAdapter.script(:create_message, [{:ok, %{message_id: "234567890123456789"}}])
 
     assert :ok =
-             HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-04 15:00:00.000000Z] end
-             )
+             run_driver(job, Execution.clock(~U[2030-08-04 15:00:00.000000Z]))
 
     assert [%{state: "delivered", post_time: ~T[16:00:00]}] = holidays()
   end
@@ -443,7 +433,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
       {:ok, %{message_id: "234567890123456789"}}
     ])
 
-    assert {:error, ^error} = run(announcement)
+    assert {:error, {:rate_limited, ": Rate limited"}} = run(announcement)
 
     assert [job] =
              Enum.filter(
@@ -455,9 +445,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
     assert Enum.any?(all_enqueued(worker: HolidayAnnouncementWorker), &(&1.id == job.id))
 
     assert :ok =
-             HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-05 13:01:00.000000Z] end
-             )
+             run_driver(job, Execution.clock(~U[2030-08-05 13:01:00.000000Z]))
 
     assert [%{state: "delivered", phase: "same_day"}] = holidays()
   end
@@ -477,9 +465,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
              )
 
     assert :ok =
-             HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-05 13:01:00.000000Z] end
-             )
+             run_driver(job, Execution.clock(~U[2030-08-05 13:01:00.000000Z]))
 
     assert [%{state: "message_uncertain", reason: "worker_lost"}] = holidays()
     assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
@@ -516,9 +502,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
              )
 
     assert {:snooze, 30} =
-             HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-05 13:01:00.000000Z] end
-             )
+             run_driver(job, Execution.clock(~U[2030-08-05 13:01:00.000000Z]))
 
     send(worker, :finish_post)
     assert :ok = Task.await(task)
@@ -529,10 +513,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
   end
 
   defp run_day_before(job),
-    do:
-      HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-        clock: fn -> ~U[2030-08-04 13:00:00.000000Z] end
-      )
+    do: run_driver(job, Execution.clock(~U[2030-08-04 13:00:00.000000Z]))
 
   defp create(ctx, extra \\ %{}, now \\ ~U[2030-08-01 12:00:00Z]) do
     {:ok, %{announcement: announcement}} =
@@ -555,16 +536,23 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
     announcement
   end
 
+  # The roll call's own occurrence, as its driver would evaluate it.
   defp run(announcement, opts \\ []) do
-    AnnouncementWorker.perform(
-      %Oban.Job{
-        args: %{"announcement_id" => announcement.id, "occurrence_date" => "2030-08-05"},
-        attempt: Keyword.get(opts, :attempt, 1),
-        max_attempts: 4
-      },
-      clock: fn -> ~U[2030-08-05 13:00:00.000000Z] end
+    Execution.evaluate(
+      {:announcement, announcement.id, ~D[2030-08-05]},
+      Execution.clock(~U[2030-08-05 13:00:00.000000Z]),
+      %{attempt: Keyword.get(opts, :attempt, 1), max_attempts: 4}
     )
   end
+
+  # The reference a scheduled holiday job names (args wiring is pinned in
+  # HolidayAnnouncementWorkerTest).
+  defp run_driver(%Oban.Job{args: %{"holiday_date" => date, "phase" => phase}}, clock),
+    do:
+      Execution.evaluate({:holiday, phase, Date.from_iso8601!(date)}, clock, %{
+        attempt: 1,
+        max_attempts: 4
+      })
 
   defp holidays, do: Repo.all(from(d in Evidence, where: d.subject == "holiday"))
 end

@@ -1,53 +1,31 @@
 defmodule Dhc.TrainingAnnouncements.Delivery do
-  @moduledoc "Frozen Discord progression. Calls happen after commit; conditional writes fence each checkpoint."
+  @moduledoc """
+  Frozen Discord progression. `Dhc.TrainingAnnouncements.Execution` writes
+  the Evidence row; this module only progresses it after commit, and
+  conditional writes fence each checkpoint. `Dhc.Discord` classifies every
+  protocol failure; this module maps those causes onto delivery states.
+  """
   import Ecto.Query
   alias Dhc.Discord
-  alias Dhc.Discord.ApiError
   alias Dhc.ClubCalendar
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery, as: Evidence
 
-  # Called only inside Store.with_current/2, alongside scheduling the next slot.
-  def freeze(announcement, occurrence, channel, copy, now) do
-    attrs = %{
-      id: Ecto.UUID.generate(),
-      subject: "occurrence",
-      announcement_id: announcement.id,
-      occurrence_date: occurrence.date,
-      post_time: announcement.post_time,
-      kind: occurrence.kind,
-      mention_everyone: occurrence.mention_everyone,
-      title_source: occurrence.title,
-      message_source: occurrence.message,
-      rendered_message: copy.rendered_message,
-      thread_name: copy.thread_name,
-      channel_id: channel,
-      applied_suppression_id: occurrence.applied_suppression_id,
-      applied_override_id: occurrence.applied_override_id,
-      state: "frozen",
-      resolved_outcome: to_string(occurrence.outcome),
-      precedence_chain: Enum.map(occurrence.chain, &to_string/1),
-      frozen_at: now,
-      created_at: now,
-      updated_at: now
-    }
-
-    case Repo.insert_all(Evidence, [attrs], on_conflict: :nothing, returning: true) do
-      {1, [delivery]} ->
-        if is_nil(announcement.first_attempted_at) do
-          announcement |> Ecto.Changeset.change(first_attempted_at: now) |> Repo.update!()
-        end
-
-        delivery
-
-      {0, []} ->
-        nil
-    end
-  end
-
-  def for_occurrence(id, date) do
-    Repo.one(from(d in Evidence, where: d.announcement_id == ^id and d.occurrence_date == ^date))
-  end
+  # The one mapping from a `Dhc.Discord` failure to `{disposition, evidence
+  # reason}`. `:deferred` and `:rejected` were positively not accepted, so
+  # a thread may retry them and a deferred message may resend later;
+  # `:uncertain` may have been accepted and is never resubmitted. Reasons
+  # are a closed set (DB CHECK); an unlisted failure is uncertain/"unknown".
+  @failures %{
+    rate_limited: {:deferred, "unknown"},
+    connection_refused: {:deferred, "unknown"},
+    permission: {:rejected, "permission"},
+    unknown_channel: {:rejected, "unknown_channel"},
+    payload_rejected: {:rejected, "payload_rejected"},
+    timeout: {:uncertain, "timeout"},
+    server_error: {:uncertain, "server_error"},
+    ambiguous: {:uncertain, "unknown"}
+  }
 
   def progress(delivery, job, clock)
   def progress(nil, _job, _clock), do: :ok
@@ -157,19 +135,8 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
         })
         |> do_progress(job, clock)
 
-      {:error, {:blocked, error}} ->
-        conclude(delivery, "blocked", reason(error), detail(error), clock)
-
-      {:error, {:uncertain, error}} ->
-        conclude(delivery, "message_uncertain", reason(error), detail(error), clock)
-
-      {:error, {:retry, error}} ->
-        if job.attempt + 1 < job.max_attempts do
-          checkpoint(delivery, %{state: "frozen", error_detail: detail(error)})
-          {:error, error}
-        else
-          conclude(delivery, "blocked", reason(error), detail(error), clock)
-        end
+      {:error, {failure, detail} = error} ->
+        message_failure(delivery, failure, detail(detail), error, job, clock)
     end
   end
 
@@ -199,26 +166,41 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
 
             :ok
 
-          {:error, {classification, error}} ->
-            thread_failure(claimed, classification, error, job, clock)
+          {:error, {failure, detail} = error} ->
+            thread_failure(claimed, failure, detail(detail), error, job, clock)
         end
     end
   end
 
-  defp thread_failure(delivery, classification, error, job, clock) do
+  defp message_failure(delivery, failure, detail, error, job, clock) do
+    case classify(failure) do
+      {:deferred, _reason} when job.attempt + 1 < job.max_attempts ->
+        checkpoint(delivery, %{state: "frozen", error_detail: detail})
+        {:error, error}
+
+      {:uncertain, reason} ->
+        conclude(delivery, "message_uncertain", reason, detail, clock)
+
+      {_not_accepted, reason} ->
+        conclude(delivery, "blocked", reason, detail, clock)
+    end
+  end
+
+  defp thread_failure(delivery, failure, detail, error, job, clock) do
     # An ambiguous thread result is not safe to retry either. The message stays.
-    updated = checkpoint(delivery, %{last_thread_error: detail(error)})
+    {disposition, reason} = classify(failure)
+    updated = checkpoint(delivery, %{last_thread_error: detail})
 
     cond do
       is_nil(updated) ->
         :ok
 
-      classification != :uncertain and job.attempt + 1 < job.max_attempts ->
+      disposition != :uncertain and job.attempt + 1 < job.max_attempts ->
         checkpoint(updated, %{state: "message_posted"})
         {:error, error}
 
       true ->
-        conclude(updated, "thread_failed", reason(error), detail(error), clock)
+        conclude(updated, "thread_failed", reason, detail, clock)
     end
   end
 
@@ -279,13 +261,7 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
   defp send_date(%{subject: "holiday", holiday_date: date}), do: date
   defp send_date(delivery), do: delivery.occurrence_date
 
-  defp reason(%ApiError{status: 403}), do: "permission"
-  defp reason(%ApiError{status: 404}), do: "unknown_channel"
-  defp reason(%ApiError{status: 400}), do: "payload_rejected"
-  defp reason(%ApiError{status: 408}), do: "timeout"
-  defp reason(%ApiError{details: :timeout}), do: "timeout"
-  defp reason(%ApiError{status: status}) when status >= 500, do: "server_error"
-  defp reason(_error), do: "unknown"
+  defp classify(failure), do: Map.get(@failures, failure, {:uncertain, "unknown"})
 
-  defp detail(error), do: String.slice("#{error.code}: #{error.message}", 0, 500)
+  defp detail(detail), do: String.slice(detail, 0, 500)
 end

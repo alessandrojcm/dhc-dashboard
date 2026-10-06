@@ -37,8 +37,27 @@ defmodule Dhc.Discord do
     adapter().kick_guild_member(guild_id(), user_id, reason)
   end
 
-  @type discord_error_class :: :retry | :blocked | :uncertain
-  @type classified_error :: {:error, {discord_error_class(), ApiError.t()}}
+  @typedoc """
+  Why a Discord announcement call failed (ALE-309 table, ALE-348 seam):
+  `:rate_limited` (429 / retry-after), `:connection_refused` (refused before
+  submission), `:permission` (403), `:unknown_channel` (404),
+  `:payload_rejected` (400), `:timeout` (408 / transport timeout),
+  `:server_error` (5xx), and `:ambiguous` for every other failure,
+  including a success without a trustworthy id. How a caller treats each
+  cause is the caller's policy.
+  """
+  @type failure ::
+          :rate_limited
+          | :connection_refused
+          | :permission
+          | :unknown_channel
+          | :payload_rejected
+          | :timeout
+          | :server_error
+          | :ambiguous
+
+  @typedoc "A classified failure with a `code: message` detail for evidence."
+  @type classified_error :: {:error, {failure(), String.t()}}
 
   @doc """
   Posts a channel message through the configured Discord adapter.
@@ -46,9 +65,8 @@ defmodule Dhc.Discord do
   `params` carries `%{content:, allowed_mentions:, nonce:}`. `allowed_mentions`
   is forwarded verbatim — this seam never adds mentions itself; the caller
   owns mention policy (ALE-309). Returns the Discord message id, or a
-  classified error (ALE-320: `:retry` for rate-limit deferral and
-  connection-refused-before-submission, `:blocked` for deterministic 400/403/404
-  rejections, `:uncertain` for everything else including unknown errors).
+  classified `t:failure/0` with its detail; callers never see transport or
+  `Dhc.Discord.ApiError` shapes.
   """
   @spec create_message(String.t(), map()) ::
           {:ok, %{message_id: String.t()}} | classified_error()
@@ -93,12 +111,12 @@ defmodule Dhc.Discord do
   end
 
   defp uncertain(message) do
-    {:error, {:uncertain, %ApiError{status: 502, message: message}}}
+    {:error, {:ambiguous, detail(%ApiError{status: 502, message: message})}}
   end
 
   defp classify_wrapped(reason) do
     error = to_api_error(reason)
-    {:error, {classify_error(error), error}}
+    {:error, {classify_error(error), detail(error)}}
   end
 
   defp to_api_error(%ApiError{} = error), do: error
@@ -116,22 +134,29 @@ defmodule Dhc.Discord do
     %ApiError{status: 0, message: "Discord request failed", details: reason}
   end
 
-  # Failure classification (ALE-309 table, ALE-320 seam). Unknown errors
-  # default to :uncertain — never retry without positive proof the message
-  # was not accepted.
-  defp classify_error(%ApiError{status: 429}), do: :retry
-  defp classify_error(%ApiError{details: {:retry_after, _millis}}), do: :retry
-  defp classify_error(%ApiError{details: %{retry_after: _}}), do: :retry
+  defp detail(%ApiError{code: code, message: message}), do: "#{code}: #{message}"
+
+  # Failure classification (ALE-309 table, ALE-320 seam, ALE-348 causes).
+  # Unknown errors default to :ambiguous — never retry without positive
+  # proof the message was not accepted.
+  defp classify_error(%ApiError{status: 429}), do: :rate_limited
+  defp classify_error(%ApiError{details: {:retry_after, _millis}}), do: :rate_limited
+  defp classify_error(%ApiError{details: %{retry_after: _}}), do: :rate_limited
 
   defp classify_error(%ApiError{status: status} = error)
        when status == 0 or status == 408 do
-    if connection_refused?(error.details), do: :retry, else: :uncertain
+    cond do
+      connection_refused?(error.details) -> :connection_refused
+      status == 408 or error.details == :timeout -> :timeout
+      true -> :ambiguous
+    end
   end
 
-  defp classify_error(%ApiError{status: status}) when status in [400, 403, 404],
-    do: :blocked
-
-  defp classify_error(%ApiError{}), do: :uncertain
+  defp classify_error(%ApiError{status: 403}), do: :permission
+  defp classify_error(%ApiError{status: 404}), do: :unknown_channel
+  defp classify_error(%ApiError{status: 400}), do: :payload_rejected
+  defp classify_error(%ApiError{status: status}) when status >= 500, do: :server_error
+  defp classify_error(%ApiError{}), do: :ambiguous
 
   defp connection_refused?(:econnrefused), do: true
   defp connection_refused?({:connection_died, reason}), do: connection_refused?(reason)

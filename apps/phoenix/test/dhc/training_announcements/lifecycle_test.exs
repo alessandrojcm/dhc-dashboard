@@ -7,6 +7,7 @@ defmodule Dhc.TrainingAnnouncements.LifecycleTest do
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.Announcement
   alias Dhc.TrainingAnnouncements.AnnouncementSuppression
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Auth.UserRole
@@ -265,7 +266,7 @@ defmodule Dhc.TrainingAnnouncements.LifecycleTest do
                now: now
              )
 
-    assert :ok = AnnouncementWorker.perform(old_job, clock: fn -> now end)
+    assert :ok = AnnouncementWorker.perform(old_job, clock: Execution.clock(now))
     assert [replacement] = all_enqueued(worker: AnnouncementWorker)
     assert DateTime.compare(replacement.scheduled_at, ~U[2030-09-05 15:00:00Z]) == :eq
 
@@ -275,10 +276,10 @@ defmodule Dhc.TrainingAnnouncements.LifecycleTest do
              )
 
     [new_job] = all_enqueued(worker: AnnouncementWorker)
-    assert :ok = AnnouncementWorker.perform(old_job, clock: fn -> now end)
+    assert :ok = AnnouncementWorker.perform(old_job, clock: Execution.clock(now))
     assert [^new_job] = all_enqueued(worker: AnnouncementWorker)
     assert {:ok, _} = TrainingAnnouncements.retire(actor, announcement.id)
-    assert :ok = AnnouncementWorker.perform(old_job, clock: fn -> now end)
+    assert :ok = AnnouncementWorker.perform(old_job, clock: Execution.clock(now))
     assert all_enqueued(worker: AnnouncementWorker) == []
   end
 

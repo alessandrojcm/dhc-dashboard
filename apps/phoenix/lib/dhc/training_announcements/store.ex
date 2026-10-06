@@ -6,7 +6,8 @@ defmodule Dhc.TrainingAnnouncements.Store do
   edits, retirement and deletion; there are no explicit lock queries or lock
   tables. A stale claimant retries from a fresh snapshot, never its old struct.
 
-  Delivery's first-freeze stamp must join this transaction seam too.
+  `Execution`'s Evidence write and first-freeze stamp join this transaction
+  seam too.
   """
   import Ecto.Query
   alias Dhc.Repo

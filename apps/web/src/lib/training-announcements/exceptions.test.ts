@@ -60,10 +60,17 @@ describe("nextResolvedTitle", () => {
 		expect(
 			nextResolvedTitle([
 				{
+					subject: "occurrence",
 					threadName: "Roll call Thursday 8 October 2026",
 				},
 			]),
 		).toBe("Roll call Thursday 8 October 2026");
+	});
+
+	it("names a holiday notice, which has no thread", () => {
+		expect(nextResolvedTitle([{ subject: "holiday", threadName: null }])).toBe(
+			"Holiday notice",
+		);
 	});
 
 	it("is undefined without an upcoming occurrence", () => {
