@@ -31,10 +31,7 @@ import {
 	type SuppressionField,
 	type SuppressionFieldErrors,
 } from "#lib/training-announcements/exceptions.js";
-import {
-	announcementProblem,
-	type AnnouncementFieldMessages,
-} from "#lib/training-announcements/problem.js";
+import { apiProblem, type ApiFieldMessages } from "#lib/api-error.js";
 
 const queryClient = useQueryClient();
 
@@ -60,7 +57,7 @@ let draft = $state<SuppressionDraft>(
 		: newSuppressionDraft(today),
 );
 let saveError = $state<string | null>(null);
-let fieldMessages = $state<AnnouncementFieldMessages[]>([]);
+let fieldMessages = $state<ApiFieldMessages[]>([]);
 let localErrors = $state<SuppressionFieldErrors>({});
 
 const create = createMutation(() =>
@@ -92,9 +89,9 @@ async function save() {
 		onSaved();
 		onClose();
 	} catch (cause) {
-		const problem = announcementProblem(cause);
+		const problem = apiProblem(cause);
 		saveError = problem?.detail ?? "Could not skip these dates";
-		fieldMessages = problem?.fieldMessages ?? [];
+		fieldMessages = problem?.fields ?? [];
 	}
 }
 </script>
