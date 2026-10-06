@@ -305,11 +305,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
 
   defp fetch_membership_price_ids! do
     Enum.map(LookupKeys.all(), fn lookup_key ->
-      case stripe_get!("/v1/prices", %{
-             "lookup_keys[]" => lookup_key,
-             active: "true",
-             limit: 1
-           }) do
+      case stripe_list_prices!(lookup_key) do
         %{"data" => [%{"id" => price_id} | _]} ->
           price_id
 
@@ -323,32 +319,11 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
     end)
   end
 
-  defp stripe_get!(path, params) do
-    case Req.get(
-           Application.fetch_env!(:dhc, :stripe_api_url) <> path,
-           headers: stripe_headers(),
-           params: params,
-           decode_body: true,
-           retry: false,
-           connect_options: [timeout: 30_000]
-         ) do
-      {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
-        body
-
-      {:ok, %Req.Response{status: status, body: body}} ->
-        raise "Stripe test API returned #{status}: #{inspect(body)}"
-
-      {:error, exception} ->
-        raise "Stripe test API request failed: #{inspect(exception)}"
+  defp stripe_list_prices!(lookup_key) do
+    case Dhc.Stripe.Operations.get_prices(%{}, lookup_keys: [lookup_key], active: true, limit: 1) do
+      {:ok, body} -> body
+      {:error, reason} -> raise "Stripe test API request failed: #{inspect(reason)}"
     end
-  end
-
-  defp stripe_headers do
-    [
-      {"authorization", "Bearer #{Application.fetch_env!(:dhc, :stripe_secret_key)}"},
-      {"stripe-version", Application.fetch_env!(:dhc, :stripe_api_version)},
-      {"content-type", "application/x-www-form-urlencoded"}
-    ]
   end
 
   defp maybe_seed_price_cache([]), do: :ok
