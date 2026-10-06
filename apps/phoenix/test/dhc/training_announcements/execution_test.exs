@@ -66,6 +66,25 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
       assert %{first_attempted_at: @due} = Repo.get!(Announcement, announcement.id)
       assert [next] = all_enqueued(worker: AnnouncementWorker)
       assert next.args["occurrence_date"] == "2030-09-12"
+
+      assert :ok = evaluate(announcement, @today)
+      refute_receive {:create_message, _}
+      assert [_] = Repo.all(Evidence)
+
+      # The first-attempt stamp, not retained evidence, forbids deletion.
+      Repo.delete!(evidence)
+      assert {:error, :attempted} = TrainingAnnouncements.delete(ctx.actor, announcement.id)
+    end
+
+    test "a later weekly freeze never replaces the first-attempt stamp", ctx do
+      announcement = create(ctx)
+      script_post(2)
+
+      assert :ok = evaluate(announcement, @today)
+      assert :ok = evaluate(announcement, ~D[2030-09-12], ~U[2030-09-12 13:00:00.000000Z])
+
+      assert [_, _] = Repo.all(Evidence)
+      assert %{first_attempted_at: @due} = Repo.get!(Announcement, announcement.id)
     end
 
     test "a bank holiday skips a roll call and drives the same-day Holiday Announcement", ctx do
@@ -84,7 +103,8 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
       refute_receive {:create_thread_from_message, _}
     end
 
-    test "disablement skips without freezing or stamping the first attempt", ctx do
+    test "disablement skips, advances the schedule and leaves the announcement deletable",
+         ctx do
       announcement = create(ctx)
       {:ok, _} = TrainingAnnouncements.disable(ctx.actor, announcement.id)
 
@@ -93,8 +113,22 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
       assert [%{state: "skipped", reason: "disabled", frozen_at: nil, concluded_at: @due}] =
                Repo.all(Evidence)
 
+      assert [next] = all_enqueued(worker: AnnouncementWorker)
+      assert next.args["occurrence_date"] == "2030-09-12"
       assert %{first_attempted_at: nil} = Repo.get!(Announcement, announcement.id)
       refute_receive {:create_message, _}
+      assert {:ok, _} = TrainingAnnouncements.delete(ctx.actor, announcement.id)
+      assert Repo.all(Evidence) == []
+    end
+
+    test "a bank holiday outranks disablement", ctx do
+      holiday(@today, "Thursday Holiday")
+      announcement = create(ctx, %{kind: "roll_call"})
+      {:ok, _} = TrainingAnnouncements.disable(ctx.actor, announcement.id)
+
+      assert :ok = evaluate(announcement, @today)
+
+      assert [%{state: "skipped", reason: "holiday"}] = occurrence_rows()
     end
 
     test "a suppression skips and records the applied suppression", ctx do
@@ -115,6 +149,19 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
 
       assert id == suppression.id
       refute_receive {:create_message, _}
+    end
+
+    test "a disabled one-off past its date is missed and schedules nothing", ctx do
+      yesterday = Date.add(@today, -1)
+      announcement = create(ctx, %{weekday: nil, one_off_date: yesterday})
+      {:ok, _} = TrainingAnnouncements.disable(ctx.actor, announcement.id)
+      # The engine consumed this driver; only a new pending driver would show.
+      Repo.update_all(Oban.Job, set: [state: "executing"])
+
+      assert :ok = evaluate(announcement, yesterday)
+
+      assert [%{state: "missed", reason: "late"}] = Repo.all(Evidence)
+      assert all_enqueued(worker: AnnouncementWorker) == []
     end
 
     test "past its Dublin date it is missed, never posted", ctx do
@@ -156,7 +203,8 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
       assert_receive {:create_message, [_, %{content: "Special copy"}]}
     end
 
-    test "invalid copy blocks before freezing", ctx do
+    test "invalid copy blocks before freezing and reports to Sentry", ctx do
+      Sentry.Test.setup_sentry()
       announcement = create(ctx)
 
       Repo.update_all(from(a in Announcement, where: a.id == ^announcement.id),
@@ -168,19 +216,34 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
       assert [%{state: "blocked", reason: "invalid_copy", frozen_at: nil, channel_id: nil}] =
                Repo.all(Evidence)
 
+      assert [%Sentry.Event{extra: %{reason: "invalid_copy"}}] = Sentry.Test.pop_sentry_reports()
       refute_receive {:create_message, _}
     end
 
-    test "an unconfigured channel blocks before freezing", ctx do
+    test "an unconfigured channel blocks before freezing, reports once and stays deletable",
+         ctx do
+      Sentry.Test.setup_sentry()
       Application.delete_env(:dhc, :discord_sparring_channel_id)
       announcement = create(ctx)
 
       assert :ok = evaluate(announcement, @today)
 
-      assert [%{state: "blocked", reason: "unconfigured_channel", rendered_message: nil}] =
-               Repo.all(Evidence)
+      assert [
+               %{
+                 state: "blocked",
+                 reason: "unconfigured_channel",
+                 title_source: nil,
+                 rendered_message: nil
+               }
+             ] = Repo.all(Evidence)
 
+      assert [%Sentry.Event{extra: %{reason: "unconfigured_channel"}}] =
+               Sentry.Test.pop_sentry_reports()
+
+      assert :ok = evaluate(announcement, @today)
+      assert Sentry.Test.pop_sentry_reports() == []
       assert %{first_attempted_at: nil} = Repo.get!(Announcement, announcement.id)
+      assert {:ok, _} = TrainingAnnouncements.delete(ctx.actor, announcement.id)
     end
 
     test "a replay progresses the existing row and never writes a second one", ctx do
@@ -369,10 +432,16 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
   # A clock built at one instant whose readings (the claim's) are another.
   defp advancing(built, claimed), do: %{Execution.clock(built) | tick: fn -> claimed end}
 
-  defp script_post do
-    DiscordAdapter.script(:create_message, [{:ok, %{message_id: "234567890123456789"}}])
+  defp script_post(times \\ 1) do
+    DiscordAdapter.script(
+      :create_message,
+      List.duplicate({:ok, %{message_id: "234567890123456789"}}, times)
+    )
 
-    DiscordAdapter.script(:create_thread_from_message, [{:ok, %{thread_id: "345678901234567890"}}])
+    DiscordAdapter.script(
+      :create_thread_from_message,
+      List.duplicate({:ok, %{thread_id: "345678901234567890"}}, times)
+    )
   end
 
   defp create(ctx, extra \\ %{}) do
