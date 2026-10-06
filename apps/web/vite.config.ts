@@ -7,11 +7,13 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import mkcert from "vite-plugin-mkcert";
 import { playwright } from "@vitest/browser-playwright";
 import adapter from "@sveltejs/adapter-cloudflare";
+import { cloudflareCreateRequire } from "./tools/cloudflare-create-require.js";
 
 export default defineConfig(({ command }) => ({
 	envDir: "../..",
 	assetsInclude: ["src/assets/**/*"],
 	plugins: [
+		cloudflareCreateRequire(),
 		sentrySvelteKit({
 			debug: command === "serve",
 			autoUploadSourceMaps: true,
@@ -64,7 +66,7 @@ export default defineConfig(({ command }) => ({
 				extends: true,
 				test: {
 					name: "unit",
-					include: ["src/**/*.{test,spec}.{js,ts}"],
+					include: ["src/**/*.{test,spec}.{js,ts}", "tools/**/*.test.ts"],
 					exclude: ["src/**/*.browser.{test,spec}.{js,ts}"],
 				},
 			},
