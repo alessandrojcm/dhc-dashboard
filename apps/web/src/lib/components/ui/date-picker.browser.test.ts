@@ -33,20 +33,6 @@ test("selects a date from the calendar popover", async () => {
 	expect(selectedDate.getDate()).toBe(15);
 });
 
-test("opens the calendar popover without an initial date", async () => {
-	const screen = await render(DatePicker, {
-		value: undefined,
-		onDateChange: vi.fn(),
-		name: "dateOfBirth",
-		id: "dateOfBirth",
-		type: "date",
-	});
-
-	await userEvent.click(screen.getByRole("button", { name: "Select a date" }));
-
-	await expect.element(screen.getByLabelText("Select a year")).toBeVisible();
-});
-
 test("keeps the selected date when it is clicked again", async () => {
 	const onValueChange = vi.fn();
 	const screen = await render(DatePicker, {

@@ -6,10 +6,11 @@ defmodule Dhc.Inventory.MemberCatalogTest do
   member row must never carry the container, operator notes, or an operator
   maintenance fact, and an unavailable item must explain itself with a
   generic reason that cannot identify a borrower (spec ALE-280 stories 29,
-  45; ALE-275 resolution). The browse mechanics — search over the derived
-  label's ingredients, category and property filters, stable slug ordering,
-  cursor pagination with exact counts — are proven alongside them because a
-  filter that silently widens the set is also a privacy risk.
+  45; ALE-275 resolution). Search over the derived label's ingredients and
+  the member-only availability filter (bound into the cursor) are proven
+  alongside them because a filter that silently widens the set is also a
+  privacy risk. The shared category/property filters, slug ordering, and
+  cursor pagination are proven once in `Dhc.Inventory.ItemQueryTest`.
   """
 
   use Dhc.DataCase, async: false
@@ -189,94 +190,7 @@ defmodule Dhc.Inventory.MemberCatalogTest do
     end
   end
 
-  describe "filters" do
-    test "filters by one or more categories" do
-      %{category: swords, container_id: container_id} = fixture()
-      masks = create_category!()
-
-      {:ok, sword} = create_item(container_id, swords.id)
-      {:ok, mask} = create_item(container_id, masks.id)
-
-      assert {:ok, page} = Inventory.list_catalog_items(%{"categoryId" => swords.id})
-      assert Enum.map(page.items, & &1.id) == [sword.id]
-
-      assert {:ok, both} =
-               Inventory.list_catalog_items(%{"categoryId" => "#{swords.id},#{masks.id}"})
-
-      assert Enum.sort(Enum.map(both.items, & &1.id)) == Enum.sort([sword.id, mask.id])
-    end
-
-    test "ORs values of one definition and ANDs across definitions" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, size} = create_definition(category.id, "Size", "single_select")
-      {:ok, large} = Inventory.create_option(size.id, %{"label" => "Large"})
-      {:ok, small} = Inventory.create_option(size.id, %{"label" => "Small"})
-      {:ok, sharp} = create_definition(category.id, "Sharp", "boolean")
-
-      {:ok, big_sharp} =
-        create_item(container_id, category.id, %{size.id => large.id, sharp.id => true})
-
-      {:ok, small_sharp} =
-        create_item(container_id, category.id, %{size.id => small.id, sharp.id => true})
-
-      {:ok, big_blunt} =
-        create_item(container_id, category.id, %{size.id => large.id, sharp.id => false})
-
-      assert {:ok, either_size} =
-               Inventory.list_catalog_items(%{
-                 "property" => "#{size.id}:#{large.id},#{size.id}:#{small.id}"
-               })
-
-      assert Enum.sort(Enum.map(either_size.items, & &1.id)) ==
-               Enum.sort([big_sharp.id, small_sharp.id, big_blunt.id])
-
-      assert {:ok, sharp_only} =
-               Inventory.list_catalog_items(%{
-                 "property" => "#{size.id}:#{large.id},#{size.id}:#{small.id},#{sharp.id}:true"
-               })
-
-      assert Enum.sort(Enum.map(sharp_only.items, & &1.id)) ==
-               Enum.sort([big_sharp.id, small_sharp.id])
-    end
-
-    test "rejects malformed filters instead of querying with them" do
-      assert {:error, :invalid_category} =
-               Inventory.list_catalog_items(%{"categoryId" => "not-a-uuid"})
-
-      assert {:error, :invalid_property} =
-               Inventory.list_catalog_items(%{"property" => "not-a-pair"})
-
-      assert {:error, :invalid_availability} =
-               Inventory.list_catalog_items(%{"availability" => "archived"})
-
-      assert {:error, :invalid_limit} = Inventory.list_catalog_items(%{"limit" => "7"})
-      assert {:error, :invalid_direction} = Inventory.list_catalog_items(%{"direction" => "up"})
-    end
-
-    test "compares decimal property values numerically so 1 matches stored 1.0" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
-      {:ok, match} = create_item(container_id, category.id, %{weight.id => "1.0"})
-      {:ok, _other} = create_item(container_id, category.id, %{weight.id => "2.0"})
-
-      for value <- ["1", "1.0", "1.00"] do
-        assert {:ok, page} =
-                 Inventory.list_catalog_items(%{"property" => "#{weight.id}:#{value}"})
-
-        assert Enum.map(page.items, & &1.id) == [match.id]
-        assert page.total_count == 1
-      end
-    end
-
-    test "rejects a malformed decimal for a decimal definition" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
-      {:ok, _item} = create_item(container_id, category.id, %{weight.id => "1.0"})
-
-      assert {:error, :invalid_property} =
-               Inventory.list_catalog_items(%{"property" => "#{weight.id}:not-a-number"})
-    end
-
+  describe "availability filter" do
     test "filters by member-actionable availability over the projection facts" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, free} = create_item(container_id, category.id)
@@ -313,6 +227,9 @@ defmodule Dhc.Inventory.MemberCatalogTest do
 
       assert {:ok, blank} = Inventory.list_catalog_items(%{"availability" => ""})
       assert blank.total_count == 3
+
+      assert {:error, :invalid_availability} =
+               Inventory.list_catalog_items(%{"availability" => "archived"})
     end
 
     test "a pending request never makes an item unavailable" do
@@ -379,70 +296,6 @@ defmodule Dhc.Inventory.MemberCatalogTest do
                })
 
       assert Enum.map(replayed.items, & &1.id) == [busy.id]
-    end
-  end
-
-  describe "pagination" do
-    test "orders by the immutable slug and walks forward and back with exact counts" do
-      %{category: category, container_id: container_id} = fixture()
-
-      slugs =
-        for _ <- 1..12 do
-          {:ok, item} = create_item(container_id, category.id)
-          item.slug
-        end
-
-      sorted = Enum.sort(slugs)
-
-      assert {:ok, first} = Inventory.list_catalog_items(%{"limit" => "10"})
-      assert Enum.map(first.items, & &1.slug) == Enum.take(sorted, 10)
-      assert first.total_count == 12
-      assert first.previous_cursor == nil
-      assert is_binary(first.next_cursor)
-
-      assert {:ok, second} =
-               Inventory.list_catalog_items(%{"limit" => "10", "cursor" => first.next_cursor})
-
-      assert Enum.map(second.items, & &1.slug) == Enum.drop(sorted, 10)
-      assert second.total_count == 12
-      assert second.next_cursor == nil
-
-      assert {:ok, back} =
-               Inventory.list_catalog_items(%{
-                 "limit" => "10",
-                 "cursor" => second.previous_cursor
-               })
-
-      assert Enum.map(back.items, & &1.slug) == Enum.take(sorted, 10)
-
-      assert {:ok, descending} = Inventory.list_catalog_items(%{"direction" => "desc"})
-      assert Enum.map(descending.items, & &1.slug) == Enum.sort(slugs, :desc)
-    end
-
-    test "a cursor from a different query is refused" do
-      %{category: category, container_id: container_id} = fixture()
-      other = create_category!()
-
-      for _ <- 1..12, do: create_item(container_id, category.id)
-
-      assert {:ok, page} = Inventory.list_catalog_items(%{"limit" => "10"})
-
-      assert {:error, :bad_cursor} =
-               Inventory.list_catalog_items(%{
-                 "limit" => "10",
-                 "cursor" => page.next_cursor,
-                 "categoryId" => other.id
-               })
-
-      assert {:error, :bad_cursor} =
-               Inventory.list_catalog_items(%{
-                 "limit" => "10",
-                 "cursor" => page.next_cursor,
-                 "q" => "sword"
-               })
-
-      assert {:error, :bad_cursor} =
-               Inventory.list_catalog_items(%{"limit" => "10", "cursor" => "not-a-cursor"})
     end
   end
 

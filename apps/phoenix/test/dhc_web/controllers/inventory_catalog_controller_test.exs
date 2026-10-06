@@ -10,8 +10,8 @@ defmodule DhcWeb.InventoryCatalogControllerTest do
   exact counts, the search and filter parameters, and the typed error mapping
   for unavailable items and duplicate requests.
 
-  Domain invariants live in `Dhc.Inventory.MemberCatalogTest` and
-  `Dhc.Inventory.MemberLoansTest`.
+  Domain invariants live in `Dhc.Inventory.MemberCatalogTest`,
+  `Dhc.Inventory.ItemQueryTest`, and `Dhc.Inventory.AvailabilityCommandsTest`.
   """
 
   use DhcWeb.ConnCase, async: false
@@ -165,111 +165,38 @@ defmodule DhcWeb.InventoryCatalogControllerTest do
   # ── Browse ──────────────────────────────────────────────────────
 
   describe "list" do
-    test "pages with exact totalCount and cursor metadata", %{conn: conn} do
+    test "answers the page envelope", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
+      {:ok, item} = create_item(container_id, category.id)
 
-      slugs =
-        for _ <- 1..12 do
-          {:ok, item} = create_item(container_id, category.id)
-          item.slug
-        end
-
-      sorted = Enum.sort(slugs)
-
-      first =
+      response =
         conn |> auth_conn("member") |> get("/api/inventory/catalog/items", %{"limit" => "10"})
 
-      assert %{"data" => data} = json_response(first, 200)
-      assert Enum.map(data["items"], & &1["slug"]) == Enum.take(sorted, 10)
-      assert data["totalCount"] == 12
-      assert data["limit"] == 10
-      assert is_binary(data["nextCursor"])
-      assert data["previousCursor"] == nil
+      assert %{
+               "data" => %{
+                 "items" => [%{"slug" => slug}],
+                 "totalCount" => 1,
+                 "limit" => 10,
+                 "nextCursor" => nil,
+                 "previousCursor" => nil
+               }
+             } = json_response(response, 200)
 
-      second =
-        build_conn()
-        |> auth_conn("member")
-        |> get("/api/inventory/catalog/items", %{
-          "limit" => "10",
-          "cursor" => data["nextCursor"]
-        })
-
-      assert %{"data" => page_two} = json_response(second, 200)
-      assert Enum.map(page_two["items"], & &1["slug"]) == Enum.drop(sorted, 10)
-      assert page_two["totalCount"] == 12
-      assert page_two["nextCursor"] == nil
+      assert slug == item.slug
     end
 
-    test "searches and filters", %{conn: conn} do
+    test "passes the search query through to the read", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
-      other_category = create_category!()
       {:ok, brand} = definition(category.id, "Brand", "text")
 
       {:ok, regenyei} = create_item(container_id, category.id, %{brand.id => "Regenyei"})
       {:ok, _darkwood} = create_item(container_id, category.id, %{brand.id => "Darkwood"})
-      {:ok, mask} = create_item(container_id, other_category.id)
 
       searched =
         conn |> auth_conn("member") |> get("/api/inventory/catalog/items", %{"q" => "regen"})
 
       assert %{"data" => search_data} = json_response(searched, 200)
       assert Enum.map(search_data["items"], & &1["id"]) == [regenyei.id]
-
-      filtered =
-        build_conn()
-        |> auth_conn("member")
-        |> get("/api/inventory/catalog/items", %{"categoryId" => other_category.id})
-
-      assert %{"data" => filter_data} = json_response(filtered, 200)
-      assert Enum.map(filter_data["items"], & &1["id"]) == [mask.id]
-
-      by_property =
-        build_conn()
-        |> auth_conn("member")
-        |> get("/api/inventory/catalog/items", %{"property" => "#{brand.id}:Regenyei"})
-
-      assert %{"data" => property_data} = json_response(by_property, 200)
-      assert Enum.map(property_data["items"], & &1["id"]) == [regenyei.id]
-    end
-
-    test "filters by availability without leaking operator facts", %{conn: conn} do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, free} = create_item(container_id, category.id)
-      {:ok, borrowed} = create_item(container_id, category.id)
-      {:ok, serviced} = create_item(container_id, category.id)
-      borrower = principal!("availability")
-
-      create_loan!(borrowed, borrower, "checked_out")
-
-      assert {:ok, _} =
-               Inventory.start_operator_item_maintenance(
-                 serviced.slug,
-                 %{"reason" => "Blade bent in sparring"},
-                 @actor_id
-               )
-
-      available =
-        conn
-        |> auth_conn("member")
-        |> get("/api/inventory/catalog/items", %{"availability" => "available"})
-
-      assert %{"data" => available_data} = json_response(available, 200)
-      assert Enum.map(available_data["items"], & &1["id"]) == [free.id]
-      assert available_data["totalCount"] == 1
-
-      unavailable =
-        build_conn()
-        |> auth_conn("member")
-        |> get("/api/inventory/catalog/items", %{"availability" => "unavailable"})
-
-      assert %{"data" => unavailable_data} = json_response(unavailable, 200)
-
-      assert Enum.sort(Enum.map(unavailable_data["items"], & &1["id"])) ==
-               Enum.sort([borrowed.id, serviced.id])
-
-      body = Jason.encode!(unavailable_data)
-      refute body =~ borrower
-      refute body =~ "bent"
     end
 
     test "answers 400 for a bad parameter or mismatched cursor", %{conn: conn} do

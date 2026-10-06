@@ -225,7 +225,7 @@ test.describe("Member reactivation", () => {
 		await expect(dialog).toBeHidden();
 		await expect(
 			page
-				.locator("[data-sonner-toast]")
+				.getByRole("region", { name: /^Notifications/ })
 				.getByText(/awaiting bank confirmation|membership reactivated/i),
 		).toBeVisible();
 
@@ -315,7 +315,7 @@ test.describe("Member reactivation", () => {
 		await expect(dialog).toBeHidden();
 		await expect(
 			page
-				.locator("[data-sonner-toast]")
+				.getByRole("region", { name: /^Notifications/ })
 				.getByText(/awaiting bank confirmation|membership reactivated/i),
 		).toBeVisible();
 

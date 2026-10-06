@@ -22,11 +22,9 @@ freeze.
 
 ## Automated rehearsal
 
-Run from the repository root:
-
-```sh
-mise run phx-test test/dhc/auth/m1_rehearsal_test.exs
-```
+> **Historical.** M1 has run; the `test/dhc/auth/m1_rehearsal_test.exs` suite
+> described below was deleted after cutover. Restore it from history to
+> rehearse again.
 
 The testcontainers fixture creates the GoTrue `auth.identities` shape missing
 from the test image, then exercises the same `Dhc.AuthMigration.M1` module that

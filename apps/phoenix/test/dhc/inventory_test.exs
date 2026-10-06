@@ -95,20 +95,6 @@ defmodule Dhc.InventoryTest do
       assert category.description == "Small shields"
     end
 
-    test "ignores legacy attribute config keys" do
-      # ALE-289 dropped the available_attributes / attribute_schema JSON
-      # columns; typed definitions live behind Dhc.Inventory.Structure.
-      # A stale caller still sending them must not fail or persist them.
-      assert {:ok, %EquipmentCategory{} = category} =
-               Inventory.create_category(%{
-                 "name" => "No Attrs",
-                 "availableAttributes" => [%{"name" => "brand", "type" => "text"}]
-               })
-
-      assert category.name == "No Attrs"
-      refute Map.has_key?(Map.from_struct(category), :available_attributes)
-    end
-
     test "returns {:error, changeset} when name is missing" do
       assert {:error, %Ecto.Changeset{} = changeset} = Inventory.create_category(%{})
 

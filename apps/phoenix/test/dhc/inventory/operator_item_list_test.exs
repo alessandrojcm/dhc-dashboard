@@ -4,11 +4,11 @@ defmodule Dhc.Inventory.OperatorItemListTest do
 
   Proves the paginated operator read the contract exposes: viewer-shaped
   rows carrying the derived label, typed values, and availability
-  projection; exact `total_count`; stable ordering with an id tie-break;
-  opaque cursors bound to every filter; and the category, property, and
-  archive filters. Archived items stay out of the default page and are
-  reachable only through the explicit archive filter (spec ALE-280 story
-  54).
+  projection; exact `total_count`; search; and the archive filter. Archived
+  items stay out of the default page and are reachable only through the
+  explicit archive filter (spec ALE-280 story 54). Ordering, cursors, and
+  the category and property filters are shared with the member catalog and
+  proven once in `Dhc.Inventory.ItemQueryTest`.
   """
 
   use Dhc.DataCase, async: false
@@ -42,22 +42,6 @@ defmodule Dhc.Inventory.OperatorItemListTest do
       assert listed.category["name"] == category.name
       assert listed.container["id"] == container_id
       assert Enum.map(page.items, & &1.slug) == [first.slug, second.slug]
-    end
-
-    test "orders by slug with an id tie-break so paging is stable" do
-      %{category: category, container_id: container_id} = fixture()
-
-      slugs =
-        for _ <- 1..5 do
-          {:ok, item} = create_item(container_id, category.id)
-          item.slug
-        end
-
-      assert {:ok, page} = Inventory.list_operator_items()
-      assert Enum.map(page.items, & &1.slug) == Enum.sort(slugs)
-
-      assert {:ok, descending} = Inventory.list_operator_items(%{"direction" => "desc"})
-      assert Enum.map(descending.items, & &1.slug) == Enum.sort(slugs, :desc)
     end
 
     test "projects availability from maintenance and archive state, never a stored flag" do
@@ -109,130 +93,6 @@ defmodule Dhc.Inventory.OperatorItemListTest do
 
     test "rejects an unknown archive filter instead of silently ignoring it" do
       assert {:error, :invalid_archived} = Inventory.list_operator_items(%{"archived" => "yes"})
-    end
-  end
-
-  describe "category filter" do
-    test "filters by one or more categories" do
-      %{category: swords, container_id: container_id} = fixture()
-      masks = create_category!()
-
-      {:ok, sword} = create_item(container_id, swords.id)
-      {:ok, mask} = create_item(container_id, masks.id)
-
-      assert {:ok, page} = Inventory.list_operator_items(%{"categoryId" => swords.id})
-      assert Enum.map(page.items, & &1.id) == [sword.id]
-      assert page.total_count == 1
-
-      assert {:ok, both} =
-               Inventory.list_operator_items(%{"categoryId" => "#{swords.id},#{masks.id}"})
-
-      assert Enum.sort(Enum.map(both.items, & &1.id)) == Enum.sort([sword.id, mask.id])
-      assert both.total_count == 2
-    end
-
-    test "an empty category filter means all categories" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, item} = create_item(container_id, category.id)
-
-      assert {:ok, page} = Inventory.list_operator_items(%{"categoryId" => ""})
-      assert Enum.map(page.items, & &1.id) == [item.id]
-    end
-
-    # The filter binds to a UUID column, so a malformed entry has to fail as a
-    # domain error here rather than reach Ecto's parameter casting.
-    test "rejects a malformed category id instead of querying with it" do
-      assert {:error, :invalid_category} =
-               Inventory.list_operator_items(%{"categoryId" => "not-a-uuid"})
-
-      assert {:error, :invalid_category} =
-               Inventory.list_operator_items(%{
-                 "categoryId" => "#{Ecto.UUID.generate()},not-a-uuid"
-               })
-
-      assert {:error, :invalid_category} =
-               Inventory.list_operator_items(%{"categoryId" => %{"in" => "1"}})
-    end
-  end
-
-  describe "property filter" do
-    test "matches a single-select option, ORing values of one definition" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, size} = create_definition(category.id, "Size", "single_select")
-      {:ok, large} = Inventory.create_option(size.id, %{"label" => "Large"})
-      {:ok, small} = Inventory.create_option(size.id, %{"label" => "Small"})
-
-      {:ok, big} = create_item(container_id, category.id, %{size.id => large.id})
-      {:ok, little} = create_item(container_id, category.id, %{size.id => small.id})
-      {:ok, _unset} = create_item(container_id, category.id)
-
-      assert {:ok, page} =
-               Inventory.list_operator_items(%{"property" => "#{size.id}:#{large.id}"})
-
-      assert Enum.map(page.items, & &1.id) == [big.id]
-      assert page.total_count == 1
-
-      assert {:ok, either} =
-               Inventory.list_operator_items(%{
-                 "property" => "#{size.id}:#{large.id},#{size.id}:#{small.id}"
-               })
-
-      assert Enum.sort(Enum.map(either.items, & &1.id)) == Enum.sort([big.id, little.id])
-    end
-
-    test "ANDs across definitions and matches boolean and text values" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, sharp} = create_definition(category.id, "Sharp", "boolean")
-      {:ok, brand} = create_definition(category.id, "Brand", "text")
-
-      {:ok, match} =
-        create_item(container_id, category.id, %{sharp.id => true, brand.id => "Regenyei"})
-
-      {:ok, _other_brand} =
-        create_item(container_id, category.id, %{sharp.id => true, brand.id => "Darkwood"})
-
-      {:ok, _blunt} =
-        create_item(container_id, category.id, %{sharp.id => false, brand.id => "Regenyei"})
-
-      assert {:ok, page} =
-               Inventory.list_operator_items(%{
-                 "property" => "#{sharp.id}:true,#{brand.id}:Regenyei"
-               })
-
-      assert Enum.map(page.items, & &1.id) == [match.id]
-      assert page.total_count == 1
-    end
-
-    test "matches text case-insensitively and rejects a malformed pair" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, brand} = create_definition(category.id, "Brand", "text")
-      {:ok, item} = create_item(container_id, category.id, %{brand.id => "Regenyei"})
-
-      assert {:ok, page} = Inventory.list_operator_items(%{"property" => "#{brand.id}:regenyei"})
-      assert Enum.map(page.items, & &1.id) == [item.id]
-
-      assert {:error, :invalid_property} =
-               Inventory.list_operator_items(%{"property" => "not-a-pair"})
-    end
-
-    test "compares decimal property values numerically so 1 matches stored 1.0" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
-      {:ok, match} = create_item(container_id, category.id, %{weight.id => "1.0"})
-      {:ok, _other} = create_item(container_id, category.id, %{weight.id => "2.0"})
-
-      assert {:ok, page} = Inventory.list_operator_items(%{"property" => "#{weight.id}:1"})
-      assert Enum.map(page.items, & &1.id) == [match.id]
-      assert page.total_count == 1
-    end
-
-    test "rejects a malformed decimal for a decimal definition" do
-      %{category: category, container_id: container_id} = fixture()
-      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
-      {:ok, _item} = create_item(container_id, category.id, %{weight.id => "1.0"})
-
-      assert {:error, :invalid_property} =
-               Inventory.list_operator_items(%{"property" => "#{weight.id}:not-a-number"})
     end
   end
 
@@ -371,107 +231,6 @@ defmodule Dhc.Inventory.OperatorItemListTest do
       assert {:ok, page} = Inventory.list_operator_items(%{"q" => "Yes"})
       assert Enum.map(page.items, & &1.id) == [yes.id]
       assert page.total_count == 1
-    end
-  end
-
-  describe "cursor pagination" do
-    test "walks forward and back with exact counts on every page" do
-      %{category: category, container_id: container_id} = fixture()
-
-      slugs =
-        for _ <- 1..12 do
-          {:ok, item} = create_item(container_id, category.id)
-          item.slug
-        end
-
-      sorted = Enum.sort(slugs)
-
-      assert {:ok, first} = Inventory.list_operator_items(%{"limit" => "10"})
-      assert Enum.map(first.items, & &1.slug) == Enum.take(sorted, 10)
-      assert first.total_count == 12
-      assert first.previous_cursor == nil
-      assert is_binary(first.next_cursor)
-
-      assert {:ok, second} =
-               Inventory.list_operator_items(%{"limit" => "10", "cursor" => first.next_cursor})
-
-      assert Enum.map(second.items, & &1.slug) == Enum.drop(sorted, 10)
-      assert second.total_count == 12
-      assert second.next_cursor == nil
-      assert is_binary(second.previous_cursor)
-
-      assert {:ok, back} =
-               Inventory.list_operator_items(%{
-                 "limit" => "10",
-                 "cursor" => second.previous_cursor
-               })
-
-      assert Enum.map(back.items, & &1.slug) == Enum.take(sorted, 10)
-    end
-
-    test "a cursor from a different filter set is refused" do
-      %{category: category, container_id: container_id} = fixture()
-      other = create_category!()
-
-      for _ <- 1..12, do: create_item(container_id, category.id)
-
-      assert {:ok, page} = Inventory.list_operator_items(%{"limit" => "10"})
-      assert is_binary(page.next_cursor)
-
-      assert {:error, :bad_cursor} =
-               Inventory.list_operator_items(%{
-                 "limit" => "10",
-                 "cursor" => page.next_cursor,
-                 "categoryId" => other.id
-               })
-
-      assert {:error, :bad_cursor} =
-               Inventory.list_operator_items(%{"limit" => "10", "cursor" => "not-a-cursor"})
-    end
-
-    test "search constrains exact counts and is bound into the cursor" do
-      %{category: category, container_id: container_id} = fixture()
-
-      for index <- 1..11 do
-        Inventory.create_operator_item(
-          %{
-            "container_id" => container_id,
-            "category_id" => category.id,
-            "notes" => "Search batch #{index}"
-          },
-          principal_id()
-        )
-      end
-
-      {:ok, _other} =
-        Inventory.create_operator_item(
-          %{
-            "container_id" => container_id,
-            "category_id" => category.id,
-            "notes" => "Different cohort"
-          },
-          principal_id()
-        )
-
-      assert {:ok, page} =
-               Inventory.list_operator_items(%{"limit" => "10", "q" => "search batch"})
-
-      assert Enum.count_until(page.items, 11) == 10
-      assert page.total_count == 11
-      assert is_binary(page.next_cursor)
-
-      assert {:error, :bad_cursor} =
-               Inventory.list_operator_items(%{
-                 "limit" => "10",
-                 "q" => "different cohort",
-                 "cursor" => page.next_cursor
-               })
-    end
-
-    test "rejects a limit outside the allowed set" do
-      assert {:error, :invalid_limit} = Inventory.list_operator_items(%{"limit" => "7"})
-      assert {:error, :invalid_limit} = Inventory.list_operator_items(%{"limit" => "1000"})
-      assert {:error, :invalid_direction} = Inventory.list_operator_items(%{"direction" => "up"})
     end
   end
 

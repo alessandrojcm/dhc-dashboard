@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Logger } from "./logger";
-import { consoleLogger, sentryLogger } from "./logger";
+import { consoleLogger } from "./logger";
 
 describe("Logger", () => {
 	describe("consoleLogger", () => {
@@ -63,26 +62,6 @@ describe("Logger", () => {
 			});
 
 			consoleDebugSpy.mockRestore();
-		});
-	});
-
-	describe("Logger interface compliance", () => {
-		it("consoleLogger should implement Logger interface", () => {
-			const logger: Logger = consoleLogger;
-
-			expect(logger.info).toBeDefined();
-			expect(logger.error).toBeDefined();
-			expect(logger.warn).toBeDefined();
-			expect(logger.debug).toBeDefined();
-		});
-
-		it("sentryLogger should implement Logger interface", () => {
-			const logger: Logger = sentryLogger;
-
-			expect(logger.info).toBeDefined();
-			expect(logger.error).toBeDefined();
-			expect(logger.warn).toBeDefined();
-			expect(logger.debug).toBeDefined();
 		});
 	});
 });

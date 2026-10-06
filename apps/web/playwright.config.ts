@@ -22,6 +22,11 @@ export default defineConfig({
 		},
 	},
 	workers: 1,
+	expect: {
+		toHaveScreenshot: {
+			stylePath: resolve("./e2e/screenshot.css"),
+		},
+	},
 	reporter: [
 		["list"],
 		["html", { outputFolder: "playwright-report", open: "never" }],

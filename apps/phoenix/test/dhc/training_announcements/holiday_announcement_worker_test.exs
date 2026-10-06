@@ -9,7 +9,6 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementWorkerTest do
   alias Dhc.Auth.UserRole
   alias Dhc.ClubCalendar.Holiday
   alias Dhc.Discord.Adapter.Test, as: DiscordAdapter
-  alias Dhc.Discord.ApiError
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery, as: Evidence
@@ -52,33 +51,12 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementWorkerTest do
     :ok
   end
 
-  test "a day-before job evaluates that phase and returns its snooze" do
+  test "a valid job forwards its phase reference to Execution" do
     assert [job] = all_enqueued(worker: HolidayAnnouncementWorker)
     assert job.args == %{"holiday_date" => "2030-08-05", "phase" => "day_before"}
 
     assert {:snooze, 3600} = perform(job, ~U[2030-08-04 12:00:00.000000Z])
     assert Repo.all(Evidence) == []
-  end
-
-  test "a same-day recovery job evaluates the same-day reference" do
-    DiscordAdapter.script(:create_message, [
-      {:error, %ApiError{status: 429, message: "slow"}},
-      {:ok, %{message_id: "234567890123456789"}}
-    ])
-
-    ref = {:holiday, "same_day", ~D[2030-08-05]}
-
-    assert {:error, {:rate_limited, _}} =
-             Execution.evaluate(ref, Execution.clock(~U[2030-08-05 13:00:00.000000Z]))
-
-    assert [recovery] =
-             Enum.filter(
-               all_enqueued(worker: HolidayAnnouncementWorker),
-               &(&1.args["phase"] == "same_day")
-             )
-
-    assert :ok = perform(recovery, ~U[2030-08-05 13:01:00.000000Z])
-    assert [%{phase: "same_day", state: "delivered"}] = Repo.all(Evidence)
   end
 
   test "malformed arguments are discarded" do

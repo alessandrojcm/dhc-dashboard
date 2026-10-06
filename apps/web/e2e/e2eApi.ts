@@ -451,16 +451,6 @@ const e2eStatusSchema = v.object({
 
 export type E2EStatus = v.InferOutput<typeof e2eStatusSchema>;
 
-export type LoanReminderRunResult = {
-	today: string;
-	delivered: number;
-	failed: number;
-	considered: number;
-	owed: number;
-	pending: number;
-	reminderNotificationCount: number | null;
-};
-
 /** Club-calendar today + latest schema_migrations version. */
 export async function fetchE2EStatus(): Promise<E2EStatus> {
 	const response = await harnessRequest<{ data: unknown }>(
@@ -479,27 +469,6 @@ export function addClubDays(isoDate: string, days: number): string {
 	const [year, month, day] = isoDate.split("-").map(Number);
 	const utc = new Date(Date.UTC(year, month - 1, day + days));
 	return utc.toISOString().slice(0, 10);
-}
-
-/** Drive one `LoanReminders.run/1` pass. Pass `loanId` to count keyed rows. */
-export async function runLoanReminders(
-	attrs: {
-		loanId?: string;
-	} = {},
-): Promise<LoanReminderRunResult> {
-	const response = await fetchE2EHarness("/loan-reminders/run", {
-		method: "POST",
-		body: JSON.stringify({ attrs }),
-	});
-
-	if (!response.ok) {
-		throw new Error(
-			`E2E harness /loan-reminders/run failed (${response.status}): ${await response.text()}`,
-		);
-	}
-
-	const payload: { data: LoanReminderRunResult } = await response.json();
-	return payload.data;
 }
 
 export async function resetE2EState() {

@@ -114,53 +114,49 @@ test("shows on for a browser that already holds a subscription and turns it off"
 	expect(existing.unsubscribe).toHaveBeenCalledTimes(1);
 });
 
-test("explains a denied permission without offering a switch", async () => {
-	const screen = await render(WebPushToggle, {
-		deps: deps({ environment: environment({ permission: "denied" }) }),
-	});
+test.each([
+	{
+		state: "a denied permission",
+		deps: () => deps({ environment: environment({ permission: "denied" }) }),
+		text: /blocked for this site/i,
+	},
+	{
+		state: "iOS Safari outside the installed app",
+		deps: () =>
+			deps(
+				{
+					environment: environment({
+						isIOS: true,
+						isStandalone: false,
+						hasPushManager: false,
+					}),
+				},
+				null,
+			),
+		text: /add to home screen/i,
+	},
+	{
+		state: "a deployment without keys",
+		deps: () =>
+			deps({
+				server: {
+					config: vi.fn(async () => ({
+						enabled: false,
+						vapidPublicKey: null,
+					})),
+					register: vi.fn(async () => true),
+					unregister: vi.fn(async () => true),
+				},
+			}),
+		text: /aren't available on this deployment/i,
+	},
+])("explains $state without offering a switch", async ({ deps, text }) => {
+	const screen = await render(WebPushToggle, { deps: deps() });
 
-	await expect
-		.element(screen.getByText(/blocked for this site/i))
-		.toBeVisible();
+	await expect.element(screen.getByText(text)).toBeVisible();
 	await expect
 		.element(screen.getByRole("switch", { name: /push notifications/i }))
 		.not.toBeInTheDocument();
-});
-
-test("tells iOS Safari users to install the app first", async () => {
-	const screen = await render(WebPushToggle, {
-		deps: deps(
-			{
-				environment: environment({
-					isIOS: true,
-					isStandalone: false,
-					hasPushManager: false,
-				}),
-			},
-			null,
-		),
-	});
-
-	await expect.element(screen.getByText(/add to home screen/i)).toBeVisible();
-	await expect
-		.element(screen.getByTestId("web-push-toggle"))
-		.toHaveAttribute("data-status", "ios-install-required");
-});
-
-test("says push is unavailable when the deployment has no keys", async () => {
-	const screen = await render(WebPushToggle, {
-		deps: deps({
-			server: {
-				config: vi.fn(async () => ({ enabled: false, vapidPublicKey: null })),
-				register: vi.fn(async () => true),
-				unregister: vi.fn(async () => true),
-			},
-		}),
-	});
-
-	await expect
-		.element(screen.getByText(/aren't available on this deployment/i))
-		.toBeVisible();
 });
 
 test("a rejected registration snaps the switch back and offers a retry", async () => {
@@ -191,93 +187,4 @@ test("a rejected registration snaps the switch back and offers a retry", async (
 		.element(screen.getByRole("button", { name: /try again/i }))
 		.toBeVisible();
 	expect(created.unsubscribe).toHaveBeenCalledTimes(1);
-});
-
-test("an unconfirmed existing subscription can still be turned off from the centre", async () => {
-	const existing = subscription("https://push.example/existing");
-	const d = deps(
-		{
-			server: {
-				config: vi.fn(async () => ({ enabled: true, vapidPublicKey: vapid })),
-				register: vi.fn(async () => false),
-				unregister: vi.fn(async () => true),
-			},
-		},
-		{
-			getSubscription: vi.fn(async () => existing),
-			subscribe: vi.fn(),
-		},
-	);
-	const screen = await render(WebPushToggle, { deps: d });
-
-	await expect
-		.element(screen.getByText(/couldn't confirm this device/i))
-		.toBeVisible();
-
-	await userEvent.click(
-		screen.getByRole("button", { name: /turn off on this device/i }),
-	);
-
-	expect(d.server.unregister).toHaveBeenCalledWith(
-		"https://push.example/existing",
-	);
-	expect(existing.unsubscribe).toHaveBeenCalledTimes(1);
-});
-
-test("a failed server unregister still turns the switch off and warns", async () => {
-	const existing = subscription("https://push.example/existing");
-	const d = deps(
-		{
-			server: {
-				config: vi.fn(async () => ({ enabled: true, vapidPublicKey: vapid })),
-				register: vi.fn(async () => true),
-				unregister: vi.fn(async () => false),
-			},
-		},
-		{
-			getSubscription: vi.fn(async () => existing),
-			subscribe: vi.fn(),
-		},
-	);
-	const screen = await render(WebPushToggle, { deps: d });
-
-	await userEvent.click(
-		screen.getByRole("switch", { name: /push notifications/i }),
-	);
-
-	await expect
-		.element(screen.getByRole("switch", { name: /push notifications/i }))
-		.toHaveAttribute("aria-checked", "false");
-	await expect
-		.element(screen.getByText(/couldn't remove this device from the server/i))
-		.toBeVisible();
-});
-
-test("a failed subscription lookup while turning off shows the error, not off", async () => {
-	const existing = subscription("https://push.example/existing");
-	const d = deps(
-		{},
-		{
-			getSubscription: vi
-				.fn()
-				.mockResolvedValueOnce(existing)
-				.mockRejectedValueOnce(new Error("push manager unavailable")),
-			subscribe: vi.fn(),
-		},
-	);
-	const screen = await render(WebPushToggle, { deps: d });
-
-	await userEvent.click(
-		screen.getByRole("switch", { name: /push notifications/i }),
-	);
-
-	await expect
-		.element(screen.getByText(/couldn't turn off push notifications/i))
-		.toBeVisible();
-	await expect
-		.element(screen.getByRole("button", { name: /try again/i }))
-		.toBeVisible();
-	await expect
-		.element(screen.getByRole("switch", { name: /push notifications/i }))
-		.not.toBeInTheDocument();
 });

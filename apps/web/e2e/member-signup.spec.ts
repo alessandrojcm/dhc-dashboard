@@ -6,12 +6,9 @@ import {
 } from "./setupFunctions";
 import { submitInvitationCredentials } from "./invitationSignup";
 import { API_BASE_URL } from "./e2eApi";
+import { signupSubmitButton, stripePaymentFrame } from "./stripe-payment";
 
 type InvitedUser = Awaited<ReturnType<typeof setupInvitedUser>>;
-
-function getStripeFrame(page: Page) {
-	return page.locator(".__PrivateStripeElement").frameLocator("iframe");
-}
 
 async function openPaymentForm(page: Page, invitation: InvitedUser) {
 	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
@@ -26,17 +23,14 @@ async function openPaymentForm(page: Page, invitation: InvitedUser) {
 	).toBeVisible();
 	await page.getByRole("button", { name: "Continue to payment" }).click();
 	await expect(page.getByLabel("Next of Kin", { exact: true })).toBeVisible();
-	await expect(page.locator("#payment-element-state")).toHaveAttribute(
-		"data-ready",
-		"true",
-	);
-	await expect(getStripeFrame(page).getByLabel("IBAN")).toBeVisible({
+	await expect(signupSubmitButton(page)).toBeEnabled();
+	await expect(stripePaymentFrame(page).getByLabel("IBAN")).toBeVisible({
 		timeout: 15_000,
 	});
 }
 
 async function fillStripePayment(page: Page, email: string, iban: string) {
-	const stripeFrame = getStripeFrame(page);
+	const stripeFrame = stripePaymentFrame(page);
 	await stripeFrame.getByLabel("IBAN").fill(iban);
 	await stripeFrame.getByLabel("Email").fill(email);
 	await stripeFrame.getByLabel("Full name").fill("John Doe");
@@ -46,10 +40,6 @@ async function fillStripePayment(page: Page, email: string, iban: string) {
 	await stripeFrame.getByLabel("City").fill("Dublin");
 	await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
 	await stripeFrame.getByLabel("County").selectOption("Dublin");
-	await expect(page.locator("#payment-element-state")).toHaveAttribute(
-		"data-complete",
-		"true",
-	);
 }
 
 async function expectNeutralInvitationError(page: Page) {

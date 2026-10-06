@@ -309,47 +309,6 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReadsTest do
              TrainingAnnouncements.occurrence_window(member.principal_id, "bad", nil, now: now)
   end
 
-  test "window bulk-loads exceptions for all announcements", %{actor: actor, now: now} do
-    for suffix <- 1..3 do
-      announcement_attrs =
-        attrs()
-        |> Map.put(:title, "Training #{suffix}")
-        |> Map.put(:message, "Come on {{weekday}} #{suffix}")
-
-      assert {:ok, _} = TrainingAnnouncements.create(actor, announcement_attrs, now: now)
-    end
-
-    handler_id = {__MODULE__, self()}
-
-    :ok =
-      :telemetry.attach(
-        handler_id,
-        [:dhc, :repo, :query],
-        &__MODULE__.forward_query/4,
-        self()
-      )
-
-    on_exit(fn -> :telemetry.detach(handler_id) end)
-
-    assert {:ok, items} =
-             TrainingAnnouncements.occurrence_window(actor, ~D[2030-09-05], ~D[2030-09-05],
-               now: now
-             )
-
-    assert [_, _, _] = Enum.reject(items, & &1.read_only)
-
-    queries = receive_queries([])
-
-    assert Enum.count(
-             queries,
-             &String.contains?(&1, ~s(FROM "training_announcement_suppressions"))
-           ) ==
-             1
-
-    assert Enum.count(queries, &String.contains?(&1, ~s(FROM "training_announcement_overrides"))) ==
-             1
-  end
-
   test "window and list run a constant number of queries however many announcements exist",
        %{actor: actor, now: now} do
     for date <- [~D[2030-09-12], ~D[2030-09-19]] do

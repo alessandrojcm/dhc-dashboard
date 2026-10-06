@@ -38,7 +38,7 @@ defmodule Dhc.Workshops.WorkshopArchivalTest do
   alias Dhc.Repo
   alias Dhc.WorkshopFixtures
   alias Dhc.Workshops
-  alias Dhc.Workshops.{Registration, Workshop}
+  alias Dhc.Workshops.Workshop
 
   @registrations_activity_fk :club_activity_registrations_club_activity_id_fkey
   @refunds_registration_fk :club_activity_refunds_registration_id_fkey
@@ -60,10 +60,6 @@ defmodule Dhc.Workshops.WorkshopArchivalTest do
 
       # A raw SQL delete of the Workshop is blocked by the RESTRICT FK — the
       # financial-tail registration row is retained permanently.
-      assert_raise Postgrex.Error, fn ->
-        Repo.query!("DELETE FROM club_activities WHERE id = $1", [Ecto.UUID.dump!(workshop.id)])
-      end
-
       assert %Postgrex.Error{postgres: %{code: :foreign_key_violation}} =
                catch_error(
                  Repo.query!("DELETE FROM club_activities WHERE id = $1", [

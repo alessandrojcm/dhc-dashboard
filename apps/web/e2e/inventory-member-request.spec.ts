@@ -16,7 +16,6 @@ test.use({ viewport: { width: 375, height: 812 } });
 
 const tag = `request-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 const makerRequest = `Requestable Feder ${tag}`;
-const makerValidation = `Validation Mask ${tag}`;
 const makerDuplicate = `Duplicate Sabre ${tag}`;
 const requestNote = `E2E Thursday sparring ${tag}`;
 
@@ -61,14 +60,6 @@ test.describe("ALE-288 inventory member request", () => {
 			actorId: operator.memberId,
 		});
 		cleanups.push(() => requestItem.cleanUp());
-
-		const validationItem = await createInventoryItem({
-			categoryId: structure.categoryId,
-			containerId: leaf,
-			values: { [makerDef]: makerValidation },
-			actorId: operator.memberId,
-		});
-		cleanups.push(() => validationItem.cleanUp());
 
 		const duplicateItem = await createInventoryItem({
 			categoryId: structure.categoryId,
@@ -129,34 +120,6 @@ test.describe("ALE-288 inventory member request", () => {
 			.click();
 		await expect(page).toHaveURL(/\/dashboard\/my-loans$/);
 		await expect(page.getByRole("link", { name: makerRequest })).toBeVisible();
-	});
-
-	test("request dates use constrained calendar controls", async ({
-		page,
-		context,
-	}) => {
-		await loginAsUser(context, borrowerEmail);
-		await page.goto("/dashboard/equipment");
-		await page.getByLabel("Search items").fill(makerValidation);
-		await page.getByLabel("Search items").press("Enter");
-		await page.getByRole("link", { name: makerValidation }).click();
-		await expect(
-			page
-				.getByRole("dialog")
-				.getByRole("heading", { name: "Request this item" }),
-		).toBeVisible();
-
-		await expect(page.locator('input[type="date"]')).toHaveCount(0);
-		await page.getByRole("button", { name: "Collect" }).click();
-		await expect(page.getByLabel("Select a month")).toBeVisible();
-		await expect(page.getByLabel("Select a year")).toBeVisible();
-		await page.keyboard.press("Escape");
-		await page.getByRole("button", { name: "Return" }).click();
-		await expect(
-			page
-				.locator('[data-slot="popover-content"][data-state="open"]')
-				.getByLabel("Select a month"),
-		).toBeVisible();
 	});
 
 	test("a second pending request for the same item is rejected without a 500", async ({

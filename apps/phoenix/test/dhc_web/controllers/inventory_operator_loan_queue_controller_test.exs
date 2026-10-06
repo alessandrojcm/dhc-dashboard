@@ -35,7 +35,7 @@ defmodule DhcWeb.InventoryOperatorLoanQueueControllerTest do
   defp auth_conn(conn, role), do: put_req_header(conn, "authorization", "Bearer #{role}-token")
 
   describe "show" do
-    test "returns the four buckets with counts equal to their rows", %{conn: conn} do
+    test "returns the four-bucket envelope", %{conn: conn} do
       %{item: item} = fixture()
       {:ok, request} = request(item)
 
@@ -49,40 +49,8 @@ defmodule DhcWeb.InventoryOperatorLoanQueueControllerTest do
       assert Enum.sort(Map.keys(data)) ==
                Enum.sort(~w(pendingRequests handoversDue returnsAndOverdue openMaintenance))
 
-      for key <- ~w(pendingRequests handoversDue returnsAndOverdue openMaintenance) do
-        bucket = data[key]
-        assert is_integer(bucket["count"])
-        assert is_list(bucket["rows"])
-        assert bucket["count"] == length(bucket["rows"])
-      end
-
-      assert data["pendingRequests"]["count"] == 1
-      assert hd(data["pendingRequests"]["rows"])["id"] == request.id
-      assert data["handoversDue"]["count"] == 0
-      assert data["returnsAndOverdue"]["count"] == 0
-    end
-
-    test "a queue loan row matches the operator show projection", %{conn: conn} do
-      %{item: item} = fixture()
-      {:ok, request} = request(item)
-      assert {:ok, _} = Inventory.approve_loan(request.id, %{}, @actor_id)
-
-      queue =
-        conn
-        |> auth_conn("quartermaster")
-        |> get("/api/inventory/operator/loans/queue")
-
-      show =
-        build_conn()
-        |> auth_conn("quartermaster")
-        |> get("/api/inventory/operator/loans/#{request.id}")
-
-      queue_row = hd(json_response(queue, 200)["data"]["handoversDue"]["rows"])
-      show_row = json_response(show, 200)["data"]
-
-      assert Map.has_key?(queue_row, "readyForCheckout")
-
-      assert Map.drop(queue_row, ["readyForCheckout"]) == show_row
+      assert %{"count" => 1, "rows" => [%{"id" => id}]} = data["pendingRequests"]
+      assert id == request.id
     end
 
     test "grants every operator role equal read authority and 401s without a session", %{

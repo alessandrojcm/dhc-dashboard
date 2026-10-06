@@ -71,7 +71,8 @@ defmodule Dhc.Inventory.OperatorItems do
   """
   @spec create_operator_item(map(), String.t()) ::
           {:ok, item()}
-          | {:error, :not_found}
+          | {:error, :container_not_found}
+          | {:error, :category_not_found}
           | {:error, :archived_container}
           | {:error, :archived_category}
           | {:error, :invalid_notes}
@@ -85,8 +86,10 @@ defmodule Dhc.Inventory.OperatorItems do
   end
 
   defp insert_item(attrs, actor_id) do
-    with {:ok, container_id} <- require_active_container(attrs[:container_id]),
-         {:ok, category_id} <- require_active_category(attrs[:category_id]),
+    with {:ok, container_id} <-
+           attrs[:container_id] |> require_active_container() |> name_missing(:container),
+         {:ok, category_id} <-
+           attrs[:category_id] |> require_active_category() |> name_missing(:category),
          {:ok, notes} <- normalize_notes(attrs[:notes]),
          definitions = ItemValues.load_definitions(category_id),
          {:ok, rows} <- validate_values(definitions, attrs[:values] || %{}) do
@@ -204,6 +207,7 @@ defmodule Dhc.Inventory.OperatorItems do
   @spec change_operator_item_category(String.t(), map(), String.t()) ::
           {:ok, item()}
           | {:error, :not_found}
+          | {:error, :category_not_found}
           | {:error, :archived}
           | {:error, :archived_category}
           | {:error, :invalid_values, value_errors()}
@@ -218,7 +222,8 @@ defmodule Dhc.Inventory.OperatorItems do
 
   defp reclassify_item(slug_or_id, attrs, actor_id) do
     with {:ok, %Item{} = item} <- lock_active_item(slug_or_id),
-         {:ok, category_id} <- require_active_category(attrs[:category_id]),
+         {:ok, category_id} <-
+           attrs[:category_id] |> require_active_category() |> name_missing(:category),
          definitions = ItemValues.load_definitions(category_id),
          {:ok, rows} <- validate_values(definitions, attrs[:values] || %{}) do
       ItemValues.replace_all(item.id, rows)
@@ -233,6 +238,13 @@ defmodule Dhc.Inventory.OperatorItems do
   end
 
   # ── Slug ────────────────────────────────────────────────────────
+
+  # `:not_found` from this module always means the addressed item; a missing
+  # container or category the caller referenced is named instead, so the
+  # HTTP slice cannot report it as a missing item.
+  defp name_missing({:error, :not_found}, :container), do: {:error, :container_not_found}
+  defp name_missing({:error, :not_found}, :category), do: {:error, :category_not_found}
+  defp name_missing(result, _dependency), do: result
 
   defp mint_slug do
     %{rows: [[value]]} = Repo.query!("SELECT nextval('inventory_item_slug_seq')", [])

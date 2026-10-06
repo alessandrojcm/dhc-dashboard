@@ -1,0 +1,9 @@
+/*
+ * Applied only while Playwright takes a `toHaveScreenshot` (see
+ * `playwright.config.ts`). The E2E web server runs `pnpm dev`, which renders
+ * the TanStack Query Devtools button over whatever sits in the bottom-right
+ * corner; it is not part of the UI under test.
+ */
+.tsqd-parent-container {
+	display: none !important;
+}

@@ -245,7 +245,7 @@ defmodule DhcWeb.InventoryStructureControllerTest do
       assert payload["identifyingPosition"] == 0
     end
 
-    test "rejects a type change on a used definition with type_immutable", %{conn: conn} do
+    test "maps a used definition's conflicts to typed codes" do
       category = insert_category!()
 
       assert {:ok, definition} =
@@ -257,20 +257,16 @@ defmodule DhcWeb.InventoryStructureControllerTest do
       container_id = insert_container!()
       {:ok, item_id} = insert_item(container_id, category.id)
       insert_text_value!(item_id, definition.id, "large")
+      path = "/api/inventory/definitions/#{to_uuid(definition.id)}"
 
-      conn =
-        conn
-        |> auth_conn("admin")
-        |> patch("/api/inventory/definitions/#{to_uuid(definition.id)}", %{
-          "valueType" => "decimal"
-        })
-
-      assert %{
-               "errors" => %{
-                 "detail" => "valueType cannot change once the definition is used",
-                 "code" => "type_immutable"
-               }
-             } = json_response(conn, 422)
+      for {request, status, code} <- [
+            {&patch(&1, path, %{"valueType" => "decimal"}), 422, "type_immutable"},
+            {&post(&1, "#{path}/retire"), 409, "still_referenced"},
+            {&post(&1, "#{path}/options", %{"label" => "Nope"}), 422, "not_single_select"}
+          ] do
+        conn = build_conn() |> auth_conn("admin") |> request.()
+        assert %{"errors" => %{"code" => ^code}} = json_response(conn, status)
+      end
     end
 
     test "blocks make-required until every active item has a valid value", %{conn: conn} do
@@ -292,13 +288,8 @@ defmodule DhcWeb.InventoryStructureControllerTest do
           "required" => true
         })
 
-      assert %{
-               "errors" => %{
-                 "detail" => "required cannot be set until every active item has a valid value",
-                 "code" => "required_blocked",
-                 "fields" => fields
-               }
-             } = json_response(conn, 422)
+      assert %{"errors" => %{"code" => "required_blocked", "fields" => fields}} =
+               json_response(conn, 422)
 
       assert fields == %{"items.#{empty_item}" => ["has no valid value"]}
     end
@@ -368,32 +359,6 @@ defmodule DhcWeb.InventoryStructureControllerTest do
       assert payload["id"] == to_uuid(definition.id)
       assert is_binary(payload["retiredAt"])
     end
-
-    test "rejects retire while active values still reference the definition", %{conn: conn} do
-      category = insert_category!()
-
-      assert {:ok, definition} =
-               Inventory.create_definition(category.id, %{
-                 "label" => "Size",
-                 "valueType" => "text"
-               })
-
-      container_id = insert_container!()
-      {:ok, item_id} = insert_item(container_id, category.id)
-      insert_text_value!(item_id, definition.id, "large")
-
-      conn =
-        conn
-        |> auth_conn("admin")
-        |> post("/api/inventory/definitions/#{to_uuid(definition.id)}/retire")
-
-      assert %{
-               "errors" => %{
-                 "detail" => "definition is still referenced by active item values",
-                 "code" => "still_referenced"
-               }
-             } = json_response(conn, 409)
-    end
   end
 
   # ── Options ─────────────────────────────────────────────────────
@@ -435,30 +400,6 @@ defmodule DhcWeb.InventoryStructureControllerTest do
 
       assert %{"data" => retired} = json_response(retire_conn, 200)
       assert is_binary(retired["retiredAt"])
-    end
-
-    test "rejects options on a non-single-select definition", %{conn: conn} do
-      category = insert_category!()
-
-      assert {:ok, definition} =
-               Inventory.create_definition(category.id, %{
-                 "label" => "Note",
-                 "valueType" => "text"
-               })
-
-      conn =
-        conn
-        |> auth_conn("admin")
-        |> post("/api/inventory/definitions/#{to_uuid(definition.id)}/options", %{
-          "label" => "Nope"
-        })
-
-      assert %{
-               "errors" => %{
-                 "detail" => "options are only allowed on single_select definitions",
-                 "code" => "not_single_select"
-               }
-             } = json_response(conn, 422)
     end
 
     test "rejects updating a retired option", %{conn: conn} do

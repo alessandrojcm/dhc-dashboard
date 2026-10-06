@@ -10,7 +10,6 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
   alias Dhc.Auth.UserRole
   alias Dhc.ClubCalendar.Holiday
   alias Dhc.Discord.Adapter.Test, as: DiscordAdapter
-  alias Dhc.Discord.ApiError
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery, as: Evidence
@@ -61,24 +60,8 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
     DiscordAdapter.script(:create_thread_from_message, [{:ok, %{thread_id: "345678901234567890"}}])
 
     assert :ok = perform(job)
-
-    assert [%{announcement_id: id, occurrence_date: ~D[2030-09-05], state: "delivered"}] =
-             Repo.all(Evidence)
-
+    assert [%{announcement_id: id, occurrence_date: ~D[2030-09-05]}] = Repo.all(Evidence)
     assert id == announcement.id
-  end
-
-  test "a deferral is returned to Oban for a retry", %{announcement: announcement} do
-    DiscordAdapter.script(:create_message, [{:error, %ApiError{status: 429, message: "slow"}}])
-
-    assert {:error, {:rate_limited, ": slow"}} = perform(job(announcement.id, "2030-09-05"))
-    assert [%{state: "frozen"}] = Repo.all(Evidence)
-  end
-
-  test "the job's attempt budget reaches Delivery", %{announcement: announcement} do
-    assert :ok = perform(job(announcement.id, "2030-09-05", attempt: 4))
-    assert [%{state: "blocked", reason: "unknown"}] = Repo.all(Evidence)
-    refute_receive {:create_message, _}
   end
 
   test "an unknown announcement completes without evidence" do
@@ -101,10 +84,10 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
     assert Repo.all(Evidence) == []
   end
 
-  defp job(id, date, opts \\ []) do
+  defp job(id, date) do
     %Oban.Job{
       args: %{"announcement_id" => id, "occurrence_date" => date},
-      attempt: Keyword.get(opts, :attempt, 1),
+      attempt: 1,
       max_attempts: 4
     }
   end

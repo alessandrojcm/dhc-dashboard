@@ -151,24 +151,6 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
       end
     end
 
-    test "ignores legacy attribute config keys", %{conn: conn} do
-      # ALE-289 dropped the availableAttributes JSON config; a stale caller
-      # still sending it must get a clean create without it echoed back.
-      conn =
-        conn
-        |> auth_conn("quartermaster")
-        |> post("/api/inventory/categories", %{
-          "name" => "Legacy Config Category",
-          "availableAttributes" => [
-            %{"name" => "size", "type" => "select", "options" => ["S", "M"]}
-          ]
-        })
-
-      assert %{"data" => payload} = json_response(conn, 201)
-      assert payload["name"] == "Legacy Config Category"
-      refute Map.has_key?(payload, "availableAttributes")
-    end
-
     test "returns 403 for non-write roles", %{conn: conn} do
       conn =
         conn

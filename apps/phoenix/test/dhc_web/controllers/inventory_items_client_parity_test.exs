@@ -103,13 +103,6 @@ defmodule DhcWeb.InventoryItemsClientParityTest do
     end
   end
 
-  test "no generated client file is tracked by hand" do
-    # `src/client/` is gitignored precisely so it is never hand-edited; the
-    # tracked public surface is only `src/index.ts`.
-    ignore = File.read!(Path.expand("../../../../../.gitignore", __DIR__))
-    assert ignore =~ "packages/api-client/src/client/"
-  end
-
   # Derived from the spec so a renamed or dropped operation fails here rather
   # than silently losing its client function.
   defp operation_ids do
