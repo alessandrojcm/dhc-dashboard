@@ -7,7 +7,8 @@
 
 	ALE-332: the card also shows the announcement's next posts and recent
 	deliveries from `listForAnnouncement`, labelled with the shared status
-	vocabulary so cards, calendar chips and the inspector agree.
+	vocabulary so cards, calendar chips and the inspector agree. Next posts
+	include the holiday notices this roll call drives.
 -->
 <script lang="ts">
 import {
@@ -29,7 +30,11 @@ import {
 	deleteBlockedReason,
 	scheduleLabel,
 } from "#lib/training-announcements/announcement.js";
-import { occurrenceStatus } from "#lib/training-announcements/status.js";
+import {
+	occurrenceKey,
+	occurrenceStatus,
+	occurrenceTitle,
+} from "#lib/training-announcements/status.js";
 
 let {
 	announcement,
@@ -172,12 +177,14 @@ const recent = createQuery(() => ({
 				<p class="mt-1.5 text-xs text-muted-foreground">No upcoming post.</p>
 			{:else}
 				<ul class="mt-1.5 space-y-1.5" data-testid="card-next-posts">
-					{#each upcoming.data as occurrence (occurrence.date)}
+					{#each upcoming.data as occurrence (occurrenceKey(occurrence))}
 						{@const status = occurrenceStatus(occurrence)}
 						<li class="min-w-0 text-xs">
 							<span class="block truncate font-semibold"
-								>{occurrence.threadName ??
-									announcementDateLabel(occurrence.date)}</span
+								>{occurrence.subject === "holiday"
+									? occurrenceTitle(occurrence)
+									: (occurrence.threadName ??
+										announcementDateLabel(occurrence.date))}</span
 							>
 							<span
 								class="mt-0.5 flex items-center gap-1.5 text-muted-foreground"
@@ -209,7 +216,7 @@ const recent = createQuery(() => ({
 				<p class="mt-1.5 text-xs text-muted-foreground">No posts yet.</p>
 			{:else}
 				<ul class="mt-1.5 space-y-1.5" data-testid="card-recent">
-					{#each recent.data as occurrence (occurrence.date)}
+					{#each recent.data as occurrence (occurrenceKey(occurrence))}
 						{@const status = occurrenceStatus(occurrence)}
 						<li class="min-w-0 text-xs">
 							<span class="block truncate font-semibold"

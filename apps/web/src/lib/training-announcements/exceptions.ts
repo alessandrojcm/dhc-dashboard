@@ -101,18 +101,21 @@ export function cappedExceptions<T>(
 
 /** The least the next-post read needs: the thread name Phoenix computed. */
 export type NextTitled = {
+	subject: "occurrence" | "holiday";
 	threadName: string | null;
 };
 
 /**
- * The resolved title of the next occurrence — the thread name Phoenix
- * computed — never the announcement's template. `undefined` while the read
- * is pending or when there is no upcoming occurrence to name.
+ * The resolved title of the next post — the thread name Phoenix computed,
+ * never the announcement's template; a holiday notice has no thread and
+ * reads as one. `undefined` while the read is pending or when there is no
+ * upcoming post to name.
  */
 export function nextResolvedTitle(
 	occurrences: readonly NextTitled[] | undefined,
 ): string | undefined {
 	const next = occurrences?.[0];
+	if (next?.subject === "holiday") return "Holiday notice";
 	const threadName = next?.threadName;
 	return threadName ? threadName : undefined;
 }

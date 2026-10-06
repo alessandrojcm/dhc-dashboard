@@ -141,7 +141,8 @@ async function save() {
 			<Sheet.Title>Change text for “{announcement.title}”</Sheet.Title>
 			<Sheet.Description>
 				Change the title or message for the selected dates. Skipped posts will
-				not be sent. Roll calls are not sent on bank holidays.
+				not be sent. Roll calls are not sent on bank holidays; a holiday notice
+				is posted instead.
 			</Sheet.Description>
 		</Sheet.Header>
 		<div class="space-y-5 px-4 pb-2">

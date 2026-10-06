@@ -101,7 +101,7 @@ paths:
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 3}}
       responses:
         '200':
-          description: Upcoming in send order, recent evidence newest first, at most limit items. No Holiday Announcement items.
+          description: Upcoming in send order, including the Holiday Announcements this announcement currently drives; recent evidence newest first, never Holiday Announcement items. At most limit items.
           content:
             application/json:
               schema: {$ref: '#/components/schemas/TrainingAnnouncementOccurrenceListResponse'}

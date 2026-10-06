@@ -71,7 +71,7 @@ describe("occurrenceNotSentReason", () => {
 			occurrenceNotSentReason(item({ outcome: "post_override" })),
 		).toBeNull();
 		expect(occurrenceNotSentReason(item({ outcome: "skipped_holiday" }))).toBe(
-			"Roll call isn’t sent on bank holidays.",
+			"Roll call isn’t sent on bank holidays. A “no training” holiday notice is posted instead.",
 		);
 		expect(occurrenceNotSentReason(item({ outcome: "skipped_disabled" }))).toBe(
 			"This announcement is paused.",

@@ -941,3 +941,70 @@ test("each card shows next posts and recent deliveries with display statuses", a
 		.toBeVisible();
 	await expect.element(screen.getByText("posted").first()).toBeVisible();
 });
+
+test("a roll call's next posts include the holiday notices it drives", async () => {
+	const notice = (date: string, phase: "day_before" | "same_day") =>
+		occurrence({
+			subject: "holiday",
+			date,
+			announcementId: null,
+			holidayDate: "2026-10-08",
+			phase,
+			kind: null,
+			chain: ["holiday"],
+			decidedBy: "holiday",
+			titleSource: null,
+			messageSource: null,
+			renderedMessage: "@everyone\nNo training",
+			threadName: null,
+			readOnly: true,
+		});
+	useApi({
+		rows: [announcement()],
+		occurrences: {
+			upcoming: [
+				notice("2026-10-07", "day_before"),
+				notice("2026-10-08", "same_day"),
+				occurrence({
+					outcome: "skipped_holiday",
+					chain: ["holiday"],
+					decidedBy: "holiday",
+				}),
+			],
+		},
+	});
+	const screen = await renderRail();
+
+	const nextPosts = screen.getByTestId("card-next-posts");
+	await expect.element(nextPosts).toBeVisible();
+	await expect
+		.poll(
+			() =>
+				nextPosts.getByText("Holiday notice", { exact: true }).elements()
+					.length,
+		)
+		.toBe(2);
+	await expect.element(nextPosts.getByText("bank holiday")).toBeVisible();
+
+	await screen
+		.getByRole("button", { name: /Manage posts for Roll call/ })
+		.click();
+	await expect
+		.element(screen.getByTestId("next-post"))
+		.toHaveTextContent(/Next post: Holiday notice on/);
+});
+
+test("the roll call form says holiday notices replace it on bank holidays", async () => {
+	useApi({ rows: [] });
+	const screen = await renderRail();
+	await screen
+		.getByRole("button", { name: "New announcement" })
+		.first()
+		.click();
+	await expect.element(screen.getByTestId("holiday-notice-hint")).toBeVisible();
+
+	await screen.getByRole("radio", { name: /^Sparring/ }).click();
+	await expect
+		.poll(() => gone(screen.getByTestId("holiday-notice-hint")))
+		.toBe(true);
+});

@@ -392,6 +392,91 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReadsTest do
     end
   end
 
+  test "rail upcoming lists the Holiday Announcements only the driving roll call sends", %{
+    actor: actor,
+    now: now
+  } do
+    Repo.insert!(%Dhc.ClubCalendar.Holiday{
+      date: ~D[2030-09-12],
+      name: "Thursday holiday",
+      source_id: "thursday",
+      fetched_at: DateTime.utc_now()
+    })
+
+    roll_call = Map.put(attrs(), :kind, "roll_call")
+
+    {:ok, %{announcement: driver}} = TrainingAnnouncements.create(actor, roll_call, now: now)
+
+    {:ok, %{announcement: later}} =
+      TrainingAnnouncements.create(actor, %{roll_call | post_time: ~T[18:00:00]}, now: now)
+
+    {:ok, %{announcement: sparring}} = TrainingAnnouncements.create(actor, attrs(), now: now)
+
+    {:ok, items} =
+      TrainingAnnouncements.list_occurrences(actor, driver.id, %{limit: 4}, now: now)
+
+    assert [
+             %{subject: "occurrence", date: ~D[2030-09-05], outcome: "post"},
+             %{subject: "holiday", date: ~D[2030-09-11], phase: "day_before"},
+             %{subject: "holiday", date: ~D[2030-09-12], phase: "same_day"},
+             %{subject: "occurrence", date: ~D[2030-09-12], outcome: "skipped_holiday"}
+           ] = items
+
+    for notice <- Enum.filter(items, &(&1.subject == "holiday")) do
+      assert notice.holiday_date == ~D[2030-09-12]
+      assert notice.read_only
+      assert notice.post_time == ~T[14:00:00]
+      assert notice.rendered_message =~ "Thursday holiday"
+    end
+
+    for other <- [later, sparring] do
+      {:ok, items} =
+        TrainingAnnouncements.list_occurrences(actor, other.id, %{limit: 4}, now: now)
+
+      refute Enum.any?(items, &(&1.subject == "holiday"))
+    end
+
+    # Pausing the driver hands the notices to the next enabled roll call.
+    {:ok, _} = TrainingAnnouncements.disable(actor, driver.id)
+
+    {:ok, items} = TrainingAnnouncements.list_occurrences(actor, later.id, %{limit: 4}, now: now)
+
+    assert [%{post_time: ~T[18:00:00]}, %{post_time: ~T[18:00:00]}] =
+             Enum.filter(items, &(&1.subject == "holiday"))
+
+    {:ok, items} =
+      TrainingAnnouncements.list_occurrences(actor, driver.id, %{limit: 4}, now: now)
+
+    refute Enum.any?(items, &(&1.subject == "holiday"))
+
+    assert {:ok, []} =
+             TrainingAnnouncements.list_occurrences(actor, later.id, %{direction: "recent"},
+               now: now
+             )
+  end
+
+  test "a one-off roll call on a bank holiday lists its day-before notice", %{
+    actor: actor
+  } do
+    now = ~U[2029-12-20 09:00:00Z]
+
+    {:ok, %{announcement: one_off}} =
+      TrainingAnnouncements.create(
+        actor,
+        attrs()
+        |> Map.merge(%{kind: "roll_call", weekday: nil, one_off_date: ~D[2030-01-01]}),
+        now: now
+      )
+
+    assert {:ok,
+            [
+              %{subject: "holiday", date: ~D[2029-12-31], phase: "day_before"},
+              %{subject: "holiday", date: ~D[2030-01-01], phase: "same_day"},
+              %{subject: "occurrence", date: ~D[2030-01-01], outcome: "skipped_holiday"}
+            ]} =
+             TrainingAnnouncements.list_occurrences(actor, one_off.id, %{limit: 5}, now: now)
+  end
+
   test "rail includes a distant one-off and honours direction and limit", %{
     actor: actor,
     now: now

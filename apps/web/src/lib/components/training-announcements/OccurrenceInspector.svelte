@@ -241,7 +241,8 @@ function refreshOccurrenceReads() {
 
 			{#if item.subject === "holiday"}
 				<p class="text-xs text-muted-foreground">
-					Holiday notices cannot be edited or skipped.
+					Sent automatically on Irish bank holidays, the day before and on the
+					day, in place of the roll call. It cannot be edited or skipped.
 				</p>
 			{:else if actionsAllowed}
 				{#if actionsBlocked}
