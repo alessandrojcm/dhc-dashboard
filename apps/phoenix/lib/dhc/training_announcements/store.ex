@@ -53,13 +53,30 @@ defmodule Dhc.TrainingAnnouncements.Store do
   end
 
   def entry(announcement) do
-    %{
-      announcement: announcement,
-      suppressions:
-        Repo.all(from(s in AnnouncementSuppression, where: s.announcement_id == ^announcement.id)),
-      overrides:
-        Repo.all(from(o in AnnouncementOverride, where: o.announcement_id == ^announcement.id))
-    }
+    [entry] = entries([announcement])
+    entry
+  end
+
+  def entries([]), do: []
+
+  def entries(announcements) do
+    announcement_ids = Enum.map(announcements, & &1.id)
+
+    suppressions_by_announcement =
+      Repo.all(from(s in AnnouncementSuppression, where: s.announcement_id in ^announcement_ids))
+      |> Enum.group_by(& &1.announcement_id)
+
+    overrides_by_announcement =
+      Repo.all(from(o in AnnouncementOverride, where: o.announcement_id in ^announcement_ids))
+      |> Enum.group_by(& &1.announcement_id)
+
+    Enum.map(announcements, fn announcement ->
+      %{
+        announcement: announcement,
+        suppressions: Map.get(suppressions_by_announcement, announcement.id, []),
+        overrides: Map.get(overrides_by_announcement, announcement.id, [])
+      }
+    end)
   end
 
   def persist!({:ok, result}), do: result

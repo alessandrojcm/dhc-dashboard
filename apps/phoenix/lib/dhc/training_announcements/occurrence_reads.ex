@@ -98,7 +98,7 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
   defp build_window(announcements, first, last, clock, holidays?) do
     ids = Enum.map(announcements, & &1.id)
     rows = evidence(first, last, ids, holidays?)
-    entries = Enum.reject(announcements, & &1.retired) |> Enum.map(&Store.entry/1)
+    entries = announcements |> Enum.reject(& &1.retired) |> Store.entries()
     future_from = if Date.compare(first, clock.today) == :lt, do: clock.today, else: first
 
     projected =

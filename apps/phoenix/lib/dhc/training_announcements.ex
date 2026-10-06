@@ -309,11 +309,10 @@ defmodule Dhc.TrainingAnnouncements do
       holidays: holidays
     ]
 
-    entry = Store.entry(announcement)
-
-    others =
+    other_announcements =
       Repo.all(from(a in Announcement, where: not a.retired and a.id != ^announcement.id))
-      |> Enum.map(&Store.entry/1)
+
+    [entry | others] = Store.entries([announcement | other_announcements])
 
     collision = Occurrences.warnings_for_create(entry, others, today, last, opts)
 
