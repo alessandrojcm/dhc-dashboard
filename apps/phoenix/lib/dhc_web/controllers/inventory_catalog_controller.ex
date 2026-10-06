@@ -22,8 +22,8 @@ defmodule DhcWeb.InventoryCatalogController do
   availability gates it. Reading and cancelling an existing loan is
   `DhcWeb.InventoryMemberLoansController`.
 
-  The controller only maps `Dhc.Inventory` result tuples onto status codes
-  and enqueues keyed operator notifications after a successful request.
+  The controller renders successes and enqueues keyed operator notifications
+  after a successful request; `DhcWeb.InventoryHTTP` maps every error.
   Unavailability and duplicate requests become `409` with a machine-readable
   code that stays generic. Enqueue failure is a `500` before the client is
   told the request succeeded.
@@ -35,29 +35,16 @@ defmodule DhcWeb.InventoryCatalogController do
 
   alias Dhc.Inventory
 
+  action_fallback DhcWeb.InventoryHTTP
+
   @view [json: DhcWeb.InventoryCatalogJSON]
-
-  # Domain reasons meaning "an interlock refused this", not "you sent
-  # something invalid". `item_unavailable` intentionally explains nothing
-  # further: a member must not learn who holds an item or why it is out.
-  @conflict_codes %{
-    item_unavailable: "The item cannot be requested right now",
-    duplicate_request: "You already have a pending request for this item"
-  }
-
-  @validation_codes %{
-    invalid_dates:
-      "startsOn and dueOn must be dates today or later, with dueOn on or after startsOn",
-    invalid_note: "note must be text"
-  }
 
   @doc """
   GET /inventory/catalog/items
   """
   def list_items(conn, params) do
-    case Inventory.list_catalog_items(params) do
-      {:ok, page} -> conn |> put_view(@view) |> render(:index, page: page)
-      {:error, reason} -> bad_request(conn, list_error_detail(reason))
+    with {:ok, page} <- Inventory.list_catalog_items(params) do
+      conn |> put_view(@view) |> render(:index, page: page)
     end
   end
 
@@ -65,9 +52,8 @@ defmodule DhcWeb.InventoryCatalogController do
   GET /inventory/catalog/items/:slugOrId
   """
   def show_item(conn, %{"slugOrId" => slug_or_id}) do
-    case Inventory.resolve_catalog_item(slug_or_id) do
-      {:ok, item} -> conn |> put_view(@view) |> render(:show, item: item)
-      {:error, :not_found} -> not_found(conn)
+    with {:ok, item} <- slug_or_id |> Inventory.resolve_catalog_item() |> item_error() do
+      conn |> put_view(@view) |> render(:show, item: item)
     end
   end
 
@@ -75,10 +61,13 @@ defmodule DhcWeb.InventoryCatalogController do
   POST /inventory/catalog/items/:slugOrId/requests
   """
   def request_loan(conn, %{"slugOrId" => slug_or_id} = params) do
-    slug_or_id
-    |> Inventory.request_loan(params, actor_id(conn))
-    |> notify(:requested)
-    |> respond_loan(conn, :created)
+    with {:ok, loan} <-
+           slug_or_id
+           |> Inventory.request_loan(params, actor_id(conn))
+           |> item_error()
+           |> notify(:requested) do
+      conn |> put_status(:created) |> put_view(@view) |> render(:loan, loan: loan)
+    end
   end
 
   # ── Result mapping ──────────────────────────────────────────────
@@ -102,50 +91,9 @@ defmodule DhcWeb.InventoryCatalogController do
 
   defp notify(error, _kind), do: error
 
-  defp respond_loan({:ok, loan}, conn, status) do
-    conn |> put_status(status) |> put_view(@view) |> render(:loan, loan: loan)
-  end
-
-  defp respond_loan({:error, :notification_enqueue_failed}, conn, _status) do
-    render_error(conn, :internal_server_error, %{detail: "Failed to enqueue notification"})
-  end
-
-  defp respond_loan({:error, :not_found}, conn, _status), do: not_found(conn)
-
-  defp respond_loan({:error, reason}, conn, _status) when is_map_key(@conflict_codes, reason) do
-    render_error(conn, :conflict, %{
-      detail: Map.fetch!(@conflict_codes, reason),
-      code: to_string(reason)
-    })
-  end
-
-  defp respond_loan({:error, reason}, conn, _status) when is_map_key(@validation_codes, reason) do
-    render_error(conn, :unprocessable_entity, %{
-      detail: Map.fetch!(@validation_codes, reason),
-      code: to_string(reason)
-    })
-  end
-
-  defp list_error_detail(:invalid_limit), do: "limit must be one of 10, 25, 50, 100"
-  defp list_error_detail(:invalid_direction), do: "direction must be asc or desc"
-
-  defp list_error_detail(:invalid_category),
-    do: "categoryId must be comma-separated category UUIDs"
-
-  defp list_error_detail(:invalid_property),
-    do: "property must be comma-separated definitionId:value pairs"
-
-  defp list_error_detail(:invalid_availability),
-    do: "availability must be one of all, available, unavailable"
-
-  defp list_error_detail(:bad_cursor), do: "cursor does not match the current query"
-
-  defp not_found(conn), do: render_error(conn, :not_found, %{detail: "Item not found"})
-  defp bad_request(conn, detail), do: render_error(conn, :bad_request, %{detail: detail})
-
-  defp render_error(conn, status, assigns) do
-    conn |> put_status(status) |> put_view(@view) |> render(:error, assigns)
-  end
+  # This slice's `:not_found` is always the addressed catalog Item.
+  defp item_error({:error, :not_found}), do: {:error, :item_not_found}
+  defp item_error(result), do: result
 
   defp actor_id(conn), do: conn.assigns.current_session.principal.id
 end

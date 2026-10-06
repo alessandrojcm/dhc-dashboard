@@ -14,6 +14,8 @@ defmodule DhcWeb.NotificationsPushController do
 
   alias Dhc.Notifications.WebPush
 
+  action_fallback DhcWeb.NotificationsHTTP
+
   @doc "GET /notifications/push/config"
   def config(conn, _params) do
     conn
@@ -25,15 +27,11 @@ defmodule DhcWeb.NotificationsPushController do
   def subscribe(conn, params) do
     principal_id = conn.assigns.current_session.principal.id
 
-    case WebPush.subscribe(principal_id, subscribe_attrs(params)) do
-      {:ok, subscription} ->
-        conn
-        |> put_status(:created)
-        |> put_view(json: DhcWeb.NotificationsPushJSON)
-        |> render(:subscription, subscription: subscription)
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        unprocessable(conn, changeset)
+    with {:ok, subscription} <- WebPush.subscribe(principal_id, subscribe_attrs(params)) do
+      conn
+      |> put_status(:created)
+      |> put_view(json: DhcWeb.NotificationsPushJSON)
+      |> render(:subscription, subscription: subscription)
     end
   end
 
@@ -47,12 +45,8 @@ defmodule DhcWeb.NotificationsPushController do
     |> render(:unsubscribe, removed: outcome == :removed)
   end
 
-  def unsubscribe(conn, _params) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> put_view(json: DhcWeb.NotificationsPushJSON)
-    |> render(:error, detail: "endpoint is required", fields: %{"endpoint" => ["is required"]})
-  end
+  def unsubscribe(_conn, _params),
+    do: {:error, :endpoint_required, %{"endpoint" => ["is required"]}}
 
   # The body is `PushSubscription.toJSON()` (endpoint + nested keys) plus an
   # optional label; flatten it into the context's attrs. Missing pieces become
@@ -67,19 +61,5 @@ defmodule DhcWeb.NotificationsPushController do
       auth: if(is_map(keys), do: Map.get(keys, "auth")),
       user_agent: Map.get(params, "userAgent")
     }
-  end
-
-  defp unprocessable(conn, %Ecto.Changeset{} = changeset) do
-    fields = Ecto.Changeset.traverse_errors(changeset, fn {msg, _opts} -> msg end)
-
-    detail =
-      Enum.map_join(fields, "; ", fn {field, messages} ->
-        "#{field} #{Enum.join(List.wrap(messages), ", ")}"
-      end)
-
-    conn
-    |> put_status(:unprocessable_entity)
-    |> put_view(json: DhcWeb.NotificationsPushJSON)
-    |> render(:error, detail: detail, fields: fields)
   end
 end

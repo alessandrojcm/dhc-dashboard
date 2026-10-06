@@ -1,7 +1,7 @@
 defmodule DhcWeb.Plugs.RequireSession do
   @moduledoc """
-  Requires a valid Phoenix Session cookie and, optionally, one of a set of
-  roles.
+  Requires a valid Phoenix Session cookie and, optionally, a capability
+  (`plug RequireSession, capability: :"inventory.manage"`).
 
   This is the sole authenticated HTTP boundary after the ALE-163 cutover.
 
@@ -12,11 +12,15 @@ defmodule DhcWeb.Plugs.RequireSession do
     * Valid token but Principal has no `user_profiles` row, or `is_active` is
       false → **401**. A Principal whose Member has no current club access is
       not an authenticated dashboard session.
-    * Valid token + active Principal but no required role matches → **403**
-      `{"errors":{"detail":"Insufficient role"}}`. Unauthorized.
+    * Valid token + active Principal that does not hold the capability →
+      **403** `{"errors":{"detail":"Insufficient role"}}`. Unauthorized.
+      `Dhc.Auth.Capabilities` alone decides; the router names no roles.
     * Otherwise: `conn.assigns.current_session` is set to
-      `%{principal: %Principal{}, roles: [String.t()], is_active: true}` and
-      the request proceeds.
+      `%{principal: %Principal{}, roles: [String.t()], capabilities:
+      [String.t()], is_active: true}` and the request proceeds.
+
+  Owner-scoped capabilities need a resource, so they are rejected at
+  `init/1`: controllers check those with `Dhc.Auth.Capabilities.authorize/3`.
 
   ## Cookie contract
 
@@ -32,23 +36,42 @@ defmodule DhcWeb.Plugs.RequireSession do
   @behaviour Plug
 
   import Plug.Conn
-  import Phoenix.Controller, only: [json: 2]
+
+  alias Dhc.Auth.Capabilities
+  alias DhcWeb.Problem
 
   require Logger
 
   @session_cookie "_dhc_session"
 
   @impl Plug
-  def init(opts), do: opts
+  def init(opts) do
+    case Keyword.get(opts, :capability) do
+      nil ->
+        opts
+
+      capability ->
+        unless Capabilities.exists?(capability) do
+          raise ArgumentError, "unknown capability #{inspect(capability)}"
+        end
+
+        if Capabilities.owner_scoped?(capability) do
+          raise ArgumentError,
+                "#{inspect(capability)} is owner-scoped; authorize it in the controller"
+        end
+
+        opts
+    end
+  end
 
   @impl Plug
   def call(conn, opts) do
-    required_roles = Keyword.get(opts, :roles, [])
+    capability = Keyword.get(opts, :capability)
 
     conn = fetch_cookies(conn, signed: [@session_cookie])
 
     with {:ok, token, projection} <- authenticate(conn),
-         :ok <- Dhc.Auth.authorize_session(projection, required_roles) do
+         :ok <- Capabilities.authorize(projection, capability) do
       conn
       |> assign(:current_session, projection)
       |> assign(:current_session_token, token)
@@ -89,16 +112,8 @@ defmodule DhcWeb.Plugs.RequireSession do
     # Aggregate, non-personal telemetry — no email or principal id.
     :telemetry.execute([:dhc, :auth, :session, :rejected], %{reason: inspect(reason)}, %{})
 
-    conn
-    |> put_status(:unauthorized)
-    |> json(%{errors: %{detail: "Unauthorized"}})
-    |> halt()
+    Problem.send_reason(conn, :unauthorized)
   end
 
-  defp forbidden(conn) do
-    conn
-    |> put_status(:forbidden)
-    |> json(%{errors: %{detail: "Insufficient role"}})
-    |> halt()
-  end
+  defp forbidden(conn), do: Problem.send_reason(conn, :forbidden)
 end

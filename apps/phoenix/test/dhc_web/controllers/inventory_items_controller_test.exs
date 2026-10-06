@@ -354,11 +354,12 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       assert %{
                "errors" => %{
                  "code" => "invalid_values",
-                 "valueErrors" => value_errors
+                 "detail" => "One or more property values are invalid",
+                 "fields" => fields
                }
              } = json_response(invalid, 422)
 
-      assert value_errors == %{required.id => "required"}
+      assert fields == %{"values.#{required.id}" => ["required"]}
     end
 
     test "422s an archived container and 404s an unknown category", %{conn: conn} do
@@ -400,7 +401,9 @@ defmodule DhcWeb.InventoryItemsControllerTest do
         })
 
       assert %{"errors" => errors} = json_response(conn, 422)
-      assert errors["notes"]
+      assert errors["fields"] == %{"notes" => ["should be at most 1000 character(s)"]}
+      assert errors["detail"] == "notes: should be at most 1000 character(s)"
+      refute Map.has_key?(errors, "code")
     end
   end
 
@@ -419,7 +422,9 @@ defmodule DhcWeb.InventoryItemsControllerTest do
         })
 
       assert %{"errors" => errors} = json_response(conn, 422)
-      assert errors["notes"]
+      assert errors["fields"] == %{"notes" => ["should be at most 1000 character(s)"]}
+      assert errors["detail"] == "notes: should be at most 1000 character(s)"
+      refute Map.has_key?(errors, "code")
     end
 
     test "edits notes and values", %{conn: conn} do
@@ -555,10 +560,10 @@ defmodule DhcWeb.InventoryItemsControllerTest do
           "values" => %{}
         })
 
-      assert %{"errors" => %{"code" => "invalid_values", "valueErrors" => errors}} =
+      assert %{"errors" => %{"code" => "invalid_values", "fields" => fields}} =
                json_response(conn, 422)
 
-      assert errors == %{serial.id => "required"}
+      assert fields == %{"values.#{serial.id}" => ["required"]}
     end
   end
 
@@ -879,26 +884,34 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       conflict = get_in(spec, ["components", "schemas", "InventoryOperatorItemConflictError"])
       validation = get_in(spec, ["components", "schemas", "InventoryOperatorItemValidationError"])
 
-      assert get_in(conflict, ["properties", "errors", "properties", "code", "enum"]) ==
-               ~w(archived loan_active maintenance_open no_open_maintenance has_history
-                  retry_exhausted)
-
-      assert get_in(validation, ["properties", "errors", "properties", "code", "enum"]) ==
-               ~w(invalid_values invalid_notes archived_category archived_container
-                  reason_required confirmation_required)
-
-      # Mirrors InventoryDefinitionUpdateError from ALE-292 so the generated
-      # client can map a failing definition back to its form field.
-      assert get_in(validation, [
+      assert get_in(conflict, [
+               "allOf",
+               Access.at(1),
                "properties",
                "errors",
                "properties",
-               "valueErrors",
-               "additionalProperties",
+               "code",
                "enum"
              ]) ==
-               ~w(required type_mismatch unknown_option retired_option retired_definition
-                  unknown_definition)
+               ~w(archived loan_active maintenance_open no_open_maintenance has_history
+                  retry_exhausted)
+
+      assert get_in(validation, [
+               "allOf",
+               Access.at(1),
+               "properties",
+               "errors",
+               "properties",
+               "code",
+               "enum"
+             ]) ==
+               ~w(invalid_values invalid_notes archived_category archived_container
+                  reason_required confirmation_required)
+
+      # Per-definition failures travel in the shared `Error.fields` map as
+      # `values.<definitionId>` (ALE-343), not a slice-specific property.
+      assert get_in(validation, ["allOf", Access.at(0), "$ref"]) == "#/components/schemas/Error"
+      refute validation["properties"]
     end
 
     test "the list operation declares cursor pagination with exact counts" do

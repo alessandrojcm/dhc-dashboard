@@ -49,6 +49,7 @@ defmodule Dhc.TrainingAnnouncements do
 
   import Ecto.Query
   alias Dhc.Auth
+  alias Dhc.Auth.Capabilities
   alias Dhc.Auth.Principal
   alias Dhc.ClubCalendar
   alias Dhc.Repo
@@ -59,10 +60,6 @@ defmodule Dhc.TrainingAnnouncements do
   alias Dhc.TrainingAnnouncements.OccurrenceReads
   alias Dhc.TrainingAnnouncements.Scheduling
   alias Dhc.TrainingAnnouncements.Store
-
-  @management_roles ~w(sparring_coordinator coach president admin committee_coordinator)
-
-  def management_roles, do: @management_roles
 
   @doc "Earliest Dublin date retained as delivery evidence and accepted by the window read model."
   @spec retention_horizon() :: Date.t()
@@ -399,7 +396,7 @@ defmodule Dhc.TrainingAnnouncements do
   defp authorize(actor_id) when is_binary(actor_id) do
     with {:ok, actor_id} <- Ecto.UUID.cast(actor_id),
          {:ok, projection} <- Auth.load_session_principal(%Principal{id: actor_id}),
-         :ok <- Auth.authorize_session(projection, management_roles()) do
+         :ok <- Capabilities.authorize(projection, :"training_announcements.manage") do
       :ok
     else
       _ -> {:error, :forbidden}

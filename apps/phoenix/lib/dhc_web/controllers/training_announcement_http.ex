@@ -1,8 +1,13 @@
 defmodule DhcWeb.TrainingAnnouncementHTTP do
-  @moduledoc "Shared input and result mapping for the Training Announcement HTTP slices."
+  @moduledoc """
+  Shared input mapping and the problem fallback for the Training Announcement
+  HTTP slices. Controllers declare `action_fallback DhcWeb.TrainingAnnouncementHTTP`;
+  `respond/4` renders a success and hands any error back to the fallback.
+  """
   import Plug.Conn
   import Phoenix.Controller
 
+  # Public camelCase request field → internal attribute.
   @fields %{
     "kind" => "kind",
     "weekday" => "weekday",
@@ -15,12 +20,16 @@ defmodule DhcWeb.TrainingAnnouncementHTTP do
     "fromDate" => "from_date",
     "toDate" => "to_date"
   }
-  @conflicts %{
-    attempted: "This announcement has attempted delivery; retire it instead",
-    retired: "This announcement is retired",
-    delivery_started: "Delivery has begun; the one-off schedule cannot change",
-    concurrent_change: "The announcement changed; reload and try again"
-  }
+
+  use DhcWeb.Problem,
+    reasons: %{
+      not_found: {404, "Announcement or exception not found"},
+      attempted: {409, "This announcement has attempted delivery; retire it instead"},
+      retired: {409, "This announcement is retired"},
+      delivery_started: {409, "Delivery has begun; the one-off schedule cannot change"},
+      concurrent_change: {409, "The announcement changed; reload and try again"}
+    },
+    fields: Map.new(@fields, fn {public, internal} -> {internal, public} end)
 
   def actor_id(conn), do: conn.assigns.current_session.principal.id
 
@@ -40,6 +49,7 @@ defmodule DhcWeb.TrainingAnnouncementHTTP do
     end
   end
 
+  @doc "Renders an `{:ok, result}`; any error is returned for the action fallback."
   def respond(result, conn, template, status \\ :ok)
   def respond({:ok, _}, conn, :deleted, _), do: send_resp(conn, :no_content, "")
 
@@ -47,50 +57,5 @@ defmodule DhcWeb.TrainingAnnouncementHTTP do
     conn |> put_status(status) |> render(template, result: result)
   end
 
-  def respond({:error, :not_found}, conn, _, _),
-    do: error(conn, :not_found, %{detail: "Announcement or exception not found"})
-
-  def respond({:error, :forbidden}, conn, _, _),
-    do: error(conn, :forbidden, %{detail: "Insufficient role"})
-
-  def respond({:error, reason}, conn, _, _) when is_map_key(@conflicts, reason) do
-    error(conn, :conflict, %{detail: Map.fetch!(@conflicts, reason), code: to_string(reason)})
-  end
-
-  def respond({:error, %Ecto.Changeset{} = changeset}, conn, _, _) do
-    fields = Ecto.Changeset.traverse_errors(changeset, &interpolate_error/1)
-
-    fields = Map.new(fields, fn {key, errors} -> {public_field(key), errors} end)
-
-    detail =
-      Enum.map_join(fields, "; ", fn {key, errors} -> "#{key}: #{Enum.join(errors, ", ")}" end)
-
-    error(conn, :unprocessable_entity, %{detail: detail, fields: fields})
-  end
-
-  def respond({:error, errors}, conn, _, _) when is_list(errors) do
-    error(conn, :unprocessable_entity, %{detail: Enum.join(errors, "; ")})
-  end
-
-  defp public_field(key) do
-    internal = to_string(key)
-    Enum.find_value(@fields, internal, fn {public, value} -> if value == internal, do: public end)
-  end
-
-  defp error_value(value) when is_binary(value) or is_number(value) or is_atom(value),
-    do: to_string(value)
-
-  defp error_value(value), do: inspect(value)
-
-  defp interpolate_error({message, opts}) do
-    Enum.reduce(opts, message, fn {key, value}, text ->
-      placeholder = "%{#{key}}"
-
-      if String.contains?(text, placeholder),
-        do: String.replace(text, placeholder, error_value(value)),
-        else: text
-    end)
-  end
-
-  defp error(conn, status, errors), do: conn |> put_status(status) |> json(%{errors: errors})
+  def respond(error, _conn, _template, _status), do: error
 end

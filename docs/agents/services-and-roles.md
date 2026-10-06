@@ -10,10 +10,11 @@
 
 ## Roles (RBAC)
 
-Frontend role policy lives behind typed capabilities in
-`apps/web/src/lib/server/authorization/` (GH-510). Feature code never imports
-role sets; it asks `authorizationFor(session).can("inventory.manage")` /
-`.require(...)`, or `authorize(locals, "workshops.manage")` when it only needs
-the session back. Role → capability rules are the single table in
-`capabilities.ts`; they mirror the Phoenix router pipelines, which remain the
-authoritative enforcement (`has_any_role()` in SQL, plugs in Phoenix).
+Role → capability rules are the single table in
+`apps/phoenix/lib/dhc/auth/capabilities.ex` (ALE-344); Phoenix router
+pipelines require a capability and the session projection carries the
+capabilities a session holds. The frontend boundary
+`apps/web/src/lib/server/authorization/` (GH-510) reads those capabilities and
+adds only the owner rule and navigation. Feature code never reads roles; it
+asks `authorizationFor(session).can("inventory.manage")` / `.require(...)`, or
+`authorize(locals, "workshops.manage")` when it only needs the session back.

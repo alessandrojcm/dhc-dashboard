@@ -3,11 +3,13 @@ defmodule DhcWeb.WorkshopsController do
 
   alias Dhc.Workshops
 
+  action_fallback DhcWeb.WorkshopsHTTP
+
   @moduledoc """
   Workshop management reads.
 
-  `calendar/2` and `attendees/2` are protected by the `:workshop_coordinator_api`
-  pipeline (`workshop_coordinator`, `president`, `admin`). `list/2` is
+  `calendar/2` and `attendees/2` are protected by the `:workshops_manage`
+  pipeline (the `workshops.manage` capability). `list/2` is
   authenticated-only.
 
   See `Dhc.Workshops` for the historical `beginners_coordinator`
@@ -64,8 +66,8 @@ defmodule DhcWeb.WorkshopsController do
         |> put_view(json: DhcWeb.WorkshopsJSON)
         |> render(:management, workshop: Workshops.workshop_summary(workshop.id))
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        validation_error(conn, changeset)
+      error ->
+        error
     end
   end
 
@@ -76,7 +78,7 @@ defmodule DhcWeb.WorkshopsController do
   """
   def show(conn, %{"id" => id}) do
     case Workshops.workshop_summary(id) do
-      nil -> not_found(conn)
+      nil -> {:error, :not_found}
       workshop -> render_management(conn, workshop)
     end
   end
@@ -93,15 +95,8 @@ defmodule DhcWeb.WorkshopsController do
       |> Map.delete("id")
       |> management_attrs()
 
-    case Workshops.update_workshop(id, attrs) do
-      {:ok, workshop} ->
-        render_management(conn, Workshops.workshop_summary(workshop.id))
-
-      {:error, %Ecto.Changeset{} = changeset} ->
-        validation_error(conn, changeset)
-
-      {:error, reason} ->
-        lifecycle_error(conn, reason)
+    with {:ok, workshop} <- Workshops.update_workshop(id, attrs) do
+      render_management(conn, Workshops.workshop_summary(workshop.id))
     end
   end
 
@@ -123,8 +118,8 @@ defmodule DhcWeb.WorkshopsController do
       {:ok, :archived, workshop} ->
         render_management(conn, workshop)
 
-      {:error, reason} ->
-        lifecycle_error(conn, reason)
+      error ->
+        error
     end
   end
 
@@ -132,9 +127,8 @@ defmodule DhcWeb.WorkshopsController do
   POST /workshops/{id}/publish
   """
   def publish(conn, %{"id" => id}) do
-    case Workshops.publish_workshop(id) do
-      {:ok, workshop} -> render_management(conn, Workshops.workshop_summary(workshop.id))
-      {:error, reason} -> lifecycle_error(conn, reason)
+    with {:ok, workshop} <- Workshops.publish_workshop(id) do
+      render_management(conn, Workshops.workshop_summary(workshop.id))
     end
   end
 
@@ -142,9 +136,9 @@ defmodule DhcWeb.WorkshopsController do
   POST /workshops/{id}/cancel
   """
   def cancel(conn, %{"id" => id}) do
-    case Workshops.cancel_workshop(id, conn.assigns.current_session.principal.id) do
-      {:ok, workshop} -> render_management(conn, Workshops.workshop_summary(workshop.id))
-      {:error, reason} -> lifecycle_error(conn, reason)
+    with {:ok, workshop} <-
+           Workshops.cancel_workshop(id, conn.assigns.current_session.principal.id) do
+      render_management(conn, Workshops.workshop_summary(workshop.id))
     end
   end
 
@@ -154,17 +148,11 @@ defmodule DhcWeb.WorkshopsController do
   Toggles the authenticated member's interest in a planned Workshop.
   """
   def toggle_interest(conn, %{"id" => id}) do
-    case Workshops.toggle_interest(id, conn.assigns.current_session.principal.id) do
-      {:ok, result} ->
-        conn
-        |> put_view(json: DhcWeb.WorkshopsJSON)
-        |> render(:interest, result: result)
-
-      {:error, :not_found} ->
-        not_found(conn)
-
-      {:error, :not_planned} ->
-        unprocessable(conn, "Can only express interest in planned workshops")
+    with {:ok, result} <-
+           Workshops.toggle_interest(id, conn.assigns.current_session.principal.id) do
+      conn
+      |> put_view(json: DhcWeb.WorkshopsJSON)
+      |> render(:interest, result: result)
     end
   end
 
@@ -175,18 +163,15 @@ defmodule DhcWeb.WorkshopsController do
   registration after duplicate and capacity checks.
   """
   def create_registration_payment_intent(conn, %{"id" => id} = params) do
-    case Workshops.create_member_payment_intent(
-           id,
-           conn.assigns.current_session.principal.id,
-           params
-         ) do
-      {:ok, result} ->
-        conn
-        |> put_view(json: DhcWeb.WorkshopsJSON)
-        |> render(:registration_payment_intent, result: result)
-
-      {:error, reason} ->
-        member_registration_error(conn, reason)
+    with {:ok, result} <-
+           Workshops.create_member_payment_intent(
+             id,
+             conn.assigns.current_session.principal.id,
+             params
+           ) do
+      conn
+      |> put_view(json: DhcWeb.WorkshopsJSON)
+      |> render(:registration_payment_intent, result: result)
     end
   end
 
@@ -197,25 +182,20 @@ defmodule DhcWeb.WorkshopsController do
   PaymentIntent.
   """
   def complete_registration(conn, %{"id" => id, "paymentIntentId" => payment_intent_id}) do
-    case Workshops.complete_member_registration(
-           id,
-           conn.assigns.current_session.principal.id,
-           payment_intent_id
-         ) do
-      {:ok, registration} ->
-        conn
-        |> put_status(:created)
-        |> put_view(json: DhcWeb.WorkshopsJSON)
-        |> render(:registration, registration: registration)
-
-      {:error, reason} ->
-        member_registration_error(conn, reason)
+    with {:ok, registration} <-
+           Workshops.complete_member_registration(
+             id,
+             conn.assigns.current_session.principal.id,
+             payment_intent_id
+           ) do
+      conn
+      |> put_status(:created)
+      |> put_view(json: DhcWeb.WorkshopsJSON)
+      |> render(:registration, registration: registration)
     end
   end
 
-  def complete_registration(conn, _params) do
-    unprocessable(conn, "Payment intent ID required")
-  end
+  def complete_registration(_conn, _params), do: {:error, :payment_intent_required}
 
   def external_registration_gate(conn, %{"id" => id}) do
     gate =
@@ -243,13 +223,12 @@ defmodule DhcWeb.WorkshopsController do
       |> put_view(json: DhcWeb.WorkshopsJSON)
       |> render(:external_checkout_session, result: result)
     else
-      :error -> not_found(conn)
-      {:error, reason} -> external_registration_error(conn, reason)
+      error -> external_registration_error(error)
     end
   end
 
-  def create_external_checkout_session(conn, _params),
-    do: unprocessable(conn, "Payment attempt ID and return URL are required")
+  def create_external_checkout_session(_conn, _params),
+    do: {:error, :checkout_details_required}
 
   def complete_external_registration(conn, %{
         "id" => id,
@@ -264,13 +243,12 @@ defmodule DhcWeb.WorkshopsController do
       |> put_view(json: DhcWeb.WorkshopsJSON)
       |> render(:registration, registration: registration)
     else
-      :error -> not_found(conn)
-      {:error, reason} -> external_registration_error(conn, reason)
+      error -> external_registration_error(error)
     end
   end
 
-  def complete_external_registration(conn, _params),
-    do: unprocessable(conn, "Checkout session ID required")
+  def complete_external_registration(_conn, _params),
+    do: {:error, :checkout_session_required}
 
   @doc """
   DELETE /workshops/{id}/registration
@@ -278,14 +256,11 @@ defmodule DhcWeb.WorkshopsController do
   Cancels the authenticated member's active registration.
   """
   def cancel_registration(conn, %{"id" => id}) do
-    case Workshops.cancel_member_registration(id, conn.assigns.current_session.principal.id) do
-      {:ok, result} ->
-        conn
-        |> put_view(json: DhcWeb.WorkshopsJSON)
-        |> render(:registration_cancelled, result: result)
-
-      {:error, reason} ->
-        member_registration_error(conn, reason)
+    with {:ok, result} <-
+           Workshops.cancel_member_registration(id, conn.assigns.current_session.principal.id) do
+      conn
+      |> put_view(json: DhcWeb.WorkshopsJSON)
+      |> render(:registration_cancelled, result: result)
     end
   end
 
@@ -299,9 +274,7 @@ defmodule DhcWeb.WorkshopsController do
   def attendees(conn, %{"id" => id}) do
     case Workshops.workshop_attendees_and_refunds(id) do
       %{workshop: nil} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{errors: %{detail: "Workshop not found"}})
+        {:error, :not_found}
 
       %{workshop: workshop, attendees: attendees, refunds: refunds} ->
         conn
@@ -318,7 +291,7 @@ defmodule DhcWeb.WorkshopsController do
   def refunds(conn, %{"id" => id}) do
     case Workshops.workshop_summary(id) do
       nil ->
-        not_found(conn)
+        {:error, :not_found}
 
       _workshop ->
         conn
@@ -341,13 +314,13 @@ defmodule DhcWeb.WorkshopsController do
     reason = String.trim(reason)
 
     if reason == "" do
-      unprocessable(conn, "Refund reason is required")
+      {:error, :refund_reason_required}
     else
       process_registration_refund(conn, workshop_id, registration_id, reason)
     end
   end
 
-  def refund_registration(conn, _params), do: unprocessable(conn, "Refund reason is required")
+  def refund_registration(_conn, _params), do: {:error, :refund_reason_required}
 
   defp process_registration_refund(conn, workshop_id, registration_id, reason) do
     # The command returns the `list_workshop_refunds/1` projection, so no
@@ -364,8 +337,13 @@ defmodule DhcWeb.WorkshopsController do
         |> put_view(json: DhcWeb.WorkshopsJSON)
         |> render(:refund, refund: refund)
 
-      {:error, reason} ->
-        refund_error(conn, reason)
+      # A refund request's own `:already_requested` is a 422; the 409
+      # reason of that name belongs to Workshop cancellation.
+      {:error, :already_requested} ->
+        {:error, :refund_already_requested}
+
+      error ->
+        error
     end
   end
 
@@ -386,12 +364,10 @@ defmodule DhcWeb.WorkshopsController do
       conn
       |> put_view(json: DhcWeb.WorkshopsJSON)
       |> render(:attendance, registrations: registrations)
-    else
-      {:error, reason} -> attendance_error(conn, reason)
     end
   end
 
-  def update_attendance(conn, _params), do: unprocessable(conn, "Attendance updates are required")
+  def update_attendance(_conn, _params), do: {:error, :attendance_updates_required}
 
   defp render_management(conn, workshop) do
     conn
@@ -470,161 +446,14 @@ defmodule DhcWeb.WorkshopsController do
     end
   end
 
-  defp lifecycle_error(conn, :not_found), do: not_found(conn)
+  # External Checkout wording differs from the member PaymentIntent flow.
+  defp external_registration_error(:error), do: {:error, :not_found}
 
-  defp lifecycle_error(conn, :not_editable) do
-    unprocessable(conn, "Only planned workshops can be edited")
-  end
+  defp external_registration_error({:error, :already_registered}),
+    do: {:error, :email_already_registered}
 
-  defp lifecycle_error(conn, :pricing_locked) do
-    unprocessable(conn, "Cannot change pricing when there are active registrations")
-  end
+  defp external_registration_error({:error, :payment_metadata_mismatch}),
+    do: {:error, :checkout_metadata_mismatch}
 
-  defp lifecycle_error(conn, :not_publishable) do
-    unprocessable(conn, "Only planned workshops can be published")
-  end
-
-  defp lifecycle_error(conn, :not_cancellable) do
-    unprocessable(conn, "Only published workshops can be cancelled")
-  end
-
-  # ALE-181: delete error mapping. `:already_archived` is the only delete-only
-  # error after the rewrite (the old `:not_deletable` status gate is gone);
-  # `:not_found` is shared with the other lifecycle errors above.
-  defp lifecycle_error(conn, :already_archived) do
-    conflict(conn, "Workshop is already archived")
-  end
-
-  defp member_registration_error(conn, :not_found), do: not_found(conn)
-
-  defp member_registration_error(conn, :not_published),
-    do: unprocessable(conn, "Workshop not available for registration")
-
-  defp member_registration_error(conn, :already_registered),
-    do: conflict(conn, "Already registered for this workshop")
-
-  defp member_registration_error(conn, :full), do: conflict(conn, "Workshop is full")
-
-  defp member_registration_error(conn, :compensation_pending),
-    do: conflict(conn, "Payment accepted; refund is pending")
-
-  defp member_registration_error(conn, :invalid_amount),
-    do: unprocessable(conn, "Amount must be positive")
-
-  defp member_registration_error(conn, :payment_not_completed),
-    do: unprocessable(conn, "Payment not completed")
-
-  defp member_registration_error(conn, :payment_metadata_mismatch),
-    do: unprocessable(conn, "Payment intent does not match workshop registration")
-
-  defp member_registration_error(conn, :payment_failed),
-    do:
-      conn
-      |> put_status(:bad_gateway)
-      |> json(%{errors: %{detail: "Payment provider request failed"}})
-
-  defp member_registration_error(conn, :refund_failed), do: refund_provider_error(conn)
-
-  defp external_registration_error(conn, :not_found), do: not_found(conn)
-
-  defp external_registration_error(conn, :checkout_session_not_found) do
-    conn
-    |> put_status(:not_found)
-    |> json(%{errors: %{detail: "Checkout session not found"}})
-  end
-
-  defp external_registration_error(conn, :full), do: conflict(conn, "Workshop is full")
-
-  defp external_registration_error(conn, :compensation_pending),
-    do: conflict(conn, "Payment accepted; refund is pending")
-
-  defp external_registration_error(conn, :already_registered),
-    do: conflict(conn, "This email is already registered for this workshop")
-
-  defp external_registration_error(conn, :invalid_return_url),
-    do: unprocessable(conn, "Return URL must include the Checkout Session placeholder")
-
-  defp external_registration_error(conn, :payment_not_completed),
-    do: unprocessable(conn, "Payment not completed")
-
-  defp external_registration_error(conn, :payment_metadata_mismatch),
-    do: unprocessable(conn, "Checkout session does not match workshop registration")
-
-  defp external_registration_error(conn, :customer_details_missing),
-    do: unprocessable(conn, "Checkout session is missing attendee details")
-
-  defp external_registration_error(conn, :payment_failed),
-    do:
-      conn
-      |> put_status(:bad_gateway)
-      |> json(%{errors: %{detail: "Payment provider request failed"}})
-
-  defp refund_error(conn, :registration_not_found), do: not_found(conn)
-
-  defp refund_error(conn, :already_refunded),
-    do: unprocessable(conn, "Registration already refunded")
-
-  defp refund_error(conn, :workshop_finished),
-    do: unprocessable(conn, "Cannot refund finished workshop")
-
-  defp refund_error(conn, :not_paid),
-    do: unprocessable(conn, "Registration has no payment to refund")
-
-  defp refund_error(conn, :deadline_passed), do: unprocessable(conn, "Refund deadline has passed")
-
-  defp refund_error(conn, :already_requested),
-    do: unprocessable(conn, "Refund already requested for this registration")
-
-  defp refund_error(conn, :refund_failed), do: refund_provider_error(conn)
-
-  defp refund_provider_error(conn) do
-    conn
-    |> put_status(:bad_gateway)
-    |> json(%{errors: %{detail: "Refund provider request failed"}})
-  end
-
-  defp attendance_error(conn, :not_found), do: not_found(conn)
-
-  defp attendance_error(conn, :not_started) do
-    unprocessable(conn, "Cannot update attendance before the Workshop has started")
-  end
-
-  defp attendance_error(conn, :invalid_attendee) do
-    unprocessable(conn, "Attendance updates must target active Workshop attendees")
-  end
-
-  defp attendance_error(conn, :invalid_updates),
-    do: unprocessable(conn, "Invalid attendance updates")
-
-  defp conflict(conn, message) do
-    conn
-    |> put_status(:conflict)
-    |> json(%{errors: %{detail: message}})
-  end
-
-  defp validation_error(conn, changeset) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{errors: %{detail: "Invalid Workshop", fields: changeset_errors(changeset)}})
-  end
-
-  defp changeset_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
-        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-      end)
-    end)
-  end
-
-  defp not_found(conn) do
-    conn
-    |> put_status(:not_found)
-    |> json(%{errors: %{detail: "Workshop not found"}})
-  end
-
-  defp unprocessable(conn, detail) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{errors: %{detail: detail}})
-  end
+  defp external_registration_error(error), do: error
 end

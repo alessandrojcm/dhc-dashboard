@@ -2,8 +2,9 @@ defmodule DhcWeb.MembershipController do
   use DhcWeb, :controller
 
   alias Dhc.Membership
+  alias DhcWeb.MemberAccess
 
-  @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
+  action_fallback DhcWeb.MembersHTTP
 
   @doc """
   POST /members/:memberId/membership/pause
@@ -11,18 +12,11 @@ defmodule DhcWeb.MembershipController do
   def pause(conn, %{"memberId" => member_id} = params) do
     attrs = Map.delete(params, "memberId")
 
-    with :ok <- authorize_self_or_admin(conn, member_id),
-         {:ok, member} <- Membership.pause(member_id, attrs) do
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.update", member_id),
+         {:ok, member} <- member_id |> Membership.pause(attrs) |> rename(:invalid_pause) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
       |> render(:show, member: member)
-    else
-      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
-      {:error, :not_found} -> not_found(conn, "Member not found")
-      {:error, :subscription_not_found} -> conflict(conn, "Membership subscription not found")
-      {:error, :invalid_payload} -> validation_error(conn, "Invalid membership pause payload")
-      {:error, :stripe_error} -> bad_gateway(conn, "Stripe membership update failed")
-      {:error, %Ecto.Changeset{} = changeset} -> validation_error(conn, changeset)
     end
   end
 
@@ -30,40 +24,32 @@ defmodule DhcWeb.MembershipController do
   POST /members/:memberId/membership/resume
   """
   def resume(conn, %{"memberId" => member_id}) do
-    with :ok <- authorize_self_or_admin(conn, member_id),
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.update", member_id),
          {:ok, member} <- Membership.resume(member_id) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
       |> render(:show, member: member)
-    else
-      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
-      {:error, :not_found} -> not_found(conn, "Member not found")
-      {:error, :subscription_not_found} -> conflict(conn, "Membership subscription not found")
-      {:error, :stripe_error} -> bad_gateway(conn, "Stripe membership update failed")
     end
   end
 
   @doc "POST /members/:memberId/billing-portal"
   def billing_portal(conn, %{"memberId" => member_id, "returnUrl" => return_url}) do
-    with :ok <- authorize_self_or_admin(conn, member_id),
-         {:ok, url} <- Membership.create_billing_portal_session(member_id, return_url) do
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.update", member_id),
+         {:ok, url} <-
+           member_id
+           |> Membership.create_billing_portal_session(return_url)
+           |> rename(:invalid_return_url, :billing_portal_failed) do
       json(conn, %{data: %{url: url}})
-    else
-      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
-      {:error, :not_found} -> not_found(conn, "Member not found")
-      {:error, :invalid_payload} -> validation_error(conn, "Invalid billing portal return URL")
-      {:error, :stripe_error} -> bad_gateway(conn, "Stripe billing portal request failed")
     end
   end
 
-  def billing_portal(conn, _params),
-    do: validation_error(conn, "Invalid billing portal payload")
+  def billing_portal(_conn, _params), do: {:error, :invalid_billing_portal}
 
   @doc """
   POST /members/:memberId/membership/reactivate
 
-  Restricted by the `:membership_minting_api` pipeline to officers with
-  billing authority (admin, president, treasurer, committee_coordinator) —
+  Restricted by the `:membership_reactivate` pipeline (the
+  `membership.reactivate` capability: officers with billing authority) —
   there is no self-service fallback because the command mints new Stripe
   charges.
   """
@@ -73,54 +59,26 @@ defmodule DhcWeb.MembershipController do
       |> Map.delete("memberId")
       |> Map.put("operatorPrincipalId", conn.assigns.current_session.principal.id)
 
-    case Membership.reactivate(member_id, attrs) do
-      {:ok, result} ->
-        json(conn, %{data: result})
-
-      {:error, :invalid_payload} ->
-        validation_error(conn, "Invalid membership reactivation payload")
-
-      {:error, :not_found} ->
-        not_found(conn, "Member not found")
-
-      {:error, :membership_paused} ->
-        conflict(conn, "Member's membership subscription is paused")
-
-      {:error, :membership_active} ->
-        conflict(conn, "Member already has an active membership subscription")
-
-      {:error, :no_saved_payment_method} ->
-        conn
-        |> put_status(:conflict)
-        |> json(%{
-          errors: %{
-            detail:
-              "Member has no usable saved SEPA payment method; use the billing portal as fallback",
-            code: "no_saved_payment_method"
-          }
-        })
-
-      {:error, :stripe_error} ->
-        bad_gateway(conn, "Stripe membership reactivation failed")
+    with {:ok, result} <-
+           member_id
+           |> Membership.reactivate(attrs)
+           |> rename(:invalid_reactivation, :reactivation_failed) do
+      json(conn, %{data: result})
     end
   end
 
   @doc """
   GET /members/:memberId/membership/reactivation-preview
 
-  Same `:membership_minting_api` restrictions as `reactivate/2` — saved
+  Same `:membership_reactivate` restrictions as `reactivate/2` — saved
   payment data must not leak to the broader members-admin list.
   """
   def reactivation_preview(conn, %{"memberId" => member_id}) do
-    case Membership.reactivation_preview(member_id) do
-      {:ok, preview} ->
-        json(conn, %{data: preview})
-
-      {:error, :not_found} ->
-        not_found(conn, "Member not found")
-
-      {:error, :stripe_error} ->
-        bad_gateway(conn, "Stripe payment-method lookup failed")
+    with {:ok, preview} <-
+           member_id
+           |> Membership.reactivation_preview()
+           |> rename(:invalid_payload, :payment_method_lookup_failed) do
+      json(conn, %{data: preview})
     end
   end
 
@@ -128,82 +86,24 @@ defmodule DhcWeb.MembershipController do
   GET /members/:memberId/membership/reactivation-preview/amounts
 
   Stripe-computed amounts for a reactivation starting on the query param
-  `startDate` (ALE-254). Same `:membership_minting_api` restrictions as
+  `startDate` (ALE-254). Same `:membership_reactivate` restrictions as
   `reactivation_preview/2`. Deliberately independent of that read: a failure
   here degrades to hidden amounts in the UI while the form stays usable.
   """
   def reactivation_amounts_preview(conn, %{"memberId" => member_id} = params) do
-    case Membership.reactivation_amounts_preview(member_id, params) do
-      {:ok, result} ->
-        json(conn, %{data: result})
-
-      {:error, :invalid_payload} ->
-        validation_error(conn, "Invalid membership reactivation amounts payload")
-
-      {:error, :not_found} ->
-        not_found(conn, "Member not found")
-
-      {:error, :stripe_error} ->
-        bad_gateway(conn, "Stripe membership cost preview failed")
+    with {:ok, result} <-
+           member_id
+           |> Membership.reactivation_amounts_preview(params)
+           |> rename(:invalid_reactivation_amounts, :cost_preview_failed) do
+      json(conn, %{data: result})
     end
   end
 
-  defp authorize_self_or_admin(conn, member_id) do
-    current_session = conn.assigns.current_session
-
-    if current_session.principal.id == member_id or
-         Enum.any?(current_session.roles, &(&1 in @members_admin_roles)) do
-      :ok
-    else
-      {:error, :forbidden}
-    end
-  end
-
-  defp forbidden(conn, detail) do
-    conn
-    |> put_status(:forbidden)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp not_found(conn, detail) do
-    conn
-    |> put_status(:not_found)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp conflict(conn, detail) do
-    conn
-    |> put_status(:conflict)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp bad_gateway(conn, detail) do
-    conn
-    |> put_status(:bad_gateway)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp validation_error(conn, %Ecto.Changeset{} = changeset) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{
-      errors: %{detail: "Invalid membership pause payload", fields: changeset_errors(changeset)}
-    })
-  end
-
-  defp validation_error(conn, detail) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp changeset_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
-        opts
-        |> Keyword.get(String.to_existing_atom(key), key)
-        |> to_string()
-      end)
-    end)
-  end
+  # `Dhc.Membership` reports one `:invalid_payload` and one `:stripe_error`
+  # for every command; each action names its own reason for them so
+  # `DhcWeb.MembersHTTP` can keep a distinct detail per action.
+  defp rename(result, invalid_payload, stripe_error \\ :stripe_error)
+  defp rename({:error, :invalid_payload}, invalid_payload, _), do: {:error, invalid_payload}
+  defp rename({:error, :stripe_error}, _, stripe_error), do: {:error, stripe_error}
+  defp rename(result, _invalid_payload, _stripe_error), do: result
 end

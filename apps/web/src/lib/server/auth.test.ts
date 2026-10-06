@@ -42,6 +42,7 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 						email: "u@example.com",
 					},
 					roles: ["member", "admin"],
+					capabilities: ["inventory.manage", "members.invite"],
 				},
 			},
 			error: undefined,
@@ -58,6 +59,7 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 				email: "u@example.com",
 			},
 			roles: ["member", "admin"],
+			capabilities: ["inventory.manage", "members.invite"],
 		});
 
 		// The cookie is forwarded via the `cookie` header — not a bearer `auth`.

@@ -1,6 +1,8 @@
 defmodule DhcWeb.TrainingAnnouncementExceptionsController do
   use DhcWeb, :controller
 
+  action_fallback DhcWeb.TrainingAnnouncementHTTP
+
   alias Dhc.TrainingAnnouncements
   alias DhcWeb.TrainingAnnouncementHTTP
 

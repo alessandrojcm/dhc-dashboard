@@ -21,8 +21,9 @@ export const load: PageServerLoad = async (event) => {
 	try {
 		const canUpdate = access.can("members.profile.update", member);
 		// ALE-252: reactivation mints new charges, so gate the UI on the same
-		// four billing-authority roles the `:membership_minting_api` pipeline
-		// enforces server-side (403 for everyone else, incl. self-service).
+		// `membership.reactivate` capability the `:membership_reactivate`
+		// pipeline enforces server-side (403 for everyone else, incl.
+		// self-service).
 		const canReactivate = access.can("membership.reactivate");
 		const apiOptions = apiClientOptions(cookies);
 		const [memberResponse, optionsResponse] = await Promise.all([

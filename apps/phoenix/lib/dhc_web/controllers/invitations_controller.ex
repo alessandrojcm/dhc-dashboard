@@ -5,6 +5,8 @@ defmodule DhcWeb.InvitationsController do
 
   alias Dhc.{Invitations, Onboarding}
 
+  action_fallback DhcWeb.InvitationsHTTP
+
   @doc """
   GET /invitations
   """
@@ -15,11 +17,8 @@ defmodule DhcWeb.InvitationsController do
         |> put_view(json: DhcWeb.InvitationsJSON)
         |> render(:list, result: result)
 
-      {:error, :bad_cursor} ->
-        bad_request(conn, "Invalid or mismatched cursor")
-
-      {:error, _reason} ->
-        bad_request(conn, "Invalid invitations query")
+      error ->
+        DhcWeb.Problem.list_error(error)
     end
   end
 
@@ -27,17 +26,10 @@ defmodule DhcWeb.InvitationsController do
   GET /invitations/:id
   """
   def show(conn, %{"id" => id}) do
-    case Invitations.public_lookup(id) do
-      {:ok, invitation} ->
-        conn
-        |> put_view(json: DhcWeb.InvitationsJSON)
-        |> render(:public_show, invitation: invitation)
-
-      {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> put_view(json: DhcWeb.InvitationsJSON)
-        |> render(:error, detail: "Invitation not found")
+    with {:ok, invitation} <- Invitations.public_lookup(id) do
+      conn
+      |> put_view(json: DhcWeb.InvitationsJSON)
+      |> render(:public_show, invitation: invitation)
     end
   end
 
@@ -45,26 +37,14 @@ defmodule DhcWeb.InvitationsController do
   POST /invitations/:id/verify
   """
   def verify(conn, %{"id" => id, "email" => email, "dateOfBirth" => date_of_birth}) do
-    case Onboarding.verify_credentials(id, email, date_of_birth) do
-      :ok ->
-        conn
-        |> put_view(json: DhcWeb.InvitationsJSON)
-        |> render(:verify)
-
-      {:error, :invalid_credentials} ->
-        conn
-        |> put_status(:unprocessable_entity)
-        |> put_view(json: DhcWeb.InvitationsJSON)
-        |> render(:error, detail: "Invalid invitation credentials")
+    with :ok <- Onboarding.verify_credentials(id, email, date_of_birth) do
+      conn
+      |> put_view(json: DhcWeb.InvitationsJSON)
+      |> render(:verify)
     end
   end
 
-  def verify(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> put_view(json: DhcWeb.InvitationsJSON)
-    |> render(:error, detail: "email and dateOfBirth are required")
-  end
+  def verify(_conn, _params), do: {:error, :verification_required}
 
   @doc """
   POST /invitations
@@ -95,19 +75,11 @@ defmodule DhcWeb.InvitationsController do
           errors: inspect(changeset.errors)
         )
 
-        conn
-        |> put_status(:bad_request)
-        |> put_view(json: DhcWeb.InvitationsJSON)
-        |> render(:error, detail: "Failed to enqueue invitation job")
+        {:error, :enqueue_failed}
     end
   end
 
-  def create(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> put_view(json: DhcWeb.InvitationsJSON)
-    |> render(:error, detail: "invites must be a non-empty list")
-  end
+  def create(_conn, _params), do: {:error, :invites_required}
 
   @doc """
   POST /invitations/resend
@@ -121,32 +93,16 @@ defmodule DhcWeb.InvitationsController do
     end
   end
 
-  def resend(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> put_view(json: DhcWeb.InvitationsJSON)
-    |> render(:error, detail: "emails must be a non-empty list")
-  end
+  def resend(_conn, _params), do: {:error, :emails_required}
 
   @doc """
   DELETE /invitations
   """
   def delete(conn, %{"invitationIds" => invitation_ids}) do
-    case Invitations.delete_many(invitation_ids) do
-      :ok -> send_resp(conn, :no_content, "")
-      {:error, :invalid_invitation_ids} -> invalid_invitation_ids(conn)
+    with :ok <- Invitations.delete_many(invitation_ids) do
+      send_resp(conn, :no_content, "")
     end
   end
 
-  def delete(conn, _params), do: invalid_invitation_ids(conn)
-
-  defp invalid_invitation_ids(conn) do
-    bad_request(conn, "invitationIds must be a non-empty list of UUIDs")
-  end
-
-  defp bad_request(conn, detail) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{errors: %{detail: detail}})
-  end
+  def delete(_conn, _params), do: {:error, :invalid_invitation_ids}
 end

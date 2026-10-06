@@ -55,7 +55,6 @@ defmodule DhcWeb.NotificationsPushClientParityTest do
           NotificationsPushSubscriptionResponse
           NotificationsPushUnsubscribeRequest
           NotificationsPushUnsubscribeResponse
-          NotificationsPushValidationError
         ) do
       assert types =~ "export type #{schema} =", "#{schema} is missing from the generated types"
 

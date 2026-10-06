@@ -150,6 +150,17 @@ Spread the remote form or its preflight-enhanced variant onto the native form el
 - **Comparing a stored UTC timestamp against a loan date goes through `ClubCalendar.on_date/1`, not `DateTime.to_date/1`.** A handover at 23:30 UTC is already the next day in Dublin summer time, so `to_date/1` compares the wrong calendar day. `today/0`, `on_date/1`, and `to_utc/2` convert with the `tz` time-zone database owned by `Dhc.ClubCalendar`.
 - Guards that run raw SQL must not pattern-match a single expected row shape (`%{rows: [[value]]}`); a recursive CTE over a missing row returns no rows and raises `MatchError` instead of the intended domain error. Match the result and map "missing" onto the same domain reason as "inactive".
 
+## HTTP Errors: Controllers Return `{:error, reason}` (ALE-343)
+
+Controllers return `{:error, reason}`; the domain HTTP module owns status and detail.
+
+- Every Phoenix controller outside the excluded slices (Invitation Acceptance safe views, the non-enumerating magic-link 200, Stripe webhooks) declares `action_fallback DhcWeb.<Domain>HTTP` and returns the domain result: `{:error, reason}`, `{:error, reason, fields}`, `{:error, %Ecto.Changeset{}}` or `{:error, [message]}`. Do not call `put_status`, `json(%{errors: ...})` or `Ecto.Changeset.traverse_errors` for an error in a controller.
+- `DhcWeb.Problem` renders the one body `{errors: {detail, code?, fields?}}`: `code` is the reason, only on 409/422 domain reasons; `fields` is public camelCase → messages with placeholders filled; a changeset's `detail` is built from its fields. An undeclared reason raises.
+- Declare a reason once in the family's module (`use DhcWeb.Problem, reasons: %{reason => {status, detail}}, fields: %{internal => public}`). When one family needs two details for one domain atom, the controller renames it (`:not_found` → `:loan_not_found`) and the renamed reason keeps the public code via `{status, detail, code}`.
+- Shared reasons every family inherits: `:unauthorized`, `:forbidden`, `:not_found` (generic "Not found" — rename it to name a resource) and `:bad_cursor`. A cursor-paginated list read ends its `case` with `error -> DhcWeb.Problem.list_error(error)` (keeps `:bad_cursor`, folds the rest into the family's `:invalid_query`).
+- Plugs render the shared reasons with `DhcWeb.Problem.send_reason/2` (it halts); a fixed message outside a reason table uses `Problem.send_detail/4`, which can never carry a `code`.
+- OpenAPI has one `Error` schema; a slice types its codes with `allOf: [Error, {errors.code enum}]` rather than a parallel error object.
+
 ## Discord External Identities
 
 - Resolve Discord login by `(provider, provider_subject)` before looking at profile email.
@@ -179,7 +190,7 @@ Conventions established by the Waitlist migration (#105–#107) and reinforced b
 - **Cursor pagination for list endpoints**: use `Dhc.CursorPagination` for cursor parse/encode, query direction, `id` tie-break comparisons, ordering, row slicing, and next/previous metadata. Keep domain option parsing, filters, query shape, and sort specs in the domain module. Opaque Base64 cursors bind to request params (limit, sort, direction, filters, q); mismatched cursors return `400`. Exact `COUNT(*)` for `totalCount` (never `estimated`).
 - **Multi-value filters**: comma-separated single param (e.g. `?membershipStatus=active,paused`). Absent or empty = all values (no filter).
 - **Websearch**: `websearch_to_tsquery('english', ?)` on the underlying `search_text` column, exposed as `q` query param.
-- **RBAC via `RequireSession` plug**: role lists mirror the existing RLS policies. Controllers read `current_session.principal`; self-read (where applicable) is endpoint-specific, not a blanket rule.
+- **RBAC via `RequireSession` plug**: a pipeline requires one capability (`plug RequireSession, capability: :"x.y"`); `Dhc.Auth.Capabilities` alone maps roles to capabilities (ALE-344). Controllers read `current_session.principal`; owner-scoped access (self-read) is checked in the controller with `Capabilities.authorize/3` and conceals with 404, not a blanket rule.
 - **Principal access**: join `Dhc.Auth.Principal` through application `principal_id` fields. Supabase `auth.users` is migration/rollback input only and must not be an application query dependency.
 - **Computed view columns reproduced in Ecto**: when a view computes a domain field (e.g. `membership_status` CASE), reproduce the computation in the Phoenix context query rather than depending on the view.
 

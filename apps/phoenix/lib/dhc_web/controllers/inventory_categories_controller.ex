@@ -6,86 +6,52 @@ defmodule DhcWeb.InventoryCategoriesController do
 
     * GET    /inventory/categories       — list, any authenticated member.
     * GET    /inventory/categories/:id   — show, any authenticated member.
-    * POST   /inventory/categories       — create, write roles.
-    * PATCH  /inventory/categories/:id   — update, write roles.
-    * DELETE /inventory/categories/:id   — delete (204), write roles.
+    * POST   /inventory/categories       — create, inventory operators.
+    * PATCH  /inventory/categories/:id   — update, inventory operators.
+    * DELETE /inventory/categories/:id   — delete (204), inventory operators.
 
-  RBAC is enforced by the `:inventory_admin_api` (writes) and
-  `:authenticated_api` (reads) pipelines in the router, mirroring the existing
-  SvelteKit `INVENTORY_ROLES` (`quartermaster`, `president`, `admin`).
+  RBAC is enforced by the `:inventory_manage` (writes, the
+  `inventory.manage` capability) and `:authenticated_api` (reads) pipelines
+  in the router.
 
-  The controller does no business logic; it maps context result tuples to HTTP
-  status codes and delegates rendering to `DhcWeb.InventoryCategoriesJSON`.
+  The controller does no business logic; it renders successes through
+  `DhcWeb.InventoryCategoriesJSON` and leaves errors to `DhcWeb.InventoryHTTP`.
   """
 
   use DhcWeb, :controller
 
   alias Dhc.Inventory
 
+  action_fallback DhcWeb.InventoryHTTP
+
+  @view [json: DhcWeb.InventoryCategoriesJSON]
+
   @doc """
   GET /inventory/categories
   """
   def index(conn, _params) do
-    categories = Inventory.list_categories()
-
-    conn
-    |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-    |> render(:index, categories: categories)
+    conn |> put_view(@view) |> render(:index, categories: Inventory.list_categories())
   end
 
   @doc """
   GET /inventory/categories/{id}
   """
   def show(conn, %{"id" => id}) do
-    case Inventory.get_category(id) do
-      {:ok, category} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-        |> render(:show, category: category)
-
-      {:error, :not_found} ->
-        not_found(conn, "Category not found")
-    end
+    id |> Inventory.get_category() |> render_category(conn)
   end
 
   @doc """
   POST /inventory/categories
   """
   def create(conn, params) do
-    case Inventory.create_category(params) do
-      {:ok, category} ->
-        conn
-        |> put_status(:created)
-        |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-        |> render(:show, category: category)
-
-      {:error, :conflict, _changeset} ->
-        conflict(conn, "A category with that name already exists")
-
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
-    end
+    params |> Inventory.create_category() |> render_category(conn, :created)
   end
 
   @doc """
   PATCH /inventory/categories/{id}
   """
   def update(conn, %{"id" => id} = params) do
-    case Inventory.update_category(id, params) do
-      {:ok, category} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-        |> render(:show, category: category)
-
-      {:error, :not_found} ->
-        not_found(conn, "Category not found")
-
-      {:error, :conflict, _changeset} ->
-        conflict(conn, "A category with that name already exists")
-
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
-    end
+    id |> Inventory.update_category(params) |> render_category(conn)
   end
 
   @doc """
@@ -93,59 +59,22 @@ defmodule DhcWeb.InventoryCategoriesController do
   """
   def delete(conn, %{"id" => id}) do
     case Inventory.delete_category(id) do
-      {:ok, _category} ->
-        send_delete(conn)
-
-      {:error, :not_found} ->
-        not_found(conn, "Category not found")
-
-      {:error, :still_referenced} ->
-        # 409, matching the ALE-104 contract.
-        conflict(conn, "Category is still referenced by inventory items")
+      {:ok, _category} -> send_resp(conn, :no_content, "")
+      error -> category_error(error)
     end
   end
 
-  # ── Error helpers ─────────────────────────────────────────────────────
+  defp render_category(result, conn, status \\ :ok)
 
-  defp not_found(conn, detail) do
-    conn
-    |> put_status(:not_found)
-    |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-    |> render(:error, detail: detail)
+  defp render_category({:ok, category}, conn, status) do
+    conn |> put_status(status) |> put_view(@view) |> render(:show, category: category)
   end
 
-  defp conflict(conn, detail) do
-    conn
-    |> put_status(:conflict)
-    |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-    |> render(:error, detail: detail)
-  end
+  defp render_category(error, _conn, _status), do: category_error(error)
 
-  defp unprocessable(conn, %Ecto.Changeset{} = changeset) do
-    detail =
-      changeset
-      |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
-      |> render_error_detail()
-
-    conn
-    |> put_status(:unprocessable_entity)
-    |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-    |> render(:error, detail: detail)
-  end
-
-  # traverse_errors returns a nested map of field → [messages]. Flatten to a
-  # human-readable string (matches the project's flat `errors.detail` shape).
-  defp render_error_detail(errors) when errors == %{}, do: "Invalid category payload"
-
-  defp render_error_detail(errors) do
-    Enum.map_join(errors, "; ", fn {field, messages} ->
-      "#{field} #{Enum.join(List.wrap(messages), ", ")}"
-    end)
-  end
-
-  defp send_delete(conn) do
-    conn
-    |> put_status(:no_content)
-    |> send_resp(:no_content, "")
-  end
+  defp category_error({:error, :not_found}), do: {:error, :category_not_found}
+  defp category_error({:error, :conflict, _changeset}), do: {:error, :category_name_taken}
+  # 409, matching the ALE-104 contract.
+  defp category_error({:error, :still_referenced}), do: {:error, :category_still_referenced}
+  defp category_error(error), do: error
 end

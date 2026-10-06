@@ -10,7 +10,14 @@ defmodule DhcWeb.SessionTestAdapter do
          {:ok, token} <- bearer_token(conn),
          {:ok, claims} <- verifier.verify(token) do
       principal = %Principal{id: claims.sub, email: claims.email}
-      {:ok, nil, %{principal: principal, roles: claims.roles, is_active: true}}
+
+      {:ok, nil,
+       %{
+         principal: principal,
+         roles: claims.roles,
+         capabilities: Dhc.Auth.Capabilities.for_roles(claims.roles),
+         is_active: true
+       }}
     else
       nil -> {:error, :missing_token}
       {:error, :missing_token} -> {:error, :missing_token}

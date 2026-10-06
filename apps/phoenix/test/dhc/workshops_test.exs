@@ -38,20 +38,6 @@ defmodule Dhc.WorkshopsTest do
 
   # ── RBAC / vocabulary ─────────────────────────────────────────────────
 
-  describe "coordinator_management_roles/0 — RBAC drift" do
-    test "includes workshop_coordinator, president, admin and NOT beginners_coordinator" do
-      roles = Workshops.coordinator_management_roles()
-
-      assert "workshop_coordinator" in roles
-      assert "president" in roles
-      assert "admin" in roles
-      # The historical registration RLS policy granted beginners_coordinator
-      # full registration visibility. That was drift (see Dhc.Workshops
-      # moduledoc). The Phoenix read model must not reproduce it.
-      refute "beginners_coordinator" in roles
-    end
-  end
-
   describe "member_visible_statuses/0" do
     test "returns planned and published only" do
       assert Workshops.member_visible_statuses() == ["planned", "published"]

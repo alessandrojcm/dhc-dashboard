@@ -15,128 +15,66 @@ import { governingRule, protectedRoutes } from "./routes";
  * GH-510: behavioural tests for the frontend authorization boundary.
  *
  * Everything is observed through `authorizationFor(session)` and
- * `guardRoute(session, route)`; role sets, navigation definitions and
- * protected-route rules are private implementation details. Changing a role
- * assignment must show up as exactly one intentional diff in the tables below.
+ * `guardRoute(session, route)`; navigation definitions and protected-route
+ * rules are private implementation details.
+ *
+ * ALE-344: Phoenix works out a session's capabilities (`Dhc.Auth.Capabilities`,
+ * whose role table `capabilities_test.exs` pins). The dashboard never sees a
+ * role, so these sessions are built from capability lists directly.
  */
 
 const SELF = "11111111-1111-1111-1111-111111111111";
 const OTHER = "22222222-2222-2222-2222-222222222222";
 
-function session(...roles: string[]): PhoenixSessionProjection {
-	return { principal: { id: SELF, email: "u@example.com" }, roles };
+/** A session as Phoenix projects it, holding exactly these capabilities. */
+function session(...capabilities: Capability[]): PhoenixSessionProjection {
+	return {
+		principal: { id: SELF, email: "u@example.com" },
+		roles: [],
+		capabilities,
+	};
 }
 
-const EVERY_ROLE = [
-	"admin",
-	"president",
-	"treasurer",
-	"committee_coordinator",
-	"sparring_coordinator",
-	"workshop_coordinator",
-	"beginners_coordinator",
-	"quartermaster",
-	"pr_manager",
-	"volunteer_coordinator",
-	"research_coordinator",
-	"coach",
-	"member",
-] as const;
+/** What Phoenix grants a plain member. */
+const MEMBER: Capability[] = [
+	"inventory.catalog.read",
+	"inventory.loans.own.read",
+	"workshops.own.read",
+];
 
-/**
- * Role → capability policy table. One row per capability; the listed roles are
- * the only ones allowed (without resource context). Every other known role
- * must be denied.
- */
-const POLICY = {
-	"beginners.workshop.read": [
-		"admin",
-		"committee_coordinator",
-		"coach",
-		"beginners_coordinator",
-		"president",
-	],
-	"beginners.waitlist.toggle": ["admin", "president", "committee_coordinator"],
-	"discord.doctor.use": ["admin", "president", "committee_coordinator"],
-	"inventory.manage": ["quartermaster", "admin", "president"],
-	"inventory.catalog.read": ["member"],
-	"inventory.loans.own.read": ["member"],
-	"members.directory.read": [
-		"admin",
-		"president",
-		"treasurer",
-		"committee_coordinator",
-		"sparring_coordinator",
-		"workshop_coordinator",
-		"beginners_coordinator",
-		"quartermaster",
-		"pr_manager",
-		"volunteer_coordinator",
-		"research_coordinator",
-		"coach",
-	],
-	"members.invite": ["admin", "president", "committee_coordinator"],
-	"members.profile.read": [
-		"admin",
-		"president",
-		"treasurer",
-		"committee_coordinator",
-		"sparring_coordinator",
-		"workshop_coordinator",
-		"beginners_coordinator",
-		"quartermaster",
-		"pr_manager",
-		"volunteer_coordinator",
-		"research_coordinator",
-		"coach",
-	],
-	"members.profile.update": [
-		"admin",
-		"president",
-		"treasurer",
-		"committee_coordinator",
-		"sparring_coordinator",
-		"workshop_coordinator",
-		"beginners_coordinator",
-		"quartermaster",
-		"pr_manager",
-		"volunteer_coordinator",
-		"research_coordinator",
-		"coach",
-	],
-	"members.settings.edit": ["admin", "president", "committee_coordinator"],
-	"membership.reactivate": [
-		"admin",
-		"president",
-		"treasurer",
-		"committee_coordinator",
-	],
-	"training_announcements.manage": [
-		"admin",
-		"president",
-		"committee_coordinator",
-		"sparring_coordinator",
-		"coach",
-	],
-	"workshops.manage": ["workshop_coordinator", "president", "admin"],
-	"workshops.own.read": ["member"],
-} satisfies Record<Capability, readonly string[]>;
+/** The resource owner also holds these (and is concealed from otherwise). */
+const OWNER_SCOPED: Capability[] = [
+	"members.profile.read",
+	"members.profile.update",
+];
+
+/** Capability sets the exhaustive loops visit: none, each alone, member, all. */
+const SESSIONS: Capability[][] = [
+	[],
+	...CAPABILITIES.map((capability) => [capability]),
+	MEMBER,
+	[...CAPABILITIES],
+];
+
+const label = (capabilities: Capability[]) =>
+	capabilities.length === 0 ? "(none)" : capabilities.join("+");
 
 describe("authorizationFor — capability registry", () => {
-	it("the policy table covers exactly the typed registry", () => {
-		expect(Object.keys(POLICY).sort()).toEqual([...CAPABILITIES].sort());
-	});
-
 	describe.each(CAPABILITIES)("%s", (capability) => {
-		const allowed = POLICY[capability];
-		const denied = EVERY_ROLE.filter((role) => !allowed.includes(role));
-
-		it.each(allowed)("allows %s", (role) => {
-			expect(authorizationFor(session(role)).can(capability)).toBe(true);
+		it("is granted by holding it", () => {
+			expect(authorizationFor(session(capability)).decide(capability)).toEqual({
+				allowed: true,
+			});
 		});
 
-		it.each(denied)("denies %s", (role) => {
-			expect(authorizationFor(session(role)).can(capability)).toBe(false);
+		it("is denied by holding every other capability", () => {
+			const others = CAPABILITIES.filter((other) => other !== capability);
+			const denial = OWNER_SCOPED.includes(capability)
+				? { allowed: false, status: 404, reason: "concealed_resource" }
+				: { allowed: false, status: 403, reason: "missing_capability" };
+			expect(authorizationFor(session(...others)).decide(capability)).toEqual(
+				denial,
+			);
 		});
 
 		it("gives anonymous sessions an unauthenticated decision", () => {
@@ -150,24 +88,46 @@ describe("authorizationFor — capability registry", () => {
 });
 
 describe("authorizationFor — decisions", () => {
+	it("decides from the session's capabilities, never its roles", () => {
+		const roleOnly = {
+			principal: { id: SELF, email: "u@example.com" },
+			roles: ["admin"],
+			capabilities: [],
+		} satisfies PhoenixSessionProjection;
+		expect(authorizationFor(roleOnly).decide("inventory.manage")).toEqual({
+			allowed: false,
+			status: 403,
+			reason: "missing_capability",
+		});
+
+		const capabilityOnly = {
+			...roleOnly,
+			roles: [],
+			capabilities: ["inventory.manage" as const],
+		} satisfies PhoenixSessionProjection;
+		expect(authorizationFor(capabilityOnly).can("inventory.manage")).toBe(true);
+	});
+
 	it("inventory operators can manage inventory, ordinary members cannot", () => {
 		expect(
-			authorizationFor(session("quartermaster")).can("inventory.manage"),
+			authorizationFor(session("inventory.manage")).can("inventory.manage"),
 		).toBe(true);
 		expect(
-			authorizationFor(session("member")).decide("inventory.manage"),
+			authorizationFor(session(...MEMBER)).decide("inventory.manage"),
 		).toEqual({ allowed: false, status: 403, reason: "missing_capability" });
 	});
 
-	it("member administrators can read and update another member's profile", () => {
-		const access = authorizationFor(session("coach"));
+	it("holders of the profile capabilities can read and update another member's profile", () => {
+		const access = authorizationFor(
+			session("members.profile.read", "members.profile.update"),
+		);
 		const other = { ownerPrincipalId: OTHER };
 		expect(access.can("members.profile.read", other)).toBe(true);
 		expect(access.can("members.profile.update", other)).toBe(true);
 	});
 
-	it("ordinary members can read/update their own profile", () => {
-		const access = authorizationFor(session("member"));
+	it("members can read/update their own profile without the capability", () => {
+		const access = authorizationFor(session(...MEMBER));
 		const own = { ownerPrincipalId: SELF };
 		expect(access.decide("members.profile.read", own)).toEqual({
 			allowed: true,
@@ -176,7 +136,7 @@ describe("authorizationFor — decisions", () => {
 	});
 
 	it("ordinary members receive a concealed denial for another member's profile", () => {
-		const access = authorizationFor(session("member"));
+		const access = authorizationFor(session(...MEMBER));
 		const other = { ownerPrincipalId: OTHER };
 		const concealed = {
 			allowed: false,
@@ -190,7 +150,7 @@ describe("authorizationFor — decisions", () => {
 	});
 
 	it("ownership never grants non-ownership capabilities", () => {
-		const access = authorizationFor(session("member"));
+		const access = authorizationFor(session(...MEMBER));
 		expect(
 			access.can("membership.reactivate", { ownerPrincipalId: SELF }),
 		).toBe(false);
@@ -199,36 +159,37 @@ describe("authorizationFor — decisions", () => {
 		);
 	});
 
-	it("billing-authority roles reactivate memberships; broader member admins do not", () => {
+	it("membership reactivation needs its own capability, not directory access", () => {
 		expect(
-			authorizationFor(session("treasurer")).can("membership.reactivate"),
+			authorizationFor(session("membership.reactivate")).can(
+				"membership.reactivate",
+			),
 		).toBe(true);
 		expect(
-			authorizationFor(session("coach")).can("membership.reactivate"),
-		).toBe(false);
-		expect(
-			authorizationFor(session("quartermaster")).can("membership.reactivate"),
+			authorizationFor(
+				session("members.directory.read", "members.profile.update"),
+			).can("membership.reactivate"),
 		).toBe(false);
 	});
 
 	it("settings capability is narrower than directory access", () => {
-		const access = authorizationFor(session("coach"));
+		const access = authorizationFor(session("members.directory.read"));
 		expect(access.can("members.directory.read")).toBe(true);
 		expect(access.can("members.settings.edit")).toBe(false);
 	});
 
 	it("require() is a thin adapter over decide()", () => {
 		expect(() =>
-			authorizationFor(session("quartermaster")).require("inventory.manage"),
+			authorizationFor(session("inventory.manage")).require("inventory.manage"),
 		).not.toThrow();
 		expect(() => authorizationFor(null).require("inventory.manage")).toThrow(
 			expect.objectContaining({ status: 401 }),
 		);
 		expect(() =>
-			authorizationFor(session("member")).require("inventory.manage"),
+			authorizationFor(session(...MEMBER)).require("inventory.manage"),
 		).toThrow(expect.objectContaining({ status: 403 }));
 		expect(() =>
-			authorizationFor(session("member")).require("members.profile.read", {
+			authorizationFor(session(...MEMBER)).require("members.profile.read", {
 				ownerPrincipalId: OTHER,
 			}),
 		).toThrow(expect.objectContaining({ status: 404 }));
@@ -246,7 +207,7 @@ describe("authorizationFor — navigation", () => {
 	});
 
 	it("shows ordinary members only self-service sections", () => {
-		expect(titles(session("member"))).toEqual([
+		expect(titles(session(...MEMBER))).toEqual([
 			"My Workshops",
 			"Equipment",
 			"My Loans",
@@ -254,7 +215,7 @@ describe("authorizationFor — navigation", () => {
 	});
 
 	it("shows inventory operators the inventory group with every sub-item", () => {
-		const nav = authorizationFor(session("quartermaster")).navigation();
+		const nav = authorizationFor(session("inventory.manage")).navigation();
 		const inventory = nav.navMain.find((group) => group.title === "Inventory");
 		expect(inventory?.items?.map((item) => item.title)).toEqual([
 			"Loan queue",
@@ -262,14 +223,14 @@ describe("authorizationFor — navigation", () => {
 			"Categories",
 			"Containers",
 		]);
-		expect(titles(session("member"))).not.toContain("Inventory");
+		expect(titles(session(...MEMBER))).not.toContain("Inventory");
 	});
 
 	it("contains exactly the entries allowed by the same capability decisions", () => {
-		for (const role of EVERY_ROLE) {
-			const access = authorizationFor(session(role));
+		const everything = authorizationFor(session(...CAPABILITIES)).navigation();
+		for (const capabilities of SESSIONS) {
+			const access = authorizationFor(session(...capabilities));
 			const nav = access.navigation();
-			const everything = authorizationFor(session(...EVERY_ROLE)).navigation();
 			const expected = everything.navMain
 				.map((group) => group.title)
 				.filter((title) => {
@@ -282,7 +243,7 @@ describe("authorizationFor — navigation", () => {
 	});
 
 	it("does not leak role sets or capabilities to the client", () => {
-		const nav = authorizationFor(session(...EVERY_ROLE)).navigation();
+		const nav = authorizationFor(session(...CAPABILITIES)).navigation();
 		for (const group of nav.navMain) {
 			expect(group).not.toHaveProperty("role");
 			expect(group).not.toHaveProperty("requires");
@@ -480,14 +441,14 @@ describe("guardRoute — request-hook gating", () => {
 
 				const { routeId, load } = governing;
 				for (const params of paramSetsFor(rule.prefix)) {
-					for (const role of EVERY_ROLE) {
-						const s = session(role);
+					for (const capabilities of SESSIONS) {
+						const s = session(...capabilities);
 						const outcome = guardRoute(s, { id: routeId, params });
-						const label = `${role} load on ${routeId} ${JSON.stringify(params)}`;
+						const description = `${label(capabilities)} load on ${routeId} ${JSON.stringify(params)}`;
 						if (outcome.kind === "allow") {
-							await expectLoadAllows(load, loadEvent(s, params), label);
+							await expectLoadAllows(load, loadEvent(s, params), description);
 						} else {
-							await expectLoadDenies(load, loadEvent(s, params), label);
+							await expectLoadDenies(load, loadEvent(s, params), description);
 						}
 					}
 					await expectLoadDenies(
@@ -504,7 +465,7 @@ describe("guardRoute — request-hook gating", () => {
 
 	it("redirects denied users to their own profile", () => {
 		expect(
-			guardRoute(session("member"), {
+			guardRoute(session(...MEMBER), {
 				id: "/dashboard/inventory/items",
 				params: {},
 			}),
@@ -512,16 +473,18 @@ describe("guardRoute — request-hook gating", () => {
 	});
 
 	it("keeps Training Announcements committee-only (ALE-330)", () => {
-		const member = session("member");
+		const member = session(...MEMBER);
 		expect(authorizationFor(member).can("training_announcements.manage")).toBe(
 			false,
 		);
-		const titlesFor = (roles: string[]) =>
-			authorizationFor(session(...roles))
+		const titlesFor = (capabilities: Capability[]) =>
+			authorizationFor(session(...capabilities))
 				.navigation()
 				.navMain.map((group) => group.title);
-		expect(titlesFor(["member"])).not.toContain("Training Announcements");
-		expect(titlesFor(["coach"])).toContain("Training Announcements");
+		expect(titlesFor(MEMBER)).not.toContain("Training Announcements");
+		expect(titlesFor(["training_announcements.manage"])).toContain(
+			"Training Announcements",
+		);
 		expect(
 			guardRoute(member, {
 				id: "/dashboard/training-announcements",
@@ -537,7 +500,7 @@ describe("guardRoute — request-hook gating", () => {
 	});
 
 	it("lets members reach their own profile but not another member's", () => {
-		const s = session("member");
+		const s = session(...MEMBER);
 		expect(
 			guardRoute(s, {
 				id: "/dashboard/members/[memberId]",
@@ -553,7 +516,7 @@ describe("guardRoute — request-hook gating", () => {
 	});
 
 	it("matches routes by segment boundary, not substring", () => {
-		const member = session("member");
+		const member = session(...MEMBER);
 		// `/dashboard/inventory-report` is not under `/dashboard/inventory`.
 		expect(
 			guardRoute(member, { id: "/dashboard/inventory-report", params: {} }),
@@ -574,7 +537,7 @@ describe("guardRoute — request-hook gating", () => {
 			null,
 		]) {
 			expect(guardRoute(null, { id, params: {} })).toEqual({ kind: "allow" });
-			expect(guardRoute(session("member"), { id, params: {} })).toEqual({
+			expect(guardRoute(session(...MEMBER), { id, params: {} })).toEqual({
 				kind: "allow",
 			});
 		}

@@ -29,10 +29,6 @@ defmodule DhcWeb.InvitationsJSON do
     %{data: render_invitation_resend(invitation_resend)}
   end
 
-  def render("error.json", %{detail: detail}) do
-    %{errors: %{detail: detail}}
-  end
-
   defp render_invitation(invitation) do
     %{
       job_id: invitation.job_id,

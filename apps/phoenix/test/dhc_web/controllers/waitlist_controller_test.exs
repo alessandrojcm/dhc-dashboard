@@ -56,8 +56,8 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert Dhc.Waitlist.open?()
     end
 
-    test "allows all waitlist admin roles", %{conn: _conn} do
-      for role <- ~w(admin president committee_coordinator beginners_coordinator coach) do
+    test "allows officers to toggle the waitlist", %{conn: _conn} do
+      for role <- ~w(admin president committee_coordinator) do
         set_waitlist_open(false)
 
         conn =
@@ -66,6 +66,22 @@ defmodule DhcWeb.WaitlistControllerTest do
           |> patch("/api/waitlist/status", %{"isOpen" => true})
 
         assert %{"data" => %{"isOpen" => true}} = json_response(conn, 200)
+      end
+    end
+
+    test "rejects beginners staff who are not officers (403)", %{conn: _conn} do
+      for role <- ~w(beginners_coordinator coach) do
+        set_waitlist_open(false)
+
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer #{role}-token")
+          |> patch("/api/waitlist/status", %{"isOpen" => true})
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403),
+               "#{role} must not toggle the waitlist"
+
+        refute Dhc.Waitlist.open?()
       end
     end
 
@@ -561,8 +577,12 @@ defmodule DhcWeb.WaitlistControllerTest do
 
       conn = post(build_conn(), "/api/waitlist/entries", payload)
 
-      assert %{"errors" => %{"detail" => "This email is already on the waitlist"}} =
-               json_response(conn, 409)
+      assert json_response(conn, 409) == %{
+               "errors" => %{
+                 "detail" => "This email is already on the waitlist",
+                 "code" => "duplicate_email"
+               }
+             }
     end
 
     test "enforces waitlist closed server-side", %{conn: conn} do
@@ -570,7 +590,7 @@ defmodule DhcWeb.WaitlistControllerTest do
 
       conn = post(conn, "/api/waitlist/entries", adult_payload())
 
-      assert %{"errors" => %{"detail" => "Waitlist is closed"}} = json_response(conn, 403)
+      assert json_response(conn, 403) == %{"errors" => %{"detail" => "Waitlist is closed"}}
     end
 
     test "rejects an under-16 date of birth with 422", %{conn: conn} do
@@ -610,8 +630,12 @@ defmodule DhcWeb.WaitlistControllerTest do
 
       conn = post(conn, "/api/waitlist/entries", adult_payload(email: "not-an-email"))
 
-      assert %{"errors" => %{"detail" => "email has invalid format"}} =
-               json_response(conn, 422)
+      assert json_response(conn, 422) == %{
+               "errors" => %{
+                 "detail" => "email: has invalid format",
+                 "fields" => %{"email" => ["has invalid format"]}
+               }
+             }
 
       assert persistence_counts() == persisted_before
     end

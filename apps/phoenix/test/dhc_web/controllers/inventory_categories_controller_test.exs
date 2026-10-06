@@ -17,7 +17,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
   alias Dhc.Repo
   alias DhcWeb.OpenApiVerifier
 
-  # Inventory write roles — mirrors the `:inventory_admin_api` pipeline and the
+  # Inventory write roles — mirrors the `:inventory_manage` pipeline and the
   # existing SvelteKit `INVENTORY_ROLES`.
   @write_roles ~w(quartermaster admin president)
   # Reads are any authenticated member.

@@ -21,11 +21,10 @@ defmodule Dhc.Workshops do
 
   ## Authorization (RBAC) — read before reusing
 
-  RBAC is enforced at the **controller** layer (mirroring the Waitlist and
-  Members read migrations), not inside these helpers. The intended Phoenix RBAC
-  for coordinator Workshop management reads (calendar, attendees, refunds) is:
-
-      @coordinator_management_roles ~w(workshop_coordinator president admin)
+  RBAC is enforced at the **router** layer (the `:workshops_manage`
+  pipeline), not inside these helpers. Coordinator Workshop management reads
+  (calendar, attendees, refunds) require the `workshops.manage` capability,
+  whose role set lives only in `Dhc.Auth.Capabilities`.
 
   ### Historical registration RBAC drift — DO NOT MIRROR
 
@@ -41,10 +40,8 @@ defmodule Dhc.Workshops do
   The fix (`20250923100806_fix_workshops_rls.sql`) corrected both the SELECT
   and UPDATE policies to `['admin', 'president', 'workshop_coordinator']`,
   removing `beginners_coordinator`. The Phoenix endpoints built on top of this
-  module MUST use `@coordinator_management_roles` above and MUST NOT reproduce
-  the old `beginners_coordinator` access. If you add a coordinator Workshop
-  read, authorize against `workshop_coordinator`, `president`, and `admin`
-  only.
+  module MUST require `workshops.manage` and MUST NOT reproduce the old
+  `beginners_coordinator` access (`Dhc.Auth.CapabilitiesTest` pins it).
 
   ## Runtime behavior
 
@@ -90,12 +87,6 @@ defmodule Dhc.Workshops do
   # sentinel instead of corrupting the read later.
   @unknown_member "[unknown member]"
 
-  # The canonical Phoenix RBAC for coordinator Workshop management reads
-  # (calendar + attendees/refunds). Mirrors the corrected RLS roles from
-  # `20250923100806_fix_workshops_rls.sql`. Future controllers should reference
-  # this list — NOT the old `beginners_coordinator` policy (see moduledoc).
-  @coordinator_management_roles ~w(workshop_coordinator president admin)
-
   # Member-visible Workshop statuses (PRD #142): planned + published. Finished
   # and cancelled Workshops are not shown to members on the collection view.
   @member_visible_statuses ~w(planned published)
@@ -115,16 +106,6 @@ defmodule Dhc.Workshops do
   @summary_scalar_fields ~w(id title description location start_date end_date
     max_capacity price_member price_non_member is_public refund_days status
     announce_discord announce_email created_by)a
-
-  @doc """
-  Returns the canonical coordinator Workshop management roles.
-
-  Exposed so future controller authorization plugs build against the same
-  source of truth as this context, and so tests can assert the drift has not
-  been reintroduced (`beginners_coordinator` is NOT a member).
-  """
-  @spec coordinator_management_roles() :: [String.t()]
-  def coordinator_management_roles, do: @coordinator_management_roles
 
   @doc """
   Returns the member-visible Workshop statuses (`planned`, `published`).

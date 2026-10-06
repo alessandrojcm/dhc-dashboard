@@ -1,7 +1,10 @@
 defmodule DhcWeb.TrainingAnnouncementOccurrencesController do
   use DhcWeb, :controller
+
   alias Dhc.TrainingAnnouncements
   alias DhcWeb.TrainingAnnouncementHTTP, as: HTTP
+
+  action_fallback HTTP
 
   def window(conn, params) do
     TrainingAnnouncements.occurrence_window(HTTP.actor_id(conn), params["from"], params["to"])

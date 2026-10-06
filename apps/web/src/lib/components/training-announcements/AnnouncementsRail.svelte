@@ -22,7 +22,7 @@ import {
 	trainingAnnouncementsListQueryKey,
 	trainingAnnouncementsRetireMutation,
 	type TrainingAnnouncement,
-	type TrainingAnnouncementError,
+	type ApiErrorResponse,
 	type TrainingAnnouncementListResponse,
 	type TrainingAnnouncementOccurrence,
 } from "@dhc/api-client";
@@ -124,7 +124,7 @@ function commandOptions(
 			return { previous };
 		},
 		onError: (
-			cause: TrainingAnnouncementError,
+			cause: ApiErrorResponse,
 			_variables: LifecycleVariables,
 			context: LifecycleContext | undefined,
 		) => {

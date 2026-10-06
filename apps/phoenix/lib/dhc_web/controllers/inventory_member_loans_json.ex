@@ -3,10 +3,9 @@ defmodule DhcWeb.InventoryMemberLoansJSON do
 
   # ALE-285 member loan renderer.
   #
-  # Top-level envelope:
+  # Top-level envelope (errors render through `DhcWeb.InventoryHTTP`):
   #   * list  → `%{data: %{loans: [...]}}`
   #   * loan  → `%{data: %{...}}`
-  #   * error → `%{errors: %{detail:, code?:}}`
   #
   # The rendered loan carries no borrower id: every row here already belongs
   # to the caller, so echoing the principal id would add nothing but a field
@@ -33,16 +32,6 @@ defmodule DhcWeb.InventoryMemberLoansJSON do
   end
 
   def render("show.json", %{loan: loan}), do: %{data: render_loan(loan)}
-
-  def render("error.json", assigns) do
-    errors =
-      assigns
-      |> Map.take([:detail, :code])
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
-
-    %{errors: errors}
-  end
 
   defp render_loan(loan) do
     %{

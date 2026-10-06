@@ -11,7 +11,7 @@ export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 	const access = authorizationFor(session);
 	if (!session) error(401, "Unauthorized");
 	const canEditSettings = access.can("members.settings.edit");
-	// ALE-252: mirrors the Phoenix `:membership_minting_api` pipeline. The
+	// ALE-252: mirrors the Phoenix `:membership_reactivate` pipeline. The
 	// directory table uses it to show the Reactivate action for inactive rows.
 	const canReactivate = access.can("membership.reactivate");
 

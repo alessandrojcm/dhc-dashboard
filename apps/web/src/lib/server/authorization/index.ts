@@ -3,9 +3,13 @@
  *
  * The dashboard's routing and presentation policy — which sections a user
  * sees, which routes they may open, which actions are rendered — is decided
- * here and nowhere else. Role composition, ownership predicates, denial
- * classification, navigation filtering and route-to-capability evaluation are
- * private; callers get typed capability decisions and derived navigation.
+ * here and nowhere else. Ownership predicates, denial classification,
+ * navigation filtering and route-to-capability evaluation are private; callers
+ * get typed capability decisions and derived navigation.
+ *
+ * ALE-344: Phoenix works out which capabilities a session holds and sends them
+ * on the session projection (`session.capabilities`); this boundary applies
+ * only the owner rule and navigation on top and never reads roles.
  *
  * Everything here is *advisory UX policy*. Phoenix enforces every API
  * operation authoritatively; a frontend decision is never a security

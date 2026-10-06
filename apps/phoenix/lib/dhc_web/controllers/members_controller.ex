@@ -2,8 +2,9 @@ defmodule DhcWeb.MembersController do
   use DhcWeb, :controller
 
   alias Dhc.Members
+  alias DhcWeb.MemberAccess
 
-  @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
+  action_fallback DhcWeb.MembersHTTP
 
   @doc """
   GET /members
@@ -15,11 +16,8 @@ defmodule DhcWeb.MembersController do
         |> put_view(json: DhcWeb.MembersJSON)
         |> render(:index, result: result)
 
-      {:error, :bad_cursor} ->
-        bad_request(conn, "Invalid or mismatched cursor")
-
-      {:error, _reason} ->
-        bad_request(conn, "Invalid members query")
+      error ->
+        DhcWeb.Problem.list_error(error)
     end
   end
 
@@ -34,14 +32,10 @@ defmodule DhcWeb.MembersController do
 
   @doc "GET /members/me"
   def me(conn, _params) do
-    case Members.get_current_user(conn.assigns.current_session.principal.id) do
-      {:ok, user} ->
-        conn
-        |> put_view(json: DhcWeb.MembersJSON)
-        |> render(:current_user, user: user, roles: conn.assigns.current_session.roles)
-
-      {:error, :not_found} ->
-        not_found(conn, "Member not found")
+    with {:ok, user} <- Members.get_current_user(conn.assigns.current_session.principal.id) do
+      conn
+      |> put_view(json: DhcWeb.MembersJSON)
+      |> render(:current_user, user: user, roles: conn.assigns.current_session.roles)
     end
   end
 
@@ -49,14 +43,11 @@ defmodule DhcWeb.MembersController do
   GET /members/:memberId
   """
   def show(conn, %{"memberId" => member_id}) do
-    with :ok <- authorize_self_or_admin(conn, member_id),
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.read", member_id),
          {:ok, member} <- Members.get_member(member_id) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
       |> render(:show, member: member)
-    else
-      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
-      {:error, :not_found} -> not_found(conn, "Member not found")
     end
   end
 
@@ -66,16 +57,11 @@ defmodule DhcWeb.MembersController do
   def update(conn, %{"memberId" => member_id} = params) do
     attrs = Map.delete(params, "memberId")
 
-    with :ok <- authorize_self_or_admin(conn, member_id),
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.update", member_id),
          {:ok, member} <- Members.update_member(member_id, attrs) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
       |> render(:show, member: member)
-    else
-      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
-      {:error, :not_found} -> not_found(conn, "Member not found")
-      {:error, :invalid_payload} -> validation_error(conn, "Invalid member update payload")
-      {:error, %Ecto.Changeset{} = changeset} -> validation_error(conn, changeset)
     end
   end
 
@@ -95,58 +81,5 @@ defmodule DhcWeb.MembersController do
     conn
     |> put_view(json: DhcWeb.MembersJSON)
     |> render(:options, options: Members.options())
-  end
-
-  defp authorize_self_or_admin(conn, member_id) do
-    current_session = conn.assigns.current_session
-
-    if current_session.principal.id == member_id or
-         Enum.any?(current_session.roles, &(&1 in @members_admin_roles)) do
-      :ok
-    else
-      {:error, :forbidden}
-    end
-  end
-
-  defp bad_request(conn, detail) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp forbidden(conn, detail) do
-    conn
-    |> put_status(:forbidden)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp not_found(conn, detail) do
-    conn
-    |> put_status(:not_found)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp validation_error(conn, %Ecto.Changeset{} = changeset) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{
-      errors: %{detail: "Invalid member update payload", fields: changeset_errors(changeset)}
-    })
-  end
-
-  defp validation_error(conn, detail) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp changeset_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
-        opts
-        |> Keyword.get(String.to_existing_atom(key), key)
-        |> to_string()
-      end)
-    end)
   end
 end

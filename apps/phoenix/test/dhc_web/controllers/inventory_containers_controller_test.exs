@@ -21,7 +21,7 @@ defmodule DhcWeb.InventoryContainersControllerTest do
   # `containers.created_by` FK is satisfied for `create_container`.
   @actor_id "11111111-1111-1111-1111-111111111111"
 
-  # Inventory write roles — mirrors the `:inventory_admin_api` pipeline and the
+  # Inventory write roles — mirrors the `:inventory_manage` pipeline and the
   # existing SvelteKit `INVENTORY_ROLES`.
   @write_roles ~w(quartermaster admin president)
   # Reads are any authenticated member.
