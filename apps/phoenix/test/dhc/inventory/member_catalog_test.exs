@@ -253,6 +253,24 @@ defmodule Dhc.Inventory.MemberCatalogTest do
       assert {:error, :invalid_direction} = Inventory.list_catalog_items(%{"direction" => "up"})
     end
 
+    # Characterization (ALE-347): today the member decimal filter compares
+    # text, so `1` misses a stored `1.0` and a non-decimal is accepted.
+    test "characterization: decimal property values compare as text" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
+      {:ok, match} = create_item(container_id, category.id, %{weight.id => "1.0"})
+      {:ok, _other} = create_item(container_id, category.id, %{weight.id => "2.0"})
+
+      assert {:ok, %{items: [], total_count: 0}} =
+               Inventory.list_catalog_items(%{"property" => "#{weight.id}:1"})
+
+      assert {:ok, page} = Inventory.list_catalog_items(%{"property" => "#{weight.id}:1.0"})
+      assert Enum.map(page.items, & &1.id) == [match.id]
+
+      assert {:ok, %{items: []}} =
+               Inventory.list_catalog_items(%{"property" => "#{weight.id}:not-a-number"})
+    end
+
     test "filters by member-actionable availability over the projection facts" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, free} = create_item(container_id, category.id)
