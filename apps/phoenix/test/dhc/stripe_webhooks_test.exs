@@ -3,10 +3,10 @@ defmodule Dhc.StripeWebhooksTest do
 
   alias Dhc.StripeWebhooks
 
-  @acceptance {Dhc.Onboarding.Acceptance, :reconcile_stripe_event}
-  @membership_required {Dhc.StripeSync, :run_sync, :customer_required}
-  @membership_optional {Dhc.StripeSync, :run_sync, :customer_optional}
-  @workshop_refund {Dhc.Workshops, :apply_stripe_refund_event}
+  @acceptance :acceptance
+  @membership_required {:stripe_sync, :customer_required}
+  @membership_optional {:stripe_sync, :customer_optional}
+  @workshop_refund :workshop_refund
 
   @expected_routes %{
     "customer.subscription.created" => [@acceptance, @membership_required],

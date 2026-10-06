@@ -11,16 +11,19 @@ defmodule Dhc.StripeWebhooks do
 
   ## Targets
 
-    * `{Dhc.Onboarding.Acceptance, :reconcile_stripe_event}` — brings forward
-      Invitation Acceptance recovery for the event's Stripe customer.
-    * `{Dhc.StripeSync, :run_sync, :customer_required}` /
-      `{Dhc.StripeSync, :run_sync, :customer_optional}` — re-syncs Membership
-      for the event's Stripe customer (ADR 0008: `StripeSync` reconciles
-      Membership). A subscription event without a customer is an error
-      (`:missing_customer_id`); an invoice or PaymentIntent event without one
-      is a no-op.
-    * `{Dhc.Workshops, :apply_stripe_refund_event}` — applies a Stripe Refund
-      object to the Workshop Refund it belongs to.
+  A target is a plain tag; `run_target/3` is the one place that turns a tag
+  into a call.
+
+    * `:acceptance` — `Dhc.Onboarding.Acceptance.reconcile_stripe_event/1`
+      brings forward Invitation Acceptance recovery for the event's Stripe
+      customer.
+    * `{:stripe_sync, :customer_required}` / `{:stripe_sync, :customer_optional}`
+      — `Dhc.StripeSync.run_sync/1` re-syncs Membership for the event's Stripe
+      customer (ADR 0008: `StripeSync` reconciles Membership). A subscription
+      event without a customer is an error (`:missing_customer_id`); an invoice
+      or PaymentIntent event without one is a no-op.
+    * `:workshop_refund` — `Dhc.Workshops.apply_stripe_refund_event/1` applies
+      a Stripe Refund object to the Workshop Refund it belongs to.
 
   Targets run in table order; the first error stops the event and is returned.
 
@@ -35,12 +38,20 @@ defmodule Dhc.StripeWebhooks do
 
   require Logger
 
-  @acceptance {Dhc.Onboarding.Acceptance, :reconcile_stripe_event}
-  @membership_required {Dhc.StripeSync, :run_sync, :customer_required}
-  @membership_optional {Dhc.StripeSync, :run_sync, :customer_optional}
-  @workshop_refund {Dhc.Workshops, :apply_stripe_refund_event}
+  @acceptance :acceptance
+  @membership_required {:stripe_sync, :customer_required}
+  @membership_optional {:stripe_sync, :customer_optional}
+  @workshop_refund :workshop_refund
 
   # The routing table. Every target must be idempotent (see moduledoc).
+  #
+  # Replay window: `Dhc.StripeWebhooks.Worker` is unique on the event id for
+  # 24 hours across ALL job states (`states: :all`), including `discarded`. A
+  # job discarded after its 3 attempts therefore cannot be replayed by
+  # re-sending the same Stripe event (dashboard "Resend" or a Stripe retry)
+  # within those 24 hours: the insert is deduplicated and nothing runs. Fix the
+  # cause, then retry the discarded job itself (`Oban.retry_job/1`) or wait out
+  # the window.
   @route_groups [
     {~w(
        customer.subscription.created
@@ -70,9 +81,11 @@ defmodule Dhc.StripeWebhooks do
 
   @routes for {types, targets} <- @route_groups, type <- types, into: %{}, do: {type, targets}
 
-  @typedoc "A domain reconcile function an event is routed to."
+  @typedoc "A tag naming the domain reconcile function an event is routed to."
   @type target ::
-          {module(), atom()} | {module(), atom(), :customer_required | :customer_optional}
+          :acceptance
+          | :workshop_refund
+          | {:stripe_sync, :customer_required | :customer_optional}
 
   @doc """
   Returns the routing table: each handled event type and the targets it calls,
@@ -154,7 +167,7 @@ defmodule Dhc.StripeWebhooks do
   defp run_target(@workshop_refund, _event_type, object),
     do: Dhc.Workshops.apply_stripe_refund_event(object)
 
-  defp run_target({Dhc.StripeSync, :run_sync, customer_policy}, event_type, object) do
+  defp run_target({:stripe_sync, customer_policy}, event_type, object) do
     case {customer_id(object), customer_policy} do
       {nil, :customer_required} ->
         Logger.warning("[stripe-webhooks] No customer ID on event",
