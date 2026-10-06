@@ -87,6 +87,7 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   import Ecto.Query
 
   alias Dhc.ClubCalendar
+  alias Dhc.Inventory.ContainerTree
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemGuards
   alias Dhc.Inventory.ItemProjection
@@ -166,8 +167,6 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   @maintenance_rejection_note "Rejected automatically: the item went into maintenance."
   @archive_rejection_note "Rejected automatically: the item was archived."
   @default_archive_end_note "Ended automatically because the item was archived."
-
-  @container_path_separator " › "
 
   # Statuses a member may still walk away from; after checkout they hold the
   # item, so only an operator return closes the loan.
@@ -922,29 +921,8 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   # rather than a bare shelf name they cannot locate.
   defp container_path(nil), do: nil
 
-  defp container_path(container_id) do
-    result =
-      Repo.query!(
-        """
-        WITH RECURSIVE ancestors AS (
-          SELECT id, parent_container_id, name, 0 AS depth
-          FROM containers
-          WHERE id = $1
-          UNION ALL
-          SELECT parent.id, parent.parent_container_id, parent.name, child.depth + 1
-          FROM containers parent
-          JOIN ancestors child ON child.parent_container_id = parent.id
-        )
-        SELECT name FROM ancestors ORDER BY depth DESC
-        """,
-        [Ecto.UUID.dump!(container_id)]
-      )
-
-    case result.rows do
-      [] -> nil
-      rows -> Enum.map_join(rows, @container_path_separator, fn [name] -> name end)
-    end
-  end
+  defp container_path(container_id),
+    do: Map.get(ContainerTree.path_names([container_id]), container_id)
 
   # ── Input normalization ─────────────────────────────────────────
 

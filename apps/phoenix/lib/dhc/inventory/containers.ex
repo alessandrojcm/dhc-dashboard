@@ -4,6 +4,7 @@ defmodule Dhc.Inventory.Containers do
   import Ecto.Query
 
   alias Dhc.Inventory.Container
+  alias Dhc.Inventory.ContainerTree
   alias Dhc.Inventory.ItemGuards
   alias Dhc.Inventory.Locks
   alias Dhc.Repo
@@ -110,7 +111,7 @@ defmodule Dhc.Inventory.Containers do
   end
 
   defp delete_unreferenced_container(%Container{} = container) do
-    lock_dependants(container.id)
+    ContainerTree.lock_subtree_for_update(container.id)
 
     if direct_dependants?(container.id) do
       Repo.rollback(:still_referenced)
@@ -329,27 +330,8 @@ defmodule Dhc.Inventory.Containers do
     |> Keyword.get(:skip_cycle_check, false)
   end
 
-  defp detect_cycle?(container_id, proposed) when proposed == container_id, do: true
-
-  defp detect_cycle?(container_id, proposed) do
-    parent_map = container_parent_map()
-
-    Stream.unfold(proposed, fn
-      nil -> nil
-      current -> {current, Map.get(parent_map, current)}
-    end)
-    |> Enum.reduce_while(false, fn
-      ^container_id, _acc -> {:halt, true}
-      nil, _acc -> {:halt, false}
-      _id, _acc -> {:cont, false}
-    end)
-  end
-
-  defp container_parent_map do
-    from(c in Container, select: {c.id, c.parent_container_id})
-    |> Repo.all()
-    |> Map.new()
-  end
+  defp detect_cycle?(container_id, proposed),
+    do: ContainerTree.self_or_ancestor?(container_id, proposed)
 
   defp locked_move_container(id, parent_id) do
     case Locks.get_for_update(Container, id) do
@@ -450,9 +432,9 @@ defmodule Dhc.Inventory.Containers do
         populate_flat_aggregates(container)
 
       %Container{} = container ->
-        lock_dependants(container.id)
+        ContainerTree.lock_subtree_for_update(container.id)
 
-        if active_dependants?(container.id) do
+        if ContainerTree.active_dependants?(container.id) do
           Repo.rollback(:active_dependants)
         else
           persist_container_stamp(container, archived_at: DateTime.utc_now())
@@ -489,72 +471,6 @@ defmodule Dhc.Inventory.Containers do
 
   defp translate_restore_result({:ok, %Container{} = container}), do: {:ok, container}
   defp translate_restore_result({:error, reason}), do: {:error, reason}
-
-  defp active_dependants?(container_id) do
-    %{rows: [[active_dependants?]]} =
-      query_subtree!(
-        """
-        SELECT
-          EXISTS (
-            SELECT 1
-            FROM containers container
-            JOIN subtree ON subtree.id = container.id
-            WHERE container.id <> $1 AND container.archived_at IS NULL
-          )
-          OR EXISTS (
-            SELECT 1
-            FROM inventory_items item
-            JOIN subtree ON subtree.id = item.container_id
-            WHERE item.archived_at IS NULL
-          )
-        """,
-        container_id
-      )
-
-    active_dependants?
-  end
-
-  defp lock_dependants(container_id) do
-    query_subtree!(
-      """
-      SELECT container.id
-      FROM containers container
-      JOIN subtree ON subtree.id = container.id
-      ORDER BY container.id
-      FOR UPDATE
-      """,
-      container_id
-    )
-
-    query_subtree!(
-      """
-      SELECT item.id
-      FROM inventory_items item
-      JOIN subtree ON subtree.id = item.container_id
-      ORDER BY item.id
-      FOR UPDATE
-      """,
-      container_id
-    )
-  end
-
-  # Shared recursive walk of a container and every descendant. The three
-  # callers differ only in the SELECT that follows (active-dependant check,
-  # container FOR UPDATE, item FOR UPDATE).
-  defp query_subtree!(select_sql, container_id) do
-    Repo.query!(
-      """
-      WITH RECURSIVE subtree AS (
-        SELECT id FROM containers WHERE id = $1
-        UNION ALL
-        SELECT child.id
-        FROM containers child
-        JOIN subtree parent ON parent.id = child.parent_container_id
-      )
-      """ <> select_sql,
-      [Ecto.UUID.dump!(container_id)]
-    )
-  end
 
   defp parent_chain_active?(parent_id), do: ItemGuards.container_chain_active?(parent_id)
 

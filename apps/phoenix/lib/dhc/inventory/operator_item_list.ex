@@ -32,6 +32,7 @@ defmodule Dhc.Inventory.OperatorItemList do
   import Ecto.Query
 
   alias Dhc.CursorPagination
+  alias Dhc.Inventory.ContainerTree
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemPropertyValue
@@ -201,6 +202,7 @@ defmodule Dhc.Inventory.OperatorItemList do
   end
 
   defp constrain_search(query, websearch, last) do
+    {path_ids, path_names} = container_paths()
     yes = ItemProjection.render_value(%{value_type: "boolean", boolean: true})
     no = ItemProjection.render_value(%{value_type: "boolean", boolean: false})
 
@@ -217,16 +219,9 @@ defmodule Dhc.Inventory.OperatorItemList do
             replace(?, '-', ' '),
             (SELECT name FROM equipment_categories WHERE id = ?),
             (
-              WITH RECURSIVE ancestors AS (
-                SELECT id, parent_container_id, name, 0 AS depth
-                FROM containers
-                WHERE id = ?
-                UNION ALL
-                SELECT parent.id, parent.parent_container_id, parent.name, child.depth + 1
-                FROM containers parent
-                JOIN ancestors child ON child.parent_container_id = parent.id
-              )
-              SELECT string_agg(name, ' ' ORDER BY depth DESC) FROM ancestors
+              SELECT path.name
+              FROM unnest(?::uuid[], ?::text[]) AS path(container_id, name)
+              WHERE path.container_id = ?
             ),
             (
               SELECT string_agg(
@@ -267,6 +262,8 @@ defmodule Dhc.Inventory.OperatorItemList do
         i.slug,
         i.notes,
         i.category_id,
+        type(^path_ids, {:array, Ecto.UUID}),
+        ^path_names,
         i.container_id,
         ^yes,
         ^no,
@@ -279,6 +276,17 @@ defmodule Dhc.Inventory.OperatorItemList do
         ^last
       )
     )
+  end
+
+  # Every Container's root-first path, read once before the query. Club scale
+  # is tens of containers, so passing them as two parallel arrays keeps the
+  # hierarchy walk in `ContainerTree` instead of a CTE per searched row. The
+  # ` › ` separator is punctuation to the text-search parser, so the indexed
+  # words are exactly the ancestor names.
+  defp container_paths do
+    ContainerTree.all_ids()
+    |> ContainerTree.path_names()
+    |> Enum.unzip()
   end
 
   # ── Options ─────────────────────────────────────────────────────
