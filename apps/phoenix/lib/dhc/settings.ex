@@ -16,9 +16,9 @@ defmodule Dhc.Settings do
 
   ## RBAC
 
-  Generic Settings reads and writes require one of:
-  `president`, `committee_coordinator`, `admin`. Enforced at the router layer
-  via `DhcWeb.Plugs.RequireAuth` (see the `members_settings_edit` pipeline).
+  Generic Settings reads and writes require the `members.settings.edit`
+  capability (`Dhc.Auth.Capabilities`). Enforced at the router layer via
+  `DhcWeb.Plugs.RequireSession` (the `:members_settings_edit` pipeline).
   """
 
   import Ecto.Query

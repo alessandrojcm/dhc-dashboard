@@ -3,14 +3,14 @@ defmodule DhcWeb.InventoryStructureController do
   Operator structure viewers for Property Definitions and Options — ALE-283c.
 
     * GET    /inventory/categories/:categoryId/definitions — list, any member.
-    * POST   /inventory/categories/:categoryId/definitions — create, write roles.
+    * POST   /inventory/categories/:categoryId/definitions — create, inventory operators.
     * GET    /inventory/definitions/:id                    — show, any member.
-    * PATCH  /inventory/definitions/:id                    — update, write roles.
-    * POST   /inventory/definitions/:id/retire             — retire, write roles.
+    * PATCH  /inventory/definitions/:id                    — update, inventory operators.
+    * POST   /inventory/definitions/:id/retire             — retire, inventory operators.
     * GET    /inventory/definitions/:definitionId/options  — list, any member.
-    * POST   /inventory/definitions/:definitionId/options  — create, write roles.
-    * PATCH  /inventory/options/:id                        — update, write roles.
-    * POST   /inventory/options/:id/retire                 — retire, write roles.
+    * POST   /inventory/definitions/:definitionId/options  — create, inventory operators.
+    * PATCH  /inventory/options/:id                        — update, inventory operators.
+    * POST   /inventory/options/:id/retire                 — retire, inventory operators.
 
   RBAC is enforced by the `:authenticated_api` (reads) and
   `:inventory_manage` (writes) pipelines. The controller renders

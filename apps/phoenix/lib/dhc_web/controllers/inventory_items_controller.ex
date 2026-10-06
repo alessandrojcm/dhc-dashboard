@@ -2,24 +2,23 @@ defmodule DhcWeb.InventoryItemsController do
   @moduledoc """
   Operator viewers and commands for target inventory Items — ALE-284c.
 
-    * GET    /inventory/items                                 — list, write roles.
-    * POST   /inventory/items                                 — create, write roles.
-    * GET    /inventory/items/:slugOrId                       — show, write roles.
-    * PATCH  /inventory/items/:slugOrId                       — generic edit, write roles.
-    * DELETE /inventory/items/:slugOrId                       — delete, write roles.
-    * POST   /inventory/items/:slugOrId/category              — reclassify, write roles.
-    * POST   /inventory/items/:slugOrId/move                  — move, write roles.
-    * GET    /inventory/items/:slugOrId/maintenance           — list periods, write roles.
-    * POST   /inventory/items/:slugOrId/maintenance/start     — start, write roles.
-    * POST   /inventory/items/:slugOrId/maintenance/end       — end, write roles.
-    * POST   /inventory/items/:slugOrId/archive               — archive, write roles.
-    * POST   /inventory/items/:slugOrId/restore               — restore, write roles.
+    * GET    /inventory/items                                 — list, inventory operators.
+    * POST   /inventory/items                                 — create, inventory operators.
+    * GET    /inventory/items/:slugOrId                       — show, inventory operators.
+    * PATCH  /inventory/items/:slugOrId                       — generic edit, inventory operators.
+    * DELETE /inventory/items/:slugOrId                       — delete, inventory operators.
+    * POST   /inventory/items/:slugOrId/category              — reclassify, inventory operators.
+    * POST   /inventory/items/:slugOrId/move                  — move, inventory operators.
+    * GET    /inventory/items/:slugOrId/maintenance           — list periods, inventory operators.
+    * POST   /inventory/items/:slugOrId/maintenance/start     — start, inventory operators.
+    * POST   /inventory/items/:slugOrId/maintenance/end       — end, inventory operators.
+    * POST   /inventory/items/:slugOrId/archive               — archive, inventory operators.
+    * POST   /inventory/items/:slugOrId/restore               — restore, inventory operators.
 
   Every command is its own action with its own request body, so the generic
   edit cannot express a move, a maintenance transition, an archive, or a
-  loan change. Operator authority is equal for `quartermaster`,
-  `president`, and `admin`, all enforced by the `:inventory_manage`
-  pipeline.
+  loan change. Every holder of the `inventory.manage` capability has
+  equal authority, enforced by the `:inventory_manage` pipeline.
 
   **Reads are operator-only too.** This viewer discloses the container
   location, operator notes, and maintenance facts, which spec ALE-280 story

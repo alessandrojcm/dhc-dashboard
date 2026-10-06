@@ -12,10 +12,9 @@ export const load: PageServerLoad = async ({ params, locals, cookies }) => {
 
 	// Single Phoenix read (`GET /api/workshops/{id}/attendees`) returning the
 	// combined Workshop summary + attendees + refunds payload. Phoenix enforces
-	// coordinator RBAC (`workshop_coordinator` / `president` / `admin`) via the
-	// `workshop_management_api` pipeline — see commit 389a54ae and ADR 0005. The historical
-	// `beginners_coordinator` registration visibility drift is NOT reproduced
-	// (Phoenix 403s it). ALE-164: the `_dhc_session` cookie is forwarded by
+	// the `workshops.manage` capability via the `:workshops_manage` pipeline —
+	// see ADR 0005. The historical beginners-coordinator registration
+	// visibility drift is NOT reproduced (Phoenix 403s it). ALE-164: the `_dhc_session` cookie is forwarded by
 	// `apiClientOptions(cookies)`; the Supabase JWT path is removed.
 	const {
 		data,

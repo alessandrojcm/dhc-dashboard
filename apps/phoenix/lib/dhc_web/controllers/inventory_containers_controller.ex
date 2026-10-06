@@ -6,18 +6,18 @@ defmodule DhcWeb.InventoryContainersController do
 
     * GET    /inventory/containers       — list (flat, with itemCount +
       parentContainer summary), any authenticated member.
-    * POST   /inventory/containers       — create, write roles.
+    * POST   /inventory/containers       — create, inventory operators.
     * GET    /inventory/containers/:id   — detail (parent + childContainers +
       items with category summary), any authenticated member.
-    * PATCH  /inventory/containers/:id   — update, write roles.
-    * POST   /inventory/containers/:id/move    — dedicated move, write roles.
-    * POST   /inventory/containers/:id/archive — archive, write roles.
-    * POST   /inventory/containers/:id/restore — restore, write roles.
-    * DELETE /inventory/containers/:id   — delete (204), write roles.
+    * PATCH  /inventory/containers/:id   — update, inventory operators.
+    * POST   /inventory/containers/:id/move    — dedicated move, inventory operators.
+    * POST   /inventory/containers/:id/archive — archive, inventory operators.
+    * POST   /inventory/containers/:id/restore — restore, inventory operators.
+    * DELETE /inventory/containers/:id   — delete (204), inventory operators.
 
-  RBAC is enforced by the `:inventory_manage` (writes) and
-  `:authenticated_api` (reads) pipelines in the router, mirroring the existing
-  SvelteKit `INVENTORY_ROLES` (`quartermaster`, `president`, `admin`).
+  RBAC is enforced by the `:inventory_manage` (writes, the
+  `inventory.manage` capability) and `:authenticated_api` (reads) pipelines
+  in the router.
 
   The controller does no business logic; it derives `created_by` from
   `conn.assigns.current_user.sub` on create, renders successes through

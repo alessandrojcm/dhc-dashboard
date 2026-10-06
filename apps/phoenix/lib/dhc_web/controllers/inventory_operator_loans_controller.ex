@@ -2,18 +2,18 @@ defmodule DhcWeb.InventoryOperatorLoansController do
   @moduledoc """
   Operator viewers and commands for Loans — ALE-286c.
 
-    * GET  /inventory/operator/loans/:loanId           — show, write roles.
-    * POST /inventory/operator/loans/:loanId/approve   — approve, write roles.
-    * POST /inventory/operator/loans/:loanId/reject    — reject, write roles.
-    * POST /inventory/operator/loans/:loanId/cancel    — operator cancel, write roles.
-    * POST /inventory/operator/loans/:loanId/checkout  — checkout, write roles.
-    * POST /inventory/operator/loans/:loanId/return    — return, write roles.
-    * POST /inventory/operator/loans/:loanId/dates     — edit dates, write roles.
+    * GET  /inventory/operator/loans/:loanId           — show, inventory operators.
+    * POST /inventory/operator/loans/:loanId/approve   — approve, inventory operators.
+    * POST /inventory/operator/loans/:loanId/reject    — reject, inventory operators.
+    * POST /inventory/operator/loans/:loanId/cancel    — operator cancel, inventory operators.
+    * POST /inventory/operator/loans/:loanId/checkout  — checkout, inventory operators.
+    * POST /inventory/operator/loans/:loanId/return    — return, inventory operators.
+    * POST /inventory/operator/loans/:loanId/dates     — edit dates, inventory operators.
 
   Every command is its own action with its own request body, so there is
-  no generic loan patch that can move lifecycle state. Operator authority
-  is equal for `quartermaster`, `president`, and `admin`, all enforced by
-  the `:inventory_manage` pipeline.
+  no generic loan patch that can move lifecycle state. Every holder of the
+  `inventory.manage` capability has equal authority, enforced by the
+  `:inventory_manage` pipeline.
 
   The controller renders successes (`DhcWeb.InventoryHTTP` maps every
   error) and enqueues keyed notifications *after* a successful write. The command

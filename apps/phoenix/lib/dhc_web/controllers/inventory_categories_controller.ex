@@ -6,13 +6,13 @@ defmodule DhcWeb.InventoryCategoriesController do
 
     * GET    /inventory/categories       — list, any authenticated member.
     * GET    /inventory/categories/:id   — show, any authenticated member.
-    * POST   /inventory/categories       — create, write roles.
-    * PATCH  /inventory/categories/:id   — update, write roles.
-    * DELETE /inventory/categories/:id   — delete (204), write roles.
+    * POST   /inventory/categories       — create, inventory operators.
+    * PATCH  /inventory/categories/:id   — update, inventory operators.
+    * DELETE /inventory/categories/:id   — delete (204), inventory operators.
 
-  RBAC is enforced by the `:inventory_manage` (writes) and
-  `:authenticated_api` (reads) pipelines in the router, mirroring the existing
-  SvelteKit `INVENTORY_ROLES` (`quartermaster`, `president`, `admin`).
+  RBAC is enforced by the `:inventory_manage` (writes, the
+  `inventory.manage` capability) and `:authenticated_api` (reads) pipelines
+  in the router.
 
   The controller does no business logic; it renders successes through
   `DhcWeb.InventoryCategoriesJSON` and leaves errors to `DhcWeb.InventoryHTTP`.

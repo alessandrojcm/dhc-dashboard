@@ -190,7 +190,7 @@ Conventions established by the Waitlist migration (#105–#107) and reinforced b
 - **Cursor pagination for list endpoints**: use `Dhc.CursorPagination` for cursor parse/encode, query direction, `id` tie-break comparisons, ordering, row slicing, and next/previous metadata. Keep domain option parsing, filters, query shape, and sort specs in the domain module. Opaque Base64 cursors bind to request params (limit, sort, direction, filters, q); mismatched cursors return `400`. Exact `COUNT(*)` for `totalCount` (never `estimated`).
 - **Multi-value filters**: comma-separated single param (e.g. `?membershipStatus=active,paused`). Absent or empty = all values (no filter).
 - **Websearch**: `websearch_to_tsquery('english', ?)` on the underlying `search_text` column, exposed as `q` query param.
-- **RBAC via `RequireSession` plug**: role lists mirror the existing RLS policies. Controllers read `current_session.principal`; self-read (where applicable) is endpoint-specific, not a blanket rule.
+- **RBAC via `RequireSession` plug**: a pipeline requires one capability (`plug RequireSession, capability: :"x.y"`); `Dhc.Auth.Capabilities` alone maps roles to capabilities (ALE-344). Controllers read `current_session.principal`; owner-scoped access (self-read) is checked in the controller with `Capabilities.authorize/3` and conceals with 404, not a blanket rule.
 - **Principal access**: join `Dhc.Auth.Principal` through application `principal_id` fields. Supabase `auth.users` is migration/rollback input only and must not be an application query dependency.
 - **Computed view columns reproduced in Ecto**: when a view computes a domain field (e.g. `membership_status` CASE), reproduce the computation in the Phoenix context query rather than depending on the view.
 
