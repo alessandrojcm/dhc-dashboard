@@ -1,103 +1,41 @@
 import { form, getRequestEvent } from "$app/server";
-import { membersUpdate } from "@dhc/api-client";
-import * as v from "valibot";
-import formSchema, {
-	memberProfileClientSchema,
-} from "#lib/schemas/membersSignup.js";
+import { membersUpdate, type MemberUpdateRequest } from "@dhc/api-client";
+import memberProfileSchema from "#lib/schemas/memberProfile.js";
 import { authorizationFor } from "#lib/server/authorization/index.js";
 import { apiClientOptions } from "#lib/server/api-client.js";
-import { invalid } from "@sveltejs/kit";
 
-export const updateProfile = form(
-	memberProfileClientSchema,
-	async (data, issue) => {
-		const event = getRequestEvent();
-		const memberId = event.params.memberId;
-		if (!memberId) throw new Error("Member ID is required");
+/**
+ * Member profile edit form. The schema's output is the Phoenix request body,
+ * so the validated data is sent unchanged.
+ */
+export const updateProfile = form(memberProfileSchema, async (data) => {
+	const event = getRequestEvent();
+	const memberId = event.params.memberId;
+	if (!memberId) throw new Error("Member ID is required");
 
-		// GH-510: same contextual rule as the profile page load — the owner or
-		// a member administrator may update; anyone else gets the decision's
-		// status (401 anonymous, 404 concealed).
-		const { session } = await event.locals.safeGetSession();
-		authorizationFor(session).require("members.profile.update", {
-			ownerPrincipalId: memberId,
+	// GH-510: same contextual rule as the profile page load — the owner or
+	// a member administrator may update; anyone else gets the decision's
+	// status (401 anonymous, 404 concealed).
+	const { session } = await event.locals.safeGetSession();
+	authorizationFor(session).require("members.profile.update", {
+		ownerPrincipalId: memberId,
+	});
+
+	try {
+		const response = await membersUpdate({
+			...apiClientOptions(event.cookies),
+			path: { memberId },
+			body: data satisfies MemberUpdateRequest,
 		});
-
-		// Transform client data (string dateOfBirth) to server types (Date) for complex schema validation
-		const transformedData = {
-			...data,
-			dateOfBirth: new Date(data.dateOfBirth),
-		};
-
-		// Validate with the full complex schema (includes cross-field validation and transformations)
-		const result = v.safeParse(formSchema, transformedData);
-
-		if (!result.success) {
-			// Map Valibot validation errors to form field issues
-			for (const validationIssue of result.issues) {
-				const fieldPath =
-					validationIssue.path?.map((p) => p.key).join(".") || "";
-				switch (fieldPath) {
-					case "firstName":
-						invalid(issue.firstName(validationIssue.message));
-					case "lastName":
-						invalid(issue.lastName(validationIssue.message));
-					case "phoneNumber":
-						invalid(issue.phoneNumber(validationIssue.message));
-					case "dateOfBirth":
-						invalid(issue.dateOfBirth(validationIssue.message));
-					case "pronouns":
-						invalid(issue.pronouns(validationIssue.message));
-					case "gender":
-						invalid(issue.gender(validationIssue.message));
-					case "medicalConditions":
-						invalid(issue.medicalConditions(validationIssue.message));
-					case "nextOfKin":
-						invalid(issue.nextOfKin(validationIssue.message));
-					case "nextOfKinNumber":
-						invalid(issue.nextOfKinNumber(validationIssue.message));
-					case "weapon":
-						invalid(issue.weapon(validationIssue.message));
-					case "insuranceFormSubmitted":
-						invalid(issue.insuranceFormSubmitted(validationIssue.message));
-					case "socialMediaConsent":
-						invalid(issue.socialMediaConsent(validationIssue.message));
-					default:
-						invalid(validationIssue.message);
-				}
-			}
-			return;
+		if (response.error) {
+			return {
+				error: response.error.errors?.detail ?? "Failed to update profile",
+			};
 		}
 
-		try {
-			const response = await membersUpdate({
-				...apiClientOptions(event.cookies),
-				path: { memberId },
-				body: {
-					firstName: data.firstName,
-					lastName: data.lastName,
-					phoneNumber: data.phoneNumber,
-					dateOfBirth: data.dateOfBirth,
-					pronouns: data.pronouns,
-					gender: data.gender,
-					medicalConditions: data.medicalConditions,
-					nextOfKinName: data.nextOfKin,
-					nextOfKinPhone: data.nextOfKinNumber,
-					preferredWeapon: data.weapon,
-					insuranceFormSubmitted: data.insuranceFormSubmitted,
-					socialMediaConsent: data.socialMediaConsent,
-				},
-			});
-			if (response.error) {
-				return {
-					error: response.error.errors?.detail ?? "Failed to update profile",
-				};
-			}
-
-			return { success: "Profile has been updated!" };
-		} catch (e) {
-			console.error(e);
-			return { error: "Failed to update profile" };
-		}
-	},
-);
+		return { success: "Profile has been updated!" };
+	} catch (e) {
+		console.error(e);
+		return { error: "Failed to update profile" };
+	}
+});
