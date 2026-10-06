@@ -38,6 +38,10 @@ import {
 	parsePageSize,
 	transitionCursorQuery,
 } from "#lib/cursor-query.js";
+import {
+	ToggleGroup,
+	ToggleGroupItem,
+} from "#lib/components/ui/toggle-group/index.js";
 import { cn } from "#lib/utils.js";
 import MemberActions from "./member-actions.svelte";
 import MemberDateCell from "./member-date-cell.svelte";
@@ -276,25 +280,21 @@ function onSearchSubmit(event: SubmitEvent) {
 	onSearchChange(searchDraft);
 }
 
-function onStatusFilterChange(status: MemberStatus | null) {
-	let membershipStatus: string | null;
+// "All" is the group's reset item: turning it on, turning everything off, or
+// selecting every status all mean no filter, which the URL encodes as absent.
+const ALL_STATUSES = "all";
+const statusFilterValue = $derived(membershipStatusFilter ?? [ALL_STATUSES]);
 
-	if (status === null) {
-		membershipStatus = null;
-	} else {
-		const current = membershipStatusFilter ?? [];
-		const next = current.includes(status)
-			? current.filter((value) => value !== status)
-			: [...current, status];
-
-		if (next.length === 0 || next.length === statusOptions.length) {
-			membershipStatus = null;
-		} else {
-			membershipStatus = statusOptions
-				.filter((value) => next.includes(value))
-				.join(",");
-		}
-	}
+function onStatusFilterChange(next: string[]) {
+	const addedAll =
+		next.includes(ALL_STATUSES) && membershipStatusFilter !== null;
+	const statuses = statusOptions.filter((status) => next.includes(status));
+	const membershipStatus =
+		addedAll ||
+		statuses.length === 0 ||
+		statuses.length === statusOptions.length
+			? null
+			: statuses.join(",");
 
 	const newParams = transitionCursorQuery(page.url.searchParams, {
 		cursorKey: "cursor",
@@ -534,38 +534,28 @@ const table = createSvelteTable(tableOptions);
 					>Membership status</legend
 				>
 				<div class="flex flex-wrap gap-2">
-					<Button
+					<ToggleGroup
+						type="multiple"
 						variant="outline"
-						size="sm"
-						type="button"
-						aria-pressed={membershipStatusFilter === null}
-						class={cn(
-							"min-h-11 shadow-none",
-							membershipStatusFilter === null &&
-								"border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
-						)}
-						onclick={() => onStatusFilterChange(null)}
+						value={statusFilterValue}
+						onValueChange={onStatusFilterChange}
+						aria-label="Membership status"
+						class="flex-wrap gap-2 shadow-none"
 					>
-						All
-					</Button>
-					{#each statusOptions as status (status)}
-						{@const selected =
-							membershipStatusFilter?.includes(status) ?? false}
-						<Button
-							variant="outline"
-							size="sm"
-							type="button"
-							aria-pressed={selected}
-							class={cn(
-								"min-h-11 capitalize shadow-none",
-								selected &&
-									"border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
-							)}
-							onclick={() => onStatusFilterChange(status)}
+						<ToggleGroupItem
+							value={ALL_STATUSES}
+							class="min-h-11 flex-none rounded-lg border-l px-3.5 font-semibold shadow-none first:rounded-lg last:rounded-lg data-[variant=outline]:border-l data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90 data-[state=on]:hover:text-primary-foreground"
+							>All</ToggleGroupItem
 						>
-							{status}
-						</Button>
-					{/each}
+						{#each statusOptions as status (status)}
+							<ToggleGroupItem
+								value={status}
+								class="min-h-11 flex-none rounded-lg border-l px-3.5 font-semibold shadow-none first:rounded-lg last:rounded-lg data-[variant=outline]:border-l data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90 data-[state=on]:hover:text-primary-foreground capitalize"
+							>
+								{status}
+							</ToggleGroupItem>
+						{/each}
+					</ToggleGroup>
 					{#if hasActiveFilters}
 						<Button
 							variant="ghost"
