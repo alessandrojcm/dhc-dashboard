@@ -185,9 +185,6 @@ test.describe("Invitation System", () => {
 		await gotoHydrated(page, "/dashboard/members");
 		await page.getByRole("button", { name: "Invite Members" }).click();
 
-		const dialog = page.getByRole("dialog");
-		await expect(dialog).toHaveCSS("width", "390px");
-		await expect(dialog).toHaveCSS("height", "844px");
 		await expect(
 			page.getByRole("button", { name: "Add invite" }),
 		).toBeVisible();
@@ -195,6 +192,8 @@ test.describe("Invitation System", () => {
 			page.getByRole("button", { name: /Send 0 invitations/i }),
 		).not.toBeVisible();
 		await expect(page.getByText(/Ready to send/)).not.toBeVisible();
+		// The full-screen sheet is a layout contract: pin it visually.
+		await expect(page).toHaveScreenshot("invite-dialog-mobile.png");
 	});
 
 	test("should be able to add multiple invitations to the list and send them", async ({

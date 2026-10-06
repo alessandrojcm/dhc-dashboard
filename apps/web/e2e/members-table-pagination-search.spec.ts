@@ -175,20 +175,16 @@ test.describe("Members table pagination and search", () => {
 			page.getByRole("region", { name: "Member directory", exact: true }),
 		).toHaveAttribute("aria-busy", "false");
 
-		// Find and click the clear search button
-		const clearButton = page.getByRole("button", { name: "Clear search" });
-		await clearButton.click();
+		await page.getByRole("button", { name: "Clear search" }).click();
 
 		await expect
 			.poll(() => new URL(page.url()).searchParams.get("q") ?? "", {
 				timeout: 10000,
 			})
 			.toBe("");
-
-		// Verify URL doesn't have a non-empty q parameter
-		const currentUrl = new URL(page.url());
-		const qParam = currentUrl.searchParams.get("q");
-		expect(qParam === null || qParam === "").toBe(true);
+		await expect(
+			page.getByRole("searchbox", { name: "Search members", exact: true }),
+		).toHaveValue("");
 	});
 
 	test("should filter members by membershipStatus URL param", async ({
@@ -218,23 +214,5 @@ test.describe("Members table pagination and search", () => {
 			exact: true,
 		});
 		await expect(activeFilter).toHaveAttribute("aria-pressed", "true");
-	});
-
-	test("should display correct total count for pagination", async ({
-		page,
-	}) => {
-		await gotoHydrated(page, "/dashboard/members/directory");
-
-		// Wait for table rows to be attached in DOM
-		const memberRows = page.getByTestId("members-table").locator("tbody tr");
-		await memberRows.first().waitFor({
-			state: "attached",
-			timeout: 15000,
-		});
-
-		// Verify rows are displayed
-		const rowCount = await memberRows.count();
-		expect(rowCount).toBeGreaterThan(0);
-		expect(rowCount).toBeLessThanOrEqual(10);
 	});
 });

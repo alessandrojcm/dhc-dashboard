@@ -50,7 +50,6 @@ const nextMonthlyBillingDate = $derived(data.nextMonthlyBillingDate);
 const nextAnnualBillingDate = $derived(data.nextAnnualBillingDate);
 
 let formElement: HTMLFormElement | undefined = $state();
-let paymentElementComplete = $state(false);
 
 // Stripe browser objects are UI adapters owned by this component; the machine
 // only ever sees their outcomes.
@@ -118,9 +117,6 @@ const { snapshot, send, actorRef } = useMachine(
 					"payment",
 					paymentElementOptions,
 				);
-				paymentElement.on("change", ({ complete }) => {
-					paymentElementComplete = complete;
-				});
 				await new Promise<void>((resolve) => {
 					paymentElement.on("ready", () => resolve());
 					paymentElement.mount("#payment-element");
@@ -309,14 +305,6 @@ const enhancedForm = processPayment.enhance(async ({ submit }) => {
 		onsubmit={() => send({ type: "PAYMENT_REQUESTED" })}
 		onretry={() => send({ type: "RETRY_REQUESTED" })}
 	/>
-	<div
-		id="payment-element-state"
-		data-ready={machineState !== "deciding" &&
-			machineState !== "initializing" &&
-			machineState !== "unavailable"}
-		data-complete={paymentElementComplete}
-		class="sr-only"
-	></div>
 	<input
 		type="hidden"
 		{...processPayment.fields.stripeConfirmationToken.as("text")}

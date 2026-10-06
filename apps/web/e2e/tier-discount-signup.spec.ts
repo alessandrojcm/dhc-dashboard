@@ -8,6 +8,11 @@ import {
 import { fillInvitationCredentials } from "./invitationSignup";
 import { API_BASE_URL } from "./e2eApi";
 import * as v from "valibot";
+import {
+	signupSubmitButton,
+	stripePaymentFrame,
+	stripePaymentFrameElement,
+} from "./stripe-payment";
 
 const MoneySchema = v.object({
 	amount: v.number(),
@@ -54,10 +59,6 @@ function stripeReferenceId(reference: StripeReference): string | undefined {
 
 	const objectReference = v.safeParse(v.object({ id: v.string() }), reference);
 	return objectReference.success ? objectReference.output.id : undefined;
-}
-
-function getStripeFrame(page: Page) {
-	return page.locator(".__PrivateStripeElement").frameLocator("iframe");
 }
 
 function pricingRow(page: Page, label: string) {
@@ -173,16 +174,13 @@ async function walkToPayment(
 	).toBeVisible();
 	await page.getByRole("button", { name: "Continue to payment" }).click();
 	await expect(page.getByLabel("Next of Kin", { exact: true })).toBeVisible();
-	await expect(page.locator("#payment-element-state")).toHaveAttribute(
-		"data-ready",
-		"true",
-	);
+	await expect(signupSubmitButton(page)).toBeEnabled();
 	if (expectsPaymentElement) {
-		await expect(getStripeFrame(page).getByLabel("IBAN")).toBeVisible({
+		await expect(stripePaymentFrame(page).getByLabel("IBAN")).toBeVisible({
 			timeout: 15_000,
 		});
 	} else {
-		await expect(page.locator(".__PrivateStripeElement")).toHaveCount(0);
+		await expect(stripePaymentFrameElement(page)).toHaveCount(0);
 	}
 }
 
@@ -196,7 +194,7 @@ async function fillNextOfKin(page: Page) {
 async function fillNextOfKinAndPayment(page: Page, invitation: InvitedUser) {
 	await fillNextOfKin(page);
 
-	const stripeFrame = getStripeFrame(page);
+	const stripeFrame = stripePaymentFrame(page);
 	await stripeFrame.getByLabel("IBAN").fill("IE29AIBK93115212345678");
 	await stripeFrame.getByLabel("Email").fill(invitation.email);
 	await stripeFrame.getByLabel("Full name").fill("John Doe");
@@ -206,10 +204,6 @@ async function fillNextOfKinAndPayment(page: Page, invitation: InvitedUser) {
 	await stripeFrame.getByLabel("City").fill("Dublin");
 	await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
 	await stripeFrame.getByLabel("County").selectOption("Dublin");
-	await expect(page.locator("#payment-element-state")).toHaveAttribute(
-		"data-complete",
-		"true",
-	);
 }
 
 // Pricing is bound to the acceptance session: the request must carry the

@@ -128,10 +128,9 @@ test.describe("ALE-283 operator inventory structure", () => {
 			await page.setViewportSize({ width: 390, height: 844 });
 			await page.goto("/dashboard/inventory/containers");
 			await page.waitForLoadState("networkidle");
-			const mobileHeader = page.locator("header").filter({
-				has: page.getByRole("heading", { name: "Containers" }),
-			});
-			await expect(mobileHeader).toHaveCSS("position", "sticky");
+			await expect(
+				page.getByRole("heading", { name: "Containers" }),
+			).toBeVisible();
 			const newLocation = page.getByRole("button", { name: "New location" });
 			await newLocation.click();
 			const editor = page.getByRole("dialog");

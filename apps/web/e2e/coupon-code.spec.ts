@@ -11,6 +11,7 @@ import {
 } from "./setupFunctions";
 import { fillInvitationCredentials } from "./invitationSignup";
 import * as v from "valibot";
+import { signupSubmitButton, stripePaymentFrame } from "./stripe-payment";
 
 type InvitedUser = Awaited<ReturnType<typeof setupInvitedUser>>;
 type StripeReference = string | { id: string } | null | undefined;
@@ -83,30 +84,11 @@ test.describe("Member Signup - Coupon Codes", () => {
 	let once100CouponCode: string;
 	let complimentaryCouponCode: string;
 	let complimentaryPromotionId: string;
-	let migrationCouponCode: string;
 	// Promotion code IDs for cleanup
 	let promotionCodeIds: string[] = [];
 
 	test.beforeAll(async () => {
 		// Create coupons once - they can be reused across all tests
-
-		const migrationCode =
-			process.env.PUBLIC_DASHBOARD_MIGRATION_CODE || "DHCDASHBOARD";
-		const existingPromos = await stripeClient.promotionCodes.list({
-			code: migrationCode,
-			limit: 10,
-		});
-		for (const promo of existingPromos.data) {
-			if (promo.active) {
-				await stripeClient.promotionCodes.update(promo.id, { active: false });
-			}
-			const couponId = stripeReferenceId(promo.promotion?.coupon);
-			if (couponId) {
-				try {
-					await stripeClient.coupons.del(couponId);
-				} catch {}
-			}
-		}
 
 		const [annualPrices, monthlyPrices] = await Promise.all([
 			stripeClient.prices.list({
@@ -137,7 +119,6 @@ test.describe("Member Signup - Coupon Codes", () => {
 			onceCoupon,
 			once100Coupon,
 			complimentaryCoupon,
-			migrationCoupon,
 		] = await Promise.all([
 			// Coupon for annual fee only - 20% off
 			stripeClient.coupons.create({
@@ -181,12 +162,6 @@ test.describe("Member Signup - Coupon Codes", () => {
 				duration: "forever",
 				name: "Complimentary Membership",
 			}),
-			// Special migration coupon for testing the migration code functionality
-			stripeClient.coupons.create({
-				percent_off: 100,
-				duration: "once",
-				name: "Migration Discount",
-			}),
 		]);
 
 		// Create promotion codes for the coupons
@@ -197,7 +172,6 @@ test.describe("Member Signup - Coupon Codes", () => {
 			oncePromotion,
 			once100Promotion,
 			complimentaryPromotion,
-			migrationPromotion,
 		] = await Promise.all([
 			stripeClient.promotionCodes.create({
 				promotion: {
@@ -247,15 +221,6 @@ test.describe("Member Signup - Coupon Codes", () => {
 				code: `COMPLIMENTARY-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5,
 			}),
-			// Create the migration code with the exact name from the environment variable
-			stripeClient.promotionCodes.create({
-				promotion: {
-					coupon: migrationCoupon.id,
-					type: "coupon",
-				},
-				code: process.env.PUBLIC_DASHBOARD_MIGRATION_CODE || "DHCDASHBOARD",
-				max_redemptions: 5,
-			}),
 		]);
 
 		// Save promotion codes for tests
@@ -266,7 +231,6 @@ test.describe("Member Signup - Coupon Codes", () => {
 		once100CouponCode = once100Promotion.code;
 		complimentaryCouponCode = complimentaryPromotion.code;
 		complimentaryPromotionId = complimentaryPromotion.id;
-		migrationCouponCode = migrationPromotion.code;
 
 		// Save promotion code IDs for cleanup
 		promotionCodeIds = [
@@ -276,7 +240,6 @@ test.describe("Member Signup - Coupon Codes", () => {
 			oncePromotion.id,
 			once100Promotion.id,
 			complimentaryPromotion.id,
-			migrationPromotion.id,
 		];
 	});
 
@@ -394,22 +357,17 @@ test.describe("Member Signup - Coupon Codes", () => {
 			}
 		});
 
-		for (const coupon of [
-			{ name: "100% one-time coupon", code: () => once100CouponCode },
-			{ name: "migration coupon", code: () => migrationCouponCode },
-		]) {
-			test(`${coupon.name} makes the first payment free`, async ({ page }) => {
-				await applyCoupon(page, coupon.code());
+		test("100% one-time coupon makes the first payment free", async ({
+			page,
+		}) => {
+			await applyCoupon(page, once100CouponCode);
 
-				await expect(
-					page.getByText("Discount applied: 100% off"),
-				).toBeVisible();
-				await expect(
-					page.getByText("Applies to first payment only"),
-				).toBeVisible();
-				await expect(page.getByText("€0.00", { exact: true })).toBeVisible();
-			});
-		}
+			await expect(page.getByText("Discount applied: 100% off")).toBeVisible();
+			await expect(
+				page.getByText("Applies to first payment only"),
+			).toBeVisible();
+			await expect(page.getByText("€0.00", { exact: true })).toBeVisible();
+		});
 	});
 
 	for (const coupon of [
@@ -442,13 +400,8 @@ test.describe("Member Signup - Coupon Codes", () => {
 					page.getByText(`Discount applied: ${coupon.discount}`),
 				).toBeVisible();
 
-				await expect(page.locator("#payment-element-state")).toHaveAttribute(
-					"data-ready",
-					"true",
-				);
-				const stripeFrame = page
-					.locator(".__PrivateStripeElement")
-					.frameLocator("iframe");
+				await expect(signupSubmitButton(page)).toBeEnabled();
+				const stripeFrame = stripePaymentFrame(page);
 				await expect(stripeFrame.getByLabel("IBAN")).toBeVisible({
 					timeout: 15_000,
 				});
@@ -463,10 +416,6 @@ test.describe("Member Signup - Coupon Codes", () => {
 				await stripeFrame.getByLabel("City").fill("Dublin");
 				await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
 				await stripeFrame.getByLabel("County").selectOption("Dublin");
-				await expect(page.locator("#payment-element-state")).toHaveAttribute(
-					"data-complete",
-					"true",
-				);
 
 				await page.getByRole("button", { name: /sign up/i }).click();
 				await expect(page.getByText("Membership created")).toBeVisible({

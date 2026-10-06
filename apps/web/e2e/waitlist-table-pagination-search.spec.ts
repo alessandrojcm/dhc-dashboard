@@ -4,6 +4,7 @@ import dayjs from "dayjs";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
+import { gotoHydrated } from "./hydration";
 
 test.describe("Waitlist table pagination and search", () => {
 	let adminMember: Awaited<ReturnType<typeof createMember>>;
@@ -149,49 +150,25 @@ test.describe("Waitlist table pagination and search", () => {
 	});
 
 	test("should clear search correctly", async ({ page }) => {
-		await page.goto(`${waitlistPath}&q=test`);
+		await gotoHydrated(page, `${waitlistPath}&q=test`);
 
-		// Wait for table to load or no results message
-		await page
-			.locator('table tbody tr, p:has-text("No results found")')
-			.first()
-			.waitFor({ state: "attached", timeout: 10000 });
+		const searchInput = page.getByPlaceholder("Search for a person");
+		await expect(searchInput).toHaveValue("test");
 
-		// Find and click the clear search button
-		const clearButton = page.getByRole("button", { name: "Clear search" });
-		await clearButton.click();
+		await page.getByRole("button", { name: "Clear search" }).click();
 
-		const waitForClearedQuery = () =>
-			expect
-				.poll(() => new URL(page.url()).searchParams.get("q") ?? "", {
-					timeout: 3000,
-				})
-				.toBe("");
-
-		// Chromium can miss the button click event here; fallback to input clear
-		try {
-			await waitForClearedQuery();
-		} catch {
-			await page.getByPlaceholder("Search for a person").fill("");
-		}
-
-		// Wait for URL param to clear (missing or empty)
 		await expect
 			.poll(() => new URL(page.url()).searchParams.get("q") ?? "", {
 				timeout: 10000,
 			})
 			.toBe("");
-
-		// Verify URL doesn't have a non-empty q parameter
-		const currentUrl = new URL(page.url());
-		const qParam = currentUrl.searchParams.get("q");
-		expect(qParam === null || qParam === "").toBe(true);
+		await expect(searchInput).toHaveValue("");
 	});
 
 	test("should display correct total count for pagination", async ({
 		page,
 	}) => {
-		await page.goto("/dashboard/beginners-workshop?tab=waitlist");
+		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
 		await page.locator("table tbody tr").first().waitFor({
@@ -199,21 +176,17 @@ test.describe("Waitlist table pagination and search", () => {
 			timeout: 15000,
 		});
 
-		// Verify the total count is displayed (this proves rowCount getter is working)
+		// The footer counts the whole waitlist, not just the visible page; this
+		// suite seeds 15 entries, so at least that many exist across pages.
 		const footerCell = page.locator("table tfoot tr td", {
 			hasText: /Total \d+ people on the waitlist/,
 		});
 		await expect(footerCell).toBeVisible();
-		const footerText = await footerCell.textContent();
-		expect(footerText).toMatch(/Total \d+ people on the waitlist/);
+		const total = Number(
+			(await footerCell.textContent())?.match(/Total (\d+) people/)?.[1],
+		);
+		expect(total).toBeGreaterThanOrEqual(waitlistIds.length);
 
-		// Extract the total count
-		const match = footerText?.match(/Total (\d+) people/);
-		expect(match).toBeTruthy();
-		const totalCount = parseInt(match![1]);
-		expect(totalCount).toBeGreaterThan(0);
-
-		// Verify we can see rows
 		const rowCount = await page.locator("table tbody tr").count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThanOrEqual(10);
