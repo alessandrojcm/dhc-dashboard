@@ -92,14 +92,14 @@ defmodule Dhc.Workshops.PaymentLockTrace do
     events
     |> transactions()
     |> Enum.flat_map(fn tables ->
-      {_max, upward} =
-        Enum.reduce(tables, {-1, []}, fn table, {max, upward} ->
-          rank = Map.fetch!(@ranks, table)
-          if rank < max, do: {max, [table | upward]}, else: {rank, upward}
-        end)
-
+      {_max, upward} = Enum.reduce(tables, {-1, []}, &track_rank/2)
       Enum.reverse(upward)
     end)
+  end
+
+  defp track_rank(table, {max, upward}) do
+    rank = Map.fetch!(@ranks, table)
+    if rank < max, do: {max, [table | upward]}, else: {rank, upward}
   end
 
   @doc "Payment-table writes issued outside any transaction."
