@@ -49,6 +49,22 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
     end
   end
 
+  describe "perform/1 insurance link" do
+    test "omits an unconfigured insurance link so the email template uses its fallback" do
+      created_by_id = insert_principal!("insurance-admin@example.com")
+      Repo.delete_all(from(s in Dhc.Settings.Setting, where: s.key == "hema_insurance_form_link"))
+
+      args = %{
+        "invites" => [base_invite("insurance-invite@example.com")],
+        "user" => %{"id" => created_by_id}
+      }
+
+      assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+      assert [%Oban.Job{args: email_args}] = all_enqueued(worker: Dhc.Email.Worker)
+      refute Map.has_key?(email_args["data_variables"], "INSURANCE_FORM_LINK")
+    end
+  end
+
   describe "perform/1 pricing tiers" do
     test "persists the invited pricing tier on the invitation" do
       created_by_id = insert_principal!("tier-admin@example.com")
@@ -104,6 +120,8 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
   describe "perform/1 waitlist invitations" do
     test "resolves a waitlist id and creates the invitation with no profile or Stripe customer" do
       created_by_id = insert_principal!("admin@example.com")
+      insurance_link = "https://insurance.example.com/onboarding.html"
+      assert {:ok, _} = Dhc.Settings.update("hema_insurance_form_link", insurance_link)
       waitlist_entry = insert_waitlist_entry!("ada@example.com")
 
       insert_waitlist_profile!(waitlist_entry.id,
@@ -154,6 +172,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert [%Oban.Job{args: email_args}] = all_enqueued(worker: Dhc.Email.Worker)
       assert email_args["email"] == "ada@example.com"
       assert email_args["transactional_id"] == "inviteMember"
+      assert email_args["data_variables"]["INSURANCE_FORM_LINK"] == insurance_link
       assert email_args["data_variables"]["INVITEE_FIRST_NAME"] == "Ada"
       assert email_args["data_variables"]["INVITEE_LAST_NAME"] == "Lovelace"
 

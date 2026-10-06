@@ -5,14 +5,15 @@ import { Link, Text } from "react-email";
 import { defineTemplate } from "../src/template-metadata";
 
 /**
- * Where the "items" link in the original Loops `inviteMember` template
- * points: HEMA Ireland, the third-party liability insurance provider.
+ * Keep the original insurance destination when the club has not configured a form.
  */
 const HEMA_IRELAND_ITEMS_URL = "https://www.hemaireland.com/";
 
 export interface InviteMemberProps {
   /** The recipient's unique invitation acceptance link. */
   INVITATION_LINK: string;
+  /** The club's saved HEMA insurance form URL. */
+  INSURANCE_FORM_LINK?: string;
   /**
    * Declared because callers send them alongside the link; the original
    * Loops template greets the recipient with a plain "Hello," and never
@@ -30,11 +31,14 @@ export const inviteMemberTemplate: TemplateMetadata = defineTemplate({
     { key: "INVITEE_FIRST_NAME", type: "string", fallback: "" },
     { key: "INVITEE_LAST_NAME", type: "string", fallback: "" },
     { key: "INVITATION_LINK", type: "string" },
+    { key: "INSURANCE_FORM_LINK", type: "string", fallback: HEMA_IRELAND_ITEMS_URL },
   ],
 });
 
-/** Ported verbatim from the Loops `inviteMember` transactional template. */
-export default function InviteMemberEmail({ INVITATION_LINK }: InviteMemberProps) {
+export default function InviteMemberEmail({
+  INVITATION_LINK,
+  INSURANCE_FORM_LINK = HEMA_IRELAND_ITEMS_URL,
+}: InviteMemberProps) {
   return (
     <EmailLayout
       heading={
@@ -55,7 +59,7 @@ export default function InviteMemberEmail({ INVITATION_LINK }: InviteMemberProps
       </Text>
       <Text style={paragraphStyle}>
         Additionally, please purchase the following{" "}
-        <Link href={HEMA_IRELAND_ITEMS_URL} style={linkStyle}>
+        <Link href={INSURANCE_FORM_LINK} style={linkStyle}>
           items
         </Link>{" "}
         from HEMA Ireland. This third-party liability insurance covers damages to third parties,
