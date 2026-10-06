@@ -2,7 +2,7 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
   @moduledoc """
   End-to-end reactivation test against the real Stripe test API.
 
-  Exercises what Bypass cannot: actual Stripe behaviour for future
+  Exercises what the Req.Test Stripe stubs cannot: actual Stripe behaviour for future
   `billing_cycle_anchor` semantics, off-session confirmation of the first
   invoice WITHOUT mandate data against a saved SEPA method (mandate reuse),
   async SEPA settlement surfacing as a pending outcome, and idempotency-key
@@ -26,7 +26,6 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
 
   @moduletag :integration
 
-  @stripe_api_url "https://api.stripe.com"
   # Valid-checksum German IBAN accepted by Stripe test mode for sepa_debit.
   @test_iban "DE89370400440532013000"
 
@@ -48,7 +47,7 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
     original_verifier = Application.get_env(:dhc, :auth_verifier)
     Application.put_env(:dhc, :auth_verifier, AdminVerifier)
 
-    original_url = Application.get_env(:dhc, :stripe_api_url)
+    original_req_options = Application.get_env(:dhc, :stripe_req_options)
     original_key = Application.get_env(:dhc, :stripe_secret_key)
 
     stripe_secret_key =
@@ -61,17 +60,15 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
             mix test #{__ENV__.file} --include integration
         """
 
-    Application.put_env(
-      :dhc,
-      :stripe_api_url,
-      System.get_env("STRIPE_API_URL", @stripe_api_url)
-    )
+    # Real Stripe: drop the test-wide Req.Test plug; `:stripe_api_url` already
+    # honours STRIPE_API_URL in config/test.exs.
+    Application.put_env(:dhc, :stripe_req_options, [])
 
     Application.put_env(:dhc, :stripe_secret_key, stripe_secret_key)
 
     on_exit(fn ->
       Application.put_env(:dhc, :auth_verifier, original_verifier)
-      Application.put_env(:dhc, :stripe_api_url, original_url)
+      Application.put_env(:dhc, :stripe_req_options, original_req_options)
       Application.put_env(:dhc, :stripe_secret_key, original_key)
     end)
 

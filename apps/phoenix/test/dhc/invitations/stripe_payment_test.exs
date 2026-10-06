@@ -1,28 +1,13 @@
 defmodule Dhc.Invitations.StripePaymentTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Dhc.Invitations.StripePayment
+  alias Dhc.StripeHTTPStub
 
-  setup do
-    bypass = Bypass.open()
-    original_url = Application.get_env(:dhc, :stripe_api_url)
-    original_key = Application.get_env(:dhc, :stripe_secret_key)
-
-    Application.put_env(:dhc, :stripe_api_url, "http://localhost:#{bypass.port}")
-    Application.put_env(:dhc, :stripe_secret_key, "sk_test_123")
-
-    on_exit(fn ->
-      Application.put_env(:dhc, :stripe_api_url, original_url)
-      Application.put_env(:dhc, :stripe_secret_key, original_key)
-    end)
-
-    {:ok, bypass: bypass}
-  end
-
-  test "reuses the customer identified by acceptance-attempt metadata", %{bypass: bypass} do
-    Bypass.expect_once(bypass, "GET", "/v1/customers", fn conn ->
-      assert conn.query_params["email"] == "member@example.com"
-      assert conn.query_params["limit"] == "100"
+  test "reuses the customer identified by acceptance-attempt metadata" do
+    StripeHTTPStub.expect("GET", "/v1/customers", fn conn ->
+      assert StripeHTTPStub.query(conn)["email"] == "member@example.com"
+      assert StripeHTTPStub.query(conn)["limit"] == "100"
 
       stripe_json(conn, %{
         "object" => "list",
@@ -49,14 +34,13 @@ defmodule Dhc.Invitations.StripePaymentTest do
              )
   end
 
-  test "creates a customer with stable attempt metadata when no match exists", %{bypass: bypass} do
-    Bypass.expect_once(bypass, "GET", "/v1/customers", fn conn ->
+  test "creates a customer with stable attempt metadata when no match exists" do
+    StripeHTTPStub.expect("GET", "/v1/customers", fn conn ->
       stripe_json(conn, %{"object" => "list", "has_more" => false, "data" => []})
     end)
 
-    Bypass.expect_once(bypass, "POST", "/v1/customers", fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      params = URI.decode_query(body)
+    StripeHTTPStub.expect("POST", "/v1/customers", fn conn ->
+      params = StripeHTTPStub.form(conn)
 
       assert params["email"] == "member@example.com"
       assert params["name"] == "Member Name"
@@ -78,14 +62,11 @@ defmodule Dhc.Invitations.StripePaymentTest do
              )
   end
 
-  test "continues creating subscriptions when the monthly SEPA payment is processing", %{
-    bypass: bypass
-  } do
+  test "continues creating subscriptions when the monthly SEPA payment is processing" do
     test_process = self()
 
-    Bypass.stub(bypass, "POST", "/v1/subscriptions", fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      params = URI.decode_query(body)
+    StripeHTTPStub.stub("POST", "/v1/subscriptions", fn conn ->
+      params = StripeHTTPStub.form(conn)
 
       case params["metadata[acceptance_kind]"] do
         "monthly" ->
@@ -116,7 +97,7 @@ defmodule Dhc.Invitations.StripePaymentTest do
       end
     end)
 
-    Bypass.expect_once(bypass, "GET", "/v1/payment_intents/pi_monthly", fn conn ->
+    StripeHTTPStub.expect("GET", "/v1/payment_intents/pi_monthly", fn conn ->
       stripe_json(conn, %{"id" => "pi_monthly", "status" => "processing"})
     end)
 
@@ -141,14 +122,11 @@ defmodule Dhc.Invitations.StripePaymentTest do
     assert_received {:subscription_created, :annual}
   end
 
-  test "applies a private coupon ID directly to complimentary tier subscriptions", %{
-    bypass: bypass
-  } do
+  test "applies a private coupon ID directly to complimentary tier subscriptions" do
     test_process = self()
 
-    Bypass.stub(bypass, "POST", "/v1/subscriptions", fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      params = URI.decode_query(body)
+    StripeHTTPStub.stub("POST", "/v1/subscriptions", fn conn ->
+      params = StripeHTTPStub.form(conn)
 
       send(test_process, {
         :tier_subscription_created,
@@ -190,23 +168,19 @@ defmodule Dhc.Invitations.StripePaymentTest do
     assert_received {:tier_subscription_created, "annual", "DHC_COACH_TIER", nil}
   end
 
-  test "skips subscription discovery when cleanup state has no Stripe customer", %{
-    bypass: bypass
-  } do
-    # Any Stripe call would fail while Bypass is down, so a passing assertion
-    # proves discovery was skipped for attempts that never created a customer.
-    Bypass.down(bypass)
+  test "skips subscription discovery when cleanup state has no Stripe customer" do
+    # No Stripe route is registered, so any Stripe call would raise; a passing
+    # assertion proves discovery was skipped for attempts that never created a
+    # customer.
 
     assert :ok = StripePayment.cancel_membership(%{"customer_id" => nil, "other" => "ignored"})
     assert :ok = StripePayment.cancel_membership(%{"customer_id" => ""})
   end
 
-  test "still cancels known subscriptions when cleanup state has no Stripe customer", %{
-    bypass: bypass
-  } do
+  test "still cancels known subscriptions when cleanup state has no Stripe customer" do
     test_process = self()
 
-    Bypass.expect_once(bypass, "DELETE", "/v1/subscriptions/sub_monthly", fn conn ->
+    StripeHTTPStub.expect("DELETE", "/v1/subscriptions/sub_monthly", fn conn ->
       send(test_process, :subscription_cancelled)
       stripe_json(conn, %{"id" => "sub_monthly", "status" => "canceled"})
     end)
@@ -220,9 +194,5 @@ defmodule Dhc.Invitations.StripePaymentTest do
     assert_received :subscription_cancelled
   end
 
-  defp stripe_json(conn, body) do
-    conn
-    |> Plug.Conn.put_resp_content_type("application/json")
-    |> Plug.Conn.send_resp(200, Jason.encode!(body))
-  end
+  defp stripe_json(conn, body), do: StripeHTTPStub.json(conn, body)
 end

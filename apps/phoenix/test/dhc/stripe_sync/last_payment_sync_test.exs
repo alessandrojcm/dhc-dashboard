@@ -14,10 +14,11 @@ defmodule Dhc.StripeSync.LastPaymentSyncTest do
   expanded invoice object when the request carries the `expand[]` param.
   """
 
-  use Dhc.DataCase, async: false
+  use Dhc.DataCase, async: true
 
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
+  alias Dhc.StripeHTTPStub
   alias Dhc.StripeSync
 
   import Ecto.Query
@@ -27,47 +28,25 @@ defmodule Dhc.StripeSync.LastPaymentSyncTest do
 
   describe "run_sync/1 last payment date" do
     setup do
-      bypass = Bypass.open()
-      original_url = Application.get_env(:dhc, :stripe_api_url)
-      original_key = Application.get_env(:dhc, :stripe_secret_key)
-
-      Application.put_env(:dhc, :stripe_api_url, "http://localhost:#{bypass.port}")
-      Application.put_env(:dhc, :stripe_secret_key, "sk_test_last_payment")
-
       # Fresh price cache so run_sync uses our fake price id without hitting /v1/prices.
       :ok = Dhc.StripeSync.Repository.upsert_price_id_cache(@price_id)
-
-      on_exit(fn ->
-        Application.put_env(:dhc, :stripe_api_url, original_url)
-        Application.put_env(:dhc, :stripe_secret_key, original_key)
-      end)
-
-      %{bypass: bypass}
+      :ok
     end
 
-    test "stores the latest invoice paid_at for an active member, not start_date", %{
-      bypass: bypass
-    } do
+    test "stores the latest invoice paid_at for an active member, not start_date" do
       fixture = Dhc.MemberFixtures.member_fixture(customer_id: @customer_id, is_active: true)
 
       start_date = DateTime.utc_now() |> DateTime.add(-365, :day) |> DateTime.truncate(:second)
       paid_at = DateTime.utc_now() |> DateTime.add(-2, :day) |> DateTime.truncate(:second)
 
-      Bypass.expect(bypass, "GET", "/v1/subscriptions", fn conn ->
-        params = URI.decode_query(conn.query_string)
+      StripeHTTPStub.expect("GET", "/v1/subscriptions", fn conn ->
+        expanded? = StripeHTTPStub.query(conn)["expand[]"] == "data.latest_invoice"
 
-        expanded? = Map.get(params, "expand[]") == "data.latest_invoice"
-
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          Jason.encode!(%{
-            "object" => "list",
-            "data" => [subscription_payload(expanded?, start_date, paid_at)],
-            "has_more" => false
-          })
-        )
+        StripeHTTPStub.json(conn, %{
+          "object" => "list",
+          "data" => [subscription_payload(expanded?, start_date, paid_at)],
+          "has_more" => false
+        })
       end)
 
       assert {:ok, summary} = StripeSync.run_sync([@customer_id])

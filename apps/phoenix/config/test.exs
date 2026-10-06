@@ -72,6 +72,15 @@ end
 
 config :dhc, :stripe_secret_key, stripe_secret_key || "sk_test_stub_key"
 config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
+
+# Every Stripe HTTP call goes through Dhc.Stripe.Client, which merges these Req
+# options: tests stub Stripe with `Req.Test.stub(Dhc.Stripe, plug)` (or the
+# Dhc.StripeHTTPStub router). The E2E server talks to real Stripe test mode,
+# and the real-Stripe `:integration` suites reset this to `[]` in setup.
+unless e2e_server? do
+  config :dhc, :stripe_req_options, plug: {Req.Test, Dhc.Stripe}
+end
+
 config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verification"
 

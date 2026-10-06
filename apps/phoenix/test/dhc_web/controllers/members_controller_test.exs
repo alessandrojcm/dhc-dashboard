@@ -3,6 +3,7 @@ defmodule DhcWeb.MembersControllerTest do
 
   alias Dhc.Auth.ExternalIdentity
   alias Dhc.Repo
+  alias Dhc.StripeHTTPStub
   alias DhcWeb.OpenApiVerifier
 
   @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
@@ -677,32 +678,15 @@ defmodule DhcWeb.MembersControllerTest do
   end
 
   describe "membership pause/resume" do
-    setup do
-      bypass = Bypass.open()
-      original_url = Application.get_env(:dhc, :stripe_api_url)
-      original_key = Application.get_env(:dhc, :stripe_secret_key)
-
-      Application.put_env(:dhc, :stripe_api_url, "http://localhost:#{bypass.port}")
-      Application.put_env(:dhc, :stripe_secret_key, "sk_test_123")
-
-      on_exit(fn ->
-        Application.put_env(:dhc, :stripe_api_url, original_url)
-        Application.put_env(:dhc, :stripe_secret_key, original_key)
-      end)
-
-      {:ok, bypass: bypass}
-    end
-
-    test "pauses a member subscription after Stripe confirms", %{conn: conn, bypass: bypass} do
+    test "pauses a member subscription after Stripe confirms", %{conn: conn} do
       member_id = "11111111-1111-1111-1111-111111111111"
       insert_member(auth_user_id: member_id, customer_id: "cus_pause")
       pause_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
 
-      expect_subscription_list(bypass, "cus_pause", [active_membership_subscription()])
+      expect_subscription_list("cus_pause", [active_membership_subscription()])
 
-      Bypass.expect(bypass, "POST", "/v1/subscriptions/sub_membership", fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        params = URI.decode_query(body)
+      StripeHTTPStub.expect("POST", "/v1/subscriptions/sub_membership", fn conn ->
+        params = StripeHTTPStub.form(conn)
 
         assert params["pause_collection[behavior]"] == "void"
         assert params["pause_collection[resumes_at]"] == to_string(DateTime.to_unix(pause_until))
@@ -728,10 +712,7 @@ defmodule DhcWeb.MembersControllerTest do
       assert member["membershipStatus"] == "paused"
     end
 
-    test "resumes a paused member subscription after Stripe confirms", %{
-      conn: conn,
-      bypass: bypass
-    } do
+    test "resumes a paused member subscription after Stripe confirms", %{conn: conn} do
       member_id = "11111111-1111-1111-1111-111111111111"
       paused_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
 
@@ -741,11 +722,10 @@ defmodule DhcWeb.MembersControllerTest do
         subscription_paused_until: paused_until
       )
 
-      expect_subscription_list(bypass, "cus_resume", [paused_membership_subscription()])
+      expect_subscription_list("cus_resume", [paused_membership_subscription()])
 
-      Bypass.expect(bypass, "POST", "/v1/subscriptions/sub_membership", fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        params = URI.decode_query(body)
+      StripeHTTPStub.expect("POST", "/v1/subscriptions/sub_membership", fn conn ->
+        params = StripeHTTPStub.form(conn)
 
         assert params["pause_collection"] == ""
 
@@ -762,16 +742,12 @@ defmodule DhcWeb.MembersControllerTest do
       assert member["membershipStatus"] == "active"
     end
 
-    test "creates a Stripe billing portal session for the member", %{
-      conn: conn,
-      bypass: bypass
-    } do
+    test "creates a Stripe billing portal session for the member", %{conn: conn} do
       member_id = "11111111-1111-1111-1111-111111111111"
       insert_member(auth_user_id: member_id, customer_id: "cus_portal")
 
-      Bypass.expect(bypass, "POST", "/v1/billing_portal/sessions", fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        params = URI.decode_query(body)
+      StripeHTTPStub.expect("POST", "/v1/billing_portal/sessions", fn conn ->
+        params = StripeHTTPStub.form(conn)
 
         assert params["customer"] == "cus_portal"
 
@@ -857,16 +833,13 @@ defmodule DhcWeb.MembersControllerTest do
     # #13: Pause with no active membership subscription. The customer has
     # no standard_membership_fee subscription — find_membership_subscription
     # returns :subscription_not_found, not a nil-key crash.
-    test "pause with no active membership subscription returns 409", %{
-      conn: conn,
-      bypass: bypass
-    } do
+    test "pause with no active membership subscription returns 409", %{conn: conn} do
       member_id = "11111111-1111-1111-1111-111111111111"
       insert_member(auth_user_id: member_id, customer_id: "cus_nosub")
 
       pause_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.to_iso8601()
 
-      expect_subscription_list(bypass, "cus_nosub", [])
+      expect_subscription_list("cus_nosub", [])
 
       conn =
         conn
@@ -884,23 +857,17 @@ defmodule DhcWeb.MembersControllerTest do
     # conditional on Stripe success — the with chain short-circuits before
     # write_pause_until is called.
     test "Stripe 5xx during pause returns 502 and does not write subscription_paused_until", %{
-      conn: conn,
-      bypass: bypass
+      conn: conn
     } do
       member_id = "11111111-1111-1111-1111-111111111111"
       insert_member(auth_user_id: member_id, customer_id: "cus_5xx")
 
       pause_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
 
-      expect_subscription_list(bypass, "cus_5xx", [active_membership_subscription()])
+      expect_subscription_list("cus_5xx", [active_membership_subscription()])
 
-      Bypass.expect(bypass, "POST", "/v1/subscriptions/sub_membership", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          503,
-          Jason.encode!(%{"error" => %{"message" => "Service unavailable"}})
-        )
+      StripeHTTPStub.expect("POST", "/v1/subscriptions/sub_membership", fn conn ->
+        StripeHTTPStub.json(conn, 503, %{"error" => %{"message" => "Service unavailable"}})
       end)
 
       conn =
@@ -1033,10 +1000,10 @@ defmodule DhcWeb.MembersControllerTest do
     assert result.num_rows == 1
   end
 
-  defp expect_subscription_list(bypass, customer_id, subscriptions) do
-    Bypass.expect(bypass, "GET", "/v1/subscriptions", fn conn ->
-      assert conn.query_params["customer"] == customer_id
-      assert conn.query_params["limit"] == "10"
+  defp expect_subscription_list(customer_id, subscriptions) do
+    StripeHTTPStub.expect("GET", "/v1/subscriptions", fn conn ->
+      assert StripeHTTPStub.query(conn)["customer"] == customer_id
+      assert StripeHTTPStub.query(conn)["limit"] == "10"
 
       stripe_json(conn, %{
         "object" => "list",
@@ -1064,11 +1031,7 @@ defmodule DhcWeb.MembersControllerTest do
     |> Map.put("pause_collection", %{"behavior" => "void", "resumes_at" => 1_800_000_000})
   end
 
-  defp stripe_json(conn, body) do
-    conn
-    |> Plug.Conn.put_resp_content_type("application/json")
-    |> Plug.Conn.send_resp(200, Jason.encode!(body))
-  end
+  defp stripe_json(conn, body), do: StripeHTTPStub.json(conn, body)
 
   defp insert_member(attrs \\ []) do
     today = Date.utc_today()

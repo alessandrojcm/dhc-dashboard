@@ -27,8 +27,6 @@ defmodule DhcWeb.WorkshopsControllerTest do
   @rejected_roles ~w(beginners_coordinator member committee_coordinator coach treasurer)
 
   setup do
-    original_stripe = Application.get_env(:dhc, :workshop_stripe_client)
-
     original =
       OpenApiVerifier.install(
         actor_id: @coordinator_user_id,
@@ -37,14 +35,13 @@ defmodule DhcWeb.WorkshopsControllerTest do
         role_subs: %{"member" => @member_user_id}
       )
 
-    Application.put_env(:dhc, :workshop_stripe_client, WorkshopStripeClient)
+    Req.Test.stub(Dhc.Stripe, WorkshopStripeClient)
     insert_auth_user_and_profile(@member_user_id, "Current", "Member")
     insert_auth_user_and_profile(@other_user_id, "Other", "Member")
     insert_auth_user_and_profile(@coordinator_user_id, "Workshop", "Coordinator")
 
     on_exit(fn ->
       OpenApiVerifier.restore(original)
-      Application.put_env(:dhc, :workshop_stripe_client, original_stripe)
       Application.delete_env(:dhc, :workshop_stripe_create_response)
       Application.delete_env(:dhc, :workshop_stripe_retrieve_response)
       Application.delete_env(:dhc, :workshop_stripe_refund_response)
@@ -1394,11 +1391,11 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert {:create_payment_intent, body} =
                Application.fetch_env!(:dhc, :last_workshop_stripe_request)
 
-      assert {:amount, 1000} in body
-      assert {:currency, "eur"} in body
-      assert {:customer, "cus_test"} in body
-      assert {"metadata[workshop_id]", to_uuid(workshop.id)} in body
-      assert {"metadata[user_id]", @member_user_id} in body
+      assert body["amount"] == "1000"
+      assert body["currency"] == "eur"
+      assert body["customer"] == "cus_test"
+      assert body["metadata[workshop_id]"] == to_uuid(workshop.id)
+      assert body["metadata[user_id]"] == @member_user_id
     end
 
     test "does not create a PaymentIntent when the Workshop is full", %{conn: conn} do
@@ -1631,10 +1628,10 @@ defmodule DhcWeb.WorkshopsControllerTest do
              } = json_response(conn, 200)
 
       body = Application.fetch_env!(:dhc, :last_workshop_checkout_request)
-      assert {:mode, "payment"} in body
-      assert {:ui_mode, "embedded"} in body
-      assert {:return_url, return_url} in body
-      assert Keyword.fetch!(body, :"line_items[0][price_data][unit_amount]") == 2500
+      assert body["mode"] == "payment"
+      assert body["ui_mode"] == "embedded"
+      assert body["return_url"] == return_url
+      assert body["line_items[0][price_data][unit_amount]"] == "2500"
     end
 
     test "completes paid Checkout into an external user and confirmed registration", %{conn: conn} do
@@ -1877,7 +1874,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           stripe_payment_intent_id: "pi_stripe_failure"
         )
 
-      Application.put_env(:dhc, :workshop_stripe_refund_response, {:error, :provider_down})
+      Application.put_env(:dhc, :workshop_stripe_refund_response, {:error, :econnrefused})
 
       conn =
         conn

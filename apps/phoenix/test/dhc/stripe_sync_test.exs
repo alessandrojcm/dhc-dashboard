@@ -1,6 +1,7 @@
 defmodule Dhc.StripeSyncTest do
   use ExUnit.Case, async: true
 
+  alias Dhc.StripeHTTPStub
   alias Dhc.StripeSync
 
   describe "resolve_last_payment_date/1" do
@@ -111,180 +112,138 @@ defmodule Dhc.StripeSyncTest do
     end
   end
 
-  describe "req_stripe_subscriptions/1 with Bypass" do
-    setup do
-      bypass = Bypass.open()
-      original_url = Application.get_env(:dhc, :stripe_api_url)
-      original_key = Application.get_env(:dhc, :stripe_secret_key)
+  describe "list_subscriptions/2" do
+    test "lists one page of subscriptions on the price through the Stripe client" do
+      StripeHTTPStub.expect("GET", "/v1/subscriptions", fn conn ->
+        assert StripeHTTPStub.header(conn, "stripe-version") == "2025-10-29.clover"
 
-      Application.put_env(:dhc, :stripe_api_url, "http://localhost:#{bypass.port}")
-      Application.put_env(:dhc, :stripe_secret_key, "sk_test_123")
+        assert StripeHTTPStub.query(conn) == %{
+                 "status" => "all",
+                 "price" => "price_abc",
+                 "limit" => "100",
+                 "expand[]" => "data.latest_invoice"
+               }
 
-      on_exit(fn ->
-        Application.put_env(:dhc, :stripe_api_url, original_url)
-        Application.put_env(:dhc, :stripe_secret_key, original_key)
+        StripeHTTPStub.json(conn, %{
+          "object" => "list",
+          "data" => [
+            %{
+              "id" => "sub_123",
+              "customer" => "cus_abc",
+              "created" => 1_710_000_000,
+              "status" => "active"
+            }
+          ],
+          "has_more" => false
+        })
       end)
 
-      {:ok, bypass: bypass}
+      assert {:ok, %{"data" => [%{"id" => "sub_123"}]}} =
+               StripeSync.list_subscriptions("price_abc")
     end
 
-    test "returns subscription data on success", %{bypass: bypass} do
-      Bypass.expect(bypass, "GET", "/v1/subscriptions", fn conn ->
-        # Assert Stripe-Version header is sent
-        assert ["2025-10-29.clover"] = Plug.Conn.get_req_header(conn, "stripe-version")
-
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          Jason.encode!(%{
-            "object" => "list",
-            "data" => [
-              %{
-                "id" => "sub_123",
-                "customer" => "cus_abc",
-                "created" => 1_710_000_000,
-                "status" => "active"
-              }
-            ],
-            "has_more" => false
-          })
-        )
+    test "passes the pagination cursor" do
+      StripeHTTPStub.expect("GET", "/v1/subscriptions", fn conn ->
+        assert StripeHTTPStub.query(conn)["starting_after"] == "sub_99"
+        StripeHTTPStub.json(conn, %{"object" => "list", "data" => [], "has_more" => false})
       end)
 
-      params = %{status: "all", price: "price_abc", limit: 100}
-
-      assert {:ok, %{"data" => [_ | _]}} = StripeSync.req_stripe_subscriptions(params)
+      assert {:ok, %{"data" => []}} = StripeSync.list_subscriptions("price_abc", "sub_99")
     end
 
-    test "returns error when Stripe API returns non-2xx", %{bypass: bypass} do
-      Bypass.expect(bypass, "GET", "/v1/subscriptions", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          401,
-          Jason.encode!(%{"error" => %{"message" => "Invalid API key"}})
-        )
+    test "returns the Stripe error body on a non-2xx answer" do
+      StripeHTTPStub.expect("GET", "/v1/subscriptions", fn conn ->
+        StripeHTTPStub.json(conn, 401, %{"error" => %{"message" => "Invalid API key"}})
       end)
 
-      params = %{status: "all", price: "price_abc", limit: 100}
-
-      assert {:error, {:stripe_api, 401}} = StripeSync.req_stripe_subscriptions(params)
+      assert {:error, {:stripe_api, 401, %{"error" => %{"message" => "Invalid API key"}}}} =
+               StripeSync.list_subscriptions("price_abc")
     end
 
-    test "returns error when Stripe key is not configured" do
-      Application.put_env(:dhc, :stripe_secret_key, nil)
+    test "returns a transport failure as an HTTP error" do
+      StripeHTTPStub.expect("GET", "/v1/subscriptions", fn conn ->
+        StripeHTTPStub.transport_error(conn, :econnrefused)
+      end)
 
-      params = %{status: "all", price: "price_abc", limit: 100}
-
-      assert {:error, :stripe_key_not_configured} = StripeSync.req_stripe_subscriptions(params)
-    after
-      Application.put_env(:dhc, :stripe_secret_key, "sk_test_123")
-    end
-
-    test "returns error on HTTP connection failure" do
-      Application.put_env(:dhc, :stripe_api_url, "http://localhost:1")
-
-      params = %{status: "all", price: "price_abc", limit: 100}
-
-      assert {:error, {:http_error, _}} = StripeSync.req_stripe_subscriptions(params)
-    after
-      Application.put_env(:dhc, :stripe_api_url, "https://api.stripe.com")
+      assert {:error, {:http_error, %Req.TransportError{reason: :econnrefused}}} =
+               StripeSync.list_subscriptions("price_abc")
     end
   end
 
-  describe "req_stripe_prices/1 with Bypass" do
-    setup do
-      bypass = Bypass.open()
-      original_url = Application.get_env(:dhc, :stripe_api_url)
-      original_key = Application.get_env(:dhc, :stripe_secret_key)
+  describe "fetch_latest_subscriptions/2" do
+    test "pages through every subscription and keeps only target customers" do
+      test_pid = self()
 
-      Application.put_env(:dhc, :stripe_api_url, "http://localhost:#{bypass.port}")
-      Application.put_env(:dhc, :stripe_secret_key, "sk_test_123")
+      StripeHTTPStub.stub("GET", "/v1/subscriptions", fn conn ->
+        cursor = StripeHTTPStub.query(conn)["starting_after"]
+        send(test_pid, {:page_requested, cursor})
 
-      on_exit(fn ->
-        Application.put_env(:dhc, :stripe_api_url, original_url)
-        Application.put_env(:dhc, :stripe_secret_key, original_key)
+        case cursor do
+          nil ->
+            StripeHTTPStub.json(conn, %{
+              "data" => [
+                %{"id" => "sub_1", "customer" => "cus_target"},
+                %{"id" => "sub_2", "customer" => "cus_other"}
+              ],
+              "has_more" => true
+            })
+
+          "sub_2" ->
+            StripeHTTPStub.json(conn, %{
+              "data" => [%{"id" => "sub_3", "customer" => %{"id" => "cus_target"}}],
+              "has_more" => false
+            })
+        end
       end)
 
-      {:ok, bypass: bypass}
+      assert {:ok, %{scanned: 3, subscriptions: %{"cus_target" => subscriptions}}} =
+               StripeSync.fetch_latest_subscriptions(["price_abc"], MapSet.new(["cus_target"]))
+
+      assert Enum.map(subscriptions, & &1["id"]) == ["sub_3", "sub_1"]
+      assert_received {:page_requested, nil}
+      assert_received {:page_requested, "sub_2"}
     end
 
-    test "returns price data on success", %{bypass: bypass} do
-      Bypass.expect(bypass, "GET", "/v1/prices", fn conn ->
-        # Assert Stripe-Version header is sent
-        assert ["2025-10-29.clover"] = Plug.Conn.get_req_header(conn, "stripe-version")
-
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(
-          200,
-          Jason.encode!(%{
-            "object" => "list",
-            "data" => [%{"id" => "price_abc123", "lookup_key" => "standard_membership_fee"}]
-          })
-        )
+    test "stops at the first Stripe failure and keeps its body" do
+      StripeHTTPStub.expect("GET", "/v1/subscriptions", fn conn ->
+        StripeHTTPStub.json(conn, 500, %{"error" => %{"type" => "api_error"}})
       end)
 
-      params = "lookup_keys[]=standard_membership_fee&active=true&limit=1"
-
-      assert {:ok, %{"data" => [_ | _]}} = StripeSync.req_stripe_prices(params)
-    end
-
-    test "returns error when Stripe API returns non-2xx", %{bypass: bypass} do
-      Bypass.expect(bypass, "GET", "/v1/prices", fn conn ->
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(403, Jason.encode!(%{"error" => %{"message" => "Forbidden"}}))
-      end)
-
-      params = "lookup_keys[]=standard_membership_fee&active=true&limit=1"
-
-      assert {:error, {:stripe_api, 403}} = StripeSync.req_stripe_prices(params)
-    end
-
-    test "returns error when Stripe key is not configured" do
-      Application.put_env(:dhc, :stripe_secret_key, nil)
-
-      params = "lookup_keys[]=standard_membership_fee&active=true&limit=1"
-
-      assert {:error, :stripe_key_not_configured} = StripeSync.req_stripe_prices(params)
-    after
-      Application.put_env(:dhc, :stripe_secret_key, "sk_test_123")
+      assert {:error, {:stripe_api, 500, %{"error" => %{"type" => "api_error"}}}} =
+               StripeSync.fetch_latest_subscriptions(
+                 ["price_abc", "price_def"],
+                 MapSet.new(["cus_target"])
+               )
     end
   end
 
-  describe "config accessors" do
-    test "stripe_api_url returns default when not configured" do
-      Application.delete_env(:dhc, :stripe_api_url)
+  describe "list_membership_prices/0" do
+    test "lists the active prices for every membership lookup key" do
+      StripeHTTPStub.expect("GET", "/v1/prices", fn conn ->
+        assert StripeHTTPStub.header(conn, "stripe-version") == "2025-10-29.clover"
 
-      assert StripeSync.stripe_api_url() == "https://api.stripe.com"
-    after
-      Application.put_env(:dhc, :stripe_api_url, "https://stripe.example.com")
+        assert StripeHTTPStub.query_pairs(conn) |> Enum.sort() ==
+                 Enum.sort(
+                   [{"active", "true"}, {"limit", "10"}] ++
+                     Enum.map(Dhc.Stripe.LookupKeys.all(), &{"lookup_keys[]", &1})
+                 )
+
+        StripeHTTPStub.json(conn, %{
+          "object" => "list",
+          "data" => [%{"id" => "price_abc123", "lookup_key" => "standard_membership_fee"}]
+        })
+      end)
+
+      assert {:ok, [%{"id" => "price_abc123"}]} = StripeSync.list_membership_prices()
     end
 
-    test "stripe_api_url returns configured value" do
-      Application.put_env(:dhc, :stripe_api_url, "https://custom.stripe.api")
+    test "returns the Stripe error body on a non-2xx answer" do
+      StripeHTTPStub.expect("GET", "/v1/prices", fn conn ->
+        StripeHTTPStub.json(conn, 403, %{"error" => %{"message" => "Forbidden"}})
+      end)
 
-      assert StripeSync.stripe_api_url() == "https://custom.stripe.api"
-    after
-      Application.put_env(:dhc, :stripe_api_url, "https://stripe.example.com")
-    end
-
-    test "stripe_api_version returns default when not configured" do
-      Application.delete_env(:dhc, :stripe_api_version)
-
-      assert StripeSync.stripe_api_version() == "2025-10-29.clover"
-    after
-      Application.put_env(:dhc, :stripe_api_version, "2025-10-29.clover")
-    end
-
-    test "stripe_api_version returns configured value" do
-      Application.put_env(:dhc, :stripe_api_version, "2024-01-01.acacia")
-
-      assert StripeSync.stripe_api_version() == "2024-01-01.acacia"
-    after
-      Application.put_env(:dhc, :stripe_api_version, "2025-10-29.clover")
+      assert {:error, {:stripe_api, 403, %{"error" => %{"message" => "Forbidden"}}}} =
+               StripeSync.list_membership_prices()
     end
   end
 end

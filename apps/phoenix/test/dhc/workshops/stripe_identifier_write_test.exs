@@ -19,8 +19,10 @@ defmodule Dhc.Workshops.StripeIdentifierWriteTest do
     * `mark_customer_active/3` wraps its two `update_all`s in a
       `Repo.transaction` so a partial failure self-heals via sync retry.
 
-  Stripe is stubbed via the `:workshop_stripe_client` config injection
-  seam (mirroring `DhcWeb.WorkshopsControllerTest`). No Stripe API calls.
+  Stripe is stubbed at the one Stripe transport seam (`Req.Test` under
+  `Dhc.Stripe`, ALE-342), so the live Workshop Stripe adapter and client run
+  and only the HTTP hop is faked. Answers are driven by `Application` env so
+  a completion running in a spawned Task sees the same Stripe as the test.
   """
 
   use Dhc.DataCase, async: false
@@ -32,22 +34,19 @@ defmodule Dhc.Workshops.StripeIdentifierWriteTest do
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Workshops
   alias Dhc.Workshops.{PaymentAttempt, Refund, Registration}
-  alias Dhc.Workshops.StripeIdentifierTestClient
+  alias Dhc.StripeHTTPStub
   alias Dhc.WorkshopFixtures
 
   setup do
-    original_stripe = Application.get_env(:dhc, :workshop_stripe_client)
-    Application.put_env(:dhc, :workshop_stripe_client, StripeIdentifierTestClient)
+    Req.Test.stub(Dhc.Stripe, &stripe/1)
 
     on_exit(fn ->
-      Application.put_env(:dhc, :workshop_stripe_client, original_stripe)
       Application.delete_env(:dhc, :workshop_stripe_test_workshop_id)
       Application.delete_env(:dhc, :workshop_stripe_test_member_user_id)
       Application.delete_env(:dhc, :workshop_stripe_test_payment_intent_response)
       Application.delete_env(:dhc, :workshop_stripe_test_checkout_session_response)
       Application.delete_env(:dhc, :workshop_stripe_test_refund_response)
       Application.delete_env(:dhc, :workshop_stripe_test_last_refund_request)
-      Application.delete_env(:dhc, :workshop_stripe_test_last_request_opts)
       Application.delete_env(:dhc, :workshop_stripe_test_payment_attempt_id)
     end)
 
@@ -124,7 +123,7 @@ defmodule Dhc.Workshops.StripeIdentifierWriteTest do
       Application.put_env(
         :dhc,
         :workshop_stripe_test_refund_response,
-        {:error, :provider_unavailable}
+        {:error, :econnrefused}
       )
 
       assert {:error, :compensation_pending} =
@@ -375,6 +374,97 @@ defmodule Dhc.Workshops.StripeIdentifierWriteTest do
       # No Stripe refund request issued for a no-id registration.
       assert Application.get_env(:dhc, :workshop_stripe_test_last_refund_request) == nil
     end
+  end
+
+  # ── Stripe HTTP fake ─────────────────────────────────────────────────
+
+  defp stripe(conn), do: stripe(conn.method, conn.request_path, conn)
+
+  defp stripe("POST", "/v1/payment_intents", conn) do
+    StripeHTTPStub.json(conn, %{
+      "id" => "pi_test_member",
+      "client_secret" => "pi_test_member_secret",
+      "amount" => 1000,
+      "currency" => "eur",
+      "status" => "requires_payment_method",
+      "metadata" => %{}
+    })
+  end
+
+  defp stripe("GET", "/v1/payment_intents/" <> payment_intent_id, conn) do
+    respond(
+      conn,
+      Application.get_env(:dhc, :workshop_stripe_test_payment_intent_response),
+      fn -> pi_retrieve_default(payment_intent_id) end
+    )
+  end
+
+  defp stripe("GET", "/v1/checkout/sessions/" <> checkout_session_id, conn) do
+    respond(
+      conn,
+      Application.get_env(:dhc, :workshop_stripe_test_checkout_session_response),
+      fn -> cs_retrieve_default(checkout_session_id) end
+    )
+  end
+
+  defp stripe("POST", "/v1/refunds", conn) do
+    Application.put_env(
+      :dhc,
+      :workshop_stripe_test_last_refund_request,
+      StripeHTTPStub.form(conn)
+    )
+
+    respond(
+      conn,
+      Application.get_env(:dhc, :workshop_stripe_test_refund_response),
+      fn -> %{"id" => "re_test_member"} end
+    )
+  end
+
+  defp stripe(_method, _path, conn), do: StripeHTTPStub.json(conn, %{})
+
+  defp respond(conn, nil, default), do: StripeHTTPStub.json(conn, default.())
+  defp respond(conn, {:ok, body}, _default), do: StripeHTTPStub.json(conn, body)
+
+  defp respond(conn, {:error, reason}, _default) when is_atom(reason),
+    do: StripeHTTPStub.transport_error(conn, reason)
+
+  defp pi_retrieve_default(payment_intent_id) do
+    %{
+      "id" => payment_intent_id,
+      "status" => "succeeded",
+      "amount" => 1000,
+      "currency" => "eur",
+      "metadata" => %{
+        "type" => "workshop_registration",
+        "actor_type" => "member",
+        "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_test_workshop_id),
+        "user_id" => Application.fetch_env!(:dhc, :workshop_stripe_test_member_user_id)
+      }
+    }
+  end
+
+  defp cs_retrieve_default(checkout_session_id) do
+    %{
+      "id" => checkout_session_id,
+      "status" => "complete",
+      "payment_status" => "paid",
+      "amount_total" => 2000,
+      "currency" => "eur",
+      "payment_intent" => "pi_from_checkout",
+      "metadata" => %{
+        "type" => "workshop_registration",
+        "actor_type" => "external",
+        "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_test_workshop_id),
+        "payment_attempt_id" =>
+          Application.fetch_env!(:dhc, :workshop_stripe_test_payment_attempt_id)
+      },
+      "customer_details" => %{
+        "email" => "guest@example.com",
+        "name" => "Grace Hopper",
+        "phone" => "+353123456"
+      }
+    }
   end
 
   defp archived_workshop_fixture do

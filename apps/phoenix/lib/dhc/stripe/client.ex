@@ -9,7 +9,7 @@ defmodule Dhc.Stripe.Client do
   - Pinned Stripe API version via `Stripe-Version` header
   - JSON request/response encoding
   - Error normalization into generated Stripe error types
-  - Configurable base URL (overridable in tests via app config)
+  - Configurable base URL and extra Req options (the test transport seam)
   - Idempotency keys for POST requests (optional, via `:idempotency_key` opt)
 
   ## Configuration
@@ -23,11 +23,13 @@ defmodule Dhc.Stripe.Client do
 
   ## Testing
 
-  Override `:stripe_api_url` and `:stripe_secret_key` in test config
-  to point at a Bypass server:
-
-      config :dhc, :stripe_api_url, "http://localhost:PORT"
-      config :dhc, :stripe_secret_key, "sk_test_123"
+  Every Stripe HTTP call in the app goes through `request/1`, which merges
+  `config :dhc, :stripe_req_options` into its Req options. `config/test.exs`
+  sets `plug: {Req.Test, Dhc.Stripe}`, so tests stub Stripe in-process with
+  `Req.Test.stub(Dhc.Stripe, plug)` (see `Dhc.StripeHTTPStub` for a
+  method/path router). Stubs follow Req.Test ownership: they reach Tasks and
+  other `$callers` descendants of the test process; anything else needs
+  `Req.Test.allow/3`.
 
   ## Usage with generated operations
 
@@ -69,7 +71,7 @@ defmodule Dhc.Stripe.Client do
       Logger.error("[stripe-client] STRIPE_SECRET_KEY not configured")
       {:error, :stripe_key_not_configured}
     else
-      full_url = stripe_api_url() <> url
+      full_url = stripe_api_url() <> url <> query_string(query)
 
       headers =
         [
@@ -79,11 +81,11 @@ defmodule Dhc.Stripe.Client do
         ]
         |> maybe_add_idempotency_key(opts)
 
-      req_opts = [
-        decode_body: true,
-        retry: false,
-        connect_options: [timeout: 30_000]
-      ]
+      req_opts =
+        Keyword.merge(
+          [decode_body: true, retry: false, connect_options: [timeout: 30_000]],
+          Application.get_env(:dhc, :stripe_req_options, [])
+        )
 
       req_opts =
         req_opts
@@ -91,7 +93,7 @@ defmodule Dhc.Stripe.Client do
 
       result =
         Req.request(
-          [method: method, url: full_url, headers: headers, params: format_query(query)] ++
+          [method: method, url: full_url, headers: headers] ++
             req_opts
         )
 
@@ -138,6 +140,15 @@ defmodule Dhc.Stripe.Client do
 
   defp normalize_form_params(params) when is_map(params), do: Map.to_list(params)
   defp normalize_form_params(params) when is_list(params), do: params
+
+  # Encoded here rather than through Req's `:params`, which keeps only the
+  # last value of a repeated key and would collapse `lookup_keys[]=a&lookup_keys[]=b`.
+  defp query_string(query) do
+    case format_query(query) do
+      [] -> ""
+      pairs -> "?" <> URI.encode_query(pairs)
+    end
+  end
 
   defp format_query(nil), do: []
   defp format_query([]), do: []

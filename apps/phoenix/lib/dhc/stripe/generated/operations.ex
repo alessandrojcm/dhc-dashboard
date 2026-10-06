@@ -819,6 +819,34 @@ defmodule Dhc.Stripe.Operations do
   end
 
   @doc """
+  Update a customer
+
+  <p>Updates the specified customer by setting the values of the parameters passed. Any parameters not provided are left unchanged. For example, if you pass the <strong>source</strong> parameter, that becomes the customer’s active source (such as a card) to be used for all charges in the future. When you update a customer to a new valid card source by passing the <strong>source</strong> parameter: for each of the customer’s current subscriptions, if the subscription bills automatically and is in the <code>past_due</code> state, then the latest open invoice for the subscription with automatic collection enabled is retried. This retry doesn’t count as an automatic retry, and doesn’t affect the next regularly scheduled payment for the invoice. Changing the <strong>default_source</strong> for a customer doesn’t trigger this behavior.</p>
+
+  <p>This request accepts mostly the same arguments as the customer creation call.</p>
+
+  ## Request Body
+
+  **Content Types**: `application/x-www-form-urlencoded`
+  """
+  @spec post_customers_customer(customer :: String.t(), body :: map, opts :: keyword) ::
+          {:ok, Dhc.Stripe.Customer.t()} | {:error, Dhc.Stripe.Error.t()}
+  def post_customers_customer(customer, body, opts \\ []) do
+    client = opts[:client] || @default_client
+
+    client.request(%{
+      args: [customer: customer, body: body],
+      call: {Dhc.Stripe.Operations, :post_customers_customer},
+      url: "/v1/customers/#{customer}",
+      body: body,
+      method: :post,
+      request: [{"application/x-www-form-urlencoded", :map}],
+      response: [{200, {Dhc.Stripe.Customer, :t}}, default: {Dhc.Stripe.Error, :t}],
+      opts: opts
+    })
+  end
+
+  @doc """
   Create a preview invoice
 
   <p>At any time, you can preview the upcoming invoice for a subscription or subscription schedule. This will show you all the charges that are pending, including subscription renewal charges, invoice item charges, etc. It will also show you any discounts that are applicable to the invoice.</p>
