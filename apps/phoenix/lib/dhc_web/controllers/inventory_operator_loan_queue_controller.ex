@@ -17,6 +17,8 @@ defmodule DhcWeb.InventoryOperatorLoanQueueController do
 
   @view [json: DhcWeb.InventoryOperatorLoanQueueJSON]
 
+  action_fallback DhcWeb.InventoryHTTP
+
   @doc """
   GET /inventory/operator/loans/queue
   """
