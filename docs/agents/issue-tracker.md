@@ -6,7 +6,7 @@ Issues are tracked in **Linear** through the `linear` MCP server (configured in 
 
 Use the Linear MCP tools for issue operations in this repo. Do not use GitHub Issues or local `.scratch/` markdown issues unless the repo configuration changes.
 
-Issue identifiers follow the format `DHC-123`.
+Issue identifiers follow the format `ALE-123`.
 
 Create issues with the appropriate team/project, title, description, and triage label/status.
 
@@ -25,6 +25,12 @@ A read-only endpoint (`https://mcp.linear.app/mcp/readonly`) exists, but this re
 Apply the matching triage label/status string from `docs/agents/triage-labels.md` with the issue tools.
 
 Repository: `alessandrojcm/dhc-dashboard`
+
+## Workspace limits and housekeeping
+
+- The team is `Alessandrojcm` (issue keys `ALE-123`). Its only issue labels are `Bug`, `Improvement`, and `Feature`; the triage strings in `triage-labels.md` do not exist as labels, so map them to the workflow state (`Todo` = ready) and state the triage role in the description.
+- The workspace is on Linear's free plan. Creating an issue fails with `You've exceeded the free issue limit for this workspace` once the active-issue cap is reached; archiving issues frees capacity.
+- To archive in bulk, use `linctl graphql` (linctl has no archive subcommand): list `issues(filter:{state:{name:{eq:"Done"}}})`, then run `mutation($id:String!){ issueArchive(id:$id){ success } }` per id. When calling `linctl graphql --query` in a shell loop, redirect stdin from `/dev/null`; otherwise linctl treats the loop's stdin as a second query source and rejects every call.
 
 ## Projects & milestones
 
