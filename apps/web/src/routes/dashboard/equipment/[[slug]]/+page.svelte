@@ -26,6 +26,7 @@ import {
 	isModifiedClick,
 	sheetSelection,
 } from "#lib/inventory/sheet-selection.js";
+import { availabilityLabel } from "#lib/inventory/member-loans.svelte.js";
 import {
 	ArrowRight,
 	Package,
@@ -161,19 +162,6 @@ function closeSheet() {
 	}
 	if (selectedItemSlug) {
 		goto(LIST_PATH, { shallow: true, replace: true });
-	}
-}
-
-function availabilityLabel(reason: string): string {
-	switch (reason) {
-		case "available":
-			return "Available";
-		case "on_loan":
-			return "On loan";
-		case "maintenance":
-			return "Maintenance";
-		default:
-			return reason;
 	}
 }
 </script>

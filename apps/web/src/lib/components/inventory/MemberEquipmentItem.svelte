@@ -1,17 +1,7 @@
 <script lang="ts">
+import { createQuery } from "@tanstack/svelte-query";
 import {
-	createMutation,
-	createQuery,
-	useQueryClient,
-} from "@tanstack/svelte-query";
-import {
-	inventoryCatalogListItemsQueryKey,
-	inventoryCatalogRequestLoanMutation,
 	inventoryCatalogShowItemOptions,
-	inventoryCatalogShowItemQueryKey,
-	inventoryMemberLoansListQueryKey,
-	type InventoryCatalogRequestLoanData,
-	type InventoryCatalogRequestLoanResponse,
 	type InventoryOperatorItemValue,
 } from "@dhc/api-client";
 import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
@@ -29,8 +19,15 @@ import {
 	Package,
 	RefreshCw,
 } from "@lucide/svelte";
-import { toast } from "svelte-sonner";
-import { getLocalTimeZone, parseDate, today } from "@internationalized/date";
+import { parseDate } from "@internationalized/date";
+import {
+	availabilityLabel,
+	createRequestLoan,
+	defaultLoanDates,
+	memberLoanErrorMessage,
+	REQUEST_FAILED,
+	type RequestLoanFn,
+} from "#lib/inventory/member-loans.svelte.js";
 
 let {
 	slug,
@@ -38,62 +35,33 @@ let {
 }: {
 	slug: string;
 	/** Test-only: stub the request mutation so browser tests skip the shared ky client. */
-	requestLoan?: (
-		vars: Pick<InventoryCatalogRequestLoanData, "body" | "path">,
-	) => Promise<InventoryCatalogRequestLoanResponse>;
+	requestLoan?: RequestLoanFn;
 } = $props();
 
-const queryClient = useQueryClient();
 const itemQuery = createQuery(() => ({
 	...inventoryCatalogShowItemOptions({ path: { slugOrId: slug } }),
 	select: (response) => response.data,
 }));
 
-const todayValue = today(getLocalTimeZone());
-const todayISO = todayValue.toString();
-const weekOutISO = todayValue.add({ days: 7 }).toString();
+const defaults = defaultLoanDates();
+const todayValue = defaults.today;
 
-let startsOn = $state(todayISO);
-let dueOn = $state(weekOutISO);
+let startsOn = $state(defaults.startsOn);
+let dueOn = $state(defaults.dueOn);
 let note = $state("");
 let requestSent = $state(false);
 const startsOnValue = $derived(parseDate(startsOn));
 const dueOnValue = $derived(parseDate(dueOn));
 
-const requestMutation = createMutation(() => {
-	const options = inventoryCatalogRequestLoanMutation();
-	if (requestLoan) options.mutationFn = requestLoan;
-	return {
-		...options,
+const requestMutation = createRequestLoan(
+	() => slug,
+	() => ({
+		requestLoan,
 		onSuccess: () => {
 			requestSent = true;
-			queryClient.invalidateQueries({
-				queryKey: inventoryCatalogShowItemQueryKey({
-					path: { slugOrId: slug },
-				}),
-			});
-			queryClient.invalidateQueries({
-				queryKey: inventoryCatalogListItemsQueryKey(),
-			});
-			queryClient.invalidateQueries({
-				queryKey: inventoryMemberLoansListQueryKey(),
-			});
-			toast.success("Request sent — you'll hear back once reviewed.");
 		},
-		onError: (error) => {
-			// SAFETY: Phoenix renders loan conflicts as `{ errors: { detail, code } }`;
-			// only the stable `code` field is read to choose member-facing feedback.
-			const code = (error.errors as { code?: string } | undefined)?.code;
-			if (code === "duplicate_request") {
-				toast.error("You already have a pending request for this item.");
-			} else if (code === "item_unavailable") {
-				toast.error("This item can't be requested right now.");
-			} else {
-				toast.error(error.errors?.detail ?? "Couldn't send the request.");
-			}
-		},
-	};
-});
+	}),
+);
 
 function renderValue(value: InventoryOperatorItemValue): string | null {
 	switch (value.valueType) {
@@ -105,19 +73,6 @@ function renderValue(value: InventoryOperatorItemValue): string | null {
 			return value.boolean === null ? null : value.boolean ? "Yes" : "No";
 		case "single_select":
 			return value.optionLabel;
-	}
-}
-
-function availabilityLabel(reason: string): string {
-	switch (reason) {
-		case "available":
-			return "Available";
-		case "on_loan":
-			return "On loan";
-		case "maintenance":
-			return "Maintenance";
-		default:
-			return reason;
 	}
 }
 </script>
@@ -238,7 +193,7 @@ function availabilityLabel(reason: string): string {
 						onsubmit={(event) => {
 							event.preventDefault();
 							requestMutation.mutate({
-								path: { slugOrId: item.slug },
+								path: { slugOrId: slug },
 								body: {
 									startsOn,
 									dueOn,
@@ -296,13 +251,8 @@ function availabilityLabel(reason: string): string {
 							/>
 						</div>
 						{#if requestMutation.isError}
-							{@const detail =
-								(
-									requestMutation.error.errors as
-										{ detail?: string } | undefined
-								)?.detail ?? "Couldn't send the request."}
 							<p class="mt-3 text-sm text-destructive" aria-live="polite">
-								{detail}
+								{memberLoanErrorMessage(requestMutation.error, REQUEST_FAILED)}
 							</p>
 						{/if}
 						<Button
