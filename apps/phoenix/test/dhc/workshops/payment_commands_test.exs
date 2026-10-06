@@ -258,10 +258,39 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
 
     test "a retryable failure stays pending and records the error", %{registration: registration} do
       refund = refund_in(registration, "pending", stripe_refund_id: nil)
-      StripeStub.put(:create_refund, fn _ -> {:error, :timeout} end)
+      reason = {:http_error, %Req.TransportError{reason: :timeout}}
+      StripeStub.put(:create_refund, fn _ -> {:error, reason} end)
 
-      assert {:error, :timeout} = PaymentCommands.execute(:system, {:submit_refund, refund.id})
-      assert %{status: "pending", last_error: ":timeout"} = Repo.get!(Refund, refund.id)
+      assert {:error, ^reason} = PaymentCommands.execute(:system, {:submit_refund, refund.id})
+
+      assert %{status: "pending", last_error: "{:http_error" <> _} =
+               Repo.get!(Refund, refund.id)
+    end
+
+    # Dhc.Stripe.Failure.retryable?/1 is the one retry rule (ALE-342): a Stripe
+    # 5xx/408/409/429 or transport failure retries; anything else, including a
+    # failure that never reached Stripe, needs a human.
+    test "a retryable Stripe answer stays pending", %{registration: registration} do
+      refund = refund_in(registration, "pending", stripe_refund_id: nil)
+      StripeStub.put(:create_refund, fn _ -> {:error, {:stripe_api, 429, %{}}} end)
+
+      assert {:error, {:stripe_api, 429, _}} =
+               PaymentCommands.execute(:system, {:submit_refund, refund.id})
+
+      assert %{status: "pending"} = Repo.get!(Refund, refund.id)
+    end
+
+    test "a non-retryable failure outside the 4xx range needs intervention", %{
+      registration: registration
+    } do
+      refund = refund_in(registration, "pending", stripe_refund_id: nil)
+      StripeStub.put(:create_refund, fn _ -> {:error, :stripe_key_not_configured} end)
+
+      assert {:error, {:intervention_required, :stripe_key_not_configured}} =
+               PaymentCommands.execute(:system, {:submit_refund, refund.id})
+
+      assert %{status: "failed", last_error: ":stripe_key_not_configured"} =
+               Repo.get!(Refund, refund.id)
     end
 
     test "an event for an unknown Stripe refund is acknowledged" do

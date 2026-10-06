@@ -910,16 +910,13 @@ defmodule Dhc.Workshops.PaymentCommands do
            }) do
       record_submission(refund.id, payment_intent_id, response)
     else
-      {:error, {:stripe_api, status, _body} = reason} when status in 400..499 ->
+      # Dhc.Stripe.Failure is the one retry rule: anything it does not call
+      # retryable (a Stripe 4xx, an unresolvable PaymentIntent, a failure that
+      # never reached Stripe) needs a human rather than another attempt.
+      {:error, reason} ->
         if Failure.retryable?(reason),
           do: record_retryable_error(refund.id, reason),
           else: record_intervention(refund.id, reason)
-
-      {:error, :payment_intent_not_resolvable = reason} ->
-        record_intervention(refund.id, reason)
-
-      {:error, reason} ->
-        record_retryable_error(refund.id, reason)
     end
   end
 
