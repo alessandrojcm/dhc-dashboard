@@ -22,6 +22,8 @@ Frontend authorization (GH-510) is one boundary: `apps/web/src/lib/server/author
 
 Phoenix `mix precommit` runs `hex.audit` before dependency-provided Mix tasks; under the pinned Mix version, running Credo or Reach first unloads the archived Hex task from the current process.
 
+HTTP errors have one renderer (ALE-343): controllers declare `action_fallback DhcWeb.<Domain>HTTP` and return `{:error, reason}` or a changeset; the domain module (`use DhcWeb.Problem, reasons:, fields:`) owns status and detail, and `code` appears only on 409/422 reasons. Never `put_status`/`json(%{errors: …})` an error in a controller; plugs use `DhcWeb.Problem.send_reason/2`. See "HTTP Errors" in `docs/agents/critical-patterns.md`.
+
 Dev data can include pending direct member invitations through `mise run seed-invitations [count]` and representative inventory through `mise run seed-inventory [item-count]`; see the Seeds section in `docs/agents/commands.md` for all seed tasks.
 
 Invitation pricing tiers use backend-applied Stripe coupon IDs, not customer-facing promotion codes; see the invitation pricing tier note in `docs/agents/notes.md` for coupon configuration and E2E conventions.
