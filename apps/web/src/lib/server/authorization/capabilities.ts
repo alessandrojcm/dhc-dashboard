@@ -64,9 +64,15 @@ const RULES = {
 	"workshops.own.read": {},
 } satisfies Record<Capability, CapabilityRule>;
 
-export const CAPABILITIES: readonly Capability[] = Object.keys(RULES).filter(
-	(key): key is Capability => Object.hasOwn(RULES, key),
-);
+/** The capabilities named by a rule table that covers every capability. */
+function capabilitiesOf(
+	rules: Record<Capability, CapabilityRule>,
+): Capability[] {
+	// SAFETY: `RULES` is a literal checked with `satisfies Record<Capability, …>`, so its own keys are exactly the capabilities.
+	return Object.keys(rules) as Capability[];
+}
+
+export const CAPABILITIES: readonly Capability[] = capabilitiesOf(RULES);
 
 /**
  * The one place the session's capabilities, ownership and denial
