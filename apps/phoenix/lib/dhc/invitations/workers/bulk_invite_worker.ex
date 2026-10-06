@@ -277,11 +277,14 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     args = %{
       "email" => invite_data["email"],
       "transactional_id" => @invite_email_template,
-      "data_variables" => %{
-        "INVITEE_FIRST_NAME" => invite_data["firstName"],
-        "INVITEE_LAST_NAME" => invite_data["lastName"],
-        "INVITATION_LINK" => invitation_link
-      }
+      "data_variables" =>
+        %{
+          "INVITEE_FIRST_NAME" => invite_data["firstName"],
+          "INVITEE_LAST_NAME" => invite_data["lastName"],
+          "INVITATION_LINK" => invitation_link,
+          "INSURANCE_FORM_LINK" => Dhc.Members.insurance_form().link
+        }
+        |> Map.reject(fn {_key, value} -> is_nil(value) end)
     }
 
     case Oban.insert(EmailWorker.new(args)) do

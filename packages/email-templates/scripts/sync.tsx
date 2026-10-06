@@ -105,7 +105,10 @@ export function findUnpublished(
  */
 const RENDERERS = {
   inviteMember: (p: PlaceholderProps): ReactElement => (
-    <InviteMemberEmail INVITATION_LINK={p.INVITATION_LINK ?? ""} />
+    <InviteMemberEmail
+      INVITATION_LINK={p.INVITATION_LINK ?? ""}
+      INSURANCE_FORM_LINK={p.INSURANCE_FORM_LINK}
+    />
   ),
   magicLink: (p: PlaceholderProps): ReactElement => (
     <MagicLinkEmail LOGIN_LINK={p.LOGIN_LINK ?? ""} />

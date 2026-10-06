@@ -469,6 +469,8 @@ defmodule DhcWeb.InvitationsControllerTest do
       # silently no-ops on a real invitation (e.g. the left-join query breaks,
       # or expire_for_resend stops firing) would stay green.
       email = "real@example.com"
+      insurance_link = "https://insurance.example.com/updated-form"
+      assert {:ok, _} = Dhc.Settings.update("hema_insurance_form_link", insurance_link)
       invitation_id = insert_invitation(email: email, status: "pending", seconds: 0)
       original = Repo.get(Invitation, invitation_id)
 
@@ -483,6 +485,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert [%Oban.Job{args: args}] = all_enqueued(worker: Dhc.Email.Worker)
       assert args["email"] == email
       assert args["transactional_id"] == "inviteMember"
+      assert args["data_variables"]["INSURANCE_FORM_LINK"] == insurance_link
 
       # The resend refreshed the expiry window from +7 days to +1 day.
       refreshed = Repo.get(Invitation, invitation_id)

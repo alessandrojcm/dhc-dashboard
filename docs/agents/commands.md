@@ -96,6 +96,12 @@ The five transactional templates are React Email components in
 `packages/email-templates`, synced upsert-by-alias to Resend-hosted templates
 (ADR 0022). See that package's README for the drift policy and CI wiring.
 
+- When adding a rendered template variable, update the component metadata and
+  the explicit prop mapping in `scripts/sync.tsx`; the upload renderer must
+  preserve its `{{{VARIABLE}}}` marker. Invitation issue and resend jobs read
+  the insurance URL through `Dhc.Members.insurance_form/0` and supply
+  `INSURANCE_FORM_LINK`; an unconfigured value is omitted for the template fallback.
+
 ```bash
 mise run email-sync          # render + upsert drafts (what PRs do)
 mise run email-sync-publish  # upsert + publish (what merge-to-main does)
