@@ -4,7 +4,6 @@ import {
 	invitationsResendMutation,
 	type InvitationsCreateData,
 	type Options,
-	type WaitlistEntriesSortField,
 	type WaitlistEntriesResponse2,
 	type WaitlistEntry,
 	type WaitlistStatus,
@@ -23,9 +22,7 @@ import {
 	getExpandedRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
-	type PaginationState,
 	type RowSelectionState,
-	type SortingState,
 	type TableOptions,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
@@ -34,8 +31,6 @@ import { createRawSnippet } from "svelte";
 import { Cross2 } from "svelte-radix";
 import { toast } from "svelte-sonner";
 import * as v from "valibot";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Checkbox from "#lib/components/ui/checkbox/index.js";
@@ -49,46 +44,13 @@ import { Input } from "#lib/components/ui/input/index.js";
 import * as Select from "#lib/components/ui/select/index.js";
 import * as Table from "#lib/components/ui/table/index.js";
 import SortHeader from "#lib/components/ui/table/sort-header.svelte";
-import {
-	PAGE_SIZE_OPTIONS,
-	parsePageSize,
-	transitionCursorQuery,
-} from "#lib/cursor-query.js";
+import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
+import { createCursorTableUrl } from "#lib/cursor-table-url.svelte.js";
 import ActionButtons from "./actions-buttons.svelte";
 import WaitlistStatusSelect from "./waitlist-status-select.svelte";
 
-type WaitlistTableRow = {
-	id: string;
-	current_position: number;
-	full_name: string;
-	email: string;
-	phone_number: string;
-	status: WaitlistEntry["status"];
-	age: number;
-	initial_registration_date: string;
-	last_contacted?: string | null;
-	medical_conditions?: string | null;
-	admin_notes?: string | null;
-	social_media_consent: WaitlistEntry["socialMediaConsent"];
-	guardian_first_name?: string | null;
-	guardian_last_name?: string | null;
-	guardian_phone_number?: string | null;
-	insurance_form_submitted: boolean;
-	last_status_change: string;
-};
-
-type WaitlistTableSortField = (typeof waitlistEntrySortFields)[number];
-
-type WaitlistTableQueryParams = {
-	searchQuery: string;
-	sort: WaitlistTableSortField;
-	direction: "asc" | "desc";
-	pageSize: (typeof pageSizeOptions)[number];
-	cursor: string | null;
-};
-
 type WaitlistTablePage = {
-	data: WaitlistTableRow[];
+	data: WaitlistEntry[];
 	count: number;
 	nextCursor: string | null;
 	previousCursor: string | null;
@@ -96,97 +58,23 @@ type WaitlistTablePage = {
 
 type InvitationsCreateOptions = Options<InvitationsCreateData>;
 
-const pageSizeOptions = PAGE_SIZE_OPTIONS;
-
-const waitlistEntrySortFields = [
-	"current_position",
-	"full_name",
-	"status",
-	"age",
-	"initial_registration_date",
-	"last_contacted",
-	"last_status_change",
-] as const;
-
-const waitlistEntrySortMap = {
-	current_position: "position",
-	full_name: "fullName",
-	status: "status",
-	age: "age",
-	initial_registration_date: "initialRegistrationDate",
-	last_contacted: "lastContacted",
-	last_status_change: "lastStatusChange",
-} satisfies Record<WaitlistTableSortField, WaitlistEntriesSortField>;
-
-function isWaitlistSortField(
-	value: string | null,
-): value is WaitlistTableSortField {
-	return waitlistEntrySortFields.some((field) => field === value);
-}
-
-const pageSize = $derived(parsePageSize(page.url.searchParams, "pageSize"));
-const searchQuery = $derived(page.url.searchParams.get("q") || "");
-const cursor = $derived(page.url.searchParams.get("cursor"));
-const activeSort = $derived.by(() => {
-	const requestedSortColumn = page.url.searchParams.get("sort");
-	const sortColumn = isWaitlistSortField(requestedSortColumn)
-		? requestedSortColumn
-		: "current_position";
-	const sortDirection = page.url.searchParams.get("direction");
-
-	return {
-		sort: sortColumn,
-		direction: sortDirection === "desc" ? "desc" : "asc",
-	} as const;
-});
-const sortingState: SortingState = $derived.by(() => {
-	return [
-		{
-			id: activeSort.sort,
-			desc: activeSort.direction === "desc",
+// Column ids are the API sort names, so the URL `sort` param is one too.
+const waitlistUrl = createCursorTableUrl({
+	sort: {
+		fields: {
+			position: "position",
+			fullName: "fullName",
+			status: "status",
+			age: "age",
+			initialRegistrationDate: "initialRegistrationDate",
+			lastContacted: "lastContacted",
+			lastStatusChange: "lastStatusChange",
 		},
-	];
-});
-
-const waitlistQueryParams = $derived<WaitlistTableQueryParams>({
-	searchQuery,
-	sort: activeSort.sort,
-	direction: activeSort.direction,
-	pageSize,
-	cursor,
-});
-
-function toTableRow(entry: WaitlistEntry): WaitlistTableRow {
-	return {
-		id: entry.id,
-		current_position: entry.position,
-		full_name: entry.fullName,
-		email: entry.email,
-		phone_number: entry.phoneNumber,
-		status: entry.status,
-		age: entry.age,
-		initial_registration_date: entry.initialRegistrationDate,
-		last_contacted: entry.lastContacted,
-		medical_conditions: entry.medicalConditions,
-		admin_notes: entry.adminNotes,
-		social_media_consent: entry.socialMediaConsent,
-		guardian_first_name: entry.guardianFirstName,
-		guardian_last_name: entry.guardianLastName,
-		guardian_phone_number: entry.guardianPhoneNumber,
-		insurance_form_submitted: entry.insuranceFormSubmitted,
-		last_status_change: entry.lastStatusChange,
-	};
-}
-
-const waitlistRequestOptions = $derived({
-	query: {
-		limit: waitlistQueryParams.pageSize,
-		cursor: waitlistQueryParams.cursor ?? undefined,
-		q: waitlistQueryParams.searchQuery || undefined,
-		sort: waitlistEntrySortMap[waitlistQueryParams.sort],
-		direction: waitlistQueryParams.direction,
+		default: "position",
 	},
 });
+
+const waitlistRequestOptions = $derived({ query: waitlistUrl.request });
 const waitlistQueryKey = $derived(
 	waitlistEntriesQueryKey(waitlistRequestOptions),
 );
@@ -196,7 +84,7 @@ const waitlistQuery = createQuery(() => ({
 	select: (response): WaitlistTablePage => {
 		const result = response.data;
 		return {
-			data: result.entries.map(toTableRow),
+			data: result.entries,
 			count: result.totalCount,
 			nextCursor: result.nextCursor,
 			previousCursor: result.previousCursor,
@@ -297,60 +185,12 @@ const updateWaitlistEntry = createMutation(() => ({
 	},
 }));
 
-function navigateToBeginnersWorkshop(searchParams: URLSearchParams) {
-	const url = `/dashboard/beginners-workshop?${searchParams.toString()}`;
-	goto(url, { reset: false });
-}
-
-function onPaginationChange(newPagination: Partial<PaginationState>) {
-	const paginationState: PaginationState = {
-		pageIndex: 0,
-		pageSize,
-		...newPagination,
-	};
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: { pageSize: paginationState.pageSize.toString() },
-	});
-	navigateToBeginnersWorkshop(newParams);
-}
-
-function onCursorChange(newCursor: string | null | undefined) {
-	if (!newCursor) return;
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		cursor: newCursor,
-	});
-	navigateToBeginnersWorkshop(newParams);
-}
-
-function onSortingChange(newSorting: SortingState) {
-	const [sortingState] = newSorting;
-	if (!sortingState) return;
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: {
-			sort: sortingState.id,
-			direction: sortingState.desc ? "desc" : "asc",
-		},
-	});
-	navigateToBeginnersWorkshop(newParams);
-}
-
-function onSearchChange(newSearch: string) {
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: { q: newSearch || null },
-	});
-	navigateToBeginnersWorkshop(newParams);
-}
-
 // State for expanded rows
 let expandedState = $state({});
 let selectedState = $state<RowSelectionState>({});
 let inviteCount = $derived(Object.values(selectedState).filter(Boolean).length);
 
-const tableOptions = $state<TableOptions<WaitlistTableRow>>({
+const tableOptions = $state<TableOptions<WaitlistEntry>>({
 	autoResetPageIndex: false,
 	manualPagination: true,
 	manualSorting: true,
@@ -360,13 +200,10 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			return expandedState;
 		},
 		get pagination() {
-			return {
-				pageIndex: 0,
-				pageSize,
-			};
+			return waitlistUrl.table.state.pagination;
 		},
 		get sorting() {
-			return sortingState;
+			return waitlistUrl.table.state.sorting;
 		},
 	},
 	onExpandedChange: (updater) => {
@@ -400,7 +237,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			header: "Actions",
 			cell: ({ row }) => {
 				return renderComponent(ActionButtons, {
-					adminNotes: row.original.admin_notes ?? "N/A",
+					adminNotes: row.original.adminNotes ?? "N/A",
 					isExpanded: row.getIsExpanded(),
 					onToggleExpand: () => row.toggleExpanded(),
 					inviteMember: () => {
@@ -422,7 +259,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "current_position",
+			accessorKey: "position",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
@@ -432,7 +269,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 				}),
 		},
 		{
-			accessorKey: "full_name",
+			accessorKey: "fullName",
 			header: "Full Name",
 			footer: ({ table }) =>
 				`Total ${table.getRowCount() ?? 0} people on the waitlist`,
@@ -460,7 +297,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "phone_number",
+			accessorKey: "phoneNumber",
 			header: "Phone Number",
 			cell: ({ getValue }) => {
 				return renderSnippet(
@@ -472,7 +309,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "social_media_consent",
+			accessorKey: "socialMediaConsent",
 			header: "Social  Consent",
 			cell: ({ getValue }) => {
 				return renderComponent(Badge, {
@@ -528,7 +365,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "initial_registration_date",
+			accessorKey: "initialRegistrationDate",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
@@ -547,7 +384,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "last_contacted",
+			accessorKey: "lastContacted",
 			header: "Last Contacted",
 			cell: ({ getValue }) => {
 				return renderSnippet(
@@ -562,25 +399,8 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 	get data() {
 		return waitlistQuery?.data?.data ?? [];
 	},
-	onPaginationChange: (updater) => {
-		if (updater instanceof Function) {
-			onPaginationChange(
-				updater({
-					pageIndex: 0,
-					pageSize,
-				}),
-			);
-		} else {
-			onPaginationChange(updater);
-		}
-	},
-	onSortingChange: (updater) => {
-		if (updater instanceof Function) {
-			onSortingChange(updater(sortingState));
-		} else {
-			onSortingChange(updater);
-		}
-	},
+	onPaginationChange: waitlistUrl.table.onPaginationChange,
+	onSortingChange: waitlistUrl.table.onSortingChange,
 	get rowCount() {
 		return waitlistQuery?.data?.count ?? 0;
 	},
@@ -597,19 +417,19 @@ const table = createSvelteTable(tableOptions);
 >
 	<span class="flex flex-nowrap items-center gap-2">
 		<Input
-			value={searchQuery}
+			value={waitlistUrl.search}
 			oninput={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
-				onSearchChange(t.currentTarget.value)}
+				waitlistUrl.setSearch(t.currentTarget.value)}
 			placeholder="Search for a person"
 			class="w-full md:max-w-md"
 		/>
 
-		{#if searchQuery !== ""}
+		{#if waitlistUrl.search !== ""}
 			<Button
 				variant="ghost"
 				type="button"
 				aria-label="Clear search"
-				onclick={() => onSearchChange("")}
+				onclick={() => waitlistUrl.setSearch("")}
 			>
 				<Cross2 />
 			</Button>
@@ -675,21 +495,21 @@ const table = createSvelteTable(tableOptions);
 								<!-- Guardian Information -->
 								<div class="bg-card rounded-lg border p-4">
 									<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
-									{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
+									{#if row.original.guardianFirstName || row.original.guardianLastName || row.original.guardianPhoneNumber}
 										<div class="grid grid-cols-3 gap-2">
 											<div class="text-xs font-medium text-muted-foreground">
 												Name
 											</div>
 											<div class="col-span-2 text-xs">
-												{row.original.guardian_first_name || ""}
-												{row.original.guardian_last_name || ""}
+												{row.original.guardianFirstName || ""}
+												{row.original.guardianLastName || ""}
 											</div>
 
 											<div class="text-xs font-medium text-muted-foreground">
 												Phone
 											</div>
 											<div class="col-span-2 text-xs">
-												{row.original.guardian_phone_number || "N/A"}
+												{row.original.guardianPhoneNumber || "N/A"}
 											</div>
 										</div>
 									{:else}
@@ -703,7 +523,7 @@ const table = createSvelteTable(tableOptions);
 								<div class="bg-card rounded-lg border p-4">
 									<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
 									<p class="text-xs">
-										{row.original.medical_conditions || "None reported"}
+										{row.original.medicalConditions || "None reported"}
 									</p>
 								</div>
 							</div>
@@ -742,12 +562,12 @@ const table = createSvelteTable(tableOptions);
 				<!-- Name and Actions Row -->
 				<div class="flex justify-between items-center mb-3">
 					<div class="font-medium text-base">
-						{row.original.full_name}
+						{row.original.fullName}
 						<!-- Position Badge -->
 						<span
 							class="ml-2 text-xs bg-muted text-muted-foreground rounded-full px-2 py-1"
 						>
-							#{row.original.current_position}
+							#{row.original.position}
 						</span>
 					</div>
 					<!-- Actions -->
@@ -762,7 +582,7 @@ const table = createSvelteTable(tableOptions);
 									});
 								}
 							}}
-							adminNotes={row.original.admin_notes ?? "N/A"}
+							adminNotes={row.original.adminNotes ?? "N/A"}
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
 							onEdit={(newValue) => {
@@ -804,7 +624,7 @@ const table = createSvelteTable(tableOptions);
 				<div class="grid grid-cols-3 py-1 border-b">
 					<div class="text-sm font-medium text-muted-foreground">Phone</div>
 					<div class="col-span-2 text-sm">
-						{row.original.phone_number || "N/A"}
+						{row.original.phoneNumber || "N/A"}
 					</div>
 				</div>
 
@@ -822,8 +642,8 @@ const table = createSvelteTable(tableOptions);
 						Registered
 					</div>
 					<div class="col-span-2 text-sm">
-						{#if row.original.initial_registration_date}
-							{dayjs(row.original.initial_registration_date).format(
+						{#if row.original.initialRegistrationDate}
+							{dayjs(row.original.initialRegistrationDate).format(
 								"MMM D, YYYY",
 							)}
 						{:else}
@@ -838,8 +658,8 @@ const table = createSvelteTable(tableOptions);
 						Last Contact
 					</div>
 					<div class="col-span-2 text-sm">
-						{#if row.original.last_contacted}
-							{dayjs(row.original.last_contacted).format("MMM D, YYYY")}
+						{#if row.original.lastContacted}
+							{dayjs(row.original.lastContacted).format("MMM D, YYYY")}
 						{:else}
 							Never
 						{/if}
@@ -852,21 +672,21 @@ const table = createSvelteTable(tableOptions);
 						<!-- Guardian Information -->
 						<div class="mb-4">
 							<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
-							{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
+							{#if row.original.guardianFirstName || row.original.guardianLastName || row.original.guardianPhoneNumber}
 								<div class="grid grid-cols-3 gap-2">
 									<div class="text-xs font-medium text-muted-foreground">
 										Name
 									</div>
 									<div class="col-span-2 text-xs">
-										{row.original.guardian_first_name || ""}
-										{row.original.guardian_last_name || ""}
+										{row.original.guardianFirstName || ""}
+										{row.original.guardianLastName || ""}
 									</div>
 
 									<div class="text-xs font-medium text-muted-foreground">
 										Phone
 									</div>
 									<div class="col-span-2 text-xs">
-										{row.original.guardian_phone_number || "N/A"}
+										{row.original.guardianPhoneNumber || "N/A"}
 									</div>
 								</div>
 							{:else}
@@ -880,7 +700,7 @@ const table = createSvelteTable(tableOptions);
 						<div>
 							<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
 							<p class="text-xs">
-								{row.original.medical_conditions || "None reported"}
+								{row.original.medicalConditions || "None reported"}
 							</p>
 						</div>
 					</div>
@@ -896,14 +716,14 @@ const table = createSvelteTable(tableOptions);
 		<p class="text-sm text-muted-foreground">Elements per page</p>
 		<Select.Root
 			type="single"
-			value={pageSize.toString()}
-			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
+			value={waitlistUrl.pageSize.toString()}
+			onValueChange={(value) => waitlistUrl.setPageSize(Number(value))}
 		>
 			<Select.Trigger class="w-16 h-8" aria-label="Waitlist elements per page"
-				>{pageSize}</Select.Trigger
+				>{waitlistUrl.pageSize}</Select.Trigger
 			>
 			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
+				{#each PAGE_SIZE_OPTIONS as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>
 						{pageSizeOption}
 					</Select.Item>
@@ -918,7 +738,7 @@ const table = createSvelteTable(tableOptions);
 			variant="outline"
 			disabled={!waitlistQuery?.data?.previousCursor ||
 				waitlistQuery.isFetching}
-			onclick={() => onCursorChange(waitlistQuery?.data?.previousCursor)}
+			onclick={() => waitlistUrl.goTo(waitlistQuery?.data?.previousCursor)}
 		>
 			Previous
 		</Button>
@@ -928,7 +748,7 @@ const table = createSvelteTable(tableOptions);
 		<Button
 			variant="outline"
 			disabled={!waitlistQuery?.data?.nextCursor || waitlistQuery.isFetching}
-			onclick={() => onCursorChange(waitlistQuery?.data?.nextCursor)}
+			onclick={() => waitlistUrl.goTo(waitlistQuery?.data?.nextCursor)}
 		>
 			Next
 		</Button>
