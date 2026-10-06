@@ -291,6 +291,26 @@ defmodule Dhc.Inventory.OperatorItemListTest do
       end
     end
 
+    test "matches an ancestor container name, not just the direct container" do
+      category = create_category!()
+      actor = principal_id()
+
+      {:ok, root} = Inventory.create_container(%{"name" => "Armoury"}, actor)
+
+      {:ok, shelf} =
+        Inventory.create_container(%{"name" => "Shelf", "parentContainerId" => root.id}, actor)
+
+      other = create_container!()
+      {:ok, nested} = create_item(shelf.id, category.id)
+      {:ok, _elsewhere} = create_item(other.id, category.id)
+
+      for q <- ["Armoury", "armoury shelf", "Armou"] do
+        assert {:ok, page} = Inventory.list_operator_items(%{"q" => q})
+        assert Enum.map(page.items, & &1.id) == [nested.id]
+        assert page.total_count == 1
+      end
+    end
+
     test "matches a multi-word query that spans category and a property value" do
       %{container_id: container_id} = fixture()
       {:ok, category} = Inventory.create_category(%{"name" => "Longsword"})
