@@ -10,7 +10,7 @@ import PaymentForm from "./payment-form.svelte";
 import PaymentStatus from "./payment-status.svelte";
 import DiscordUnavailable from "./discord-unavailable.svelte";
 import OnboardingStepper from "./onboarding-stepper.svelte";
-import { presentAcceptanceStep } from "$lib/invitation-acceptance/presentation";
+import { presentAcceptanceStep } from "#lib/invitation-acceptance/presentation.js";
 
 const { data } = $props();
 

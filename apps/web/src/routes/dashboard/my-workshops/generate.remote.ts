@@ -1,10 +1,10 @@
 import { command, getRequestEvent } from "$app/server";
 import * as v from "valibot";
-import { authorize } from "$lib/server/auth";
+import { authorize } from "#lib/server/auth.js";
 import {
 	generateWorkshopData,
 	coerceToCreateWorkshopSchema,
-} from "$lib/server/workshop-generator";
+} from "#lib/server/workshop-generator.js";
 
 /**
  * Generate workshop data from a natural language prompt using AI.

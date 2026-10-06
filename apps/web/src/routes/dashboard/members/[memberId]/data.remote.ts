@@ -3,9 +3,9 @@ import { membersUpdate } from "@dhc/api-client";
 import * as v from "valibot";
 import formSchema, {
 	memberProfileClientSchema,
-} from "$lib/schemas/membersSignup";
-import { authorizationFor } from "$lib/server/authorization";
-import { apiClientOptions } from "$lib/server/api-client";
+} from "#lib/schemas/membersSignup.js";
+import { authorizationFor } from "#lib/server/authorization/index.js";
+import { apiClientOptions } from "#lib/server/api-client.js";
 import { invalid } from "@sveltejs/kit";
 
 export const updateProfile = form(

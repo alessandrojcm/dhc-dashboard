@@ -4,8 +4,8 @@ import ChevronRightIcon from "@lucide/svelte/icons/chevron-right";
 import {
 	buttonVariants,
 	type ButtonVariant,
-} from "$lib/components/ui/button/index.js";
-import { cn } from "$lib/utils.js";
+} from "#lib/components/ui/button/index.js";
+import { cn } from "#lib/utils.js";
 
 let {
 	ref = $bindable(null),

@@ -1,31 +1,31 @@
 <script lang="ts">
-import { pushState, replaceState } from "$app/navigation";
+import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
 import {
 	Select,
 	SelectContent,
 	SelectItem,
 	SelectTrigger,
-} from "$lib/components/ui/select";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import * as Sheet from "$lib/components/ui/sheet";
-import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
-import MemberEquipmentItem from "$lib/components/inventory/MemberEquipmentItem.svelte";
-import CatalogPropertyFilters from "$lib/components/inventory/CatalogPropertyFilters.svelte";
+} from "#lib/components/ui/select/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
+import MemberEquipmentItem from "#lib/components/inventory/MemberEquipmentItem.svelte";
+import CatalogPropertyFilters from "#lib/components/inventory/CatalogPropertyFilters.svelte";
 import {
 	encodePropertyFilter,
 	propertyFilterEntries,
-} from "$lib/inventory/property-filter";
+} from "#lib/inventory/property-filter.js";
 import {
 	isModifiedClick,
 	sheetSelection,
-} from "$lib/inventory/sheet-selection";
+} from "#lib/inventory/sheet-selection.js";
 import {
 	ArrowRight,
 	Package,
@@ -33,6 +33,7 @@ import {
 	RefreshCw,
 	SlidersHorizontal,
 } from "@lucide/svelte";
+
 import {
 	inventoryCatalogListItemsOptions,
 	inventoryCategoriesIndexOptions,
@@ -147,7 +148,10 @@ function clearFilters() {
 
 function openItem(slug: string, trigger: HTMLElement) {
 	selectedItemTrigger = trigger;
-	pushState(`${LIST_PATH}/${slug}`, { selectedSlug: slug });
+	goto(`${LIST_PATH}/${slug}`, {
+		shallow: true,
+		state: { selectedSlug: slug },
+	});
 }
 
 function closeSheet() {
@@ -156,7 +160,7 @@ function closeSheet() {
 		return;
 	}
 	if (selectedItemSlug) {
-		replaceState(LIST_PATH, {});
+		goto(LIST_PATH, { shallow: true, replace: true });
 	}
 }
 

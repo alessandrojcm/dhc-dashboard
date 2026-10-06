@@ -1,12 +1,12 @@
-import { env } from "$env/dynamic/private";
-import { registerApiErrorReporter } from "$lib/api-error-reporter";
+import { API_BASE_URL } from "$app/env/private";
+import { registerApiErrorReporter } from "#lib/api-error-reporter.js";
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:4000/api";
 
 registerApiErrorReporter();
 
 export function apiBaseUrl(): string {
-	return env.API_BASE_URL ?? DEFAULT_API_BASE_URL;
+	return API_BASE_URL ?? DEFAULT_API_BASE_URL;
 }
 
 /**

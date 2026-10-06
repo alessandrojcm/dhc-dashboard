@@ -15,9 +15,9 @@ import {
 	createMutation,
 	useQueryClient,
 } from "@tanstack/svelte-query";
-import { browser } from "$app/environment";
-import { env } from "$env/dynamic/public";
-import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
+import { browser } from "$app/env";
+import { PUBLIC_PHOENIX_SOCKET_URL } from "$app/env/public";
+import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
 import { Bell } from "@lucide/svelte";
 import { connectNotificationRealtime } from "./notification-realtime.svelte";
 import WebPushToggle from "./WebPushToggle.svelte";
@@ -101,14 +101,14 @@ onMount(() => {
 	// `_dhc_session` cookie is sent) and passes it to the Phoenix JS
 	// `Socket` as `authToken`. All realtime failures stay silent inside
 	// the bridge and never disable the HTTP query or mutations below.
-	if (!browser || !env.PUBLIC_PHOENIX_SOCKET_URL) return;
+	if (!browser || !PUBLIC_PHOENIX_SOCKET_URL) return;
 
 	// The realtime bridge owns the socket-token fetch + reconnect cycle.
 	// We pass it a function that fetches a fresh socket token (the
 	// token is short-lived, so a reconnect after a long disconnect
 	// needs a fresh one).
 	const realtime = connectNotificationRealtime({
-		socketUrl: env.PUBLIC_PHOENIX_SOCKET_URL,
+		socketUrl: PUBLIC_PHOENIX_SOCKET_URL,
 		getSocketToken: async () => {
 			const { data, error } = await authSessionSocketToken();
 			if (error || !data) return null;

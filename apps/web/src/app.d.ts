@@ -1,15 +1,10 @@
 /// <reference types="@sveltejs/kit" />
-import { Env } from "../worker-configuration";
 import type { PhoenixSessionProjection } from "./lib/server/auth";
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
 declare global {
 	namespace App {
 		// interface Error {}
-
-		interface Platform {
-			env?: Env;
-		}
 
 		// ALE-164: the dashboard authenticates through the Phoenix Session
 		// cookie. The `Session` type is the Phoenix session projection
@@ -39,15 +34,5 @@ declare global {
 			selectedSlug?: string;
 			selectedLoanId?: string;
 		}
-		// interface Platform {}
 	}
-}
-
-declare module "$env/static/public" {
-	export const PUBLIC_SUPABASE_URL: string;
-	export const PUBLIC_SUPABASE_ANON_KEY: string;
-	export const PUBLIC_SITE_URL: string;
-	export const PUBLIC_STRIPE_KEY: string;
-	export const PUBLIC_API_BASE_URL: string;
-	export const PUBLIC_PHOENIX_SOCKET_URL: string;
 }

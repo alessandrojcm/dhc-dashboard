@@ -3,7 +3,7 @@ import * as v from "valibot";
 import {
 	completeExternalWorkshopRegistration,
 	ExternalWorkshopRegistrationApiError,
-} from "$lib/server/api/external-workshop-registration";
+} from "#lib/server/api/external-workshop-registration.js";
 
 export const load = async ({
 	params,

@@ -1,4 +1,4 @@
-import { authorizationFor } from "$lib/server/authorization";
+import { authorizationFor } from "#lib/server/authorization/index.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = ({ locals }) => {

@@ -1,5 +1,5 @@
-import type { AcceptanceApiResult } from "$lib/invitation-acceptance/vocabulary";
-import type { PlanPricing } from "$lib/types";
+import type { AcceptanceApiResult } from "#lib/invitation-acceptance/vocabulary.js";
+import type { PlanPricing } from "#lib/types.js";
 import {
 	decideInvitationRoute,
 	type InvitationRouteOutcome,

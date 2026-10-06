@@ -64,9 +64,9 @@ Choose one client/server boundary for each operation:
 - Do not add a `.remote.ts` wrapper that only duplicates an existing generated Phoenix mutation.
 - Use `query(...)` for intentional server-only reads. Phoenix API reads use generated query options as described under "TanStack Query with the Phoenix API".
 
-All remote functions that accept input use a Valibot schema. Authenticated handlers obtain the request with `getRequestEvent()` and authorize through `authorize(locals, <capability>)` or `authorizationFor(session).require(<capability>)` from `$lib/server/authorization` (never by intersecting role sets). Phoenix calls forward request cookies through `apiClientOptions(event.cookies)`. Domain mutations belong in Phoenix contexts; remote functions must not access Kysely or `executeWithRLS` directly.
+All remote functions that accept input use a Valibot schema. Authenticated handlers obtain the request with `getRequestEvent()` and authorize through `authorize(locals, <capability>)` or `authorizationFor(session).require(<capability>)` from `#lib/server/authorization` (never by intersecting role sets). Phoenix calls forward request cookies through `apiClientOptions(event.cookies)`. Domain mutations belong in Phoenix contexts; remote functions must not access Kysely or `executeWithRLS` directly.
 
-## UI: `$lib/components/ui` Owns Every Interactive Primitive
+## UI: `#lib/components/ui` Owns Every Interactive Primitive
 
 Compose, don't reinvent: reach for the shared component first and style only what it does not cover. A hand-rolled control diverges from the theme, drops the focus and keyboard behaviour the shared one already implements, and no one updates it when the theme moves.
 
@@ -95,7 +95,7 @@ Every other name comes from the registry — add a missing one rather than writi
 pnpm dlx shadcn-svelte@latest add <name> -c apps/web -y
 ```
 
-Two rows are compositions that already exist rather than registry items, so they are not `add` targets: `date-picker.svelte` (this project's `Popover` + `Calendar`) and a combobox (`Popover` + `Command`). `apps/web/components.json` holds the alias map (`ui` → `$lib/components/ui`) and the registry URL; the primitives underneath are `bits-ui` 2.18.1, which feature code imports only through `ui/`. Not yet vendored and worth adding: `native-select`, `empty`, `spinner`, `input-group`.
+Two rows are compositions that already exist rather than registry items, so they are not `add` targets: `date-picker.svelte` (this project's `Popover` + `Calendar`) and a combobox (`Popover` + `Command`). `apps/web/components.json` holds the alias map (`ui` → `#lib/components/ui`) and the registry URL; the primitives underneath are `bits-ui` 2.18.1, which feature code imports only through `ui/`. Not yet vendored and worth adding: `native-select`, `empty`, `spinner`, `input-group`.
 
 Copy the shape from a page that already does it: `apps/web/src/routes/(public)/waitlist/+page.svelte` (Field + Input + Select + RadioGroup + date picker in one remote form), `apps/web/src/routes/dashboard/members/[memberId]/+page.svelte`, and `apps/web/src/lib/components/ui/pause-subscription-modal.svelte` for a dialog over a date field.
 
@@ -129,6 +129,8 @@ Spread the remote form or its preflight-enhanced variant onto the native form el
 
 - Prefer `form(...)` to `command(...)` when the operation naturally submits a form.
 - Use `.preflight(schema)` when client-side validation is appropriate.
+- Every control a remote form submits must take its name from the field (`{...form.fields.x.as(type)}` or `name={form.fields.x.as(type).name}`); SvelteKit 3 encodes names as `<field>/<form id>` and rejects the whole submission (`form_field_unbound`) if any key is a plain `name="x"`. bits-ui `Select.Root` / `RadioGroup.Root` / `Switch` render their own hidden input under a `name` prop, so leave them unnamed and submit the value with `<input {...form.fields.x.as("hidden", value)} />` (render it only when set for optional enums). Tests that read a form's `FormData` must strip the `/<form id>` suffix.
+- `submit()` awaits the post-submission `refreshAll()` before resolving, so a refresh that re-renders the route (e.g. Invitation Acceptance after a terminal payment failure) unmounts the component — and its `useMachine` actor — before the `enhance` callback continues. Do user-visible work that must survive that (toasts) directly in the callback.
 - Treat `invalid(...)`, `redirect(...)`, and `error(...)` as control-flow exceptions. Keep them outside broad catches or explicitly rethrow them.
 - Use `.pending` for submission state and `.result` only for ephemeral post-submission feedback.
 

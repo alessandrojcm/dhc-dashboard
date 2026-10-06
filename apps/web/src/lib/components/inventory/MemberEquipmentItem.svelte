@@ -14,13 +14,13 @@ import {
 	type InventoryCatalogRequestLoanResponse,
 	type InventoryOperatorItemValue,
 } from "@dhc/api-client";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import { Label } from "$lib/components/ui/label";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import { Textarea } from "$lib/components/ui/textarea";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
+import { Label } from "#lib/components/ui/label/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
 import {
 	CalendarDays,
 	Check,

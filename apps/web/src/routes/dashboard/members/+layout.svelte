@@ -1,6 +1,6 @@
 <script lang="ts">
 import { page } from "$app/state";
-import { cn } from "$lib/utils";
+import { cn } from "#lib/utils.js";
 import { ChartColumn, Mail, Users } from "@lucide/svelte";
 import type { LayoutProps } from "./$types";
 import InviteDrawer from "./invite-drawer.svelte";

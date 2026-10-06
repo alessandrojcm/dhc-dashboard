@@ -7,14 +7,14 @@ import {
 	onboardingSubmitPayment,
 	onboardingVerifyInvitationAcceptance,
 } from "@dhc/api-client";
-import { apiErrorDetail } from "$lib/api-error";
+import { apiErrorDetail } from "#lib/api-error.js";
 import * as v from "valibot";
 import {
 	acceptanceStateResponseSchema,
 	type AcceptanceApiResult,
 	type AcceptanceView,
-} from "$lib/invitation-acceptance/vocabulary";
-import { apiBaseUrl } from "$lib/server/api-client";
+} from "#lib/invitation-acceptance/vocabulary.js";
+import { apiBaseUrl } from "#lib/server/api-client.js";
 import { acceptanceProofCookie, issuedProofFrom } from "./cookie-store";
 import type {
 	AcceptanceProof,

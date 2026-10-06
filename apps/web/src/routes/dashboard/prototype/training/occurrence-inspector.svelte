@@ -1,7 +1,7 @@
 <!-- PROTOTYPE — throwaway. Occurrence inspector dialog (from Variant A), shared with Variant D. -->
 <script lang="ts">
-import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
 import dayjs from "dayjs";
 import { CalendarOff, Check, ExternalLink, Pencil } from "@lucide/svelte";
 import DiscordPreview from "./discord-preview.svelte";

@@ -2,7 +2,7 @@ import {
 	applyInvitationRouteOutcome,
 	invitationAcceptanceDeps,
 	resumeInvitationAcceptance,
-} from "$lib/server/invitation-acceptance";
+} from "#lib/server/invitation-acceptance/index.js";
 import type { PageServerLoad } from "./$types";
 
 // The resume URL contains only the public invitation route parameter. The

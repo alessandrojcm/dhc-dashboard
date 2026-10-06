@@ -1,6 +1,6 @@
 import { error, redirect } from "@sveltejs/kit";
-import { invitationPaths } from "$lib/invitation-acceptance/paths";
-import type { AcceptanceView } from "$lib/invitation-acceptance/vocabulary";
+import { invitationPaths } from "#lib/invitation-acceptance/paths.js";
+import type { AcceptanceView } from "#lib/invitation-acceptance/vocabulary.js";
 import type { InvitationRouteOutcome, RouteEffect } from "./decision";
 import type { AcceptanceCookieStore } from "./ports";
 

@@ -1,6 +1,6 @@
 import { error } from "@sveltejs/kit";
 import { membersOptions, waitlistStatus } from "@dhc/api-client";
-import { apiBaseUrl } from "$lib/server/api-client";
+import { apiBaseUrl } from "#lib/server/api-client.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async () => {

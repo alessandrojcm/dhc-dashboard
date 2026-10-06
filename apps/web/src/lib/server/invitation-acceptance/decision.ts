@@ -3,7 +3,7 @@ import * as v from "valibot";
 import type {
 	AcceptanceApiResult,
 	AcceptanceView,
-} from "$lib/invitation-acceptance/vocabulary";
+} from "#lib/invitation-acceptance/vocabulary.js";
 
 /**
  * Pure server decision machine (GH-509).

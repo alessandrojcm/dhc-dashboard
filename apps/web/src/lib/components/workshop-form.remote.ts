@@ -6,13 +6,13 @@ import {
 	type WorkshopManagementUpdateRequest,
 } from "@dhc/api-client";
 import Dinero from "dinero.js";
-import { authorize } from "$lib/server/auth";
-import { apiErrorMessage } from "$lib/api-error";
-import { apiClientOptions } from "$lib/server/api-client";
+import { authorize } from "#lib/server/auth.js";
+import { apiErrorMessage } from "#lib/api-error.js";
+import { apiClientOptions } from "#lib/server/api-client.js";
 import {
 	CreateWorkshopRemoteSchema,
 	UpdateWorkshopRemoteSchema,
-} from "$lib/schemas/workshop";
+} from "#lib/schemas/workshop.js";
 import dayjs from "dayjs";
 
 export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {

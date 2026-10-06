@@ -1,17 +1,17 @@
 <script lang="ts">
 import type { ComponentProps } from "svelte";
-import * as Sidebar from "$lib/components/ui/sidebar/index.js";
-import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
-import * as Avatar from "$lib/components/ui/avatar";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import { Button } from "$lib/components/ui/button";
-import type { NavData, UserData } from "$lib/types";
+import * as Sidebar from "#lib/components/ui/sidebar/index.js";
+import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
+import * as Avatar from "#lib/components/ui/avatar/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import type { NavData, UserData } from "#lib/types.js";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
-import NotificationCenter from "$lib/components/notifications/NotificationCenter.svelte";
+import NotificationCenter from "#lib/components/notifications/NotificationCenter.svelte";
 import { House, Menu } from "@lucide/svelte";
-import { navIconFor } from "$lib/components/ui/nav-icons";
-import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
-import { browser } from "$app/environment";
+import { navIconFor } from "#lib/components/ui/nav-icons.js";
+import { useSidebar } from "#lib/components/ui/sidebar/context.svelte.js";
+import { browser } from "$app/env";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
 
@@ -75,7 +75,8 @@ function isActive(url: string) {
 		<div
 			class="size-11 shrink-0 overflow-hidden rounded-full border-2 border-secondary bg-white"
 		>
-			<enhanced:img src={DHCLogo} alt="" class="size-full object-cover" />
+			<enhanced:img src={DHCLogo} alt="" class="size-full object-cover"
+			></enhanced:img>
 		</div>
 		<div>
 			<p
@@ -208,11 +209,11 @@ function isActive(url: string) {
 						</DropdownMenu.Trigger>
 
 						<DropdownMenu.Content strategy="fixed" {customAnchor} class="w-56">
-							<DropdownMenu.Item>
-								<a href={resolve(`/dashboard/members/${user?.id}`)}
+							<DropdownMenu.Item
+								><a href={resolve(`dashboard/members/${user?.id}`)}
 									>My Profile</a
-								>
-							</DropdownMenu.Item>
+								></DropdownMenu.Item
+							>
 							<DropdownMenu.Item onclick={logout}>Log out</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					{/await}

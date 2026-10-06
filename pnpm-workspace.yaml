@@ -35,3 +35,9 @@ strictPeerDependencies: false
 
 patchedDependencies:
   '@hey-api/openapi-ts@0.97.2': patches/@hey-api__openapi-ts@0.97.2.patch
+
+# runed (pulled in by bits-ui, mode-watcher, paneforge, svelte-sonner, vaul-svelte)
+# has not widened its optional @sveltejs/kit peer range to include Kit 3 yet.
+peerDependencyRules:
+  allowedVersions:
+    'runed>@sveltejs/kit': '3'

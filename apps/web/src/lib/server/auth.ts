@@ -1,5 +1,5 @@
 import { authSessionShowSession } from "@dhc/api-client";
-import { env } from "$env/dynamic/private";
+import { API_BASE_URL } from "$app/env/private";
 import { authorizationFor, type Capability } from "./authorization";
 import type { Cookies } from "./api-client";
 
@@ -43,7 +43,7 @@ export type PhoenixSessionProjection = {
  */
 
 function apiBaseUrl(): string {
-	return env.API_BASE_URL ?? DEFAULT_API_BASE_URL;
+	return API_BASE_URL ?? DEFAULT_API_BASE_URL;
 }
 
 /**
@@ -80,7 +80,7 @@ export async function getPhoenixSession(
 	}
 }
 
-// Re-export `Cookies` so existing imports from `$lib/server/auth` keep
+// Re-export `Cookies` so existing imports from `#lib/server/auth.js` keep
 // working. The type lives in `./api-client` to avoid a circular import.
 export type { Cookies };
 

@@ -1,12 +1,12 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
-import { Button } from "$lib/components/ui/button";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import * as Tabs from "$lib/components/ui/tabs";
-import WorkshopCalendar from "$lib/components/workshops/workshop-calendar.svelte";
-import WorkshopManagementList from "$lib/components/workshops/workshop-management-list.svelte";
-import QuickCreateWorkshop from "$lib/components/workshops/quick-create-workshop.svelte";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import * as Tabs from "#lib/components/ui/tabs/index.js";
+import WorkshopCalendar from "#lib/components/workshops/workshop-calendar.svelte";
+import WorkshopManagementList from "#lib/components/workshops/workshop-management-list.svelte";
+import QuickCreateWorkshop from "#lib/components/workshops/quick-create-workshop.svelte";
 import {
 	workshopsCalendarOptions,
 	type WorkshopCalendarItem,
@@ -49,7 +49,7 @@ const registrationCount = $derived(
 );
 
 function handleCreate() {
-	goto(resolve("/dashboard/workshops/create"));
+	goto(resolve("dashboard/workshops/create"));
 }
 
 function handleEdit(workshop: WorkshopCalendarItem) {

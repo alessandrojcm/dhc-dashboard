@@ -1,13 +1,13 @@
 <script lang="ts">
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
 import WorkshopExpressCheckout from "./workshop-express-checkout.svelte";
 import WorkshopCancellationDialog from "./workshop-cancellation-dialog.svelte";
 import dayjs from "dayjs";
 import Dinero from "dinero.js";
 import { useQueryClient } from "@tanstack/svelte-query";
-import type { UserData } from "$lib/types";
+import type { UserData } from "#lib/types.js";
 import {
 	CalendarCheck2,
 	Check,

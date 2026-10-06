@@ -1,7 +1,7 @@
 <script lang="ts">
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import { Button } from "$lib/components/ui/button";
+import * as Field from "#lib/components/ui/field/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
 import {
 	loadStripe,
 	type Stripe,
@@ -9,35 +9,36 @@ import {
 	type StripeElementsOptions,
 	type StripePaymentElementOptions,
 } from "@stripe/stripe-js";
-import { PUBLIC_STRIPE_KEY } from "$env/static/public";
+import { PUBLIC_STRIPE_KEY } from "$app/env/public";
 import { toast } from "svelte-sonner";
 import { tick } from "svelte";
 import { fromPromise, type AnyActorRef } from "xstate";
 import { useMachine } from "@xstate/svelte";
-import * as Alert from "$lib/components/ui/alert";
-import PhoneInput from "$lib/components/ui/phone-input.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import PhoneInput from "#lib/components/ui/phone-input.svelte";
 import PricingDisplay from "./pricing-display.svelte";
 import PaymentSubmit from "./payment-submit.svelte";
 import type { PageServerData } from "./$types";
 import { page } from "$app/state";
-import { browser } from "$app/environment";
+import { browser } from "$app/env";
 import { processPayment } from "./data.remote";
-import { initForm } from "$lib/utils/init-form.svelte";
-import { invitationPaths } from "$lib/invitation-acceptance/paths";
+import { initForm } from "#lib/utils/init-form.svelte.js";
+import { invitationPaths } from "#lib/invitation-acceptance/paths.js";
 import {
 	paymentMachine,
 	type PaymentMachineState,
-} from "$lib/invitation-acceptance/payment-machine";
+} from "#lib/invitation-acceptance/payment-machine.js";
 
 const {
 	data,
 	onActor,
 	submit: submitOverride,
+
+	/** Test-only: observe the component-scoped actor. */
+	/** Test-only: replace the remote form's `submit()` (false = validation failed). */
 }: {
 	data: PageServerData;
-	/** Test-only: observe the component-scoped actor. */
 	onActor?: (actor: AnyActorRef) => void;
-	/** Test-only: replace the remote form's `submit()` (false = validation failed). */
 	submit?: () => Promise<boolean>;
 } = $props();
 let currentCoupon = $state("");
@@ -182,9 +183,16 @@ const failure = $derived($snapshot.context.failure);
 // the acceptance proof, and the form's refresh then re-renders this page as
 // step 1 — unmounting the inline alert almost immediately. The toast lives in
 // the layout, so it is what the invitee actually gets to read.
+//
+// Since SvelteKit 3, a remote form's `submit()` awaits that refresh before it
+// resolves, so for a terminal failure this component (and its actor) is gone
+// by the time the enhance callback below reads the result. The callback
+// therefore toasts the server's answer itself; both toasts share one id so a
+// still-mounted component shows a single toast.
+const PAYMENT_FAILURE_TOAST_ID = "invitation-payment-failure";
 $effect(() => {
 	if ((machineState === "failed" || machineState === "expired") && failure)
-		toast.error(failure.message);
+		toast.error(failure.message, { id: PAYMENT_FAILURE_TOAST_ID });
 });
 
 // Every submission goes through the machine: a native submit (Enter in a
@@ -219,9 +227,11 @@ const enhancedForm = processPayment.enhance(async ({ submit }) => {
 
 	const result = processPayment.result;
 	if (result?.paymentFailed) {
+		const message = result.error || "Payment failed";
+		toast.error(message, { id: PAYMENT_FAILURE_TOAST_ID });
 		send({
 			type: "SUBMISSION_FAILED",
-			message: result.error || "Payment failed",
+			message,
 			recoverable: result.recoverable,
 		});
 	}

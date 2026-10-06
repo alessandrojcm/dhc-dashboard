@@ -7,7 +7,7 @@ import type { LayoutLoad } from "./$types";
  * `+layout.server.ts` via `GET /api/auth/session`).
  *
  * The `depends("supabase:auth")` call is replaced with a Phoenix-session
- * dependency key so `invalidateAll()` / `invalidate("phoenix:session")` can
+ * dependency key so `refreshAll()` / `invalidate("phoenix:session")` can
  * trigger a session re-read.
  */
 export const load: LayoutLoad = async ({ data, depends }) => {

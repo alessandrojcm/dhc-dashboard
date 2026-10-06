@@ -7,7 +7,7 @@ import {
 	guardRoute,
 	type Capability,
 	type PhoenixSessionProjection,
-} from "$lib/server/authorization";
+} from "#lib/server/authorization/index.js";
 import { navigation } from "./navigation";
 import { governingRule, protectedRoutes } from "./routes";
 

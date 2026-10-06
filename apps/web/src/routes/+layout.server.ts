@@ -1,5 +1,5 @@
 import type { LayoutServerLoad } from "./$types";
-import { getPhoenixSession } from "$lib/server/auth";
+import { getPhoenixSession } from "#lib/server/auth.js";
 
 export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 	const session = locals.session ?? (await getPhoenixSession(cookies));

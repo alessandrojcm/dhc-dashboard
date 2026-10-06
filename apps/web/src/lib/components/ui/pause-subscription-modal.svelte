@@ -1,8 +1,8 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
-import { Label } from "$lib/components/ui/label";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
 import dayjs from "dayjs";
 import {
 	type DateValue,

@@ -2,13 +2,13 @@
 import type {
 	ButtonVariant,
 	ButtonSize,
-} from "$lib/components/ui/button/button.svelte";
+} from "#lib/components/ui/button/button.svelte";
 </script>
 
 <script lang="ts">
 import { Check, LoaderCircle } from "@lucide/svelte";
-import { Button } from "$lib/components/ui/button";
-import { cn } from "$lib/utils.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { cn } from "#lib/utils.js";
 import type { Snippet } from "svelte";
 
 type Props = {

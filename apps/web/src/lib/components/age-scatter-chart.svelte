@@ -1,6 +1,6 @@
 <script lang="ts">
 import { ScatterChart } from "layerchart";
-import * as Chart from "$lib/components/ui/chart/index.js";
+import * as Chart from "#lib/components/ui/chart/index.js";
 import { formatNumber, getChartColor } from "./chart-conventions.js";
 
 type AgeValue = string | number | null;

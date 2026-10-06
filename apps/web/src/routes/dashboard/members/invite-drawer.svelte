@@ -1,20 +1,24 @@
 <script lang="ts">
-import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
-import { Button, buttonVariants } from "$lib/components/ui/button";
-import { Card } from "$lib/components/ui/card";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import PhoneInput from "$lib/components/ui/phone-input.svelte";
-import { Separator } from "$lib/components/ui/separator";
-import * as Sheet from "$lib/components/ui/sheet/index.js";
-import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
+import {
+	Alert,
+	AlertDescription,
+	AlertTitle,
+} from "#lib/components/ui/alert/index.js";
+import { Button, buttonVariants } from "#lib/components/ui/button/index.js";
+import { Card } from "#lib/components/ui/card/index.js";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
+import * as Field from "#lib/components/ui/field/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import PhoneInput from "#lib/components/ui/phone-input.svelte";
+import { Separator } from "#lib/components/ui/separator/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
 import dayjs from "dayjs";
 import { Info, Loader, Pencil, Plus, Trash2 } from "@lucide/svelte";
 import { submitBulkInvites } from "./data.remote";
-import { adminInviteRemoteSchema } from "$lib/schemas/adminInvite";
+import { adminInviteRemoteSchema } from "#lib/schemas/adminInvite.js";
 import * as v from "valibot";
 
 type PricingTier = "standard" | "coach" | "student";

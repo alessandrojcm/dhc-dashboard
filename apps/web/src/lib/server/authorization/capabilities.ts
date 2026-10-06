@@ -1,13 +1,13 @@
 /**
  * GH-510: the capability registry and its role-to-capability policy.
  *
- * This file is private to `$lib/server/authorization`. Feature code never
+ * This file is private to `#lib/server/authorization/index.js`. Feature code never
  * imports role sets; it asks `authorizationFor(session)` about a capability.
  * Role names come from the Phoenix session projection and mirror the Phoenix
  * router pipelines — Phoenix remains the authoritative enforcement layer, this
  * policy only decides what the dashboard shows and routes to.
  */
-import type { PhoenixSessionProjection } from "$lib/server/auth";
+import type { PhoenixSessionProjection } from "#lib/server/auth.js";
 
 /**
  * Every capability the dashboard can ask about. Names describe user intent,

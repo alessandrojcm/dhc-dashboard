@@ -6,8 +6,8 @@ import {
 	type WorkshopExternalRegistrationGateResponse,
 	type WorkshopRegistrationResponse,
 } from "@dhc/api-client";
-import { apiBaseUrl } from "$lib/server/api-client";
-import { apiErrorMessage } from "$lib/api-error";
+import { apiBaseUrl } from "#lib/server/api-client.js";
+import { apiErrorMessage } from "#lib/api-error.js";
 
 export interface ExternalWorkshopRegistrationClient {
 	completeRegistration(options: {

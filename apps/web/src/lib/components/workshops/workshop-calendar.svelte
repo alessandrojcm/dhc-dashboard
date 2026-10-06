@@ -1,11 +1,11 @@
 <script lang="ts">
 import { Calendar, DayGrid, Interaction } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
-import "$lib/components/calendar/dhc-calendar.css";
-import * as Dialog from "$lib/components/ui/dialog";
+import "#lib/components/calendar/dhc-calendar.css";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
 import dayjs from "dayjs";
 import WorkshopEventModal from "./workshop-event-modal.svelte";
-import type { WorkshopCalendarEvent } from "$lib/types";
+import type { WorkshopCalendarEvent } from "#lib/types.js";
 import type { WorkshopCalendarItem } from "@dhc/api-client";
 
 interface CalendarEvent {

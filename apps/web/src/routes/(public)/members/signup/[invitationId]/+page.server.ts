@@ -3,7 +3,7 @@ import {
 	applyInvitationRouteOutcome,
 	invitationAcceptanceDeps,
 	readInvitationPage,
-} from "$lib/server/invitation-acceptance";
+} from "#lib/server/invitation-acceptance/index.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ params, cookies }) => {

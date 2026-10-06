@@ -236,7 +236,7 @@ describe("SvelteKit acceptance cookie adapter", () => {
 			},
 		);
 		const options = cookies.set.mock.calls[0][2];
-		expect(options.encode?.("a=b")).toBe("a=b");
+		expect(options?.encode?.("a=b")).toBe("a=b");
 	});
 
 	it("consumes the sign-in prefill exactly once", () => {

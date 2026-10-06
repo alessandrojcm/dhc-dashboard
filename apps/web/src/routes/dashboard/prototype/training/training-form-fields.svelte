@@ -1,9 +1,9 @@
 <!-- PROTOTYPE — throwaway. Training create/edit fields with a live rendered preview. -->
 <script lang="ts">
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import { Switch } from "$lib/components/ui/switch";
-import { Textarea } from "$lib/components/ui/textarea";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import { Switch } from "#lib/components/ui/switch/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
 import { AlertTriangle } from "@lucide/svelte";
 import DiscordPreview from "./discord-preview.svelte";
 import {

@@ -3,7 +3,7 @@ import {
 	PAGE_SIZE_OPTIONS,
 	parsePageSize,
 	transitionCursorQuery,
-} from "$lib/cursor-query";
+} from "#lib/cursor-query.js";
 
 describe("cursor query", () => {
 	it("owns the supported page sizes", () => {

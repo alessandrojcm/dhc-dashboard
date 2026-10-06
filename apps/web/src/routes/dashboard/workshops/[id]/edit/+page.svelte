@@ -1,13 +1,13 @@
 <script lang="ts">
-import WorkshopForm from "$lib/components/workshop-form.svelte";
-import { Button } from "$lib/components/ui/button";
+import WorkshopForm from "#lib/components/workshop-form.svelte";
+import { Button } from "#lib/components/ui/button/index.js";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 
 const { data } = $props();
 
 function handleSuccess() {
-	setTimeout(() => goto(resolve("/dashboard/workshops")), 2000);
+	setTimeout(() => goto(resolve("dashboard/workshops")), 2000);
 }
 </script>
 

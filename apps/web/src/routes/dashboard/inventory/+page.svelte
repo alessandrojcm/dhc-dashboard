@@ -1,6 +1,6 @@
 <script lang="ts">
 import { ClipboardList, FolderTree, PackageSearch, Tags } from "@lucide/svelte";
-import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
+import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
 </script>
 
 <svelte:head><title>Inventory structure | Dublin HEMA Club</title></svelte:head>

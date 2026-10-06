@@ -2,7 +2,7 @@ import type {
 	AcceptanceApiResult,
 	AcceptanceView,
 	InvitationAcceptanceStatus,
-} from "$lib/invitation-acceptance/vocabulary";
+} from "#lib/invitation-acceptance/vocabulary.js";
 import type {
 	AcceptanceCookieStore,
 	AcceptanceProof,

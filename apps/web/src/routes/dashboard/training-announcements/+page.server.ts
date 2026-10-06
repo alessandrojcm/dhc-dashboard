@@ -1,5 +1,5 @@
-import { authorizationFor } from "$lib/server/authorization";
-import { dublinToday } from "$lib/training-announcements/announcement";
+import { authorizationFor } from "#lib/server/authorization/index.js";
+import { dublinToday } from "#lib/training-announcements/announcement.js";
 import type { PageServerLoad } from "./$types";
 
 // The list is read in the browser through the typed client, like every other

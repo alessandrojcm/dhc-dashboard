@@ -6,14 +6,14 @@ import { ArrowRightIcon } from "@lucide/svelte";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
-import * as Alert from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
-import { initForm } from "$lib/utils/init-form.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
+import * as Field from "#lib/components/ui/field/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import { inviteValidationSchema } from "#lib/schemas/inviteValidationSchema.js";
+import { initForm } from "#lib/utils/init-form.svelte.js";
 import { validateInvitation } from "./data.remote";
 
 dayjs.extend(utc);
@@ -70,8 +70,8 @@ const dobValue = $derived.by(() => {
 					submit().then(() => {
 						if (validateInvitation.result?.success) {
 							isVerified = true;
-							goto(resolve(`/members/signup/${invitationId}`), {
-								replaceState: true,
+							goto(resolve(`members/signup/${invitationId}`), {
+								replace: true,
 							});
 						}
 					});

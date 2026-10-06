@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { loginAsUser } from "./auth";
 import { addClubDays, fetchE2EStatus } from "./e2eApi";
 import {
@@ -23,6 +23,26 @@ let clubToday = "";
 function isoWeekday(isoDate: string): number {
 	const jsDay = new Date(`${isoDate}T12:00:00Z`).getUTCDay();
 	return jsDay === 0 ? 7 : jsDay;
+}
+
+/**
+ * The bound `{{token}}` string of a `ui/template-input.svelte` field. The
+ * field is a contenteditable textbox that shows each placeholder as a tag
+ * labelled for humans ("Date"), so its text is not the value; rebuild the
+ * value the way the component's own `read()` does.
+ */
+function templateValue(field: Locator): Promise<string> {
+	return field.evaluate((root) => {
+		const read = (node: Node): string => {
+			if (node instanceof HTMLElement && node.dataset.placeholder)
+				return node.dataset.placeholder;
+			if (node.nodeType === Node.TEXT_NODE)
+				return (node.textContent ?? "").replace(/\u00a0/g, " ");
+			if (node instanceof HTMLBRElement) return "\n";
+			return Array.from(node.childNodes).map(read).join("");
+		};
+		return read(root);
+	});
 }
 
 test.describe("ALE-334 training announcements smoke", () => {
@@ -82,15 +102,27 @@ test.describe("ALE-334 training announcements smoke", () => {
 			}),
 		).toBeVisible();
 
-		// Create from presets: the sheet opens on the roll-call copy.
+		// Create from presets: the sheet opens on the roll-call copy. Exact
+		// textbox roles: each template field also has a "<Label> placeholders"
+		// group and "Insert … into <label>" buttons that a loose label matches.
 		await page.getByRole("button", { name: "New announcement" }).click();
 		const sheet = page.getByTestId("announcement-sheet");
 		await expect(sheet).toBeVisible();
-		await expect(sheet.getByLabel("Title")).toHaveValue("Roll call {{date}}");
-		await expect(sheet.getByLabel("Message")).toHaveValue(
-			"Hey! It's {{weekday}}! Who is coming to training tonight? ⚔️",
-		);
-		await sheet.getByLabel("Title").fill(createdTitle);
+		const titleField = sheet.getByRole("textbox", {
+			name: "Title",
+			exact: true,
+		});
+		const messageField = sheet.getByRole("textbox", {
+			name: "Message",
+			exact: true,
+		});
+		await expect
+			.poll(() => templateValue(titleField))
+			.toBe("Roll call {{date}}");
+		await expect
+			.poll(() => templateValue(messageField))
+			.toBe("Hey! It's {{weekday}}! Who is coming to training tonight? ⚔️");
+		await titleField.fill(createdTitle);
 		await sheet.getByRole("button", { name: "Create announcement" }).click();
 		await expect(sheet).toBeHidden();
 		await expect(
@@ -120,12 +152,18 @@ test.describe("ALE-334 training announcements smoke", () => {
 
 		const inspector = page.getByTestId("occurrence-inspector");
 		await expect(inspector).toBeVisible();
-		await expect(inspector.getByTestId("precedence-winner")).toBeVisible();
+		// A scheduled date previews the rendered post rather than a reason.
+		await expect(inspector.getByTestId("inspector-message")).toBeVisible();
+		await expect(inspector.getByTestId("not-sent-reason")).toHaveCount(0);
 		await inspector.getByRole("button", { name: "Skip this date" }).click();
 
 		const suppression = page.getByTestId("suppression-sheet");
 		await expect(suppression).toBeVisible();
-		await expect(suppression.getByLabel("First date")).not.toHaveValue("");
+		// "First date" is the shared DatePicker trigger; a prefilled date
+		// replaces its "Select a date" prompt.
+		const firstDate = suppression.getByLabel("First date");
+		await expect(firstDate).toBeVisible();
+		await expect(firstDate).not.toContainText("Select a date");
 		await suppression.getByRole("button", { name: "Skip these dates" }).click();
 		await expect(suppression).toBeHidden();
 

@@ -1,19 +1,20 @@
 <script lang="ts">
-import { pushState, replaceState } from "$app/navigation";
+import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Skeleton } from "$lib/components/ui/skeleton";
-import * as Sheet from "$lib/components/ui/sheet";
-import * as Tabs from "$lib/components/ui/tabs";
-import InventoryPageHeader from "$lib/components/inventory/InventoryPageHeader.svelte";
-import MemberLoanDetail from "$lib/components/inventory/MemberLoanDetail.svelte";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import * as Tabs from "#lib/components/ui/tabs/index.js";
+import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
+import MemberLoanDetail from "#lib/components/inventory/MemberLoanDetail.svelte";
 import {
 	isModifiedClick,
 	sheetSelection,
-} from "$lib/inventory/sheet-selection";
+} from "#lib/inventory/sheet-selection.js";
+
 import {
 	ArrowRight,
 	CalendarCheck2,
@@ -61,7 +62,7 @@ function onStatusChange(value: StatusFilter) {
 
 function openLoan(id: string, trigger: HTMLElement) {
 	selectedLoanTrigger = trigger;
-	pushState(`${LIST_PATH}/${id}`, { selectedLoanId: id });
+	goto(`${LIST_PATH}/${id}`, { shallow: true, state: { selectedLoanId: id } });
 }
 
 function closeSheet() {
@@ -70,7 +71,7 @@ function closeSheet() {
 		return;
 	}
 	if (selectedLoanId) {
-		replaceState(LIST_PATH, {});
+		goto(LIST_PATH, { shallow: true, replace: true });
 	}
 }
 

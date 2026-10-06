@@ -29,14 +29,14 @@ import {
 	useQueryClient,
 	type QueryKey,
 } from "@tanstack/svelte-query";
-import { withoutRow } from "$lib/training-announcements/optimistic";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import { Skeleton } from "$lib/components/ui/skeleton";
+import { withoutRow } from "#lib/training-announcements/optimistic.js";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import { Ban, Pencil, Plus, Trash2 } from "@lucide/svelte";
-import { apiErrorMessage } from "$lib/api-error";
+import { apiErrorMessage } from "#lib/api-error.js";
 import { toast } from "svelte-sonner";
-import { announcementDateLabel } from "$lib/training-announcements/announcement";
+import { announcementDateLabel } from "#lib/training-announcements/announcement.js";
 import {
 	cappedExceptions,
 	EXCEPTION_LIST_LIMIT,
@@ -45,7 +45,7 @@ import {
 	overrideSummary,
 	suppressionRangeLabel,
 	type CappedExceptionList,
-} from "$lib/training-announcements/exceptions";
+} from "#lib/training-announcements/exceptions.js";
 import OverrideSheet from "./OverrideSheet.svelte";
 import SuppressionSheet from "./SuppressionSheet.svelte";
 
@@ -114,9 +114,12 @@ function refreshExceptions() {
  * confirmed, comes back if Phoenix refuses it, and the list is refetched
  * once the command settles.
  */
+type RemovalVariables = { path: { exceptionId: string } };
+type RemovalContext = { previous: { data: { id: string }[] } | undefined };
+
 function removeOptions(queryKey: QueryKey, fallback: string) {
 	return {
-		onMutate: async (variables: { path: { exceptionId: string } }) => {
+		onMutate: async (variables: RemovalVariables): Promise<RemovalContext> => {
 			await queryClient.cancelQueries({ queryKey });
 			const previous = queryClient.getQueryData<{ data: { id: string }[] }>(
 				queryKey,
@@ -132,8 +135,8 @@ function removeOptions(queryKey: QueryKey, fallback: string) {
 		},
 		onError: (
 			cause: TrainingAnnouncementError,
-			_variables: unknown,
-			context: { previous: unknown } | undefined,
+			_variables: RemovalVariables,
+			context: RemovalContext | undefined,
 		) => {
 			if (context?.previous !== undefined)
 				queryClient.setQueryData(queryKey, context.previous);

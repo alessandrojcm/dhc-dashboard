@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { navigation } from "$lib/server/authorization/navigation";
+import { navigation } from "#lib/server/authorization/navigation.js";
 import { navIconFor, navIcons } from "./nav-icons";
 
 describe("sidebar navigation icons", () => {

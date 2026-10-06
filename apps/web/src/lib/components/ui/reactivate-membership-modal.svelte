@@ -1,12 +1,12 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
-import { Label } from "$lib/components/ui/label";
-import * as Alert from "$lib/components/ui/alert";
-import { Badge } from "$lib/components/ui/badge";
-import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import CreditCard from "@lucide/svelte/icons/credit-card";
 import ExternalLink from "@lucide/svelte/icons/external-link";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";

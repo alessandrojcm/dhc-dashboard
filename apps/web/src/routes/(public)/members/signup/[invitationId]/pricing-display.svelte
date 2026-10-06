@@ -2,12 +2,12 @@
 import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import Dinero from "dinero.js";
-import * as Alert from "$lib/components/ui/alert";
-import * as Accordion from "$lib/components/ui/accordion";
-import { Button } from "$lib/components/ui/button";
-import * as Card from "$lib/components/ui/card";
-import { Input } from "$lib/components/ui/input";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import * as Accordion from "#lib/components/ui/accordion/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Card from "#lib/components/ui/card/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import { getPricingDetail } from "./pricing.remote";
 
 dayjs.extend(advancedFormat);

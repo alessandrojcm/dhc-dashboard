@@ -8,12 +8,12 @@
 <script lang="ts">
 import { Calendar, DayGrid, Interaction } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
-import { Button } from "$lib/components/ui/button";
-import * as Dialog from "$lib/components/ui/dialog";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import { Switch } from "$lib/components/ui/switch";
-import { Textarea } from "$lib/components/ui/textarea";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import { Switch } from "#lib/components/ui/switch/index.js";
+import { Textarea } from "#lib/components/ui/textarea/index.js";
 import dayjs from "dayjs";
 import { Ban, CalendarOff, Pencil, Plus, Trash2 } from "@lucide/svelte";
 import DiscordPreview from "./discord-preview.svelte";

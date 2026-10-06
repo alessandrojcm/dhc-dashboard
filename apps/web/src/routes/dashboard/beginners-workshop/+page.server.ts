@@ -1,6 +1,6 @@
 import { waitlistStatus } from "@dhc/api-client";
-import { apiClientOptions } from "$lib/server/api-client";
-import { authorizationFor } from "$lib/server/authorization";
+import { apiClientOptions } from "#lib/server/api-client.js";
+import { authorizationFor } from "#lib/server/authorization/index.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, cookies, depends }) => {

@@ -13,16 +13,16 @@ import {
 	type TrainingAnnouncement,
 } from "@dhc/api-client";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
-import { Alert, AlertDescription } from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import * as Field from "$lib/components/ui/field";
-import * as Sheet from "$lib/components/ui/sheet";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
+import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import * as Field from "#lib/components/ui/field/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import DatePicker from "#lib/components/ui/date-picker.svelte";
 import { TriangleAlert } from "@lucide/svelte";
 import {
 	draftCalendarDate,
 	draftIsoDate,
-} from "$lib/training-announcements/announcement";
+} from "#lib/training-announcements/announcement.js";
 import {
 	hasDraftErrors,
 	newSuppressionDraft,
@@ -30,11 +30,11 @@ import {
 	type SuppressionDraft,
 	type SuppressionField,
 	type SuppressionFieldErrors,
-} from "$lib/training-announcements/exceptions";
+} from "#lib/training-announcements/exceptions.js";
 import {
 	announcementProblem,
 	type AnnouncementFieldMessages,
-} from "$lib/training-announcements/problem";
+} from "#lib/training-announcements/problem.js";
 
 const queryClient = useQueryClient();
 

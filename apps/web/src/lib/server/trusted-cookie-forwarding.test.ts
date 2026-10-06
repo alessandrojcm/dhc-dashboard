@@ -3,7 +3,7 @@ import {
 	forwardTrustedResponseCookie,
 	forwardTrustedResponseCookies,
 	type CookieWriter,
-} from "$lib/server/trusted-cookie-forwarding";
+} from "#lib/server/trusted-cookie-forwarding.js";
 
 function cookieWriter() {
 	return {
@@ -35,8 +35,8 @@ describe("trusted Phoenix cookie forwarding", () => {
 			secure: true,
 			sameSite: "lax",
 		});
-		expect(options.encode).toBeTypeOf("function");
-		expect(options.encode?.("signed-value")).toBe("signed-value");
+		expect(options?.encode).toBeTypeOf("function");
+		expect(options?.encode?.("signed-value")).toBe("signed-value");
 	});
 
 	it("forwards multiple cookies without splitting the comma in Expires", () => {
@@ -91,7 +91,7 @@ describe("trusted Phoenix cookie forwarding", () => {
 		const options = cookies.set.mock.calls[0][2];
 		expect(options).not.toHaveProperty("maxAge");
 		expect(options).not.toHaveProperty("expires");
-		expect(options.sameSite).toBe(false);
+		expect(options?.sameSite).toBe(false);
 		expect(options).not.toHaveProperty("domain");
 	});
 

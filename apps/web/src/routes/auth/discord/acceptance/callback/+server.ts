@@ -1,5 +1,5 @@
 import { redirect, type RequestHandler } from "@sveltejs/kit";
-import { apiBaseUrl } from "$lib/server/api-client";
+import { apiBaseUrl } from "#lib/server/api-client.js";
 
 const OAUTH_SESSION_COOKIE = "_dhc_key";
 const ACCEPTANCE_RECOVERY_COOKIE = "discord-acceptance-invitation";

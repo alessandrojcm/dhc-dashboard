@@ -2,8 +2,8 @@ import { error } from "@sveltejs/kit";
 import dayjs from "dayjs";
 import * as v from "valibot";
 import { form, getRequestEvent } from "$app/server";
-import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
-import { memberSignupSchema } from "$lib/schemas/membersSignup";
+import { inviteValidationSchema } from "#lib/schemas/inviteValidationSchema.js";
+import { memberSignupSchema } from "#lib/schemas/membersSignup.js";
 import {
 	applyInvitationRouteOutcome,
 	applyRouteEffects,
@@ -12,14 +12,14 @@ import {
 	restartDiscordVerification as restartDiscordVerificationWorkflow,
 	submitInvitationPayment,
 	verifyInvitationCredentials,
-} from "$lib/server/invitation-acceptance";
-import logger from "$lib/server/services/shared/logger";
+} from "#lib/server/invitation-acceptance/index.js";
+import logger from "#lib/server/services/shared/logger.js";
 
 /**
  * Remote commands of the Invitation Acceptance flow. Each one is a thin
  * adapter: collect request-local input, run the workflow operation, apply the
  * effects it requested, and answer with data or a redirect. Phoenix status
- * interpretation lives in `$lib/server/invitation-acceptance`, not here.
+ * interpretation lives in `#lib/server/invitation-acceptance/index.js`, not here.
  */
 
 function requireInvitationId(): string {

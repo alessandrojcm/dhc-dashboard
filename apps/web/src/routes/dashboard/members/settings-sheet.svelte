@@ -1,12 +1,12 @@
 <script lang="ts">
-import * as Sheet from "$lib/components/ui/sheet/index.js";
-import * as Field from "$lib/components/ui/field";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
+import * as Field from "#lib/components/ui/field/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
 import { Lock } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { updateMemberSettings } from "./data.remote";
-import { initForm } from "$lib/utils/init-form.svelte";
+import { initForm } from "#lib/utils/init-form.svelte.js";
 
 const props: {
 	initialValue: string;

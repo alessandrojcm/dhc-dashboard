@@ -3,10 +3,10 @@ import { invalid } from "@sveltejs/kit";
 import * as v from "valibot";
 import beginnersWaitlist, {
 	beginnersWaitlistClientSchema,
-} from "$lib/schemas/beginnersWaitlist";
+} from "#lib/schemas/beginnersWaitlist.js";
 import { waitlistCreateEntry } from "@dhc/api-client";
-import { apiBaseUrl } from "$lib/server/api-client";
-import { apiErrorDetail } from "$lib/api-error";
+import { apiBaseUrl } from "#lib/server/api-client.js";
+import { apiErrorDetail } from "#lib/api-error.js";
 
 /**
  * Waitlist submission form

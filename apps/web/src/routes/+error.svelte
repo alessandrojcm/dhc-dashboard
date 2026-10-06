@@ -1,7 +1,7 @@
 <script lang="ts">
 import { page } from "$app/state";
-import * as Alert from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
 
 // Unexpected errors are redacted to "Internal Error" before they reach the
 // browser, so don't show that string to users — the real error is logged

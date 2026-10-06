@@ -1,12 +1,12 @@
 <script lang="ts">
 import type { LayoutData } from "./$types";
-import { SidebarProvider } from "$lib/components/ui/sidebar";
-import DashboardSidebar from "$lib/components/ui/DashboardSidebar.svelte";
+import { SidebarProvider } from "#lib/components/ui/sidebar/index.js";
+import DashboardSidebar from "#lib/components/ui/DashboardSidebar.svelte";
 import { page } from "$app/state";
-import * as Breadcrumb from "$lib/components/ui/breadcrumb";
+import * as Breadcrumb from "#lib/components/ui/breadcrumb/index.js";
 import { createMutation, createQuery } from "@tanstack/svelte-query";
 import { goto } from "$app/navigation";
-import { invalidateAll, invalidate } from "$app/navigation";
+import { refreshAll, invalidate } from "$app/navigation";
 import { resolve } from "$app/paths";
 import {
 	inventoryCategoriesIndexOptions,
@@ -14,8 +14,8 @@ import {
 	authSessionDeleteSession,
 	notificationsPushUnsubscribeMutation,
 } from "@dhc/api-client";
-import { browserPushManager } from "$lib/notifications/web-push/browser";
-import { forgetPushSubscription } from "$lib/notifications/web-push/workflow";
+import { browserPushManager } from "#lib/notifications/web-push/browser.js";
+import { forgetPushSubscription } from "#lib/notifications/web-push/workflow.js";
 import type { Snippet } from "svelte";
 
 let { children, data }: { data: LayoutData; children: Snippet } = $props();
@@ -76,12 +76,9 @@ async function logout() {
 		// Even if Phoenix is unreachable, clear the local session and
 		// redirect — the cookie will expire on its own.
 	}
-	await invalidateAll();
+	await refreshAll();
 	await invalidate("phoenix:session");
-	await goto(resolve("/auth"), {
-		replaceState: true,
-		invalidateAll: true,
-	});
+	await goto(resolve("auth"), { replace: true, refreshAll: true });
 }
 
 function getLink(item: string): string {
@@ -115,9 +112,11 @@ function getBreadcrumbLabel(item: string, index: number): string {
 		const attendeesEnvelope = page.data.attendeesResponse as
 			| { data?: { workshop?: { title?: string } } }
 			| undefined;
+
 		const workshop = page.data.workshop ?? attendeesEnvelope?.data?.workshop;
 		return workshop?.title || "Workshop";
 	}
+
 	if (
 		page.route.id === CATEGORY_DETAIL_ROUTE &&
 		item === page.params.categoryId

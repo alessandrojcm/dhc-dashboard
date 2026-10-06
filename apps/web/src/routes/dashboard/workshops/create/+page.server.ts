@@ -1,5 +1,5 @@
-import { authorize } from "$lib/server/auth";
-import { coerceToCreateWorkshopSchema } from "$lib/server/workshop-generator";
+import { authorize } from "#lib/server/auth.js";
+import { coerceToCreateWorkshopSchema } from "#lib/server/workshop-generator.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, url }) => {

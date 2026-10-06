@@ -1,13 +1,13 @@
 <script lang="ts">
 import { DiscordLogo, ExclamationTriangle } from "svelte-radix";
 import { page } from "$app/state";
-import { publicApiUrl } from "$lib/api-client";
-import * as Alert from "$lib/components/ui/alert/index.js";
-import { Button } from "$lib/components/ui/button";
-import { Card } from "$lib/components/ui/card";
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import { Separator } from "$lib/components/ui/separator";
+import { publicApiUrl } from "#lib/api-client.js";
+import * as Alert from "#lib/components/ui/alert/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Card } from "#lib/components/ui/card/index.js";
+import * as Field from "#lib/components/ui/field/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Separator } from "#lib/components/ui/separator/index.js";
 import { magicLinkAuth } from "./data.remote";
 
 let { data } = $props();

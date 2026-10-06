@@ -24,12 +24,12 @@ import {
 } from "@lucide/svelte";
 import dayjs from "dayjs";
 import { toast } from "svelte-sonner";
-import * as AlertDialog from "$lib/components/ui/alert-dialog";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Checkbox } from "$lib/components/ui/checkbox";
-import { Input } from "$lib/components/ui/input";
-import { checkRefundEligibility } from "$lib/utils/refund-eligibility";
+import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
+import { Badge } from "#lib/components/ui/badge/index.js";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Checkbox } from "#lib/components/ui/checkbox/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { checkRefundEligibility } from "#lib/utils/refund-eligibility.js";
 
 interface Props {
 	attendees: WorkshopAttendee[];

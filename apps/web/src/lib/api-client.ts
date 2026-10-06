@@ -1,11 +1,11 @@
 import { configureClient, getClient } from "@dhc/api-client";
-import { env } from "$env/dynamic/public";
-import { registerApiErrorReporter } from "$lib/api-error-reporter";
+import { PUBLIC_API_BASE_URL } from "$app/env/public";
+import { registerApiErrorReporter } from "#lib/api-error-reporter.js";
 
 const DEFAULT_API_BASE_URL = "/api";
 
 export function publicApiBaseUrl(): string {
-	return env.PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
+	return PUBLIC_API_BASE_URL || DEFAULT_API_BASE_URL;
 }
 
 export function configureBrowserApiClient(): void {

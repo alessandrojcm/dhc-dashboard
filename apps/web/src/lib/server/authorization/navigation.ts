@@ -6,7 +6,8 @@
  * tree with the same `decide` the guards use, so what the sidebar shows and
  * what routes accept cannot drift.
  */
-import type { NavData, NavigationGroup, NavigationItem } from "$lib/types";
+import { resolve } from "$app/paths";
+import type { NavData, NavigationGroup, NavigationItem } from "#lib/types.js";
 import type { Capability } from "./capabilities";
 
 type NavigationItemDefinition = NavigationItem & { requires: Capability };
@@ -19,72 +20,72 @@ type NavigationDefinition = NavigationGroupDefinition[];
 export const navigation: NavigationDefinition = [
 	{
 		title: "Beginners Workshop",
-		url: "/dashboard/beginners-workshop",
+		url: resolve("dashboard/beginners-workshop"),
 		requires: "beginners.workshop.read",
 	},
 	{
 		title: "Members",
-		url: "/dashboard/members",
+		url: resolve("dashboard/members"),
 		requires: "members.directory.read",
 	},
 	{
 		title: "Discord Doctor",
-		url: "/dashboard/discord-doctor",
+		url: resolve("dashboard/discord-doctor"),
 		requires: "discord.doctor.use",
 	},
 	{
 		// ALE-330: committee-managed Discord posts about training. Sits with
 		// the other club-communication entry rather than inside a group.
 		title: "Training Announcements",
-		url: "/dashboard/training-announcements",
+		url: resolve("dashboard/training-announcements"),
 		requires: "training_announcements.manage",
 	},
 	{
 		title: "Workshops",
-		url: "/dashboard/workshops",
+		url: resolve("dashboard/workshops"),
 		requires: "workshops.manage",
 	},
 	{
 		title: "My Workshops",
-		url: "/dashboard/my-workshops",
+		url: resolve("dashboard/my-workshops"),
 		requires: "workshops.own.read",
 	},
 	{
 		// Member catalog browse (ALE-288). Member self-service entries sit
 		// together; the operator-only Inventory group closes the list.
 		title: "Equipment",
-		url: "/dashboard/equipment",
+		url: resolve("dashboard/equipment"),
 		requires: "inventory.catalog.read",
 	},
 	{
 		// Own-loan history (ALE-288)
 		title: "My Loans",
-		url: "/dashboard/my-loans",
+		url: resolve("dashboard/my-loans"),
 		requires: "inventory.loans.own.read",
 	},
 	{
 		title: "Inventory",
-		url: "/dashboard/inventory",
+		url: resolve("dashboard/inventory"),
 		requires: "inventory.manage",
 		items: [
 			{
 				title: "Loan queue",
-				url: "/dashboard/inventory/loans",
+				url: resolve("dashboard/inventory/loans"),
 				requires: "inventory.manage",
 			},
 			{
 				title: "Items",
-				url: "/dashboard/inventory/items",
+				url: resolve("dashboard/inventory/items"),
 				requires: "inventory.manage",
 			},
 			{
 				title: "Categories",
-				url: "/dashboard/inventory/categories",
+				url: resolve("dashboard/inventory/categories"),
 				requires: "inventory.manage",
 			},
 			{
 				title: "Containers",
-				url: "/dashboard/inventory/containers",
+				url: resolve("dashboard/inventory/containers"),
 				requires: "inventory.manage",
 			},
 		],

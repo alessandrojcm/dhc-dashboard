@@ -7,7 +7,7 @@ import {
 	paymentSubmitPresentation,
 	type PaymentFailure,
 	type PaymentMachineState,
-} from "$lib/invitation-acceptance/payment-machine";
+} from "#lib/invitation-acceptance/payment-machine.js";
 import PaymentSubmit from "./payment-submit.svelte";
 
 const failure: PaymentFailure = {
