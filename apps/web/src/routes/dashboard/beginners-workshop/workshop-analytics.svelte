@@ -25,7 +25,7 @@ onMount(async () => {
 
 // Browser-side Phoenix read (`GET /api/waitlist/analytics`) via the generated
 // TanStack Query options. The Supabase JWT is attached by `configureClient`'s
-// `getAuthToken` hook; authz is enforced by Phoenix's `waitlist_admin_api`
+// `getAuthToken` hook; authz is enforced by Phoenix's `beginners_workshop_read`
 // pipeline, so no SvelteKit `authorize()` gate is needed.
 const analyticsQuery = createQuery(() => waitlistAnalyticsOptions());
 

@@ -1,4 +1,4 @@
-import { authSessionShowSession } from "@dhc/api-client";
+import { authSessionShowSession, type AuthCapability } from "@dhc/api-client";
 import { API_BASE_URL } from "$app/env/private";
 import { authorizationFor, type Capability } from "./authorization";
 import type { Cookies } from "./api-client";
@@ -21,12 +21,15 @@ const DEFAULT_API_BASE_URL = "http://127.0.0.1:4000/api";
 
 /**
  * The Phoenix session projection (`GET /api/auth/session` body). The
- * authoritative login identity plus the current live roles. No `is_active`,
- * no raw token, no Supabase `sub`/bearer/refresh compatibility.
+ * authoritative login identity, the current live roles, and the capabilities
+ * Phoenix works out from them (ALE-344). Authorization reads `capabilities`
+ * only; `roles` is identity data. No `is_active`, no raw token, no Supabase
+ * `sub`/bearer/refresh compatibility.
  */
 export type PhoenixSessionProjection = {
 	principal: { id: string; email: string };
 	roles: string[];
+	capabilities: AuthCapability[];
 };
 
 /**
@@ -34,7 +37,7 @@ export type PhoenixSessionProjection = {
  * (`_dhc_session`). This module replaces the Supabase server-client +
  * `auth.getUser()` JWT-validation seam with a single credentialed call to
  * Phoenix `GET /api/auth/session`, which returns the Phoenix session
- * projection (`{ principal: { id, email }, roles }`).
+ * projection (`{ principal: { id, email }, roles, capabilities }`).
  *
  * The browser sends the cookie automatically with `credentials: 'include'`.
  * SvelteKit SSR cannot rely on the browser, so server loads / remote

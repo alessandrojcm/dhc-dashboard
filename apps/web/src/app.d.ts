@@ -8,7 +8,7 @@ declare global {
 
 		// ALE-164: the dashboard authenticates through the Phoenix Session
 		// cookie. The `Session` type is the Phoenix session projection
-		// (`{ principal: { id, email }, roles }`), NOT a Supabase Session.
+		// (`{ principal: { id, email }, roles, capabilities }`), NOT a Supabase Session.
 		interface Locals {
 			/**
 			 * Phoenix session projection for the current request, or `null`

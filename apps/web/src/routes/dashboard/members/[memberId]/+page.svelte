@@ -211,7 +211,7 @@ const resumeMutation = createMutation(() => ({
 }));
 
 // ALE-252: reactivation is offered only for inactive members, and only to
-// the four billing-authority roles mirrored from the `:membership_minting_api`
+// the four billing-authority roles mirrored from the `:membership_reactivate`
 // pipeline (the server enforces 403 for everyone else).
 const memberIsInactive = $derived(data.member.membership_status === "inactive");
 const canReactivate = $derived(Boolean(data.canReactivate) && memberIsInactive);

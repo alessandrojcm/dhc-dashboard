@@ -1,37 +1,23 @@
 /**
- * GH-510: the capability registry and its role-to-capability policy.
+ * GH-510 / ALE-344: the capability registry and the owner rule.
  *
- * This file is private to `#lib/server/authorization/index.js`. Feature code never
- * imports role sets; it asks `authorizationFor(session)` about a capability.
- * Role names come from the Phoenix session projection and mirror the Phoenix
- * router pipelines — Phoenix remains the authoritative enforcement layer, this
+ * This file is private to `#lib/server/authorization/index.js`. Phoenix works
+ * out which capabilities a session holds (`Dhc.Auth.Capabilities`) and sends
+ * them on the session projection; the dashboard never sees a role set. What
+ * stays here is the part Phoenix cannot know without the page's resource:
+ * which capabilities the resource owner also holds, and how a denial is
+ * classified. Phoenix remains the authoritative enforcement layer; this
  * policy only decides what the dashboard shows and routes to.
  */
+import type { AuthCapability } from "@dhc/api-client";
 import type { PhoenixSessionProjection } from "#lib/server/auth.js";
 
 /**
  * Every capability the dashboard can ask about. Names describe user intent,
- * not UI location. This tuple is the single source of the `Capability` type.
+ * not UI location. The type is the generated `AuthCapability` enum, so it is
+ * the Phoenix registry by construction; `RULES` must name each one.
  */
-export const CAPABILITIES = [
-	"beginners.workshop.read",
-	"beginners.waitlist.toggle",
-	"discord.doctor.use",
-	"inventory.manage",
-	"inventory.catalog.read",
-	"inventory.loans.own.read",
-	"members.directory.read",
-	"members.invite",
-	"members.profile.read",
-	"members.profile.update",
-	"members.settings.edit",
-	"membership.reactivate",
-	"training_announcements.manage",
-	"workshops.manage",
-	"workshops.own.read",
-] as const;
-
-export type Capability = (typeof CAPABILITIES)[number];
+export type Capability = AuthCapability;
 
 /**
  * Explicit facts about the resource being accessed. Ownership is an input,
@@ -50,95 +36,41 @@ export type AccessDecision =
 			reason: "anonymous" | "missing_capability" | "concealed_resource";
 	  };
 
-// ---------------------------------------------------------------------------
-// Role sets (private). Each mirrors a Phoenix router pipeline.
-// ---------------------------------------------------------------------------
-
-/** Club officers: president, admin and the committee coordinator. */
-const OFFICERS = ["president", "admin", "committee_coordinator"];
-
-/**
- * ALE-252: officers with billing authority who may mint membership charges
- * (reactivation). Mirrors the Phoenix `:membership_minting_api` pipeline;
- * deliberately narrower than the member administrators and with no
- * self-service fallback, because the command creates new Stripe charges.
- */
-const BILLING_AUTHORITY = [...OFFICERS, "treasurer"];
-
-/** Every committee/coach role that may see the member directory. */
-const MEMBER_ADMINISTRATORS = [
-	...BILLING_AUTHORITY,
-	"sparring_coordinator",
-	"workshop_coordinator",
-	"beginners_coordinator",
-	"quartermaster",
-	"pr_manager",
-	"volunteer_coordinator",
-	"research_coordinator",
-	"coach",
-];
-
-const WORKSHOP_COORDINATORS = ["workshop_coordinator", "president", "admin"];
-
-/** Mirrors Phoenix inventory writes (`quartermaster`, `admin`, `president`). */
-const INVENTORY_OPERATORS = ["quartermaster", "admin", "president"];
-
-const BEGINNERS_STAFF = [...OFFICERS, "coach", "beginners_coordinator"];
-
-/**
- * ALE-330: mirrors the Phoenix `:training_announcements_api` pipeline, i.e.
- * `Dhc.TrainingAnnouncements.management_roles/0`. There is no read/manage
- * split: only the committee shapes club communications and no member ever sees
- * an announcement, so one capability governs the whole page.
- */
-const TRAINING_ANNOUNCEMENT_MANAGERS = [
-	"sparring_coordinator",
-	"coach",
-	"president",
-	"admin",
-	"committee_coordinator",
-];
-
-/** Every authenticated user carries the `member` role. */
-const MEMBERS = ["member"];
-
 type CapabilityRule = {
-	/** Roles that hold the capability regardless of resource context. */
-	roles: readonly string[];
 	/**
 	 * When set, the capability is also granted to the resource owner, and a
 	 * denial conceals the resource's existence (404) instead of admitting a
-	 * forbidden resource exists (403).
+	 * forbidden resource exists (403). Mirrors the Phoenix owner rule.
 	 */
 	ownerMayAccess?: true;
 };
 
 const RULES = {
-	"beginners.workshop.read": { roles: BEGINNERS_STAFF },
-	"beginners.waitlist.toggle": { roles: OFFICERS },
-	"discord.doctor.use": { roles: OFFICERS },
-	"inventory.manage": { roles: INVENTORY_OPERATORS },
-	"inventory.catalog.read": { roles: MEMBERS },
-	"inventory.loans.own.read": { roles: MEMBERS },
-	"members.directory.read": { roles: MEMBER_ADMINISTRATORS },
-	"members.invite": { roles: OFFICERS },
-	"members.profile.read": {
-		roles: MEMBER_ADMINISTRATORS,
-		ownerMayAccess: true,
-	},
-	"members.profile.update": {
-		roles: MEMBER_ADMINISTRATORS,
-		ownerMayAccess: true,
-	},
-	"members.settings.edit": { roles: OFFICERS },
-	"membership.reactivate": { roles: BILLING_AUTHORITY },
-	"training_announcements.manage": { roles: TRAINING_ANNOUNCEMENT_MANAGERS },
-	"workshops.manage": { roles: WORKSHOP_COORDINATORS },
-	"workshops.own.read": { roles: MEMBERS },
+	"beginners.workshop.read": {},
+	"beginners.waitlist.toggle": {},
+	"discord.assignments.manage": {},
+	"discord.doctor.use": {},
+	"inventory.manage": {},
+	"inventory.catalog.read": {},
+	"inventory.loans.own.read": {},
+	"members.directory.read": {},
+	"members.invite": {},
+	"members.profile.read": { ownerMayAccess: true },
+	"members.profile.update": { ownerMayAccess: true },
+	"members.settings.edit": {},
+	"membership.reactivate": {},
+	"training_announcements.manage": {},
+	"workshops.manage": {},
+	"workshops.own.read": {},
 } satisfies Record<Capability, CapabilityRule>;
 
+export const CAPABILITIES: readonly Capability[] = Object.keys(RULES).filter(
+	(key): key is Capability => Object.hasOwn(RULES, key),
+);
+
 /**
- * The one place role composition, ownership and denial classification meet.
+ * The one place the session's capabilities, ownership and denial
+ * classification meet.
  */
 export function decide(
 	session: PhoenixSessionProjection | null,
@@ -147,11 +79,9 @@ export function decide(
 ): AccessDecision {
 	if (!session) return { allowed: false, status: 401, reason: "anonymous" };
 
-	const rule: CapabilityRule = RULES[capability];
-	if (rule.roles.some((role) => session.roles.includes(role))) {
-		return { allowed: true };
-	}
+	if (session.capabilities.includes(capability)) return { allowed: true };
 
+	const rule: CapabilityRule = RULES[capability];
 	if (rule.ownerMayAccess) {
 		if (
 			resource?.ownerPrincipalId !== undefined &&

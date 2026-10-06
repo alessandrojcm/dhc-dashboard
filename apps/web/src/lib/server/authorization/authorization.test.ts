@@ -15,16 +15,27 @@ import { governingRule, protectedRoutes } from "./routes";
  * GH-510: behavioural tests for the frontend authorization boundary.
  *
  * Everything is observed through `authorizationFor(session)` and
- * `guardRoute(session, route)`; role sets, navigation definitions and
- * protected-route rules are private implementation details. Changing a role
- * assignment must show up as exactly one intentional diff in the tables below.
+ * `guardRoute(session, route)`; navigation definitions and protected-route
+ * rules are private implementation details.
+ *
+ * ALE-344: Phoenix works out a session's capabilities (`Dhc.Auth.Capabilities`,
+ * pinned by `capabilities_test.exs`). The role names below are a test fixture
+ * that builds capability-bearing sessions the way Phoenix would; the boundary
+ * itself never sees a role.
  */
 
 const SELF = "11111111-1111-1111-1111-111111111111";
 const OTHER = "22222222-2222-2222-2222-222222222222";
 
+/** A session as Phoenix projects it for these roles (see `POLICY`). */
 function session(...roles: string[]): PhoenixSessionProjection {
-	return { principal: { id: SELF, email: "u@example.com" }, roles };
+	return {
+		principal: { id: SELF, email: "u@example.com" },
+		roles,
+		capabilities: CAPABILITIES.filter((capability) =>
+			POLICY[capability].some((role) => roles.includes(role)),
+		),
+	};
 }
 
 const EVERY_ROLE = [
@@ -44,9 +55,9 @@ const EVERY_ROLE = [
 ] as const;
 
 /**
- * Role → capability policy table. One row per capability; the listed roles are
- * the only ones allowed (without resource context). Every other known role
- * must be denied.
+ * Fixture: the Phoenix role → capability table (`Dhc.Auth.Capabilities`). One
+ * row per capability; the listed roles are the only ones a Phoenix session
+ * projection grants it to (without resource context).
  */
 const POLICY = {
 	"beginners.workshop.read": [
@@ -56,7 +67,27 @@ const POLICY = {
 		"beginners_coordinator",
 		"president",
 	],
-	"beginners.waitlist.toggle": ["admin", "president", "committee_coordinator"],
+	"beginners.waitlist.toggle": [
+		"admin",
+		"committee_coordinator",
+		"coach",
+		"beginners_coordinator",
+		"president",
+	],
+	"discord.assignments.manage": [
+		"admin",
+		"president",
+		"treasurer",
+		"committee_coordinator",
+		"sparring_coordinator",
+		"workshop_coordinator",
+		"beginners_coordinator",
+		"quartermaster",
+		"pr_manager",
+		"volunteer_coordinator",
+		"research_coordinator",
+		"coach",
+	],
 	"discord.doctor.use": ["admin", "president", "committee_coordinator"],
 	"inventory.manage": ["quartermaster", "admin", "president"],
 	"inventory.catalog.read": ["member"],
@@ -150,6 +181,26 @@ describe("authorizationFor — capability registry", () => {
 });
 
 describe("authorizationFor — decisions", () => {
+	it("decides from the session's capabilities, never its roles", () => {
+		const roleOnly = {
+			principal: { id: SELF, email: "u@example.com" },
+			roles: ["admin"],
+			capabilities: [],
+		} satisfies PhoenixSessionProjection;
+		expect(authorizationFor(roleOnly).decide("inventory.manage")).toEqual({
+			allowed: false,
+			status: 403,
+			reason: "missing_capability",
+		});
+
+		const capabilityOnly = {
+			...roleOnly,
+			roles: [],
+			capabilities: ["inventory.manage" as const],
+		} satisfies PhoenixSessionProjection;
+		expect(authorizationFor(capabilityOnly).can("inventory.manage")).toBe(true);
+	});
+
 	it("inventory operators can manage inventory, ordinary members cannot", () => {
 		expect(
 			authorizationFor(session("quartermaster")).can("inventory.manage"),

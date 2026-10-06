@@ -14,7 +14,7 @@ import { getPhoenixSession } from "#lib/server/auth.js";
  * (`_dhc_session`). This hook replaces the Supabase server-client +
  * `auth.getUser()` JWT-validation seam with a credentialed call to Phoenix
  * `GET /api/auth/session`, which returns the Phoenix session projection
- * (`{ principal: { id, email }, roles }`).
+ * (`{ principal: { id, email }, roles, capabilities }`).
  *
  * The browser sends the cookie automatically with `credentials: 'include'`.
  * SvelteKit SSR reads the cookie from the request and forwards it to Phoenix.
