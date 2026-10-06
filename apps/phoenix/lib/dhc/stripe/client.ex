@@ -150,22 +150,35 @@ defmodule Dhc.Stripe.Client do
     end
   end
 
+  # A list value becomes repeated `key[]=` pairs (a key already ending in
+  # `[]` keeps it), `nil` values are skipped rather than sent as `key=`, and
+  # nested maps are rejected: no generated list operation needs them, and
+  # guessing an encoding would silently send the wrong filter.
   defp format_query(nil), do: []
-  defp format_query([]), do: []
 
   defp format_query(query) when is_list(query) do
     Enum.flat_map(query, fn
+      {_key, nil} ->
+        []
+
       {key, values} when is_list(values) ->
         encoded_key = stripe_array_key(key)
-        Enum.map(values, &{encoded_key, &1})
+        for value <- values, not is_nil(value), do: {encoded_key, value}
+
+      {key, value} when is_map(value) ->
+        raise ArgumentError,
+              "Dhc.Stripe.Client does not encode nested map query values " <>
+                "(#{inspect(key)}: #{inspect(value)}); pass flat keys such as \"#{key}[gte]\""
 
       {key, value} ->
-        [{key, value}]
+        [{to_string(key), value}]
     end)
   end
 
-  defp stripe_array_key(key) when is_atom(key), do: "#{key}[]"
-  defp stripe_array_key(key) when is_binary(key), do: "#{key}[]"
+  defp stripe_array_key(key) do
+    key = to_string(key)
+    if String.ends_with?(key, "[]"), do: key, else: key <> "[]"
+  end
 
   @spec stripe_api_url() :: String.t()
   defp stripe_api_url do
