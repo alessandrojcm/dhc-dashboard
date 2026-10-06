@@ -35,6 +35,7 @@ import {
 	forgetPushSubscription,
 	type PushStatus,
 } from "#lib/notifications/web-push/workflow.js";
+import { Button } from "#lib/components/ui/button/index.js";
 import { Switch } from "#lib/components/ui/switch/index.js";
 
 let { deps: providedDeps }: { deps?: Partial<WebPushToggleDeps> } = $props();
@@ -193,22 +194,24 @@ const toggleable = $derived(status.kind === "on" || status.kind === "off");
 		<p class="m-0 text-xs text-muted-foreground">{explanation}</p>
 		{#if status.kind === "error"}
 			<div class="mt-1 flex gap-3">
-				<button
-					type="button"
-					class="text-xs text-primary bg-transparent border-none cursor-pointer p-0"
+				<Button
+					variant="link"
+					size="sm"
+					class="h-auto p-0 text-xs"
 					onclick={() => void refresh()}
 				>
 					Try again
-				</button>
+				</Button>
 				{#if status.subscribed}
-					<button
-						type="button"
-						class="text-xs text-primary bg-transparent border-none cursor-pointer p-0"
+					<Button
+						variant="link"
+						size="sm"
+						class="h-auto p-0 text-xs"
 						disabled={busy}
 						onclick={() => void turnOffFromError()}
 					>
 						Turn off on this device
-					</button>
+					</Button>
 				{/if}
 			</div>
 		{/if}

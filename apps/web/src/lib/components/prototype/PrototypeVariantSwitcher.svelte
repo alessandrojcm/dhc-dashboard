@@ -1,6 +1,7 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
+import { Button } from "#lib/components/ui/button/index.js";
 import { ChevronLeft, ChevronRight, FlaskConical } from "@lucide/svelte";
 
 type Variant = {
@@ -52,24 +53,26 @@ function handleKeydown(event: KeyboardEvent) {
 		aria-label="Prototype variation controls"
 	>
 		<FlaskConical class="ml-1 size-4" aria-hidden="true" />
-		<button
-			class="grid size-11 cursor-pointer place-items-center rounded-full transition-colors hover:bg-primary-foreground/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-			type="button"
+		<Button
+			variant="ghost"
+			size="icon"
+			class="rounded-full hover:bg-primary-foreground/15 hover:text-primary-foreground"
 			onclick={() => cycle(-1)}
 			aria-label="Previous prototype variation"
 		>
 			<ChevronLeft class="size-5" aria-hidden="true" />
-		</button>
+		</Button>
 		<span class="min-w-36 px-1 text-center text-sm font-semibold">
 			{activeVariant?.label ?? "Prototype"}
 		</span>
-		<button
-			class="grid size-11 cursor-pointer place-items-center rounded-full transition-colors hover:bg-primary-foreground/15 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-			type="button"
+		<Button
+			variant="ghost"
+			size="icon"
+			class="rounded-full hover:bg-primary-foreground/15 hover:text-primary-foreground"
 			onclick={() => cycle(1)}
 			aria-label="Next prototype variation"
 		>
 			<ChevronRight class="size-5" aria-hidden="true" />
-		</button>
+		</Button>
 	</div>
 {/if}

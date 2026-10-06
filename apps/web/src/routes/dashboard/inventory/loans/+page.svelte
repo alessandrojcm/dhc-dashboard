@@ -14,6 +14,10 @@ import {
 } from "@dhc/api-client";
 import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from "#lib/components/ui/native-select/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import DatePicker from "#lib/components/ui/date-picker.svelte";
 import { Label } from "#lib/components/ui/label/index.js";
@@ -34,7 +38,6 @@ import { apiErrorMessage } from "#lib/api-error.js";
 import {
 	ArrowRight,
 	CalendarClock,
-	ChevronDown,
 	ClipboardCheck,
 	ClipboardList,
 	Clock3,
@@ -101,10 +104,6 @@ const requestedQueue = $derived(
 	parseQueueView(page.url.searchParams.get("view")),
 );
 const activeQueue = $derived(requestedQueue ?? defaultQueue);
-const activeQueueOption = $derived(
-	queueOptions.find((option) => option.value === activeQueue) ??
-		queueOptions[0],
-);
 
 function parseQueueView(value: string | null): QueueView | undefined {
 	return value === "requests" ||
@@ -484,31 +483,18 @@ const busy = $derived(
 			<Label for="mobile-loan-queue-view" class="mb-2 text-xs font-semibold">
 				Queue view
 			</Label>
-			<div class="relative">
-				<select
-					id="mobile-loan-queue-view"
-					class="focus-visible:border-ring focus-visible:ring-ring/50 h-11 w-full appearance-none rounded-md border border-input bg-background px-3 pr-20 text-sm font-semibold shadow-xs outline-none focus-visible:ring-[3px]"
-					value={activeQueue}
-					onchange={(event) => changeQueue(event.currentTarget.value)}
-				>
-					{#each queueOptions as option (option.value)}
-						<option value={option.value}>{option.label} — {option.count}</option
-						>
-					{/each}
-				</select>
-				<span
-					class="pointer-events-none absolute inset-y-0 right-3 flex items-center gap-2"
-					aria-hidden="true"
-				>
-					<Badge
-						variant={activeQueueOption.count ? "secondary" : "outline"}
-						class="min-w-7 justify-center"
+			<NativeSelect
+				id="mobile-loan-queue-view"
+				class="w-full [&_select]:h-11 [&_select]:px-3 [&_select]:pr-9 [&_select]:font-semibold"
+				value={activeQueue}
+				onchange={(event) => changeQueue(event.currentTarget.value)}
+			>
+				{#each queueOptions as option (option.value)}
+					<NativeSelectOption value={option.value}
+						>{option.label} — {option.count}</NativeSelectOption
 					>
-						{activeQueueOption.count}
-					</Badge>
-					<ChevronDown class="size-4 text-muted-foreground" />
-				</span>
-			</div>
+				{/each}
+			</NativeSelect>
 		</div>
 		<p class="hidden text-sm text-muted-foreground lg:block">
 			On wide screens you can drag a card by its grip handle to another column:

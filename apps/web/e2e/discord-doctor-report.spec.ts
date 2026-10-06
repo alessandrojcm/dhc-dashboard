@@ -304,7 +304,7 @@ test.describe("Discord Doctor report", () => {
 			page.getByText(/Unconfirmed match — verify on Discord first/i),
 		).toBeVisible();
 
-		await page.getByRole("button", { name: "Members view" }).click();
+		await page.getByRole("radio", { name: "Members view" }).click();
 		await expect(
 			page.getByRole("heading", { name: "Missing from server (2)" }),
 		).toBeVisible();

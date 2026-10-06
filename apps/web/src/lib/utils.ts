@@ -6,8 +6,8 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // Utility types for component props
-export type WithElementRef<T> = T & {
-	ref?: HTMLElement | null;
+export type WithElementRef<T, U = HTMLElement> = T & {
+	ref?: U | null;
 };
 
 export type WithoutChildren<T> = Omit<T, "children">;
