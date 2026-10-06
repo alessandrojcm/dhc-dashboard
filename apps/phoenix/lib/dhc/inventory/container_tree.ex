@@ -11,8 +11,10 @@ defmodule Dhc.Inventory.ContainerTree do
       both root first.
     * **Subtree** — `active_dependants?/1` and `lock_subtree_for_update/1`
       walk a container and every descendant.
+    * **Cycle check** — `in_subtree?/2` tells a move whether its proposed
+      parent sits under the moving container.
     * **Path names** — `path_names/1` renders `"Root › … › Leaf"` for many
-      containers in one recursive query.
+      containers from the same recursive ancestor query as `ancestors/1`.
 
   This module decides **how** a chain is walked or locked, never **when**:
   `Dhc.Inventory.AvailabilityCommands.with_locked_item/2` (ADR 0023) still
@@ -24,12 +26,64 @@ defmodule Dhc.Inventory.ContainerTree do
 
   import Ecto.Query
 
+  alias Dhc.Inventory.Container
   alias Dhc.Repo
 
   @path_separator " › "
 
   @typedoc "One container on an ancestor chain."
   @type link :: %{id: Ecto.UUID.t(), archived_at: DateTime.t() | nil}
+
+  # The one recursive ancestor walk. Every requested id starts a chain
+  # (`origin_id`); each step climbs to the parent, so `depth` 0 is the
+  # container itself and the highest depth is its root. `ancestors/1`
+  # and `path_names/1` both read these rows.
+  @ancestor_rows_sql """
+  WITH RECURSIVE ancestors AS (
+    SELECT id AS origin_id, id, parent_container_id, name, archived_at, 0 AS depth
+    FROM containers
+    WHERE id = ANY($1)
+    UNION ALL
+    SELECT child.origin_id, parent.id, parent.parent_container_id, parent.name,
+           parent.archived_at, child.depth + 1
+    FROM containers parent
+    JOIN ancestors child ON child.parent_container_id = parent.id
+  )
+  SELECT origin_id, id, name, archived_at
+  FROM ancestors
+  ORDER BY origin_id, depth DESC
+  """
+
+  # Chains keyed by origin id, each root first. Ids that are not UUIDs or do
+  # not exist have no chain.
+  defp ancestor_chains(container_ids) do
+    case dump_ids(container_ids) do
+      [] ->
+        %{}
+
+      ids ->
+        %{rows: rows} = Repo.query!(@ancestor_rows_sql, [ids])
+
+        Enum.group_by(
+          rows,
+          fn [origin_id | _rest] -> Ecto.UUID.load!(origin_id) end,
+          fn [_origin_id, id, name, archived_at] ->
+            %{id: Ecto.UUID.load!(id), name: name, archived_at: archived_at}
+          end
+        )
+    end
+  end
+
+  defp dump_ids(container_ids) do
+    container_ids
+    |> Enum.flat_map(fn id ->
+      case Ecto.UUID.dump(id) do
+        {:ok, dumped} -> [dumped]
+        :error -> []
+      end
+    end)
+    |> Enum.uniq()
+  end
 
   @doc """
   The chain from the root down to `container_id`, inclusive, unlocked.
@@ -38,26 +92,10 @@ defmodule Dhc.Inventory.ContainerTree do
   """
   @spec ancestors(Ecto.UUID.t()) :: [link()]
   def ancestors(container_id) when is_binary(container_id) do
-    %{rows: rows} =
-      Repo.query!(
-        """
-        WITH RECURSIVE chain AS (
-          SELECT id, parent_container_id, archived_at, 0 AS depth
-          FROM containers
-          WHERE id = $1
-          UNION ALL
-          SELECT parent.id, parent.parent_container_id, parent.archived_at, child.depth + 1
-          FROM containers parent
-          JOIN chain child ON child.parent_container_id = parent.id
-        )
-        SELECT id, archived_at FROM chain ORDER BY depth DESC
-        """,
-        [Ecto.UUID.dump!(container_id)]
-      )
-
-    Enum.map(rows, fn [id, archived_at] ->
-      %{id: Ecto.UUID.load!(id), archived_at: archived_at}
-    end)
+    [container_id]
+    |> ancestor_chains()
+    |> Map.get(container_id, [])
+    |> Enum.map(&Map.take(&1, [:id, :archived_at]))
   end
 
   @doc """
@@ -85,38 +123,43 @@ defmodule Dhc.Inventory.ContainerTree do
   end
 
   defp share_lock(id) do
-    from(c in "containers",
-      where: c.id == type(^id, :binary_id),
-      select: %{id: type(c.id, :binary_id), archived_at: c.archived_at},
+    from(c in Container,
+      where: c.id == ^id,
+      select: %{id: c.id, archived_at: c.archived_at},
       lock: "FOR SHARE"
     )
     |> Repo.all()
   end
 
   @doc """
-  Whether `container_id` exists and nothing from it up to the root is
-  archived. Unlocked.
+  Whether nothing from `container_id` up to the root is archived and the
+  container exists. Unlocked.
+
+  `nil` is the top of the tree (a root's parent, or no container at all), so
+  there is nothing above it that could be archived.
   """
-  @spec chain_active?(Ecto.UUID.t()) :: boolean()
+  @spec chain_active?(Ecto.UUID.t() | nil) :: boolean()
+  def chain_active?(nil), do: true
+
   def chain_active?(container_id) when is_binary(container_id) do
-    container_id |> ancestors() |> active_chain?()
+    case ancestors(container_id) do
+      [] -> false
+      chain -> Enum.all?(chain, &is_nil(&1.archived_at))
+    end
   end
 
-  defp active_chain?([]), do: false
-  defp active_chain?(chain), do: Enum.all?(chain, &is_nil(&1.archived_at))
-
   @doc """
-  Whether `ancestor_id` is `container_id` itself or one of its ancestors.
+  Whether `container_id` is `root_id` itself or anywhere below it.
 
-  Moving a container under its own descendant would be a cycle; this is the
-  check that answers it before the acyclic constraint has to.
+  Moving a container under a parent in its own subtree would be a cycle:
+  `in_subtree?(proposed_parent_id, container_id)` answers that before the
+  acyclic constraint has to.
   """
-  @spec self_or_ancestor?(Ecto.UUID.t(), Ecto.UUID.t()) :: boolean()
-  def self_or_ancestor?(ancestor_id, container_id) when ancestor_id == container_id, do: true
+  @spec in_subtree?(Ecto.UUID.t(), Ecto.UUID.t()) :: boolean()
+  def in_subtree?(container_id, root_id) when container_id == root_id, do: true
 
-  def self_or_ancestor?(ancestor_id, container_id)
-      when is_binary(ancestor_id) and is_binary(container_id) do
-    container_id |> ancestors() |> Enum.any?(&(&1.id == ancestor_id))
+  def in_subtree?(container_id, root_id) when is_binary(container_id) and is_binary(root_id) do
+    container_id |> ancestors() |> Enum.any?(&(&1.id == root_id))
   end
 
   @doc """
@@ -204,56 +247,19 @@ defmodule Dhc.Inventory.ContainerTree do
   Every container id, for callers that render paths for the whole tree.
   """
   @spec all_ids() :: [Ecto.UUID.t()]
-  def all_ids do
-    from(c in "containers", select: type(c.id, :binary_id)) |> Repo.all()
-  end
+  def all_ids, do: from(c in Container, select: c.id) |> Repo.all()
 
   @doc """
   The full path from the root for each id, as `"Root › … › Leaf"`.
 
-  One recursive query walks every requested chain at once. Ids that do not
-  exist (or are not UUIDs) are absent from the map; a root maps to its own
-  name.
+  Reads the same recursive ancestor walk as `ancestors/1`, for every
+  requested id at once. Ids that do not exist (or are not UUIDs) are absent
+  from the map; a root maps to its own name.
   """
   @spec path_names([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => String.t()}
   def path_names(container_ids) when is_list(container_ids) do
-    case dump_ids(container_ids) do
-      [] ->
-        %{}
-
-      ids ->
-        %{rows: rows} =
-          Repo.query!(
-            """
-            WITH RECURSIVE ancestors AS (
-              SELECT id AS origin_id, id, parent_container_id, name, 0 AS depth
-              FROM containers
-              WHERE id = ANY($1)
-              UNION ALL
-              SELECT child.origin_id, parent.id, parent.parent_container_id, parent.name,
-                     child.depth + 1
-              FROM containers parent
-              JOIN ancestors child ON child.parent_container_id = parent.id
-            )
-            SELECT origin_id, string_agg(name, $2 ORDER BY depth DESC)
-            FROM ancestors
-            GROUP BY origin_id
-            """,
-            [ids, @path_separator]
-          )
-
-        Map.new(rows, fn [id, path] -> {Ecto.UUID.load!(id), path} end)
-    end
-  end
-
-  defp dump_ids(container_ids) do
     container_ids
-    |> Enum.flat_map(fn id ->
-      case Ecto.UUID.dump(id) do
-        {:ok, dumped} -> [dumped]
-        :error -> []
-      end
-    end)
-    |> Enum.uniq()
+    |> ancestor_chains()
+    |> Map.new(fn {id, chain} -> {id, Enum.map_join(chain, @path_separator, & &1.name)} end)
   end
 end

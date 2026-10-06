@@ -316,22 +316,14 @@ defmodule Dhc.Inventory.Containers do
     |> Ecto.Changeset.add_error(:parent_container_id, "must refer to an active container")
   end
 
-  defp cycle?(container_id, proposed) do
-    if skip_cycle_check?() do
-      false
-    else
-      detect_cycle?(container_id, proposed)
-    end
-  end
+  defp cycle?(container_id, proposed),
+    do: not skip_cycle_check?() and ContainerTree.in_subtree?(proposed, container_id)
 
   defp skip_cycle_check? do
     :dhc
     |> Application.get_env(__MODULE__, [])
     |> Keyword.get(:skip_cycle_check, false)
   end
-
-  defp detect_cycle?(container_id, proposed),
-    do: ContainerTree.self_or_ancestor?(container_id, proposed)
 
   defp locked_move_container(id, parent_id) do
     case Locks.get_for_update(Container, id) do
@@ -356,7 +348,7 @@ defmodule Dhc.Inventory.Containers do
       not changeset.valid? ->
         Repo.rollback(changeset)
 
-      parent_id != nil and not parent_chain_active?(parent_id) ->
+      parent_id != nil and not ContainerTree.chain_active?(parent_id) ->
         Repo.rollback(:archived_parent)
 
       parent_id != nil and cycle?(container.id, parent_id) ->
@@ -454,7 +446,7 @@ defmodule Dhc.Inventory.Containers do
         populate_flat_aggregates(container)
 
       %Container{} = container ->
-        if parent_chain_active?(container.parent_container_id) do
+        if ContainerTree.chain_active?(container.parent_container_id) do
           persist_container_stamp(container, archived_at: nil)
         else
           Repo.rollback(:archived_parent)
@@ -471,8 +463,6 @@ defmodule Dhc.Inventory.Containers do
 
   defp translate_restore_result({:ok, %Container{} = container}), do: {:ok, container}
   defp translate_restore_result({:error, reason}), do: {:error, reason}
-
-  defp parent_chain_active?(parent_id), do: ItemGuards.container_chain_active?(parent_id)
 
   defp handle_container_update({:ok, %Container{} = container}, id) do
     case Repo.get(Container, id) do

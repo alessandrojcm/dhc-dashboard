@@ -114,24 +114,6 @@ defmodule Dhc.Inventory.ItemGuards do
     end
   end
 
-  @doc """
-  Whether every container from `container_id` up to the root exists and is
-  active. Unlocked — callers that need the chain to stay active must use
-  `require_active_container_chain/1` inside a transaction.
-  """
-  @spec container_chain_active?(String.t() | nil) :: boolean()
-  def container_chain_active?(nil), do: true
-
-  def container_chain_active?(container_id) when is_binary(container_id) do
-    case Ecto.UUID.cast(container_id) do
-      :error ->
-        false
-
-      {:ok, id} ->
-        ContainerTree.chain_active?(id)
-    end
-  end
-
   # How the chain is walked and locked (root first, one `FOR SHARE` per row)
   # is `ContainerTree`'s; that it is locked before the item is this module's.
   defp lock_active_chain(id) do

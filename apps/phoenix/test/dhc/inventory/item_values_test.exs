@@ -6,15 +6,16 @@ defmodule Dhc.Inventory.ItemValuesTest do
 
   use Dhc.DataCase, async: true
 
-  alias Dhc.AuthFixtures
+  import Dhc.InventoryFixtures, only: [category_fixture: 0, container_fixture: 0, item_row!: 2]
+
   alias Dhc.Inventory
   alias Dhc.Inventory.ItemValues
   alias Dhc.Repo
 
   describe "invalid_stored/2" do
     setup do
-      category = insert_category()
-      container_id = insert_container!()
+      category = category_fixture()
+      container_id = container_fixture().id
       %{category: category, container_id: container_id}
     end
 
@@ -168,45 +169,8 @@ defmodule Dhc.Inventory.ItemValuesTest do
     definition
   end
 
-  defp insert_category do
-    Dhc.Inventory.EquipmentCategory
-    |> struct()
-    |> Ecto.Changeset.cast(%{name: "Values Cat #{System.unique_integer([:positive])}"}, [:name])
-    |> Repo.insert!()
-  end
-
-  defp insert_container! do
-    principal_id = AuthFixtures.principal_fixture().id
-
-    container_id = Ecto.UUID.generate()
-
-    Repo.query!(
-      "INSERT INTO containers (id, name, created_by, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
-      [
-        Ecto.UUID.dump!(container_id),
-        "Values Container #{System.unique_integer([:positive])}",
-        Ecto.UUID.dump!(principal_id)
-      ]
-    )
-
-    container_id
-  end
-
-  defp item!(%{category: category, container_id: container_id}) do
-    item_id = Ecto.UUID.generate()
-
-    Repo.query!(
-      "INSERT INTO inventory_items (id, container_id, category_id, slug, created_at, updated_at) VALUES ($1, $2, $3, $4, NOW(), NOW())",
-      [
-        Ecto.UUID.dump!(item_id),
-        Ecto.UUID.dump!(container_id),
-        Ecto.UUID.dump!(category.id),
-        "values-#{System.unique_integer([:positive])}"
-      ]
-    )
-
-    item_id
-  end
+  defp item!(%{category: category, container_id: container_id}),
+    do: item_row!(container_id, category.id)
 
   defp insert_value!(item_id, definition_id, column, value)
        when column in [:text_value, :decimal_value, :boolean_value, :option_id] do

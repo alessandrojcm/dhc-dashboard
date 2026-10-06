@@ -9,14 +9,16 @@ defmodule Dhc.Inventory.ContainerTreeTest do
 
   import Dhc.ConcurrencyHelpers, only: [outside_sandbox: 1, wait_for_lock_waiter: 1]
 
-  alias Dhc.Auth.Principal
+  import Dhc.InventoryFixtures, only: [container_fixture: 1, item_row!: 1]
+
+  alias Dhc.AuthFixtures
   alias Dhc.Inventory
   alias Dhc.Inventory.ContainerTree
   alias Dhc.Repo
 
   describe "ancestors" do
     test "returns a deep chain root first, ending at the container" do
-      actor = principal_id()
+      actor = AuthFixtures.principal_fixture().id
       chain = deep_chain!(actor, 6)
       leaf = List.last(chain)
 
@@ -32,7 +34,7 @@ defmodule Dhc.Inventory.ContainerTreeTest do
     end
 
     test "detects an archived ancestor anywhere up the chain" do
-      actor = principal_id()
+      actor = AuthFixtures.principal_fixture().id
       [root, middle, leaf] = deep_chain!(actor, 3)
 
       assert ContainerTree.chain_active?(leaf.id)
@@ -47,21 +49,21 @@ defmodule Dhc.Inventory.ContainerTreeTest do
       assert [nil, %DateTime{}, nil] = Enum.map(locked, & &1.archived_at)
     end
 
-    test "self_or_ancestor? answers whether a move would form a cycle" do
-      actor = principal_id()
+    test "in_subtree? answers whether a move would form a cycle" do
+      actor = AuthFixtures.principal_fixture().id
       [root, middle, leaf] = deep_chain!(actor, 3)
-      other = create_container!(actor, "Other")
+      other = container_fixture(name: "Other", created_by: actor)
 
-      assert ContainerTree.self_or_ancestor?(root.id, leaf.id)
-      assert ContainerTree.self_or_ancestor?(middle.id, middle.id)
-      refute ContainerTree.self_or_ancestor?(leaf.id, root.id)
-      refute ContainerTree.self_or_ancestor?(other.id, leaf.id)
+      assert ContainerTree.in_subtree?(leaf.id, root.id)
+      assert ContainerTree.in_subtree?(middle.id, middle.id)
+      refute ContainerTree.in_subtree?(root.id, leaf.id)
+      refute ContainerTree.in_subtree?(leaf.id, other.id)
     end
   end
 
   describe "subtree" do
     test "active_dependants? sees descendant containers and items, not the container itself" do
-      actor = principal_id()
+      actor = AuthFixtures.principal_fixture().id
       [root, middle, leaf] = deep_chain!(actor, 3)
 
       refute ContainerTree.active_dependants?(leaf.id)
@@ -71,7 +73,7 @@ defmodule Dhc.Inventory.ContainerTreeTest do
       refute ContainerTree.active_dependants?(middle.id)
       assert ContainerTree.active_dependants?(root.id)
 
-      item_id = insert_item!(leaf.id)
+      item_id = item_row!(leaf.id)
       assert ContainerTree.active_dependants?(middle.id)
       assert ContainerTree.active_dependants?(leaf.id)
 
@@ -87,9 +89,11 @@ defmodule Dhc.Inventory.ContainerTreeTest do
 
       {actor, chain, outsider, item_id} =
         outside_sandbox(fn ->
-          actor = principal_id()
+          actor = AuthFixtures.principal_fixture().id
           chain = deep_chain!(actor, 3)
-          {actor, chain, create_container!(actor, "Outsider"), insert_item!(List.last(chain).id)}
+
+          {actor, chain, container_fixture(name: "Outsider", created_by: actor),
+           item_row!(List.last(chain).id)}
         end)
 
       on_exit(fn -> cleanup_committed!(actor, [outsider | Enum.reverse(chain)], [item_id]) end)
@@ -133,9 +137,9 @@ defmodule Dhc.Inventory.ContainerTreeTest do
 
   describe "path_names/1" do
     test "renders root-first paths for several ids, including roots, skipping missing ids" do
-      actor = principal_id()
+      actor = AuthFixtures.principal_fixture().id
       [root, middle, leaf] = deep_chain!(actor, 3)
-      other_root = create_container!(actor, "Garage")
+      other_root = container_fixture(name: "Garage", created_by: actor)
       missing = Ecto.UUID.generate()
 
       assert ContainerTree.path_names([leaf.id, middle.id, root.id, other_root.id, missing]) ==
@@ -159,7 +163,7 @@ defmodule Dhc.Inventory.ContainerTreeTest do
 
       {actor, [root, middle, leaf]} =
         outside_sandbox(fn ->
-          actor = principal_id()
+          actor = AuthFixtures.principal_fixture().id
           {actor, deep_chain!(actor, 3)}
         end)
 
@@ -227,53 +231,20 @@ defmodule Dhc.Inventory.ContainerTreeTest do
           _ -> List.last(acc).id
         end
 
-      acc ++ [create_container!(actor, "Level #{level} #{suffix}", parent_id)]
+      acc ++
+        [
+          container_fixture(
+            name: "Level #{level} #{suffix}",
+            parent_id: parent_id,
+            created_by: actor
+          )
+        ]
     end)
-  end
-
-  defp create_container!(actor, name, parent_id \\ nil) do
-    attrs = %{"name" => name}
-    attrs = if parent_id, do: Map.put(attrs, "parentContainerId", parent_id), else: attrs
-    assert {:ok, container} = Inventory.create_container(attrs, actor)
-    container
   end
 
   defp archive!(container_id) do
     Repo.query!("UPDATE containers SET archived_at = NOW() WHERE id = $1", [
       Ecto.UUID.dump!(container_id)
     ])
-  end
-
-  defp insert_item!(container_id) do
-    {:ok, category} =
-      Inventory.create_category(%{
-        "name" => "Tree category #{System.unique_integer([:positive])}"
-      })
-
-    item_id = Ecto.UUID.generate()
-
-    Repo.query!(
-      """
-      INSERT INTO inventory_items (id, container_id, category_id, slug, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, NOW(), NOW())
-      """,
-      [
-        Ecto.UUID.dump!(item_id),
-        Ecto.UUID.dump!(container_id),
-        Ecto.UUID.dump!(category.id),
-        "tree-#{System.unique_integer([:positive])}"
-      ]
-    )
-
-    item_id
-  end
-
-  defp principal_id do
-    %Principal{id: Ecto.UUID.generate()}
-    |> Principal.email_changeset(%{
-      email: "tree-#{System.unique_integer([:positive])}@example.com"
-    })
-    |> Repo.insert!()
-    |> Map.fetch!(:id)
   end
 end

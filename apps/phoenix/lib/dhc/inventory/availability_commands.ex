@@ -451,7 +451,7 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   defp require_same_container(_actual, _peeked), do: {:error, :container_moved}
 
   defp verify_held_container_chain(container_id) do
-    if ItemGuards.container_chain_active?(container_id),
+    if ContainerTree.chain_active?(container_id),
       do: :ok,
       else: {:error, :archived_container}
   end
