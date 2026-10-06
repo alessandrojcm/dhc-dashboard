@@ -18,7 +18,7 @@ defmodule DhcWeb.InventoryItemsController do
   Every command is its own action with its own request body, so the generic
   edit cannot express a move, a maintenance transition, an archive, or a
   loan change. Operator authority is equal for `quartermaster`,
-  `president`, and `admin`, all enforced by the `:inventory_admin_api`
+  `president`, and `admin`, all enforced by the `:inventory_manage`
   pipeline.
 
   **Reads are operator-only too.** This viewer discloses the container

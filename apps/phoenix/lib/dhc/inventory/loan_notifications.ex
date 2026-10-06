@@ -34,7 +34,7 @@ defmodule Dhc.Inventory.LoanNotifications do
   same persist is not.
   """
 
-  alias Dhc.Auth
+  alias Dhc.Auth.Capabilities
   alias Dhc.Notifications.Workers.KeyedCreateWorker
 
   @borrower_kinds ~w(approved rejected cancelled dates_changed)a
@@ -42,15 +42,14 @@ defmodule Dhc.Inventory.LoanNotifications do
   @notifying_kinds @borrower_kinds ++ @operator_kinds
 
   @doc """
-  Principal ids that currently hold an inventory-operator role on an
-  active profile.
+  Principal ids that currently hold `inventory.manage` on an active profile.
 
-  Delegates to `Dhc.Auth.inventory_operator_principal_ids/1` — the same
-  eligibility `RequireSession` uses for `:inventory_admin_api`.
+  Delegates to `Dhc.Auth.Capabilities.principal_ids_with/2` — the same
+  capability and eligibility `RequireSession` uses for `:inventory_manage`.
   """
   @spec inventory_operator_ids(keyword()) :: [String.t()]
   def inventory_operator_ids(opts \\ []) when is_list(opts) do
-    Auth.inventory_operator_principal_ids(opts)
+    Capabilities.principal_ids_with(:"inventory.manage", opts)
   end
 
   @doc """

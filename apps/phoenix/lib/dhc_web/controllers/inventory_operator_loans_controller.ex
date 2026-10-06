@@ -13,7 +13,7 @@ defmodule DhcWeb.InventoryOperatorLoansController do
   Every command is its own action with its own request body, so there is
   no generic loan patch that can move lifecycle state. Operator authority
   is equal for `quartermaster`, `president`, and `admin`, all enforced by
-  the `:inventory_admin_api` pipeline.
+  the `:inventory_manage` pipeline.
 
   The controller renders successes (`DhcWeb.InventoryHTTP` maps every
   error) and enqueues keyed notifications *after* a successful write. The command

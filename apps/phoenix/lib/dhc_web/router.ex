@@ -5,49 +5,47 @@ defmodule DhcWeb.Router do
     plug(:accepts, ["json"])
   end
 
-  pipeline :invitation_admin_api do
-    plug(DhcWeb.Plugs.RequireSession, roles: ~w(president admin committee_coordinator))
+  # Every gated pipeline is named after the one capability it requires.
+  # `Dhc.Auth.Capabilities` alone decides which roles hold it (ALE-344); this
+  # router names no roles.
+
+  pipeline :members_invite do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"members.invite")
   end
 
-  pipeline :waitlist_admin_api do
-    plug(DhcWeb.Plugs.RequireSession,
-      roles: ~w(admin president committee_coordinator beginners_coordinator coach)
-    )
+  pipeline :beginners_workshop_read do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.workshop.read")
   end
 
-  pipeline :members_admin_api do
-    plug(DhcWeb.Plugs.RequireSession,
-      roles:
-        ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
-    )
+  pipeline :beginners_waitlist_toggle do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.waitlist.toggle")
+  end
+
+  pipeline :members_directory_read do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"members.directory.read")
   end
 
   # Membership commands that MINT new Stripe charges (ALE-251 reactivation).
-  # Deliberately narrower than :members_admin_api: only officers with billing
-  # authority, and no self-service fallback.
-  pipeline :membership_minting_api do
-    plug(DhcWeb.Plugs.RequireSession, roles: ~w(admin president treasurer committee_coordinator))
+  # Deliberately narrower than :members_directory_read and with no
+  # self-service fallback.
+  pipeline :membership_reactivate do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"membership.reactivate")
   end
 
-  pipeline :workshop_coordinator_api do
-    # Mirrors the corrected registration RLS policy
-    # (`20250923100806_fix_workshops_rls.sql`) and the canonical
-    # `Dhc.Workshops.coordinator_management_roles/0`. Deliberately excludes
-    # `beginners_coordinator` — the historical registration visibility drift
-    # (see the `Dhc.Workshops` moduledoc) must not be reproduced.
-    plug(DhcWeb.Plugs.RequireSession, roles: Dhc.Workshops.coordinator_management_roles())
+  pipeline :workshops_manage do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"workshops.manage")
   end
 
-  pipeline :settings_admin_api do
-    plug(DhcWeb.Plugs.RequireSession, roles: ~w(president committee_coordinator admin))
+  pipeline :members_settings_edit do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"members.settings.edit")
   end
 
-  pipeline :training_announcements_api do
-    plug(DhcWeb.Plugs.RequireSession, roles: Dhc.TrainingAnnouncements.management_roles())
+  pipeline :training_announcements_manage do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"training_announcements.manage")
   end
 
   scope "/api/training-announcements", DhcWeb do
-    pipe_through([:api, :training_announcements_api])
+    pipe_through([:api, :training_announcements_manage])
 
     get("/", TrainingAnnouncementsController, :index)
     post("/", TrainingAnnouncementsController, :create)
@@ -81,16 +79,15 @@ defmodule DhcWeb.Router do
     )
   end
 
-  pipeline :discord_doctor_admin_api do
-    plug(DhcWeb.Plugs.RequireSession, roles: ~w(admin president committee_coordinator))
+  pipeline :discord_doctor_use do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"discord.doctor.use")
   end
 
-  # ALE-105 inventory category management. Mirrors the existing SvelteKit
-  # `INVENTORY_ROLES` (`quartermaster`, `admin`, `president`). Reads of
-  # categories are any authenticated member — the existing Svelte category
-  # list view is member-readable; writes require the inventory write roles.
-  pipeline :inventory_admin_api do
-    plug(DhcWeb.Plugs.RequireSession, roles: Dhc.Auth.inventory_operator_roles())
+  # ALE-105 inventory management. Reads of categories, definitions and
+  # containers are any authenticated member; writes, the operator item viewer
+  # and the operator loan commands require inventory operators.
+  pipeline :inventory_manage do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"inventory.manage")
   end
 
   pipeline :authenticated_api do
@@ -210,7 +207,7 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :invitation_admin_api])
+    pipe_through([:api, :members_invite])
 
     get("/invitations", InvitationsController, :list)
     post("/invitations", InvitationsController, :create)
@@ -219,10 +216,15 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :waitlist_admin_api])
+    pipe_through([:api, :beginners_waitlist_toggle])
+
+    patch("/waitlist/status", WaitlistController, :update_status)
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through([:api, :beginners_workshop_read])
 
     get("/waitlist/analytics", WaitlistController, :analytics)
-    patch("/waitlist/status", WaitlistController, :update_status)
     get("/waitlist/entries", WaitlistController, :entries)
     get("/waitlist/entries/:id", WaitlistController, :show)
     patch("/waitlist/entries/:id", WaitlistController, :update)
@@ -230,22 +232,22 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :members_admin_api])
+    pipe_through([:api, :members_directory_read])
 
     get("/members", MembersController, :index)
     get("/members/analytics", MembersController, :analytics)
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :membership_minting_api])
+    pipe_through([:api, :membership_reactivate])
 
-    # ALE-251 — mints new Stripe charges, so only billing-authority roles and
-    # NO self-service fallback (unlike pause/resume under :authenticated_api).
+    # ALE-251 — mints new Stripe charges, so only billing authority and NO
+    # self-service fallback (unlike pause/resume under :authenticated_api).
     post("/members/:memberId/membership/reactivate", MembershipController, :reactivate)
 
     # ALE-252: read-only preview of the saved SEPA method the command would
     # charge. Same narrow pipeline, because saved payment data must not leak
-    # to the broader members-admin list.
+    # to the broader member directory.
     get(
       "/members/:memberId/membership/reactivation-preview",
       MembershipController,
@@ -263,14 +265,14 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :discord_doctor_admin_api])
+    pipe_through([:api, :discord_doctor_use])
 
     get("/discord-doctor/report", DiscordDoctorController, :report)
     post("/discord-doctor/kick", DiscordDoctorController, :kick)
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :workshop_coordinator_api])
+    pipe_through([:api, :workshops_manage])
 
     post("/workshops", WorkshopsController, :create)
     get("/workshops/calendar", WorkshopsController, :calendar)
@@ -291,7 +293,7 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :settings_admin_api])
+    pipe_through([:api, :members_settings_edit])
 
     get("/settings", SettingsController, :index)
     patch("/settings/:key", SettingsController, :update)
@@ -367,13 +369,13 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :inventory_admin_api])
+    pipe_through([:api, :inventory_manage])
 
-    # ALE-105: write roles only.
+    # ALE-105: inventory operators only.
     post("/inventory/categories", InventoryCategoriesController, :create)
     patch("/inventory/categories/:id", InventoryCategoriesController, :update)
     delete("/inventory/categories/:id", InventoryCategoriesController, :delete)
-    # ALE-283c: write roles only.
+    # ALE-283c: inventory operators only.
     post("/inventory/categories/:categoryId/definitions", InventoryStructureController, :create)
     patch("/inventory/definitions/:id", InventoryStructureController, :update)
     post("/inventory/definitions/:id/retire", InventoryStructureController, :retire)
@@ -389,14 +391,14 @@ defmodule DhcWeb.Router do
     post("/inventory/containers/:id/move", InventoryContainersController, :move)
     post("/inventory/containers/:id/archive", InventoryContainersController, :archive)
     post("/inventory/containers/:id/restore", InventoryContainersController, :restore)
-    # ALE-106: write roles only.
+    # ALE-106: inventory operators only.
     post("/inventory/containers", InventoryContainersController, :create)
     patch("/inventory/containers/:id", InventoryContainersController, :update)
     delete("/inventory/containers/:id", InventoryContainersController, :delete)
 
     # ALE-289: the target item viewer and commands live on the freed
-    # /inventory/items URLs. Equal authority for quartermaster, president,
-    # and admin. Reads live here rather than in the member scope because
+    # /inventory/items URLs. Equal authority for every inventory operator.
+    # Reads live here rather than in the member scope because
     # the operator viewer discloses container location, notes, and
     # maintenance facts (ALE-280 story 45). Each availability-changing
     # command is its own route so the generic PATCH cannot express it.
@@ -445,8 +447,8 @@ defmodule DhcWeb.Router do
     )
 
     # ALE-286c operator loan viewers, commands, and the shared queue.
-    # Equal authority for quartermaster, president, and admin. Each
-    # transition is its own route so there is no generic loan patch.
+    # Equal authority for every inventory operator. Each transition is its
+    # own route so there is no generic loan patch.
     # The queue is unpaginated: bucket counts are length(rows).
     get("/inventory/operator/loans/queue", InventoryOperatorLoanQueueController, :show)
     get("/inventory/operator/loans/:loanId", InventoryOperatorLoansController, :show)

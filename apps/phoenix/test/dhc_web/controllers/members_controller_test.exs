@@ -489,7 +489,7 @@ defmodule DhcWeb.MembersControllerTest do
       assert %{"data" => %{"firstName" => "Any"}} = json_response(conn, 200)
     end
 
-    test "returns 403 when a non-admin reads another member", %{conn: conn} do
+    test "hides another member (404) when a non-admin reads them", %{conn: conn} do
       %{auth_user_id: member_id} = insert_member([])
 
       conn =
@@ -497,7 +497,7 @@ defmodule DhcWeb.MembersControllerTest do
         |> put_req_header("authorization", "Bearer member-token")
         |> get("/api/members/#{member_id}")
 
-      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(conn, 404)
     end
 
     test "returns 404 for an unknown member visible to an admin", %{conn: conn} do
@@ -632,7 +632,7 @@ defmodule DhcWeb.MembersControllerTest do
                json_response(conn, 422)
     end
 
-    test "returns 403 when a non-admin updates another member", %{conn: conn} do
+    test "hides another member (404) when a non-admin updates them", %{conn: conn} do
       %{auth_user_id: member_id} = insert_member([])
 
       conn =
@@ -640,7 +640,7 @@ defmodule DhcWeb.MembersControllerTest do
         |> put_req_header("authorization", "Bearer member-token")
         |> patch("/api/members/#{member_id}", %{"firstName" => "Nope"})
 
-      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(conn, 404)
     end
 
     test "updates preferredWeapon with multiple weapon types", %{conn: conn} do
@@ -828,7 +828,7 @@ defmodule DhcWeb.MembersControllerTest do
                json_response(conn, 422)
     end
 
-    test "returns 403 when a non-admin pauses another member", %{conn: conn} do
+    test "hides another member (404) when a non-admin pauses them", %{conn: conn} do
       %{auth_user_id: member_id} = insert_member([])
       pause_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.to_iso8601()
 
@@ -837,7 +837,26 @@ defmodule DhcWeb.MembersControllerTest do
         |> put_req_header("authorization", "Bearer member-token")
         |> post("/api/members/#{member_id}/membership/pause", %{"pauseUntil" => pause_until})
 
-      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(conn, 404)
+    end
+
+    test "hides another member (404) when a non-admin resumes them or opens their billing portal",
+         %{conn: conn} do
+      %{auth_user_id: member_id} = insert_member([])
+
+      resume =
+        conn
+        |> put_req_header("authorization", "Bearer member-token")
+        |> post("/api/members/#{member_id}/membership/resume")
+
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(resume, 404)
+
+      portal =
+        build_conn()
+        |> put_req_header("authorization", "Bearer member-token")
+        |> post("/api/members/#{member_id}/billing-portal", %{"returnUrl" => "/dashboard"})
+
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(portal, 404)
     end
 
     # #12: Resume when not currently paused. The existing resume test

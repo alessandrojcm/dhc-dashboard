@@ -3,15 +3,18 @@ defmodule DhcWeb.AuthSessionJSON do
   JSON renderers for the Phoenix-session auth API (ALE-165).
 
   The session projection is the spec's
-  `{ principal: { id, email }, roles }`. No `is_active`, no raw token, no
-  Supabase `sub`/bearer/refresh compatibility.
+  `{ principal: { id, email }, roles, capabilities }`. `capabilities` are the
+  wire names `Dhc.Auth.Capabilities` grants the roles (ALE-344); the
+  dashboard applies only ownership and navigation on top. No `is_active`, no
+  raw token, no Supabase `sub`/bearer/refresh compatibility.
   """
 
-  def session(%{session: %{principal: principal, roles: roles}}) do
+  def session(%{session: %{principal: principal, roles: roles, capabilities: capabilities}}) do
     %{
       data: %{
         principal: %{id: principal.id, email: principal.email},
-        roles: roles
+        roles: roles,
+        capabilities: capabilities
       }
     }
   end

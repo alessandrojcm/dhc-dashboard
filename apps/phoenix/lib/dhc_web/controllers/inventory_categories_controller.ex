@@ -10,7 +10,7 @@ defmodule DhcWeb.InventoryCategoriesController do
     * PATCH  /inventory/categories/:id   — update, write roles.
     * DELETE /inventory/categories/:id   — delete (204), write roles.
 
-  RBAC is enforced by the `:inventory_admin_api` (writes) and
+  RBAC is enforced by the `:inventory_manage` (writes) and
   `:authenticated_api` (reads) pipelines in the router, mirroring the existing
   SvelteKit `INVENTORY_ROLES` (`quartermaster`, `president`, `admin`).
 

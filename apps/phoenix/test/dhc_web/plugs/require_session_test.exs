@@ -39,12 +39,12 @@ defmodule DhcWeb.Plugs.RequireSessionTest do
       {:ok, principal: principal, token: token}
     end
 
-    test "returns 403 when the session is valid and active but lacks the required role",
+    test "returns 403 when the session is valid and active but lacks the capability",
          %{token: token} do
       conn =
         conn()
         |> put_signed_cookie(@session_cookie, token)
-        |> DhcWeb.Plugs.RequireSession.call(roles: ~w(admin president))
+        |> DhcWeb.Plugs.RequireSession.call(capability: :"members.invite")
 
       assert conn.halted
       assert conn.status == 403
@@ -56,21 +56,23 @@ defmodule DhcWeb.Plugs.RequireSessionTest do
     test "returns 401 (not 403) when there is no session at all" do
       conn =
         conn()
-        |> DhcWeb.Plugs.RequireSession.call(roles: ~w(admin))
+        |> DhcWeb.Plugs.RequireSession.call(capability: :"members.invite")
 
       assert conn.halted
       assert conn.status == 401
     end
 
-    test "passes the session through when the role matches", %{token: token} do
+    test "passes the session through when a role grants the capability", %{token: token} do
       conn =
         conn()
         |> put_signed_cookie(@session_cookie, token)
-        |> DhcWeb.Plugs.RequireSession.call(roles: ~w(member admin))
+        |> DhcWeb.Plugs.RequireSession.call(capability: :"inventory.catalog.read")
 
       refute conn.halted
       assert conn.assigns.current_session.principal.id
       assert "member" in conn.assigns.current_session.roles
+      assert "inventory.catalog.read" in conn.assigns.current_session.capabilities
+      refute "inventory.manage" in conn.assigns.current_session.capabilities
     end
 
     test "returns 401 (not 403) when the principal has the role but is inactive" do
@@ -93,10 +95,24 @@ defmodule DhcWeb.Plugs.RequireSessionTest do
       conn =
         conn()
         |> put_signed_cookie(@session_cookie, token)
-        |> DhcWeb.Plugs.RequireSession.call(roles: Dhc.Auth.inventory_operator_roles())
+        |> DhcWeb.Plugs.RequireSession.call(capability: :"inventory.manage")
 
       assert conn.halted
       assert conn.status == 401
+    end
+  end
+
+  describe "init/1" do
+    test "rejects a capability missing from the registry" do
+      assert_raise ArgumentError, ~r/unknown capability/, fn ->
+        DhcWeb.Plugs.RequireSession.init(capability: :"members.everything")
+      end
+    end
+
+    test "rejects owner-scoped capabilities, which need a resource" do
+      assert_raise ArgumentError, ~r/owner-scoped/, fn ->
+        DhcWeb.Plugs.RequireSession.init(capability: :"members.profile.read")
+      end
     end
   end
 

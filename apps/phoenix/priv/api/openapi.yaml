@@ -6469,7 +6469,7 @@ paths:
         - AuthSession
       summary: Read the current session projection
       description: |
-        Returns `{ principal: { id, email }, roles }` for the session carried
+        Returns `{ principal: { id, email }, roles, capabilities }` for the session carried
         by the `_dhc_session` cookie. Used by SvelteKit SSR and the browser
         to read who is signed in. Returns `401` when there is no valid,
         active session. The dashboard consumes this instead of the
@@ -10907,22 +10907,45 @@ components:
                 type: array
                 items:
                   type: string
+    AuthCapability:
+      type: string
+      description: |
+        A capability name from the `Dhc.Auth.Capabilities` registry, shared
+        with the dashboard's `#lib/server/authorization` registry.
+      enum:
+        - beginners.waitlist.toggle
+        - beginners.workshop.read
+        - discord.assignments.manage
+        - discord.doctor.use
+        - inventory.catalog.read
+        - inventory.loans.own.read
+        - inventory.manage
+        - members.directory.read
+        - members.invite
+        - members.profile.read
+        - members.profile.update
+        - members.settings.edit
+        - membership.reactivate
+        - training_announcements.manage
+        - workshops.manage
+        - workshops.own.read
     AuthSessionProjection:
       type: object
       required:
         - data
       description: |
         The Phoenix session projection. The authoritative login identity
-        (`principal.id` / `principal.email`) plus the current live roles. No
-        `is_active`, no raw token, no Supabase `sub`/bearer/refresh
-        compatibility. This replaces the Supabase `Session` +
-        `getUser()` projection on the dashboard.
+        (`principal.id` / `principal.email`) plus the current live roles and
+        the capabilities they grant. No `is_active`, no raw token, no
+        Supabase `sub`/bearer/refresh compatibility. This replaces the
+        Supabase `Session` + `getUser()` projection on the dashboard.
       properties:
         data:
           type: object
           required:
             - principal
             - roles
+            - capabilities
           properties:
             principal:
               type: object
@@ -10943,3 +10966,12 @@ components:
               description: |
                 Current live roles from `user_roles`, loaded on every
                 authenticated request.
+            capabilities:
+              type: array
+              items:
+                $ref: "#/components/schemas/AuthCapability"
+              description: |
+                Capabilities the roles grant without resource context, worked
+                out by `Dhc.Auth.Capabilities` (ALE-344). Owner-scoped
+                capabilities (`members.profile.*`) are listed only when a role
+                grants them; the dashboard adds the owner rule itself.

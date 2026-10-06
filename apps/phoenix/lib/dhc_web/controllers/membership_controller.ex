@@ -1,11 +1,10 @@
 defmodule DhcWeb.MembershipController do
   use DhcWeb, :controller
 
+  alias Dhc.Auth.Capabilities
   alias Dhc.Membership
 
   action_fallback DhcWeb.MembersHTTP
-
-  @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
 
   @doc """
   POST /members/:memberId/membership/pause
@@ -13,7 +12,7 @@ defmodule DhcWeb.MembershipController do
   def pause(conn, %{"memberId" => member_id} = params) do
     attrs = Map.delete(params, "memberId")
 
-    with :ok <- authorize_self_or_admin(conn, member_id),
+    with :ok <- authorize_member(conn, :"members.profile.update", member_id),
          {:ok, member} <- member_id |> Membership.pause(attrs) |> rename(:invalid_pause) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
@@ -25,7 +24,7 @@ defmodule DhcWeb.MembershipController do
   POST /members/:memberId/membership/resume
   """
   def resume(conn, %{"memberId" => member_id}) do
-    with :ok <- authorize_self_or_admin(conn, member_id),
+    with :ok <- authorize_member(conn, :"members.profile.update", member_id),
          {:ok, member} <- Membership.resume(member_id) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
@@ -35,7 +34,7 @@ defmodule DhcWeb.MembershipController do
 
   @doc "POST /members/:memberId/billing-portal"
   def billing_portal(conn, %{"memberId" => member_id, "returnUrl" => return_url}) do
-    with :ok <- authorize_self_or_admin(conn, member_id),
+    with :ok <- authorize_member(conn, :"members.profile.update", member_id),
          {:ok, url} <-
            member_id
            |> Membership.create_billing_portal_session(return_url)
@@ -49,8 +48,8 @@ defmodule DhcWeb.MembershipController do
   @doc """
   POST /members/:memberId/membership/reactivate
 
-  Restricted by the `:membership_minting_api` pipeline to officers with
-  billing authority (admin, president, treasurer, committee_coordinator) —
+  Restricted by the `:membership_reactivate` pipeline (the
+  `membership.reactivate` capability: officers with billing authority) —
   there is no self-service fallback because the command mints new Stripe
   charges.
   """
@@ -71,7 +70,7 @@ defmodule DhcWeb.MembershipController do
   @doc """
   GET /members/:memberId/membership/reactivation-preview
 
-  Same `:membership_minting_api` restrictions as `reactivate/2` — saved
+  Same `:membership_reactivate` restrictions as `reactivate/2` — saved
   payment data must not leak to the broader members-admin list.
   """
   def reactivation_preview(conn, %{"memberId" => member_id}) do
@@ -87,7 +86,7 @@ defmodule DhcWeb.MembershipController do
   GET /members/:memberId/membership/reactivation-preview/amounts
 
   Stripe-computed amounts for a reactivation starting on the query param
-  `startDate` (ALE-254). Same `:membership_minting_api` restrictions as
+  `startDate` (ALE-254). Same `:membership_reactivate` restrictions as
   `reactivation_preview/2`. Deliberately independent of that read: a failure
   here degrades to hidden amounts in the UI while the form stays usable.
   """
@@ -100,15 +99,13 @@ defmodule DhcWeb.MembershipController do
     end
   end
 
-  defp authorize_self_or_admin(conn, member_id) do
-    current_session = conn.assigns.current_session
-
-    if current_session.principal.id == member_id or
-         Enum.any?(current_session.roles, &(&1 in @members_admin_roles)) do
-      :ok
-    else
-      {:error, :forbidden}
-    end
+  # Owner-scoped: the member themself or a member administrator. Anyone else
+  # gets the same 404 as a missing member, so the profile's existence is
+  # concealed (ALE-344, matching the frontend's `concealed_resource`).
+  defp authorize_member(conn, capability, member_id) do
+    Capabilities.authorize(conn.assigns.current_session, capability, %{
+      owner_principal_id: member_id
+    })
   end
 
   # `Dhc.Membership` reports one `:invalid_payload` and one `:stripe_error`

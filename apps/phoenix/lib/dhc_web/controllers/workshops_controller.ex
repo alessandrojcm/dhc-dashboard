@@ -8,8 +8,8 @@ defmodule DhcWeb.WorkshopsController do
   @moduledoc """
   Workshop management reads.
 
-  `calendar/2` and `attendees/2` are protected by the `:workshop_coordinator_api`
-  pipeline (`workshop_coordinator`, `president`, `admin`). `list/2` is
+  `calendar/2` and `attendees/2` are protected by the `:workshops_manage`
+  pipeline (the `workshops.manage` capability). `list/2` is
   authenticated-only.
 
   See `Dhc.Workshops` for the historical `beginners_coordinator`

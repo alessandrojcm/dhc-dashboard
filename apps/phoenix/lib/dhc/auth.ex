@@ -43,7 +43,7 @@ defmodule Dhc.Auth do
 
   import Ecto.Query, warn: false
   alias Dhc.Repo
-  alias Dhc.Auth.{DiscordSubjectLock, ExternalIdentity, Principal, PrincipalToken, UserRole}
+  alias Dhc.Auth.{Capabilities, DiscordSubjectLock, ExternalIdentity, Principal, PrincipalToken}
   alias Dhc.Discord.StagedAssignment
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
@@ -693,64 +693,6 @@ defmodule Dhc.Auth do
     end
   end
 
-  # Same role set as `:inventory_admin_api` / the operator loan queue.
-  @inventory_operator_roles ~w(quartermaster admin president)
-
-  @doc """
-  Roles that may operate the inventory queue.
-
-  The HTTP pipeline (`:inventory_admin_api`) and operator notifications
-  share this list so a leftover role row on an ineligible principal cannot
-  hear about loans the plug would 401.
-  """
-  @spec inventory_operator_roles() :: [String.t()]
-  def inventory_operator_roles, do: @inventory_operator_roles
-
-  @doc """
-  Principal ids that currently hold an inventory-operator role on an
-  **active** profile.
-
-  Same eligibility `authorize_session/2` enforces for the operator
-  pipeline: a `user_profiles` row with `is_active: true` and a matching
-  `user_roles` row. Inactive or profile-less principals are omitted even
-  if a leftover role row remains.
-  """
-  @spec inventory_operator_principal_ids(keyword()) :: [String.t()]
-  def inventory_operator_principal_ids(opts \\ []) when is_list(opts) do
-    except = Keyword.get(opts, :except)
-
-    from(r in UserRole,
-      join: p in UserProfile,
-      on: p.principal_id == r.principal_id,
-      where: r.role in ^@inventory_operator_roles,
-      where: p.is_active == true,
-      select: r.principal_id,
-      distinct: true
-    )
-    |> Repo.all()
-    |> reject_except(except)
-  end
-
-  @doc """
-  Decides whether a session projection may proceed.
-
-  Returns `:ok`, `{:error, :inactive}` (no club access — HTTP 401), or
-  `{:error, :forbidden}` (active but missing a required role — HTTP 403).
-  `RequireSession` maps these; it does not re-implement the predicate.
-  """
-  @spec authorize_session(map(), [String.t()]) :: :ok | {:error, :inactive | :forbidden}
-  def authorize_session(%{is_active: true}, []), do: :ok
-
-  def authorize_session(%{is_active: true, roles: roles}, required_roles)
-      when is_list(required_roles) do
-    if Enum.any?(roles, &(&1 in required_roles)), do: :ok, else: {:error, :forbidden}
-  end
-
-  def authorize_session(_projection, _required_roles), do: {:error, :inactive}
-
-  defp reject_except(ids, nil), do: ids
-  defp reject_except(ids, except), do: Enum.reject(ids, &(&1 == except))
-
   ## Access projection
 
   defp eligible_member_locked?(principal_id) do
@@ -801,7 +743,8 @@ defmodule Dhc.Auth do
   Loads the access projection for a Principal: current roles and the
   `is_active` flag.
 
-  Returns `{:ok, %{principal: principal, roles: [String.t()], is_active: boolean}}`
+  Returns `{:ok, %{principal: principal, roles: [String.t()], capabilities: [String.t()],
+  is_active: boolean}}` (capabilities from `Dhc.Auth.Capabilities.for_roles/1`)
   or `{:error, :no_profile}` if the Principal has no `user_profiles` row —
   which means it cannot have club access, so the request plug treats it as
   `401`.
@@ -842,6 +785,13 @@ defmodule Dhc.Auth do
 
   defp normalize_session_projection(%{principal: principal, is_active: is_active, roles: roles}) do
     roles = roles |> Enum.filter(&is_binary/1) |> Enum.reject(&(&1 == ""))
-    {:ok, %{principal: principal, is_active: is_active, roles: roles}}
+
+    {:ok,
+     %{
+       principal: principal,
+       is_active: is_active,
+       roles: roles,
+       capabilities: Capabilities.for_roles(roles)
+     }}
   end
 end

@@ -18,7 +18,7 @@ defmodule Dhc.Settings do
 
   Generic Settings reads and writes require one of:
   `president`, `committee_coordinator`, `admin`. Enforced at the router layer
-  via `DhcWeb.Plugs.RequireAuth` (see the `settings_admin_api` pipeline).
+  via `DhcWeb.Plugs.RequireAuth` (see the `members_settings_edit` pipeline).
   """
 
   import Ecto.Query

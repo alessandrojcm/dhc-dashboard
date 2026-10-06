@@ -1,8 +1,6 @@
 defmodule DhcWeb.WorkshopsJSON do
   @moduledoc false
 
-  alias Dhc.Workshops
-
   def render("calendar.json", %{workshops: workshops}) do
     %{data: %{workshops: Enum.map(workshops, &calendar_workshop/1)}}
   end
@@ -244,8 +242,4 @@ defmodule DhcWeb.WorkshopsJSON do
   defp participant(%{type: type, display_name: display_name, email: email}) do
     %{type: type, displayName: display_name, email: email}
   end
-
-  # Expose the canonical coordinator management roles so controllers/tests can
-  # reference the same source of truth as the context (see Dhc.Workshops).
-  defdelegate coordinator_management_roles, to: Workshops
 end

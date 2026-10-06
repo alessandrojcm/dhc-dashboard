@@ -1,11 +1,10 @@
 defmodule DhcWeb.MembersController do
   use DhcWeb, :controller
 
+  alias Dhc.Auth.Capabilities
   alias Dhc.Members
 
   action_fallback DhcWeb.MembersHTTP
-
-  @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
 
   @doc """
   GET /members
@@ -44,7 +43,7 @@ defmodule DhcWeb.MembersController do
   GET /members/:memberId
   """
   def show(conn, %{"memberId" => member_id}) do
-    with :ok <- authorize_self_or_admin(conn, member_id),
+    with :ok <- authorize_member(conn, :"members.profile.read", member_id),
          {:ok, member} <- Members.get_member(member_id) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
@@ -58,7 +57,7 @@ defmodule DhcWeb.MembersController do
   def update(conn, %{"memberId" => member_id} = params) do
     attrs = Map.delete(params, "memberId")
 
-    with :ok <- authorize_self_or_admin(conn, member_id),
+    with :ok <- authorize_member(conn, :"members.profile.update", member_id),
          {:ok, member} <- Members.update_member(member_id, attrs) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
@@ -84,14 +83,12 @@ defmodule DhcWeb.MembersController do
     |> render(:options, options: Members.options())
   end
 
-  defp authorize_self_or_admin(conn, member_id) do
-    current_session = conn.assigns.current_session
-
-    if current_session.principal.id == member_id or
-         Enum.any?(current_session.roles, &(&1 in @members_admin_roles)) do
-      :ok
-    else
-      {:error, :forbidden}
-    end
+  # Owner-scoped: the member themself or a member administrator. Anyone else
+  # gets the same 404 as a missing member, so the profile's existence is
+  # concealed (ALE-344, matching the frontend's `concealed_resource`).
+  defp authorize_member(conn, capability, member_id) do
+    Capabilities.authorize(conn.assigns.current_session, capability, %{
+      owner_principal_id: member_id
+    })
   end
 end

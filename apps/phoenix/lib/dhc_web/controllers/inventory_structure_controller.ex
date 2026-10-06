@@ -13,7 +13,7 @@ defmodule DhcWeb.InventoryStructureController do
     * POST   /inventory/options/:id/retire                 — retire, write roles.
 
   RBAC is enforced by the `:authenticated_api` (reads) and
-  `:inventory_admin_api` (writes) pipelines. The controller renders
+  `:inventory_manage` (writes) pipelines. The controller renders
   successes through `DhcWeb.InventoryStructureJSON` and leaves errors to
   `DhcWeb.InventoryHTTP` (`required_blocked` lists the blocking items as
   `fields["items.<itemId>"]`).

@@ -9,7 +9,7 @@ defmodule Dhc.Discord.Assignments do
 
   import Ecto.Query
 
-  alias Dhc.Auth.{DiscordSubjectLock, ExternalIdentity, Principal, UserRole}
+  alias Dhc.Auth.{Capabilities, DiscordSubjectLock, ExternalIdentity, Principal}
 
   alias Dhc.Discord.{
     AssignmentReviewExecution,
@@ -22,7 +22,6 @@ defmodule Dhc.Discord.Assignments do
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
 
-  @member_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
   @active_states ~w(proposed approved)
   @roster_keys MapSet.new(~w(id username global_name nickname))
   @stage_row_keys MapSet.new(~w(principal_id discord_user_id username_snapshot))
@@ -37,7 +36,7 @@ defmodule Dhc.Discord.Assignments do
       Repo.transaction(fn ->
         bindings = Enum.map(rows, &{&1["principal_id"], &1["discord_user_id"]})
         lock_operation(bindings, [preparer_principal_id])
-        authorize_member_admin_locked!(preparer_principal_id)
+        authorize_assignment_manager!(preparer_principal_id)
         validate_principals_locked!(Enum.map(rows, & &1["principal_id"]))
         create_stage(capture_id, rows, preparer_principal_id, options)
       end)
@@ -59,7 +58,7 @@ defmodule Dhc.Discord.Assignments do
 
   defp build_review_evidence(capture_id, roster, reviewer_principal_id) do
     lock_operation([], [reviewer_principal_id])
-    authorize_member_admin_locked!(reviewer_principal_id)
+    authorize_assignment_manager!(reviewer_principal_id)
 
     assignments =
       Repo.all(
@@ -247,7 +246,7 @@ defmodule Dhc.Discord.Assignments do
       [reviewer_principal_id]
     )
 
-    authorize_member_admin_locked!(reviewer_principal_id)
+    authorize_assignment_manager!(reviewer_principal_id)
 
     assignments =
       rows
@@ -318,7 +317,7 @@ defmodule Dhc.Discord.Assignments do
       [actor_principal_id]
     )
 
-    authorize_member_admin_locked!(actor_principal_id)
+    authorize_assignment_manager!(actor_principal_id)
     assignment = assignment_for_update(assignment_id)
 
     if is_nil(assignment) or assignment.state not in @active_states do
@@ -349,7 +348,7 @@ defmodule Dhc.Discord.Assignments do
       [actor_principal_id]
     )
 
-    authorize_member_admin_locked!(actor_principal_id)
+    authorize_assignment_manager!(actor_principal_id)
     validate_principals_locked!([row["principal_id"]])
     old = assignment_for_update(assignment_id)
 
@@ -572,18 +571,11 @@ defmodule Dhc.Discord.Assignments do
     )
   end
 
-  defp authorize_member_admin_locked!(principal_id) do
-    role =
-      Repo.one(
-        from(r in UserRole,
-          where: r.principal_id == ^principal_id and r.role in ^@member_admin_roles,
-          order_by: [asc: r.id],
-          limit: 1
-        )
-      )
-
-    if is_nil(role), do: Repo.rollback(:unauthorized_principal)
-    :ok
+  # Reads role rows only, so it is safe under the locks the caller holds.
+  defp authorize_assignment_manager!(principal_id) do
+    if Capabilities.holds?(principal_id, :"discord.assignments.manage"),
+      do: :ok,
+      else: Repo.rollback(:unauthorized_principal)
   end
 
   defp validate_principals_locked!(principal_ids) do
