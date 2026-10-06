@@ -100,6 +100,7 @@ The five transactional templates are React Email components in
 mise run email-sync          # render + upsert drafts (what PRs do)
 mise run email-sync-publish  # upsert + publish (what merge-to-main does)
 mise run email-smoke         # fail unless every whitelisted kind has a published template
+mise run email-shells        # generate Phoenix announcement HTML + styles (no Resend key)
 ```
 
 All three need a Full Access key as `RESEND_API_KEY` (`fnox` holds the send-only
@@ -128,6 +129,7 @@ mise run phx-server         # Start dev server (hot-reload) on :4000
 mise run phx-console        # Start server inside IEx interactive shell
 
 # Docker alternative (Phoenix + PostgreSQL + Mailpit; source hot-reloads)
+mise run email-shells       # generate gitignored artifacts before Docker build
 docker compose --profile phoenix up --build phoenix
 
 # Database
@@ -140,6 +142,13 @@ The Compose `phoenix` profile uses `apps/phoenix/Dockerfile.dev`, bind-mounts
 the Phoenix source, and leaves Mix dependencies/build artifacts in the image so
 the source mount does not erase the dependency cache. It publishes Phoenix at
 `http://127.0.0.1:4000`; stop it with `docker compose --profile phoenix down`.
+
+Phoenix compilation embeds the generated `priv/email_shells` HTML and styles.
+Phoenix mise tasks generate them automatically; before calling Mix or building
+either Phoenix Dockerfile directly, run `mise run email-shells` from the root.
+Fly CI generates on the runner before uploading the Docker context, so the
+remote builder needs only Erlang/Elixir. Keep these artifacts in the Docker
+context even though they are gitignored.
 
 ### One-off Discord roster export and assignment review
 

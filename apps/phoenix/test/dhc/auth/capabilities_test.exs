@@ -25,6 +25,7 @@ defmodule Dhc.Auth.CapabilitiesTest do
     "inventory.manage": {~w(quartermaster admin president), false},
     "inventory.catalog.read": {~w(member), false},
     "inventory.loans.own.read": {~w(member), false},
+    "member_announcements.send": {@officers, false},
     "members.directory.read": {@member_administrators, false},
     "members.invite": {@officers, false},
     "members.profile.read": {@member_administrators, true},

@@ -269,6 +269,9 @@ if config_env() == :prod do
         :profile_id,
         :active,
         :unchanged,
+        # Member Announcements delivery worker
+        :announcement_id,
+        :recipient_count,
         # Email worker (Dhc.Email.Worker)
         :email,
         :transactional_id,
@@ -334,6 +337,9 @@ if config_env() == :prod do
            :subscription_id,
            :subscription_status,
            :subscription_created_at,
+           # Member Announcements delivery worker
+           :announcement_id,
+           :recipient_count,
            # Email worker
            :email,
            :transactional_id,

@@ -70,6 +70,10 @@ export const protectedRoutes: ProtectedRoute[] = [
 		requires: "training_announcements.manage",
 		onDeny: "redirect-to-own-profile",
 	}),
+	protect("/dashboard/member-emails", {
+		requires: "member_announcements.send",
+		onDeny: "redirect-to-own-profile",
+	}),
 	protect("/dashboard/workshops", {
 		requires: "workshops.manage",
 		onDeny: "redirect-to-own-profile",

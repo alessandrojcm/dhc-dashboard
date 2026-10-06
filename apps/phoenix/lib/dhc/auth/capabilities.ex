@@ -85,6 +85,8 @@ defmodule Dhc.Auth.Capabilities do
     "inventory.manage": %{roles: @inventory_operators},
     "inventory.catalog.read": %{roles: @members},
     "inventory.loans.own.read": %{roles: @members},
+    # ADR 0028: emailing the whole membership is an officer decision.
+    "member_announcements.send": %{roles: @officers},
     "members.directory.read": %{roles: @member_administrators},
     "members.invite": %{roles: @officers},
     "members.profile.read": %{roles: @member_administrators, owner: true},
