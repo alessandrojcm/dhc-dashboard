@@ -5561,7 +5561,11 @@ paths:
             type: string
           description: |
             Comma-separated `definitionId:value` pairs. Values of the same
-            definition are ORed; separate definitions are ANDed.
+            definition are ORed; separate definitions are ANDed. A value
+            matches an option id, boolean, decimal, or (case-insensitive)
+            text. Decimals compare numerically, so `1` matches a stored
+            `1.0`; a value that is not a decimal on a decimal definition is
+            an invalid property filter and returns `400`.
         - name: availability
           in: query
           schema:
@@ -5583,7 +5587,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryCatalogItemListResponse"
         "400":
-          description: Invalid query parameter or mismatched cursor
+          description: |
+            Invalid query parameter or mismatched cursor. An invalid
+            `property` filter — a malformed `definitionId:value` pair, or a
+            non-decimal value for a decimal definition — answers
+            `property must be comma-separated definitionId:value pairs`.
           content:
             application/json:
               schema:

@@ -253,21 +253,27 @@ defmodule Dhc.Inventory.MemberCatalogTest do
       assert {:error, :invalid_direction} = Inventory.list_catalog_items(%{"direction" => "up"})
     end
 
-    # Characterization (ALE-347): today the member decimal filter compares
-    # text, so `1` misses a stored `1.0` and a non-decimal is accepted.
-    test "characterization: decimal property values compare as text" do
+    test "compares decimal property values numerically so 1 matches stored 1.0" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, weight} = create_definition(category.id, "Weight", "decimal")
       {:ok, match} = create_item(container_id, category.id, %{weight.id => "1.0"})
       {:ok, _other} = create_item(container_id, category.id, %{weight.id => "2.0"})
 
-      assert {:ok, %{items: [], total_count: 0}} =
-               Inventory.list_catalog_items(%{"property" => "#{weight.id}:1"})
+      for value <- ["1", "1.0", "1.00"] do
+        assert {:ok, page} =
+                 Inventory.list_catalog_items(%{"property" => "#{weight.id}:#{value}"})
 
-      assert {:ok, page} = Inventory.list_catalog_items(%{"property" => "#{weight.id}:1.0"})
-      assert Enum.map(page.items, & &1.id) == [match.id]
+        assert Enum.map(page.items, & &1.id) == [match.id]
+        assert page.total_count == 1
+      end
+    end
 
-      assert {:ok, %{items: []}} =
+    test "rejects a malformed decimal for a decimal definition" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, weight} = create_definition(category.id, "Weight", "decimal")
+      {:ok, _item} = create_item(container_id, category.id, %{weight.id => "1.0"})
+
+      assert {:error, :invalid_property} =
                Inventory.list_catalog_items(%{"property" => "#{weight.id}:not-a-number"})
     end
 
