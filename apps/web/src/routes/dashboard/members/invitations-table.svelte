@@ -26,8 +26,6 @@ import {
 } from "@lucide/svelte";
 import { SvelteSet } from "svelte/reactivity";
 import { toast } from "svelte-sonner";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
 import { Badge, type BadgeVariant } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
@@ -35,12 +33,11 @@ import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import * as Select from "#lib/components/ui/select/index.js";
 import * as Table from "#lib/components/ui/table/index.js";
 import SortHeader from "#lib/components/ui/table/sort-header.svelte";
+import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
 import {
-	isPageSize,
-	PAGE_SIZE_OPTIONS,
-	parsePageSize,
-	transitionCursorQuery,
-} from "#lib/cursor-query.js";
+	createCursorTableUrl,
+	type SortDirection,
+} from "#lib/cursor-table-url.svelte.js";
 import { Checkbox } from "#lib/components/ui/checkbox/index.js";
 import { cn } from "#lib/utils.js";
 import { getInvitationLink } from "#lib/utils/invitation.js";
@@ -51,106 +48,48 @@ const pageSizeOptions = PAGE_SIZE_OPTIONS;
 // footprint and touch target the row layout was built around.
 const selectionCheckboxClass =
 	"relative m-3.5 after:absolute after:-inset-3.5 after:content-['']";
-const invitationSortFields = [
-	"email",
-	"status",
-	"expires_at",
-	"created_at",
-] as const;
 const sortOptions = [
-	{ value: "created_at", label: "Sent date" },
-	{ value: "expires_at", label: "Expiry date" },
+	{ value: "createdAt", label: "Sent date" },
+	{ value: "expiresAt", label: "Expiry date" },
 	{ value: "email", label: "Email" },
 	{ value: "status", label: "Status" },
 ] as const;
 
-type InvitationTableSortField = (typeof invitationSortFields)[number];
-type SortDirection = "asc" | "desc";
-type InvitationTableRow = {
-	id: string;
-	email: string;
-	status: Invitation["status"];
-	pricing_tier: Invitation["pricingTier"];
-	expires_at: string;
-	created_at: string;
-};
 type InvitationTablePage = {
-	data: InvitationTableRow[];
+	data: Invitation[];
 	count: number;
 	nextCursor: string | null;
 	previousCursor: string | null;
 };
-type InvitationTableQueryParams = {
-	pageSize: (typeof pageSizeOptions)[number];
-	searchQuery: string;
-	sort: InvitationTableSortField;
-	direction: SortDirection;
-	cursor: string | null;
-};
 
-const invitationSortMap = {
+// Column ids are the API sort fields.
+const invitationSortFields = {
 	email: "email",
 	status: "status",
-	expires_at: "expiresAt",
-	created_at: "createdAt",
-} satisfies Record<InvitationTableSortField, InvitationListSortField>;
+	expiresAt: "expiresAt",
+	createdAt: "createdAt",
+} satisfies Record<string, InvitationListSortField>;
 
-function isInvitationSortField(
-	value: string | null | undefined,
-): value is InvitationTableSortField {
-	return invitationSortFields.some((field) => field === value);
-}
+type InvitationTableSortField = keyof typeof invitationSortFields;
 
-function navigateToInvitations(
-	searchParams: URLSearchParams,
-	options: { replaceState?: boolean } = {},
-) {
-	const query = searchParams.toString();
-	const url = `${page.url.pathname}${query ? `?${query}` : ""}`;
-	void goto(url, {
-		reset: false,
-		replace: options.replaceState,
-	});
-}
-
-const pageSize = $derived(
-	parsePageSize(page.url.searchParams, "invitePageSize"),
-);
-const searchQuery = $derived(page.url.searchParams.get("inviteQ") || "");
-const cursor = $derived(page.url.searchParams.get("inviteCursor"));
-const activeSort = $derived.by(() => {
-	const requestedSortColumn = page.url.searchParams.get("inviteSort");
-	const sortColumn = isInvitationSortField(requestedSortColumn)
-		? requestedSortColumn
-		: "created_at";
-	const sortDirection = page.url.searchParams.get("inviteDirection");
-
-	return {
-		sort: sortColumn,
-		direction: sortDirection === "asc" ? "asc" : "desc",
-	} as const;
-});
-const invitationsQueryParams = $derived<InvitationTableQueryParams>({
-	pageSize,
-	searchQuery,
-	sort: activeSort.sort,
-	direction: activeSort.direction,
-	cursor,
+const invitationsUrl = createCursorTableUrl({
+	prefix: "invite",
+	sort: {
+		fields: invitationSortFields,
+		default: "createdAt",
+		defaultDirection: "desc",
+	},
 });
 
-let searchDraft = $derived(searchQuery);
-const selectedRows = new SvelteSet<string>();
+const activeSort = $derived(invitationsUrl.sort);
 
-function toTableRow(invitation: Invitation): InvitationTableRow {
-	return {
-		id: invitation.id,
-		email: invitation.email,
-		status: invitation.status,
-		pricing_tier: invitation.pricingTier,
-		expires_at: invitation.expiresAt,
-		created_at: invitation.createdAt,
-	};
-}
+// A new search is a new result set, so the selection starts over whenever the
+// URL search changes (the draft alone does not count).
+const urlSearch = $derived(invitationsUrl.request.q);
+const selectedRows = $derived.by(() => {
+	void urlSearch;
+	return new SvelteSet<string>();
+});
 
 function discountBadgeLabel(tier: Invitation["pricingTier"]): string | null {
 	if (tier === "coach") return "Coach discount";
@@ -160,19 +99,13 @@ function discountBadgeLabel(tier: Invitation["pricingTier"]): string | null {
 
 const invitationsQuery = createQuery(() => ({
 	...invitationsListOptions({
-		query: {
-			limit: invitationsQueryParams.pageSize,
-			cursor: invitationsQueryParams.cursor ?? undefined,
-			q: invitationsQueryParams.searchQuery || undefined,
-			sort: invitationSortMap[invitationsQueryParams.sort],
-			direction: invitationsQueryParams.direction,
-		},
+		query: invitationsUrl.request,
 	}),
 	placeholderData: keepPreviousData,
 	select: (response): InvitationTablePage => {
 		const result = response.data;
 		return {
-			data: result.invitations.map(toTableRow),
+			data: result.invitations,
 			count: result.totalCount,
 			nextCursor: result.nextCursor,
 			previousCursor: result.previousCursor,
@@ -208,68 +141,44 @@ function setAllInvitationsSelected(selected: boolean) {
 	}
 }
 
-function onPaginationChange(newPageSize: number) {
-	if (!isPageSize(newPageSize)) return;
+function onPageSizeChange(pageSize: number) {
 	clearSelection();
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "inviteCursor",
-		updates: { invitePageSize: newPageSize.toString() },
-	});
-	navigateToInvitations(newParams, { replaceState: true });
+	invitationsUrl.setPageSize(pageSize);
 }
 
-function onCursorChange(newCursor: string | null | undefined) {
-	if (!newCursor) return;
+function goTo(cursor: string | null | undefined) {
 	clearSelection();
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "inviteCursor",
-		cursor: newCursor,
-	});
-	navigateToInvitations(newParams);
+	invitationsUrl.goTo(cursor);
 }
 
-function onSortingChange(
-	sort: InvitationTableSortField,
-	direction: SortDirection,
-) {
+// The module ignores an unknown column id.
+function onSortingChange(sort: string, direction: SortDirection) {
 	clearSelection();
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "inviteCursor",
-		updates: { inviteSort: sort, inviteDirection: direction },
-	});
-	navigateToInvitations(newParams, { replaceState: true });
+	invitationsUrl.table.onSortingChange([
+		{ id: sort, desc: direction === "desc" },
+	]);
 }
 
 function toggleSort(sort: InvitationTableSortField) {
 	const direction =
-		activeSort.sort === sort && activeSort.direction === "asc" ? "desc" : "asc";
+		activeSort.id === sort && activeSort.direction === "asc" ? "desc" : "asc";
 	onSortingChange(sort, direction);
 }
 
 function sortDirectionFor(
 	sort: InvitationTableSortField,
 ): SortDirection | false {
-	return activeSort.sort === sort ? activeSort.direction : false;
-}
-
-function onSearchChange(newSearch: string) {
-	clearSelection();
-	const normalizedSearch = newSearch.trim();
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "inviteCursor",
-		updates: { inviteQ: normalizedSearch || null },
-	});
-	navigateToInvitations(newParams, { replaceState: true });
+	return activeSort.id === sort ? activeSort.direction : false;
 }
 
 function onSearchSubmit(event: SubmitEvent) {
 	event.preventDefault();
-	onSearchChange(searchDraft);
+	invitationsUrl.submitSearch();
 }
 
 function resetSearch() {
-	searchDraft = "";
-	onSearchChange("");
+	invitationsUrl.setSearch("");
+	invitationsUrl.submitSearch();
 }
 
 const resendInvitation = createMutation(() => ({
@@ -354,11 +263,11 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 			No invitations found
 		</h3>
 		<p class="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
-			{searchQuery
+			{invitationsUrl.request.q
 				? "Try a different email address or clear your search."
 				: "Sent invitations will appear here so you can track and manage them."}
 		</p>
-		{#if searchQuery}
+		{#if invitationsUrl.request.q}
 			<Button variant="outline" class="mt-4 min-h-11" onclick={resetSearch}>
 				<RotateCcw class="size-4" aria-hidden="true" />
 				Clear search
@@ -418,12 +327,14 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 							id="invitation-search"
 							name="inviteQ"
 							type="search"
-							bind:value={searchDraft}
+							value={invitationsUrl.search}
+							oninput={(event) =>
+								invitationsUrl.setSearch(event.currentTarget.value)}
 							placeholder="Email address"
 							class="h-11 pl-10 pr-11"
 							autocomplete="off"
 						/>
-						{#if searchDraft}
+						{#if invitationsUrl.search}
 							<Button
 								variant="ghost"
 								size="icon"
@@ -454,18 +365,15 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 				<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
 					<Select.Root
 						type="single"
-						value={activeSort.sort}
-						onValueChange={(value) => {
-							if (isInvitationSortField(value)) {
-								onSortingChange(value, activeSort.direction);
-							}
-						}}
+						value={activeSort.id}
+						onValueChange={(value) =>
+							onSortingChange(value, activeSort.direction)}
 					>
 						<Select.Trigger
 							class="min-w-40 data-[size=default]:h-11"
 							aria-labelledby="invitation-sort-label"
 						>
-							{sortOptions.find((option) => option.value === activeSort.sort)
+							{sortOptions.find((option) => option.value === activeSort.id)
 								?.label}
 						</Select.Trigger>
 						<Select.Content>
@@ -480,7 +388,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 						class="min-h-11"
 						onclick={() =>
 							onSortingChange(
-								activeSort.sort,
+								activeSort.id,
 								activeSort.direction === "asc" ? "desc" : "asc",
 							)}
 					>
@@ -589,7 +497,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 						</Table.Head>
 						<Table.Head
 							scope="col"
-							aria-sort={activeSort.sort === "email"
+							aria-sort={activeSort.id === "email"
 								? activeSort.direction === "asc"
 									? "ascending"
 									: "descending"
@@ -605,7 +513,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 						</Table.Head>
 						<Table.Head
 							scope="col"
-							aria-sort={activeSort.sort === "status"
+							aria-sort={activeSort.id === "status"
 								? activeSort.direction === "asc"
 									? "ascending"
 									: "descending"
@@ -621,7 +529,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 						</Table.Head>
 						<Table.Head
 							scope="col"
-							aria-sort={activeSort.sort === "created_at"
+							aria-sort={activeSort.id === "createdAt"
 								? activeSort.direction === "asc"
 									? "ascending"
 									: "descending"
@@ -630,14 +538,14 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 						>
 							<SortHeader
 								header="Sent"
-								sortDirection={sortDirectionFor("created_at")}
+								sortDirection={sortDirectionFor("createdAt")}
 								class="-ml-2 min-h-11 px-2"
-								onclick={() => toggleSort("created_at")}
+								onclick={() => toggleSort("createdAt")}
 							/>
 						</Table.Head>
 						<Table.Head
 							scope="col"
-							aria-sort={activeSort.sort === "expires_at"
+							aria-sort={activeSort.id === "expiresAt"
 								? activeSort.direction === "asc"
 									? "ascending"
 									: "descending"
@@ -646,9 +554,9 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 						>
 							<SortHeader
 								header="Expires"
-								sortDirection={sortDirectionFor("expires_at")}
+								sortDirection={sortDirectionFor("expiresAt")}
 								class="-ml-2 min-h-11 px-2"
-								onclick={() => toggleSort("expires_at")}
+								onclick={() => toggleSort("expiresAt")}
 							/>
 						</Table.Head>
 						<Table.Head
@@ -679,7 +587,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 								class="min-w-64 px-4 py-3.5 font-semibold text-foreground"
 							>
 								{invitation.email}
-								{@render discountBadge(invitation.pricing_tier)}
+								{@render discountBadge(invitation.pricingTier)}
 							</Table.Cell>
 							<Table.Cell class="px-4 py-3.5">
 								{@render statusBadge(invitation.status)}
@@ -687,12 +595,12 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 							<Table.Cell
 								class="px-4 py-3.5 text-sm tabular-nums text-muted-foreground"
 							>
-								<time datetime={invitation.created_at}>
-									{formatDate(invitation.created_at)}
+								<time datetime={invitation.createdAt}>
+									{formatDate(invitation.createdAt)}
 								</time>
 							</Table.Cell>
 							<Table.Cell class="px-4 py-3.5">
-								{@render expirationDate(invitation.expires_at)}
+								{@render expirationDate(invitation.expiresAt)}
 							</Table.Cell>
 							<Table.Cell class="px-4 py-3.5 text-right">
 								<InvitationActions
@@ -749,7 +657,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 							</p>
 							<div class="mt-2 flex flex-wrap items-center gap-2">
 								{@render statusBadge(invitation.status)}
-								{@render discountBadge(invitation.pricing_tier)}
+								{@render discountBadge(invitation.pricingTier)}
 							</div>
 						</div>
 					</div>
@@ -762,10 +670,10 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 								Sent
 							</p>
 							<time
-								datetime={invitation.created_at}
+								datetime={invitation.createdAt}
 								class="mt-1 block text-sm tabular-nums text-foreground"
 							>
-								{formatDate(invitation.created_at)}
+								{formatDate(invitation.createdAt)}
 							</time>
 						</div>
 						<div>
@@ -775,7 +683,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 								Expires
 							</p>
 							<div class="mt-1">
-								{@render expirationDate(invitation.expires_at)}
+								{@render expirationDate(invitation.expiresAt)}
 							</div>
 						</div>
 					</div>
@@ -830,14 +738,14 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 					</span>
 					<Select.Root
 						type="single"
-						value={pageSize.toString()}
-						onValueChange={(value) => onPaginationChange(Number(value))}
+						value={invitationsUrl.pageSize.toString()}
+						onValueChange={(value) => onPageSizeChange(Number(value))}
 					>
 						<Select.Trigger
 							class="w-20 data-[size=default]:h-11"
 							aria-labelledby="invitations-page-size-label"
 						>
-							{pageSize}
+							{invitationsUrl.pageSize}
 						</Select.Trigger>
 						<Select.Content>
 							{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
@@ -856,7 +764,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 					class="min-h-11"
 					disabled={!invitationsQuery.data?.previousCursor ||
 						invitationsQuery.isFetching}
-					onclick={() => onCursorChange(invitationsQuery.data?.previousCursor)}
+					onclick={() => goTo(invitationsQuery.data?.previousCursor)}
 				>
 					<ChevronLeft class="size-4" aria-hidden="true" />
 					Previous
@@ -866,7 +774,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 					class="min-h-11"
 					disabled={!invitationsQuery.data?.nextCursor ||
 						invitationsQuery.isFetching}
-					onclick={() => onCursorChange(invitationsQuery.data?.nextCursor)}
+					onclick={() => goTo(invitationsQuery.data?.nextCursor)}
 				>
 					Next
 					<ChevronRight class="size-4" aria-hidden="true" />

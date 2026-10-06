@@ -256,6 +256,66 @@ describe("createCursorTableUrl", () => {
 			});
 		});
 
+		it("writes a pending search immediately on submit", () => {
+			const h = harness("/dashboard/table?cursor=c2");
+			const state = createCursorTableUrl({ sort: waitlistSort, ...h });
+
+			state.setSearch("ada ");
+			state.submitSearch();
+
+			expect(h.navigations).toEqual([
+				{ href: "/dashboard/table?q=ada", replace: true },
+			]);
+			vi.runAllTimers();
+			expect(h.navigations).toHaveLength(1);
+			expect(state.search).toBe("ada ");
+		});
+
+		it("does nothing on submit when no search is pending", () => {
+			const h = harness("/dashboard/table?q=ada");
+			const state = createCursorTableUrl({ sort: waitlistSort, ...h });
+
+			state.submitSearch();
+
+			expect(h.navigations).toEqual([]);
+		});
+
+		it("writes a pending search together with a filter change", async () => {
+			const h = harness("/dashboard/table?q=ada&membershipStatus=active");
+			const pending: Array<() => void> = [];
+			const state = createCursorTableUrl({
+				sort: waitlistSort,
+				filters: ["membershipStatus"],
+				url: h.url,
+				navigate: (href, options) => {
+					h.navigations.push({ href, replace: options.replace });
+					// A slow load: the URL only changes when the navigation settles.
+					return new Promise<void>((resolve) => {
+						pending.push(() => {
+							h.visit(href);
+							resolve();
+						});
+					});
+				},
+			});
+
+			state.setSearch("");
+			state.setFilter("membershipStatus", null);
+			await vi.runAllTimersAsync();
+			for (const settle of pending) settle();
+			await vi.runAllTimersAsync();
+
+			expect(h.navigations).toEqual([
+				{ href: "/dashboard/table", replace: true },
+			]);
+			expect(state.search).toBe("");
+			expect(state.request).toEqual({
+				limit: 10,
+				sort: "position",
+				direction: "asc",
+			});
+		});
+
 		it("follows the URL when the search param changes from outside", async () => {
 			const h = harness("/dashboard/table?q=ada");
 			const state = createCursorTableUrl({ sort: waitlistSort, ...h });
@@ -305,6 +365,15 @@ describe("createCursorTableUrl", () => {
 	});
 
 	describe("TanStack table adapter", () => {
+		it("exposes the resolved sort", () => {
+			const h = harness("/dashboard/table?sort=fullName&direction=desc");
+			const state = createCursorTableUrl({ sort: waitlistSort, ...h });
+
+			expect(state.sort).toEqual({ id: "fullName", direction: "desc" });
+
+			h.visit("/dashboard/table?sort=bogus&direction=sideways");
+			expect(state.sort).toEqual({ id: "position", direction: "asc" });
+		});
 		it("exposes sorting and pagination state from the URL", () => {
 			const h = harness(
 				"/dashboard/table?sort=fullName&direction=desc&pageSize=50",

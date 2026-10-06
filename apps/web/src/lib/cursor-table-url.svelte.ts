@@ -11,7 +11,7 @@
  * - cursor paging pushes an entry, so Back returns to the previous page.
  *
  * Search keeps a local draft so the input updates immediately; the URL is
- * written after a debounce.
+ * written after a debounce, or together with any earlier replace.
  */
 import type {
 	OnChangeFn,
@@ -69,12 +69,20 @@ export type CursorTableRequest<
 	direction: SortDirection;
 } & { [K in Filter]?: string };
 
-export type CursorTableUrl<ApiSort extends string, Filter extends string> = {
+export type CursorTableUrl<
+	ApiSort extends string,
+	Filter extends string,
+	SortId extends string = string,
+> = {
 	/** Ready to pass as the generated client's `query`. */
 	readonly request: CursorTableRequest<ApiSort, Filter>;
+	/** The sort in effect, after falling back to the defaults. */
+	readonly sort: { readonly id: SortId; readonly direction: SortDirection };
 	/** The search draft: what the input shows. */
 	readonly search: string;
 	setSearch(value: string): void;
+	/** Writes a pending (debounced) search now; a no-op when none is pending. */
+	submitSearch(): void;
 	filter(key: Filter): string | null;
 	setFilter(key: Filter, value: string | null): void;
 	readonly pageSize: PageSize;
@@ -108,7 +116,7 @@ export function createCursorTableUrl<
 	Filter extends string = never,
 >(
 	options: CursorTableUrlOptions<SortId, ApiSort, Filter>,
-): CursorTableUrl<ApiSort, Filter> {
+): CursorTableUrl<ApiSort, Filter, SortId> {
 	const prefix = options.prefix ?? "";
 	const readUrl = options.url ?? (() => page.url);
 	const navigate = options.navigate ?? defaultNavigate;
@@ -163,13 +171,29 @@ export function createCursorTableUrl<
 		return query ? `${pathname}?${query}` : pathname;
 	}
 
+	// Any replace writes a debounced search with it, in the same navigation:
+	// a later, separate search write would be built from a URL that may not yet
+	// reflect this change, and would undo it.
 	function replaceWith(updates: Record<string, string | null>) {
 		const url = readUrl();
+		const all = { ...updates };
+		const flushesSearch = searchTimer !== undefined;
+		if (flushesSearch) {
+			clearTimeout(searchTimer);
+			searchTimer = undefined;
+			all[keys.q] = (typed ?? "").trim() || null;
+		}
 		const next = transitionCursorQuery(url.searchParams, {
 			cursorKey: keys.cursor,
-			updates,
+			updates: all,
 		});
-		return navigate(href(url.pathname, next), { replace: true });
+		const navigation = navigate(href(url.pathname, next), { replace: true });
+		if (flushesSearch) {
+			void Promise.resolve(navigation).finally(() => {
+				pendingWrites -= 1;
+			});
+		}
+		return navigation;
 	}
 
 	function setSearch(value: string) {
@@ -179,17 +203,18 @@ export function createCursorTableUrl<
 
 		const pathname = readUrl().pathname;
 		searchTimer = setTimeout(() => {
-			searchTimer = undefined;
 			// The user left the table's page; writing would navigate them back.
 			if (readUrl().pathname !== pathname) {
+				searchTimer = undefined;
 				pendingWrites -= 1;
 				return;
 			}
-			const navigation = replaceWith({ [keys.q]: value.trim() || null });
-			void Promise.resolve(navigation).finally(() => {
-				pendingWrites -= 1;
-			});
+			void replaceWith({});
 		}, debounceMs);
+	}
+
+	function submitSearch() {
+		if (searchTimer !== undefined) void replaceWith({});
 	}
 
 	function setPageSize(next: number) {
@@ -207,6 +232,7 @@ export function createCursorTableUrl<
 		void navigate(href(url.pathname, nextParams), { replace: false });
 	}
 
+	const sort = $derived({ id: sortId, direction });
 	const sorting: SortingState = $derived([
 		{ id: sortId, desc: direction === "desc" },
 	]);
@@ -234,10 +260,14 @@ export function createCursorTableUrl<
 		get request() {
 			return request;
 		},
+		get sort() {
+			return sort;
+		},
 		get search() {
 			return draft;
 		},
 		setSearch,
+		submitSearch,
 		filter: filterValue,
 		setFilter: (name, value) => {
 			void replaceWith({ [key(name)]: value || null });

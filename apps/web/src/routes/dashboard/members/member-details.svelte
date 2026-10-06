@@ -1,11 +1,12 @@
 <script lang="ts">
 import dayjs from "dayjs";
 import MemberStatusBadge from "./member-status-badge.svelte";
-import type { MemberTableRow, SocialMediaConsent } from "./member-table.types";
+import type { Member } from "@dhc/api-client";
+import type { SocialMediaConsent } from "./member-table.types";
 import MemberWeapons from "./member-weapons.svelte";
 
 type Props = {
-	member: MemberTableRow;
+	member: Member;
 };
 
 const { member }: Props = $props();
@@ -30,7 +31,7 @@ function formatConsent(consent: SocialMediaConsent): string {
 }
 
 const guardianName = $derived(
-	`${member.guardian_first_name ?? ""} ${member.guardian_last_name ?? ""}`.trim() ||
+	`${member.guardianFirstName ?? ""} ${member.guardianLastName ?? ""}`.trim() ||
 		"Not provided",
 );
 </script>
@@ -78,10 +79,10 @@ const guardianName = $derived(
 					Status
 				</dt>
 				<dd class="mt-1 flex flex-wrap items-center gap-2">
-					<MemberStatusBadge status={member.membership_status} />
-					{#if member.membership_status === "paused" && member.subscription_paused_until}
+					<MemberStatusBadge status={member.membershipStatus} />
+					{#if member.membershipStatus === "paused" && member.subscriptionPausedUntil}
 						<span class="text-xs text-muted-foreground">
-							until {formatDate(member.subscription_paused_until)}
+							until {formatDate(member.subscriptionPausedUntil)}
 						</span>
 					{/if}
 				</dd>
@@ -94,7 +95,7 @@ const guardianName = $derived(
 						Member since
 					</dt>
 					<dd class="mt-1 text-sm tabular-nums text-foreground">
-						{formatDate(member.membership_start_date, "Never")}
+						{formatDate(member.membershipStartDate, "Never")}
 					</dd>
 				</div>
 				<div>
@@ -104,7 +105,7 @@ const guardianName = $derived(
 						Last payment
 					</dt>
 					<dd class="mt-1 text-sm tabular-nums text-foreground">
-						{formatDate(member.last_payment_date, "Never")}
+						{formatDate(member.lastPaymentDate, "Never")}
 					</dd>
 				</div>
 			</div>
@@ -121,7 +122,7 @@ const guardianName = $derived(
 					Weapons
 				</dt>
 				<dd class="mt-1">
-					<MemberWeapons weapons={member.preferred_weapon} limit={4} />
+					<MemberWeapons weapons={member.preferredWeapon} limit={4} />
 				</dd>
 			</div>
 			<div>
@@ -131,7 +132,7 @@ const guardianName = $derived(
 					Social media
 				</dt>
 				<dd class="mt-1 text-sm text-foreground">
-					{formatConsent(member.social_media_consent)}
+					{formatConsent(member.socialMediaConsent)}
 				</dd>
 			</div>
 		</dl>
@@ -147,10 +148,10 @@ const guardianName = $derived(
 					Next of kin
 				</dt>
 				<dd class="mt-1 text-sm text-foreground">
-					{display(member.next_of_kin_name)}
-					{#if member.next_of_kin_phone}
+					{display(member.nextOfKinName)}
+					{#if member.nextOfKinPhone}
 						<span class="block text-muted-foreground"
-							>{member.next_of_kin_phone}</span
+							>{member.nextOfKinPhone}</span
 						>
 					{/if}
 				</dd>
@@ -163,9 +164,9 @@ const guardianName = $derived(
 				</dt>
 				<dd class="mt-1 text-sm text-foreground">
 					{guardianName}
-					{#if member.guardian_phone_number}
+					{#if member.guardianPhoneNumber}
 						<span class="block text-muted-foreground">
-							{member.guardian_phone_number}
+							{member.guardianPhoneNumber}
 						</span>
 					{/if}
 				</dd>
@@ -177,7 +178,7 @@ const guardianName = $derived(
 					Medical notes
 				</dt>
 				<dd class="mt-1 whitespace-pre-wrap text-sm text-foreground">
-					{member.medical_conditions?.trim() || "None reported"}
+					{member.medicalConditions?.trim() || "None reported"}
 				</dd>
 			</div>
 		</dl>
