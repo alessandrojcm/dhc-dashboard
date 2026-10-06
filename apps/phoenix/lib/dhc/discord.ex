@@ -38,15 +38,13 @@ defmodule Dhc.Discord do
   end
 
   @typedoc """
-  Why a Discord announcement call failed (ALE-309 table, ALE-348 seam).
-
-  * `:rate_limited`, `:connection_refused` — Discord positively did not
-    accept the request; a later call may succeed.
-  * `:permission` (403), `:unknown_channel` (404), `:payload_rejected` (400)
-    — deterministic rejections.
-  * `:timeout`, `:server_error`, `:ambiguous` — Discord may have accepted the
-    request. `:ambiguous` covers every unrecognised failure and a success
-    without a trustworthy id; never retry without positive proof.
+  Why a Discord announcement call failed (ALE-309 table, ALE-348 seam):
+  `:rate_limited` (429 / retry-after), `:connection_refused` (refused before
+  submission), `:permission` (403), `:unknown_channel` (404),
+  `:payload_rejected` (400), `:timeout` (408 / transport timeout),
+  `:server_error` (5xx), and `:ambiguous` for every other failure,
+  including a success without a trustworthy id. How a caller treats each
+  cause is the caller's policy.
   """
   @type failure ::
           :rate_limited

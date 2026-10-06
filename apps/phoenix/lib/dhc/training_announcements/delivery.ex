@@ -11,12 +11,21 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery, as: Evidence
 
-  # Discord positively did not accept these; a later attempt may resend.
-  @retryable [:rate_limited, :connection_refused]
-  # Deterministic rejections: Discord did not accept the call either.
-  @rejected [:permission, :unknown_channel, :payload_rejected]
-  # Every other cause (timeout, server_error, ambiguous) may have been
-  # accepted, so it is never resubmitted.
+  # The one mapping from a `Dhc.Discord` failure to `{disposition, evidence
+  # reason}`. `:deferred` and `:rejected` were positively not accepted, so
+  # a thread may retry them and a deferred message may resend later;
+  # `:uncertain` may have been accepted and is never resubmitted. Reasons
+  # are a closed set (DB CHECK); an unlisted failure is uncertain/"unknown".
+  @failures %{
+    rate_limited: {:deferred, "unknown"},
+    connection_refused: {:deferred, "unknown"},
+    permission: {:rejected, "permission"},
+    unknown_channel: {:rejected, "unknown_channel"},
+    payload_rejected: {:rejected, "payload_rejected"},
+    timeout: {:uncertain, "timeout"},
+    server_error: {:uncertain, "server_error"},
+    ambiguous: {:uncertain, "unknown"}
+  }
 
   def progress(delivery, job, clock)
   def progress(nil, _job, _clock), do: :ok
@@ -164,33 +173,34 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
   end
 
   defp message_failure(delivery, failure, detail, error, job, clock) do
-    cond do
-      failure in @retryable and job.attempt + 1 < job.max_attempts ->
+    case classify(failure) do
+      {:deferred, _reason} when job.attempt + 1 < job.max_attempts ->
         checkpoint(delivery, %{state: "frozen", error_detail: detail})
         {:error, error}
 
-      failure in @retryable or failure in @rejected ->
-        conclude(delivery, "blocked", reason(failure), detail, clock)
+      {:uncertain, reason} ->
+        conclude(delivery, "message_uncertain", reason, detail, clock)
 
-      true ->
-        conclude(delivery, "message_uncertain", reason(failure), detail, clock)
+      {_not_accepted, reason} ->
+        conclude(delivery, "blocked", reason, detail, clock)
     end
   end
 
   defp thread_failure(delivery, failure, detail, error, job, clock) do
     # An ambiguous thread result is not safe to retry either. The message stays.
+    {disposition, reason} = classify(failure)
     updated = checkpoint(delivery, %{last_thread_error: detail})
 
     cond do
       is_nil(updated) ->
         :ok
 
-      (failure in @retryable or failure in @rejected) and job.attempt + 1 < job.max_attempts ->
+      disposition != :uncertain and job.attempt + 1 < job.max_attempts ->
         checkpoint(updated, %{state: "message_posted"})
         {:error, error}
 
       true ->
-        conclude(updated, "thread_failed", reason(failure), detail, clock)
+        conclude(updated, "thread_failed", reason, detail, clock)
     end
   end
 
@@ -251,12 +261,7 @@ defmodule Dhc.TrainingAnnouncements.Delivery do
   defp send_date(%{subject: "holiday", holiday_date: date}), do: date
   defp send_date(delivery), do: delivery.occurrence_date
 
-  # Evidence reasons are a closed set (DB CHECK); unmapped causes are "unknown".
-  defp reason(failure)
-       when failure in [:permission, :unknown_channel, :payload_rejected, :timeout, :server_error],
-       do: Atom.to_string(failure)
-
-  defp reason(_failure), do: "unknown"
+  defp classify(failure), do: Map.get(@failures, failure, {:uncertain, "unknown"})
 
   defp detail(detail), do: String.slice(detail, 0, 500)
 end
