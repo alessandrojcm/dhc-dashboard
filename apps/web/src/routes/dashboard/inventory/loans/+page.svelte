@@ -1,17 +1,5 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
-import { createMutation, createQuery } from "@tanstack/svelte-query";
-import {
-	type InventoryOperatorLoan,
-	inventoryOperatorLoanQueueShowOptions,
-	inventoryOperatorLoansApproveMutation,
-	inventoryOperatorLoansCancelMutation,
-	inventoryOperatorLoansCheckoutMutation,
-	inventoryOperatorLoansEditDatesMutation,
-	inventoryOperatorLoansRejectMutation,
-	inventoryOperatorLoansReturnMutation,
-} from "@dhc/api-client";
+import { type InventoryOperatorLoan } from "@dhc/api-client";
 import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import {
@@ -30,10 +18,6 @@ import {
 	type DragDropState,
 } from "@thisux/sveltednd";
 import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
-import {
-	decideLoanDrop,
-	type LoanQueueDropTarget,
-} from "#lib/components/inventory/loan-queue-dnd.js";
 import { apiErrorMessage } from "#lib/api-error.js";
 import {
 	ArrowRight,
@@ -49,243 +33,43 @@ import {
 	Wrench,
 } from "@lucide/svelte";
 import { parseDate } from "@internationalized/date";
-
-let selected = $state<InventoryOperatorLoan | undefined>();
-let selectedTrigger = $state<HTMLElement | null>(null);
-let selectedReadyForCheckout = $state(false);
-let startsOn = $state("");
-let dueOn = $state("");
-let note = $state("");
-// Loan action errors render inline in the sheet so they never cover the
-// action buttons; success closes the sheet, so no success toast.
-let actionError = $state<string | null>(null);
-
-type QueueView = "requests" | "handovers" | "returns" | "maintenance";
-
-const queueQuery = createQuery(() => ({
-	...inventoryOperatorLoanQueueShowOptions(),
-	select: (response) => response.data,
-}));
-
-const queueOptions = $derived([
-	{
-		value: "requests" as const,
-		label: "Requests",
-		count: queueQuery.data?.pendingRequests.count ?? 0,
-	},
-	{
-		value: "handovers" as const,
-		label: "Ready for handover",
-		count: queueQuery.data?.handoversDue.count ?? 0,
-	},
-	{
-		value: "returns" as const,
-		label: "Returns and overdue",
-		count: queueQuery.data?.returnsAndOverdue.count ?? 0,
-	},
-	{
-		value: "maintenance" as const,
-		label: "Open maintenance",
-		count: queueQuery.data?.openMaintenance.count ?? 0,
-	},
-]);
-const defaultQueue = $derived<QueueView>(
-	queueQuery.data?.pendingRequests.count
-		? "requests"
-		: queueQuery.data?.returnsAndOverdue.count
-			? "returns"
-			: queueQuery.data?.handoversDue.count
-				? "handovers"
-				: queueQuery.data?.openMaintenance.count
-					? "maintenance"
-					: "requests",
-);
-const requestedQueue = $derived(
-	parseQueueView(page.url.searchParams.get("view")),
-);
-const activeQueue = $derived(requestedQueue ?? defaultQueue);
-
-function parseQueueView(value: string | null): QueueView | undefined {
-	return value === "requests" ||
-		value === "handovers" ||
-		value === "returns" ||
-		value === "maintenance"
-		? value
-		: undefined;
-}
-
-function changeQueue(value: string) {
-	const view = parseQueueView(value);
-	if (!view || view === activeQueue) return;
-	const url = new URL(page.url.href);
-	url.searchParams.set("view", view);
-	void goto(url, { reset: false });
-}
-
-function choose(loan: InventoryOperatorLoan, readyForCheckout = false) {
-	selected = loan;
-	selectedReadyForCheckout = readyForCheckout;
-	startsOn = loan.approvedStartOn ?? loan.requestedStartOn;
-	dueOn = loan.approvedDueOn ?? loan.requestedDueOn;
-	note = "";
-	actionError = null;
-}
-
-function refresh() {
-	selected = undefined;
-	actionError = null;
-	void queueQuery.refetch();
-}
-
-// Drag-and-drop notice announced in the board's status line. A drop never
-// writes: an allowed drop opens the action sheet below, whose TanStack
-// mutation stays the single write path. Phoenix re-decides under the item
-// lock, so a stale advisory `readyForCheckout` is safe.
-let dndNotice = $state<string | null>(null);
-
-type LoanDragData = {
-	loan: InventoryOperatorLoan;
-	readyForCheckout?: boolean;
-};
+import { MediaQuery } from "svelte/reactivity";
+import {
+	createLoanQueueBoard,
+	type LoanCardKind,
+	type LoanDragData,
+} from "./loan-queue-board.svelte.js";
 
 // Drag only makes sense on the wide four-column board. Mobile shows one
 // queue at a time through the selector, so there is no other column to drop
 // onto. `isDesktop` tracks the `lg` breakpoint the board uses.
-let isDesktop = $state(false);
-$effect(() => {
-	const media = window.matchMedia("(min-width: 1024px)");
-	isDesktop = media.matches;
-	const onChange = (event: MediaQueryListEvent) => {
-		isDesktop = event.matches;
-	};
-	media.addEventListener("change", onChange);
-	return () => media.removeEventListener("change", onChange);
+// `MediaQuery` reports false during SSR, matching the mobile-first markup.
+const desktop = new MediaQuery("min-width: 1024px", false);
+
+// A drop never writes: an allowed drop opens the action sheet below, whose
+// command stays the single write path. Phoenix re-decides under the item
+// lock, so a stale advisory `readyForCheckout` is safe.
+const board = createLoanQueueBoard({
+	isDesktop: () => desktop.current,
+	hover: () =>
+		dndState.isDragging
+			? {
+					targetContainer: dndState.targetContainer,
+					// SAFETY: every draggable on this board sets dragData to
+					// LoanDragData; the controller ignores anything without a loan.
+					dragged: dndState.draggedItem as LoanDragData | undefined,
+				}
+			: undefined,
 });
+const queueQuery = board.queue;
 
-/**
- * Whether a card can start a drag at all. Returns carry `checked_out`
- * loans, which have no forward column (the machine refuses every move, and
- * recording a return stays on the card button), and overdue loans cannot
- * move anywhere either, so neither gets a grip handle.
- */
-function canDragLoan(loan: InventoryOperatorLoan, kind: string): boolean {
-	if (kind === "return" || loan.overdue) return false;
-	return isDesktop;
-}
-
-function columnForLoanId(id: string): LoanQueueDropTarget | undefined {
-	const data = queueQuery.data;
-	if (!data) return undefined;
-	if (data.pendingRequests.rows.some((loan) => loan.id === id))
-		return "requests";
-	if (data.handoversDue.rows.some((loan) => loan.id === id)) return "handovers";
-	if (data.returnsAndOverdue.rows.some((loan) => loan.id === id))
-		return "returns";
-	return undefined;
-}
-
-function resolveDropTarget(
-	targetContainer: string,
-): LoanQueueDropTarget | undefined {
-	if (
-		targetContainer === "requests" ||
-		targetContainer === "handovers" ||
-		targetContainer === "returns" ||
-		targetContainer === "maintenance"
-	) {
-		return targetContainer;
-	}
-	if (targetContainer.startsWith("card:")) {
-		return columnForLoanId(targetContainer.slice("card:".length));
-	}
-	return undefined;
-}
+let selectedTrigger = $state<HTMLElement | null>(null);
 
 function handleLoanDrop(state: DragDropState<LoanDragData>) {
-	const dragged = state.draggedItem;
-	if (!dragged || !state.targetContainer) return;
-	const toColumn = resolveDropTarget(state.targetContainer);
-	if (!toColumn) return;
-	const outcome = decideLoanDrop({
-		fromStatus: dragged.loan.status,
-		toColumn,
-		readyForCheckout: dragged.readyForCheckout,
-	});
-	if (outcome.kind === "openAction") {
-		dndNotice = null;
-		selectedTrigger = null;
-		choose(
-			dragged.loan,
-			outcome.action === "checkout"
-				? (dragged.readyForCheckout ?? false)
-				: false,
-		);
-	} else if (outcome.kind === "ignored") {
-		dndNotice = null;
-	} else {
-		dndNotice = outcome.reason;
-	}
+	if (!state.draggedItem || !state.targetContainer) return;
+	selectedTrigger = null;
+	board.drop(state.targetContainer, state.draggedItem);
 }
-
-/**
- * Whether `column` is currently hovered with a loan the machine would not
- * act on. Drives the red `drag-invalid` outline so a disallowed hover reads
- * before the drop. Card hovers resolve through their column, so hovering a
- * card inside a refused column counts too.
- */
-function invalidHover(column: LoanQueueDropTarget): boolean {
-	if (!dndState.isDragging) return false;
-	if (!dndState.targetContainer) return false;
-	const toColumn = resolveDropTarget(dndState.targetContainer);
-	if (toColumn !== column) return false;
-	// SAFETY: every draggable on this board sets dragData to LoanDragData;
-	// anything else means no drag started here and there is nothing to judge.
-	const dragged = dndState.draggedItem as LoanDragData | undefined;
-	if (!dragged?.loan) return false;
-	return (
-		decideLoanDrop({
-			fromStatus: dragged.loan.status,
-			toColumn,
-			readyForCheckout: dragged.readyForCheckout,
-		}).kind !== "openAction"
-	);
-}
-
-function mutationOptions(fallback: string) {
-	return {
-		onSuccess: () => {
-			refresh();
-		},
-		onError: (cause: unknown) => {
-			actionError = apiErrorMessage(cause, fallback);
-		},
-	};
-}
-
-const approve = createMutation(() => ({
-	...inventoryOperatorLoansApproveMutation(),
-	...mutationOptions("Could not approve this request"),
-}));
-const reject = createMutation(() => ({
-	...inventoryOperatorLoansRejectMutation(),
-	...mutationOptions("Could not reject this request"),
-}));
-const cancel = createMutation(() => ({
-	...inventoryOperatorLoansCancelMutation(),
-	...mutationOptions("Could not cancel this loan"),
-}));
-const checkout = createMutation(() => ({
-	...inventoryOperatorLoansCheckoutMutation(),
-	...mutationOptions("Could not record checkout"),
-}));
-const returnLoan = createMutation(() => ({
-	...inventoryOperatorLoansReturnMutation(),
-	...mutationOptions("Could not record return"),
-}));
-const editDates = createMutation(() => ({
-	...inventoryOperatorLoansEditDatesMutation(),
-	...mutationOptions("Could not update loan dates"),
-}));
 
 function formatDate(value: string | null) {
 	return value?.slice(0, 10) ?? "—";
@@ -298,20 +82,11 @@ function dateValue(value: string) {
 function shortPrincipal(id: string) {
 	return id.slice(0, 8);
 }
-
-const busy = $derived(
-	approve.isPending ||
-		reject.isPending ||
-		cancel.isPending ||
-		checkout.isPending ||
-		returnLoan.isPending ||
-		editDates.isPending,
-);
 </script>
 
 {#snippet loanCard(
 	loan: InventoryOperatorLoan,
-	kind: "request" | "handover" | "return",
+	kind: LoanCardKind,
 	readyForCheckout = false,
 )}
 	<article
@@ -326,7 +101,7 @@ const busy = $derived(
 			dragData: { loan, readyForCheckout } satisfies LoanDragData,
 			handle: ".loan-drag-handle",
 			keyboard: true,
-			disabled: !canDragLoan(loan, kind),
+			disabled: !board.canDrag(loan, kind),
 		}}
 		use:droppable={{
 			container: `card:${loan.id}`,
@@ -336,7 +111,7 @@ const busy = $derived(
 		<div class="flex items-start justify-between gap-3">
 			<div class="min-w-0">
 				<div class="flex items-start gap-3">
-					{#if canDragLoan(loan, kind)}<span
+					{#if board.canDrag(loan, kind)}<span
 							class="loan-drag-handle mt-1 hidden shrink-0 cursor-grab text-muted-foreground lg:inline-flex"
 							role="button"
 							aria-label="Drag to move {loan.itemLabel}"
@@ -396,7 +171,7 @@ const busy = $derived(
 				class="min-h-11 w-full justify-between"
 				onclick={(event) => {
 					selectedTrigger = event.currentTarget;
-					choose(loan, readyForCheckout);
+					board.open(loan, readyForCheckout);
 				}}
 			>
 				{kind === "request"
@@ -486,10 +261,10 @@ const busy = $derived(
 			<NativeSelect
 				id="mobile-loan-queue-view"
 				class="w-full [&_select]:h-11 [&_select]:px-3 [&_select]:pr-9 [&_select]:font-semibold"
-				value={activeQueue}
-				onchange={(event) => changeQueue(event.currentTarget.value)}
+				value={board.activeView}
+				onchange={(event) => board.changeView(event.currentTarget.value)}
 			>
-				{#each queueOptions as option (option.value)}
+				{#each board.views as option (option.value)}
 					<NativeSelectOption value={option.value}
 						>{option.label} — {option.count}</NativeSelectOption
 					>
@@ -507,18 +282,18 @@ const busy = $derived(
 			class="grid items-start gap-4 lg:grid-cols-[repeat(4,minmax(20rem,1fr))] lg:overflow-x-auto lg:pb-2"
 			data-testid="loan-queue-board"
 		>
-			{#if dndNotice}
+			{#if board.notice}
 				<p
 					class="rounded-xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive lg:col-span-4"
 					role="status"
 				>
-					{dndNotice}
+					{board.notice}
 				</p>
 			{/if}
 			<section
 				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
-				class:hidden={activeQueue !== "requests"}
-				class:drag-invalid={invalidHover("requests")}
+				class:hidden={board.activeView !== "requests"}
+				class:drag-invalid={board.isInvalidHover("requests")}
 				use:droppable={{
 					container: "requests",
 					callbacks: { onDrop: handleLoanDrop },
@@ -539,8 +314,8 @@ const busy = $derived(
 			</section>
 			<section
 				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
-				class:hidden={activeQueue !== "handovers"}
-				class:drag-invalid={invalidHover("handovers")}
+				class:hidden={board.activeView !== "handovers"}
+				class:drag-invalid={board.isInvalidHover("handovers")}
 				use:droppable={{
 					container: "handovers",
 					callbacks: { onDrop: handleLoanDrop },
@@ -570,8 +345,8 @@ const busy = $derived(
 			</section>
 			<section
 				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
-				class:hidden={activeQueue !== "returns"}
-				class:drag-invalid={invalidHover("returns")}
+				class:hidden={board.activeView !== "returns"}
+				class:drag-invalid={board.isInvalidHover("returns")}
 				use:droppable={{
 					container: "returns",
 					callbacks: { onDrop: handleLoanDrop },
@@ -592,8 +367,8 @@ const busy = $derived(
 			</section>
 			<section
 				class="inventory-panel space-y-3 p-4 sm:p-5 lg:block"
-				class:hidden={activeQueue !== "maintenance"}
-				class:drag-invalid={invalidHover("maintenance")}
+				class:hidden={board.activeView !== "maintenance"}
+				class:drag-invalid={board.isInvalidHover("maintenance")}
 				data-testid="open-maintenance-bucket"
 				use:droppable={{
 					container: "maintenance",
@@ -645,9 +420,9 @@ const busy = $derived(
 	{/if}
 
 	<Sheet.Root
-		open={Boolean(selected)}
+		open={Boolean(board.selection)}
 		onOpenChange={(open) => {
-			if (!open) selected = undefined;
+			if (!open) board.close();
 		}}
 		onOpenChangeComplete={(open) => {
 			if (!open) selectedTrigger?.focus();
@@ -659,7 +434,9 @@ const busy = $derived(
 			aria-label="Loan action panel"
 			class="max-h-[92svh] w-full max-w-none gap-0 overflow-hidden rounded-t-2xl p-0 sm:max-h-none sm:w-[28rem] sm:max-w-[calc(100vw-2rem)] sm:rounded-none"
 		>
-			{#if selected}
+			{#if board.selection}
+				{@const selection = board.selection}
+				{@const selected = selection.loan}
 				<Sheet.Header
 					class="shrink-0 border-b bg-primary/7 px-5 pt-[max(1.25rem,env(safe-area-inset-top))] pr-16 pb-5 text-left sm:px-6 sm:pt-6"
 				>
@@ -676,9 +453,9 @@ const busy = $derived(
 				<div
 					class="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain p-5 sm:p-6"
 				>
-					{#if actionError}
+					{#if board.error}
 						<Alert variant="destructive">
-							<AlertDescription>{actionError}</AlertDescription>
+							<AlertDescription>{board.error}</AlertDescription>
 						</Alert>
 					{/if}
 					<div
@@ -708,12 +485,9 @@ const busy = $derived(
 									<Label for="approve-start">Approved start</Label><DatePicker
 										id="approve-start"
 										label="Approved start"
-										value={dateValue(startsOn)}
+										value={dateValue(selection.startsOn)}
 										onValueChange={(value) => {
-											if (value) {
-												startsOn = value.toString();
-												if (dueOn < startsOn) dueOn = startsOn;
-											}
+											if (value) board.setStartsOn(value.toString());
 										}}
 									/>
 								</div>
@@ -721,10 +495,10 @@ const busy = $derived(
 									<Label for="approve-due">Approved due</Label><DatePicker
 										id="approve-due"
 										label="Approved due"
-										value={dateValue(dueOn)}
-										minValue={dateValue(startsOn)}
+										value={dateValue(selection.dueOn)}
+										minValue={dateValue(selection.startsOn)}
 										onValueChange={(value) => {
-											if (value) dueOn = value.toString();
+											if (value) board.setDueOn(value.toString());
 										}}
 									/>
 								</div>
@@ -732,7 +506,7 @@ const busy = $derived(
 							<div>
 								<Label for="decision-note">Decision note</Label><Textarea
 									id="decision-note"
-									bind:value={note}
+									bind:value={selection.note}
 									placeholder="Optional context for the member"
 								/>
 							</div>
@@ -740,20 +514,16 @@ const busy = $derived(
 								<Button
 									variant="destructive"
 									class="min-h-12"
-									disabled={busy}
-									onclick={() =>
-										reject.mutate({
-											path: { loanId: selected!.id },
-											body: { note: note.trim() || undefined },
-										})}>{reject.isPending ? "Rejecting…" : "Reject"}</Button
+									disabled={board.busy}
+									onclick={board.reject}
+									>{board.pending.reject ? "Rejecting…" : "Reject"}</Button
 								><Button
 									class="min-h-12"
-									disabled={!startsOn || !dueOn || busy}
-									onclick={() =>
-										approve.mutate({
-											path: { loanId: selected!.id },
-											body: { startsOn, dueOn, note: note.trim() || undefined },
-										})}>{approve.isPending ? "Approving…" : "Approve"}</Button
+									disabled={!selection.startsOn ||
+										!selection.dueOn ||
+										board.busy}
+									onclick={board.approve}
+									>{board.pending.approve ? "Approving…" : "Approve"}</Button
 								>
 							</div>
 						</div>
@@ -764,12 +534,9 @@ const busy = $derived(
 									<Label for="edit-start">Start</Label><DatePicker
 										id="edit-start"
 										label="Start"
-										value={dateValue(startsOn)}
+										value={dateValue(selection.startsOn)}
 										onValueChange={(value) => {
-											if (value) {
-												startsOn = value.toString();
-												if (dueOn < startsOn) dueOn = startsOn;
-											}
+											if (value) board.setStartsOn(value.toString());
 										}}
 									/>
 								</div>
@@ -777,10 +544,10 @@ const busy = $derived(
 									<Label for="edit-due">Due</Label><DatePicker
 										id="edit-due"
 										label="Due"
-										value={dateValue(dueOn)}
-										minValue={dateValue(startsOn)}
+										value={dateValue(selection.dueOn)}
+										minValue={dateValue(selection.startsOn)}
 										onValueChange={(value) => {
-											if (value) dueOn = value.toString();
+											if (value) board.setDueOn(value.toString());
 										}}
 									/>
 								</div>
@@ -788,39 +555,32 @@ const busy = $derived(
 							<Button
 								variant="outline"
 								class="w-full min-h-11"
-								disabled={busy}
-								onclick={() =>
-									editDates.mutate({
-										path: { loanId: selected!.id },
-										body: { startsOn, dueOn },
-									})}
-								><CalendarClock />{editDates.isPending
+								disabled={board.busy}
+								onclick={board.editDates}
+								><CalendarClock />{board.pending.editDates
 									? "Saving…"
 									: "Save dates"}</Button
 							>
 							<div>
 								<Label for="cancel-note">Cancellation note</Label><Textarea
 									id="cancel-note"
-									bind:value={note}
+									bind:value={selection.note}
 								/>
 							</div>
 							<div class="grid grid-cols-2 gap-2">
 								<Button
 									variant="destructive"
 									class="min-h-12"
-									disabled={busy}
-									onclick={() =>
-										cancel.mutate({
-											path: { loanId: selected!.id },
-											body: { note: note.trim() || undefined },
-										})}
-									>{cancel.isPending ? "Cancelling…" : "Cancel loan"}</Button
+									disabled={board.busy}
+									onclick={board.cancel}
+									>{board.pending.cancel
+										? "Cancelling…"
+										: "Cancel loan"}</Button
 								><Button
 									class="min-h-12"
-									disabled={busy || !selectedReadyForCheckout}
-									onclick={() =>
-										checkout.mutate({ path: { loanId: selected!.id } })}
-									>{checkout.isPending
+									disabled={board.busy || !selection.readyForCheckout}
+									onclick={board.checkout}
+									>{board.pending.checkout
 										? "Recording…"
 										: "Record checkout"}</Button
 								>
@@ -832,30 +592,27 @@ const busy = $derived(
 								<Label for="return-due">Due date</Label><DatePicker
 									id="return-due"
 									label="Due date"
-									value={dateValue(dueOn)}
+									value={dateValue(selection.dueOn)}
 									onValueChange={(value) => {
-										if (value) dueOn = value.toString();
+										if (value) board.setDueOn(value.toString());
 									}}
 								/>
 							</div>
 							<Button
 								variant="outline"
 								class="w-full min-h-11"
-								disabled={busy}
-								onclick={() =>
-									editDates.mutate({
-										path: { loanId: selected!.id },
-										body: { dueOn },
-									})}
-								><CalendarClock />{editDates.isPending
+								disabled={board.busy}
+								onclick={board.editDates}
+								><CalendarClock />{board.pending.editDates
 									? "Updating…"
 									: "Update due date"}</Button
 							><Button
 								class="w-full min-h-12"
-								disabled={busy}
-								onclick={() =>
-									returnLoan.mutate({ path: { loanId: selected!.id } })}
-								>{returnLoan.isPending ? "Recording…" : "Record return"}</Button
+								disabled={board.busy}
+								onclick={board.returnLoan}
+								>{board.pending.returnLoan
+									? "Recording…"
+									: "Record return"}</Button
 							>
 						</div>
 					{/if}
