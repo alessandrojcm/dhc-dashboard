@@ -8,18 +8,20 @@ defmodule Dhc.Inventory.ItemQueryTest do
 
   use Dhc.DataCase, async: false
 
+  import Dhc.InventoryFixtures, only: [category_fixture: 0, container_fixture: 0]
   import Ecto.Query
 
-  alias Dhc.Auth.Principal
+  alias Dhc.AuthFixtures
   alias Dhc.Inventory
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemQuery
+  alias Dhc.Inventory.ItemQuery.ReadModel
   alias Dhc.Repo
 
   # A read model with one extra parameter that also scopes the query, so the
   # tests can see the extra value reach both the scope and the cursor.
   defp read_model do
-    %{
+    %ReadModel{
       param: {:mode, ["mode"], &parse_mode/1},
       scope: fn query, opts -> scope(query, opts.mode) end,
       search: fn query, q -> where(query, [i], ilike(i.slug, ^"%#{q}%")) end,
@@ -103,7 +105,7 @@ defmodule Dhc.Inventory.ItemQueryTest do
     end
 
     test "refuses a non-decimal value only on a decimal definition" do
-      category = create_category!()
+      category = category_fixture()
       {:ok, weight} = create_definition(category.id, "Weight", "decimal")
       {:ok, brand} = create_definition(category.id, "Brand", "text")
 
@@ -118,10 +120,10 @@ defmodule Dhc.Inventory.ItemQueryTest do
   describe "filter/2" do
     test "narrows to the given categories" do
       %{category: swords, container_id: container_id} = fixture()
-      masks = create_category!()
+      masks = category_fixture()
       {:ok, sword} = create_item(container_id, swords.id)
       {:ok, mask} = create_item(container_id, masks.id)
-      {:ok, _other} = create_item(container_id, create_category!().id)
+      {:ok, _other} = create_item(container_id, category_fixture().id)
 
       assert filtered_ids(%{"categoryId" => swords.id}) == [sword.id]
 
@@ -214,7 +216,7 @@ defmodule Dhc.Inventory.ItemQueryTest do
     test "counts exactly over the scoped, filtered, and searched set" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, item} = create_item(container_id, category.id)
-      for _ <- 1..3, do: create_item(container_id, create_category!().id)
+      for _ <- 1..3, do: create_item(container_id, category_fixture().id)
 
       assert {:ok, %{total_count: 4}} = list(%{})
       assert {:ok, %{total_count: 1, items: [id]}} = list(%{"categoryId" => category.id})
@@ -258,45 +260,17 @@ defmodule Dhc.Inventory.ItemQueryTest do
   end
 
   defp fixture do
-    %{category: create_category!(), container_id: create_container!().id}
+    %{category: category_fixture(), container_id: container_fixture().id}
   end
 
   defp create_item(container_id, category_id, values \\ %{}) do
     Inventory.create_operator_item(
       %{"container_id" => container_id, "category_id" => category_id, "values" => values},
-      principal_id()
+      AuthFixtures.principal_fixture().id
     )
   end
 
   defp create_definition(category_id, label, value_type) do
     Inventory.create_definition(category_id, %{"label" => label, "value_type" => value_type})
-  end
-
-  defp create_category! do
-    {:ok, category} =
-      Inventory.create_category(%{
-        "name" => "Item query category #{System.unique_integer([:positive])}"
-      })
-
-    category
-  end
-
-  defp create_container! do
-    {:ok, container} =
-      Inventory.create_container(
-        %{"name" => "Item query container #{System.unique_integer([:positive])}"},
-        principal_id()
-      )
-
-    container
-  end
-
-  defp principal_id do
-    %Principal{id: Ecto.UUID.generate()}
-    |> Principal.email_changeset(%{
-      email: "item-query-#{System.unique_integer([:positive])}@example.com"
-    })
-    |> Repo.insert!()
-    |> Map.fetch!(:id)
   end
 end

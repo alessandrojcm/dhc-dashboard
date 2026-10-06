@@ -60,6 +60,7 @@ defmodule Dhc.Inventory.MemberCatalog do
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.ItemQuery
+  alias Dhc.Inventory.ItemQuery.ReadModel
   alias Dhc.Inventory.ItemValues
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.MaintenancePeriod
@@ -105,7 +106,7 @@ defmodule Dhc.Inventory.MemberCatalog do
   """
   @spec list_catalog_items(map()) :: {:ok, page()} | {:error, error()}
   def list_catalog_items(params \\ %{}) when is_map(params) or is_list(params) do
-    ItemQuery.list(params, %{
+    ItemQuery.list(params, %ReadModel{
       param: {:availability, ["availability"], &parse_availability/1},
       scope: &scope/2,
       search: &apply_search/2,

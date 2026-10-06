@@ -18,7 +18,7 @@ defmodule Dhc.Inventory.ItemQuery do
       look-ahead, cursors bound to every option that changes the result set,
       and an exact `COUNT(*)` over the same filtered set.
 
-  Each read model supplies a `t:read_model/0`: its one extra parameter, its
+  Each read model supplies a `Dhc.Inventory.ItemQuery.ReadModel`: its one extra parameter, its
   scope over the item root, its own search, and its projection. Search stays
   with the read model on purpose — the operator search reads notes and
   Container paths that the member query must never touch — and the
@@ -31,6 +31,7 @@ defmodule Dhc.Inventory.ItemQuery do
   alias Dhc.CursorPagination
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemPropertyValue
+  alias Dhc.Inventory.ItemQuery.ReadModel
   alias Dhc.Inventory.PageParams
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Repo
@@ -38,29 +39,6 @@ defmodule Dhc.Inventory.ItemQuery do
   # The slug is immutable, so it is the one ordering key no command can
   # change underneath a cursor.
   @sort_specs %{"slug" => %{field: :slug}}
-
-  @typedoc """
-  The read model's one extra parameter: the option key it is stored under
-  (also its cursor-context key), the request keys it is read from, and its
-  parser. Atom values are bound into the cursor as strings.
-  """
-  @type param :: {atom(), [String.t()], (term() -> {:ok, term()} | {:error, atom()})}
-
-  @typedoc """
-  What a read model supplies:
-
-    * `:param` — its extra parameter (`archived`, `availability`).
-    * `:scope` — constrains the `:item`-bound root query from the parsed
-      options (archive, availability).
-    * `:search` — applies a non-blank `q`.
-    * `:project` — turns the visible `Item` rows into response rows.
-  """
-  @type read_model :: %{
-          param: param(),
-          scope: (Ecto.Query.t(), opts() -> Ecto.Query.t()),
-          search: (Ecto.Query.t(), String.t() -> Ecto.Query.t()),
-          project: ([Item.t()] -> [term()])
-        }
 
   @type opts :: %{
           required(:limit) => pos_integer(),
@@ -87,13 +65,13 @@ defmodule Dhc.Inventory.ItemQuery do
           | :invalid_category
           | :invalid_property
           | :bad_cursor
-          | atom()
+          | ReadModel.param_error()
 
   @doc """
   Parse `params`, then read one cursor-paginated page with an exact count.
   """
-  @spec list(map() | keyword(), read_model()) :: {:ok, page()} | {:error, error()}
-  def list(params, read_model) do
+  @spec list(map() | keyword(), ReadModel.t()) :: {:ok, page()} | {:error, error()}
+  def list(params, %ReadModel{} = read_model) do
     with {:ok, opts} <- parse(params, read_model.param),
          {:ok, cursor} <- CursorPagination.parse_cursor(opts, &cursor_context(&1, read_model)) do
       {:ok, build_page(opts, cursor, read_model)}
@@ -108,7 +86,7 @@ defmodule Dhc.Inventory.ItemQuery do
   String and atom keys are both accepted; `category_id` and `properties` are
   accepted aliases of `categoryId` and `property`.
   """
-  @spec parse(map() | keyword(), param()) :: {:ok, opts()} | {:error, error()}
+  @spec parse(map() | keyword(), ReadModel.param()) :: {:ok, opts()} | {:error, error()}
   def parse(params, param) when is_list(params), do: parse(Map.new(params), param)
 
   def parse(params, {name, keys, parser}) when is_map(params) do
@@ -333,7 +311,7 @@ defmodule Dhc.Inventory.ItemQuery do
 
   # Everything that changes the result set is bound into the cursor, so a
   # cursor cannot be replayed against a different query.
-  defp cursor_context(opts, %{param: {name, _keys, _parser}}) do
+  defp cursor_context(opts, %ReadModel{param: {name, _keys, _parser}}) do
     %{
       "limit" => opts.limit,
       "sort" => opts.sort,

@@ -40,6 +40,7 @@ defmodule Dhc.Inventory.OperatorItemList do
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemQuery
+  alias Dhc.Inventory.ItemQuery.ReadModel
 
   @allowed_archived ~w(exclude include only)
 
@@ -64,7 +65,7 @@ defmodule Dhc.Inventory.OperatorItemList do
   """
   @spec list_operator_items(map()) :: {:ok, page()} | {:error, error()}
   def list_operator_items(params \\ %{}) when is_map(params) or is_list(params) do
-    ItemQuery.list(params, %{
+    ItemQuery.list(params, %ReadModel{
       param: {:archived, ["archived"], &parse_archived/1},
       scope: &scope/2,
       search: &apply_search/2,
