@@ -16,8 +16,4 @@ defmodule DhcWeb.NotificationsPushJSON do
   def render("unsubscribe.json", %{removed: removed}) do
     %{data: %{removed: removed}}
   end
-
-  def render("error.json", %{detail: detail, fields: fields}) do
-    %{errors: %{detail: detail, fields: fields}}
-  end
 end

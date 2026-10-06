@@ -208,11 +208,9 @@ defmodule DhcWeb.OnboardingController do
     )
   end
 
-  defp error_detail(conn, status, detail) do
-    conn
-    |> put_status(status)
-    |> json(%{errors: %{detail: detail}})
-  end
+  # Generic failures share the one problem body; the safe-view
+  # `data.state` responses above are deliberately not problems (ADR 0024).
+  defp error_detail(conn, status, detail), do: DhcWeb.Problem.send_detail(conn, status, detail)
 
   defp client_ip(conn) do
     conn.remote_ip

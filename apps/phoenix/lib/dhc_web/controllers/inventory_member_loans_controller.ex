@@ -18,8 +18,9 @@ defmodule DhcWeb.InventoryMemberLoansController do
   (ALE-298); nothing here can be reached with an operator role that a
   plain member could not reach.
 
-  The controller only maps `Dhc.Inventory` result tuples onto status codes
-  and enqueues keyed operator notifications after a successful cancel.
+  The controller renders successes and enqueues keyed operator notifications
+  after a successful cancel; a missing loan becomes `:loan_not_found` and
+  `DhcWeb.InventoryHTTP` maps every error.
   Enqueue failure is a `500` before the client is told the cancel succeeded.
   """
 
@@ -29,23 +30,16 @@ defmodule DhcWeb.InventoryMemberLoansController do
 
   alias Dhc.Inventory
 
+  action_fallback DhcWeb.InventoryHTTP
+
   @view [json: DhcWeb.InventoryMemberLoansJSON]
-
-  @conflict_codes %{
-    not_cancellable: "This loan can no longer be cancelled"
-  }
-
-  @validation_codes %{
-    invalid_note: "note must be text"
-  }
 
   @doc """
   GET /inventory/loans/mine
   """
   def list(conn, params) do
-    case Inventory.list_own_loans(actor_id(conn), params) do
-      {:ok, page} -> conn |> put_view(@view) |> render(:index, page: page)
-      {:error, reason} -> render_error(conn, :bad_request, %{detail: list_error_detail(reason)})
+    with {:ok, page} <- Inventory.list_own_loans(actor_id(conn), params) do
+      conn |> put_view(@view) |> render(:index, page: page)
     end
   end
 
@@ -53,7 +47,7 @@ defmodule DhcWeb.InventoryMemberLoansController do
   GET /inventory/loans/mine/:loanId
   """
   def show(conn, %{"loanId" => loan_id}) do
-    loan_id |> Inventory.get_own_loan(actor_id(conn)) |> respond(conn)
+    loan_id |> Inventory.get_own_loan(actor_id(conn)) |> render_loan(conn)
   end
 
   @doc """
@@ -63,7 +57,7 @@ defmodule DhcWeb.InventoryMemberLoansController do
     loan_id
     |> Inventory.cancel_loan(params, actor_id(conn))
     |> notify(:member_cancelled)
-    |> respond(conn)
+    |> render_loan(conn)
   end
 
   # ── Result mapping ──────────────────────────────────────────────
@@ -87,40 +81,9 @@ defmodule DhcWeb.InventoryMemberLoansController do
 
   defp notify(error, _kind), do: error
 
-  defp respond({:ok, loan}, conn) do
-    conn |> put_view(@view) |> render(:show, loan: loan)
-  end
-
-  defp respond({:error, :notification_enqueue_failed}, conn) do
-    render_error(conn, :internal_server_error, %{detail: "Failed to enqueue notification"})
-  end
-
-  defp respond({:error, :not_found}, conn), do: not_found(conn)
-
-  defp respond({:error, reason}, conn) when is_map_key(@conflict_codes, reason) do
-    render_error(conn, :conflict, %{
-      detail: Map.fetch!(@conflict_codes, reason),
-      code: to_string(reason)
-    })
-  end
-
-  defp respond({:error, reason}, conn) when is_map_key(@validation_codes, reason) do
-    render_error(conn, :unprocessable_entity, %{
-      detail: Map.fetch!(@validation_codes, reason),
-      code: to_string(reason)
-    })
-  end
-
-  defp list_error_detail(:invalid_status), do: "status must be all, open, or closed"
-  defp list_error_detail(:invalid_limit), do: "limit must be one of 10, 25, 50, 100"
-  defp list_error_detail(:invalid_direction), do: "direction must be asc or desc"
-  defp list_error_detail(:bad_cursor), do: "cursor does not match the current query"
-
-  defp not_found(conn), do: render_error(conn, :not_found, %{detail: "Loan not found"})
-
-  defp render_error(conn, status, assigns) do
-    conn |> put_status(status) |> put_view(@view) |> render(:error, assigns)
-  end
+  defp render_loan({:ok, loan}, conn), do: conn |> put_view(@view) |> render(:show, loan: loan)
+  defp render_loan({:error, :not_found}, _conn), do: {:error, :loan_not_found}
+  defp render_loan(error, _conn), do: error
 
   defp actor_id(conn), do: conn.assigns.current_session.principal.id
 end

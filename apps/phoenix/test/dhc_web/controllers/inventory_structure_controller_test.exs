@@ -296,11 +296,11 @@ defmodule DhcWeb.InventoryStructureControllerTest do
                "errors" => %{
                  "detail" => "required cannot be set until every active item has a valid value",
                  "code" => "required_blocked",
-                 "itemIds" => item_ids
+                 "fields" => fields
                }
              } = json_response(conn, 422)
 
-      assert item_ids == [empty_item]
+      assert fields == %{"items.#{empty_item}" => ["has no valid value"]}
     end
 
     test "clears identifyingPosition when the client sends null", %{conn: conn} do
@@ -324,7 +324,7 @@ defmodule DhcWeb.InventoryStructureControllerTest do
       assert payload["identifyingPosition"] == nil
     end
 
-    test "renders invalid_attributes for a changeset failure", %{conn: conn} do
+    test "renders a changeset failure as public fields without a code", %{conn: conn} do
       category = insert_category!()
 
       assert {:ok, definition} =
@@ -340,14 +340,12 @@ defmodule DhcWeb.InventoryStructureControllerTest do
           "label" => ""
         })
 
-      assert %{
-               "errors" => %{
-                 "code" => "invalid_attributes",
-                 "detail" => detail
-               }
-             } = json_response(conn, 422)
+      assert %{"errors" => errors} = json_response(conn, 422)
 
-      assert detail =~ "label"
+      assert errors == %{
+               "detail" => "label: can't be blank",
+               "fields" => %{"label" => ["can't be blank"]}
+             }
     end
   end
 
@@ -392,8 +390,7 @@ defmodule DhcWeb.InventoryStructureControllerTest do
       assert %{
                "errors" => %{
                  "detail" => "definition is still referenced by active item values",
-                 "code" => "still_referenced",
-                 "activeValueCount" => 1
+                 "code" => "still_referenced"
                }
              } = json_response(conn, 409)
     end
@@ -657,19 +654,26 @@ defmodule DhcWeb.InventoryStructureControllerTest do
       retire_error = get_in(spec, ["components", "schemas", "InventoryDefinitionRetireError"])
       option_error = get_in(spec, ["components", "schemas", "InventoryOptionRetireError"])
 
-      assert update_error["required"] == ["errors"]
+      for schema <- [update_error, retire_error, option_error] do
+        assert get_in(schema, ["allOf", Access.at(0), "$ref"]) == "#/components/schemas/Error"
+      end
 
-      assert get_in(update_error, ["properties", "errors", "properties", "itemIds", "type"]) ==
-               "array"
+      assert get_in(update_error, [
+               "allOf",
+               Access.at(1),
+               "properties",
+               "errors",
+               "properties",
+               "code",
+               "enum"
+             ]) ==
+               ["type_immutable", "required_blocked"]
 
-      assert get_in(update_error, ["properties", "errors", "properties", "code", "enum"]) ==
-               ["type_immutable", "required_blocked", "invalid_attributes"]
-
-      assert get_in(retire_error, ["properties", "errors", "required"]) ==
-               ["detail", "code", "activeValueCount"]
-
-      assert get_in(option_error, ["properties", "errors", "required"]) ==
-               ["detail", "code", "activeValueCount"]
+      for schema <- [retire_error, option_error] do
+        assert get_in(schema, ["allOf", Access.at(1), "properties", "errors", "required"]) == [
+                 "code"
+               ]
+      end
     end
 
     test "category and container viewer operations declare cookieSession" do

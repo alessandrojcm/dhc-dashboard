@@ -1704,7 +1704,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NotificationsPushValidationError"
+                $ref: "#/components/schemas/Error"
 
   /notifications/push/unsubscribe:
     post:
@@ -1744,7 +1744,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/NotificationsPushValidationError"
+                $ref: "#/components/schemas/Error"
 
   /notifications/{id}/read:
     patch:
@@ -6569,27 +6569,27 @@ components:
       description: Authentication required
       content:
         application/json:
-          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+          schema: {$ref: "#/components/schemas/Error"}
     TrainingAnnouncementForbidden:
       description: Active management role required
       content:
         application/json:
-          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+          schema: {$ref: "#/components/schemas/Error"}
     TrainingAnnouncementNotFound:
       description: Announcement or scoped exception not found
       content:
         application/json:
-          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+          schema: {$ref: "#/components/schemas/Error"}
     TrainingAnnouncementConflict:
       description: Lifecycle conflict (attempted, retired, or delivery started)
       content:
         application/json:
-          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+          schema: {$ref: "#/components/schemas/TrainingAnnouncementConflictError"}
     TrainingAnnouncementInvalid:
       description: Invalid input, elapsed first send, overlapping override or invalid copy
       content:
         application/json:
-          schema: {$ref: "#/components/schemas/TrainingAnnouncementError"}
+          schema: {$ref: "#/components/schemas/Error"}
   securitySchemes:
     bearerAuth:
       type: http
@@ -6853,23 +6853,27 @@ components:
         data:
           type: array
           items: {$ref: "#/components/schemas/TrainingAnnouncementOverride"}
-    TrainingAnnouncementError:
-      type: object
-      required: [errors]
-      properties:
-        errors:
-          type: object
-          required: [detail]
+    TrainingAnnouncementConflictError:
+      description: |
+        409 lifecycle conflict on a Training Announcement command.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required:
+            - errors
           properties:
-            detail: {type: string}
-            code:
-              type: string
-              enum: [attempted, retired, delivery_started, concurrent_change]
-            fields:
+            errors:
               type: object
-              additionalProperties:
-                type: array
-                items: {type: string}
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - attempted
+                    - retired
+                    - delivery_started
+                    - concurrent_change
     OnboardingStartAcceptanceRequest:
       type: object
       required: [invitationId, email, dateOfBirth]
@@ -8239,24 +8243,6 @@ components:
           properties:
             removed:
               type: boolean
-    NotificationsPushValidationError:
-      type: object
-      required:
-        - errors
-      properties:
-        errors:
-          type: object
-          required:
-            - detail
-          properties:
-            detail:
-              type: string
-            fields:
-              type: object
-              additionalProperties:
-                type: array
-                items:
-                  type: string
     Notification:
       type: object
       required:
@@ -9752,86 +9738,61 @@ components:
         data:
           $ref: "#/components/schemas/InventoryPropertyOption"
     InventoryDefinitionUpdateError:
-      type: object
-      required:
-        - errors
       description: |
-        422 extras for definition update: `type_immutable`,
-        `required_blocked` with the active item ids that still lack a
-        valid value, or `invalid_attributes` for a changeset failure.
-      properties:
-        errors:
-          type: object
+        422 on a definition update: `type_immutable`, or `required_blocked`
+        with one `fields["items.<itemId>"]` entry per active item that still
+        lacks a valid value. A changeset failure is a plain `Error` with
+        `fields` and no `code`.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
           required:
-            - detail
-            - code
+            - errors
           properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - type_immutable
-                - required_blocked
-                - invalid_attributes
-            itemIds:
-              type: array
-              items:
-                type: string
-                format: uuid
-              description: |
-                Active item ids that block making a definition required
-                (`required_blocked`).
+            errors:
+              type: object
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - type_immutable
+                    - required_blocked
     InventoryDefinitionRetireError:
-      type: object
-      required:
-        - errors
       description: |
-        409 extras when a definition still has active item values.
-      properties:
-        errors:
-          type: object
+        409 when a definition still has active item values.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
           required:
-            - detail
-            - code
-            - activeValueCount
+            - errors
           properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - still_referenced
-            activeValueCount:
-              type: integer
-              description: |
-                Number of active item values that still reference the
-                definition.
+            errors:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - still_referenced
     InventoryOptionRetireError:
-      type: object
-      required:
-        - errors
       description: |
-        409 extras when an option still has active item values.
-      properties:
-        errors:
-          type: object
+        409 when an option still has active item values.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
           required:
-            - detail
-            - code
-            - activeValueCount
+            - errors
           properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - still_referenced
-            activeValueCount:
-              type: integer
-              description: |
-                Number of active item values that still reference the
-                option.
+            errors:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - still_referenced
     InventoryOptionCreateRequest:
       type: object
       required:
@@ -10212,74 +10173,59 @@ components:
           nullable: true
           maxLength: 1000
     InventoryOperatorItemConflictError:
-      type: object
-      required:
-        - errors
       description: |
         409 interlock conflicts on an operator item command. Each is a domain
         conflict a losing racer receives instead of a server error: the item
         is archived and read-only, a loan holds it, a maintenance period is
         already open or absent, loan/maintenance history forbids deletion, or
         restore gave up after the item's container kept moving.
-      properties:
-        errors:
-          type: object
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
           required:
-            - detail
-            - code
+            - errors
           properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - archived
-                - loan_active
-                - maintenance_open
-                - no_open_maintenance
-                - has_history
-                - retry_exhausted
-    InventoryOperatorItemValidationError:
-      type: object
-      required:
-        - errors
-      description: |
-        422 extras on an operator item command. `invalid_values` carries the
-        per-definition reasons (mirroring the ALE-292
-        `InventoryDefinitionUpdateError` shape) so the generated client can
-        map each failing definition back to its form field.
-      properties:
-        errors:
-          type: object
-          required:
-            - detail
-            - code
-          properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - invalid_values
-                - invalid_notes
-                - archived_category
-                - archived_container
-                - reason_required
-                - confirmation_required
-            valueErrors:
+            errors:
               type: object
-              description: |
-                Property Definition id → reason, present when `code` is
-                `invalid_values`.
-              additionalProperties:
-                type: string
-                enum:
-                  - required
-                  - type_mismatch
-                  - unknown_option
-                  - retired_option
-                  - retired_definition
-                  - unknown_definition
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - archived
+                    - loan_active
+                    - maintenance_open
+                    - no_open_maintenance
+                    - has_history
+                    - retry_exhausted
+    InventoryOperatorItemValidationError:
+      description: |
+        422 on an operator item command. `invalid_values` carries one
+        `fields["values.<definitionId>"]` entry per failing Property Definition
+        whose message is the reason (`required`, `type_mismatch`,
+        `unknown_option`, `retired_option`, `retired_definition`,
+        `unknown_definition`), so the client can map each failure back to its
+        form field. A changeset failure is a plain `Error` with `fields` and no
+        `code`.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required:
+            - errors
+          properties:
+            errors:
+              type: object
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - invalid_values
+                    - invalid_notes
+                    - archived_category
+                    - archived_container
+                    - reason_required
+                    - confirmation_required
     InventoryCatalogAvailability:
       type: object
       description: |
@@ -10563,47 +10509,46 @@ components:
         data:
           $ref: "#/components/schemas/InventoryMemberLoan"
     InventoryMemberLoanConflictError:
-      type: object
-      required:
-        - errors
       description: |
         409 conflicts on a member Loan command. Each is a domain conflict a
         losing racer receives instead of a server error. `item_unavailable`
         is deliberately generic — it never says who holds the Item or why.
-      properties:
-        errors:
-          type: object
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
           required:
-            - detail
-            - code
+            - errors
           properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - item_unavailable
-                - duplicate_request
-                - not_cancellable
+            errors:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - item_unavailable
+                    - duplicate_request
+                    - not_cancellable
     InventoryMemberLoanValidationError:
-      type: object
-      required:
-        - errors
-      description: 422 validation failures on a member Loan command.
-      properties:
-        errors:
-          type: object
+      description: |
+        422 validation failures on a member Loan command.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
           required:
-            - detail
-            - code
+            - errors
           properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - invalid_dates
-                - invalid_note
+            errors:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - invalid_dates
+                    - invalid_note
     InventoryOperatorLoan:
       type: object
       description: |
@@ -10870,53 +10815,52 @@ components:
           type: string
           format: date
     InventoryOperatorLoanConflictError:
-      type: object
-      required:
-        - errors
       description: |
         409 interlock and invalid-transition conflicts on an operator
         Loan command. Each is a domain conflict a losing racer or a
         wrong-state tap receives instead of a server error.
-      properties:
-        errors:
-          type: object
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
           required:
-            - detail
-            - code
+            - errors
           properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - not_pending
-                - not_approved
-                - not_checked_out
-                - not_editable
-                - item_unavailable
-                - already_allocated
-                - start_immutable
-                - outside_window
-                - maintenance_open
+            errors:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - not_pending
+                    - not_approved
+                    - not_checked_out
+                    - not_editable
+                    - item_unavailable
+                    - already_allocated
+                    - start_immutable
+                    - outside_window
+                    - maintenance_open
     InventoryOperatorLoanValidationError:
-      type: object
-      required:
-        - errors
-      description: 422 validation failures on an operator Loan command.
-      properties:
-        errors:
-          type: object
+      description: |
+        422 validation failures on an operator Loan command.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
           required:
-            - detail
-            - code
+            - errors
           properties:
-            detail:
-              type: string
-            code:
-              type: string
-              enum:
-                - invalid_dates
-                - invalid_note
+            errors:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - invalid_dates
+                    - invalid_note
     InventoryContainerMoveRequest:
       type: object
       properties:
@@ -10928,20 +10872,41 @@ components:
             New parent container id, or null to make this a root container.
     Error:
       type: object
+      description: |
+        The one HTTP problem body (`DhcWeb.Problem`, ALE-343). Every error
+        outside Invitation Acceptance's safe views and the Stripe webhook
+        renders this shape. Slices that type their codes compose it with
+        `allOf: [Error, {errors.code enum}]`.
+      required:
+        - errors
       properties:
         errors:
           type: object
+          required:
+            - detail
           properties:
             detail:
               type: string
+              description: |
+                Human-readable explanation. For a validation failure it is
+                built from `fields` as `field: message; field: message`.
             code:
               type: string
               description: |
-                Optional machine-readable error code for programmatic handling,
-                e.g. `no_saved_payment_method` on membership reactivation
-                or `not_single_select` / `active_dependants` on inventory
-                structure commands. Definition update/retire extras live
-                on the named `InventoryDefinition*Error` schemas.
+                The snake_case domain reason, present on 409 and 422 domain
+                reasons only (e.g. `no_saved_payment_method`,
+                `not_cancellable`, `duplicate_request`, `item_unavailable`).
+                Absent on generic 400/401/403/404/5xx responses and on plain
+                changeset validation failures.
+            fields:
+              type: object
+              description: |
+                Public camelCase field name → messages, placeholders filled
+                in. Nested values use dotted paths (`values.<definitionId>`).
+              additionalProperties:
+                type: array
+                items:
+                  type: string
     AuthSessionProjection:
       type: object
       required:

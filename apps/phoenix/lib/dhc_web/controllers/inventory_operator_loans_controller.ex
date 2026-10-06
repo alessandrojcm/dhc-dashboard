@@ -15,8 +15,8 @@ defmodule DhcWeb.InventoryOperatorLoansController do
   is equal for `quartermaster`, `president`, and `admin`, all enforced by
   the `:inventory_admin_api` pipeline.
 
-  The controller maps `Dhc.Inventory` result tuples onto status codes and
-  enqueues keyed notifications *after* a successful write. The command
+  The controller renders successes (`DhcWeb.InventoryHTTP` maps every
+  error) and enqueues keyed notifications *after* a successful write. The command
   has already committed; `Dhc.Notifications.Workers.KeyedCreateWorker`
   (queue `:notifications`) calls `create_keyed/3` with retries so a
   failed create cannot permanently lose the row. Enqueue failure is a
@@ -31,30 +31,23 @@ defmodule DhcWeb.InventoryOperatorLoansController do
 
   alias Dhc.Inventory
 
+  action_fallback DhcWeb.InventoryHTTP
+
   @view [json: DhcWeb.InventoryOperatorLoansJSON]
 
-  @conflict_codes %{
-    not_pending: "The loan is not a pending request",
-    not_approved: "The loan is not approved",
-    not_checked_out: "The loan is not checked out",
-    not_editable: "The loan's dates are no longer editable",
-    item_unavailable: "The item is not available to allocate",
-    already_allocated: "Another loan already holds this item",
-    start_immutable: "The start date cannot change after checkout",
-    outside_window: "Today is outside the approved loan window",
-    maintenance_open: "The item has an open maintenance period"
-  }
-
-  @validation_codes %{
-    invalid_dates: "dates are invalid",
-    invalid_note: "note must be text"
+  # Domain atoms whose operator wording differs from the member catalog's
+  # in the shared `DhcWeb.InventoryHTTP` table.
+  @operator_reasons %{
+    not_found: :loan_not_found,
+    item_unavailable: :allocation_unavailable,
+    invalid_dates: :invalid_loan_dates
   }
 
   @doc """
   GET /inventory/operator/loans/:loanId
   """
   def show(conn, %{"loanId" => loan_id}) do
-    loan_id |> Inventory.get_operator_loan() |> respond(conn)
+    loan_id |> Inventory.get_operator_loan() |> render_loan(conn)
   end
 
   @doc """
@@ -64,7 +57,7 @@ defmodule DhcWeb.InventoryOperatorLoansController do
     loan_id
     |> Inventory.approve_loan(params, actor_id(conn))
     |> notify(:approved)
-    |> respond(conn)
+    |> render_loan(conn)
   end
 
   @doc """
@@ -74,7 +67,7 @@ defmodule DhcWeb.InventoryOperatorLoansController do
     loan_id
     |> Inventory.reject_loan(params, actor_id(conn))
     |> notify(:rejected)
-    |> respond(conn)
+    |> render_loan(conn)
   end
 
   @doc """
@@ -84,7 +77,7 @@ defmodule DhcWeb.InventoryOperatorLoansController do
     loan_id
     |> Inventory.cancel_operator_loan(params, actor_id(conn))
     |> notify(:cancelled)
-    |> respond(conn)
+    |> render_loan(conn)
   end
 
   @doc """
@@ -93,7 +86,7 @@ defmodule DhcWeb.InventoryOperatorLoansController do
   def checkout(conn, %{"loanId" => loan_id} = params) do
     loan_id
     |> Inventory.check_out_loan(params, actor_id(conn))
-    |> respond(conn)
+    |> render_loan(conn)
   end
 
   @doc """
@@ -102,7 +95,7 @@ defmodule DhcWeb.InventoryOperatorLoansController do
   def return(conn, %{"loanId" => loan_id}) do
     loan_id
     |> Inventory.return_loan(actor_id(conn))
-    |> respond(conn)
+    |> render_loan(conn)
   end
 
   @doc """
@@ -112,7 +105,7 @@ defmodule DhcWeb.InventoryOperatorLoansController do
     loan_id
     |> Inventory.edit_loan_dates(params, actor_id(conn))
     |> notify_if_due_requested(params)
-    |> respond(conn)
+    |> render_loan(conn)
   end
 
   # ── Result mapping ──────────────────────────────────────────────
@@ -157,35 +150,12 @@ defmodule DhcWeb.InventoryOperatorLoansController do
     )
   end
 
-  defp respond({:ok, loan}, conn) do
-    conn |> put_view(@view) |> render(:show, loan: loan)
-  end
+  defp render_loan({:ok, loan}, conn), do: conn |> put_view(@view) |> render(:show, loan: loan)
 
-  defp respond({:error, :notification_enqueue_failed}, conn) do
-    render_error(conn, :internal_server_error, %{detail: "Failed to enqueue notification"})
-  end
+  defp render_loan({:error, reason}, _conn) when is_map_key(@operator_reasons, reason),
+    do: {:error, Map.fetch!(@operator_reasons, reason)}
 
-  defp respond({:error, :not_found}, conn), do: not_found(conn)
-
-  defp respond({:error, reason}, conn) when is_map_key(@conflict_codes, reason) do
-    render_error(conn, :conflict, %{
-      detail: Map.fetch!(@conflict_codes, reason),
-      code: to_string(reason)
-    })
-  end
-
-  defp respond({:error, reason}, conn) when is_map_key(@validation_codes, reason) do
-    render_error(conn, :unprocessable_entity, %{
-      detail: Map.fetch!(@validation_codes, reason),
-      code: to_string(reason)
-    })
-  end
-
-  defp not_found(conn), do: render_error(conn, :not_found, %{detail: "Loan not found"})
-
-  defp render_error(conn, status, assigns) do
-    conn |> put_status(status) |> put_view(@view) |> render(:error, assigns)
-  end
+  defp render_loan(error, _conn), do: error
 
   defp actor_id(conn), do: conn.assigns.current_session.principal.id
 end

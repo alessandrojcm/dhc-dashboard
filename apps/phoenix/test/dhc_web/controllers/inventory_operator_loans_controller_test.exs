@@ -527,11 +527,27 @@ defmodule DhcWeb.InventoryOperatorLoansControllerTest do
       conflict = get_in(spec, ["components", "schemas", "InventoryOperatorLoanConflictError"])
       validation = get_in(spec, ["components", "schemas", "InventoryOperatorLoanValidationError"])
 
-      assert get_in(conflict, ["properties", "errors", "properties", "code", "enum"]) ==
+      assert get_in(conflict, [
+               "allOf",
+               Access.at(1),
+               "properties",
+               "errors",
+               "properties",
+               "code",
+               "enum"
+             ]) ==
                ~w(not_pending not_approved not_checked_out not_editable item_unavailable
                   already_allocated start_immutable outside_window maintenance_open)
 
-      assert get_in(validation, ["properties", "errors", "properties", "code", "enum"]) ==
+      assert get_in(validation, [
+               "allOf",
+               Access.at(1),
+               "properties",
+               "errors",
+               "properties",
+               "code",
+               "enum"
+             ]) ==
                ~w(invalid_dates invalid_note)
     end
   end

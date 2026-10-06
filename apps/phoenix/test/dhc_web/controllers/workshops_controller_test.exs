@@ -537,7 +537,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("member")
         |> post("/api/workshops/#{Ecto.UUID.generate()}/interest")
 
-      assert %{"errors" => %{"detail" => "Workshop not found"}} = json_response(conn, 404)
+      assert json_response(conn, 404) == %{"errors" => %{"detail" => "Workshop not found"}}
     end
   end
 
@@ -589,6 +589,22 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert workshop["priceMember"] == 1000.0
       assert workshop["createdBy"]
       assert workshop["interestCount"] == 0
+    end
+
+    test "rejects an invalid Workshop with camelCase field messages and no code", %{
+      conn: conn
+    } do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops", Map.put(valid_workshop_payload(), "maxCapacity", 0))
+
+      assert json_response(conn, 422) == %{
+               "errors" => %{
+                 "detail" => "maxCapacity: must be greater than 0",
+                 "fields" => %{"maxCapacity" => ["must be greater than 0"]}
+               }
+             }
     end
 
     test "updates planned Workshops but does not allow direct status writes", %{conn: conn} do
@@ -726,7 +742,12 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("admin")
         |> delete("/api/workshops/#{to_uuid(workshop.id)}")
 
-      assert %{"errors" => %{"detail" => "Workshop is already archived"}} =
+      assert %{
+               "errors" => %{
+                 "detail" => "Workshop is already archived",
+                 "code" => "already_archived"
+               }
+             } =
                json_response(conn, 409)
     end
 
@@ -1415,7 +1436,10 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("member")
         |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{})
 
-      assert %{"errors" => %{"detail" => "Workshop is full"}} = json_response(conn, 409)
+      assert json_response(conn, 409) == %{
+               "errors" => %{"detail" => "Workshop is full", "code" => "full"}
+             }
+
       assert Application.get_env(:dhc, :last_workshop_stripe_request) == nil
     end
 
@@ -1858,8 +1882,12 @@ defmodule DhcWeb.WorkshopsControllerTest do
           %{"reason" => "Too late"}
         )
 
-      assert %{"errors" => %{"detail" => "Refund deadline has passed"}} =
-               json_response(conn, 422)
+      assert json_response(conn, 422) == %{
+               "errors" => %{
+                 "detail" => "Refund deadline has passed",
+                 "code" => "deadline_passed"
+               }
+             }
     end
 
     test "records a refund obligation without contacting Stripe", %{conn: conn} do

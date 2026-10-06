@@ -5,6 +5,8 @@ defmodule DhcWeb.SettingsController do
 
   alias Dhc.Settings
 
+  action_fallback DhcWeb.SettingsHTTP
+
   @doc """
   GET /settings
   """
@@ -28,35 +30,11 @@ defmodule DhcWeb.SettingsController do
         |> put_view(json: DhcWeb.SettingsJSON)
         |> render(:show, setting: item)
 
-      {:error, :not_found} ->
-        not_found(conn, "Unknown or non-allowlisted setting key")
-
-      {:error, :missing} ->
-        server_error(conn, "Configured setting row not found")
-
       {:error, :invalid_value, detail} ->
-        unprocessable(conn, detail)
+        {:error, [detail]}
 
-      {:error, :no_value} ->
-        unprocessable(conn, "value is required")
+      error ->
+        error
     end
-  end
-
-  defp not_found(conn, detail) do
-    conn
-    |> put_status(:not_found)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp server_error(conn, detail) do
-    conn
-    |> put_status(:internal_server_error)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp unprocessable(conn, detail) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{errors: %{detail: detail}})
   end
 end

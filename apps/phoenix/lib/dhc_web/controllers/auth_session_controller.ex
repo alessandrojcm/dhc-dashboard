@@ -44,6 +44,7 @@ defmodule DhcWeb.AuthSessionController do
 
   alias Dhc.Auth
   alias DhcWeb.AuthSessionJSON
+  alias DhcWeb.Problem
 
   @session_cookie "_dhc_session"
   # 30-day absolute — must match `Dhc.Auth.PrincipalToken`'s
@@ -76,9 +77,7 @@ defmodule DhcWeb.AuthSessionController do
         |> authorize_discord({:link, session_reference})
 
       {:error, :invalid} ->
-        conn
-        |> put_status(:unauthorized)
-        |> render_view(:error, %{error: "Unauthorized"})
+        Problem.send_reason(conn, :unauthorized)
     end
   end
 
@@ -314,20 +313,18 @@ defmodule DhcWeb.AuthSessionController do
       {:error, :inactive_membership} ->
         :telemetry.execute([:dhc, :auth, :magic_link, :inactive], %{}, %{})
 
-        conn
-        |> put_status(:forbidden)
-        |> render_view(:error, %{
-          error: "Your membership is inactive. Please contact the club to restore access."
-        })
+        Problem.send_detail(
+          conn,
+          :forbidden,
+          "Your membership is inactive. Please contact the club to restore access."
+        )
     end
   end
 
   def verify_magic_link(conn, _params), do: unauthorized_link(conn)
 
   defp unauthorized_link(conn) do
-    conn
-    |> put_status(:unauthorized)
-    |> render_view(:error, %{error: "Invalid or expired link"})
+    Problem.send_detail(conn, :unauthorized, "Invalid or expired link")
   end
 
   # ── GET /api/auth/session ────────────────────────────────────────────
@@ -484,7 +481,4 @@ defmodule DhcWeb.AuthSessionController do
 
   defp render_view(conn, :session, assigns),
     do: json(conn, AuthSessionJSON.session(assigns))
-
-  defp render_view(conn, :error, %{error: detail}),
-    do: json(conn, AuthSessionJSON.error(detail))
 end

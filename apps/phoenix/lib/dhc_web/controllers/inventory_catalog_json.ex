@@ -3,12 +3,11 @@ defmodule DhcWeb.InventoryCatalogJSON do
 
   # ALE-285 member catalog renderer.
   #
-  # Top-level envelope:
+  # Top-level envelope (errors render through `DhcWeb.InventoryHTTP`):
   #   * list  → `%{data: %{items: [...], totalCount:, limit:, nextCursor:,
   #             previousCursor:}}`
   #   * item  → `%{data: %{...}}`
   #   * loan  → `%{data: %{...}}` (the created request)
-  #   * error → `%{errors: %{detail:, code?:}}`
   #
   # The member row is built from the catalog's own map, which by construction
   # holds no container, operator note, maintenance fact, borrower, or archive
@@ -36,16 +35,6 @@ defmodule DhcWeb.InventoryCatalogJSON do
   # cancellation.
   def render("loan.json", %{loan: loan}),
     do: InventoryMemberLoansJSON.render("show.json", %{loan: loan})
-
-  def render("error.json", assigns) do
-    errors =
-      assigns
-      |> Map.take([:detail, :code])
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
-
-    %{errors: errors}
-  end
 
   defp render_item(item) do
     %{

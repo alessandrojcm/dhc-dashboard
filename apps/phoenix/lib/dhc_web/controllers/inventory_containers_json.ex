@@ -7,7 +7,7 @@ defmodule DhcWeb.InventoryContainersJSON do
   #   * collection → `%{data: %{containers: [...]}}`  (InventoryContainerListResponse)
   #   * flat single (create/update) → `%{data: %{...}}` (InventoryContainerListItemResponse)
   #   * detail single (show) → `%{data: %{...}}`        (InventoryContainerDetailResponse)
-  #   * error      → `%{errors: %{detail: ...}}`        (Error)
+  #   * error      → `DhcWeb.InventoryHTTP` (Error)
   #
   # Payload keys are camelCase per the contract: `parentContainerId`,
   # `parentContainer`, `childContainers`, `itemCount`, `createdAt`,
@@ -31,16 +31,6 @@ defmodule DhcWeb.InventoryContainersJSON do
   # Detail (parent + children + items) — show response.
   def render("show.json", %{container: container}) do
     %{data: render_detail(container)}
-  end
-
-  def render("error.json", assigns) do
-    errors =
-      assigns
-      |> Map.take([:detail, :code])
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Map.new()
-
-    %{errors: errors}
   end
 
   defp render_container(%Dhc.Inventory.Container{} = container) do

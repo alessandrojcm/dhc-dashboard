@@ -22,8 +22,4 @@ defmodule DhcWeb.AuthSessionJSON do
     # same shape; we centralize the body here so the two paths cannot drift.
     %{data: %{sent: true}}
   end
-
-  def error(detail) when is_binary(detail) do
-    %{errors: %{detail: detail}}
-  end
 end

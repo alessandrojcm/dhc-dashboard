@@ -3,9 +3,8 @@ defmodule DhcWeb.InventoryOperatorLoansJSON do
 
   # ALE-286c operator loan renderer.
   #
-  # Top-level envelope:
+  # Top-level envelope (errors render through `DhcWeb.InventoryHTTP`):
   #   * loan  → `%{data: %{...}}`
-  #   * error → `%{errors: %{detail:, code?:}}`
   #
   # Distinct from the member loan renderer: this viewer names the
   # borrower and always carries deciding-operator and handover
@@ -15,16 +14,6 @@ defmodule DhcWeb.InventoryOperatorLoansJSON do
   import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
 
   def render("show.json", %{loan: loan}), do: %{data: render_loan(loan)}
-
-  def render("error.json", assigns) do
-    errors =
-      assigns
-      |> Map.take([:detail, :code])
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
-
-    %{errors: errors}
-  end
 
   def render_loan(loan) do
     %{

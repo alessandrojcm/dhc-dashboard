@@ -32,7 +32,8 @@ defmodule DhcWeb.Plugs.RequireSession do
   @behaviour Plug
 
   import Plug.Conn
-  import Phoenix.Controller, only: [json: 2]
+
+  alias DhcWeb.Problem
 
   require Logger
 
@@ -89,16 +90,8 @@ defmodule DhcWeb.Plugs.RequireSession do
     # Aggregate, non-personal telemetry — no email or principal id.
     :telemetry.execute([:dhc, :auth, :session, :rejected], %{reason: inspect(reason)}, %{})
 
-    conn
-    |> put_status(:unauthorized)
-    |> json(%{errors: %{detail: "Unauthorized"}})
-    |> halt()
+    Problem.send_reason(conn, :unauthorized)
   end
 
-  defp forbidden(conn) do
-    conn
-    |> put_status(:forbidden)
-    |> json(%{errors: %{detail: "Insufficient role"}})
-    |> halt()
-  end
+  defp forbidden(conn), do: Problem.send_reason(conn, :forbidden)
 end

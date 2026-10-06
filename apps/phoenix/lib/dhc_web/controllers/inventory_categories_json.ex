@@ -6,7 +6,7 @@ defmodule DhcWeb.InventoryCategoriesJSON do
   # Top-level envelope:
   #   * collection → `%{data: %{categories: [...]}}` (InventoryCategoryListResponse)
   #   * single     → `%{data: %{...}}`              (InventoryCategoryResponse)
-  #   * error      → `%{errors: %{detail: ...}}`     (Error)
+  #   * error      → `DhcWeb.InventoryHTTP` (Error)
   #
   # Payload keys are camelCase per the contract: `itemCount`, `createdAt`,
   # `updatedAt`.
@@ -19,10 +19,6 @@ defmodule DhcWeb.InventoryCategoriesJSON do
 
   def render("show.json", %{category: category}) do
     %{data: render_category(category)}
-  end
-
-  def render("error.json", %{detail: detail}) do
-    %{errors: %{detail: detail}}
   end
 
   defp render_category(%Dhc.Inventory.EquipmentCategory{} = category) do

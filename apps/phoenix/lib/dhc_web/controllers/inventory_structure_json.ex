@@ -3,10 +3,9 @@ defmodule DhcWeb.InventoryStructureJSON do
 
   # ALE-283c operator structure viewer renderer.
   #
-  # Top-level envelope:
+  # Top-level envelope (errors render through `DhcWeb.InventoryHTTP`):
   #   * collection → `%{data: %{definitions: [...]}}` or `%{data: %{options: [...]}}`
   #   * single     → `%{data: %{...}}`
-  #   * error      → `%{errors: %{detail: ..., code?: ...}}`
 
   import DhcWeb.JSONHelpers, only: [serialize_datetime: 1]
 
@@ -24,16 +23,6 @@ defmodule DhcWeb.InventoryStructureJSON do
 
   def render("option.json", %{option: option}) do
     %{data: render_option(option)}
-  end
-
-  def render("error.json", assigns) do
-    errors =
-      assigns
-      |> Map.take([:detail, :code, :itemIds, :activeValueCount])
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Map.new()
-
-    %{errors: errors}
   end
 
   defp render_definition(%Dhc.Inventory.PropertyDefinition{} = definition) do

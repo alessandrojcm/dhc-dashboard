@@ -3,6 +3,8 @@ defmodule DhcWeb.NotificationsController do
 
   alias Dhc.Notifications
 
+  action_fallback DhcWeb.NotificationsHTTP
+
   @doc """
   GET /notifications
   """
@@ -15,11 +17,11 @@ defmodule DhcWeb.NotificationsController do
         |> put_view(json: DhcWeb.NotificationsJSON)
         |> render(:list, result: result)
 
-      {:error, :bad_cursor} ->
-        bad_request(conn, "Invalid or mismatched cursor")
+      {:error, :bad_cursor} = error ->
+        error
 
       {:error, _reason} ->
-        bad_request(conn, "Invalid notifications query")
+        {:error, :invalid_query}
     end
   end
 
@@ -27,16 +29,10 @@ defmodule DhcWeb.NotificationsController do
   def mark_read(conn, %{"id" => notification_id}) do
     user_id = conn.assigns.current_session.principal.id
 
-    case Notifications.mark_read(user_id, notification_id) do
-      {:ok, notification} ->
-        conn
-        |> put_view(json: DhcWeb.NotificationsJSON)
-        |> render(:show, notification: notification)
-
-      {:error, :not_found} ->
-        conn
-        |> put_status(:not_found)
-        |> json(%{errors: %{detail: "Notification not found"}})
+    with {:ok, notification} <- Notifications.mark_read(user_id, notification_id) do
+      conn
+      |> put_view(json: DhcWeb.NotificationsJSON)
+      |> render(:show, notification: notification)
     end
   end
 
@@ -47,11 +43,5 @@ defmodule DhcWeb.NotificationsController do
     conn
     |> put_view(json: DhcWeb.NotificationsJSON)
     |> render(:mark_all_read, updated_count: updated_count)
-  end
-
-  defp bad_request(conn, detail) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{errors: %{detail: detail}})
   end
 end

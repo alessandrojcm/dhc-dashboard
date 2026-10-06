@@ -145,7 +145,7 @@ defmodule DhcWeb.MembersControllerTest do
         |> put_req_header("authorization", "Bearer member-token")
         |> get("/api/members")
 
-      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+      assert json_response(conn, 403) == %{"errors" => %{"detail" => "Insufficient role"}}
     end
 
     test "returns camelCase members and excludes internal/leaky fields", %{conn: conn} do
@@ -570,8 +570,12 @@ defmodule DhcWeb.MembersControllerTest do
         |> put_req_header("authorization", "Bearer self-token")
         |> patch("/api/members/#{member_id}", %{"isActive" => false})
 
-      assert %{"errors" => %{"detail" => "Invalid member update payload"}} =
-               json_response(conn, 422)
+      assert json_response(conn, 422) == %{
+               "errors" => %{
+                 "detail" => "Invalid member update payload",
+                 "code" => "invalid_payload"
+               }
+             }
     end
 
     # #9: customerId is the Stripe linkage and NOT in @profile_update_fields.

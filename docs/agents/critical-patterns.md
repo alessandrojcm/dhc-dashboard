@@ -150,6 +150,16 @@ Spread the remote form or its preflight-enhanced variant onto the native form el
 - **Comparing a stored UTC timestamp against a loan date goes through `ClubCalendar.on_date/1`, not `DateTime.to_date/1`.** A handover at 23:30 UTC is already the next day in Dublin summer time, so `to_date/1` compares the wrong calendar day. `today/0`, `on_date/1`, and `to_utc/2` convert with the `tz` time-zone database owned by `Dhc.ClubCalendar`.
 - Guards that run raw SQL must not pattern-match a single expected row shape (`%{rows: [[value]]}`); a recursive CTE over a missing row returns no rows and raises `MatchError` instead of the intended domain error. Match the result and map "missing" onto the same domain reason as "inactive".
 
+## HTTP Errors: Controllers Return `{:error, reason}` (ALE-343)
+
+Controllers return `{:error, reason}`; the domain HTTP module owns status and detail.
+
+- Every Phoenix controller outside the excluded slices (Invitation Acceptance safe views, the non-enumerating magic-link 200, Stripe webhooks) declares `action_fallback DhcWeb.<Domain>HTTP` and returns the domain result: `{:error, reason}`, `{:error, reason, fields}`, `{:error, %Ecto.Changeset{}}` or `{:error, [message]}`. Do not call `put_status`, `json(%{errors: ...})` or `Ecto.Changeset.traverse_errors` for an error in a controller.
+- `DhcWeb.Problem` renders the one body `{errors: {detail, code?, fields?}}`: `code` is the reason, only on 409/422 domain reasons; `fields` is public camelCase → messages with placeholders filled; a changeset's `detail` is built from its fields. An undeclared reason raises.
+- Declare a reason once in the family's module (`use DhcWeb.Problem, reasons: %{reason => {status, detail}}, fields: %{internal => public}`). When one family needs two details for one domain atom, the controller renames it (`:not_found` → `:loan_not_found`) and the renamed reason keeps the public code via `{status, detail, code}`.
+- Plugs render the shared `:unauthorized`/`:forbidden`/`:not_found` with `DhcWeb.Problem.send_reason/2` (it halts); a fixed message outside a reason table uses `Problem.send_detail/4`.
+- OpenAPI has one `Error` schema; a slice types its codes with `allOf: [Error, {errors.code enum}]` rather than a parallel error object.
+
 ## Discord External Identities
 
 - Resolve Discord login by `(provider, provider_subject)` before looking at profile email.

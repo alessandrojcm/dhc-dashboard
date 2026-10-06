@@ -3,12 +3,11 @@ defmodule DhcWeb.InventoryItemsJSON do
 
   # ALE-284c operator item viewer renderer.
   #
-  # Top-level envelope:
+  # Top-level envelope (errors render through `DhcWeb.InventoryHTTP`):
   #   * list        → `%{data: %{items: [...], totalCount:, limit:,
   #                    nextCursor:, previousCursor:}}`
   #   * single      → `%{data: %{...}}`
   #   * maintenance → `%{data: %{periods: [...]}}`
-  #   * error       → `%{errors: %{detail:, code?:, valueErrors?:}}`
   #
   # The viewer deliberately omits the legacy and internal columns the target
   # item never uses: `quantity`, `photoUrl`, `attributes`,
@@ -39,25 +38,6 @@ defmodule DhcWeb.InventoryItemsJSON do
   def render("maintenance.json", %{periods: periods}) do
     %{data: %{periods: Enum.map(periods, &render_period/1)}}
   end
-
-  def render("error.json", assigns) do
-    errors =
-      assigns
-      |> Map.take([:detail, :code, :valueErrors, :notes, :values])
-      |> Enum.reject(fn {_key, value} -> is_nil(value) end)
-      |> Map.new()
-      |> render_value_errors()
-
-    %{errors: errors}
-  end
-
-  # Per-definition reasons are atoms in the domain; the contract types them
-  # as strings keyed by definition id.
-  defp render_value_errors(%{valueErrors: value_errors} = errors) when is_map(value_errors) do
-    %{errors | valueErrors: Map.new(value_errors, fn {id, reason} -> {id, to_string(reason)} end)}
-  end
-
-  defp render_value_errors(errors), do: errors
 
   defp render_item(%Item{} = item) do
     %{

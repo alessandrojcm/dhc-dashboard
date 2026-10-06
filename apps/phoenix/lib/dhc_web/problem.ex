@@ -198,12 +198,18 @@ defmodule DhcWeb.Problem do
   @doc "Fills `%{key}` placeholders in an Ecto error message."
   @spec interpolate({String.t(), keyword()}) :: String.t()
   def interpolate({message, opts}) do
+    values = Map.new(opts, fn {key, value} -> {to_string(key), value} end)
+
     Regex.replace(~r/%{(\w+)}/, message, fn placeholder, key ->
-      case Enum.find(opts, fn {opt, _value} -> to_string(opt) == key end) do
-        {_opt, value} -> placeholder_value(value)
-        nil -> placeholder
-      end
+      fill_placeholder(values, key, placeholder)
     end)
+  end
+
+  defp fill_placeholder(values, key, placeholder) do
+    case Map.fetch(values, key) do
+      {:ok, value} -> placeholder_value(value)
+      :error -> placeholder
+    end
   end
 
   # ── internals ──────────────────────────────────────────────────

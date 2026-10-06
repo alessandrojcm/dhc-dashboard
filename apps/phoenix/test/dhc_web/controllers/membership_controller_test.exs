@@ -225,10 +225,13 @@ defmodule DhcWeb.MembershipControllerTest do
 
       conn = post_reactivate(conn, member.auth_user_id, Date.utc_today())
 
-      assert %{"errors" => %{"detail" => detail, "code" => "no_saved_payment_method"}} =
-               json_response(conn, 409)
-
-      assert detail =~ "billing portal"
+      assert json_response(conn, 409) == %{
+               "errors" => %{
+                 "detail" =>
+                   "Member has no usable saved SEPA payment method; use the billing portal as fallback",
+                 "code" => "no_saved_payment_method"
+               }
+             }
     end
   end
 
@@ -566,8 +569,9 @@ defmodule DhcWeb.MembershipControllerTest do
 
       conn = post_reactivate(conn, member.auth_user_id, start_date)
 
-      assert %{"errors" => %{"detail" => "Stripe membership reactivation failed"}} =
-               json_response(conn, 502)
+      assert json_response(conn, 502) == %{
+               "errors" => %{"detail" => "Stripe membership reactivation failed"}
+             }
     end
   end
 

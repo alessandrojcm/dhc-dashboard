@@ -3,27 +3,22 @@ defmodule DhcWeb.DiscordDoctorController do
 
   alias Dhc.Discord
 
+  action_fallback DhcWeb.DiscordDoctorHTTP
+
   def report(conn, params) do
     case Discord.doctor_report(refresh: params["refresh"] == "true") do
       {:ok, report} ->
         render(conn, :report, report: report)
 
       {:error, _reason} ->
-        conn
-        |> put_status(:bad_gateway)
-        |> json(%{errors: %{detail: "Discord member list unavailable"}})
+        {:error, :discord_unavailable}
     end
   end
 
   def kick(conn, params) do
     case validate_kick_request(params) do
-      {:ok, user_ids, note} ->
-        execute_kick(conn, user_ids, note)
-
-      {:error, detail} ->
-        conn
-        |> put_status(:unprocessable_entity)
-        |> json(%{errors: %{detail: detail}})
+      {:ok, user_ids, note} -> execute_kick(conn, user_ids, note)
+      {:error, detail} -> {:error, [detail]}
     end
   end
 
@@ -34,15 +29,11 @@ defmodule DhcWeb.DiscordDoctorController do
       {:ok, results} ->
         render(conn, :kick, results: results)
 
-      {:error, :admin_not_found} ->
-        conn
-        |> put_status(:unprocessable_entity)
-        |> json(%{errors: %{detail: "Authenticated administrator profile unavailable"}})
+      {:error, :admin_not_found} = error ->
+        error
 
       {:error, _reason} ->
-        conn
-        |> put_status(:bad_gateway)
-        |> json(%{errors: %{detail: "Discord member list unavailable"}})
+        {:error, :discord_unavailable}
     end
   end
 

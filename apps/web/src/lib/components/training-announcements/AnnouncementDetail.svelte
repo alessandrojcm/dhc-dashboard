@@ -19,7 +19,7 @@ import {
 	trainingAnnouncementExceptionsListSuppressionsQueryKey,
 	trainingAnnouncementOccurrencesListForAnnouncementOptions,
 	type TrainingAnnouncement,
-	type TrainingAnnouncementError,
+	type ApiErrorResponse,
 	type TrainingAnnouncementOverride,
 	type TrainingAnnouncementSuppression,
 } from "@dhc/api-client";
@@ -134,7 +134,7 @@ function removeOptions(queryKey: QueryKey, fallback: string) {
 			return { previous };
 		},
 		onError: (
-			cause: TrainingAnnouncementError,
+			cause: ApiErrorResponse,
 			_variables: RemovalVariables,
 			context: RemovalContext | undefined,
 		) => {

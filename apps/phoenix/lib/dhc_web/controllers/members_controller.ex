@@ -3,6 +3,8 @@ defmodule DhcWeb.MembersController do
 
   alias Dhc.Members
 
+  action_fallback DhcWeb.MembersHTTP
+
   @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
 
   @doc """
@@ -15,11 +17,11 @@ defmodule DhcWeb.MembersController do
         |> put_view(json: DhcWeb.MembersJSON)
         |> render(:index, result: result)
 
-      {:error, :bad_cursor} ->
-        bad_request(conn, "Invalid or mismatched cursor")
+      {:error, :bad_cursor} = error ->
+        error
 
       {:error, _reason} ->
-        bad_request(conn, "Invalid members query")
+        {:error, :invalid_query}
     end
   end
 
@@ -34,14 +36,10 @@ defmodule DhcWeb.MembersController do
 
   @doc "GET /members/me"
   def me(conn, _params) do
-    case Members.get_current_user(conn.assigns.current_session.principal.id) do
-      {:ok, user} ->
-        conn
-        |> put_view(json: DhcWeb.MembersJSON)
-        |> render(:current_user, user: user, roles: conn.assigns.current_session.roles)
-
-      {:error, :not_found} ->
-        not_found(conn, "Member not found")
+    with {:ok, user} <- Members.get_current_user(conn.assigns.current_session.principal.id) do
+      conn
+      |> put_view(json: DhcWeb.MembersJSON)
+      |> render(:current_user, user: user, roles: conn.assigns.current_session.roles)
     end
   end
 
@@ -54,9 +52,6 @@ defmodule DhcWeb.MembersController do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
       |> render(:show, member: member)
-    else
-      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
-      {:error, :not_found} -> not_found(conn, "Member not found")
     end
   end
 
@@ -71,11 +66,6 @@ defmodule DhcWeb.MembersController do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
       |> render(:show, member: member)
-    else
-      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
-      {:error, :not_found} -> not_found(conn, "Member not found")
-      {:error, :invalid_payload} -> validation_error(conn, "Invalid member update payload")
-      {:error, %Ecto.Changeset{} = changeset} -> validation_error(conn, changeset)
     end
   end
 
@@ -106,47 +96,5 @@ defmodule DhcWeb.MembersController do
     else
       {:error, :forbidden}
     end
-  end
-
-  defp bad_request(conn, detail) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp forbidden(conn, detail) do
-    conn
-    |> put_status(:forbidden)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp not_found(conn, detail) do
-    conn
-    |> put_status(:not_found)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp validation_error(conn, %Ecto.Changeset{} = changeset) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{
-      errors: %{detail: "Invalid member update payload", fields: changeset_errors(changeset)}
-    })
-  end
-
-  defp validation_error(conn, detail) do
-    conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{errors: %{detail: detail}})
-  end
-
-  defp changeset_errors(changeset) do
-    Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
-      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
-        opts
-        |> Keyword.get(String.to_existing_atom(key), key)
-        |> to_string()
-      end)
-    end)
   end
 end
