@@ -44,7 +44,7 @@ The operator loan queue (`Dhc.Inventory.OperatorLoanQueue`, ALE-297) is a lock-f
 
 ## Navigation
 
-Training Announcement lifecycle, drivers and first-freeze stamping (ALE-323/325/326) share `Dhc.TrainingAnnouncements.Store.with_current/2` for conditional-write claims and authoritative rereads. `Delivery.progress/3` owns post-commit Discord progression; `Scheduling` alone writes Oban jobs. Before changing these paths or Holiday Announcement recovery, read the Training Announcement rows in `docs/agents/where-to-look.md`.
+Training Announcement lifecycle, drivers and first-freeze stamping (ALE-323/325/326) share `Dhc.TrainingAnnouncements.Store.with_current/2` for conditional-write claims and authoritative rereads. `Execution.evaluate/2` (ALE-348) is the only path from a due `{:announcement, id, date}` / `{:holiday, phase, date}` to its one Evidence row (one private `insert_all` writer, due-mode resolution, copy/channel checks) and the only caller of `Delivery.progress/3`, which owns post-commit Discord progression and maps `Dhc.Discord`'s classified failure atoms; `Scheduling` alone writes Oban jobs, and workers only turn job args into an `evaluate` call. `Execution.clock/0,1,2` is the one clock (Dublin today, `now_time`, holiday set) for execution and `OccurrenceReads`; tests pass `clock: Execution.clock(fixed_now)`. Before changing these paths or Holiday Announcement recovery, read the Training Announcement rows in `docs/agents/where-to-look.md`.
 
 - Structure: [docs/agents/structure.md](docs/agents/structure.md)
 - Where to look: [docs/agents/where-to-look.md](docs/agents/where-to-look.md)
