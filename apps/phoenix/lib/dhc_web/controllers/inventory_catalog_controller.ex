@@ -52,7 +52,7 @@ defmodule DhcWeb.InventoryCatalogController do
   GET /inventory/catalog/items/:slugOrId
   """
   def show_item(conn, %{"slugOrId" => slug_or_id}) do
-    with {:ok, item} <- Inventory.resolve_catalog_item(slug_or_id) do
+    with {:ok, item} <- slug_or_id |> Inventory.resolve_catalog_item() |> item_error() do
       conn |> put_view(@view) |> render(:show, item: item)
     end
   end
@@ -62,7 +62,10 @@ defmodule DhcWeb.InventoryCatalogController do
   """
   def request_loan(conn, %{"slugOrId" => slug_or_id} = params) do
     with {:ok, loan} <-
-           slug_or_id |> Inventory.request_loan(params, actor_id(conn)) |> notify(:requested) do
+           slug_or_id
+           |> Inventory.request_loan(params, actor_id(conn))
+           |> item_error()
+           |> notify(:requested) do
       conn |> put_status(:created) |> put_view(@view) |> render(:loan, loan: loan)
     end
   end
@@ -87,6 +90,10 @@ defmodule DhcWeb.InventoryCatalogController do
   end
 
   defp notify(error, _kind), do: error
+
+  # This slice's `:not_found` is always the addressed catalog Item.
+  defp item_error({:error, :not_found}), do: {:error, :item_not_found}
+  defp item_error(result), do: result
 
   defp actor_id(conn), do: conn.assigns.current_session.principal.id
 end

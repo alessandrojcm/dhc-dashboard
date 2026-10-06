@@ -104,7 +104,7 @@ defmodule DhcWeb.InventoryItemsController do
   GET /inventory/items/:slugOrId/maintenance
   """
   def list_maintenance(conn, %{"slugOrId" => slug_or_id}) do
-    with {:ok, _item} <- Inventory.resolve_operator_item(slug_or_id) do
+    with {:ok, _item} <- slug_or_id |> Inventory.resolve_operator_item() |> item_error() do
       periods = Inventory.list_operator_item_maintenance_periods(slug_or_id)
       conn |> put_view(@view) |> render(:maintenance, periods: periods)
     end
@@ -159,7 +159,11 @@ defmodule DhcWeb.InventoryItemsController do
   defp render_item({:error, :invalid_values, value_errors}, _conn, _status),
     do: {:error, :invalid_values, DhcWeb.InventoryHTTP.value_fields(value_errors)}
 
-  defp render_item(error, _conn, _status), do: error
+  defp render_item(error, _conn, _status), do: item_error(error)
+
+  # This slice's `:not_found` is always the addressed Item.
+  defp item_error({:error, :not_found}), do: {:error, :item_not_found}
+  defp item_error(result), do: result
 
   defp actor_id(conn), do: conn.assigns.current_session.principal.id
 end

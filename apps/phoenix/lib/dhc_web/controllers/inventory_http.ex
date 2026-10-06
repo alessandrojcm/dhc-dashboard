@@ -5,7 +5,7 @@ defmodule DhcWeb.InventoryHTTP do
   and operator loans.
 
   Controllers return the domain result; where one domain atom needs two
-  details in this family (`:not_found` naming a Loan rather than an Item, or
+  details in this family (`:not_found` naming an Item, a Loan or a Category, or
   `:still_referenced` naming a Category rather than an Option) the controller
   renames it to the reason below. Reasons that share one public code declare
   it as the third element.
@@ -14,7 +14,9 @@ defmodule DhcWeb.InventoryHTTP do
   use DhcWeb.Problem,
     reasons: %{
       # ── 404 ──────────────────────────────────────────────────────
-      not_found: {404, "Item not found"},
+      # `:not_found` keeps the generic shared "Not found"; every slice
+      # renames it to the resource it names.
+      item_not_found: {404, "Item not found"},
       loan_not_found: {404, "Loan not found"},
       category_not_found: {404, "Category not found"},
       container_not_found: {404, "Container not found"},
