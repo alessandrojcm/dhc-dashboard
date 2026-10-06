@@ -7,7 +7,7 @@ import { MESSAGE_STYLES } from "./_components/message-styles";
  * Unlike the transactional templates this is **not** a Resend-hosted
  * template and not an Email Kind: its body is rich text that can exceed
  * Resend's 2,000-character variable limit. Instead `scripts/render-shells.tsx`
- * renders this component once with literal `{{{SUBJECT}}}` /
+ * renders this component before Phoenix compilation with literal `{{{SUBJECT}}}` /
  * `{{{MESSAGE_HTML}}}` placeholders into
  * `apps/phoenix/priv/email_shells/member-announcement.html`. Phoenix fills the
  * placeholders — the subject HTML-escaped, the body rendered from a closed

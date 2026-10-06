@@ -17,6 +17,9 @@ playwright-report
 test-results
 tmp
 
+# Include gitignored apps/phoenix/priv/email_shells: generated before fly deploy
+# and copied into the remote Phoenix build by COPY apps/phoenix/priv priv.
+
 # Dockerfile.remote is tooling-only: Namespace checks the target repository out
 # after image creation, so no repository content is needed in its build context.
 # Individual COPY directives in other Dockerfiles still opt in to the files they

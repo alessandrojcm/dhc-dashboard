@@ -52,26 +52,31 @@ run = "pnpm check"
 # ── Phoenix ────────────────────────────────────────
 
 [tasks.phx-setup]
+depends = ["email-shells"]
 description = "Install Elixir deps, create DB, run migrations"
 dir = "apps/phoenix"
 run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix setup"
 
 [tasks.phx-server]
+depends = ["email-shells"]
 description = "Start Phoenix dev server (hot-reload on :4000)"
 dir = "apps/phoenix"
 run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix phx.server"
 
 [tasks.phx-console]
+depends = ["email-shells"]
 description = "Start IEx with Phoenix server"
 dir = "apps/phoenix"
 run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres iex -S mix phx.server"
 
 [tasks.phx-migrate]
+depends = ["email-shells"]
 description = "Run pending Ecto migrations"
 dir = "apps/phoenix"
 run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix ecto.migrate"
 
 [tasks.phx-rollback]
+depends = ["email-shells"]
 description = "Rollback last Ecto migration"
 dir = "apps/phoenix"
 run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix ecto.rollback"
@@ -82,6 +87,7 @@ dir = "apps/phoenix"
 run = "mix ecto.gen.migration $@"
 
 [tasks.phx-test]
+depends = ["email-shells"]
 description = "Generate the TS API client, then run Phoenix tests"
 run = [
     "pnpm install --filter @dhc/api-client...",
@@ -90,6 +96,7 @@ run = [
 ]
 
 [tasks.phx-precommit]
+depends = ["email-shells"]
 description = "Full Phoenix check: compile + unlock + format + test"
 dir = "apps/phoenix"
 run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix precommit"
@@ -100,6 +107,7 @@ dir = "apps/phoenix"
 run = "mix format"
 
 [tasks."phx-fly-deploy"]
+depends = ["email-shells"]
 description = "Deploy the Phoenix API release to Fly.io"
 run = "fly deploy --app ${FLY_APP:-dhc-dashboard} --depot"
 
@@ -109,6 +117,7 @@ dir = "apps/phoenix"
 run = "mix format --check-formatted"
 
 [tasks.phx-reach]
+depends = ["email-shells"]
 description = "Run Reach architecture policy checks (.reach.exs)"
 dir = "apps/phoenix"
 run = "mix reach.check --arch"
@@ -128,6 +137,7 @@ run = "ast-grep test -c sgconfig.yml"
 # ── API contract (replaces make api-gen) ───────────
 
 [tasks.api-gen]
+depends = ["email-shells"]
 description = "Regenerate both sides of API contract (Phoenix stubs + TS client)"
 run = [
     "cd apps/phoenix && mix gen.controllers",
@@ -137,6 +147,7 @@ run = [
 # ── Stripe API client ──────────────────────────────
 
 [tasks."stripe-gen"]
+depends = ["email-shells"]
 description = "Download Stripe spec, trim to our operations, and regenerate typed Elixir client"
 dir = "apps/phoenix"
 run = "MIX_ENV=dev mix stripe.gen"
@@ -165,6 +176,7 @@ env = { API_BASE_URL = "http://127.0.0.1:4000/api", E2E_COMPOSE_PROJECT = "dhc-d
 run = "pnpm test:e2e"
 
 [tasks."e2e-phoenix-server"]
+depends = ["email-shells"]
 description = "Start the Phoenix E2E server and disposable PostgreSQL database"
 dir = "apps/phoenix"
 env = { MIX_ENV = "test", MIX_BUILD_PATH = "_build/e2e", E2E_SERVER = "true", E2E_API_PORT = "4000", E2E_HARNESS_KEY = "local-e2e-harness", APP_URL = "http://127.0.0.1:5173" }
@@ -193,6 +205,7 @@ run = "pnpm format:check"
 # ── Seeds ─────────────────────────────────────────
 
 [tasks."seed-committee"]
+depends = ["email-shells"]
 description = "Seed committee members from CSV"
 dir = "apps/phoenix"
 usage = '''
@@ -201,6 +214,7 @@ arg "[users]" help="CSV containing committee user data" default="../../scripts/u
 run = 'mix seed.committee_members "${usage_users?}"'
 
 [tasks."seed-waitlist"]
+depends = ["email-shells"]
 description = "Seed waitlist entries"
 dir = "apps/phoenix"
 usage = '''
@@ -209,6 +223,7 @@ arg "[count]" help="Number of waitlist entries to seed" default="10"
 run = 'mix seed.waitlist "${usage_count?}"'
 
 [tasks."seed-invitations"]
+depends = ["email-shells"]
 description = "Seed pending member invitations"
 dir = "apps/phoenix"
 usage = '''
@@ -217,6 +232,7 @@ arg "[count]" help="Number of invitations to seed" default="10"
 run = 'mix seed.invitations "${usage_count?}"'
 
 [tasks."seed-members"]
+depends = ["email-shells"]
 description = "Seed member records"
 dir = "apps/phoenix"
 usage = '''
@@ -225,6 +241,7 @@ arg "[count]" help="Number of members to seed" default="10"
 run = 'mix seed.members "${usage_count?}"'
 
 [tasks."seed-workshops"]
+depends = ["email-shells"]
 description = "Seed workshop records with interest, registrations, and refunds"
 dir = "apps/phoenix"
 usage = '''
@@ -233,6 +250,7 @@ arg "[count]" help="Number of workshops to seed" default="5"
 run = 'mix seed.workshops "${usage_count?}"'
 
 [tasks."seed-inventory"]
+depends = ["email-shells"]
 description = "Seed inventory structure, items, loans, and maintenance"
 dir = "apps/phoenix"
 usage = '''
@@ -243,6 +261,13 @@ run = 'mix seed.inventory "${usage_count?}"'
 # ── Email templates (Resend sync, ADR 0022) ────────
 # Requires a Full Access Resend key in RESEND_API_KEY (CI secret
 # RESEND_API_KEY_CI); send-only keys cannot manage templates.
+
+[tasks."email-shells"]
+description = "Generate React Email HTML and styles before Phoenix compilation (no Resend key)"
+run = [
+    "pnpm install --frozen-lockfile --filter @dhc/email-templates... --ignore-scripts",
+    "pnpm --filter @dhc/email-templates render:shells",
+]
 
 [tasks."email-sync"]
 description = "Upsert email templates to Resend as drafts"

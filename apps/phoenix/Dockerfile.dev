@@ -64,6 +64,8 @@ WORKDIR /workspace/apps/phoenix
 RUN mix deps.get \
     && mix deps.compile
 
+# Run mise run email-shells on the host before building; Compose also mounts
+# that generated priv/email_shells directory with the Phoenix source.
 COPY apps/phoenix ./
 RUN mix compile
 

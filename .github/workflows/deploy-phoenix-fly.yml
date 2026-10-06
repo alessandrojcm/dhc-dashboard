@@ -37,6 +37,12 @@ jobs:
           filters: |
             phoenix:
               - 'apps/phoenix/**'
+              - 'packages/email-templates/**'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - '.mise.toml'
+              - '.dockerignore'
               - 'fly.toml'
               - 'fnox.toml'
               - '.github/workflows/deploy-phoenix-fly.yml'
@@ -53,6 +59,23 @@ jobs:
 
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+
+      - name: Install email template dependencies
+        run: pnpm install --frozen-lockfile --filter @dhc/email-templates... --ignore-scripts
+
+      # flyctl uploads these gitignored files in the local Docker build context.
+      # Keep email_shells out of .dockerignore; Phoenix embeds them at compile time.
+      - name: Generate Phoenix email shells
+        run: pnpm --filter @dhc/email-templates render:shells
 
       # Build on Fly's Depot builder, which provides persistent org-scoped
       # Docker layer caching across builds (vs --remote-only's pooled builder,

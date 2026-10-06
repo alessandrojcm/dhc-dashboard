@@ -1,18 +1,39 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { renderShells, SHELLS_DIR } from "../scripts/render-shells";
+import { renderShells, writeShells } from "../scripts/render-shells";
+import { MESSAGE_STYLES } from "../emails/_components/message-styles";
 
 /**
- * Phoenix compiles the committed shells in (ADR 0028), so a template edit
- * must be followed by `pnpm render:shells`. This is the drift guard.
+ * Phoenix compiles generated shells in (ADR 0028). Verify generation from
+ * a missing directory and repeated writes without needing committed artifacts.
  */
 describe("broadcast email shells", () => {
-  it("match a fresh render (run `pnpm render:shells` after editing a shell template)", async () => {
-    for (const artifact of await renderShells()) {
-      const committed = await readFile(new URL(artifact.file, `file://${SHELLS_DIR}`), "utf8");
-      expect(committed, artifact.file).toBe(artifact.contents);
+  it("writes both artifacts to a missing directory and regenerates them deterministically", async () => {
+    const temp = await mkdtemp(join(tmpdir(), "email-shells-"));
+    const output = join(temp, "priv", "email_shells");
+    try {
+      const artifacts = await renderShells();
+      expect(artifacts.map(({ file }) => file)).toEqual([
+        "member-announcement.html",
+        "member-announcement.styles.json",
+      ]);
+      for (let pass = 0; pass < 2; pass++) {
+        await writeShells(output);
+        for (const artifact of artifacts) {
+          expect(await readFile(join(output, artifact.file), "utf8"), artifact.file).toBe(
+            artifact.contents,
+          );
+        }
+      }
+      expect(
+        JSON.parse(await readFile(join(output, "member-announcement.styles.json"), "utf8")),
+      ).toEqual(MESSAGE_STYLES);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
     }
   });
 

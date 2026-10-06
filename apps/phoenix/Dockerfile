@@ -57,6 +57,8 @@ RUN mkdir config
 COPY apps/phoenix/config/config.exs apps/phoenix/config/prod.exs config/
 RUN mix deps.compile
 
+# Generate email shells on the host/CI runner before uploading this context
+# (mise run email-shells). Node is not required on the remote builder.
 COPY apps/phoenix/priv priv
 COPY apps/phoenix/lib lib
 COPY apps/phoenix/rel rel

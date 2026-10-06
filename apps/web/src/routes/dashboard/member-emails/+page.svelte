@@ -19,7 +19,14 @@ import {
 	createQuery,
 	useQueryClient,
 } from "@tanstack/svelte-query";
-import { LoaderCircle, Mail, Send } from "@lucide/svelte";
+import {
+	Eye,
+	LoaderCircle,
+	Mail,
+	Send,
+	ShieldCheck,
+	Users,
+} from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { apiProblem } from "#lib/api-error.js";
 import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
@@ -202,18 +209,33 @@ function audienceLabel(row: MemberAnnouncement) {
 	</header>
 
 	<div class="grid gap-6 lg:grid-cols-2">
-		<section class="space-y-5" aria-labelledby="compose-heading">
-			<h2 id="compose-heading" class="sr-only">Compose</h2>
+		<section
+			class="min-w-0 space-y-5 rounded-xl border border-border bg-card p-4 shadow-sm sm:p-5"
+			aria-labelledby="compose-heading"
+		>
+			<div>
+				<h2 id="compose-heading" class="font-heading text-xl font-bold">
+					Compose email
+				</h2>
+				<p class="mt-1 text-sm text-foreground/80">
+					Write your message, check the preview, then review who receives it.
+				</p>
+			</div>
 			<Field.Field>
 				<Field.Label for="member-email-subject">Subject</Field.Label>
 				<Input
+					class="border-foreground/30 bg-background"
 					id="member-email-subject"
 					bind:value={subject}
 					maxlength={SUBJECT_MAX}
+					disabled={sendMutation.isPending}
+					aria-describedby="subject-help"
 					placeholder="e.g. Annual General Meeting"
 					aria-invalid={Boolean(fieldErrors.subject)}
 				/>
-				<Field.Description>Also shown as the email heading.</Field.Description>
+				<Field.Description id="subject-help"
+					>Also shown as the email heading.</Field.Description
+				>
 				{#each fieldErrors.subject ?? [] as message (message)}
 					<Field.Error>{message}</Field.Error>
 				{/each}
@@ -223,6 +245,7 @@ function audienceLabel(row: MemberAnnouncement) {
 				<Field.Label for="member-email-body">Message</Field.Label>
 				{#key editorKey}
 					<RichTextEditor
+						class="border-foreground/30 bg-background"
 						id="member-email-body"
 						aria-label="Message"
 						placeholder="Write your announcement…"
@@ -236,40 +259,68 @@ function audienceLabel(row: MemberAnnouncement) {
 				{/each}
 			</Field.Field>
 
-			<Field.Field orientation="horizontal">
-				<Checkbox
-					id="member-email-include-inactive"
-					bind:checked={includeInactive}
-				/>
-				<Field.Content>
-					<Field.Label for="member-email-include-inactive">
-						Also email inactive members
-					</Field.Label>
-					<Field.Description>
-						Active members (including paused memberships) always receive it.
-					</Field.Description>
-				</Field.Content>
-			</Field.Field>
+			<div class="space-y-3 rounded-xl border border-border bg-muted/60 p-4">
+				<h3 class="flex items-center gap-2 text-sm font-semibold">
+					<Users class="size-4 text-primary" aria-hidden="true" />Recipients
+				</h3>
+				<p class="text-sm text-foreground/80">
+					Active members, including paused memberships.
+				</p>
+				<Field.Field orientation="horizontal">
+					<Checkbox
+						id="member-email-include-inactive"
+						bind:checked={includeInactive}
+						disabled={sendMutation.isPending}
+					/>
+					<Field.Content>
+						<Field.Label for="member-email-include-inactive">
+							Also email inactive members
+						</Field.Label>
+					</Field.Content>
+				</Field.Field>
+				<p
+					class="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"
+				>
+					<ShieldCheck class="size-4 shrink-0" aria-hidden="true" />Addresses
+					stay private. All recipients are BCC'd.
+				</p>
+			</div>
 
 			<div class="flex flex-wrap items-center justify-between gap-3">
 				<p class="text-sm text-muted-foreground" aria-live="polite">
-					{#if recipientCount !== null && hasText}
+					{#if !hasText || subjectTrimmed === ""}
+						Add a subject and message to continue.
+					{:else if previewError}
+						Check the preview error before sending.
+					{:else if previewMutation.isPending || recipientCount === null}
+						Checking recipients…
+					{:else if recipientCount === 0}
+						No members in this audience.
+					{:else}
 						{recipientCount} recipient{recipientCount === 1 ? "" : "s"}
 					{/if}
 				</p>
 				<Button
+					class="min-h-11 w-full sm:w-auto"
 					disabled={!canSend || sendMutation.isPending}
 					onclick={() => (confirmOpen = true)}
 				>
 					<Send />
-					Send email
+					Review & send
 				</Button>
 			</div>
 		</section>
 
-		<section class="space-y-2" aria-labelledby="preview-heading">
-			<div class="flex items-center justify-between">
-				<h2 id="preview-heading" class="text-sm font-semibold">Preview</h2>
+		<section class="min-w-0 space-y-3" aria-labelledby="preview-heading">
+			<div class="flex min-h-14 items-start justify-between gap-3">
+				<div>
+					<h2 id="preview-heading" class="font-heading text-xl font-bold">
+						Email preview
+					</h2>
+					<p class="mt-1 text-sm text-muted-foreground">
+						Updates automatically as you write.
+					</p>
+				</div>
 				{#if previewMutation.isPending}
 					<LoaderCircle
 						class="size-4 animate-spin text-muted-foreground"
@@ -277,21 +328,31 @@ function audienceLabel(row: MemberAnnouncement) {
 					/>
 				{/if}
 			</div>
-			<div class="overflow-hidden rounded-md border border-border bg-white">
+			<div class="overflow-hidden rounded-xl border border-border bg-white">
 				{#if previewHtml}
 					<!-- The HTML is Phoenix's render; the sandbox keeps it inert. -->
 					<iframe
 						title="Email preview"
-						class="h-[640px] w-full"
+						class="h-[480px] w-full sm:h-[560px]"
 						sandbox=""
 						srcdoc={previewHtml}
 					></iframe>
 				{:else}
-					<p
-						class="grid h-[640px] place-items-center px-6 text-center text-sm text-muted-foreground"
+					<div
+						class="flex h-64 flex-col items-center justify-center gap-3 bg-muted/20 px-6 text-center sm:h-80 lg:h-[560px]"
 					>
-						Start writing to see the email exactly as members will receive it.
-					</p>
+						<span
+							class="grid size-12 place-items-center rounded-full bg-primary/10 text-primary"
+							aria-hidden="true"><Eye class="size-6" /></span
+						>
+						<p class="font-semibold text-foreground">
+							Your email will appear here
+						</p>
+						<p class="max-w-xs text-sm leading-relaxed text-muted-foreground">
+							Start writing your message to see exactly what members will
+							receive.
+						</p>
+					</div>
 				{/if}
 			</div>
 			{#if previewError}
@@ -302,7 +363,7 @@ function audienceLabel(row: MemberAnnouncement) {
 
 	<section class="space-y-3" aria-labelledby="history-heading">
 		<h2 id="history-heading" class="font-heading text-xl font-bold">
-			Recently sent
+			Email history
 		</h2>
 		{#if historyQuery.isPending}
 			<p class="text-sm text-muted-foreground">Loading…</p>
@@ -314,11 +375,11 @@ function audienceLabel(row: MemberAnnouncement) {
 			<ul class="divide-y divide-border rounded-md border border-border">
 				{#each historyQuery.data.data as row (row.id)}
 					<li
-						class="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+						class="flex flex-wrap items-center justify-between gap-3 bg-card px-4 py-4"
 					>
 						<div class="min-w-0">
-							<p class="truncate font-medium">{row.subject}</p>
-							<p class="text-xs text-muted-foreground">
+							<p class="font-medium break-words">{row.subject}</p>
+							<p class="mt-1 text-sm leading-relaxed text-muted-foreground">
 								{dateFormat.format(new Date(row.createdAt))}
 								· {row.recipientCount} recipients · {audienceLabel(row)}
 								{#if row.sentByName}· {row.sentByName}{/if}
@@ -351,7 +412,7 @@ function audienceLabel(row: MemberAnnouncement) {
 		</AlertDialog.Header>
 		<AlertDialog.Footer>
 			<AlertDialog.Cancel disabled={sendMutation.isPending}>
-				Cancel
+				Keep editing
 			</AlertDialog.Cancel>
 			<Button
 				disabled={sendMutation.isPending}
@@ -360,7 +421,7 @@ function audienceLabel(row: MemberAnnouncement) {
 				{#if sendMutation.isPending}
 					<LoaderCircle class="animate-spin" />
 				{/if}
-				Send
+				{sendMutation.isPending ? "Sending…" : "Send email"}
 			</Button>
 		</AlertDialog.Footer>
 	</AlertDialog.Content>

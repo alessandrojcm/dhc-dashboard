@@ -4,16 +4,17 @@
  * Broadcast bodies are rich text that cannot travel through a Resend
  * template variable (2,000-character limit, unspecified escaping), so the
  * React Email component is rendered **once** with literal `{{{PLACEHOLDER}}}`
- * markers into a committed HTML shell that Phoenix fills and sends inline.
+ * markers into a gitignored HTML shell that Phoenix fills and sends inline.
  *
  *   tsx scripts/render-shells.tsx   rewrite every shell under
  *                                   apps/phoenix/priv/email_shells/
  *
- * `test/render-shells.test.ts` fails when a committed shell no longer matches
- * a fresh render, so a template edit cannot ship without its shell.
+ * Generate before Phoenix compilation or uploading the Fly build context.
+ * The generated HTML and style table ship together in the Phoenix release.
  */
 
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { render } from "react-email";
@@ -60,14 +61,14 @@ export async function renderShells(
   ];
 }
 
-async function main(): Promise<number> {
+/** Creates the output directory even on a clean checkout. */
+export async function writeShells(outputDir: string = SHELLS_DIR): Promise<void> {
+  await mkdir(outputDir, { recursive: true });
   for (const artifact of await renderShells()) {
-    await writeFile(new URL(artifact.file, pathToFileURL(SHELLS_DIR)), artifact.contents);
-    console.log(`✓ ${artifact.file}`);
+    await writeFile(join(outputDir, artifact.file), artifact.contents);
   }
-  return 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  process.exitCode = await main();
+  await writeShells();
 }

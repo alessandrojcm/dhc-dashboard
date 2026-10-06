@@ -5,8 +5,8 @@ defmodule Dhc.MemberAnnouncements.Shell do
   `packages/email-templates/emails/member-announcement.tsx` is rendered by
   `pnpm --filter @dhc/email-templates render:shells` into
   `priv/email_shells/member-announcement.html` with literal `{{{SUBJECT}}}`
-  and `{{{MESSAGE_HTML}}}` placeholders; the package's drift test keeps the
-  committed file equal to a fresh render. This module compiles that file in
+  and `{{{MESSAGE_HTML}}}` placeholders before compilation. The files are
+  generated locally or in CI, not committed. This module compiles that file in
   and fills it in one pass, so neither the subject nor the body can inject a
   placeholder for the other.
   """
