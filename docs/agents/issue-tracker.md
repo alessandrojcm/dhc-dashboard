@@ -39,6 +39,17 @@ Repository: `alessandrojcm/dhc-dashboard`
 - The frontier is the map's open, unassigned children whose blocking relations are all closed. Claim one before work by assigning the ticket.
 - Verify the map and its children by reading them, and inspect dependency edges through the issue's relations.
 
+## Free-plan issue limit
+
+The workspace is on Linear's free plan, which counts non-archived issues. When `save_issue` fails with "exceeded the free issue limit", archive old Done issues. The Linear MCP server has no archive tool, so use the authenticated `linctl` CLI:
+
+```bash
+linctl graphql -q 'query { issues(first: 15, filter: { state: { type: { eq: "completed" } } }, sort: [{ completedAt: { order: Ascending } }]) { nodes { identifier title } } }'
+linctl graphql -q 'mutation { issueArchive(id: "ALE-123") { success } }'
+```
+
+Skip parent issues whose children are still open. `linctl graphql` also covers anything else the MCP tools lack.
+
 ## Relation direction gotcha
 
 Agents keep entering blocking relations backwards. A relation points **from the blocker toward the blocked issue**: a blocking relation **from ALE-A to ALE-B** means **ALE-A must finish before ALE-B** (ALE-A is the prerequisite, ALE-B is the dependent). Equivalently, read it as "ALE-A blocks ALE-B."
