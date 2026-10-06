@@ -20,18 +20,25 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncements do
 
   @doc """
   The roll call that drives `date`'s Holiday Announcements: the earliest
-  enabled, live roll-call slot scheduled that date. Shared by
-  `Execution` and the read model.
+  enabled, live roll-call slot scheduled that date. Shared by `Execution`
+  and the read model.
   """
-  def eligible(date) do
-    Enum.find(candidates(date), & &1.enabled)
-  end
+  def eligible(date), do: eligible_among(roll_calls(), date)
 
   @doc """
   `eligible/1` over already-loaded announcements, so a read model can pick
-  every holiday's driver from one query.
+  every holiday's driver from one `roll_calls/0` load.
   """
-  def eligible_among(announcements, date) do
+  def eligible_among(announcements, date),
+    do: announcements |> candidates(date) |> Enum.find(& &1.enabled)
+
+  @doc "Every live roll call: the superset `candidates/2` selects drivers from."
+  def roll_calls do
+    Repo.all(from(a in Announcement, where: a.kind == "roll_call" and not a.retired))
+  end
+
+  # The one definition of which slots can drive `date`, earliest first.
+  defp candidates(announcements, date) do
     weekday = Date.day_of_week(date)
 
     announcements
@@ -40,7 +47,6 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncements do
         (announcement.weekday == weekday or announcement.one_off_date == date)
     end)
     |> Enum.sort_by(&{Time.diff(&1.post_time, ~T[00:00:00], :microsecond), &1.id})
-    |> Enum.find(& &1.enabled)
   end
 
   def preview(holiday, phase) do
@@ -60,7 +66,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncements do
   # not rewrite jobs: enabled candidates are selected again at run time.
   def driver_post_time(date, now) do
     # An elapsed disabled slot must not hide a still-future enabled slot.
-    case Enum.filter(candidates(date), fn announcement ->
+    case Enum.filter(candidates(roll_calls(), date), fn announcement ->
            DateTime.compare(
              ClubCalendar.to_utc(send_date(date, "day_before"), announcement.post_time),
              now
@@ -69,18 +75,6 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncements do
       [announcement | _] -> announcement.post_time
       [] -> nil
     end
-  end
-
-  defp candidates(date) do
-    weekday = Date.day_of_week(date)
-
-    Repo.all(
-      from(a in Announcement,
-        where: a.kind == "roll_call" and not a.retired,
-        where: a.weekday == ^weekday or a.one_off_date == ^date,
-        order_by: [asc: a.post_time, asc: a.id]
-      )
-    )
   end
 
   def send_date(date, "day_before"), do: Date.add(date, -1)

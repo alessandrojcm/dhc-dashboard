@@ -201,7 +201,7 @@ defmodule Dhc.TrainingAnnouncements.OccurrenceReads do
   defp holiday_drivers(:all, _holidays, announcements), do: announcements
 
   defp holiday_drivers({:driven_by, _id}, _holidays, _announcements),
-    do: Repo.all(from(a in Announcement, where: a.kind == "roll_call" and not a.retired))
+    do: HolidayAnnouncements.roll_calls()
 
   defp project_holidays(_holidays, :none, _drivers, _first, _last, _clock), do: []
 
