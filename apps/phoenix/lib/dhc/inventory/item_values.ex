@@ -85,18 +85,42 @@ defmodule Dhc.Inventory.ItemValues do
           {:ok, [map()]} | {:error, %{String.t() => error_reason()}}
   def validate(definitions, supplied) when is_list(definitions) and is_map(supplied) do
     normalized = normalize_supplied(supplied)
-
-    {rows, errors} =
-      definitions
-      |> Enum.reduce({[], %{}}, fn definition, acc ->
-        apply_definition(definition, Map.fetch(normalized, definition.id), acc)
-      end)
-      |> resolve_options(options_index(definitions))
+    {rows, errors} = evaluate(definitions, normalized, options_index(definitions))
 
     case Map.merge(errors, unknown_definition_errors(definitions, normalized)) do
       empty when empty == %{} -> {:ok, Enum.reverse(rows)}
       merged -> {:error, merged}
     end
+  end
+
+  @doc """
+  Validate the **stored** values of `item_ids` against `definitions`.
+
+  Applies exactly the per-definition rules of `validate/2` to what is
+  already in the database: empty text is absence, any decimal is a value,
+  boolean `false` is a value, a single-select option must be live
+  (`:retired_option`) and belong to the definition (`:unknown_option`), a
+  required definition needs a value (`:required`), and a value stored
+  against a retired definition is `:retired_definition`. Only values of the
+  given definitions are read, so `:unknown_definition` never arises.
+
+  Returns only the items that fail, each with its per-definition errors.
+  Option membership comes from each definition's loaded `options`.
+  """
+  @spec invalid_stored([definition()], [String.t()]) ::
+          %{String.t() => %{String.t() => error_reason()}}
+  def invalid_stored(definitions, item_ids) when is_list(definitions) and is_list(item_ids) do
+    stored = stored_by_item(Enum.map(definitions, & &1.id), item_ids)
+    options = options_index(definitions)
+
+    item_ids
+    |> Enum.uniq()
+    |> Enum.reduce(%{}, fn item_id, acc ->
+      case evaluate(definitions, Map.get(stored, item_id, %{}), options) do
+        {_rows, empty} when empty == %{} -> acc
+        {_rows, errors} -> Map.put(acc, item_id, errors)
+      end
+    end)
   end
 
   @doc """
@@ -181,6 +205,16 @@ defmodule Dhc.Inventory.ItemValues do
   end
 
   # ── Per-definition validation ───────────────────────────────────
+
+  # The one rule set shared by supplied (`validate/2`) and stored
+  # (`invalid_stored/2`) values: `values` maps definition id to a raw value.
+  defp evaluate(definitions, values, options) do
+    definitions
+    |> Enum.reduce({[], %{}}, fn definition, acc ->
+      apply_definition(definition, Map.fetch(values, definition.id), acc)
+    end)
+    |> resolve_options(options)
+  end
 
   defp apply_definition(%PropertyDefinition{retired_at: nil} = definition, supplied, acc) do
     apply_live_definition(definition, supplied, acc)
@@ -313,6 +347,35 @@ defmodule Dhc.Inventory.ItemValues do
     |> Repo.all()
     |> Enum.group_by(& &1.property_definition_id)
   end
+
+  # ── Stored values ───────────────────────────────────────────────
+
+  defp stored_by_item([], _item_ids), do: %{}
+  defp stored_by_item(_definition_ids, []), do: %{}
+
+  defp stored_by_item(definition_ids, item_ids) do
+    from(v in ItemPropertyValue,
+      where: v.item_id in ^item_ids,
+      where: v.property_definition_id in ^definition_ids
+    )
+    |> Repo.all()
+    |> Enum.group_by(& &1.item_id)
+    |> Map.new(fn {item_id, values} ->
+      {item_id, Map.new(values, &{&1.property_definition_id, stored_raw(&1)})}
+    end)
+  end
+
+  # A stored row holds exactly one typed column (database check).
+  defp stored_raw(%ItemPropertyValue{option_id: option_id}) when not is_nil(option_id),
+    do: option_id
+
+  defp stored_raw(%ItemPropertyValue{boolean_value: boolean}) when is_boolean(boolean),
+    do: boolean
+
+  defp stored_raw(%ItemPropertyValue{decimal_value: decimal}) when not is_nil(decimal),
+    do: decimal
+
+  defp stored_raw(%ItemPropertyValue{text_value: text}), do: text
 
   # ── Supplied-attribute normalization ────────────────────────────
 
