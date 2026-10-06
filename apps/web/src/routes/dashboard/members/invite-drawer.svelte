@@ -14,14 +14,23 @@ import PhoneInput from "#lib/components/ui/phone-input.svelte";
 import { Separator } from "#lib/components/ui/separator/index.js";
 import * as Sheet from "#lib/components/ui/sheet/index.js";
 import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
-import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import {
+	parseDate,
+	toCalendarDate,
+	type DateValue,
+} from "@internationalized/date";
+import { isHttpError } from "@sveltejs/kit";
 import dayjs from "dayjs";
 import { Info, Loader, Pencil, Plus, Trash2 } from "@lucide/svelte";
 import { submitBulkInvites } from "./data.remote";
-import { adminInviteRemoteSchema } from "#lib/schemas/adminInvite.js";
+import {
+	adminInviteSchema,
+	bulkInviteSchema,
+	type AdminInvite,
+} from "#lib/schemas/adminInvite.js";
 import * as v from "valibot";
 
-type PricingTier = "standard" | "coach" | "student";
+type PricingTier = AdminInvite["pricingTier"];
 
 const pricingTiers: { value: PricingTier; label: string }[] = [
 	{ value: "standard", label: "No discount" },
@@ -73,7 +82,8 @@ function emptyFieldErrors(): InviteFieldErrors {
 	};
 }
 
-let invitesList = $state<Invite[]>([]);
+// Entries already validated by `adminInviteSchema`; the command re-checks them.
+let invitesList = $state<AdminInvite[]>([]);
 let editingIndex = $state<number | null>(null);
 let firstNameInput = $state<HTMLInputElement | null>(null);
 let dialogHeading = $state<HTMLElement | null>(null);
@@ -84,12 +94,17 @@ let fieldErrors = $state<InviteFieldErrors>(emptyFieldErrors());
 // Success/error message state
 let formMessage = $state<{ success?: string; failure?: string } | null>(null);
 
-// Date picker value for single invite form
-const dobValue = $derived.by(() => {
-	const dob = inviteFields.dateOfBirth;
-	if (!dob || !dayjs(dob).isValid()) return undefined;
-	return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
-});
+// The date of birth stays a `YYYY-MM-DD` string; only the picker sees a
+// CalendarDate. The string is empty or one the picker wrote.
+const dobValue = $derived(
+	inviteFields.dateOfBirth ? parseDate(inviteFields.dateOfBirth) : undefined,
+);
+
+function setDateOfBirth(date: DateValue | undefined) {
+	if (!date) return;
+	inviteFields.dateOfBirth = toCalendarDate(date).toString();
+	clearFieldError("dateOfBirth");
+}
 
 function resetInviteForm({ focus = false } = {}) {
 	inviteFields = emptyInvite();
@@ -104,7 +119,7 @@ function clearFieldError(field: InviteField) {
 
 function addInviteToList() {
 	formMessage = null;
-	const result = v.safeParse(adminInviteRemoteSchema, inviteFields);
+	const result = v.safeParse(adminInviteSchema, inviteFields);
 	if (!result.success) {
 		const errors = v.flatten(result.issues).nested;
 		fieldErrors = {
@@ -117,7 +132,7 @@ function addInviteToList() {
 		return;
 	}
 
-	const invite: Invite = { ...result.output };
+	const invite = result.output;
 
 	if (editingIndex === null) {
 		invitesList = [...invitesList, invite];
@@ -167,7 +182,15 @@ function clearAllInvites() {
 
 function handleBulkSubmit() {
 	const invitationCount = invitesList.length;
-	submitBulkInvites({ invites: invitesList })
+	// Same schema as the command, so a list it would reject never leaves the
+	// drawer and the issue messages can be shown.
+	const checked = v.safeParse(bulkInviteSchema, { invites: invitesList });
+	if (!checked.success) {
+		const messages = new Set(checked.issues.map((issue) => issue.message));
+		formMessage = { failure: [...messages].join(" ") };
+		return;
+	}
+	submitBulkInvites(checked.output)
 		.then((response) => {
 			invitesList = [];
 			resetInviteForm();
@@ -181,7 +204,9 @@ function handleBulkSubmit() {
 		.catch((error) => {
 			console.error("Bulk invite error:", error);
 			formMessage = {
-				failure: "Failed to process invitations. Please try again.",
+				failure: isHttpError(error, 400)
+					? "Some invitations were rejected as invalid. Edit them and try again."
+					: "Failed to process invitations. Please try again.",
 			};
 		});
 }
@@ -322,11 +347,7 @@ function handleBulkSubmit() {
 							id="invite-date-of-birth"
 							name="dateOfBirth"
 							value={dobValue}
-							onDateChange={(date) => {
-								if (!date) return;
-								inviteFields.dateOfBirth = dayjs(date).format("YYYY-MM-DD");
-								clearFieldError("dateOfBirth");
-							}}
+							onValueChange={setDateOfBirth}
 						/>
 						{#each fieldErrors.dateOfBirth as error (error)}
 							<Field.Error>{error}</Field.Error>

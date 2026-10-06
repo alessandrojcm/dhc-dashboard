@@ -24,6 +24,7 @@ defmodule Dhc.Inventory.Structure do
 
   alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.ItemPropertyValue
+  alias Dhc.Inventory.ItemValues
   alias Dhc.Inventory.Locks
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
@@ -406,23 +407,22 @@ defmodule Dhc.Inventory.Structure do
     |> Repo.one() || 0
   end
 
+  # The proposed definition is judged as a live required definition — the
+  # gate asks whether every active item would satisfy it — with the same
+  # stored-value rules restore and item writes use.
   defp invalid_item_ids_for_required(%PropertyDefinition{} = definition) do
     active_item_ids = active_item_ids_for_category(definition.category_id)
 
-    if active_item_ids == [] do
-      []
-    else
-      values_by_item = values_by_item_for_definition(definition.id, active_item_ids)
-      live_option_ids = live_option_ids_for_definition(definition)
+    proposed = %{
+      definition
+      | required: true,
+        retired_at: nil,
+        options: list_options(definition.id)
+    }
 
-      Enum.reject(active_item_ids, fn item_id ->
-        valid_value?(
-          definition,
-          Map.get(values_by_item, item_id),
-          live_option_ids
-        )
-      end)
-    end
+    invalid = ItemValues.invalid_stored([proposed], active_item_ids)
+
+    Enum.filter(active_item_ids, &Map.has_key?(invalid, &1))
   end
 
   defp active_item_ids_for_category(category_id) do
@@ -433,76 +433,6 @@ defmodule Dhc.Inventory.Structure do
     )
     |> Repo.all()
   end
-
-  defp values_by_item_for_definition(definition_id, item_ids) do
-    from(v in ItemPropertyValue,
-      where: v.property_definition_id == ^definition_id,
-      where: v.item_id in ^item_ids,
-      select: {fragment("?::text", v.item_id), v}
-    )
-    |> Repo.all()
-    |> Map.new()
-  end
-
-  defp live_option_ids_for_definition(%PropertyDefinition{id: id, value_type: "single_select"}) do
-    from(o in PropertyOption,
-      where: o.property_definition_id == ^id,
-      where: is_nil(o.retired_at),
-      select: fragment("?::text", o.id)
-    )
-    |> Repo.all()
-    |> MapSet.new()
-  end
-
-  defp live_option_ids_for_definition(%PropertyDefinition{}), do: MapSet.new()
-
-  defp valid_value?(
-         %PropertyDefinition{value_type: "text"},
-         %ItemPropertyValue{
-           text_value: text
-         },
-         _live
-       )
-       when is_binary(text) do
-    String.trim(text) != ""
-  end
-
-  defp valid_value?(%PropertyDefinition{value_type: "text"}, _value, _live), do: false
-
-  defp valid_value?(
-         %PropertyDefinition{value_type: "decimal"},
-         %ItemPropertyValue{
-           decimal_value: decimal
-         },
-         _live
-       )
-       when not is_nil(decimal),
-       do: true
-
-  defp valid_value?(%PropertyDefinition{value_type: "decimal"}, _value, _live), do: false
-
-  defp valid_value?(
-         %PropertyDefinition{value_type: "boolean"},
-         %ItemPropertyValue{
-           boolean_value: boolean
-         },
-         _live
-       )
-       when is_boolean(boolean),
-       do: true
-
-  defp valid_value?(%PropertyDefinition{value_type: "boolean"}, _value, _live), do: false
-
-  defp valid_value?(
-         %PropertyDefinition{value_type: "single_select"},
-         %ItemPropertyValue{option_id: option_id},
-         live
-       )
-       when not is_nil(option_id) do
-    MapSet.member?(live, option_id)
-  end
-
-  defp valid_value?(%PropertyDefinition{value_type: "single_select"}, _value, _live), do: false
 
   # ── Reads helpers ───────────────────────────────────────────────
 

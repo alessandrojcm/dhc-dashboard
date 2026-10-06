@@ -9,7 +9,6 @@ import {
 	getCoreRowModel,
 	getExpandedRowModel,
 	getSortedRowModel,
-	type SortingState,
 	type TableOptions,
 } from "@tanstack/table-core";
 import {
@@ -20,7 +19,6 @@ import {
 	Users,
 	X,
 } from "@lucide/svelte";
-import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import { Button } from "#lib/components/ui/button/index.js";
 import {
@@ -33,11 +31,8 @@ import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import * as Select from "#lib/components/ui/select/index.js";
 import * as Table from "#lib/components/ui/table/index.js";
 import SortHeader from "#lib/components/ui/table/sort-header.svelte";
-import {
-	PAGE_SIZE_OPTIONS,
-	parsePageSize,
-	transitionCursorQuery,
-} from "#lib/cursor-query.js";
+import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
+import { createCursorTableUrl } from "#lib/cursor-table-url.svelte.js";
 import {
 	ToggleGroup,
 	ToggleGroupItem,
@@ -49,21 +44,11 @@ import MemberDetails from "./member-details.svelte";
 import MemberIdentityCell from "./member-identity-cell.svelte";
 import MemberPhoneCell from "./member-phone-cell.svelte";
 import MemberStatusBadge from "./member-status-badge.svelte";
-import type { MemberStatus, MemberTableRow } from "./member-table.types";
 import MemberWeapons from "./member-weapons.svelte";
 import ReactivateMemberDialog from "#lib/components/ui/reactivate-member-dialog.svelte";
 
-type MemberTableQueryParams = {
-	searchQuery: string;
-	sort: MemberTableSortField;
-	direction: "asc" | "desc";
-	pageSize: (typeof pageSizeOptions)[number];
-	membershipStatus: readonly MemberStatus[] | null;
-	cursor: string | null;
-};
-
 type MemberTablePage = {
-	data: MemberTableRow[];
+	data: Member[];
 	count: number;
 	nextCursor: string | null;
 	previousCursor: string | null;
@@ -72,92 +57,43 @@ type MemberTablePage = {
 const pageSizeOptions = PAGE_SIZE_OPTIONS;
 const statusOptions = ["active", "paused", "inactive"] as const;
 
-const memberSortFields = [
-	"first_name",
-	"last_name",
-	"email",
-	"phone_number",
-	"age",
-	"membership_start_date",
-	"last_payment_date",
-	"subscription_paused_until",
-	"is_active",
-] as const;
+// Column ids are the API sort fields; sortable fields without a column stay
+// reachable through the URL.
+const membersUrl = createCursorTableUrl({
+	sort: {
+		fields: {
+			firstName: "firstName",
+			lastName: "lastName",
+			email: "email",
+			phoneNumber: "phoneNumber",
+			age: "age",
+			membershipStartDate: "membershipStartDate",
+			lastPaymentDate: "lastPaymentDate",
+			subscriptionPausedUntil: "subscriptionPausedUntil",
+			isActive: "isActive",
+		} satisfies Record<string, MembersListSortField>,
+		default: "lastName",
+	},
+	filters: ["membershipStatus"],
+});
 
-type MemberTableSortField = (typeof memberSortFields)[number];
-
-const memberSortMap = {
-	first_name: "firstName",
-	last_name: "lastName",
-	email: "email",
-	phone_number: "phoneNumber",
-	age: "age",
-	membership_start_date: "membershipStartDate",
-	last_payment_date: "lastPaymentDate",
-	subscription_paused_until: "subscriptionPausedUntil",
-	is_active: "isActive",
-} satisfies Record<MemberTableSortField, MembersListSortField>;
-
-function navigateToMembers(
-	searchParams: URLSearchParams,
-	options: { replaceState?: boolean } = {},
-) {
-	const query = searchParams.toString();
-	const url = `${page.url.pathname}${query ? `?${query}` : ""}`;
-	void goto(url, {
-		reset: false,
-		replace: options.replaceState,
-	});
-}
-
-function isMemberSortField(
-	value: string | null,
-): value is MemberTableSortField {
-	return memberSortFields.some((field) => field === value);
-}
-
-const pageSize = $derived(parsePageSize(page.url.searchParams, "pageSize"));
-const searchQuery = $derived(page.url.searchParams.get("q") || "");
-const cursor = $derived(page.url.searchParams.get("cursor"));
+// The URL keeps the raw string; unknown statuses are dropped and selecting
+// every status means no filter.
 const membershipStatusFilter = $derived.by(() => {
-	const raw = page.url.searchParams.get("membershipStatus") || "";
-	const selected = raw
-		.split(",")
-		.map((status) => status.trim())
-		.filter(
-			(status): status is MemberStatus =>
-				status === "active" || status === "inactive" || status === "paused",
-		);
+	const raw = membersUrl.filter("membershipStatus") ?? "";
+	const selected = raw.split(",").map((status) => status.trim());
+	const statuses = statusOptions.filter((status) => selected.includes(status));
 
-	if (selected.length === 0 || selected.length === statusOptions.length) {
+	if (statuses.length === 0 || statuses.length === statusOptions.length) {
 		return null;
 	}
 
-	return statusOptions.filter((status) => selected.includes(status));
+	return statuses;
 });
-const activeSort = $derived.by(() => {
-	const requestedSortColumn = page.url.searchParams.get("sort");
-	const sortColumn = isMemberSortField(requestedSortColumn)
-		? requestedSortColumn
-		: "last_name";
-	const sortDirection = page.url.searchParams.get("direction");
-
-	return {
-		sort: sortColumn,
-		direction: sortDirection === "desc" ? "desc" : "asc",
-	} as const;
-});
-const sortingState: SortingState = $derived([
-	{
-		id: activeSort.sort,
-		desc: activeSort.direction === "desc",
-	},
-]);
 const hasActiveFilters = $derived(
-	searchQuery !== "" || membershipStatusFilter !== null,
+	membersUrl.search.trim() !== "" || membershipStatusFilter !== null,
 );
 
-let searchDraft = $derived(searchQuery);
 let expandedState = $state({});
 
 // ALE-252: Reactivate row action, shown only when the viewer holds a
@@ -172,63 +108,18 @@ function openReactivation(memberId: string) {
 	reactivateOpen = true;
 }
 
-const membersQueryParams = $derived<MemberTableQueryParams>({
-	searchQuery,
-	sort: activeSort.sort,
-	direction: activeSort.direction,
-	pageSize,
-	membershipStatus: membershipStatusFilter,
-	cursor,
-});
-
-function toTableRow(member: Member): MemberTableRow {
-	return {
-		id: member.id,
-		first_name: member.firstName,
-		last_name: member.lastName,
-		email: member.email,
-		phone_number: member.phoneNumber,
-		gender: member.gender,
-		pronouns: member.pronouns,
-		is_active: member.isActive,
-		preferred_weapon: member.preferredWeapon,
-		membership_start_date: member.membershipStartDate,
-		membership_end_date: member.membershipEndDate,
-		last_payment_date: member.lastPaymentDate,
-		insurance_form_submitted: member.insuranceFormSubmitted,
-		age: member.age,
-		social_media_consent: member.socialMediaConsent,
-		next_of_kin_name: member.nextOfKinName,
-		next_of_kin_phone: member.nextOfKinPhone,
-		guardian_first_name: member.guardianFirstName,
-		guardian_last_name: member.guardianLastName,
-		guardian_phone_number: member.guardianPhoneNumber,
-		medical_conditions: member.medicalConditions,
-		subscription_paused_until: member.subscriptionPausedUntil,
-		membership_status: member.membershipStatus,
-	};
-}
-
 const membersQuery = createQuery(() => ({
 	...membersListOptions({
 		query: {
-			limit: membersQueryParams.pageSize,
-			cursor: membersQueryParams.cursor ?? undefined,
-			q: membersQueryParams.searchQuery || undefined,
-			membershipStatus:
-				membersQueryParams.membershipStatus &&
-				membersQueryParams.membershipStatus.length > 0
-					? membersQueryParams.membershipStatus.join(",")
-					: undefined,
-			sort: memberSortMap[membersQueryParams.sort],
-			direction: membersQueryParams.direction,
+			...membersUrl.request,
+			membershipStatus: membershipStatusFilter?.join(","),
 		},
 	}),
 	placeholderData: keepPreviousData,
 	select: (response): MemberTablePage => {
 		const result = response.data;
 		return {
-			data: result.members.map(toTableRow),
+			data: result.members,
 			count: result.totalCount,
 			nextCursor: result.nextCursor,
 			previousCursor: result.previousCursor,
@@ -236,48 +127,9 @@ const membersQuery = createQuery(() => ({
 	},
 }));
 
-function onPaginationChange(newPageSize: number) {
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: { pageSize: newPageSize.toString() },
-	});
-	navigateToMembers(newParams, { replaceState: true });
-}
-
-function onCursorChange(newCursor: string | null | undefined) {
-	if (!newCursor) return;
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		cursor: newCursor,
-	});
-	navigateToMembers(newParams);
-}
-
-function onSortingChange(newSorting: SortingState) {
-	const [nextSorting] = newSorting;
-	if (!nextSorting) return;
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: {
-			sort: nextSorting.id,
-			direction: nextSorting.desc ? "desc" : "asc",
-		},
-	});
-	navigateToMembers(newParams, { replaceState: true });
-}
-
-function onSearchChange(newSearch: string) {
-	const normalizedSearch = newSearch.trim();
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: { q: normalizedSearch || null },
-	});
-	navigateToMembers(newParams, { replaceState: true });
-}
-
 function onSearchSubmit(event: SubmitEvent) {
 	event.preventDefault();
-	onSearchChange(searchDraft);
+	membersUrl.submitSearch();
 }
 
 // "All" is the group's reset item: turning it on, turning everything off, or
@@ -296,31 +148,23 @@ function onStatusFilterChange(next: string[]) {
 			? null
 			: statuses.join(",");
 
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: { membershipStatus },
-	});
-	navigateToMembers(newParams, { replaceState: true });
+	membersUrl.setFilter("membershipStatus", membershipStatus);
 }
 
 function resetFilters() {
-	searchDraft = "";
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: { q: null, membershipStatus: null },
-	});
-	navigateToMembers(newParams, { replaceState: true });
+	membersUrl.setSearch("");
+	// Writes the cleared search in the same navigation.
+	membersUrl.setFilter("membershipStatus", null);
 }
 
-const tableOptions = $state<TableOptions<MemberTableRow>>({
+const tableOptions = $state<TableOptions<Member>>({
 	autoResetPageIndex: false,
 	manualPagination: true,
 	manualSorting: true,
 	getExpandedRowModel: getExpandedRowModel(),
 	columns: [
 		{
-			id: "last_name",
-			accessorKey: "last_name",
+			accessorKey: "lastName",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
@@ -332,31 +176,31 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 				renderComponent(MemberIdentityCell, { member: row.original }),
 		},
 		{
-			accessorKey: "membership_status",
+			accessorKey: "membershipStatus",
 			header: "Status",
 			cell: ({ row }) =>
 				renderComponent(MemberStatusBadge, {
-					status: row.original.membership_status,
+					status: row.original.membershipStatus,
 				}),
 		},
 		{
-			accessorKey: "phone_number",
+			accessorKey: "phoneNumber",
 			header: "Phone",
 			cell: ({ row }) =>
 				renderComponent(MemberPhoneCell, {
-					phone: row.original.phone_number,
+					phone: row.original.phoneNumber,
 				}),
 		},
 		{
-			accessorKey: "preferred_weapon",
+			accessorKey: "preferredWeapon",
 			header: "Weapons",
 			cell: ({ row }) =>
 				renderComponent(MemberWeapons, {
-					weapons: row.original.preferred_weapon,
+					weapons: row.original.preferredWeapon,
 				}),
 		},
 		{
-			accessorKey: "membership_start_date",
+			accessorKey: "membershipStartDate",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
@@ -366,12 +210,12 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 				}),
 			cell: ({ row }) =>
 				renderComponent(MemberDateCell, {
-					date: row.original.membership_start_date,
+					date: row.original.membershipStartDate,
 					emptyLabel: "Never",
 				}),
 		},
 		{
-			accessorKey: "last_payment_date",
+			accessorKey: "lastPaymentDate",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
@@ -381,7 +225,7 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 				}),
 			cell: ({ row }) =>
 				renderComponent(MemberDateCell, {
-					date: row.original.last_payment_date,
+					date: row.original.lastPaymentDate,
 					emptyLabel: "Never",
 				}),
 		},
@@ -394,7 +238,7 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 					isExpanded: row.getIsExpanded(),
 					onToggleExpand: () => row.toggleExpanded(),
 					canReactivate,
-					membershipStatus: row.original.membership_status,
+					membershipStatus: row.original.membershipStatus,
 					onReactivate: () => openReactivation(row.original.id),
 				}),
 		},
@@ -402,18 +246,14 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 	get data() {
 		return membersQuery.data?.data ?? [];
 	},
-	onSortingChange: (updater) => {
-		onSortingChange(
-			updater instanceof Function ? updater(sortingState) : updater,
-		);
-	},
+	onSortingChange: membersUrl.table.onSortingChange,
 	getRowId: (row) => row.id,
 	state: {
 		get expanded() {
 			return expandedState;
 		},
 		get sorting() {
-			return sortingState;
+			return membersUrl.table.state.sorting;
 		},
 	},
 	onExpandedChange: (updater) => {
@@ -500,12 +340,14 @@ const table = createSvelteTable(tableOptions);
 							id="member-search"
 							name="q"
 							type="search"
-							bind:value={searchDraft}
+							value={membersUrl.search}
+							oninput={(event) =>
+								membersUrl.setSearch(event.currentTarget.value)}
 							placeholder="Name, email, or phone"
 							class="h-11 pl-10 pr-11"
 							autocomplete="off"
 						/>
-						{#if searchDraft}
+						{#if membersUrl.search}
 							<Button
 								variant="ghost"
 								size="icon"
@@ -513,8 +355,8 @@ const table = createSvelteTable(tableOptions);
 								class="absolute right-0 top-0"
 								aria-label="Clear search"
 								onclick={() => {
-									searchDraft = "";
-									onSearchChange("");
+									membersUrl.setSearch("");
+									membersUrl.submitSearch();
 								}}
 							>
 								<X class="size-4" aria-hidden="true" />
@@ -634,7 +476,7 @@ const table = createSvelteTable(tableOptions);
 								<Table.Cell
 									class={cn(
 										"px-4 py-3.5",
-										cell.column.id === "last_name" && "min-w-64",
+										cell.column.id === "lastName" && "min-w-64",
 										cell.column.id === "actions" && "text-right",
 									)}
 								>
@@ -675,7 +517,7 @@ const table = createSvelteTable(tableOptions);
 				<article class="p-4 sm:p-5">
 					<div class="flex items-start justify-between gap-3">
 						<MemberIdentityCell member={row.original} />
-						<MemberStatusBadge status={row.original.membership_status} />
+						<MemberStatusBadge status={row.original.membershipStatus} />
 					</div>
 
 					<div
@@ -688,7 +530,7 @@ const table = createSvelteTable(tableOptions);
 								Phone
 							</p>
 							<div class="mt-1">
-								<MemberPhoneCell phone={row.original.phone_number} />
+								<MemberPhoneCell phone={row.original.phoneNumber} />
 							</div>
 						</div>
 						<div>
@@ -699,19 +541,19 @@ const table = createSvelteTable(tableOptions);
 							</p>
 							<div class="mt-1">
 								<MemberDateCell
-									date={row.original.membership_start_date}
+									date={row.original.membershipStartDate}
 									emptyLabel="Never"
 								/>
 							</div>
 						</div>
-						{#if row.original.preferred_weapon.length > 0}
+						{#if row.original.preferredWeapon.length > 0}
 							<div class="sm:col-span-2">
 								<p
 									class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
 								>
 									Weapons
 								</p>
-								<MemberWeapons weapons={row.original.preferred_weapon} />
+								<MemberWeapons weapons={row.original.preferredWeapon} />
 							</div>
 						{/if}
 					</div>
@@ -723,7 +565,7 @@ const table = createSvelteTable(tableOptions);
 							onToggleExpand={() => row.toggleExpanded()}
 							showLabels
 							{canReactivate}
-							membershipStatus={row.original.membership_status}
+							membershipStatus={row.original.membershipStatus}
 							onReactivate={() => openReactivation(row.original.id)}
 						/>
 					</div>
@@ -765,14 +607,14 @@ const table = createSvelteTable(tableOptions);
 					</span>
 					<Select.Root
 						type="single"
-						value={pageSize.toString()}
-						onValueChange={(value) => onPaginationChange(Number(value))}
+						value={membersUrl.pageSize.toString()}
+						onValueChange={(value) => membersUrl.setPageSize(Number(value))}
 					>
 						<Select.Trigger
 							class="h-11 w-20"
 							aria-labelledby="members-page-size-label"
 						>
-							{pageSize}
+							{membersUrl.pageSize}
 						</Select.Trigger>
 						<Select.Content>
 							{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
@@ -790,7 +632,7 @@ const table = createSvelteTable(tableOptions);
 					variant="outline"
 					disabled={!membersQuery.data?.previousCursor ||
 						membersQuery.isFetching}
-					onclick={() => onCursorChange(membersQuery.data?.previousCursor)}
+					onclick={() => membersUrl.goTo(membersQuery.data?.previousCursor)}
 				>
 					<ChevronLeft class="size-4" aria-hidden="true" />
 					Previous
@@ -798,7 +640,7 @@ const table = createSvelteTable(tableOptions);
 				<Button
 					variant="outline"
 					disabled={!membersQuery.data?.nextCursor || membersQuery.isFetching}
-					onclick={() => onCursorChange(membersQuery.data?.nextCursor)}
+					onclick={() => membersUrl.goTo(membersQuery.data?.nextCursor)}
 				>
 					Next
 					<ChevronRight class="size-4" aria-hidden="true" />

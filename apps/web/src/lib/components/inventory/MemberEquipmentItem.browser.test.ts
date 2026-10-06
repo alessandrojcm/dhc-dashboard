@@ -26,6 +26,7 @@ const createdLoan: InventoryMemberLoan = {
 	itemId: item.id,
 	status: "requested",
 	overdue: false,
+	cancellable: true,
 	requestedStartOn: "2026-09-17",
 	requestedDueOn: "2026-09-24",
 	approvedStartOn: null,

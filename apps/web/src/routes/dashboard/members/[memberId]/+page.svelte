@@ -12,7 +12,11 @@ import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
 import * as Select from "#lib/components/ui/select/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
-import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import {
+	type DateValue,
+	parseDate,
+	toCalendarDate,
+} from "@internationalized/date";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import {
 	ArrowLeft,
@@ -34,7 +38,7 @@ import { Label } from "#lib/components/ui/label/index.js";
 import { initForm } from "#lib/utils/init-form.svelte.js";
 import { whyThisField } from "#lib/components/ui/why-this-field.svelte";
 import FormDebug from "#lib/components/form-debug.svelte";
-import { memberProfileClientSchema } from "#lib/schemas/membersSignup.js";
+import memberProfileSchema from "#lib/schemas/memberProfile.js";
 import { dev } from "$app/env";
 import { untrack } from "svelte";
 import { DiscordLogo } from "svelte-radix";
@@ -99,7 +103,6 @@ async function reconcileMembershipMutation(memberId: string) {
 initForm(updateProfile, () => ({
 	firstName: data.profileData.firstName ?? "",
 	lastName: data.profileData.lastName ?? "",
-	email: data.profileData.email ?? "",
 	phoneNumber: data.profileData.phoneNumber ?? "",
 	dateOfBirth: data.profileData.dateOfBirth ?? "",
 	pronouns: data.profileData.pronouns ?? "",
@@ -157,13 +160,17 @@ function requireMemberId(): string {
 	return memberId;
 }
 
-// Date picker value conversion
-const dobValue = $derived.by(() => {
-	if (!dateOfBirth || !dayjs(dateOfBirth).isValid()) {
-		return undefined;
-	}
-	return fromDate(dayjs(dateOfBirth).toDate(), getLocalTimeZone());
-});
+// The date of birth stays a `YYYY-MM-DD` string; the picker reads and writes
+// it as a `CalendarDate`, never through a JS `Date`.
+const isoDateSchema = v.pipe(v.string(), v.isoDate());
+const dobValue = $derived(
+	v.is(isoDateSchema, dateOfBirth) ? parseDate(dateOfBirth) : undefined,
+);
+
+function setDateOfBirth(date: DateValue | undefined) {
+	if (!date) return;
+	updateProfile.fields.dateOfBirth.set(toCalendarDate(date).toString());
+}
 
 let pausedUntil: dayjs.Dayjs | null = $state(
 	untrack(() =>
@@ -256,7 +263,7 @@ let showReactivateModal = $state(false);
 
 	<form
 		id="member-profile-form"
-		{...updateProfile.preflight(memberProfileClientSchema)}
+		{...updateProfile.preflight(memberProfileSchema)}
 		class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
 	>
 		<div class="min-w-0 space-y-6">
@@ -304,9 +311,10 @@ let showReactivateModal = $state(false);
 					</Field.Field>
 
 					<Field.Field>
-						{@const fieldProps = updateProfile.fields.email.as("email")}
+						<!-- Read-only: the login email belongs to the Authentication
+						     Principal, so it is not part of the profile submission. -->
 						<div class="flex items-center gap-2">
-							<Field.Label for={fieldProps.name}>Email</Field.Label>
+							<Field.Label for="member-email">Email</Field.Label>
 							<LockKeyhole
 								class="size-3.5 text-muted-foreground"
 								aria-hidden="true"
@@ -315,17 +323,15 @@ let showReactivateModal = $state(false);
 						<Input
 							class="cursor-default bg-muted/60 text-muted-foreground"
 							readonly
-							{...fieldProps}
-							id={fieldProps.name}
+							type="email"
+							value={data.profileData.email}
+							id="member-email"
 							autocomplete="email"
 							aria-describedby="email-help"
 						/>
 						<Field.Description id="email-help">
 							Email changes are handled by the club team.
 						</Field.Description>
-						{#each updateProfile.fields.email.issues() as issue (issue.message)}
-							<Field.Error>{issue.message}</Field.Error>
-						{/each}
 					</Field.Field>
 
 					<Field.Field>
@@ -353,12 +359,7 @@ let showReactivateModal = $state(false);
 						<DatePicker
 							label="Date of birth"
 							value={dobValue}
-							onDateChange={(date) => {
-								if (!date) return;
-								updateProfile.fields.dateOfBirth.set(
-									dayjs(date).format("YYYY-MM-DD"),
-								);
-							}}
+							onValueChange={setDateOfBirth}
 						/>
 						<input
 							{...updateProfile.fields.dateOfBirth.as("hidden", dateOfBirth)}

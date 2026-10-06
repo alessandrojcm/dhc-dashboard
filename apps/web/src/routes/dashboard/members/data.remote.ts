@@ -1,69 +1,37 @@
 import { command, form, getRequestEvent } from "$app/server";
-import { invitationsCreate, settingsUpdate } from "@dhc/api-client";
+import {
+	invitationsCreate,
+	settingsUpdate,
+	type InvitationCreateRequest,
+} from "@dhc/api-client";
 import { apiClientOptions } from "#lib/server/api-client.js";
 import { InsuranceFormLinkSchema } from "#lib/schemas/settings.js";
 import { authorizationFor } from "#lib/server/authorization/index.js";
-import {
-	bulkInviteRemoteSchema,
-	bulkInviteSchema,
-} from "#lib/schemas/adminInvite.js";
-import * as v from "valibot";
+import { bulkInviteSchema } from "#lib/schemas/adminInvite.js";
 
 /**
- * Submits bulk invites to the API
+ * Submits bulk invites to the API. The schema output is the
+ * `invitationsCreate` body, so it is sent unchanged.
  */
-export const submitBulkInvites = command(
-	bulkInviteRemoteSchema,
-	async (data) => {
-		const event = getRequestEvent();
-		const { session } = await event.locals.safeGetSession();
-		authorizationFor(session).require("members.invite");
+export const submitBulkInvites = command(bulkInviteSchema, async (data) => {
+	const event = getRequestEvent();
+	const { session } = await event.locals.safeGetSession();
+	authorizationFor(session).require("members.invite");
 
-		// Transform string dates to Date objects for the full schema validation
-		const transformedData = {
-			invites: data.invites.map((invite) => ({
-				...invite,
-				dateOfBirth: new Date(invite.dateOfBirth),
-			})),
-		};
+	const response = await invitationsCreate({
+		...apiClientOptions(event.cookies),
+		body: data satisfies InvitationCreateRequest,
+	});
 
-		// Validate with the full complex schema (includes cross-field validation and transformations)
-		const validationResult = v.safeParse(bulkInviteSchema, transformedData);
-		if (!validationResult.success) {
-			const firstIssue = validationResult.issues[0];
-			throw new Error(firstIssue?.message || "Invalid data format");
-		}
+	if (response.error) {
+		throw new Error("Failed to process invitations. Please try again later.");
+	}
 
-		const { output: validatedData } = validationResult;
-
-		if (validatedData.invites.length === 0) {
-			throw new Error("No invites to send");
-		}
-
-		const response = await invitationsCreate({
-			...apiClientOptions(event.cookies),
-			body: {
-				invites: validatedData.invites.map((invite) => ({
-					firstName: invite.firstName,
-					lastName: invite.lastName,
-					email: invite.email,
-					phoneNumber: invite.phoneNumber,
-					dateOfBirth: invite.dateOfBirth.toISOString().slice(0, 10),
-					pricingTier: invite.pricingTier,
-				})),
-			},
-		});
-
-		if (response.error) {
-			throw new Error("Failed to process invitations. Please try again later.");
-		}
-
-		return {
-			success:
-				"Invitations are being processed in the background. You will be notified when completed.",
-		};
-	},
-);
+	return {
+		success:
+			"Invitations are being processed in the background. You will be notified when completed.",
+	};
+});
 
 export const updateMemberSettings = form(
 	InsuranceFormLinkSchema,

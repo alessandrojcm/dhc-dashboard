@@ -1,9 +1,5 @@
 <script lang="ts">
-import {
-	createMutation,
-	createQuery,
-	useQueryClient,
-} from "@tanstack/svelte-query";
+import { createQuery } from "@tanstack/svelte-query";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import { Label } from "#lib/components/ui/label/index.js";
@@ -11,21 +7,20 @@ import { Textarea } from "#lib/components/ui/textarea/index.js";
 import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
 import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import { CalendarDays, MapPin, RefreshCw, TriangleAlert } from "@lucide/svelte";
-import { toast } from "svelte-sonner";
+import { inventoryMemberLoansShowOptions } from "@dhc/api-client";
 import {
-	inventoryCatalogShowItemQueryKey,
-	inventoryMemberLoansCancelMutation,
-	inventoryMemberLoansListQueryKey,
-	inventoryMemberLoansShowOptions,
-	inventoryMemberLoansShowQueryKey,
-} from "@dhc/api-client";
+	CANCEL_FAILED,
+	createCancelLoan,
+	loanStatusLabel,
+	memberLoanErrorMessage,
+} from "#lib/inventory/member-loans.svelte.js";
 
 // ALE-288 loan detail (ALE-280 stories 59–60): approval notifications land
 // here — approved dates plus the container path for collection — and the
 // member cancels before checkout from this same view. After checkout,
-// release is the operator's return command.
+// release is the operator's return command. Whether the loan can still be
+// cancelled is Phoenix's `cancellable` (LoanPolicy), never derived here.
 
-const queryClient = useQueryClient();
 let { loanId }: { loanId: string } = $props();
 
 const loanQuery = createQuery(() => ({
@@ -35,46 +30,14 @@ const loanQuery = createQuery(() => ({
 
 let cancelNote = $state("");
 
-const cancellable = $derived(
-	loanQuery.data?.status === "requested" ||
-		loanQuery.data?.status === "approved",
+const cancelMutation = createCancelLoan(
+	() => loanId,
+	() => ({
+		onSuccess: () => {
+			cancelNote = "";
+		},
+	}),
 );
-
-const cancelMutation = createMutation(() => ({
-	...inventoryMemberLoansCancelMutation(),
-	onSuccess: () => {
-		cancelNote = "";
-		const itemSlug = loanQuery.data?.itemSlug;
-		queryClient.invalidateQueries({
-			queryKey: inventoryMemberLoansShowQueryKey({ path: { loanId } }),
-		});
-		queryClient.invalidateQueries({
-			queryKey: inventoryMemberLoansListQueryKey(),
-		});
-		if (itemSlug) {
-			queryClient.invalidateQueries({
-				queryKey: inventoryCatalogShowItemQueryKey({
-					path: { slugOrId: itemSlug },
-				}),
-			});
-		}
-		toast.success("Loan cancelled — the item is available again.");
-	},
-	onError: (error) => {
-		// SAFETY: Phoenix renders loan conflicts as `{ errors: { detail, code } }`
-		// (see InventoryMemberLoanConflictError); only `code` is read, for branching.
-		const code = (error.errors as { code?: string } | undefined)?.code;
-		if (code === "not_cancellable") {
-			toast.error("This loan can no longer be cancelled.");
-		} else {
-			toast.error(error.errors?.detail ?? "Couldn't cancel the loan.");
-		}
-	},
-}));
-
-function statusLabel(status: string): string {
-	return status.replace("_", " ");
-}
 
 function formatDate(iso: string | null): string {
 	if (!iso) return "—";
@@ -134,8 +97,8 @@ function formatDate(iso: string | null): string {
 					</h1>
 				</div>
 				<div class="flex shrink-0 flex-col items-end gap-1.5">
-					<Badge variant={cancellable ? "secondary" : "outline"}>
-						{statusLabel(loan.status)}
+					<Badge variant={loan.cancellable ? "secondary" : "outline"}>
+						{loanStatusLabel(loan.status)}
 					</Badge>
 					{#if loan.overdue}
 						<Badge variant="destructive" class="gap-1">
@@ -215,7 +178,7 @@ function formatDate(iso: string | null): string {
 			</article>
 		{/if}
 
-		{#if cancellable}
+		{#if loan.cancellable}
 			<div class="rounded-2xl border border-border bg-muted/40 p-4">
 				<h2 class="font-semibold">Cancel this loan</h2>
 				<p class="mt-1 text-sm text-muted-foreground">
@@ -226,7 +189,7 @@ function formatDate(iso: string | null): string {
 					onsubmit={(e) => {
 						e.preventDefault();
 						cancelMutation.mutate({
-							path: { loanId: loan.id },
+							path: { loanId },
 							body: cancelNote.trim() ? { note: cancelNote.trim() } : {},
 						});
 					}}
@@ -247,8 +210,7 @@ function formatDate(iso: string | null): string {
 					</div>
 					{#if cancelMutation.isError}
 						<p class="mt-3 text-sm text-destructive" aria-live="polite">
-							{(cancelMutation.error.errors as { detail?: string } | undefined)
-								?.detail ?? "Couldn't cancel the loan."}
+							{memberLoanErrorMessage(cancelMutation.error, CANCEL_FAILED)}
 						</p>
 					{/if}
 					<Button

@@ -39,6 +39,7 @@ defmodule DhcWeb.InventoryMemberLoansJSON do
       itemId: loan.item_id,
       status: loan.status,
       overdue: loan.overdue?,
+      cancellable: loan.cancellable?,
       requestedStartOn: serialize_date(loan.requested_start_on),
       requestedDueOn: serialize_date(loan.requested_due_on),
       approvedStartOn: serialize_date(loan.approved_start_on),

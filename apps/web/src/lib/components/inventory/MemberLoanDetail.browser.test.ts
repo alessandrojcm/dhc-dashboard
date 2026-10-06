@@ -20,6 +20,7 @@ function loan(status: InventoryMemberLoan["status"]): InventoryMemberLoan {
 		itemId: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 		status,
 		overdue: false,
+		cancellable: status === "requested" || status === "approved",
 		requestedStartOn: "2026-09-17",
 		requestedDueOn: "2026-09-24",
 		approvedStartOn: null,

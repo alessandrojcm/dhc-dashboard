@@ -1,4 +1,4 @@
-import { form, getRequestEvent } from "$app/server";
+import { form } from "$app/server";
 import {
 	inventoryCategoriesCreate,
 	inventoryCategoriesUpdate,
@@ -11,9 +11,8 @@ import {
 	vInventoryOptionCreateRequest,
 	vInventoryOptionUpdateRequest,
 } from "@dhc/api-client";
-import { apiErrorMessage } from "#lib/api-error.js";
-import { apiClientOptions } from "#lib/server/api-client.js";
-import { authorize } from "#lib/server/auth.js";
+import { inventoryCommand } from "#lib/server/api/inventory-command.js";
+import { inventoryManageOptions } from "#lib/server/api/inventory-manage-options.js";
 import * as v from "valibot";
 
 const uuid = v.pipe(v.string(), v.uuid("Choose a valid record"));
@@ -72,92 +71,77 @@ const optionUpdateFormSchema = v.object({
 	),
 });
 
-function failure(cause: unknown, fallback: string) {
-	return { ok: false as const, error: apiErrorMessage(cause, fallback) };
-}
-
-async function requestOptions() {
-	const event = getRequestEvent();
-	await authorize(event.locals, "inventory.manage");
-	return apiClientOptions(event.cookies);
-}
-
 export const saveCategory = form(
 	categoryFormSchema,
-	async ({ id, ...fields }) => {
-		const options = await requestOptions();
-		const response = id
-			? await inventoryCategoriesUpdate({
-					...options,
-					path: { id },
-					body: fields,
-				})
-			: await inventoryCategoriesCreate({ ...options, body: fields });
-		if (response.error)
-			return failure(
-				response.error,
-				`Could not ${id ? "update" : "create"} category`,
-			);
-		return { ok: true as const, data: response.data.data, created: !id };
+	async ({ id, ...fields }, issue) => {
+		const options = await inventoryManageOptions();
+		const result = await inventoryCommand(
+			id
+				? inventoryCategoriesUpdate({ ...options, path: { id }, body: fields })
+				: inventoryCategoriesCreate({ ...options, body: fields }),
+			{
+				fallback: `Could not ${id ? "update" : "create"} category`,
+				fields: ["name", "description"],
+				issue,
+			},
+		);
+		return result.ok ? { ...result, created: !id } : result;
 	},
 );
 
 export const saveDefinition = form(
 	definitionFormSchema,
-	async ({ categoryId, definitionId, required, ...fields }) => {
-		const options = await requestOptions();
-		const fieldsWithRequired = {
-			...fields,
-			required: required === "true",
-		};
-		const response = definitionId
-			? await inventoryStructureUpdateDefinition({
-					...options,
-					path: { id: definitionId },
-					body: fieldsWithRequired,
-				})
-			: await inventoryStructureCreateDefinition({
-					...options,
-					path: { categoryId },
-					body: fieldsWithRequired,
-				});
-		if (response.error)
-			return failure(
-				response.error,
-				`Could not ${definitionId ? "update" : "create"} property`,
-			);
-		return {
-			ok: true as const,
-			data: response.data.data,
-			created: !definitionId,
-		};
+	async ({ categoryId, definitionId, required, ...fields }, issue) => {
+		const options = await inventoryManageOptions();
+		const body = { ...fields, required: required === "true" };
+		const result = await inventoryCommand(
+			definitionId
+				? inventoryStructureUpdateDefinition({
+						...options,
+						path: { id: definitionId },
+						body,
+					})
+				: inventoryStructureCreateDefinition({
+						...options,
+						path: { categoryId },
+						body,
+					}),
+			{
+				fallback: `Could not ${definitionId ? "update" : "create"} property`,
+				fields: ["label", "valueType", "required", "identifyingPosition"],
+				issue,
+			},
+		);
+		return result.ok ? { ...result, created: !definitionId } : result;
 	},
 );
 
 export const createOption = form(
 	optionFormSchema,
-	async ({ definitionId, ...fields }) => {
-		const response = await inventoryStructureCreateOption({
-			...(await requestOptions()),
-			path: { definitionId },
-			body: fields,
-		});
-		if (response.error)
-			return failure(response.error, "Could not create option");
-		return { ok: true as const, data: response.data.data };
-	},
+	async ({ definitionId, ...fields }, issue) =>
+		inventoryCommand(
+			inventoryStructureCreateOption({
+				...(await inventoryManageOptions()),
+				path: { definitionId },
+				body: fields,
+			}),
+			{ fallback: "Could not create option", fields: ["label"], issue },
+		),
 );
 
 export const updateOption = form(
 	optionUpdateFormSchema,
-	async ({ optionId, ...fields }) => {
-		const response = await inventoryStructureUpdateOption({
-			...(await requestOptions()),
-			path: { id: optionId },
-			body: fields,
-		});
-		if (response.error)
-			return failure(response.error, "Could not update option");
-		return { ok: true as const, data: response.data.data };
-	},
+	async ({ optionId, ...fields }, issue) =>
+		inventoryCommand(
+			inventoryStructureUpdateOption({
+				...(await inventoryManageOptions()),
+				path: { id: optionId },
+				body: fields,
+			}),
+			{
+				fallback: "Could not update option",
+				fields: ["label", "position"],
+				issue,
+			},
+		),
 );

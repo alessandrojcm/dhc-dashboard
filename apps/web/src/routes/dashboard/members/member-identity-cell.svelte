@@ -1,15 +1,15 @@
 <script lang="ts">
-import type { MemberTableRow } from "./member-table.types";
+import type { Member } from "@dhc/api-client";
 
 type Props = {
-	member: Pick<MemberTableRow, "first_name" | "last_name" | "email">;
+	member: Pick<Member, "firstName" | "lastName" | "email">;
 };
 
 const { member }: Props = $props();
 
-const fullName = $derived(`${member.first_name} ${member.last_name}`.trim());
+const fullName = $derived(`${member.firstName} ${member.lastName}`.trim());
 const initials = $derived(
-	`${member.first_name.at(0) ?? ""}${member.last_name.at(0) ?? ""}`.toUpperCase(),
+	`${member.firstName.at(0) ?? ""}${member.lastName.at(0) ?? ""}`.toUpperCase(),
 );
 </script>
 

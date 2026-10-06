@@ -1,12 +1,11 @@
-import { form, getRequestEvent } from "$app/server";
+import { form } from "$app/server";
 import {
 	inventoryContainersCreate,
 	inventoryContainersUpdate,
 	vInventoryContainerCreateRequest,
 } from "@dhc/api-client";
-import { apiErrorMessage } from "#lib/api-error.js";
-import { apiClientOptions } from "#lib/server/api-client.js";
-import { authorize } from "#lib/server/auth.js";
+import { inventoryCommand } from "#lib/server/api/inventory-command.js";
+import { inventoryManageOptions } from "#lib/server/api/inventory-manage-options.js";
 import * as v from "valibot";
 
 const uuid = v.pipe(v.string(), v.uuid("Choose a valid container"));
@@ -37,28 +36,18 @@ const containerFormSchema = v.object({
 
 export const saveContainer = form(
 	containerFormSchema,
-	async ({ id, ...fields }) => {
-		const event = getRequestEvent();
-		await authorize(event.locals, "inventory.manage");
-		const options = apiClientOptions(event.cookies);
-		const response = id
-			? await inventoryContainersUpdate({
-					...options,
-					path: { id },
-					body: fields,
-				})
-			: await inventoryContainersCreate({ ...options, body: fields });
-
-		if (response.error) {
-			return {
-				ok: false as const,
-				error: apiErrorMessage(
-					response.error,
-					`Could not ${id ? "update" : "create"} container`,
-				),
-			};
-		}
-
-		return { ok: true as const, data: response.data.data, created: !id };
+	async ({ id, ...fields }, issue) => {
+		const options = await inventoryManageOptions();
+		const result = await inventoryCommand(
+			id
+				? inventoryContainersUpdate({ ...options, path: { id }, body: fields })
+				: inventoryContainersCreate({ ...options, body: fields }),
+			{
+				fallback: `Could not ${id ? "update" : "create"} container`,
+				fields: ["name", "description", "parentContainerId"],
+				issue,
+			},
+		);
+		return result.ok ? { ...result, created: !id } : result;
 	},
 );

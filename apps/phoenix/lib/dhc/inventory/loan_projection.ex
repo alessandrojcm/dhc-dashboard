@@ -50,13 +50,16 @@ defmodule Dhc.Inventory.LoanProjection do
 
   `item_*` are the retained snapshots captured at request time, not a live
   item read, so history stays readable after archival. `container_path` is
-  present only once the loan is approved.
+  present only once the loan is approved. `cancellable?` is advisory: it uses
+  the same `LoanPolicy.member_cancellable?/1` the cancel command applies under
+  the item lock, so it can be stale but never computed by a different rule.
   """
   @type member_loan :: %{
           id: String.t(),
           item_id: String.t(),
           status: String.t(),
           overdue?: boolean(),
+          cancellable?: boolean(),
           requested_start_on: Date.t(),
           requested_due_on: Date.t(),
           approved_start_on: Date.t() | nil,
@@ -113,6 +116,7 @@ defmodule Dhc.Inventory.LoanProjection do
       item_id: loan.item_id,
       status: loan.status,
       overdue?: LoanPolicy.overdue?(loan, today),
+      cancellable?: LoanPolicy.member_cancellable?(loan),
       requested_start_on: loan.requested_start_on,
       requested_due_on: loan.requested_due_on,
       approved_start_on: loan.approved_start_on,

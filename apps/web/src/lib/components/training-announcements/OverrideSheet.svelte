@@ -38,10 +38,7 @@ import {
 	type OverrideField,
 	type OverrideFieldErrors,
 } from "#lib/training-announcements/exceptions.js";
-import {
-	announcementProblem,
-	type AnnouncementFieldMessages,
-} from "#lib/training-announcements/problem.js";
+import { apiProblem, type ApiFieldMessages } from "#lib/api-error.js";
 
 const queryClient = useQueryClient();
 
@@ -75,7 +72,7 @@ let draft = $state<OverrideDraft>(
 	}),
 );
 let saveError = $state<string | null>(null);
-let fieldMessages = $state<AnnouncementFieldMessages[]>([]);
+let fieldMessages = $state<ApiFieldMessages[]>([]);
 let localErrors = $state<OverrideFieldErrors>({});
 
 const create = createMutation(() =>
@@ -112,13 +109,13 @@ async function save() {
 		onSaved();
 		onClose();
 	} catch (cause) {
-		const problem = announcementProblem(cause);
+		const problem = apiProblem(cause);
 		// An overlap refusal names the database rule, never the way out:
 		// the existing text change must be deleted first.
 		saveError =
 			friendlyOverrideDetail(problem?.detail) ??
 			"Could not save the text changes";
-		fieldMessages = (problem?.fieldMessages ?? []).map((entry) => ({
+		fieldMessages = (problem?.fields ?? []).map((entry) => ({
 			field: entry.field,
 			messages: entry.messages.map(friendlyOverrideFieldMessage),
 		}));

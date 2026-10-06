@@ -28,6 +28,7 @@ defmodule Dhc.Inventory.ItemGuards do
 
   import Ecto.Query
 
+  alias Dhc.Inventory.ContainerTree
   alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.Item
   alias Dhc.Repo
@@ -113,76 +114,18 @@ defmodule Dhc.Inventory.ItemGuards do
     end
   end
 
-  @doc """
-  Whether every container from `container_id` up to the root exists and is
-  active. Unlocked — callers that need the chain to stay active must use
-  `require_active_container_chain/1` inside a transaction.
-  """
-  @spec container_chain_active?(String.t() | nil) :: boolean()
-  def container_chain_active?(nil), do: true
-
-  def container_chain_active?(container_id) when is_binary(container_id) do
-    case Ecto.UUID.cast(container_id) do
-      :error ->
-        false
-
-      {:ok, id} ->
-        chain = ancestor_chain(id)
-        chain != [] and Enum.all?(chain, &is_nil(&1.archived_at))
-    end
-  end
-
-  # Root-first so the lock order matches container archive (target, then
-  # dependants walking the tree). Locking dest-then-parent would deadlock
-  # against an archive of that parent.
+  # How the chain is walked and locked (root first, one `FOR SHARE` per row)
+  # is `ContainerTree`'s; that it is locked before the item is this module's.
   defp lock_active_chain(id) do
-    case ancestor_chain(id) do
-      [] ->
-        {:error, :not_found}
+    case ContainerTree.lock_ancestors_for_share(id) do
+      {:error, :not_found} = error ->
+        error
 
-      chain ->
-        locked = lock_chain_for_share(Enum.map(chain, & &1.id))
-
-        cond do
-          length(locked) != length(chain) -> {:error, :not_found}
-          Enum.any?(locked, & &1.archived_at) -> {:error, :archived_container}
-          true -> {:ok, id}
-        end
+      {:ok, locked} ->
+        if Enum.any?(locked, & &1.archived_at),
+          do: {:error, :archived_container},
+          else: {:ok, id}
     end
-  end
-
-  defp ancestor_chain(container_id) do
-    %{rows: rows} =
-      Repo.query!(
-        """
-        WITH RECURSIVE chain AS (
-          SELECT id, parent_container_id, archived_at, 0 AS depth
-          FROM containers
-          WHERE id = $1
-          UNION ALL
-          SELECT parent.id, parent.parent_container_id, parent.archived_at, child.depth + 1
-          FROM containers parent
-          JOIN chain child ON child.parent_container_id = parent.id
-        )
-        SELECT id, archived_at FROM chain ORDER BY depth DESC
-        """,
-        [Ecto.UUID.dump!(container_id)]
-      )
-
-    Enum.map(rows, fn [id, archived_at] ->
-      %{id: Ecto.UUID.load!(id), archived_at: archived_at}
-    end)
-  end
-
-  defp lock_chain_for_share(ids) do
-    Enum.flat_map(ids, fn id ->
-      from(c in "containers",
-        where: c.id == type(^id, :binary_id),
-        select: %{id: c.id, archived_at: c.archived_at},
-        lock: "FOR SHARE"
-      )
-      |> Repo.all()
-    end)
   end
 
   @doc """

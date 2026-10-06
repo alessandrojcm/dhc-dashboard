@@ -42,25 +42,31 @@ defmodule Dhc.Inventory.MemberCatalog do
   reason as the operator list: it is the one key no command can change, so a
   page boundary cannot shift under concurrent edits. Cursors are opaque and
   bind to every option that changes the result set.
+
+  Those paging and filter mechanics — the common parameters, the category
+  and property filters (decimals compared numerically, a non-decimal value
+  on a decimal definition refused as `:invalid_property`), and the page with
+  its exact count — are `Dhc.Inventory.ItemQuery` (ALE-347), shared with the
+  operator list. This module supplies only the `availability` parameter, its
+  scope, the member search, and the closed member projection; none of them
+  reads notes, containers, or maintenance detail.
   """
 
   import Ecto.Query
 
-  alias Dhc.CursorPagination
   alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemGuards
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemPropertyValue
+  alias Dhc.Inventory.ItemQuery
+  alias Dhc.Inventory.ItemQuery.ReadModel
   alias Dhc.Inventory.ItemValues
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.MaintenancePeriod
-  alias Dhc.Inventory.PageParams
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
   alias Dhc.Repo
-
-  @sort_specs %{"slug" => %{field: :slug}}
 
   @typedoc """
   One member-visible catalog row. `availability.reason` is the only
@@ -100,10 +106,12 @@ defmodule Dhc.Inventory.MemberCatalog do
   """
   @spec list_catalog_items(map()) :: {:ok, page()} | {:error, error()}
   def list_catalog_items(params \\ %{}) when is_map(params) or is_list(params) do
-    with {:ok, opts} <- parse_options(params),
-         {:ok, cursor} <- CursorPagination.parse_cursor(opts, &cursor_context/1) do
-      {:ok, build_page(opts, cursor)}
-    end
+    ItemQuery.list(params, %ReadModel{
+      param: {:availability, ["availability"], &parse_availability/1},
+      scope: &scope/2,
+      search: &apply_search/2,
+      project: &project_member_rows/1
+    })
   end
 
   @doc """
@@ -124,31 +132,6 @@ defmodule Dhc.Inventory.MemberCatalog do
       nil -> {:error, :not_found}
       %Item{} = item -> {:ok, item |> List.wrap() |> project_member_rows() |> List.first()}
     end
-  end
-
-  defp build_page(opts, cursor) do
-    rows =
-      opts
-      |> base_query()
-      |> CursorPagination.apply_cursor(cursor, opts, @sort_specs)
-      |> CursorPagination.apply_order(:slug, CursorPagination.query_direction(opts, cursor))
-      |> limit(^(opts.limit + 1))
-      |> Repo.all()
-      |> CursorPagination.maybe_reverse(cursor)
-
-    page = CursorPagination.page(rows, opts, cursor, &cursor_context/1, &cursor_value/2)
-
-    %{
-      items: project_member_rows(page.visible_rows),
-      total_count: total_count(opts),
-      limit: opts.limit,
-      next_cursor: page.next_cursor,
-      previous_cursor: page.previous_cursor
-    }
-  end
-
-  defp total_count(opts) do
-    opts |> base_query() |> exclude(:order_by) |> select([i], count(i.id)) |> Repo.one()
   end
 
   # ── Member projection ───────────────────────────────────────────
@@ -208,53 +191,11 @@ defmodule Dhc.Inventory.MemberCatalog do
 
   # ── Query ───────────────────────────────────────────────────────
 
-  # Slugs are immutable and unique, so they are the page key; archived rows
-  # are out of the catalog by definition.
-  defp base_query(opts) do
-    from(i in Item, as: :item, where: is_nil(i.archived_at))
-    |> filter_categories(opts.category_ids)
-    |> filter_properties(opts.properties)
+  # Archived rows are out of the catalog by definition.
+  defp scope(query, opts) do
+    query
+    |> where([i], is_nil(i.archived_at))
     |> filter_availability(opts.availability)
-    |> apply_search(opts.q)
-  end
-
-  defp filter_categories(query, []), do: query
-
-  defp filter_categories(query, category_ids),
-    do: where(query, [i], i.category_id in ^category_ids)
-
-  # One `EXISTS` per definition ANDs the definitions together while the
-  # values of a single definition OR inside it — an item holds at most one
-  # value per definition, so ANDing two values of the same definition could
-  # never match.
-  defp filter_properties(query, properties) do
-    Enum.reduce(properties, query, fn {definition_id, values}, acc ->
-      where(
-        acc,
-        [i],
-        exists(
-          from(v in ItemPropertyValue,
-            where: v.item_id == parent_as(:item).id,
-            where: v.property_definition_id == ^definition_id,
-            where: ^property_value_match(values),
-            select: 1
-          )
-        )
-      )
-    end)
-  end
-
-  defp property_value_match(values) do
-    Enum.reduce(values, dynamic(false), fn value, acc ->
-      dynamic(
-        [v],
-        ^acc or
-          fragment("?::text = ?", v.option_id, ^value) or
-          fragment("lower(?) = lower(?)", v.text_value, ^value) or
-          fragment("?::text = ?", v.boolean_value, ^value) or
-          fragment("?::text = ?", v.decimal_value, ^value)
-      )
-    end)
   end
 
   # Availability is a projection, never a stored column, so filtering
@@ -315,8 +256,6 @@ defmodule Dhc.Inventory.MemberCatalog do
   # `websearch_to_tsquery` (the ADR 0005 convention), so this is a
   # case-insensitive substring match over the slug, the category name, and
   # the property values — which together are exactly the label's ingredients.
-  defp apply_search(query, nil), do: query
-
   defp apply_search(query, q) do
     pattern = "%" <> escape_like(q) <> "%"
 
@@ -358,28 +297,6 @@ defmodule Dhc.Inventory.MemberCatalog do
 
   # ── Options ─────────────────────────────────────────────────────
 
-  defp parse_options(params) when is_list(params), do: parse_options(Map.new(params))
-
-  defp parse_options(params) do
-    with {:ok, limit} <- PageParams.parse_limit(take(params, ["limit"])),
-         {:ok, direction} <- PageParams.parse_direction(take(params, ["direction"])),
-         {:ok, category_ids} <- parse_categories(take(params, ["categoryId", "category_id"])),
-         {:ok, properties} <- parse_properties(take(params, ["property", "properties"])),
-         {:ok, availability} <- parse_availability(take(params, ["availability"])) do
-      {:ok,
-       %{
-         limit: limit,
-         sort: "slug",
-         direction: direction,
-         category_ids: category_ids,
-         properties: properties,
-         availability: availability,
-         q: PageParams.blank_to_nil(take(params, ["q"])),
-         cursor: PageParams.blank_to_nil(take(params, ["cursor"]))
-       }}
-    end
-  end
-
   defp parse_availability(nil), do: {:ok, :all}
   defp parse_availability(""), do: {:ok, :all}
 
@@ -393,90 +310,4 @@ defmodule Dhc.Inventory.MemberCatalog do
   end
 
   defp parse_availability(_raw), do: {:error, :invalid_availability}
-
-  defp parse_properties(nil), do: {:ok, %{}}
-  defp parse_properties(""), do: {:ok, %{}}
-
-  defp parse_properties(raw) when is_binary(raw) do
-    raw
-    |> String.split(",", trim: true)
-    |> Enum.reduce_while({:ok, %{}}, fn pair, {:ok, acc} ->
-      case String.split(pair, ":", parts: 2) do
-        [definition_id, value] -> accumulate_property(acc, String.trim(definition_id), value)
-        _missing_value -> {:halt, {:error, :invalid_property}}
-      end
-    end)
-  end
-
-  defp parse_properties(_raw), do: {:error, :invalid_property}
-
-  defp accumulate_property(acc, definition_id, value) do
-    case Ecto.UUID.cast(definition_id) do
-      {:ok, id} -> {:cont, {:ok, Map.update(acc, id, [value], &(&1 ++ [value]))}}
-      :error -> {:halt, {:error, :invalid_property}}
-    end
-  end
-
-  # Category ids bind to a UUID column, so a malformed entry fails here as a
-  # domain error; reaching the query would raise out of the API's error
-  # envelope instead of answering 400.
-  defp parse_categories(nil), do: {:ok, []}
-  defp parse_categories(""), do: {:ok, []}
-
-  defp parse_categories(raw) when is_binary(raw) do
-    raw |> String.split(",", trim: true) |> Enum.map(&String.trim/1) |> cast_categories()
-  end
-
-  defp parse_categories(raw) when is_list(raw), do: cast_categories(raw)
-  defp parse_categories(_raw), do: {:error, :invalid_category}
-
-  defp cast_categories(entries) do
-    entries
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
-      case Ecto.UUID.cast(entry) do
-        {:ok, id} -> {:cont, {:ok, acc ++ [id]}}
-        :error -> {:halt, {:error, :invalid_category}}
-      end
-    end)
-  end
-
-  defp take(params, keys) do
-    Enum.find_value(keys, fn key ->
-      case Map.fetch(params, key) do
-        {:ok, value} -> {:ok, value}
-        :error -> atom_fetch(params, key)
-      end
-    end)
-    |> case do
-      {:ok, value} -> value
-      nil -> nil
-    end
-  end
-
-  defp atom_fetch(params, key) do
-    case Map.fetch(params, String.to_existing_atom(key)) do
-      {:ok, value} -> {:ok, value}
-      :error -> nil
-    end
-  rescue
-    ArgumentError -> nil
-  end
-
-  # Everything that changes the result set is bound into the cursor, so a
-  # cursor cannot be replayed against a different query.
-  defp cursor_context(opts) do
-    %{
-      "limit" => opts.limit,
-      "sort" => opts.sort,
-      "direction" => opts.direction,
-      "categoryIds" => Enum.sort(opts.category_ids),
-      "properties" =>
-        opts.properties |> Enum.sort() |> Enum.map(fn {k, v} -> [k, Enum.sort(v)] end),
-      "availability" => Atom.to_string(opts.availability),
-      "q" => opts.q
-    }
-  end
-
-  defp cursor_value(row, _opts), do: row.slug
 end

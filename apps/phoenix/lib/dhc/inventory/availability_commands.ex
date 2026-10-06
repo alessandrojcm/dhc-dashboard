@@ -87,10 +87,10 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   import Ecto.Query
 
   alias Dhc.ClubCalendar
+  alias Dhc.Inventory.ContainerTree
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemGuards
   alias Dhc.Inventory.ItemProjection
-  alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.ItemValues
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.LoanPolicy
@@ -167,12 +167,6 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   @maintenance_rejection_note "Rejected automatically: the item went into maintenance."
   @archive_rejection_note "Rejected automatically: the item was archived."
   @default_archive_end_note "Ended automatically because the item was archived."
-
-  @container_path_separator " › "
-
-  # Statuses a member may still walk away from; after checkout they hold the
-  # item, so only an operator return closes the loan.
-  @member_cancellable ~w(requested approved)
 
   @note_keys ["note", :note]
   @start_keys ["startsOn", "starts_on", :startsOn, :starts_on]
@@ -453,18 +447,18 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   defp require_same_container(_actual, _peeked), do: {:error, :container_moved}
 
   defp verify_held_container_chain(container_id) do
-    if ItemGuards.container_chain_active?(container_id),
+    if ContainerTree.chain_active?(container_id),
       do: :ok,
       else: {:error, :archived_container}
   end
 
   defp member_cancellation(%Loan{status: "cancelled"} = loan, _note, _borrower), do: {:ok, loan}
 
-  defp member_cancellation(%Loan{status: status} = loan, note, borrower)
-       when status in @member_cancellable,
-       do: persist(decision_changeset(loan, "cancelled", note, borrower))
-
-  defp member_cancellation(%Loan{}, _note, _borrower), do: {:error, :not_cancellable}
+  defp member_cancellation(%Loan{} = loan, note, borrower) do
+    if LoanPolicy.member_cancellable?(loan),
+      do: persist(decision_changeset(loan, "cancelled", note, borrower)),
+      else: {:error, :not_cancellable}
+  end
 
   # Reject and operator-cancel differ only in the status they require and the
   # one they write, so they share one body rather than drifting apart.
@@ -664,28 +658,11 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   defp require_retained_values_valid(%Item{} = item) do
     definitions = ItemValues.load_definitions(item.category_id)
 
-    case ItemValues.validate(definitions, stored_values_as_supplied(item.id)) do
-      {:ok, _rows} -> :ok
-      {:error, errors} -> {:error, {:invalid_values, errors}}
+    case definitions |> ItemValues.invalid_stored([item.id]) |> Map.fetch(item.id) do
+      {:ok, errors} -> {:error, {:invalid_values, errors}}
+      :error -> :ok
     end
   end
-
-  defp stored_values_as_supplied(item_id) do
-    from(v in ItemPropertyValue, where: v.item_id == ^item_id)
-    |> Repo.all()
-    |> Map.new(&{&1.property_definition_id, supplied_value(&1)})
-  end
-
-  defp supplied_value(%ItemPropertyValue{option_id: option_id}) when not is_nil(option_id),
-    do: option_id
-
-  defp supplied_value(%ItemPropertyValue{boolean_value: boolean}) when is_boolean(boolean),
-    do: boolean
-
-  defp supplied_value(%ItemPropertyValue{decimal_value: decimal}) when not is_nil(decimal),
-    do: decimal
-
-  defp supplied_value(%ItemPropertyValue{text_value: text}), do: text
 
   # ── Dates ───────────────────────────────────────────────────────
 
@@ -940,29 +917,8 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   # rather than a bare shelf name they cannot locate.
   defp container_path(nil), do: nil
 
-  defp container_path(container_id) do
-    result =
-      Repo.query!(
-        """
-        WITH RECURSIVE ancestors AS (
-          SELECT id, parent_container_id, name, 0 AS depth
-          FROM containers
-          WHERE id = $1
-          UNION ALL
-          SELECT parent.id, parent.parent_container_id, parent.name, child.depth + 1
-          FROM containers parent
-          JOIN ancestors child ON child.parent_container_id = parent.id
-        )
-        SELECT name FROM ancestors ORDER BY depth DESC
-        """,
-        [Ecto.UUID.dump!(container_id)]
-      )
-
-    case result.rows do
-      [] -> nil
-      rows -> Enum.map_join(rows, @container_path_separator, fn [name] -> name end)
-    end
-  end
+  defp container_path(container_id),
+    do: Map.get(ContainerTree.path_names([container_id]), container_id)
 
   # ── Input normalization ─────────────────────────────────────────
 

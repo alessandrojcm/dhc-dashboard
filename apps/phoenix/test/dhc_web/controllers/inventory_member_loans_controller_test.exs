@@ -114,11 +114,9 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
       assert %{"data" => loan} = json_response(conn, 200)
 
       assert Enum.sort(Map.keys(loan)) ==
-               Enum.sort(
-                 ~w(id itemId status overdue requestedStartOn requestedDueOn approvedStartOn
-                    approvedDueOn checkedOutAt returnedAt requestNote decisionNote itemSlug
-                    itemLabel containerPath createdAt)
-               )
+               Enum.sort(~w(id itemId status overdue cancellable requestedStartOn requestedDueOn
+                    approvedStartOn approvedDueOn checkedOutAt returnedAt requestNote
+                    decisionNote itemSlug itemLabel containerPath createdAt))
 
       assert loan["itemSlug"] == item.slug
       assert is_binary(loan["itemLabel"])
@@ -151,6 +149,27 @@ defmodule DhcWeb.InventoryMemberLoansControllerTest do
         build_conn() |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
 
       assert json_response(approved, 200)["data"]["containerPath"] == "Clubhouse › Rack 2"
+    end
+
+    test "advertises cancellable only before checkout", %{conn: conn} do
+      %{item: item} = fixture()
+      loan_id = create_loan!(item, @actor_id, "requested")
+
+      pending = conn |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
+      assert json_response(pending, 200)["data"]["cancellable"] == true
+
+      for {status, cancellable?} <- [
+            {"approved", true},
+            {"checked_out", false},
+            {"returned", false},
+            {"rejected", false},
+            {"cancelled", false}
+          ] do
+        set_status!(loan_id, status)
+
+        conn = build_conn() |> auth_conn("member") |> get("/api/inventory/loans/mine/#{loan_id}")
+        assert json_response(conn, 200)["data"]["cancellable"] == cancellable?, status
+      end
     end
 
     test "renders overdue as derived, not stored", %{conn: conn} do

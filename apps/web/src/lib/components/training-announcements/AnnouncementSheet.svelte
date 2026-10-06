@@ -56,10 +56,7 @@ import {
 	type AnnouncementSave,
 	type AnnouncementScheduleType,
 } from "#lib/training-announcements/announcement.js";
-import {
-	announcementProblem,
-	type AnnouncementFieldMessages,
-} from "#lib/training-announcements/problem.js";
+import { apiProblem, type ApiFieldMessages } from "#lib/api-error.js";
 import DiscordMessagePreview from "./DiscordMessagePreview.svelte";
 
 const queryClient = useQueryClient();
@@ -91,7 +88,7 @@ let preview = $state<{ renderedMessage: string; threadName: string } | null>(
 );
 let saveError = $state<string | null>(null);
 let previewError = $state<string | null>(null);
-let fieldMessages = $state<AnnouncementFieldMessages[]>([]);
+let fieldMessages = $state<ApiFieldMessages[]>([]);
 
 const create = createMutation(() => ({
 	...trainingAnnouncementsCreateMutation(),
@@ -201,9 +198,9 @@ function scheduleFields() {
 }
 
 function reportProblem(cause: unknown, fallback: string) {
-	const problem = announcementProblem(cause);
+	const problem = apiProblem(cause);
 	saveError = problem?.detail ?? fallback;
-	fieldMessages = problem?.fieldMessages ?? [];
+	fieldMessages = problem?.fields ?? [];
 }
 
 function finished(saved: AnnouncementSave) {
@@ -264,8 +261,7 @@ async function showPreview() {
 		preview = response.data;
 	} catch (cause) {
 		preview = null;
-		previewError =
-			announcementProblem(cause)?.detail ?? "Could not preview the message";
+		previewError = apiProblem(cause)?.detail ?? "Could not preview the message";
 	}
 }
 </script>

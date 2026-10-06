@@ -14,6 +14,7 @@ import {
 	isModifiedClick,
 	sheetSelection,
 } from "#lib/inventory/sheet-selection.js";
+import { loanStatusLabel } from "#lib/inventory/member-loans.svelte.js";
 
 import {
 	ArrowRight,
@@ -73,10 +74,6 @@ function closeSheet() {
 	if (selectedLoanId) {
 		goto(LIST_PATH, { shallow: true, replace: true });
 	}
-}
-
-function statusLabel(loan: InventoryMemberLoan): string {
-	return loan.status.replace("_", " ");
 }
 
 function statusVariant(
@@ -219,7 +216,7 @@ function formatDate(iso: string | null): string {
 									<p
 										class="text-xs font-bold tracking-wide text-primary uppercase"
 									>
-										{statusLabel(loan)}
+										{loanStatusLabel(loan.status)}
 									</p>
 									<h2 class="mt-1 font-semibold">{loan.itemLabel}</h2>
 									<p class="mt-1 text-sm text-muted-foreground">
@@ -229,7 +226,7 @@ function formatDate(iso: string | null): string {
 								</div>
 								<div class="flex shrink-0 flex-col items-end gap-1.5">
 									<Badge variant={statusVariant(loan)}>
-										{statusLabel(loan)}
+										{loanStatusLabel(loan.status)}
 									</Badge>
 									{#if loan.overdue}
 										<Badge variant="destructive" class="gap-1">

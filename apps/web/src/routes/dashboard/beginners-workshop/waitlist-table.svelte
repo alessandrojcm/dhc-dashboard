@@ -1,41 +1,16 @@
 <script lang="ts">
-import {
-	invitationsCreateMutation,
-	invitationsResendMutation,
-	type InvitationsCreateData,
-	type Options,
-	type WaitlistEntriesSortField,
-	type WaitlistEntriesResponse2,
-	type WaitlistEntry,
-	type WaitlistStatus,
-	waitlistEntriesOptions,
-	waitlistEntriesQueryKey,
-	waitlistUpdateEntryMutation,
-} from "@dhc/api-client";
-import {
-	createMutation,
-	createQuery,
-	keepPreviousData,
-	useQueryClient,
-} from "@tanstack/svelte-query";
+import type { WaitlistEntry, WaitlistStatus } from "@dhc/api-client";
 import {
 	getCoreRowModel,
 	getExpandedRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
-	type PaginationState,
-	type RowSelectionState,
-	type SortingState,
 	type TableOptions,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
 import { LoaderCircle, SendIcon } from "@lucide/svelte";
 import { createRawSnippet } from "svelte";
 import { Cross2 } from "svelte-radix";
-import { toast } from "svelte-sonner";
-import * as v from "valibot";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Checkbox from "#lib/components/ui/checkbox/index.js";
@@ -49,308 +24,27 @@ import { Input } from "#lib/components/ui/input/index.js";
 import * as Select from "#lib/components/ui/select/index.js";
 import * as Table from "#lib/components/ui/table/index.js";
 import SortHeader from "#lib/components/ui/table/sort-header.svelte";
-import {
-	PAGE_SIZE_OPTIONS,
-	parsePageSize,
-	transitionCursorQuery,
-} from "#lib/cursor-query.js";
+import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
 import ActionButtons from "./actions-buttons.svelte";
+import WaitlistEntryDetails from "./waitlist-entry-details.svelte";
 import WaitlistStatusSelect from "./waitlist-status-select.svelte";
+import {
+	createWaitlistTable,
+	type WaitlistTableDeps,
+} from "./waitlist-table.svelte.js";
 
-type WaitlistTableRow = {
-	id: string;
-	current_position: number;
-	full_name: string;
-	email: string;
-	phone_number: string;
-	status: WaitlistEntry["status"];
-	age: number;
-	initial_registration_date: string;
-	last_contacted?: string | null;
-	medical_conditions?: string | null;
-	admin_notes?: string | null;
-	social_media_consent: WaitlistEntry["socialMediaConsent"];
-	guardian_first_name?: string | null;
-	guardian_last_name?: string | null;
-	guardian_phone_number?: string | null;
-	insurance_form_submitted: boolean;
-	last_status_change: string;
-};
+let { deps }: { deps?: WaitlistTableDeps } = $props();
 
-type WaitlistTableSortField = (typeof waitlistEntrySortFields)[number];
-
-type WaitlistTableQueryParams = {
-	searchQuery: string;
-	sort: WaitlistTableSortField;
-	direction: "asc" | "desc";
-	pageSize: (typeof pageSizeOptions)[number];
-	cursor: string | null;
-};
-
-type WaitlistTablePage = {
-	data: WaitlistTableRow[];
-	count: number;
-	nextCursor: string | null;
-	previousCursor: string | null;
-};
-
-type InvitationsCreateOptions = Options<InvitationsCreateData>;
-
-const pageSizeOptions = PAGE_SIZE_OPTIONS;
-
-const waitlistEntrySortFields = [
-	"current_position",
-	"full_name",
-	"status",
-	"age",
-	"initial_registration_date",
-	"last_contacted",
-	"last_status_change",
-] as const;
-
-const waitlistEntrySortMap = {
-	current_position: "position",
-	full_name: "fullName",
-	status: "status",
-	age: "age",
-	initial_registration_date: "initialRegistrationDate",
-	last_contacted: "lastContacted",
-	last_status_change: "lastStatusChange",
-} satisfies Record<WaitlistTableSortField, WaitlistEntriesSortField>;
-
-function isWaitlistSortField(
-	value: string | null,
-): value is WaitlistTableSortField {
-	return waitlistEntrySortFields.some((field) => field === value);
-}
-
-const pageSize = $derived(parsePageSize(page.url.searchParams, "pageSize"));
-const searchQuery = $derived(page.url.searchParams.get("q") || "");
-const cursor = $derived(page.url.searchParams.get("cursor"));
-const activeSort = $derived.by(() => {
-	const requestedSortColumn = page.url.searchParams.get("sort");
-	const sortColumn = isWaitlistSortField(requestedSortColumn)
-		? requestedSortColumn
-		: "current_position";
-	const sortDirection = page.url.searchParams.get("direction");
-
-	return {
-		sort: sortColumn,
-		direction: sortDirection === "desc" ? "desc" : "asc",
-	} as const;
-});
-const sortingState: SortingState = $derived.by(() => {
-	return [
-		{
-			id: activeSort.sort,
-			desc: activeSort.direction === "desc",
-		},
-	];
-});
-
-const waitlistQueryParams = $derived<WaitlistTableQueryParams>({
-	searchQuery,
-	sort: activeSort.sort,
-	direction: activeSort.direction,
-	pageSize,
-	cursor,
-});
-
-function toTableRow(entry: WaitlistEntry): WaitlistTableRow {
-	return {
-		id: entry.id,
-		current_position: entry.position,
-		full_name: entry.fullName,
-		email: entry.email,
-		phone_number: entry.phoneNumber,
-		status: entry.status,
-		age: entry.age,
-		initial_registration_date: entry.initialRegistrationDate,
-		last_contacted: entry.lastContacted,
-		medical_conditions: entry.medicalConditions,
-		admin_notes: entry.adminNotes,
-		social_media_consent: entry.socialMediaConsent,
-		guardian_first_name: entry.guardianFirstName,
-		guardian_last_name: entry.guardianLastName,
-		guardian_phone_number: entry.guardianPhoneNumber,
-		insurance_form_submitted: entry.insuranceFormSubmitted,
-		last_status_change: entry.lastStatusChange,
-	};
-}
-
-const waitlistRequestOptions = $derived({
-	query: {
-		limit: waitlistQueryParams.pageSize,
-		cursor: waitlistQueryParams.cursor ?? undefined,
-		q: waitlistQueryParams.searchQuery || undefined,
-		sort: waitlistEntrySortMap[waitlistQueryParams.sort],
-		direction: waitlistQueryParams.direction,
-	},
-});
-const waitlistQueryKey = $derived(
-	waitlistEntriesQueryKey(waitlistRequestOptions),
-);
-const waitlistQuery = createQuery(() => ({
-	...waitlistEntriesOptions(waitlistRequestOptions),
-	placeholderData: keepPreviousData,
-	select: (response): WaitlistTablePage => {
-		const result = response.data;
-		return {
-			data: result.entries.map(toTableRow),
-			count: result.totalCount,
-			nextCursor: result.nextCursor,
-			previousCursor: result.previousCursor,
-		};
-	},
-}));
-const queryClient = useQueryClient();
-
-function getWaitlistIds(options: InvitationsCreateOptions) {
-	return options.body.invites.flatMap((invite) => {
-		const parsed = v.safeParse(v.string(), invite);
-		return parsed.success ? [parsed.output] : [];
-	});
-}
-
-const inviteMember = createMutation(() => ({
-	...invitationsCreateMutation(),
-	onMutate: (options) => {
-		const waitlistIds = getWaitlistIds(options);
-		const oldData = queryClient.getQueryData(waitlistQueryKey);
-		queryClient.setQueryData(
-			waitlistQueryKey,
-			(oldData: WaitlistEntriesResponse2 | undefined) => {
-				if (!oldData) return oldData;
-				return {
-					...oldData,
-					data: {
-						...oldData.data,
-						entries: oldData.data.entries.map((entry) =>
-							waitlistIds.includes(entry.id)
-								? { ...entry, status: "invited" }
-								: entry,
-						),
-					},
-				};
-			},
-		);
-		return { oldData };
-	},
-	onSuccess: () => {
-		selectedState = {};
-		toast.success("Invitations are being processed in the background.");
-	},
-	onError: (_error, _options, context) => {
-		toast.error("Something has gone wrong inviting members.");
-		queryClient.setQueryData(waitlistQueryKey, context?.oldData);
-	},
-}));
-
-function inviteWaitlistMembers(waitlistIds: string[]) {
-	inviteMember.mutate({ body: { invites: waitlistIds } });
-}
-
-const resendInvitationLink = createMutation(() => ({
-	...invitationsResendMutation(),
-	onMutate: (options) => {
-		const emails = options.body.emails;
-		const oldData = queryClient.getQueryData(waitlistQueryKey);
-		queryClient.setQueryData(
-			waitlistQueryKey,
-			(oldData: WaitlistEntriesResponse2 | undefined) => {
-				if (!oldData) return oldData;
-				return {
-					...oldData,
-					data: {
-						...oldData.data,
-						entries: oldData.data.entries.map((entry) =>
-							emails.includes(entry.email)
-								? { ...entry, status: "invited" }
-								: entry,
-						),
-					},
-				};
-			},
-		);
-		return { oldData };
-	},
-	onSuccess: () => {
-		toast.success("Invitation link resent.");
-	},
-	onError: (_error, _options, context) => {
-		toast.error("Something has gone wrong inviting members.");
-		queryClient.setQueryData(waitlistQueryKey, context?.oldData);
-	},
-}));
-
-const updateWaitlistEntry = createMutation(() => ({
-	...waitlistUpdateEntryMutation(),
-	onSuccess: () => {
-		toast.success("Waitlist entry updated.");
-		waitlistQuery.refetch();
-	},
-	onError: () => {
-		toast.error("Failed to update waitlist entry.");
-	},
-	onSettled: () => {
-		waitlistQuery.refetch();
-	},
-}));
-
-function navigateToBeginnersWorkshop(searchParams: URLSearchParams) {
-	const url = `/dashboard/beginners-workshop?${searchParams.toString()}`;
-	goto(url, { reset: false });
-}
-
-function onPaginationChange(newPagination: Partial<PaginationState>) {
-	const paginationState: PaginationState = {
-		pageIndex: 0,
-		pageSize,
-		...newPagination,
-	};
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: { pageSize: paginationState.pageSize.toString() },
-	});
-	navigateToBeginnersWorkshop(newParams);
-}
-
-function onCursorChange(newCursor: string | null | undefined) {
-	if (!newCursor) return;
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		cursor: newCursor,
-	});
-	navigateToBeginnersWorkshop(newParams);
-}
-
-function onSortingChange(newSorting: SortingState) {
-	const [sortingState] = newSorting;
-	if (!sortingState) return;
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: {
-			sort: sortingState.id,
-			direction: sortingState.desc ? "desc" : "asc",
-		},
-	});
-	navigateToBeginnersWorkshop(newParams);
-}
-
-function onSearchChange(newSearch: string) {
-	const newParams = transitionCursorQuery(page.url.searchParams, {
-		cursorKey: "cursor",
-		updates: { q: newSearch || null },
-	});
-	navigateToBeginnersWorkshop(newParams);
-}
+// The deps are fixed for the table's lifetime.
+// svelte-ignore state_referenced_locally
+const waitlist = createWaitlistTable(deps);
+const waitlistUrl = waitlist.url;
 
 // State for expanded rows
 let expandedState = $state({});
-let selectedState = $state<RowSelectionState>({});
-let inviteCount = $derived(Object.values(selectedState).filter(Boolean).length);
+const inviteCount = $derived(waitlist.selectedIds.length);
 
-const tableOptions = $state<TableOptions<WaitlistTableRow>>({
+const tableOptions = $state<TableOptions<WaitlistEntry>>({
 	autoResetPageIndex: false,
 	manualPagination: true,
 	manualSorting: true,
@@ -360,13 +54,13 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			return expandedState;
 		},
 		get pagination() {
-			return {
-				pageIndex: 0,
-				pageSize,
-			};
+			return waitlistUrl.table.state.pagination;
 		},
 		get sorting() {
-			return sortingState;
+			return waitlistUrl.table.state.sorting;
+		},
+		get rowSelection() {
+			return waitlist.selection;
 		},
 	},
 	onExpandedChange: (updater) => {
@@ -376,13 +70,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			expandedState = updater;
 		}
 	},
-	onRowSelectionChange: (updater) => {
-		if (updater instanceof Function) {
-			selectedState = updater(selectedState);
-		} else {
-			selectedState = updater;
-		}
-	},
+	onRowSelectionChange: (updater) => waitlist.setSelection(updater),
 	columns: [
 		{
 			header: "",
@@ -400,29 +88,17 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			header: "Actions",
 			cell: ({ row }) => {
 				return renderComponent(ActionButtons, {
-					adminNotes: row.original.admin_notes ?? "N/A",
+					adminNotes: row.original.adminNotes ?? "N/A",
 					isExpanded: row.getIsExpanded(),
 					onToggleExpand: () => row.toggleExpanded(),
-					inviteMember: () => {
-						if (row.original.status !== "invited") {
-							inviteWaitlistMembers([row.original.id]);
-						} else {
-							resendInvitationLink.mutate({
-								body: { emails: [row.original.email] },
-							});
-						}
-					},
-					onEdit(newValue) {
-						updateWaitlistEntry.mutate({
-							path: { id: row.original.id },
-							body: { adminNotes: newValue },
-						});
-					},
+					inviteMember: () => waitlist.sendInvitation(row.original),
+					onEdit: (adminNotes) =>
+						waitlist.updateEntry(row.original.id, { adminNotes }),
 				});
 			},
 		},
 		{
-			accessorKey: "current_position",
+			accessorKey: "position",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
@@ -432,7 +108,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 				}),
 		},
 		{
-			accessorKey: "full_name",
+			accessorKey: "fullName",
 			header: "Full Name",
 			footer: ({ table }) =>
 				`Total ${table.getRowCount() ?? 0} people on the waitlist`,
@@ -460,7 +136,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "phone_number",
+			accessorKey: "phoneNumber",
 			header: "Phone Number",
 			cell: ({ getValue }) => {
 				return renderSnippet(
@@ -472,7 +148,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "social_media_consent",
+			accessorKey: "socialMediaConsent",
 			header: "Social  Consent",
 			cell: ({ getValue }) => {
 				return renderComponent(Badge, {
@@ -496,14 +172,9 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			cell: ({ row }) => {
 				return renderComponent(WaitlistStatusSelect, {
 					status: row.original.status,
-					disabled: updateWaitlistEntry.isPending,
-					onChange: (status: WaitlistStatus) => {
-						if (status === row.original.status) return;
-						updateWaitlistEntry.mutate({
-							path: { id: row.original.id },
-							body: { status },
-						});
-					},
+					disabled: waitlist.isUpdating,
+					onChange: (status: WaitlistStatus) =>
+						waitlist.setStatus(row.original, status),
 				});
 			},
 		},
@@ -528,7 +199,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "initial_registration_date",
+			accessorKey: "initialRegistrationDate",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
@@ -547,7 +218,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			},
 		},
 		{
-			accessorKey: "last_contacted",
+			accessorKey: "lastContacted",
 			header: "Last Contacted",
 			cell: ({ getValue }) => {
 				return renderSnippet(
@@ -560,29 +231,12 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 		},
 	],
 	get data() {
-		return waitlistQuery?.data?.data ?? [];
+		return waitlist.entries;
 	},
-	onPaginationChange: (updater) => {
-		if (updater instanceof Function) {
-			onPaginationChange(
-				updater({
-					pageIndex: 0,
-					pageSize,
-				}),
-			);
-		} else {
-			onPaginationChange(updater);
-		}
-	},
-	onSortingChange: (updater) => {
-		if (updater instanceof Function) {
-			onSortingChange(updater(sortingState));
-		} else {
-			onSortingChange(updater);
-		}
-	},
+	onPaginationChange: waitlistUrl.table.onPaginationChange,
+	onSortingChange: waitlistUrl.table.onSortingChange,
 	get rowCount() {
-		return waitlistQuery?.data?.count ?? 0;
+		return waitlist.count;
 	},
 	getRowId: (row) => row.id,
 	getCoreRowModel: getCoreRowModel(),
@@ -597,34 +251,34 @@ const table = createSvelteTable(tableOptions);
 >
 	<span class="flex flex-nowrap items-center gap-2">
 		<Input
-			value={searchQuery}
+			value={waitlistUrl.search}
 			oninput={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
-				onSearchChange(t.currentTarget.value)}
+				waitlistUrl.setSearch(t.currentTarget.value)}
 			placeholder="Search for a person"
 			class="w-full md:max-w-md"
 		/>
 
-		{#if searchQuery !== ""}
+		{#if waitlistUrl.search !== ""}
 			<Button
 				variant="ghost"
 				type="button"
 				aria-label="Clear search"
-				onclick={() => onSearchChange("")}
+				onclick={() => waitlistUrl.setSearch("")}
 			>
 				<Cross2 />
 			</Button>
 		{/if}
-		{#if waitlistQuery.isFetching}
+		{#if waitlist.isFetching}
 			<LoaderCircle />
 		{/if}
 	</span>
 
 	<Button
 		class="md:ml-auto"
-		disabled={inviteCount === 0 || inviteMember.isPending}
-		onclick={() => inviteWaitlistMembers(Object.keys(selectedState))}
+		disabled={inviteCount === 0 || waitlist.isInviting}
+		onclick={() => waitlist.invite(waitlist.selectedIds)}
 	>
-		{#if inviteMember.isPending}
+		{#if waitlist.isInviting}
 			<LoaderCircle class="mr-2 h-4 w-4 animate-spin" />
 		{:else}
 			<SendIcon class="mr-2 h-4 w-4" />
@@ -671,42 +325,7 @@ const table = createSvelteTable(tableOptions);
 							colspan={row.getVisibleCells().length}
 							class="p-4 bg-muted/20"
 						>
-							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-								<!-- Guardian Information -->
-								<div class="bg-card rounded-lg border p-4">
-									<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
-									{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
-										<div class="grid grid-cols-3 gap-2">
-											<div class="text-xs font-medium text-muted-foreground">
-												Name
-											</div>
-											<div class="col-span-2 text-xs">
-												{row.original.guardian_first_name || ""}
-												{row.original.guardian_last_name || ""}
-											</div>
-
-											<div class="text-xs font-medium text-muted-foreground">
-												Phone
-											</div>
-											<div class="col-span-2 text-xs">
-												{row.original.guardian_phone_number || "N/A"}
-											</div>
-										</div>
-									{:else}
-										<p class="text-xs text-muted-foreground">
-											No guardian information available
-										</p>
-									{/if}
-								</div>
-
-								<!-- Medical Conditions -->
-								<div class="bg-card rounded-lg border p-4">
-									<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
-									<p class="text-xs">
-										{row.original.medical_conditions || "None reported"}
-									</p>
-								</div>
-							</div>
+							<WaitlistEntryDetails entry={row.original} layout="table" />
 						</Table.Cell>
 					</Table.Row>
 				{/if}
@@ -733,46 +352,32 @@ const table = createSvelteTable(tableOptions);
 
 <!-- Mobile Card View (hidden on desktop) -->
 <div class="md:hidden overflow-y-auto h-[60svh] px-2 py-1">
-	<div class="space-y-4">
-		{#if table.getRowCount() === 0}
-			<p class="text-foreground">No results found</p>
-		{/if}
+	{#if table.getRowCount() === 0}
+		<p class="text-foreground">No results found</p>
+	{/if}
+	<ul class="space-y-4" aria-label="Waitlist entries">
 		{#each table.getRowModel().rows as row (row.id)}
-			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
+			<li class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
 				<!-- Name and Actions Row -->
 				<div class="flex justify-between items-center mb-3">
 					<div class="font-medium text-base">
-						{row.original.full_name}
+						{row.original.fullName}
 						<!-- Position Badge -->
 						<span
 							class="ml-2 text-xs bg-muted text-muted-foreground rounded-full px-2 py-1"
 						>
-							#{row.original.current_position}
+							#{row.original.position}
 						</span>
 					</div>
 					<!-- Actions -->
 					<div>
 						<ActionButtons
-							inviteMember={() => {
-								if (row.original.status !== "invited") {
-									inviteWaitlistMembers([row.original.id]);
-								} else {
-									resendInvitationLink.mutate({
-										body: { emails: [row.original.email] },
-									});
-								}
-							}}
-							adminNotes={row.original.admin_notes ?? "N/A"}
+							inviteMember={() => waitlist.sendInvitation(row.original)}
+							adminNotes={row.original.adminNotes ?? "N/A"}
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
-							onEdit={(newValue) => {
-								if (row.original.email) {
-									updateWaitlistEntry.mutate({
-										path: { id: row.original.id },
-										body: { adminNotes: newValue },
-									});
-								}
-							}}
+							onEdit={(adminNotes) =>
+								waitlist.updateEntry(row.original.id, { adminNotes })}
 						/>
 					</div>
 				</div>
@@ -781,14 +386,8 @@ const table = createSvelteTable(tableOptions);
 				<div class="mb-3">
 					<WaitlistStatusSelect
 						status={row.original.status}
-						disabled={updateWaitlistEntry.isPending}
-						onChange={(status) => {
-							if (status === row.original.status) return;
-							updateWaitlistEntry.mutate({
-								path: { id: row.original.id },
-								body: { status },
-							});
-						}}
+						disabled={waitlist.isUpdating}
+						onChange={(status) => waitlist.setStatus(row.original, status)}
 					/>
 				</div>
 
@@ -804,7 +403,7 @@ const table = createSvelteTable(tableOptions);
 				<div class="grid grid-cols-3 py-1 border-b">
 					<div class="text-sm font-medium text-muted-foreground">Phone</div>
 					<div class="col-span-2 text-sm">
-						{row.original.phone_number || "N/A"}
+						{row.original.phoneNumber || "N/A"}
 					</div>
 				</div>
 
@@ -822,8 +421,8 @@ const table = createSvelteTable(tableOptions);
 						Registered
 					</div>
 					<div class="col-span-2 text-sm">
-						{#if row.original.initial_registration_date}
-							{dayjs(row.original.initial_registration_date).format(
+						{#if row.original.initialRegistrationDate}
+							{dayjs(row.original.initialRegistrationDate).format(
 								"MMM D, YYYY",
 							)}
 						{:else}
@@ -838,8 +437,8 @@ const table = createSvelteTable(tableOptions);
 						Last Contact
 					</div>
 					<div class="col-span-2 text-sm">
-						{#if row.original.last_contacted}
-							{dayjs(row.original.last_contacted).format("MMM D, YYYY")}
+						{#if row.original.lastContacted}
+							{dayjs(row.original.lastContacted).format("MMM D, YYYY")}
 						{:else}
 							Never
 						{/if}
@@ -849,45 +448,12 @@ const table = createSvelteTable(tableOptions);
 				<!-- Expanded Content -->
 				{#if row.getIsExpanded()}
 					<div class="mt-4 pt-4 border-t border-muted">
-						<!-- Guardian Information -->
-						<div class="mb-4">
-							<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
-							{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
-								<div class="grid grid-cols-3 gap-2">
-									<div class="text-xs font-medium text-muted-foreground">
-										Name
-									</div>
-									<div class="col-span-2 text-xs">
-										{row.original.guardian_first_name || ""}
-										{row.original.guardian_last_name || ""}
-									</div>
-
-									<div class="text-xs font-medium text-muted-foreground">
-										Phone
-									</div>
-									<div class="col-span-2 text-xs">
-										{row.original.guardian_phone_number || "N/A"}
-									</div>
-								</div>
-							{:else}
-								<p class="text-xs text-muted-foreground">
-									No guardian information available
-								</p>
-							{/if}
-						</div>
-
-						<!-- Medical Conditions -->
-						<div>
-							<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
-							<p class="text-xs">
-								{row.original.medical_conditions || "None reported"}
-							</p>
-						</div>
+						<WaitlistEntryDetails entry={row.original} layout="card" />
 					</div>
 				{/if}
-			</div>
+			</li>
 		{/each}
-	</div>
+	</ul>
 </div>
 <div
 	class="flex flex-col md:flex-row items-center justify-between gap-4 p-4 bg-card border-t"
@@ -896,14 +462,14 @@ const table = createSvelteTable(tableOptions);
 		<p class="text-sm text-muted-foreground">Elements per page</p>
 		<Select.Root
 			type="single"
-			value={pageSize.toString()}
-			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
+			value={waitlistUrl.pageSize.toString()}
+			onValueChange={(value) => waitlistUrl.setPageSize(Number(value))}
 		>
 			<Select.Trigger class="w-16 h-8" aria-label="Waitlist elements per page"
-				>{pageSize}</Select.Trigger
+				>{waitlistUrl.pageSize}</Select.Trigger
 			>
 			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
+				{#each PAGE_SIZE_OPTIONS as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>
 						{pageSizeOption}
 					</Select.Item>
@@ -916,19 +482,18 @@ const table = createSvelteTable(tableOptions);
 	>
 		<Button
 			variant="outline"
-			disabled={!waitlistQuery?.data?.previousCursor ||
-				waitlistQuery.isFetching}
-			onclick={() => onCursorChange(waitlistQuery?.data?.previousCursor)}
+			disabled={!waitlist.previousCursor || waitlist.isFetching}
+			onclick={() => waitlistUrl.goTo(waitlist.previousCursor)}
 		>
 			Previous
 		</Button>
 		<p class="text-sm text-muted-foreground">
-			{waitlistQuery?.data?.count ?? 0} total
+			{waitlist.count} total
 		</p>
 		<Button
 			variant="outline"
-			disabled={!waitlistQuery?.data?.nextCursor || waitlistQuery.isFetching}
-			onclick={() => onCursorChange(waitlistQuery?.data?.nextCursor)}
+			disabled={!waitlist.nextCursor || waitlist.isFetching}
+			onclick={() => waitlistUrl.goTo(waitlist.nextCursor)}
 		>
 			Next
 		</Button>
