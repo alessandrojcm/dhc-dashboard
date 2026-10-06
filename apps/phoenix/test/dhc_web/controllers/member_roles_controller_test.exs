@@ -99,6 +99,8 @@ defmodule DhcWeb.MemberRolesControllerTest do
 
     for payload <- [
           %{roles: ["unknown"], expectedRoles: ["member"]},
+          %{roles: [], expectedRoles: ["member"]},
+          %{roles: ["coach"], expectedRoles: ["member"]},
           %{roles: ["coach", "coach"], expectedRoles: ["member"]},
           %{roles: "admin", expectedRoles: ["member"]},
           %{roles: ["coach"]},
@@ -111,7 +113,7 @@ defmodule DhcWeb.MemberRolesControllerTest do
 
     response =
       authenticated(actor)
-      |> patch("/api/members/#{id}/roles", %{roles: ["coach"], expectedRoles: []})
+      |> patch("/api/members/#{id}/roles", %{roles: ["coach", "member"], expectedRoles: []})
       |> json_response(409)
 
     assert response["errors"]["code"] == "roles_changed"
@@ -119,12 +121,17 @@ defmodule DhcWeb.MemberRolesControllerTest do
     assert {:ok, _} = Auth.get_principal_by_session_token(token)
   end
 
-  test "can remove all target roles but cannot remove the last active editor", %{
+  test "can remove optional target roles but cannot remove the last active editor", %{
     actor: actor,
     target: id
   } do
-    assert {:ok, %{roles: []}} =
-             Roles.update(actor, id, %{"roles" => [], "expectedRoles" => ["member"]})
+    put_roles(id, ["coach", "member"])
+
+    assert {:ok, %{roles: ["member"]}} =
+             Roles.update(actor, id, %{
+               "roles" => ["member"],
+               "expectedRoles" => ["coach", "member"]
+             })
 
     assert {:error, :last_role_editor} =
              Roles.update(actor, actor, %{
@@ -143,6 +150,16 @@ defmodule DhcWeb.MemberRolesControllerTest do
              })
 
     assert {:error, :forbidden} = Roles.show(actor, id)
+  end
+
+  test "legacy role sets without Member can be repaired", %{actor: actor, target: id} do
+    put_roles(id, ["coach"])
+
+    assert {:ok, %{roles: ["coach", "member"]}} =
+             Roles.update(actor, id, %{
+               "roles" => ["coach", "member"],
+               "expectedRoles" => ["coach"]
+             })
   end
 
   test "missing and malformed members are 404, inactive actors cannot edit", %{

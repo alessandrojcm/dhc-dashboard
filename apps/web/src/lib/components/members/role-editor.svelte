@@ -26,13 +26,18 @@ let {
 	onReload: () => void;
 } = $props();
 
-let selected = $state<ClubRole[]>(untrack(() => [...roles]));
+function withMember(roles: ClubRole[]): ClubRole[] {
+	return roles.includes("member") ? [...roles] : [...roles, "member"];
+}
+
+let selected = $state<ClubRole[]>(untrack(() => withMember(roles)));
 const changed = $derived(
 	selected.length !== roles.length ||
 		selected.some((role) => !roles.includes(role)),
 );
 
 function toggle(role: ClubRole, checked: boolean) {
+	if (role === "member") return;
 	selected = checked
 		? [...selected, role]
 		: selected.filter((value) => value !== role);
@@ -62,7 +67,7 @@ function toggle(role: ClubRole, checked: boolean) {
 					<Checkbox
 						id={`role-${role}`}
 						checked={selected.includes(role)}
-						disabled={pending || stale}
+						disabled={pending || stale || role === "member"}
 						onCheckedChange={(checked) => toggle(role, checked)}
 					/>
 					<span class="capitalize">{role.replaceAll("_", " ")}</span>
@@ -74,7 +79,8 @@ function toggle(role: ClubRole, checked: boolean) {
 			They must sign in again to use their new roles.
 			{#if isOwnProfile}You are editing your own roles and will also be signed
 				out.{/if}
-			Keep at least one active president or admin.
+			Keep at least one active president or admin. Member is required and cannot be
+			removed.
 		</p>
 		{#if error}<p role="alert" class="text-sm text-destructive">{error}</p>{/if}
 		<div class="flex flex-wrap gap-2">
@@ -90,7 +96,7 @@ function toggle(role: ClubRole, checked: boolean) {
 				variant="outline"
 				disabled={pending}
 				onclick={() => {
-					selected = [...roles];
+					selected = withMember(roles);
 					if (stale) onReload();
 				}}>{stale ? "Reload roles" : "Reset"}</Button
 			>

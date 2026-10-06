@@ -2122,8 +2122,9 @@ paths:
       tags: [Members]
       summary: Replace a member's roles
       description: |
-        Requires members.roles.edit (active president or admin only). All existing
-        roles may be assigned or removed, including on the caller. A changed role
+        Requires members.roles.edit (active president or admin only). The member
+        role is mandatory; other existing roles may be assigned or removed,
+        including on the caller. A changed role
         set revokes all sessions and socket tokens atomically and disconnects
         established sockets after commit. A no-op does not sign the member out.
         expectedRoles must match the current set, otherwise returns 409.
@@ -2146,6 +2147,8 @@ paths:
               properties:
                 roles:
                   type: array
+                  description: Must include member; it cannot be removed.
+                  minItems: 1
                   uniqueItems: true
                   maxItems: 13
                   items: { $ref: "#/components/schemas/ClubRole" }

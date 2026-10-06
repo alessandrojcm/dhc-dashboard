@@ -1,5 +1,7 @@
 # Where to look
 
+Member role edits always retain `member`: the API rejects desired sets without it, and the editor keeps its checkbox checked and disabled. Existing role sets missing it can be repaired by saving the editor.
+
 | Task | Location | Notes |
 |------|----------|-------|
 | Edit member roles or change role revocation | `apps/phoenix/lib/dhc/auth/roles.ex` + `member_roles_controller.ex` + `apps/web/src/lib/components/members/` (mounted separately from the profile form in the member detail page) | `members.roles.edit` grants active admins/presidents only. `Roles.update/3` owns its transaction: role-editor advisory lock → actor/target access rows ordered by profile id → live authorization and expected-role comparison → role replacement and session/socket-token deletion; disconnect through `Auth.disconnect_sockets/1` only after commit. No-op edits keep sessions; stale editors and removal of the last active editor conflict. Normalize role sets lexically in Elixir: PostgreSQL orders `role_type` by enum declaration, not alphabetically. Socket credential exchange revalidates the session under the access lock, and `UserSocket.init/1` rechecks its non-secret credential reference after subscribing to disconnects, closing the connect/subscription revocation race. Tests: `member_roles_controller_test.exs`, `user_socket_test.exs`, `role-editor.browser.test.ts`. |

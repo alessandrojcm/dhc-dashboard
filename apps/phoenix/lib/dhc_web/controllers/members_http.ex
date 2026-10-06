@@ -14,7 +14,8 @@ defmodule DhcWeb.MembersHTTP do
       invalid_query: {400, "Invalid members query"},
       invalid_payload: {422, "Invalid member update payload"},
       forbidden: {403, "Insufficient role"},
-      invalid_roles: {422, "Select valid, distinct club roles and provide the current roles"},
+      invalid_roles:
+        {422, "Select valid, distinct club roles including Member and provide the current roles"},
       roles_changed: {409, "Roles changed since you opened this editor. Reload before saving."},
       last_role_editor: {409, "Keep at least one active president or admin to manage roles"},
       invalid_pause: {422, "Invalid membership pause payload", :invalid_payload},

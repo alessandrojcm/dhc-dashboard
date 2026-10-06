@@ -115,7 +115,8 @@ defmodule Dhc.Auth.Roles do
   end
 
   defp validate(%{"roles" => desired, "expectedRoles" => expected} = payload) do
-    if map_size(payload) == 2 and valid_roles?(desired) and valid_roles?(expected) do
+    if map_size(payload) == 2 and valid_roles?(desired) and valid_roles?(expected) and
+         "member" in desired do
       {:ok, Enum.sort(desired), Enum.sort(expected)}
     else
       {:error, :invalid_roles}

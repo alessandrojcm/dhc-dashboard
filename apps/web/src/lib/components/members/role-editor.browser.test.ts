@@ -24,18 +24,34 @@ test("shows current roles and saves additions/removals only on an explicit click
 		.element(screen.getByRole("checkbox", { name: "member", exact: true }))
 		.toHaveAttribute("aria-checked", "true");
 	await expect.element(save).toBeDisabled();
+	await expect
+		.element(screen.getByRole("checkbox", { name: "member", exact: true }))
+		.toBeDisabled();
 	await userEvent.click(
 		screen.getByRole("checkbox", { name: "coach", exact: true }),
 	);
-	await userEvent.click(
-		screen.getByRole("checkbox", { name: "member", exact: true }),
-	);
 	expect(p.onSave).not.toHaveBeenCalled();
 	await userEvent.click(save);
-	expect(p.onSave).toHaveBeenCalledWith(["coach"]);
+	expect(p.onSave).toHaveBeenCalledWith(["member", "coach"]);
 	await expect
 		.element(screen.getByText(/signs this member out on all devices/))
 		.toBeVisible();
+});
+
+test("restores the required Member role when editing a legacy role set", async () => {
+	const p = props();
+	const screen = await render(RoleEditor, {
+		...p,
+		roles: ["coach"],
+		availableRoles: [...p.availableRoles],
+	});
+	const member = screen.getByRole("checkbox", { name: "member", exact: true });
+	await expect.element(member).toBeDisabled();
+	await expect.element(member).toHaveAttribute("aria-checked", "true");
+	await userEvent.click(screen.getByRole("button", { name: "Reset" }));
+	await expect.element(member).toHaveAttribute("aria-checked", "true");
+	await userEvent.click(screen.getByRole("button", { name: "Save roles" }));
+	expect(p.onSave).toHaveBeenCalledWith(["coach", "member"]);
 });
 
 test("reset discards the draft without saving", async () => {
