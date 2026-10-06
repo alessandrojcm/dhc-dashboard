@@ -1,134 +1,117 @@
 defmodule Dhc.StripeWebhooks do
   @moduledoc """
-  Context module for Stripe webhook event processing.
+  Routes a verified Stripe webhook event to the domain reconcile functions
+  that own its consequences.
 
-  Provides the domain logic for handling each Stripe webhook event type.
-  The `Dhc.StripeWebhooks.Worker` delegates to this module after
-  deserializing the event from Oban job args.
+  `Dhc.StripeWebhooks.Worker` calls `process_event/1` after deserializing the
+  event from Oban job args. This module holds no domain logic: the routing
+  table below (`routes/0`) is the **only** list of Stripe event types the app
+  handles, `allowed_event_types/0` is built from its keys, and every event type
+  outside it is logged and acknowledged with `:ok`.
 
-  This separation keeps the worker focused on job orchestration
-  while the context handles domain logic and database updates.
+  ## Targets
 
-  ## Supported event types
+    * `{Dhc.Onboarding.Acceptance, :reconcile_stripe_event}` — brings forward
+      Invitation Acceptance recovery for the event's Stripe customer.
+    * `{Dhc.StripeSync, :run_sync, :customer_required}` /
+      `{Dhc.StripeSync, :run_sync, :customer_optional}` — re-syncs Membership
+      for the event's Stripe customer (ADR 0008: `StripeSync` reconciles
+      Membership). A subscription event without a customer is an error
+      (`:missing_customer_id`); an invoice or PaymentIntent event without one
+      is a no-op.
+    * `{Dhc.Workshops, :apply_stripe_refund_event}` — applies a Stripe Refund
+      object to the Workshop Refund it belongs to.
 
-    * **Charge events** — `charge.succeeded`, `charge.expired`, `charge.refunded`
-    * **Subscription events** — `customer.subscription.created`,
-      `customer.subscription.updated`, `customer.subscription.deleted`,
-      `customer.subscription.paused`, `customer.subscription.resumed`
-    * **Customer events** — handled implicitly via subscription events
-      (the `customer` field on subscription objects drives the sync)
+  Targets run in table order; the first error stops the event and is returned.
 
-  ## Architecture
+  ## Contract: every target is idempotent
 
-  Event handlers in this module delegate to `Dhc.StripeSync` for
-  subscription-state synchronization. Charge events no longer mutate
-  registrations directly — the dead `ch_*` handlers
-  (`confirm_workshop_registration` / `cancel_expired_workshop_registration`)
-  were removed in the ALE-193 code release because they matched charge ids
-  against a column that only holds `pi_*` / `cs_*` ids. Registration
-  confirmation is driven by `payment_intent.*` / checkout completion.
+  The worker retries the **whole event** under Oban `max_attempts: 3`, so when
+  one target fails, the targets before it run again on the next attempt, and
+  Stripe may redeliver an event after its 24-hour uniqueness window. A target
+  added to this table must therefore be safe to run any number of times for
+  the same event.
   """
 
   require Logger
 
-  @allowed_event_types [
-    "charge.succeeded",
-    "charge.expired",
-    "charge.refunded",
-    "customer.subscription.created",
-    "customer.subscription.updated",
-    "customer.subscription.deleted",
-    "customer.subscription.paused",
-    "customer.subscription.resumed",
-    "customer.subscription.pending_update_applied",
-    "customer.subscription.pending_update_expired",
-    "customer.subscription.trial_will_end",
-    "invoice.paid",
-    "invoice.payment_failed",
-    "invoice.payment_action_required",
-    "invoice.upcoming",
-    "invoice.marked_uncollectible",
-    "invoice.payment_succeeded",
-    "payment_intent.succeeded",
-    "payment_intent.payment_failed",
-    "payment_intent.canceled",
-    "refund.created",
-    "refund.updated",
-    "refund.failed"
+  @acceptance {Dhc.Onboarding.Acceptance, :reconcile_stripe_event}
+  @membership_required {Dhc.StripeSync, :run_sync, :customer_required}
+  @membership_optional {Dhc.StripeSync, :run_sync, :customer_optional}
+  @workshop_refund {Dhc.Workshops, :apply_stripe_refund_event}
+
+  # The routing table. Every target must be idempotent (see moduledoc).
+  @route_groups [
+    {~w(
+       customer.subscription.created
+       customer.subscription.updated
+       customer.subscription.deleted
+       customer.subscription.paused
+       customer.subscription.resumed
+       customer.subscription.pending_update_applied
+       customer.subscription.pending_update_expired
+       customer.subscription.trial_will_end
+     ), [@acceptance, @membership_required]},
+    {~w(
+       invoice.paid
+       invoice.payment_failed
+       invoice.payment_action_required
+       invoice.upcoming
+       invoice.marked_uncollectible
+       invoice.payment_succeeded
+     ), [@acceptance, @membership_optional]},
+    {~w(
+       payment_intent.succeeded
+       payment_intent.payment_failed
+       payment_intent.canceled
+     ), [@acceptance, @membership_optional]},
+    {~w(refund.created refund.updated refund.failed), [@workshop_refund]}
   ]
 
+  @routes for {types, targets} <- @route_groups, type <- types, into: %{}, do: {type, targets}
+
+  @typedoc "A domain reconcile function an event is routed to."
+  @type target ::
+          {module(), atom()} | {module(), atom(), :customer_required | :customer_optional}
+
   @doc """
-  Returns the list of event types this module handles (or acknowledges).
+  Returns the routing table: each handled event type and the targets it calls,
+  in call order.
+  """
+  @spec routes() :: %{String.t() => [target()]}
+  def routes, do: @routes
+
+  @doc """
+  Returns the event types this module routes — exactly the keys of `routes/0`.
   """
   @spec allowed_event_types() :: [String.t()]
-  def allowed_event_types, do: @allowed_event_types
+  def allowed_event_types, do: Map.keys(@routes)
 
   @doc """
-  Processes a Stripe webhook event.
+  Processes a Stripe webhook event by running its routed targets.
 
-  Returns `:ok` on success, `{:error, reason}` on failure.
-  Unknown event types are acknowledged with `:ok` (idempotent no-op).
+  Returns `:ok` on success, `{:error, reason}` on failure. Unknown event types
+  are acknowledged with `:ok`.
 
   The `event` map is expected to have:
     * `"type"` — the Stripe event type string
     * `"data"` — map with `"object"` containing the event payload
   """
   @spec process_event(map()) :: :ok | {:error, term()}
-  def process_event(%{"type" => event_type, "data" => %{"object" => object}}) do
-    Logger.info("[stripe-webhooks] Processing event",
-      event_type: event_type,
-      event_id: Map.get(object, "id", "unknown")
-    )
+  def process_event(%{"type" => event_type, "data" => %{"object" => object}} = event) do
+    case Map.fetch(@routes, event_type) do
+      {:ok, targets} ->
+        Logger.info("[stripe-webhooks] Routing event",
+          event_type: event_type,
+          event_id: Map.get(event, "id", "unknown")
+        )
 
-    :ok = Dhc.Onboarding.Acceptance.reconcile_stripe_event(object)
+        run_targets(targets, event_type, object)
 
-    cond do
-      event_type in [
-        "customer.subscription.created",
-        "customer.subscription.updated",
-        "customer.subscription.deleted",
-        "customer.subscription.paused",
-        "customer.subscription.resumed",
-        "customer.subscription.pending_update_applied",
-        "customer.subscription.pending_update_expired",
-        "customer.subscription.trial_will_end"
-      ] ->
-        handle_subscription_event(event_type, object)
-
-      event_type == "charge.succeeded" ->
-        handle_charge_succeeded(object)
-
-      event_type == "charge.expired" ->
-        handle_charge_expired(object)
-
-      event_type == "charge.refunded" ->
-        handle_charge_refunded(object)
-
-      event_type in [
-        "invoice.paid",
-        "invoice.payment_failed",
-        "invoice.payment_action_required",
-        "invoice.upcoming",
-        "invoice.marked_uncollectible",
-        "invoice.payment_succeeded"
-      ] ->
-        # Invoice events also trigger subscription sync if a customer is present
-        handle_invoice_event(event_type, object)
-
-      event_type in [
-        "payment_intent.succeeded",
-        "payment_intent.payment_failed",
-        "payment_intent.canceled"
-      ] ->
-        # Payment intent events — acknowledge for now, may trigger sync
-        handle_payment_intent_event(event_type, object)
-
-      event_type in ["refund.created", "refund.updated", "refund.failed"] ->
-        Dhc.Workshops.apply_stripe_refund_event(object)
-
-      true ->
+      :error ->
         Logger.info("[stripe-webhooks] Unhandled event type, acknowledging",
-          event_type: event_type
+          event_type: event_type,
+          event_id: Map.get(event, "id", "unknown")
         )
 
         :ok
@@ -148,182 +131,55 @@ defmodule Dhc.StripeWebhooks do
     {:error, :malformed_event}
   end
 
-  # ── Subscription events ──────────────────────────────────────────────
+  defp run_targets(targets, event_type, object) do
+    Enum.reduce_while(targets, :ok, fn target, :ok ->
+      case run_target(target, event_type, object) do
+        :ok ->
+          {:cont, :ok}
 
-  defp handle_subscription_event(event_type, object) do
-    customer_id = extract_customer_id(object)
-
-    if is_nil(customer_id) or customer_id == "" do
-      Logger.warning("[stripe-webhooks] No customer ID on subscription event",
-        event_type: event_type,
-        object_id: Map.get(object, "id", "unknown")
-      )
-
-      {:error, :missing_customer_id}
-    else
-      Logger.info("[stripe-webhooks] Syncing subscription state",
-        event_type: event_type,
-        customer_id: customer_id
-      )
-
-      case Dhc.StripeSync.run_sync([customer_id]) do
-        {:ok, _summary} ->
-          Logger.info("[stripe-webhooks] Subscription sync complete",
+        {:error, reason} = error ->
+          Logger.error("[stripe-webhooks] Event target #{inspect(target)} failed",
             event_type: event_type,
-            customer_id: customer_id
-          )
-
-          :ok
-
-        {:error, reason} ->
-          Logger.error("[stripe-webhooks] Subscription sync failed",
-            event_type: event_type,
-            customer_id: customer_id,
             reason: inspect(reason)
           )
 
-          {:error, {:sync_failed, reason}}
+          {:halt, error}
       end
-    end
+    end)
   end
 
-  # ── Charge events ────────────────────────────────────────────────────
+  defp run_target(@acceptance, _event_type, object),
+    do: Dhc.Onboarding.Acceptance.reconcile_stripe_event(object)
 
-  defp handle_charge_succeeded(object) do
-    case extract_workshop_metadata(object) do
-      {_workshop_id, _registration_data} ->
-        # The ch_* charge-event → registration handlers were dead: they
-        # matched charge ids against stripe_checkout_session_id, a column
-        # that only holds pi_/cs_ ids. Real charge ids never matched, so
-        # both branches always no-op'd. Registration confirmation is driven
-        # by payment_intent.* / checkout completion, not charge.* events.
-        # Fall through to the customer sync, same as the no-metadata branch.
-        maybe_sync_customer(object)
+  defp run_target(@workshop_refund, _event_type, object),
+    do: Dhc.Workshops.apply_stripe_refund_event(object)
 
-      nil ->
-        # Not a workshop charge — sync customer if present
-        maybe_sync_customer(object)
-    end
-  end
+  defp run_target({Dhc.StripeSync, :run_sync, customer_policy}, event_type, object) do
+    case {customer_id(object), customer_policy} do
+      {nil, :customer_required} ->
+        Logger.warning("[stripe-webhooks] No customer ID on event",
+          event_type: event_type,
+          object_id: Map.get(object, "id", "unknown")
+        )
 
-  defp handle_charge_expired(object) do
-    case extract_workshop_metadata(object) do
-      {_workshop_id, _registration_data} ->
-        # See handle_charge_succeeded/1: the ch_ handler was dead. No-op.
+        {:error, :missing_customer_id}
+
+      {nil, :customer_optional} ->
+        Logger.info("[stripe-webhooks] Event without customer, skipping Membership sync",
+          event_type: event_type
+        )
+
         :ok
 
-      nil ->
-        :ok
+      {customer_id, _policy} ->
+        case Dhc.StripeSync.run_sync([customer_id]) do
+          {:ok, _summary} -> :ok
+          {:error, reason} -> {:error, {:sync_failed, reason}}
+        end
     end
   end
 
-  defp handle_charge_refunded(object) do
-    # Refund processing is more complex — we need to look up refunds from Stripe
-    # For now, update based on what we have in the charge object
-    charge_id = Map.get(object, "id", "unknown")
-
-    # Sync the refund state using the Stripe API to get proper refund records
-    # This is deferred to the Stripe sync worker which has API access
-    Logger.info("[stripe-webhooks] Charge refunded, syncing customer state",
-      charge_id: charge_id
-    )
-
-    maybe_sync_customer(object)
-  end
-
-  # ── Invoice events ────────────────────────────────────────────────────
-
-  defp handle_invoice_event(event_type, object) do
-    customer_id = extract_customer_id(object)
-
-    if customer_id do
-      Logger.info("[stripe-webhooks] Invoice event, syncing customer",
-        event_type: event_type,
-        customer_id: customer_id
-      )
-
-      case Dhc.StripeSync.run_sync([customer_id]) do
-        {:ok, _} -> :ok
-        {:error, reason} -> {:error, {:sync_failed, reason}}
-      end
-    else
-      Logger.info("[stripe-webhooks] Invoice event without customer, skipping sync",
-        event_type: event_type
-      )
-
-      :ok
-    end
-  end
-
-  # ── Payment intent events ────────────────────────────────────────────
-
-  defp handle_payment_intent_event(event_type, object) do
-    customer_id = extract_customer_id(object)
-
-    if customer_id do
-      Logger.info("[stripe-webhooks] Payment intent event, syncing customer",
-        event_type: event_type,
-        customer_id: customer_id
-      )
-
-      case Dhc.StripeSync.run_sync([customer_id]) do
-        {:ok, _} -> :ok
-        {:error, reason} -> {:error, {:sync_failed, reason}}
-      end
-    else
-      Logger.info("[stripe-webhooks] Payment intent event without customer, skipping",
-        event_type: event_type
-      )
-
-      :ok
-    end
-  end
-
-  # ── Workshop registration helpers ────────────────────────────────────
-
-  defp extract_workshop_metadata(%{"metadata" => metadata}) do
-    workshop_id = Map.get(metadata, "workshop_id")
-    registration_data = Map.get(metadata, "registration_data")
-
-    if workshop_id && workshop_id != "" do
-      {workshop_id, registration_data}
-    else
-      nil
-    end
-  end
-
-  defp extract_workshop_metadata(_object), do: nil
-
-  # ── Customer sync helpers ────────────────────────────────────────────
-
-  defp maybe_sync_customer(object) do
-    customer_id = extract_customer_id(object)
-
-    if customer_id && customer_id != "" do
-      case Dhc.StripeSync.run_sync([customer_id]) do
-        {:ok, _} -> :ok
-        {:error, reason} -> {:error, {:sync_failed, reason}}
-      end
-    else
-      :ok
-    end
-  end
-
-  # ── Utility ──────────────────────────────────────────────────────────
-
-  defp extract_customer_id(%{"customer" => customer_id}) when is_binary(customer_id) do
-    customer_id
-  end
-
-  defp extract_customer_id(%{"customer" => %{"id" => id}}), do: id
-
-  # Some objects nest customer differently (e.g., invoices)
-  defp extract_customer_id(object) do
-    # Try common paths
-    case object do
-      %{"customer" => customer_id} when is_binary(customer_id) -> customer_id
-      %{"customer" => %{"id" => id}} -> id
-      _ -> nil
-    end
-  end
+  defp customer_id(%{"customer" => id}) when is_binary(id) and id != "", do: id
+  defp customer_id(%{"customer" => %{"id" => id}}) when is_binary(id) and id != "", do: id
+  defp customer_id(_object), do: nil
 end
