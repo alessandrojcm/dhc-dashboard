@@ -49,6 +49,7 @@ defmodule Dhc.Membership.Reactivation do
 
   alias Dhc.Stripe.LookupKeys
   alias Dhc.Stripe.Operations
+  alias Dhc.Stripe.SubscriptionPayment
 
   require Logger
 
@@ -549,18 +550,14 @@ defmodule Dhc.Membership.Reactivation do
     # modified body — including the operator would turn every retry from a
     # different session into a spurious 400.
     form =
-      [
-        {"customer", customer_id},
-        {"items[0][price]", price_id},
-        {"payment_behavior", "default_incomplete"},
-        {"collection_method", "charge_automatically"},
-        {"default_payment_method", payment_method_id},
-        {"expand[]", "latest_invoice.payments"},
-        {"metadata[purpose]", @metadata_purpose},
-        {"metadata[reactivation_start_date]", Date.to_iso8601(start_date)},
-        {"metadata[member_id]", Map.get(attrs, :member_id)},
-        {"metadata[kind]", Atom.to_string(kind)}
-      ]
+      (SubscriptionPayment.request_fields(customer_id, price_id) ++
+         [
+           {"default_payment_method", payment_method_id},
+           {"metadata[purpose]", @metadata_purpose},
+           {"metadata[reactivation_start_date]", Date.to_iso8601(start_date)},
+           {"metadata[member_id]", Map.get(attrs, :member_id)},
+           {"metadata[kind]", Atom.to_string(kind)}
+         ])
       |> add_billing_anchor(kind, start_date, annual_fee_mode(attrs))
 
     case Operations.post_subscriptions(Map.new(form),
@@ -609,8 +606,8 @@ defmodule Dhc.Membership.Reactivation do
   end
 
   defp maybe_confirm_first_invoice(subscription, payment_method_id, attrs) do
-    case payment_intent_id(subscription) do
-      nil -> validate_paid_invoice(subscription)
+    case SubscriptionPayment.payment_intent_id(subscription) do
+      nil -> SubscriptionPayment.validate_paid_invoice(subscription)
       payment_intent_id -> confirm_payment_intent(payment_intent_id, payment_method_id, attrs)
     end
   end
@@ -639,23 +636,33 @@ defmodule Dhc.Membership.Reactivation do
     end
   end
 
-  defp payment_intent_outcome(%{"status" => "succeeded"}), do: :ok
+  # Reactivation's mapping of each PaymentIntent state. The intent was just
+  # confirmed off-session, so anything other than success is reported to the
+  # operator as a pending outcome; an intent still awaiting confirmation or
+  # with an unknown status is terminal for this command.
+  defp payment_intent_outcome(payment_intent) do
+    case SubscriptionPayment.classify_payment_intent(payment_intent) do
+      :succeeded ->
+        :ok
 
-  defp payment_intent_outcome(%{"id" => id, "status" => "processing"}) do
-    pending(id, "pending", nil)
-  end
+      {:processing, id} ->
+        pending(id, "pending", nil)
 
-  defp payment_intent_outcome(%{"id" => id, "status" => "requires_action"} = intent) do
-    pending(id, "needs_action", get_in(intent, ["next_action", "type"]))
-  end
+      {:requires_action, id, action_type} ->
+        pending(id, "needs_action", action_type)
 
-  defp payment_intent_outcome(%{"id" => id, "status" => status})
-       when status in ["requires_payment_method", "requires_capture", "canceled"] do
-    pending(id, "terminal", status)
-  end
+      {:failed, id, status} ->
+        pending(id, "terminal", status)
 
-  defp payment_intent_outcome(%{"id" => id, "status" => status}) do
-    pending(id, "terminal", status)
+      {:unrecognized, id, status} ->
+        pending(id, "terminal", status)
+
+      :requires_confirmation ->
+        pending(Map.get(payment_intent, "id"), "terminal", "requires_confirmation")
+
+      :invalid ->
+        {:error, :invalid_payment_intent_response}
+    end
   end
 
   defp pending(id, state, detail) do
@@ -681,34 +688,6 @@ defmodule Dhc.Membership.Reactivation do
 
   defp combine_outcomes({:pending, _} = monthly, {:pending, _}),
     do: monthly
-
-  defp validate_paid_invoice(subscription) do
-    case latest_invoice(subscription) do
-      %{"status" => "paid"} -> :ok
-      %{"status" => status} -> {:error, {:invoice_unsettled, status}}
-      _ -> {:error, :invoice_payment_missing}
-    end
-  end
-
-  defp latest_invoice(%{"latest_invoice" => invoice}) when is_map(invoice), do: invoice
-  defp latest_invoice(_subscription), do: nil
-
-  defp payment_intent_id(subscription) do
-    subscription
-    |> latest_invoice()
-    |> case do
-      %{"payments" => %{"data" => [%{"payment" => %{"payment_intent" => id}} | _]}}
-      when is_binary(id) ->
-        id
-
-      %{"payments" => %{"data" => [%{"payment" => %{"payment_intent" => %{"id" => id}}} | _]}}
-      when is_binary(id) ->
-        id
-
-      _ ->
-        nil
-    end
-  end
 
   defp build_result(member_id, monthly, annual, outcome) do
     %{

@@ -70,6 +70,7 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   alias Dhc.Auth.Principal
   alias Dhc.Repo
+  alias Dhc.Stripe.Failure
   alias Dhc.UserProfiles.UserProfile
 
   alias Dhc.Workshops.{
@@ -909,9 +910,10 @@ defmodule Dhc.Workshops.PaymentCommands do
            }) do
       record_submission(refund.id, payment_intent_id, response)
     else
-      {:error, {:stripe_api, status, _body} = reason}
-      when status in 400..499 and status not in [408, 409, 429] ->
-        record_intervention(refund.id, reason)
+      {:error, {:stripe_api, status, _body} = reason} when status in 400..499 ->
+        if Failure.retryable?(reason),
+          do: record_retryable_error(refund.id, reason),
+          else: record_intervention(refund.id, reason)
 
       {:error, :payment_intent_not_resolvable = reason} ->
         record_intervention(refund.id, reason)

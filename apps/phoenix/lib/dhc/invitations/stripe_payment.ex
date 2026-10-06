@@ -11,8 +11,10 @@ defmodule Dhc.Invitations.StripePayment do
   durable Invitation Acceptance Attempt. Pricing remains read-only.
   """
 
-  alias Dhc.Stripe.Operations
   alias Dhc.Invitations.Pricing
+  alias Dhc.Stripe.Failure
+  alias Dhc.Stripe.Operations
+  alias Dhc.Stripe.SubscriptionPayment
 
   @doc """
   Creates a Stripe customer for an invitation.
@@ -164,15 +166,10 @@ defmodule Dhc.Invitations.StripePayment do
   @doc false
   def retryable_failure?({:stripe_customer, reason}), do: retryable_failure?(reason)
 
-  def retryable_failure?({:stripe_api, status, _body})
-      when status in [408, 409, 429] or status >= 500,
-      do: true
-
-  def retryable_failure?({:http_error, _reason}), do: true
   def retryable_failure?({:progress_persistence, _reason}), do: true
   def retryable_failure?(:stale_acceptance_operation), do: true
   def retryable_failure?(:timeout), do: true
-  def retryable_failure?(_reason), do: false
+  def retryable_failure?(reason), do: Failure.retryable?(reason)
 
   defp create_setup_intent(attrs) do
     form = [
@@ -289,13 +286,8 @@ defmodule Dhc.Invitations.StripePayment do
 
   defp create_subscription(kind, customer_id, payment_method_id, price_id, promotion, attrs) do
     form =
-      [
-        {"customer", customer_id},
-        {"items[0][price]", price_id},
-        {"payment_behavior", "default_incomplete"},
-        {"collection_method", "charge_automatically"},
-        {"expand[]", "latest_invoice.payments"}
-      ]
+      customer_id
+      |> SubscriptionPayment.request_fields(price_id)
       |> maybe_add_payment_method(payment_method_id)
       |> add_billing_anchor(kind)
       |> maybe_add_discount(promotion, kind)
@@ -352,7 +344,7 @@ defmodule Dhc.Invitations.StripePayment do
     do: [{"default_payment_method", payment_method_id} | form]
 
   defp maybe_confirm_first_invoice(subscription, _payment_method_id, %{migration?: true}, attrs) do
-    case latest_invoice(subscription) do
+    case SubscriptionPayment.latest_invoice(subscription) do
       %{"id" => invoice_id, "amount_due" => amount_due} when is_integer(amount_due) ->
         create_credit_note(invoice_id, amount_due, attrs)
 
@@ -367,7 +359,7 @@ defmodule Dhc.Invitations.StripePayment do
   end
 
   defp maybe_confirm_first_invoice(subscription, nil, %{requirement: :complimentary}, _attrs) do
-    case latest_invoice(subscription) do
+    case SubscriptionPayment.latest_invoice(subscription) do
       %{"status" => "paid", "amount_due" => 0} ->
         :ok
 
@@ -383,29 +375,9 @@ defmodule Dhc.Invitations.StripePayment do
     do: {:error, :payment_method_required}
 
   defp maybe_confirm_first_invoice(subscription, payment_method_id, _promotion, attrs) do
-    case payment_intent_id(subscription) do
-      nil -> validate_paid_invoice(subscription)
+    case SubscriptionPayment.payment_intent_id(subscription) do
+      nil -> SubscriptionPayment.validate_paid_invoice(subscription)
       payment_intent_id -> progress_payment_intent(payment_intent_id, payment_method_id, attrs)
-    end
-  end
-
-  defp latest_invoice(%{"latest_invoice" => invoice}) when is_map(invoice), do: invoice
-  defp latest_invoice(_subscription), do: nil
-
-  defp payment_intent_id(subscription) do
-    subscription
-    |> latest_invoice()
-    |> case do
-      %{"payments" => %{"data" => [%{"payment" => %{"payment_intent" => id}} | _]}}
-      when is_binary(id) ->
-        id
-
-      %{"payments" => %{"data" => [%{"payment" => %{"payment_intent" => %{"id" => id}}} | _]}}
-      when is_binary(id) ->
-        id
-
-      _ ->
-        nil
     end
   end
 
@@ -441,47 +413,45 @@ defmodule Dhc.Invitations.StripePayment do
     end
   end
 
-  defp payment_intent_outcome(%{"status" => "succeeded"}), do: :ok
+  # Invitation Acceptance's mapping of each PaymentIntent state: a processing
+  # SEPA submission is pending but lets the next subscription proceed, an
+  # unconfirmed intent is confirmed here, and anything unrecognised is an
+  # error rather than a guess.
+  defp payment_intent_outcome(payment_intent) do
+    case SubscriptionPayment.classify_payment_intent(payment_intent) do
+      :succeeded ->
+        :ok
 
-  defp payment_intent_outcome(%{"id" => id, "status" => "processing"}) do
-    {:pending,
-     %{
-       "payment_state" => "pending",
-       "payment_intent_id" => id,
-       "payment_intent_status" => "processing"
-     }}
-  end
+      :requires_confirmation ->
+        :confirm
 
-  defp payment_intent_outcome(%{"id" => id, "status" => "requires_action"} = intent) do
-    {:pending,
-     %{
-       "payment_state" => "needs_action",
-       "payment_intent_id" => id,
-       "payment_intent_status" => "requires_action",
-       "payment_action_type" => get_in(intent, ["next_action", "type"])
-     }}
-  end
+      {:processing, id} ->
+        {:pending,
+         %{
+           "payment_state" => "pending",
+           "payment_intent_id" => id,
+           "payment_intent_status" => "processing"
+         }}
 
-  defp payment_intent_outcome(%{"status" => "requires_confirmation"}), do: :confirm
+      {:requires_action, id, action_type} ->
+        {:pending,
+         %{
+           "payment_state" => "needs_action",
+           "payment_intent_id" => id,
+           "payment_intent_status" => "requires_action",
+           "payment_action_type" => action_type
+         }}
 
-  defp payment_intent_outcome(%{"id" => id, "status" => status})
-       when status in ["requires_payment_method", "requires_capture", "canceled"] do
-    {:pending,
-     %{
-       "payment_state" => "terminal",
-       "payment_intent_id" => id,
-       "payment_intent_status" => status
-     }}
-  end
+      {:failed, id, status} ->
+        {:pending,
+         %{
+           "payment_state" => "terminal",
+           "payment_intent_id" => id,
+           "payment_intent_status" => status
+         }}
 
-  defp payment_intent_outcome(_payment_intent),
-    do: {:error, :invalid_payment_intent_response}
-
-  defp validate_paid_invoice(subscription) do
-    case latest_invoice(subscription) do
-      %{"status" => "paid"} -> :ok
-      %{"status" => status} -> {:error, {:invoice_unsettled, status}}
-      _ -> {:error, :invoice_payment_missing}
+      _unrecognized_or_invalid ->
+        {:error, :invalid_payment_intent_response}
     end
   end
 
@@ -514,8 +484,14 @@ defmodule Dhc.Invitations.StripePayment do
 
     progress =
       %{"#{prefix}_subscription_id" => resource_id(subscription)}
-      |> maybe_put("#{prefix}_invoice_id", latest_invoice(subscription) |> resource_id())
-      |> maybe_put("#{prefix}_payment_intent_id", payment_intent_id(subscription))
+      |> maybe_put(
+        "#{prefix}_invoice_id",
+        SubscriptionPayment.latest_invoice(subscription) |> resource_id()
+      )
+      |> maybe_put(
+        "#{prefix}_payment_intent_id",
+        SubscriptionPayment.payment_intent_id(subscription)
+      )
 
     report_progress(attrs, progress)
   end
@@ -584,8 +560,14 @@ defmodule Dhc.Invitations.StripePayment do
 
         acc
         |> maybe_put("#{kind}_subscription_id", resource_id(subscription))
-        |> maybe_put("#{kind}_invoice_id", latest_invoice(subscription) |> resource_id())
-        |> maybe_put("#{kind}_payment_intent_id", payment_intent_id(subscription))
+        |> maybe_put(
+          "#{kind}_invoice_id",
+          SubscriptionPayment.latest_invoice(subscription) |> resource_id()
+        )
+        |> maybe_put(
+          "#{kind}_payment_intent_id",
+          SubscriptionPayment.payment_intent_id(subscription)
+        )
       else
         acc
       end
