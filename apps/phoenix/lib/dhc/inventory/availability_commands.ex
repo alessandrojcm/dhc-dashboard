@@ -168,10 +168,6 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   @archive_rejection_note "Rejected automatically: the item was archived."
   @default_archive_end_note "Ended automatically because the item was archived."
 
-  # Statuses a member may still walk away from; after checkout they hold the
-  # item, so only an operator return closes the loan.
-  @member_cancellable ~w(requested approved)
-
   @note_keys ["note", :note]
   @start_keys ["startsOn", "starts_on", :startsOn, :starts_on]
   @due_keys ["dueOn", "due_on", :dueOn, :due_on]
@@ -458,11 +454,11 @@ defmodule Dhc.Inventory.AvailabilityCommands do
 
   defp member_cancellation(%Loan{status: "cancelled"} = loan, _note, _borrower), do: {:ok, loan}
 
-  defp member_cancellation(%Loan{status: status} = loan, note, borrower)
-       when status in @member_cancellable,
-       do: persist(decision_changeset(loan, "cancelled", note, borrower))
-
-  defp member_cancellation(%Loan{}, _note, _borrower), do: {:error, :not_cancellable}
+  defp member_cancellation(%Loan{} = loan, note, borrower) do
+    if LoanPolicy.member_cancellable?(loan),
+      do: persist(decision_changeset(loan, "cancelled", note, borrower)),
+      else: {:error, :not_cancellable}
+  end
 
   # Reject and operator-cancel differ only in the status they require and the
   # one they write, so they share one body rather than drifting apart.

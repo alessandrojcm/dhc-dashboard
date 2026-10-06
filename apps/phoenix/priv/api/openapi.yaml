@@ -10447,11 +10447,15 @@ components:
         `overdue` is derived from passing the approved due date in
         `Europe/Dublin` calendar days, never a stored state: extending the
         due date clears it with no transition to undo.
+
+        `cancellable` is advisory: it uses the same predicate the cancel
+        command applies, so it may be stale but never disagrees in rule.
       required:
         - id
         - itemId
         - status
         - overdue
+        - cancellable
         - requestedStartOn
         - requestedDueOn
         - approvedStartOn
@@ -10483,6 +10487,11 @@ components:
         overdue:
           type: boolean
           description: Derived, never stored.
+        cancellable:
+          type: boolean
+          description: |
+            Whether the borrower may still cancel (requested or approved).
+            The cancel command re-decides under the item lock.
         requestedStartOn:
           type: string
           format: date

@@ -23,6 +23,10 @@ defmodule Dhc.Inventory.LoanPolicy do
 
   @blocking_statuses [:maintenance, :archived]
 
+  # Statuses a member may still walk away from; after checkout they hold the
+  # item, so only an operator return closes the loan.
+  @member_cancellable_statuses ~w(requested approved)
+
   @doc """
   Whether a checked-out loan is past its approved due date (story 41).
 
@@ -35,6 +39,16 @@ defmodule Dhc.Inventory.LoanPolicy do
     do: Date.compare(today, due_on) == :gt
 
   def overdue?(%Loan{}, %Date{}), do: false
+
+  @doc """
+  Whether the borrower may still cancel the loan (requested or approved).
+
+  The member cancel command decides with this under the item lock; the member
+  view advertises it as `cancellable?`. An already-cancelled loan is not
+  cancellable here even though repeating the command is an idempotent no-op.
+  """
+  @spec member_cancellable?(Loan.t()) :: boolean()
+  def member_cancellable?(%Loan{status: status}), do: status in @member_cancellable_statuses
 
   @doc """
   Whether `today` lies inside the loan's approved window, both ends inclusive.
