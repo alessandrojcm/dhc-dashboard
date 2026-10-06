@@ -47,6 +47,10 @@ import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import * as Table from "#lib/components/ui/table/index.js";
 import SortHeader from "#lib/components/ui/table/sort-header.svelte";
 import * as Tabs from "#lib/components/ui/tabs/index.js";
+import {
+	ToggleGroup,
+	ToggleGroupItem,
+} from "#lib/components/ui/toggle-group/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
 import { cn } from "#lib/utils.js";
 
@@ -447,29 +451,28 @@ async function refreshMembers() {
 				</div>
 			</div>
 
-			<nav
+			<!-- A segmented single-choice switch; clicking the active item would
+			     clear a single ToggleGroup, so an empty value is ignored. -->
+			<ToggleGroup
+				type="single"
+				value={view}
+				onValueChange={(next) => {
+					if (next) view = next as DoctorView;
+				}}
 				aria-label="Discord Doctor views"
-				class="grid grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1.5 shadow-[3px_3px_0_hsl(var(--secondary)/0.45)]"
+				class="grid w-full grid-cols-2 gap-1 rounded-xl border border-border bg-card p-1.5 shadow-[3px_3px_0_hsl(var(--secondary)/0.45)]"
 			>
 				{#each [{ key: "server", label: "Server view", icon: ServerCog }, { key: "members", label: "Members view", icon: Users }] as section (section.key)}
-					<button
-						type="button"
-						aria-pressed={view === section.key}
-						onclick={() => {
-							view = section.key as DoctorView;
-						}}
-						class={cn(
-							"flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg px-2 text-sm font-semibold transition-[color,background-color,box-shadow] duration-200 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 sm:px-4",
-							view === section.key
-								? "bg-primary text-primary-foreground shadow-sm"
-								: "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
-						)}
+					<ToggleGroupItem
+						value={section.key}
+						aria-label={section.label}
+						class="min-h-11 cursor-pointer gap-2 rounded-lg px-2 font-semibold text-muted-foreground first:rounded-lg last:rounded-lg hover:bg-primary/5 hover:text-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:shadow-sm data-[state=on]:hover:bg-primary/90 data-[state=on]:hover:text-primary-foreground sm:px-4"
 					>
 						<section.icon class="hidden size-4 sm:block" aria-hidden="true" />
 						<span>{section.label}</span>
-					</button>
+					</ToggleGroupItem>
 				{/each}
-			</nav>
+			</ToggleGroup>
 		</header>
 
 		{#if reportQuery.isPending}

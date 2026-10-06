@@ -2,6 +2,10 @@
 import { resolve } from "$app/paths";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
+import {
+	ToggleGroup,
+	ToggleGroupItem,
+} from "#lib/components/ui/toggle-group/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import { Progress } from "#lib/components/ui/progress/index.js";
@@ -145,22 +149,27 @@ function clearFilters() {
 				/>
 			</div>
 
-			<div
-				class="flex flex-wrap gap-2 lg:justify-end"
+			<!-- Clicking the active item would clear a single ToggleGroup, so an
+			     empty value is ignored. -->
+			<ToggleGroup
+				type="single"
+				variant="outline"
+				value={statusFilter}
+				onValueChange={(next) => {
+					if (next) statusFilter = next as StatusFilter;
+				}}
 				aria-label="Filter workshops by status"
+				class="flex-wrap gap-2 shadow-none lg:justify-end"
 			>
 				{#each statusFilters as filter (filter.value)}
-					<Button
-						variant={statusFilter === filter.value ? "secondary" : "outline"}
-						size="sm"
-						class="min-h-11 shrink-0"
-						aria-pressed={statusFilter === filter.value}
-						onclick={() => (statusFilter = filter.value)}
+					<ToggleGroupItem
+						value={filter.value}
+						class="min-h-11 flex-none rounded-lg border-l px-3.5 font-semibold shadow-none first:rounded-lg last:rounded-lg data-[variant=outline]:border-l data-[state=on]:border-secondary data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground data-[state=on]:hover:bg-secondary/80"
 					>
 						{filter.label}
-					</Button>
+					</ToggleGroupItem>
 				{/each}
-			</div>
+			</ToggleGroup>
 		</div>
 	</div>
 

@@ -52,7 +52,7 @@
 		"@cloudflare/vite-plugin": "^1.38.0",
 		"@faker-js/faker": "^10.1.0",
 		"@fontsource/fira-mono": "^5.2.7",
-		"@lucide/svelte": "^0.561.0",
+		"@lucide/svelte": "^1.52.0",
 		"@neoconfetti/svelte": "^2.2.2",
 		"@oxlint/plugins": "1.78.0",
 		"@playwright/test": "^1.61.1",

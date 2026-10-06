@@ -479,13 +479,14 @@ async function showPreview() {
 					<div class="space-y-1.5">
 						<div class="flex items-center justify-between gap-3">
 							<Label for="announcement-message">Message</Label>
-							<button
-								type="button"
-								class="cursor-pointer text-xs font-semibold text-primary hover:underline"
+							<Button
+								variant="link"
+								size="sm"
+								class="h-auto p-0 text-xs"
 								onclick={() => applyKindPreset(draft.kind)}
 							>
 								Use default message
-							</button>
+							</Button>
 						</div>
 						<TemplateInput
 							id="announcement-message"

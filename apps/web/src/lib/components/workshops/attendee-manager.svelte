@@ -27,6 +27,10 @@ import { toast } from "svelte-sonner";
 import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
+import {
+	ToggleGroup,
+	ToggleGroupItem,
+} from "#lib/components/ui/toggle-group/index.js";
 import { Checkbox } from "#lib/components/ui/checkbox/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import { checkRefundEligibility } from "#lib/utils/refund-eligibility.js";
@@ -298,22 +302,27 @@ function markAttended(registrationIds: string[]) {
 				/>
 			</div>
 
-			<div
-				class="flex flex-wrap gap-2 lg:justify-end"
+			<!-- Clicking the active item would clear a single ToggleGroup, so an
+			     empty value is ignored. -->
+			<ToggleGroup
+				type="single"
+				variant="outline"
+				value={statusFilter}
+				onValueChange={(next) => {
+					if (next) setStatusFilter(next as AttendanceFilter);
+				}}
 				aria-label="Filter participants by attendance status"
+				class="flex-wrap gap-2 shadow-none lg:justify-end"
 			>
 				{#each attendanceFilters as filter (filter.value)}
-					<Button
-						variant={statusFilter === filter.value ? "secondary" : "outline"}
-						size="sm"
-						class="min-h-11 shrink-0"
-						aria-pressed={statusFilter === filter.value}
-						onclick={() => setStatusFilter(filter.value)}
+					<ToggleGroupItem
+						value={filter.value}
+						class="min-h-11 flex-none rounded-lg border-l px-3.5 font-semibold shadow-none first:rounded-lg last:rounded-lg data-[variant=outline]:border-l data-[state=on]:border-secondary data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground data-[state=on]:hover:bg-secondary/80"
 					>
 						{filter.label}
-					</Button>
+					</ToggleGroupItem>
 				{/each}
-			</div>
+			</ToggleGroup>
 		</div>
 	</div>
 

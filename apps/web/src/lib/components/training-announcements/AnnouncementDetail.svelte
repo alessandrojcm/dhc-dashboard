@@ -330,23 +330,25 @@ function overrideRows(
 				{#if rows.hidden > 0}
 					<p class="mt-1.5 text-xs text-muted-foreground">
 						Showing {EXCEPTION_LIST_LIMIT} of {suppressions.data.length} skips.
-						<button
-							type="button"
-							class="cursor-pointer font-semibold text-primary hover:underline"
+						<Button
+							variant="link"
+							size="sm"
+							class="h-auto p-0 text-xs"
 							onclick={() => (showAllSuppressions = true)}
 						>
 							Show all
-						</button>
+						</Button>
 					</p>
 				{:else if showAllSuppressions}
 					<p class="mt-1.5 text-xs text-muted-foreground">
-						<button
-							type="button"
-							class="cursor-pointer font-semibold text-primary hover:underline"
+						<Button
+							variant="link"
+							size="sm"
+							class="h-auto p-0 text-xs"
 							onclick={() => (showAllSuppressions = false)}
 						>
 							Show fewer
-						</button>
+						</Button>
 					</p>
 				{/if}
 			{/if}
@@ -440,23 +442,25 @@ function overrideRows(
 				{#if rows.hidden > 0}
 					<p class="mt-1.5 text-xs text-muted-foreground">
 						Showing {EXCEPTION_LIST_LIMIT} of {overrides.data.length} text changes.
-						<button
-							type="button"
-							class="cursor-pointer font-semibold text-primary hover:underline"
+						<Button
+							variant="link"
+							size="sm"
+							class="h-auto p-0 text-xs"
 							onclick={() => (showAllOverrides = true)}
 						>
 							Show all
-						</button>
+						</Button>
 					</p>
 				{:else if showAllOverrides}
 					<p class="mt-1.5 text-xs text-muted-foreground">
-						<button
-							type="button"
-							class="cursor-pointer font-semibold text-primary hover:underline"
+						<Button
+							variant="link"
+							size="sm"
+							class="h-auto p-0 text-xs"
 							onclick={() => (showAllOverrides = false)}
 						>
 							Show fewer
-						</button>
+						</Button>
 					</p>
 				{/if}
 			{/if}

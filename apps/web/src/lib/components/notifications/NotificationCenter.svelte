@@ -18,7 +18,8 @@ import {
 import { browser } from "$app/env";
 import { PUBLIC_PHOENIX_SOCKET_URL } from "$app/env/public";
 import * as DropdownMenu from "#lib/components/ui/dropdown-menu/index.js";
-import { Bell } from "@lucide/svelte";
+import { Button } from "#lib/components/ui/button/index.js";
+import { Bell, Eye } from "@lucide/svelte";
 import { connectNotificationRealtime } from "./notification-realtime.svelte";
 import WebPushToggle from "./WebPushToggle.svelte";
 import * as v from "valibot";
@@ -179,12 +180,14 @@ function formatTime(timestamp: string): string {
 			<div class="flex justify-between items-center px-4 py-3">
 				<DropdownMenu.GroupHeading>Notifications</DropdownMenu.GroupHeading>
 				{#if notificationsQuery?.data?.pages?.[0]?.data?.some((n) => !n.read_at)}
-					<button
-						class="text-xs text-primary bg-transparent border-none cursor-pointer"
+					<Button
+						variant="ghost"
+						size="sm"
+						class="h-8 px-2 text-xs text-primary"
 						onclick={() => markAllAsRead.mutate({})}
 					>
 						Mark all as read
-					</button>
+					</Button>
 				{/if}
 			</div>
 
@@ -222,42 +225,31 @@ function formatTime(timestamp: string): string {
 								>
 							</div>
 							{#if !notification.read_at}
-								<button
-									class="p-1 rounded-full text-primary hover:bg-primary-foreground flex-shrink-0 flex items-center justify-center"
+								<Button
+									variant="ghost"
+									size="icon-sm"
+									class="flex-shrink-0 rounded-full text-primary"
 									onclick={() =>
 										markAsRead.mutate({ path: { id: notification.id } })}
 								>
 									<span class="sr-only">Mark as read</span>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										width="16"
-										height="16"
-										viewBox="0 0 24 24"
-										fill="none"
-										stroke="currentColor"
-										stroke-width="2"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									>
-										<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"
-										></path>
-										<circle cx="12" cy="12" r="3"></circle>
-									</svg>
-								</button>
+									<Eye aria-hidden="true" />
+								</Button>
 							{/if}
 						</div>
 					{/each}
 
 					{#if notificationsQuery.hasNextPage}
-						<button
-							class="w-full py-3 text-center bg-transparent border-none border-t border-border text-primary text-sm cursor-pointer hover:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
+						<Button
+							variant="ghost"
+							class="w-full rounded-none text-primary"
 							onclick={() => notificationsQuery.fetchNextPage()}
 							disabled={notificationsQuery.isFetchingNextPage}
 						>
 							{notificationsQuery.isFetchingNextPage
 								? "Loading more..."
 								: "Load more"}
-						</button>
+						</Button>
 					{/if}
 				{/if}
 			</div>

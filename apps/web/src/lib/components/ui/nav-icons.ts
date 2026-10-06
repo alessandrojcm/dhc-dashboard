@@ -1,4 +1,3 @@
-import type { Component } from "svelte";
 import type { ResolvedPathname } from "$app/types";
 import {
 	Boxes,
@@ -14,10 +13,10 @@ import {
 	Swords,
 	Tags,
 	UsersRound,
-	type IconProps,
+	type LucideIcon,
 } from "@lucide/svelte";
 
-export type NavIcon = Component<IconProps>;
+export type NavIcon = LucideIcon;
 
 /**
  * Sidebar icon per navigation URL. Keyed by URL rather than title because

@@ -41,12 +41,16 @@ import {
 	parsePageSize,
 	transitionCursorQuery,
 } from "#lib/cursor-query.js";
+import { Checkbox } from "#lib/components/ui/checkbox/index.js";
 import { cn } from "#lib/utils.js";
 import { getInvitationLink } from "#lib/utils/invitation.js";
 import InvitationActions from "./invitation-actions.svelte";
-import InvitationSelectionCheckbox from "./invitation-selection-checkbox.svelte";
 
 const pageSizeOptions = PAGE_SIZE_OPTIONS;
+// The visible box stays 16px; the margin and pseudo-element keep the 44px
+// footprint and touch target the row layout was built around.
+const selectionCheckboxClass =
+	"relative m-3.5 after:absolute after:-inset-3.5 after:content-['']";
 const invitationSortFields = [
 	"email",
 	"status",
@@ -574,12 +578,13 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 				<Table.Header class="bg-muted/50">
 					<Table.Row class="hover:bg-transparent">
 						<Table.Head scope="col" class="w-14 px-4">
-							<InvitationSelectionCheckbox
+							<Checkbox
 								checked={allInvitationsSelected}
 								indeterminate={someInvitationsSelected}
-								label="Select all invitations shown"
+								aria-label="Select all invitations shown"
 								onCheckedChange={(checked: boolean) =>
 									setAllInvitationsSelected(checked)}
+								class={selectionCheckboxClass}
 							/>
 						</Table.Head>
 						<Table.Head
@@ -662,11 +667,12 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 								: undefined}
 						>
 							<Table.Cell class="px-4 py-3.5">
-								<InvitationSelectionCheckbox
+								<Checkbox
 									checked={selectedRows.has(invitation.id)}
-									label={`Select invitation for ${invitation.email}`}
+									aria-label={`Select invitation for ${invitation.email}`}
 									onCheckedChange={(checked: boolean) =>
 										setInvitationSelected(invitation.id, checked)}
+									class={selectionCheckboxClass}
 								/>
 							</Table.Cell>
 							<Table.Cell
@@ -730,11 +736,12 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 					)}
 				>
 					<div class="flex items-start gap-3">
-						<InvitationSelectionCheckbox
+						<Checkbox
 							checked={selectedRows.has(invitation.id)}
-							label={`Select invitation for ${invitation.email}`}
+							aria-label={`Select invitation for ${invitation.email}`}
 							onCheckedChange={(checked: boolean) =>
 								setInvitationSelected(invitation.id, checked)}
+							class={selectionCheckboxClass}
 						/>
 						<div class="min-w-0 flex-1">
 							<p class="break-all font-semibold leading-6 text-foreground">
