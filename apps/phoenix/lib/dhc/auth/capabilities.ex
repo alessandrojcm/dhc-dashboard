@@ -76,10 +76,10 @@ defmodule Dhc.Auth.Capabilities do
 
   @rules %{
     "beginners.workshop.read": %{roles: @beginners_staff},
-    # Phoenix has always let the whole beginners staff toggle the waitlist
-    # (`PATCH /waitlist/status`); the frontend used to hide the toggle from
-    # coaches and beginners coordinators. Phoenix is authoritative.
-    "beginners.waitlist.toggle": %{roles: @beginners_staff},
+    # Opening or closing the waitlist (`PATCH /waitlist/status`) is an
+    # officer decision; the rest of the beginners staff only read and work
+    # the list.
+    "beginners.waitlist.toggle": %{roles: @officers},
     "discord.assignments.manage": %{roles: @member_administrators},
     "discord.doctor.use": %{roles: @officers},
     "inventory.manage": %{roles: @inventory_operators},

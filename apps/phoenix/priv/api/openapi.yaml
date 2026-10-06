@@ -1230,9 +1230,9 @@ paths:
         Sets the beginners workshop waitlist to an explicit open or closed
         state. This is a domain command rather than a generic settings update.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`,
-        or `coach`.
+        Requires the `beginners.waitlist.toggle` capability (officers only);
+        the rest of the beginners staff, who may read and work the list,
+        get 403.
       security:
         - bearerAuth: []
       requestBody:
@@ -1255,7 +1255,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Authenticated user lacks a waitlist admin role
+          description: Session lacks the `beginners.waitlist.toggle` capability
           content:
             application/json:
               schema:

@@ -56,8 +56,8 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert Dhc.Waitlist.open?()
     end
 
-    test "allows all waitlist admin roles", %{conn: _conn} do
-      for role <- ~w(admin president committee_coordinator beginners_coordinator coach) do
+    test "allows officers to toggle the waitlist", %{conn: _conn} do
+      for role <- ~w(admin president committee_coordinator) do
         set_waitlist_open(false)
 
         conn =
@@ -66,6 +66,22 @@ defmodule DhcWeb.WaitlistControllerTest do
           |> patch("/api/waitlist/status", %{"isOpen" => true})
 
         assert %{"data" => %{"isOpen" => true}} = json_response(conn, 200)
+      end
+    end
+
+    test "rejects beginners staff who are not officers (403)", %{conn: _conn} do
+      for role <- ~w(beginners_coordinator coach) do
+        set_waitlist_open(false)
+
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer #{role}-token")
+          |> patch("/api/waitlist/status", %{"isOpen" => true})
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403),
+               "#{role} must not toggle the waitlist"
+
+        refute Dhc.Waitlist.open?()
       end
     end
 
