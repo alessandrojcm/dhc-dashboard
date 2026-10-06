@@ -48,6 +48,11 @@ defmodule Dhc.ClubCalendarTest do
       assert ClubCalendar.on_date(~U[2026-01-01 23:30:00Z]) == ~D[2026-01-01]
     end
 
+    test "time_on is the Dublin wall-clock time at an instant" do
+      assert ClubCalendar.time_on(~U[2026-06-01 23:30:00Z]) == ~T[00:30:00]
+      assert ClubCalendar.time_on(~U[2026-01-01 23:30:00.000000Z]) == ~T[23:30:00.000000]
+    end
+
     test "to_utc applies the winter offset" do
       assert ClubCalendar.to_utc(~D[2026-01-15], ~T[19:00:00]) == ~U[2026-01-15 19:00:00Z]
     end

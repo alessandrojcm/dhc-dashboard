@@ -62,6 +62,17 @@ defmodule Dhc.ClubCalendar do
   end
 
   @doc """
+  The club's wall-clock time at `at`: the civil time that, with
+  `on_date/1`, names the Dublin instant (`to_utc/2` is the inverse).
+  """
+  @spec time_on(DateTime.t()) :: Time.t()
+  def time_on(%DateTime{} = at) do
+    at
+    |> DateTime.shift_zone!(@zone, Tz.TimeZoneDatabase)
+    |> DateTime.to_time()
+  end
+
+  @doc """
   Turns a Dublin civil date + wall-clock time into the UTC instant a
   scheduled post fires at.
 

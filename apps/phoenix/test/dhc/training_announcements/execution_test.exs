@@ -296,6 +296,57 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
     end
   end
 
+  describe "time is read inside the claim, not when the clock was built" do
+    test "a claim held past Dublin midnight records the occurrence missed", ctx do
+      announcement = create(ctx)
+      clock = advancing(@due, ~U[2030-09-05 23:00:01.000000Z])
+
+      assert :ok = Execution.evaluate({:announcement, announcement.id, @today}, clock)
+
+      # Missed by Execution itself (never frozen), not by Delivery afterwards.
+      assert [
+               %{
+                 state: "missed",
+                 frozen_at: nil,
+                 resolved_outcome: "missed",
+                 concluded_at: ~U[2030-09-05 23:00:01.000000Z]
+               }
+             ] = Repo.all(Evidence)
+
+      refute_receive {:create_message, _}
+    end
+
+    test "a claim held past the slot freezes and stamps the claim instant", ctx do
+      announcement = create(ctx)
+      claimed = ~U[2030-09-05 13:05:00.000000Z]
+      script_post()
+
+      assert :ok =
+               Execution.evaluate(
+                 {:announcement, announcement.id, @today},
+                 advancing(~U[2030-09-05 12:59:00.000000Z], claimed)
+               )
+
+      assert [%{state: "delivered", frozen_at: ^claimed}] = Repo.all(Evidence)
+      assert %{first_attempted_at: ^claimed} = Repo.get!(Announcement, announcement.id)
+    end
+
+    test "a holiday claim held past its slot freezes instead of snoozing", ctx do
+      holiday(@today, "Thursday Holiday")
+      create(ctx, %{kind: "roll_call"})
+      DiscordAdapter.script(:create_message, [{:ok, %{message_id: "234567890123456789"}}])
+      claimed = ~U[2030-09-05 13:01:00.000000Z]
+
+      assert :ok =
+               Execution.evaluate(
+                 {:holiday, "same_day", @today},
+                 advancing(~U[2030-09-05 12:59:00.000000Z], claimed)
+               )
+
+      assert [%{state: "delivered", frozen_at: ^claimed}] = holiday_rows()
+    end
+  end
+
   test "the clock holds Dublin today, civil time and the holiday set" do
     holiday(~D[2030-09-08], "Sunday Holiday")
     clock = Execution.clock(~U[2030-09-05 23:30:00Z])
@@ -303,6 +354,7 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
     assert clock.today == ~D[2030-09-06]
     assert clock.now_time == ~T[00:30:00]
     assert Map.keys(clock.holidays) == [~D[2030-09-08]]
+    assert {clock.from, clock.through} == {~D[2030-09-06], ~D[2030-09-14]}
     assert clock.tick.() == ~U[2030-09-05 23:30:00Z]
 
     assert [%{date: ~D[2030-09-08]}] =
@@ -313,6 +365,9 @@ defmodule Dhc.TrainingAnnouncements.ExecutionTest do
 
   defp evaluate(announcement, date, now \\ @due),
     do: Execution.evaluate({:announcement, announcement.id, date}, Execution.clock(now))
+
+  # A clock built at one instant whose readings (the claim's) are another.
+  defp advancing(built, claimed), do: %{Execution.clock(built) | tick: fn -> claimed end}
 
   defp script_post do
     DiscordAdapter.script(:create_message, [{:ok, %{message_id: "234567890123456789"}}])
