@@ -1,8 +1,8 @@
 defmodule DhcWeb.MembershipController do
   use DhcWeb, :controller
 
-  alias Dhc.Auth.Capabilities
   alias Dhc.Membership
+  alias DhcWeb.MemberAccess
 
   action_fallback DhcWeb.MembersHTTP
 
@@ -12,7 +12,7 @@ defmodule DhcWeb.MembershipController do
   def pause(conn, %{"memberId" => member_id} = params) do
     attrs = Map.delete(params, "memberId")
 
-    with :ok <- authorize_member(conn, :"members.profile.update", member_id),
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.update", member_id),
          {:ok, member} <- member_id |> Membership.pause(attrs) |> rename(:invalid_pause) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
@@ -24,7 +24,7 @@ defmodule DhcWeb.MembershipController do
   POST /members/:memberId/membership/resume
   """
   def resume(conn, %{"memberId" => member_id}) do
-    with :ok <- authorize_member(conn, :"members.profile.update", member_id),
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.update", member_id),
          {:ok, member} <- Membership.resume(member_id) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
@@ -34,7 +34,7 @@ defmodule DhcWeb.MembershipController do
 
   @doc "POST /members/:memberId/billing-portal"
   def billing_portal(conn, %{"memberId" => member_id, "returnUrl" => return_url}) do
-    with :ok <- authorize_member(conn, :"members.profile.update", member_id),
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.update", member_id),
          {:ok, url} <-
            member_id
            |> Membership.create_billing_portal_session(return_url)
@@ -97,15 +97,6 @@ defmodule DhcWeb.MembershipController do
            |> rename(:invalid_reactivation_amounts, :cost_preview_failed) do
       json(conn, %{data: result})
     end
-  end
-
-  # Owner-scoped: the member themself or a member administrator. Anyone else
-  # gets the same 404 as a missing member, so the profile's existence is
-  # concealed (ALE-344, matching the frontend's `concealed_resource`).
-  defp authorize_member(conn, capability, member_id) do
-    Capabilities.authorize(conn.assigns.current_session, capability, %{
-      owner_principal_id: member_id
-    })
   end
 
   # `Dhc.Membership` reports one `:invalid_payload` and one `:stripe_error`

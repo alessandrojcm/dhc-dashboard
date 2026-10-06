@@ -147,13 +147,11 @@ defmodule Dhc.Auth.Capabilities do
   def authorize(%{is_active: true}, nil, _resource), do: :ok
 
   def authorize(%{is_active: true, roles: roles} = projection, capability, resource) do
-    rule = rule!(capability)
-
     cond do
       granted_by_role?(capability, roles) -> :ok
-      Map.get(rule, :owner, false) and owner?(projection, resource) -> :ok
-      Map.get(rule, :owner, false) -> {:error, :not_found}
-      true -> {:error, :forbidden}
+      not owner_scoped?(capability) -> {:error, :forbidden}
+      owner?(projection, resource) -> :ok
+      true -> {:error, :not_found}
     end
   end
 
@@ -198,7 +196,8 @@ defmodule Dhc.Auth.Capabilities do
   end
 
   defp granted_by_role?(capability, roles) do
-    Enum.any?(roles, &(&1 in @rules[capability].roles))
+    granted = rule!(capability).roles
+    Enum.any?(roles, &(&1 in granted))
   end
 
   defp owner?(%{principal: %{id: id}}, %{owner_principal_id: id}) when is_binary(id), do: true

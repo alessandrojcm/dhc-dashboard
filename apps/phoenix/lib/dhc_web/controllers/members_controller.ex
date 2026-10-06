@@ -1,8 +1,8 @@
 defmodule DhcWeb.MembersController do
   use DhcWeb, :controller
 
-  alias Dhc.Auth.Capabilities
   alias Dhc.Members
+  alias DhcWeb.MemberAccess
 
   action_fallback DhcWeb.MembersHTTP
 
@@ -43,7 +43,7 @@ defmodule DhcWeb.MembersController do
   GET /members/:memberId
   """
   def show(conn, %{"memberId" => member_id}) do
-    with :ok <- authorize_member(conn, :"members.profile.read", member_id),
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.read", member_id),
          {:ok, member} <- Members.get_member(member_id) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
@@ -57,7 +57,7 @@ defmodule DhcWeb.MembersController do
   def update(conn, %{"memberId" => member_id} = params) do
     attrs = Map.delete(params, "memberId")
 
-    with :ok <- authorize_member(conn, :"members.profile.update", member_id),
+    with :ok <- MemberAccess.authorize(conn, :"members.profile.update", member_id),
          {:ok, member} <- Members.update_member(member_id, attrs) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
@@ -81,14 +81,5 @@ defmodule DhcWeb.MembersController do
     conn
     |> put_view(json: DhcWeb.MembersJSON)
     |> render(:options, options: Members.options())
-  end
-
-  # Owner-scoped: the member themself or a member administrator. Anyone else
-  # gets the same 404 as a missing member, so the profile's existence is
-  # concealed (ALE-344, matching the frontend's `concealed_resource`).
-  defp authorize_member(conn, capability, member_id) do
-    Capabilities.authorize(conn.assigns.current_session, capability, %{
-      owner_principal_id: member_id
-    })
   end
 end
