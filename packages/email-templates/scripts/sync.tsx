@@ -44,7 +44,7 @@ import {
  * custom domain (`mise run email-asset-upload` fills it). Serving the crest
  * through the app's Worker would couple every email open to web deploys.
  */
-const DEFAULT_ASSETS_BASE_URL = "https://assets.dublinhemaclub.com";
+export const DEFAULT_ASSETS_BASE_URL = "https://assets.dublinhemaclub.com";
 
 /**
  * Props bound to literal `{{{KEY}}}` placeholders so the uploaded HTML keeps

@@ -70,6 +70,15 @@ tags:
     x-context: Dhc.Discord
     x-resource: DoctorReport
 
+  - name: MemberAnnouncements
+    description: |
+      Committee emails to many members at once (ADR 0028). The body is a
+      Tiptap rich-text document rendered by Phoenix into the code-authored
+      shell; recipients are BCC'd and delivered through Resend's batch API.
+      Active members receive it by default; inactive members are opt-in.
+    x-context: Dhc.MemberAnnouncements
+    x-resource: Announcement
+
 paths:
   /training-announcements/occurrences/window:
     get:
@@ -506,6 +515,103 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /member-announcements:
+    get:
+      operationId: memberAnnouncements.index
+      tags: [MemberAnnouncements]
+      summary: List recent Member Announcements
+      description: The 20 most recent sends, newest first, with their delivery status.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Recent Member Announcements.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemberAnnouncementListResponse"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "403":
+          description: The `member_announcements.send` capability is required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+    post:
+      operationId: memberAnnouncements.create
+      tags: [MemberAnnouncements]
+      summary: Send a Member Announcement
+      description: |
+        Renders the email, freezes the recipient addresses of the chosen
+        audience, records the announcement, and enqueues its delivery. The
+        response is returned before Resend is called; `status` moves from
+        `queued` to `sent` or `failed`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MemberAnnouncementDraft"}
+      responses:
+        "202":
+          description: The announcement is recorded and queued for delivery.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemberAnnouncementResponse"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "403":
+          description: The `member_announcements.send` capability is required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422":
+          description: |
+            Invalid subject or body (`fields.subject`, `fields.body`), or the
+            chosen audience has no recipients (`code: no_recipients`).
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  /member-announcements/preview:
+    post:
+      operationId: memberAnnouncements.preview
+      tags: [MemberAnnouncements]
+      summary: Render a Member Announcement without sending it
+      description: |
+        Returns the exact email HTML `create` would send for this draft and
+        the number of recipients in the chosen audience. Writes nothing.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/MemberAnnouncementDraft"}
+      responses:
+        "200":
+          description: The rendered email and its audience size.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/MemberAnnouncementPreviewResponse"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "403":
+          description: The `member_announcements.send` capability is required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422":
+          description: Invalid subject or body (`fields.subject`, `fields.body`).
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
 
   /health:
     get:
@@ -6635,6 +6741,106 @@ components:
         format: uuid
       description: The Loan id.
   schemas:
+    MemberAnnouncementDocument:
+      type: object
+      description: |
+        A Tiptap (ProseMirror) JSON document, as returned by
+        `editor.getJSON()`. Phoenix accepts a closed vocabulary — paragraph,
+        heading (levels 2–3), bullet/ordered list, list item, blockquote,
+        horizontal rule, hard break, and the bold/italic/underline/strike/link
+        marks (http, https, mailto) — and rejects anything else.
+      required: [type]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          enum: [doc]
+        content:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    MemberAnnouncementDraft:
+      type: object
+      required: [subject, body]
+      additionalProperties: false
+      properties:
+        subject:
+          type: string
+          maxLength: 200
+          description: A single line, also used as the email heading.
+        body:
+          $ref: "#/components/schemas/MemberAnnouncementDocument"
+        includeInactive:
+          type: boolean
+          default: false
+          description: Also email members whose membership is inactive. Active (including paused) members are always included.
+    MemberAnnouncementPreview:
+      type: object
+      required: [html, text, recipientCount]
+      properties:
+        html:
+          type: string
+          description: The complete email HTML exactly as it would be sent.
+        text:
+          type: string
+          description: The plain-text alternative part.
+        recipientCount:
+          type: integer
+          minimum: 0
+    MemberAnnouncementPreviewResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/MemberAnnouncementPreview"
+    MemberAnnouncementStatus:
+      type: string
+      enum: [queued, sent, failed]
+    MemberAnnouncement:
+      type: object
+      required: [id, subject, includeInactive, recipientCount, status, failureReason, sentAt, createdAt, sentByName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject:
+          type: string
+        includeInactive:
+          type: boolean
+        recipientCount:
+          type: integer
+          minimum: 1
+        status:
+          $ref: "#/components/schemas/MemberAnnouncementStatus"
+        failureReason:
+          type: string
+          nullable: true
+        sentAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        sentByName:
+          type: string
+          nullable: true
+          description: The sender's display name, or null when their profile no longer exists.
+    MemberAnnouncementResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/MemberAnnouncement"
+    MemberAnnouncementListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemberAnnouncement"
     TrainingAnnouncementOccurrenceListResponse:
       type: object
       required: [data]
@@ -10914,6 +11120,7 @@ components:
         - inventory.catalog.read
         - inventory.loans.own.read
         - inventory.manage
+        - member_announcements.send
         - members.directory.read
         - members.invite
         - members.profile.read

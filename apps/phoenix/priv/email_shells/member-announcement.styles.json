@@ -1,0 +1,15 @@
+{
+  "p": "color:#121827;font-size:16px;line-height:26px;margin:0 0 20px",
+  "h2": "color:#1f4f85;font-family:\"Calistoga\",Georgia,\"Times New Roman\",serif;font-size:24px;line-height:32px;margin:28px 0 12px",
+  "h3": "color:#1f4f85;font-size:18px;font-weight:700;line-height:26px;margin:24px 0 8px",
+  "ul": "color:#121827;font-size:16px;line-height:26px;margin:0 0 20px;padding-left:24px",
+  "ol": "color:#121827;font-size:16px;line-height:26px;margin:0 0 20px;padding-left:24px",
+  "li": "margin:0 0 6px",
+  "blockquote": "border-left:4px solid #e5b524;color:#121827;margin:0 0 20px;padding:4px 0 4px 16px",
+  "a": "color:#1f4f85;text-decoration:underline",
+  "hr": "border:none;border-top:1px solid #e5e7eb;margin:28px 0",
+  "strong": "font-weight:700",
+  "em": "font-style:italic",
+  "u": "text-decoration:underline",
+  "s": "text-decoration:line-through"
+}

@@ -53,6 +53,7 @@ const RULES = {
 	"inventory.manage": {},
 	"inventory.catalog.read": {},
 	"inventory.loans.own.read": {},
+	"member_announcements.send": {},
 	"members.directory.read": {},
 	"members.invite": {},
 	"members.profile.read": { ownerMayAccess: true },

@@ -49,6 +49,7 @@
 | **Transactional Email** | An outbound email sent to one recipient as the side effect of a workflow event (sign-in, invitation issue, registration, announcement). Distinct from Notification, which is in-app only. Sending is asynchronous: the workflow enqueues it and never blocks on delivery success. |
 | **Email Kind** | The stable, provider-neutral identifier selecting one Transactional Email type (`inviteMember`, `magicLink`, …). Callers reference only the Kind and its data variables; how a Kind resolves to a concrete provider-side template is send-path concern, never caller vocabulary. |
 | **Template** | The owned-as-code source of an Email Kind's content: markup plus metadata (subject, sender, declared typed variables). Published to the provider's template store; the published copy is what renders variables at send time. |
+| **Member Announcement** | A committee email sent once to many Members: a subject and a rich-text body sent to every active Member (paused memberships count as active), optionally to inactive Members too. Recipients are BCC'd, so it carries no per-recipient content. It is not a Transactional Email or an Email Kind: its shell is rendered from code and filled by Phoenix rather than hosted at the provider (ADR 0028). The row freezes the rendered email and its recipient addresses at send time. |
 | **Waitlist** | Prospective members awaiting invitation. A distinct domain area within Onboarding, not merely part of Member management. |
 | **Waitlist Status** | The stage of a prospective member on the waitlist: waiting, invited, paid, deferred, cancelled, completed, no_reply, or joined. |
 | **Settings** | Cross-domain or system-wide configuration that is managed as configuration rather than as part of a specific domain workflow. A value stored in the settings table is not automatically a Settings capability concern; domain-owned values such as Waitlist availability should be exposed through their owning domain language. |
@@ -86,6 +87,7 @@
 | 0025 | Web Push is a best-effort channel behind the notification row | Accepted |
 | 0026 | Training Announcements is its own context; Dhc.Discord is a protocol seam | Accepted |
 | 0027 | Workshop payment commands share one lock order | Accepted |
+| 0028 | Member Announcements render a code-authored shell and send inline HTML | Accepted |
 
 ## Architecture (Target State)
 

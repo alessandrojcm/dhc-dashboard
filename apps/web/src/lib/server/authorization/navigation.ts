@@ -41,6 +41,13 @@ export const navigation: NavigationDefinition = [
 		requires: "training_announcements.manage",
 	},
 	{
+		// ADR 0028: committee email to the membership, beside the other
+		// club-communication entry.
+		title: "Member Emails",
+		url: resolve("dashboard/member-emails"),
+		requires: "member_announcements.send",
+	},
+	{
 		title: "Workshops",
 		url: resolve("dashboard/workshops"),
 		requires: "workshops.manage",

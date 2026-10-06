@@ -40,6 +40,10 @@ defmodule DhcWeb.Router do
     plug(DhcWeb.Plugs.RequireSession, capability: :"members.settings.edit")
   end
 
+  pipeline :member_announcements_send do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"member_announcements.send")
+  end
+
   pipeline :training_announcements_manage do
     plug(DhcWeb.Plugs.RequireSession, capability: :"training_announcements.manage")
   end
@@ -262,6 +266,15 @@ defmodule DhcWeb.Router do
       MembershipController,
       :reactivation_amounts_preview
     )
+  end
+
+  # ADR 0028: committee emails to the membership.
+  scope "/api", DhcWeb do
+    pipe_through([:api, :member_announcements_send])
+
+    get("/member-announcements", MemberAnnouncementsController, :index)
+    post("/member-announcements", MemberAnnouncementsController, :create)
+    post("/member-announcements/preview", MemberAnnouncementsController, :preview)
   end
 
   scope "/api", DhcWeb do

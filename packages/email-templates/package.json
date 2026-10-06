@@ -13,6 +13,7 @@
 		"sync": "tsx scripts/sync.tsx",
 		"sync:publish": "tsx scripts/sync.tsx --publish",
 		"smoke": "tsx scripts/sync.tsx --smoke",
+		"render:shells": "tsx scripts/render-shells.tsx",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"format": "oxfmt ./emails ./src ./test ./scripts",

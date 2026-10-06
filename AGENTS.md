@@ -28,6 +28,8 @@ HTTP errors have one renderer (ALE-343): controllers declare `action_fallback Dh
 
 Dev data can include pending direct member invitations through `mise run seed-invitations [count]` and representative inventory through `mise run seed-inventory [item-count]`; see the Seeds section in `docs/agents/commands.md` for all seed tasks.
 
+Member Announcements (ADR 0028) are committee emails to all members, BCC'd and sent through Resend's batch API as inline HTML. They are deliberately not Email Kinds: the React Email template is rendered into the committed `apps/phoenix/priv/email_shells/` shell, so rerun `pnpm --filter @dhc/email-templates render:shells` after editing it (a drift test enforces this). The body is a Tiptap JSON document that Phoenix renders from a closed vocabulary, and the live preview is Phoenix's render. See the Member Announcement row in `docs/agents/where-to-look.md`.
+
 Invitation pricing tiers use backend-applied Stripe coupon IDs, not customer-facing promotion codes; see the invitation pricing tier note in `docs/agents/notes.md` for coupon configuration and E2E conventions.
 
 Target Inventory Item operations live on `/api/inventory/items*` under the one `Inventory` tag since ALE-289 deleted the legacy slice and moved them onto the freed URLs (slice `inventoryItems.*`); those reads are operator-only by design. The member-facing catalog and own-loan operations (`/api/inventory/catalog/items*`, `/api/inventory/loans/mine*`) are a **separate read model**, not a role variant of the operator viewer — member rows cannot express container, notes, or maintenance facts at all. See the Inventory Item and member catalog rows in `docs/agents/where-to-look.md` before editing the API contract.
