@@ -45,8 +45,7 @@ defmodule DhcWeb.StripeWebhooksControllerTest do
         |> Plug.Conn.put_req_header("stripe-signature", sig_header)
         |> post("/api/webhooks/stripe", payload)
 
-      assert conn.status == 401
-      assert %{"errors" => _} = json_response(conn, 401)
+      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Invalid signature"}}
     end
 
     test "returns 401 for missing Stripe-Signature header", %{conn: conn} do
@@ -57,12 +56,15 @@ defmodule DhcWeb.StripeWebhooksControllerTest do
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post("/api/webhooks/stripe", payload)
 
-      assert conn.status == 401
+      assert json_response(conn, 401) == %{
+               "errors" => %{"detail" => "Missing Stripe-Signature header"}
+             }
     end
 
     test "returns 400 for empty body with signature", %{conn: conn} do
-      timestamp = System.system_time(:second)
-      sig_header = "t=#{timestamp},v1=somesig"
+      # A validly signed empty payload isolates the body check from signature
+      # verification.
+      sig_header = StripeWebhook.generate_test_signature("", @secret)
 
       conn =
         conn
@@ -70,8 +72,8 @@ defmodule DhcWeb.StripeWebhooksControllerTest do
         |> Plug.Conn.put_req_header("stripe-signature", sig_header)
         |> post("/api/webhooks/stripe", "")
 
-      # Empty body — should get 400 or 401 (empty payload fails JSON parse or sig verify)
-      assert conn.status in [400, 401]
+      assert json_response(conn, 400) == %{"errors" => %{"detail" => "Missing request body"}}
+      assert all_enqueued() == []
     end
 
     test "returns 400 for malformed signature header", %{conn: conn} do
@@ -83,7 +85,23 @@ defmodule DhcWeb.StripeWebhooksControllerTest do
         |> Plug.Conn.put_req_header("stripe-signature", "malformed_header")
         |> post("/api/webhooks/stripe", payload)
 
-      assert conn.status == 400
+      assert json_response(conn, 400) == %{
+               "errors" => %{"detail" => "Malformed Stripe-Signature header"}
+             }
+    end
+
+    test "returns 400 for a signed event without a type", %{conn: conn} do
+      payload = Jason.encode!(%{"id" => "evt_untyped"})
+      sig_header = StripeWebhook.generate_test_signature(payload, @secret)
+
+      conn =
+        conn
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> Plug.Conn.put_req_header("stripe-signature", sig_header)
+        |> post("/api/webhooks/stripe", payload)
+
+      assert json_response(conn, 400) == %{"errors" => %{"detail" => "Missing event type"}}
+      assert all_enqueued() == []
     end
 
     test "returns 401 for expired timestamp", %{conn: conn} do
@@ -101,7 +119,7 @@ defmodule DhcWeb.StripeWebhooksControllerTest do
         |> Plug.Conn.put_req_header("stripe-signature", sig_header)
         |> post("/api/webhooks/stripe", payload)
 
-      assert conn.status == 401
+      assert json_response(conn, 401) == %{"errors" => %{"detail" => "Timestamp expired"}}
     end
 
     test "returns 200 for subscription event with valid signature", %{conn: conn} do
