@@ -10,6 +10,7 @@ defmodule Dhc.TrainingAnnouncements.DeliveryPruneWorkerTest do
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.Announcement
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
   alias Dhc.TrainingAnnouncements.Workers.DeliveryPruneWorker
 
@@ -106,7 +107,7 @@ defmodule Dhc.TrainingAnnouncements.DeliveryPruneWorkerTest do
                  attempt: 1,
                  max_attempts: 4
                },
-               clock: fn -> due_at end
+               clock: Execution.clock(due_at)
              )
 
     assert [%{state: "delivered", frozen_at: frozen_at}] = Repo.all(DiscordAnnouncementDelivery)

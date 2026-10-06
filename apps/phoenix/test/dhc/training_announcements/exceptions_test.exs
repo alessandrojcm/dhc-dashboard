@@ -7,6 +7,7 @@ defmodule Dhc.TrainingAnnouncements.ExceptionsTest do
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.Occurrences
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
 
@@ -347,7 +348,7 @@ defmodule Dhc.TrainingAnnouncements.ExceptionsTest do
                      "occurrence_date" => "2030-09-05"
                    }
                  },
-                 clock: fn -> ~U[2030-09-05 14:00:00.000000Z] end
+                 clock: Execution.clock(~U[2030-09-05 14:00:00.000000Z])
                )
 
       delivery =
@@ -527,7 +528,7 @@ defmodule Dhc.TrainingAnnouncements.ExceptionsTest do
       %Oban.Job{
         args: %{"announcement_id" => ctx.announcement.id, "occurrence_date" => "2030-09-05"}
       },
-      clock: fn -> ~U[2030-09-05 13:00:00.000000Z] end
+      clock: Execution.clock(~U[2030-09-05 13:00:00.000000Z])
     )
   end
 

@@ -11,6 +11,7 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.Announcement
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
 
   setup do
@@ -252,7 +253,8 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
     DiscordAdapter.script(:create_thread_from_message, List.duplicate({:error, error}, 3))
 
     for attempt <- 1..2 do
-      assert {:error, ^error} = perform_due(args(announcement, ctx.today), attempt: attempt)
+      assert {:error, {:permission, "50013: Missing permissions"}} =
+               perform_due(args(announcement, ctx.today), attempt: attempt)
 
       assert [
                %{
@@ -300,7 +302,9 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
 
     DiscordAdapter.script(:create_thread_from_message, [{:ok, %{thread_id: "345678901234567890"}}])
 
-    assert {:error, ^error} = perform_due(args(announcement, ctx.today))
+    assert {:error, {:rate_limited, ": Rate limited"}} =
+             perform_due(args(announcement, ctx.today))
+
     assert [frozen] = deliveries()
     assert frozen.state == "frozen"
     assert frozen.posting_started_at != nil
@@ -348,7 +352,9 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
       {:ok, %{thread_id: "345678901234567890"}}
     ])
 
-    assert {:error, ^error} = perform_due(args(announcement, ctx.today))
+    assert {:error, {:rate_limited, ": Rate limited"}} =
+             perform_due(args(announcement, ctx.today))
+
     assert :ok = perform_due(args(announcement, ctx.today), attempt: 2)
 
     assert [%{state: "delivered", thread_attempts: 2, last_thread_error: ": Rate limited"}] =
@@ -431,13 +437,16 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
     announcement = create_due(ctx)
     error = %ApiError{status: 429, message: "Rate limited"}
     DiscordAdapter.script(:create_message, [{:error, error}])
-    assert {:error, ^error} = perform_due(args(announcement, ctx.today))
+
+    assert {:error, {:rate_limited, ": Rate limited"}} =
+             perform_due(args(announcement, ctx.today))
+
     assert_receive {:create_message, _}
 
     assert :ok =
              perform_due(args(announcement, ctx.today),
                attempt: 2,
-               clock: fn -> ~U[2030-09-06 00:00:00.000000Z] end
+               clock: Execution.clock(~U[2030-09-06 00:00:00.000000Z])
              )
 
     assert [%{state: "missed", reason: "late", concluded_at: at}] = deliveries()
@@ -466,7 +475,7 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
 
     assert :ok =
              perform_due(args(announcement, Date.add(ctx.today, 7)),
-               clock: fn -> ~U[2030-09-12 13:00:00.000000Z] end
+               clock: Execution.clock(~U[2030-09-12 13:00:00.000000Z])
              )
 
     assert {:ok, %{first_attempted_at: ^first}} =
@@ -489,7 +498,8 @@ defmodule Dhc.TrainingAnnouncements.AnnouncementWorkerTest do
     }
 
     AnnouncementWorker.perform(job,
-      clock: Keyword.get(opts, :clock, fn -> ~U[2030-09-05 13:00:00.000000Z] end)
+      clock:
+        Keyword.get_lazy(opts, :clock, fn -> Execution.clock(~U[2030-09-05 13:00:00.000000Z]) end)
     )
   end
 

@@ -127,8 +127,9 @@ defmodule Dhc.TrainingAnnouncements.Occurrences do
 
   @doc """
   Resolves an already-due job's date using the same precedence as the window,
-  without hiding elapsed slots. The worker separately gates future instants
-  and records missed Dublin dates; a late same-day post remains deliverable.
+  without hiding elapsed slots. `Execution` (its only caller) separately gates
+  future instants and records missed Dublin dates; a late same-day post
+  remains deliverable.
   """
   def resolve_due(announcement, %Date{} = date, opts) do
     if scheduled_on?(announcement, date) do

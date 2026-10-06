@@ -9,6 +9,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
   alias Dhc.Repo
   alias Dhc.TrainingAnnouncements
   alias Dhc.TrainingAnnouncements.DiscordAnnouncementDelivery, as: Evidence
+  alias Dhc.TrainingAnnouncements.Execution
   alias Dhc.TrainingAnnouncements.Workers.AnnouncementWorker
   alias Dhc.TrainingAnnouncements.Workers.HolidayAnnouncementWorker
 
@@ -87,7 +88,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
 
     assert :ok =
              HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-04 13:00:00.000000Z] end
+               clock: Execution.clock(~U[2030-08-04 13:00:00.000000Z])
              )
 
     assert :ok = run(first)
@@ -126,7 +127,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
 
     assert {:snooze, 7200} =
              HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-04 13:00:00.000000Z] end
+               clock: Execution.clock(~U[2030-08-04 13:00:00.000000Z])
              )
 
     assert holidays() == []
@@ -134,7 +135,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
 
     assert :ok =
              HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-04 15:00:00.000000Z] end
+               clock: Execution.clock(~U[2030-08-04 15:00:00.000000Z])
              )
 
     assert [%{state: "delivered", post_time: ~T[16:00:00]}] = holidays()
@@ -374,7 +375,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
       {:ok, %{message_id: "234567890123456789"}}
     ])
 
-    assert {:error, ^error} = run(announcement)
+    assert {:error, {:rate_limited, ": Rate limited"}} = run(announcement)
     assert [frozen] = holidays()
     assert frozen.state == "frozen"
     assert_receive {:create_message, [channel, params]}
@@ -394,7 +395,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
 
     assert :ok =
              HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-05 13:00:00.000000Z] end
+               clock: Execution.clock(~U[2030-08-05 13:00:00.000000Z])
              )
 
     assert [
@@ -428,7 +429,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
 
     assert :ok =
              HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-04 15:00:00.000000Z] end
+               clock: Execution.clock(~U[2030-08-04 15:00:00.000000Z])
              )
 
     assert [%{state: "delivered", post_time: ~T[16:00:00]}] = holidays()
@@ -443,7 +444,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
       {:ok, %{message_id: "234567890123456789"}}
     ])
 
-    assert {:error, ^error} = run(announcement)
+    assert {:error, {:rate_limited, ": Rate limited"}} = run(announcement)
 
     assert [job] =
              Enum.filter(
@@ -456,7 +457,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
 
     assert :ok =
              HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-05 13:01:00.000000Z] end
+               clock: Execution.clock(~U[2030-08-05 13:01:00.000000Z])
              )
 
     assert [%{state: "delivered", phase: "same_day"}] = holidays()
@@ -478,7 +479,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
 
     assert :ok =
              HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-05 13:01:00.000000Z] end
+               clock: Execution.clock(~U[2030-08-05 13:01:00.000000Z])
              )
 
     assert [%{state: "message_uncertain", reason: "worker_lost"}] = holidays()
@@ -517,7 +518,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
 
     assert {:snooze, 30} =
              HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-               clock: fn -> ~U[2030-08-05 13:01:00.000000Z] end
+               clock: Execution.clock(~U[2030-08-05 13:01:00.000000Z])
              )
 
     send(worker, :finish_post)
@@ -531,7 +532,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
   defp run_day_before(job),
     do:
       HolidayAnnouncementWorker.perform(%{job | attempt: 1},
-        clock: fn -> ~U[2030-08-04 13:00:00.000000Z] end
+        clock: Execution.clock(~U[2030-08-04 13:00:00.000000Z])
       )
 
   defp create(ctx, extra \\ %{}, now \\ ~U[2030-08-01 12:00:00Z]) do
@@ -562,7 +563,7 @@ defmodule Dhc.TrainingAnnouncements.HolidayAnnouncementsTest do
         attempt: Keyword.get(opts, :attempt, 1),
         max_attempts: 4
       },
-      clock: fn -> ~U[2030-08-05 13:00:00.000000Z] end
+      clock: Execution.clock(~U[2030-08-05 13:00:00.000000Z])
     )
   end
 
