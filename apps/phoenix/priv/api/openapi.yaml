@@ -2083,6 +2083,112 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /members/{memberId}/roles:
+    get:
+      operationId: memberRoles.show
+      tags: [Members]
+      summary: Read roles for the member role editor
+      description: Requires members.roles.edit (active president or admin only).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Current and available club roles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MemberRolesResponse" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Insufficient role
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    patch:
+      operationId: memberRoles.update
+      tags: [Members]
+      summary: Replace a member's roles
+      description: |
+        Requires members.roles.edit (active president or admin only). The member
+        role is mandatory; other existing roles may be assigned or removed,
+        including on the caller. A changed role
+        set revokes all sessions and socket tokens atomically and disconnects
+        established sockets after commit. A no-op does not sign the member out.
+        expectedRoles must match the current set, otherwise returns 409.
+        Removing the last active role editor's authority returns 409.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [roles, expectedRoles]
+              properties:
+                roles:
+                  type: array
+                  description: Must include member; it cannot be removed.
+                  minItems: 1
+                  uniqueItems: true
+                  maxItems: 13
+                  items: { $ref: "#/components/schemas/ClubRole" }
+                expectedRoles:
+                  type: array
+                  uniqueItems: true
+                  maxItems: 13
+                  items: { $ref: "#/components/schemas/ClubRole" }
+      responses:
+        "200":
+          description: Updated roles
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MemberRolesResponse" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Insufficient role
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Member not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Stale roles or last active role editor
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MemberRolesConflictError" }
+        "422":
+          description: Invalid roles payload
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MemberRolesValidationError" }
+
   /members/{memberId}:
     get:
       operationId: members.show
@@ -11107,6 +11213,49 @@ components:
                 type: array
                 items:
                   type: string
+    MemberRolesConflictError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [roles_changed, last_role_editor]
+    MemberRolesValidationError:
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [invalid_roles]
+    ClubRole:
+      type: string
+      enum: [admin, president, treasurer, committee_coordinator, sparring_coordinator, workshop_coordinator, beginners_coordinator, quartermaster, pr_manager, volunteer_coordinator, research_coordinator, coach, member]
+    MemberRolesResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [roles, availableRoles]
+          properties:
+            roles:
+              type: array
+              items: { $ref: "#/components/schemas/ClubRole" }
+            availableRoles:
+              type: array
+              items: { $ref: "#/components/schemas/ClubRole" }
     AuthCapability:
       type: string
       description: |
@@ -11125,6 +11274,7 @@ components:
         - members.invite
         - members.profile.read
         - members.profile.update
+        - members.roles.edit
         - members.settings.edit
         - membership.reactivate
         - training_announcements.manage

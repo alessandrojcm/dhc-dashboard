@@ -98,6 +98,17 @@ defmodule DhcWeb.Router do
     plug(DhcWeb.Plugs.RequireSession)
   end
 
+  pipeline :members_roles_edit do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"members.roles.edit")
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through([:api, :members_roles_edit])
+
+    get("/members/:memberId/roles", MemberRolesController, :show)
+    patch("/members/:memberId/roles", MemberRolesController, :update)
+  end
+
   pipeline :authenticated_session_api do
     plug(DhcWeb.Plugs.RequireSession)
   end

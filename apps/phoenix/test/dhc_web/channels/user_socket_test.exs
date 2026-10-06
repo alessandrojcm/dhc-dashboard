@@ -77,6 +77,44 @@ defmodule DhcWeb.UserSocketTest do
       assert :error = connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: encoded})
     end
 
+    test "transport initialization catches revocation between connect and subscription", %{
+      principal: principal,
+      encoded: encoded
+    } do
+      %{principal_id: actor_id} = Dhc.MemberFixtures.member_fixture()
+      Repo.insert_all(Dhc.Auth.UserRole, [%{principal_id: actor_id, role: "admin"}])
+
+      {:ok, socket} = connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: encoded})
+
+      # connect succeeded, but the transport has not subscribed to its socket
+      # id yet. It misses this broadcast; init must detect the deleted row.
+      assert {:ok, _} =
+               Dhc.Auth.Roles.update(actor_id, principal.id, %{
+                 "roles" => ["member", "coach"],
+                 "expectedRoles" => ["member"]
+               })
+
+      assert {:ok, state} = DhcWeb.UserSocket.init({%{}, socket})
+      assert_receive disconnect = %Phoenix.Socket.Broadcast{event: "disconnect"}
+
+      assert {:stop, {:shutdown, :disconnected}, 1001, ^state} =
+               DhcWeb.UserSocket.handle_info(disconnect, state)
+
+      # Even an inbound join queued before the disconnect cannot be handled.
+      assert {:stop, {:shutdown, :disconnected}, 1001, ^state} =
+               DhcWeb.UserSocket.handle_in({"queued join", []}, state)
+    end
+
+    test "transport initialization retains valid authentication", %{encoded: encoded} do
+      {:ok, socket} = connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: encoded})
+      assert {:ok, {_state, initialized}} = DhcWeb.UserSocket.init({%{}, socket})
+
+      assert initialized.assigns.current_session.principal.id ==
+               socket.assigns.current_session.principal.id
+
+      refute Map.get(initialized.assigns, :authentication_revoked, false)
+    end
+
     test "a garbage authToken that does not decode is rejected" do
       assert :error =
                connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: "not-base64-or-real"})

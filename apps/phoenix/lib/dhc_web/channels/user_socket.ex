@@ -25,6 +25,8 @@ defmodule DhcWeb.UserSocket do
 
   use Phoenix.Socket
 
+  defoverridable init: 1, handle_in: 2
+
   require Logger
 
   alias DhcWeb.NotificationChannel
@@ -36,18 +38,21 @@ defmodule DhcWeb.UserSocket do
   ## Authentication
 
   @doc false
-  def socket_id(principal_id), do: "users_socket:#{principal_id}"
+  def socket_id(principal_id), do: Dhc.Auth.socket_topic(principal_id)
 
   @doc "Disconnects every established socket for an Authentication Principal."
   def disconnect(principal_id) do
-    DhcWeb.Endpoint.broadcast(socket_id(principal_id), "disconnect", %{})
+    Dhc.Auth.disconnect_sockets(principal_id)
   end
 
   @impl true
   def connect(_params, socket, connect_info) do
     with token when is_binary(token) and token != "" <- connect_info[:auth_token],
-         {:ok, projection} <- authenticate(token) do
-      {:ok, assign(socket, :current_session, projection)}
+         {:ok, projection, reference} <- authenticate(token) do
+      {:ok,
+       socket
+       |> assign(:current_session, projection)
+       |> assign(:socket_reference, reference)}
     else
       # Missing/empty token: reject without logging token contents.
       token when token in [nil, ""] ->
@@ -63,12 +68,34 @@ defmodule DhcWeb.UserSocket do
     end
   end
 
+  # Phoenix subscribes the transport to its socket id in init/1, after
+  # connect/3. Recheck only AFTER that subscription: a revocation before it
+  # rejects initialization, and one after it reaches the transport mailbox.
+  @impl true
+  def init(state) do
+    {:ok, {transport_state, socket}} = super(state)
+
+    case Dhc.Auth.get_socket_projection_by_reference(socket.assigns.socket_reference) do
+      {:ok, projection, _reference} ->
+        {:ok, {transport_state, assign(socket, :current_session, projection)}}
+
+      {:error, _reason} ->
+        send(self(), %Phoenix.Socket.Broadcast{event: "disconnect"})
+        {:ok, {transport_state, assign(socket, :authentication_revoked, true)}}
+    end
+  end
+
+  @impl true
+  def handle_in(_message, {_state, %{assigns: %{authentication_revoked: true}}} = state) do
+    Phoenix.Socket.__info__(%Phoenix.Socket.Broadcast{event: "disconnect"}, state)
+  end
+
+  def handle_in(message, state), do: super(message, state)
+
   defp authenticate(token) do
     with {:ok, decoded} <- safe_base64_decode(token),
-         {:ok, principal} <- Dhc.Auth.get_principal_by_socket_token(decoded),
-         {:ok, projection} <- Dhc.Auth.load_session_principal(principal),
-         :ok <- require_active(projection) do
-      {:ok, projection}
+         {:ok, projection, reference} <- Dhc.Auth.get_socket_projection(decoded) do
+      {:ok, projection, reference}
     else
       :not_base64 -> {:error, :invalid}
       {:error, :invalid} -> {:error, :invalid}
@@ -76,12 +103,6 @@ defmodule DhcWeb.UserSocket do
       {:error, :inactive} -> {:error, :inactive}
     end
   end
-
-  # A Principal whose Member has no current club access is not an
-  # authenticated dashboard session. Mirrors the `RequireSession` /
-  # `RequireAuth` cookie-path 401 outcome for inactive Principals.
-  defp require_active(%{is_active: true}), do: :ok
-  defp require_active(_), do: {:error, :inactive}
 
   defp safe_base64_decode(token) do
     case Base.url_decode64(token, padding: false) do

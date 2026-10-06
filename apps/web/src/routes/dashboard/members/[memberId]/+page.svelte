@@ -54,6 +54,7 @@ import {
 } from "@dhc/api-client";
 import ReactivateMemberDialog from "#lib/components/ui/reactivate-member-dialog.svelte";
 import { SocialMediaConsent } from "#lib/types.js";
+import MemberRoles from "#lib/components/members/member-roles.svelte";
 
 const { data } = $props();
 const queryClient = useQueryClient();
@@ -824,6 +825,13 @@ let showReactivateModal = $state(false);
 			</span>
 		</div>
 	</form>
+	{#if data.canEditRoles}
+		<div class="mt-6">
+			{#key data.member.id}
+				<MemberRoles memberId={data.member.id} {isOwnProfile} />
+			{/key}
+		</div>
+	{/if}
 </div>
 
 {#if dev}

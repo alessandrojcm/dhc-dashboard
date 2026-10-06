@@ -58,6 +58,7 @@ const RULES = {
 	"members.invite": {},
 	"members.profile.read": { ownerMayAccess: true },
 	"members.profile.update": { ownerMayAccess: true },
+	"members.roles.edit": {},
 	"members.settings.edit": {},
 	"membership.reactivate": {},
 	"training_announcements.manage": {},
