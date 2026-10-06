@@ -1,6 +1,6 @@
 import * as v from "valibot";
 import beginnersWaitlist from "./beginnersWaitlist";
-import { phoneNumberValidator } from "./commonValidators";
+import { dobValidator, phoneNumberValidator } from "./commonValidators";
 import { SocialMediaConsent } from "#lib/types.js";
 
 export const memberSignupSchema = v.object({
@@ -24,6 +24,8 @@ export const memberSignupClientSchema = v.object({
 
 const formSchema = v.object({
 	...beginnersWaitlist.entries,
+	// The profile route still converts dateOfBirth to a Date (ALE-354).
+	dateOfBirth: dobValidator,
 	...v.omit(memberSignupSchema, ["stripeConfirmationToken", "couponCode"])
 		.entries,
 	weapon: v.pipe(

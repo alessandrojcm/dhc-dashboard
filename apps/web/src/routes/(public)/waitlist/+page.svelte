@@ -1,9 +1,8 @@
 <script lang="ts">
-import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import { CalendarDate, type DateValue } from "@internationalized/date";
 import dayjs from "dayjs";
 import { submitWaitlist } from "./data.remote";
-import {
-	beginnersWaitlistClientSchema,
+import beginnersWaitlistSchema, {
 	isMinor,
 } from "#lib/schemas/beginnersWaitlist.js";
 
@@ -30,27 +29,29 @@ const dateOfBirthValue = $derived.by(() => {
 	);
 	return parsed.success ? parsed.output : "";
 });
-const isUnderAge = $derived.by(() => {
-	if (!dateOfBirthValue) {
-		return false;
-	}
-	const date = new Date(dateOfBirthValue);
-	if (!dayjs(date).isValid()) {
-		return false;
-	}
-	return isMinor(date);
-});
+// The date of birth stays a `YYYY-MM-DD` string; dayjs parses a bare ISO
+// date as local midnight, so the civil day never shifts.
+const dateOfBirthDay = $derived(
+	dateOfBirthValue ? dayjs(dateOfBirthValue) : undefined,
+);
+const isUnderAge = $derived(
+	dateOfBirthDay?.isValid() ? isMinor(dateOfBirthValue) : false,
+);
+const dobPickerValue = $derived(
+	dateOfBirthDay?.isValid()
+		? new CalendarDate(
+				dateOfBirthDay.year(),
+				dateOfBirthDay.month() + 1,
+				dateOfBirthDay.date(),
+			)
+		: undefined,
+);
 
-const dobPickerValue = $derived.by(() => {
-	if (!dateOfBirthValue) {
-		return undefined;
+function setDateOfBirth(date: DateValue | undefined) {
+	if (date instanceof CalendarDate) {
+		submitWaitlist.fields.dateOfBirth.set(date.toString());
 	}
-	const date = new Date(dateOfBirthValue);
-	if (!dayjs(date).isValid()) {
-		return undefined;
-	}
-	return fromDate(date, getLocalTimeZone());
-});
+}
 
 function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 	return Object.values(SocialMediaConsent).some((consent) => consent === value);
@@ -83,7 +84,7 @@ function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 			</Alert.Root>
 		{:else}
 			<form
-				{...submitWaitlist.preflight(beginnersWaitlistClientSchema)}
+				{...submitWaitlist.preflight(beginnersWaitlistSchema)}
 				class="flex flex-col gap-4 items-stretch"
 			>
 				<Field.Group>
@@ -213,11 +214,7 @@ function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 							id={fieldProps.name}
 							label="Date of birth"
 							value={dobPickerValue}
-							onDateChange={(date) => {
-								if (date) {
-									submitWaitlist.fields.dateOfBirth.set(date.toISOString());
-								}
-							}}
+							onValueChange={setDateOfBirth}
 						/>
 						{#each submitWaitlist.fields.dateOfBirth.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
