@@ -90,7 +90,6 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemGuards
   alias Dhc.Inventory.ItemProjection
-  alias Dhc.Inventory.ItemPropertyValue
   alias Dhc.Inventory.ItemValues
   alias Dhc.Inventory.Loan
   alias Dhc.Inventory.LoanPolicy
@@ -664,28 +663,11 @@ defmodule Dhc.Inventory.AvailabilityCommands do
   defp require_retained_values_valid(%Item{} = item) do
     definitions = ItemValues.load_definitions(item.category_id)
 
-    case ItemValues.validate(definitions, stored_values_as_supplied(item.id)) do
-      {:ok, _rows} -> :ok
-      {:error, errors} -> {:error, {:invalid_values, errors}}
+    case definitions |> ItemValues.invalid_stored([item.id]) |> Map.fetch(item.id) do
+      {:ok, errors} -> {:error, {:invalid_values, errors}}
+      :error -> :ok
     end
   end
-
-  defp stored_values_as_supplied(item_id) do
-    from(v in ItemPropertyValue, where: v.item_id == ^item_id)
-    |> Repo.all()
-    |> Map.new(&{&1.property_definition_id, supplied_value(&1)})
-  end
-
-  defp supplied_value(%ItemPropertyValue{option_id: option_id}) when not is_nil(option_id),
-    do: option_id
-
-  defp supplied_value(%ItemPropertyValue{boolean_value: boolean}) when is_boolean(boolean),
-    do: boolean
-
-  defp supplied_value(%ItemPropertyValue{decimal_value: decimal}) when not is_nil(decimal),
-    do: decimal
-
-  defp supplied_value(%ItemPropertyValue{text_value: text}), do: text
 
   # ── Dates ───────────────────────────────────────────────────────
 
