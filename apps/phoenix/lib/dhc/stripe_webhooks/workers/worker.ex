@@ -3,25 +3,35 @@ defmodule Dhc.StripeWebhooks.Worker do
   Oban worker that processes Stripe webhook events in the background.
 
   Enqueued by `DhcWeb.StripeWebhooksController` after signature verification.
-  Each job processes a single Stripe event based on its type:
-
-    * **Charge events** — confirm or cancel workshop registrations
-    * **Subscription events** — sync membership status via `Dhc.StripeSync`
-    * **Invoice / payment intent events** — sync customer data
+  Each job hands a single Stripe event to `Dhc.StripeWebhooks.process_event/1`,
+  which routes it to the domain reconcile functions in its routing table.
 
   ## Job args
 
-    * `event_type` — Stripe event type string (e.g. `"charge.succeeded"`)
+    * `event_type` — Stripe event type string (e.g. `"invoice.paid"`)
     * `event_id` — Stripe event ID (for idempotency / logging)
     * `event_data` — the full Stripe event payload as a map
 
   ## Retry policy
 
   Uses the `stripe` queue with `max_attempts: 3` and exponential backoff,
-  consistent with `Dhc.StripeSync.Worker`.
+  consistent with `Dhc.StripeSync.Worker`. A retry re-runs every target of the
+  event, which is why each routed reconcile function must be idempotent.
+
+  ## Deduplication
+
+  Jobs are unique on `event_id` for 24 hours across all job states, so a
+  Stripe redelivery of an event already enqueued (or already processed) in that
+  window inserts no second job. That includes `discarded` jobs: an event whose
+  job was discarded after 3 attempts cannot be replayed by re-sending it from
+  Stripe within the window; retry the discarded job instead (see the replay
+  note beside the routing table in `Dhc.StripeWebhooks`).
   """
 
-  use Oban.Worker, queue: :stripe, max_attempts: 3
+  use Oban.Worker,
+    queue: :stripe,
+    max_attempts: 3,
+    unique: [keys: [:event_id], period: 86_400, states: :all]
 
   require Logger
 

@@ -1220,11 +1220,7 @@ defmodule Dhc.Onboarding.AcceptanceTest do
       flush_stripe_messages()
       attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
 
-      assert :ok =
-               StripeWebhooks.process_event(%{
-                 "type" => "account.updated",
-                 "data" => %{"object" => %{"id" => "acct_race", "customer" => "cus_onboarding"}}
-               })
+      assert :ok = Acceptance.reconcile_stripe_event(%{"customer" => "cus_onboarding"})
 
       assert :ok = perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
       refute_received {:provision_membership, %{confirmation_token: "ctok_success"}}
@@ -1247,15 +1243,30 @@ defmodule Dhc.Onboarding.AcceptanceTest do
       assert [%{id: job_id, scheduled_at: first_scheduled_at}] =
                all_enqueued(worker: AcceptanceRecoveryWorker)
 
-      # A webhook brings the scheduled recovery forward instead of adding a job.
+      # Events routed elsewhere never reach Acceptance reconciliation, even
+      # when their object names the Attempt's Stripe customer.
       Application.put_env(:dhc, :acceptance_recovery_delay_seconds, 1)
 
-      for {customer, index} <- Enum.with_index(["cus_onboarding", %{"id" => "cus_onboarding"}]) do
+      for type <- ["account.updated", "charge.succeeded", "refund.updated"] do
         assert :ok =
                  StripeWebhooks.process_event(%{
-                   "type" => "account.updated",
-                   "data" => %{"object" => %{"id" => "acct_#{index}", "customer" => customer}}
+                   "type" => type,
+                   "data" => %{
+                     "object" => %{
+                       "id" => "re_unrouted",
+                       "status" => "pending",
+                       "customer" => "cus_onboarding"
+                     }
+                   }
                  })
+      end
+
+      assert [%{id: ^job_id, scheduled_at: ^first_scheduled_at}] =
+               all_enqueued(worker: AcceptanceRecoveryWorker)
+
+      # Reconciliation brings the scheduled recovery forward instead of adding a job.
+      for customer <- ["cus_onboarding", %{"id" => "cus_onboarding"}] do
+        assert :ok = Acceptance.reconcile_stripe_event(%{"customer" => customer})
       end
 
       assert [%{id: ^job_id, args: ^args, scheduled_at: scheduled_at}] =

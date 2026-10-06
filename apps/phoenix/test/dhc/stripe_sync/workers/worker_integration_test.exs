@@ -37,7 +37,6 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
   # mode; a single list page can take tens of seconds against api.stripe.com.
   @moduletag timeout: 600_000
 
-  @stripe_api_url "https://api.stripe.com"
   @price_setting_key "stripe_membership_price_ids"
   # How far back the active scenario's subscription is backdated. Must be far
   # enough that start_date cannot collide with the invoice's paid_at second.
@@ -45,7 +44,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
 
   describe "perform/1 against Stripe test mode" do
     setup do
-      original_url = Application.get_env(:dhc, :stripe_api_url)
+      original_req_options = Application.get_env(:dhc, :stripe_req_options)
       original_key = Application.get_env(:dhc, :stripe_secret_key)
 
       stripe_secret_key =
@@ -58,16 +57,14 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
               mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
           """
 
-      Application.put_env(
-        :dhc,
-        :stripe_api_url,
-        System.get_env("STRIPE_API_URL", @stripe_api_url)
-      )
+      # Real Stripe: drop the test-wide Req.Test plug; `:stripe_api_url` already
+      # honours STRIPE_API_URL in config/test.exs.
+      Application.put_env(:dhc, :stripe_req_options, [])
 
       Application.put_env(:dhc, :stripe_secret_key, stripe_secret_key)
 
       on_exit(fn ->
-        Application.put_env(:dhc, :stripe_api_url, original_url)
+        Application.put_env(:dhc, :stripe_req_options, original_req_options)
         Application.put_env(:dhc, :stripe_secret_key, original_key)
       end)
 
@@ -308,11 +305,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
 
   defp fetch_membership_price_ids! do
     Enum.map(LookupKeys.all(), fn lookup_key ->
-      case stripe_get!("/v1/prices", %{
-             "lookup_keys[]" => lookup_key,
-             active: "true",
-             limit: 1
-           }) do
+      case stripe_list_prices!(lookup_key) do
         %{"data" => [%{"id" => price_id} | _]} ->
           price_id
 
@@ -326,32 +319,11 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
     end)
   end
 
-  defp stripe_get!(path, params) do
-    case Req.get(
-           Application.fetch_env!(:dhc, :stripe_api_url) <> path,
-           headers: stripe_headers(),
-           params: params,
-           decode_body: true,
-           retry: false,
-           connect_options: [timeout: 30_000]
-         ) do
-      {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
-        body
-
-      {:ok, %Req.Response{status: status, body: body}} ->
-        raise "Stripe test API returned #{status}: #{inspect(body)}"
-
-      {:error, exception} ->
-        raise "Stripe test API request failed: #{inspect(exception)}"
+  defp stripe_list_prices!(lookup_key) do
+    case Dhc.Stripe.Operations.get_prices(%{}, lookup_keys: [lookup_key], active: true, limit: 1) do
+      {:ok, body} -> body
+      {:error, reason} -> raise "Stripe test API request failed: #{inspect(reason)}"
     end
-  end
-
-  defp stripe_headers do
-    [
-      {"authorization", "Bearer #{Application.fetch_env!(:dhc, :stripe_secret_key)}"},
-      {"stripe-version", Application.fetch_env!(:dhc, :stripe_api_version)},
-      {"content-type", "application/x-www-form-urlencoded"}
-    ]
   end
 
   defp maybe_seed_price_cache([]), do: :ok

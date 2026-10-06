@@ -350,22 +350,19 @@ defmodule DhcWeb.WorkshopsController do
   def refund_registration(conn, _params), do: unprocessable(conn, "Refund reason is required")
 
   defp process_registration_refund(conn, workshop_id, registration_id, reason) do
-    case Workshops.process_refund(
+    # The command returns the `list_workshop_refunds/1` projection, so no
+    # second read is needed (ALE-340).
+    case Workshops.refund_registration(
            workshop_id,
            registration_id,
            reason,
            conn.assigns.current_session.principal.id
          ) do
       {:ok, refund} ->
-        rendered_refund =
-          workshop_id
-          |> Workshops.list_workshop_refunds()
-          |> Enum.find(&(&1.id == refund.id))
-
         conn
         |> put_status(:created)
         |> put_view(json: DhcWeb.WorkshopsJSON)
-        |> render(:refund, refund: rendered_refund)
+        |> render(:refund, refund: refund)
 
       {:error, reason} ->
         refund_error(conn, reason)

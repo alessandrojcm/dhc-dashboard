@@ -71,15 +71,15 @@ defmodule Dhc.Workshops do
 
   import Ecto.Query
 
-  alias Dhc.Auth.Principal
   alias Dhc.Repo
-  alias Dhc.UserProfiles.UserProfile
 
   alias Dhc.Workshops.{
-    ExternalUser,
     PaymentAttempt,
-    Registration,
+    PaymentCommands,
     Refund,
+    RefundPolicy,
+    RefundProjection,
+    Registration,
     Workshop,
     WorkshopInterest
   }
@@ -102,10 +102,6 @@ defmodule Dhc.Workshops do
 
   # Registration statuses counted toward Workshop availability.
   @counted_registration_statuses ~w(pending confirmed)
-
-  @workshop_registration_metadata_type "workshop_registration"
-  @member_registration_actor_type "member"
-  @external_registration_actor_type "external"
 
   # ALE-181: the Workshop summary scalar field set, in one place. The list
   # read (`summary_query/0`) and the archived-Workshop body
@@ -374,105 +370,10 @@ defmodule Dhc.Workshops do
       when is_binary(workshop_id) and is_binary(user_id) and is_map(attrs) do
     customer_id = Map.get(attrs, "customerId") || Map.get(attrs, :customer_id)
 
-    with {:ok, attempt, workshop} <- durable_member_payment_attempt(workshop_id, user_id),
-         {:ok, payment_intent} <- ensure_member_payment_intent(attempt, workshop, customer_id) do
-      {:ok,
-       %{
-         client_secret: Map.fetch!(payment_intent, "client_secret"),
-         payment_intent_id: Map.fetch!(payment_intent, "id")
-       }}
-    end
-  end
-
-  defp durable_member_payment_attempt(workshop_id, user_id) do
-    Repo.transaction(fn -> durable_member_payment_attempt_locked(workshop_id, user_id) end)
-    |> case do
-      {:ok, {attempt, workshop}} -> {:ok, attempt, workshop}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp durable_member_payment_attempt_locked(workshop_id, user_id) do
-    case lock_existing_member_payment_attempt(workshop_id, user_id) do
-      %PaymentAttempt{} = attempt ->
-        {attempt, Repo.get!(Workshop, workshop_id)}
-
-      nil ->
-        create_member_payment_attempt(workshop_id, user_id)
-    end
-  end
-
-  defp lock_existing_member_payment_attempt(workshop_id, user_id) do
-    Repo.one(
-      from(pa in PaymentAttempt,
-        where:
-          pa.club_activity_id == ^workshop_id and pa.member_user_id == ^user_id and
-            pa.actor_type == "member" and pa.status in ["pending", "paid"],
-        lock: "FOR UPDATE"
-      )
+    PaymentCommands.execute(
+      {:member, user_id},
+      {:start_member_payment, workshop_id, customer_id}
     )
-  end
-
-  defp create_member_payment_attempt(workshop_id, user_id) do
-    with {:ok, workshop} <- member_registration_workshop_for_update(workshop_id),
-         :ok <- ensure_no_active_member_registration(workshop_id, user_id),
-         :ok <- ensure_workshop_capacity(workshop_id, workshop.max_capacity),
-         {:ok, amount} <- normalize_positive_integer(workshop.price_member) do
-      attempt =
-        Repo.insert!(%PaymentAttempt{
-          club_activity_id: workshop_id,
-          member_user_id: user_id,
-          actor_type: "member",
-          amount: amount,
-          currency: "eur",
-          status: "pending"
-        })
-
-      {attempt, workshop}
-    else
-      {:error, reason} -> Repo.rollback(reason)
-    end
-  end
-
-  defp ensure_member_payment_intent(
-         %PaymentAttempt{stripe_payment_intent_id: id},
-         _workshop,
-         _customer_id
-       )
-       when is_binary(id) do
-    case stripe_adapter().retrieve_payment_intent(id) do
-      {:ok, %{"id" => ^id, "client_secret" => secret} = payment_intent}
-      when is_binary(secret) ->
-        {:ok, payment_intent}
-
-      _ ->
-        {:error, :payment_failed}
-    end
-  end
-
-  defp ensure_member_payment_intent(attempt, workshop, customer_id) do
-    params = %{
-      amount: attempt.amount,
-      currency: attempt.currency,
-      customer_id: customer_id,
-      workshop_id: workshop.id,
-      workshop_title: workshop.title,
-      user_id: attempt.member_user_id,
-      idempotency_key: "workshop-payment-attempt:#{attempt.id}"
-    }
-
-    case stripe_adapter().create_payment_intent(params) do
-      {:ok, %{"id" => id, "client_secret" => secret} = payment_intent}
-      when is_binary(id) and is_binary(secret) ->
-        attempt
-        |> Ecto.Changeset.change(stripe_payment_intent_id: id)
-        |> Repo.update!()
-
-        {:ok, payment_intent}
-
-      _ ->
-        {:error, :payment_failed}
-    end
   end
 
   @doc """
@@ -490,226 +391,16 @@ defmodule Dhc.Workshops do
              | :not_published
              | :already_registered
              | :full
+             | :compensation_pending
              | :payment_not_completed
              | :payment_metadata_mismatch
              | :payment_failed}
   def complete_member_registration(workshop_id, user_id, payment_intent_id)
       when is_binary(workshop_id) and is_binary(user_id) and is_binary(payment_intent_id) do
-    with {:ok, payment_intent} <- stripe_retrieve_payment_intent(payment_intent_id),
-         :ok <- validate_member_payment_intent(payment_intent, workshop_id, user_id),
-         {:ok, attempt} <-
-           load_or_recover_member_attempt(workshop_id, user_id, payment_intent),
-         :ok <- validate_payment_attempt_amount(attempt, payment_intent),
-         {:ok, %Registration{} = registration} <-
-           complete_member_registration_transaction(
-             workshop_id,
-             user_id,
-             payment_intent_id,
-             payment_intent,
-             attempt
-           ) do
-      {:ok, registration}
-    else
-      {:ok, {:compensation_pending, _refund}} -> {:error, :compensation_pending}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp complete_member_registration_transaction(
-         workshop_id,
-         user_id,
-         payment_intent_id,
-         payment_intent,
-         attempt
-       ) do
-    Repo.transaction(fn ->
-      attempt =
-        Repo.one!(from(pa in PaymentAttempt, where: pa.id == ^attempt.id, lock: "FOR UPDATE"))
-
-      complete_locked_member_registration(
-        workshop_id,
-        user_id,
-        payment_intent_id,
-        payment_intent,
-        attempt
-      )
-    end)
-  end
-
-  defp complete_locked_member_registration(
-         workshop_id,
-         user_id,
-         payment_intent_id,
-         payment_intent,
-         attempt
-       ) do
-    case existing_member_registration(attempt.id, payment_intent_id) do
-      %Registration{} = registration ->
-        registration
-
-      nil ->
-        complete_unregistered_member(workshop_id, user_id, payment_intent, attempt)
-    end
-  end
-
-  defp existing_member_registration(attempt_id, payment_intent_id) do
-    Repo.get_by(Registration, payment_attempt_id: attempt_id) ||
-      Repo.get_by(Registration, stripe_payment_intent_id: payment_intent_id)
-  end
-
-  defp complete_unregistered_member(workshop_id, user_id, payment_intent, attempt) do
-    case Repo.get_by(Refund, payment_attempt_id: attempt.id) do
-      %Refund{} = refund ->
-        {:compensation_pending, refund}
-
-      nil ->
-        register_paid_member(workshop_id, user_id, payment_intent, attempt)
-    end
-  end
-
-  defp register_paid_member(workshop_id, user_id, payment_intent, attempt) do
-    with {:ok, workshop} <- member_registration_workshop_for_update(workshop_id),
-         :ok <- ensure_no_active_member_registration(workshop_id, user_id),
-         :ok <- ensure_workshop_capacity(workshop_id, workshop.max_capacity) do
-      registration = insert_member_registration(workshop_id, user_id, payment_intent, attempt)
-      mark_member_attempt_registered!(attempt)
-      registration
-    else
-      {:error, reason} -> handle_member_registration_error(attempt, reason)
-    end
-  end
-
-  defp mark_member_attempt_registered!(attempt) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    attempt
-    |> Ecto.Changeset.change(status: "registered", paid_at: now, concluded_at: now)
-    |> Repo.update!()
-  end
-
-  defp handle_member_registration_error(attempt, :full) do
-    refund = create_compensating_refund!(attempt, "Workshop capacity exhausted")
-    {:compensation_pending, refund}
-  end
-
-  defp handle_member_registration_error(attempt, reason)
-       when reason in [:not_found, :not_published] do
-    refund = create_compensating_refund!(attempt, "Workshop unavailable")
-    {:compensation_pending, refund}
-  end
-
-  defp handle_member_registration_error(_attempt, reason), do: Repo.rollback(reason)
-
-  defp create_compensating_refund!(attempt, reason, payment_intent_id \\ nil) do
-    id = Ecto.UUID.generate()
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    refund =
-      Repo.insert!(%Refund{
-        id: id,
-        payment_attempt_id: attempt.id,
-        refund_amount: attempt.amount,
-        refund_reason: reason,
-        status: "pending",
-        stripe_payment_intent_id: payment_intent_id || attempt.stripe_payment_intent_id,
-        idempotency_key: "workshop-refund:#{id}",
-        requested_at: now
-      })
-
-    refund.id
-    |> then(&Dhc.Workshops.Workers.RefundWorker.new(%{refund_id: &1}))
-    |> Oban.insert!()
-
-    attempt
-    |> Ecto.Changeset.change(
-      status: "compensating",
-      paid_at: attempt.paid_at || now,
-      concluded_at: now
+    PaymentCommands.execute(
+      {:member, user_id},
+      {:complete_member_payment, workshop_id, payment_intent_id}
     )
-    |> Repo.update!()
-
-    refund
-  end
-
-  defp load_or_recover_member_attempt(workshop_id, user_id, payment_intent) do
-    payment_intent_id = Map.fetch!(payment_intent, "id")
-
-    Repo.transaction(fn ->
-      workshop =
-        Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE")) ||
-          Repo.rollback(:not_found)
-
-      case Repo.get_by(PaymentAttempt, stripe_payment_intent_id: payment_intent_id) do
-        %PaymentAttempt{
-          club_activity_id: ^workshop_id,
-          member_user_id: ^user_id,
-          actor_type: "member"
-        } = attempt ->
-          attempt
-
-        %PaymentAttempt{} ->
-          Repo.rollback(:payment_metadata_mismatch)
-
-        nil ->
-          recover_member_attempt(workshop, user_id, payment_intent_id)
-      end
-    end)
-    |> case do
-      {:ok, attempt} -> {:ok, attempt}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp recover_member_attempt(workshop, user_id, payment_intent_id) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    case Repo.one(
-           from(pa in PaymentAttempt,
-             where:
-               pa.club_activity_id == ^workshop.id and pa.member_user_id == ^user_id and
-                 pa.actor_type == "member" and pa.status in ["pending", "paid"],
-             lock: "FOR UPDATE"
-           )
-         ) do
-      %PaymentAttempt{stripe_payment_intent_id: nil} = attempt ->
-        attempt
-        |> Ecto.Changeset.change(
-          status: "paid",
-          stripe_payment_intent_id: payment_intent_id,
-          paid_at: now
-        )
-        |> Repo.update!()
-
-      %PaymentAttempt{} ->
-        Repo.rollback(:payment_metadata_mismatch)
-
-      nil ->
-        Repo.insert!(%PaymentAttempt{
-          club_activity_id: workshop.id,
-          member_user_id: user_id,
-          actor_type: "member",
-          amount: trunc(workshop.price_member),
-          currency: "eur",
-          status: "paid",
-          stripe_payment_intent_id: payment_intent_id,
-          paid_at: now
-        })
-    end
-  end
-
-  defp validate_payment_attempt_amount(attempt, payment_intent) do
-    amount = Map.get(payment_intent, "amount") || Map.get(payment_intent, "amount_total")
-
-    if amount == attempt.amount and
-         String.downcase(Map.get(payment_intent, "currency", "")) == attempt.currency do
-      :ok
-    else
-      attempt
-      |> Ecto.Changeset.change(status: "policy_failed")
-      |> Repo.update!()
-
-      {:error, :payment_metadata_mismatch}
-    end
   end
 
   @doc """
@@ -750,95 +441,10 @@ defmodule Dhc.Workshops do
           | {:error, :not_found | :full | :invalid_return_url | :payment_failed}
   def create_external_checkout_session(workshop_id, payment_attempt_id, return_url)
       when is_binary(workshop_id) and is_binary(payment_attempt_id) and is_binary(return_url) do
-    with true <- String.contains?(return_url, "{CHECKOUT_SESSION_ID}"),
-         {:ok, attempt, workshop} <-
-           durable_external_payment_attempt(workshop_id, payment_attempt_id),
-         {:ok, checkout_session} <-
-           ensure_external_checkout_session(attempt, workshop, return_url) do
-      case Map.get(checkout_session, "client_secret") do
-        secret when is_binary(secret) and secret != "" ->
-          {:ok,
-           %{
-             checkout_session_id: Map.fetch!(checkout_session, "id"),
-             checkout_client_secret: secret,
-             checkout_url: Map.get(checkout_session, "url")
-           }}
-
-        _ ->
-          {:error, :payment_failed}
-      end
-    else
-      false -> {:error, :invalid_return_url}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp durable_external_payment_attempt(workshop_id, payment_attempt_id) do
-    Repo.transaction(fn ->
-      durable_external_payment_attempt_locked(workshop_id, payment_attempt_id)
-    end)
-    |> case do
-      {:ok, {attempt, workshop}} -> {:ok, attempt, workshop}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp durable_external_payment_attempt_locked(workshop_id, payment_attempt_id) do
-    workshop = Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE"))
-
-    case Repo.get(PaymentAttempt, payment_attempt_id) do
-      %PaymentAttempt{club_activity_id: ^workshop_id, actor_type: "external"} = attempt ->
-        {attempt, workshop}
-
-      %PaymentAttempt{} ->
-        Repo.rollback(:payment_failed)
-
-      nil ->
-        create_external_payment_attempt(workshop, workshop_id, payment_attempt_id)
-    end
-  end
-
-  defp create_external_payment_attempt(workshop, workshop_id, payment_attempt_id) do
-    with {:ok, _eligible} <- external_registration_workshop_for_completion(workshop),
-         :ok <- ensure_workshop_capacity(workshop_id, workshop.max_capacity),
-         {:ok, amount} <- normalize_positive_integer(workshop.price_non_member) do
-      attempt =
-        Repo.insert!(%PaymentAttempt{
-          id: payment_attempt_id,
-          club_activity_id: workshop_id,
-          actor_type: "external",
-          amount: amount,
-          currency: "eur",
-          status: "pending"
-        })
-
-      {attempt, workshop}
-    else
-      {:error, reason} -> Repo.rollback(reason)
-    end
-  end
-
-  defp ensure_external_checkout_session(
-         %PaymentAttempt{stripe_checkout_session_id: id},
-         _workshop,
-         _return_url
-       )
-       when is_binary(id) do
-    stripe_retrieve_checkout_session(id)
-  end
-
-  defp ensure_external_checkout_session(attempt, workshop, return_url) do
-    case stripe_create_checkout_session(attempt, workshop, return_url) do
-      {:ok, %{"id" => id} = checkout_session} when is_binary(id) ->
-        attempt
-        |> Ecto.Changeset.change(stripe_checkout_session_id: id)
-        |> Repo.update!()
-
-        {:ok, checkout_session}
-
-      _ ->
-        {:error, :payment_failed}
-    end
+    PaymentCommands.execute(
+      :external,
+      {:start_external_payment, workshop_id, payment_attempt_id, return_url}
+    )
   end
 
   @doc """
@@ -860,183 +466,104 @@ defmodule Dhc.Workshops do
              | :payment_failed}
   def complete_external_registration(workshop_id, checkout_session_id)
       when is_binary(workshop_id) and is_binary(checkout_session_id) do
-    with {:ok, checkout_session} <- stripe_retrieve_checkout_session(checkout_session_id),
-         :ok <- validate_external_checkout_session(checkout_session, workshop_id),
-         {:ok, customer} <- external_checkout_customer(checkout_session),
-         {:ok, attempt} <-
-           load_or_recover_external_attempt(workshop_id, checkout_session, customer.email),
-         :ok <- validate_payment_attempt_amount(attempt, checkout_session),
-         :ok <- maybe_set_receipt_email(checkout_session, customer.email),
-         {:ok, %Registration{} = registration} <-
-           Repo.transaction(fn ->
-             complete_external_registration_transaction(
-               workshop_id,
-               attempt,
-               checkout_session,
-               customer
-             )
-           end) do
-      {:ok, registration}
-    else
-      {:ok, {:compensation_pending, _refund}} -> {:error, :compensation_pending}
-      {:error, reason} -> {:error, reason}
-    end
+    PaymentCommands.execute(
+      :external,
+      {:complete_external_payment, workshop_id, checkout_session_id}
+    )
   end
 
   @doc """
   Cancels the current member's active Workshop registration.
+
+  Refund eligibility is decided under the Workshop and Registration locks: an
+  eligible Registration is refunded, any other is cancelled without a Refund.
   """
   @spec cancel_member_registration(binary(), binary()) ::
           {:ok, %{registration: Registration.t(), refund_pending: boolean()}}
           | {:error, :not_found}
   def cancel_member_registration(workshop_id, user_id)
       when is_binary(workshop_id) and is_binary(user_id) do
-    registration =
-      from(r in Registration,
-        where:
-          r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
-            r.status in @counted_registration_statuses,
-        limit: 1
-      )
-      |> Repo.one()
-
-    case registration do
-      nil ->
-        {:error, :not_found}
-
-      %Registration{} = registration ->
-        cancel_existing_member_registration(registration, workshop_id, user_id)
-    end
-  end
-
-  defp cancel_existing_member_registration(registration, workshop_id, user_id) do
-    case refund_eligibility(registration.id) do
-      {:ok, _registration} ->
-        refund_cancelled_member(registration, workshop_id, user_id)
-
-      {:error, _ineligible_reason} ->
-        cancel_member_without_refund(registration)
-    end
-  end
-
-  defp refund_cancelled_member(registration, workshop_id, user_id) do
-    case process_refund(
-           workshop_id,
-           registration.id,
-           "Member cancelled registration",
-           user_id
-         ) do
-      {:ok, refund} ->
-        {:ok,
-         %{
-           registration: Repo.get!(Registration, registration.id),
-           refund_pending: refund.status == "pending"
-         }}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp cancel_member_without_refund(registration) do
-    {:ok, updated} =
-      registration
-      |> Ecto.Changeset.change(
-        status: "cancelled",
-        cancelled_at: DateTime.utc_now() |> DateTime.truncate(:second)
-      )
-      |> Repo.update()
-
-    {:ok, %{registration: updated, refund_pending: false}}
+    PaymentCommands.execute({:member, user_id}, {:cancel_member_registration, workshop_id})
   end
 
   @doc """
   Returns a registration when it is eligible for a refund.
+
+  Advisory: it reads without locks, so the answer can be stale, but it uses
+  the same `Dhc.Workshops.RefundPolicy` rule as the locked Refund command.
   """
   @spec refund_eligibility(binary()) :: {:ok, Registration.t()} | {:error, atom()}
   def refund_eligibility(registration_id) when is_binary(registration_id) do
     row =
       from(r in Registration,
+        as: :registration,
         join: w in Workshop,
         on: w.id == r.club_activity_id,
         where: r.id == ^registration_id,
         select: %{
           registration: r,
-          workshop_status: w.status,
-          start_date: w.start_date,
-          refund_days: w.refund_days
+          workshop: w,
+          refund_requested?:
+            exists(from(rf in Refund, where: rf.registration_id == parent_as(:registration).id))
         }
       )
       |> Repo.one()
 
-    cond do
-      is_nil(row) ->
-        {:error, :registration_not_found}
+    facts = row || %{registration: nil, workshop: nil, refund_requested?: false}
 
-      row.registration.status == "refunded" ->
-        {:error, :already_refunded}
-
-      row.workshop_status == "finished" ->
-        {:error, :workshop_finished}
-
-      not is_integer(row.registration.amount_paid) or row.registration.amount_paid <= 0 ->
-        {:error, :not_paid}
-
-      refund_deadline_passed?(row.start_date, row.refund_days) ->
-        {:error, :deadline_passed}
-
-      Repo.exists?(from(rf in Refund, where: rf.registration_id == ^registration_id)) ->
-        {:error, :already_requested}
-
-      true ->
-        {:ok, row.registration}
+    with :ok <- RefundPolicy.requested_refund(facts, DateTime.utc_now()) do
+      {:ok, row.registration}
     end
   end
 
   @doc """
-  Creates a traceable refund attempt and asks Stripe to refund a registration.
+  Records a durable Refund obligation for a registration and enqueues its
+  submission; the Registration becomes `refunded`.
   """
-  @spec process_refund(binary(), binary(), String.t(), binary(), keyword()) ::
+  @spec process_refund(binary(), binary(), String.t(), binary()) ::
           {:ok, Refund.t()} | {:error, atom()}
-  def process_refund(workshop_id, registration_id, reason, requested_by, opts \\ [])
+  def process_refund(workshop_id, registration_id, reason, requested_by)
       when is_binary(workshop_id) and is_binary(registration_id) and is_binary(reason) and
              is_binary(requested_by) do
-    eligibility =
-      if Keyword.get(opts, :skip_eligibility, false),
-        do: cancellation_refund_eligibility(workshop_id, registration_id),
-        else: refund_eligibility(registration_id)
-
-    with {:ok, %Registration{club_activity_id: ^workshop_id} = registration} <- eligibility,
-         {:ok, refund} <-
-           create_durable_refund_obligation(registration, reason, requested_by) do
+    with {:ok, %{refund: refund}} <-
+           request_refund(workshop_id, registration_id, reason, requested_by) do
       {:ok, refund}
-    else
-      {:ok, %Registration{}} -> {:error, :registration_not_found}
-      {:error, reason} -> {:error, reason}
     end
   end
 
-  defp create_durable_refund_obligation(registration, reason, requested_by) do
-    Repo.transaction(fn ->
-      registration =
-        Repo.one!(from(r in Registration, where: r.id == ^registration.id, lock: "FOR UPDATE"))
+  @doc """
+  Same command as `process_refund/4`, returning the Refund in the
+  `list_workshop_refunds/1` projection so callers need no second read.
+  """
+  @spec refund_registration(binary(), binary(), String.t(), binary()) ::
+          {:ok, RefundProjection.t()} | {:error, atom()}
+  def refund_registration(workshop_id, registration_id, reason, requested_by)
+      when is_binary(workshop_id) and is_binary(registration_id) and is_binary(reason) and
+             is_binary(requested_by) do
+    with {:ok, %{view: view}} <-
+           request_refund(workshop_id, registration_id, reason, requested_by) do
+      {:ok, view}
+    end
+  end
 
-      if Repo.exists?(from(rf in Refund, where: rf.registration_id == ^registration.id)) do
-        Repo.rollback(:already_requested)
-      end
+  defp request_refund(workshop_id, registration_id, reason, requested_by) do
+    PaymentCommands.execute(
+      {:coordinator, requested_by},
+      {:request_refund, workshop_id, registration_id, reason}
+    )
+  end
 
-      refund = create_refund_attempt!(registration, reason, requested_by)
+  @doc """
+  Applies a Stripe `refund.*` event object to its Refund.
 
-      refund.id
-      |> then(&Dhc.Workshops.Workers.RefundWorker.new(%{refund_id: &1}))
-      |> Oban.insert!()
-
-      mark_registration_refunded(registration)
-      refund
-    end)
-    |> case do
-      {:ok, refund} -> {:ok, refund}
-      {:error, reason} -> {:error, reason}
+  Unknown refunds are acknowledged; a Refund in a terminal status never
+  changes, so late or replayed events are ignored.
+  """
+  @spec apply_stripe_refund_event(map()) ::
+          :ok | {:error, :invalid_refund_object | :retry_exhausted | atom()}
+  def apply_stripe_refund_event(object) when is_map(object) do
+    with {:ok, _outcome} <- PaymentCommands.execute(:system, {:apply_refund_update, object}) do
+      :ok
     end
   end
 
@@ -1092,35 +619,20 @@ defmodule Dhc.Workshops do
   `requested_at` descending. Each refund carries a normalized `participant` DTO
   reached through its registration, instead of exposing the storage join.
   """
-  @spec list_workshop_refunds(binary()) :: [map()]
+  @spec list_workshop_refunds(binary()) :: [RefundProjection.t()]
   def list_workshop_refunds(workshop_id) when is_binary(workshop_id) do
     # ALE-181: participant identity is read from the registration snapshot
-    # (`display_name`, `email`), not a live join. Only the registration is
-    # joined to reach its snapshot; `user_profiles`/`external_users` are no
-    # longer touched here.
+    # (`display_name`, `email`), not a live join. ALE-340: rows go through
+    # the same projection the Refund commands return.
     from(rf in Refund,
       inner_join: r in Registration,
       on: r.id == rf.registration_id,
       where: r.club_activity_id == ^workshop_id,
       order_by: [desc: rf.requested_at],
-      select: %{
-        id: rf.id,
-        registration_id: rf.registration_id,
-        refund_amount: rf.refund_amount,
-        refund_reason: rf.refund_reason,
-        status: rf.status,
-        stripe_refund_id: rf.stripe_refund_id,
-        requested_at: rf.requested_at,
-        processed_at: rf.processed_at,
-        completed_at: rf.completed_at,
-        member_user_id: r.member_user_id,
-        external_user_id: r.external_user_id,
-        display_name: r.display_name,
-        email: r.email
-      }
+      select: {rf, r}
     )
     |> Repo.all()
-    |> Enum.map(&to_refund/1)
+    |> Enum.map(fn {refund, registration} -> RefundProjection.project(refund, registration) end)
   end
 
   @doc """
@@ -1324,53 +836,30 @@ defmodule Dhc.Workshops do
   Cancels a published Workshop and creates traceable refund attempts for every
   active paid registration. Refund eligibility deadlines do not apply when the
   club cancels the Workshop.
+
+  The status change and the Refund fan-out run under one Workshop lock in
+  `Dhc.Workshops.PaymentCommands`. `:already_requested` means a Refund for one
+  of the Registrations was recorded outside that lock; nothing was changed and
+  the cancellation can be retried.
   """
-  @spec cancel_workshop(binary()) :: {:ok, Workshop.t()} | {:error, :not_found | :not_cancellable}
+  @spec cancel_workshop(binary(), binary() | nil) ::
+          {:ok, Workshop.t()} | {:error, :not_found | :not_cancellable | :already_requested}
   def cancel_workshop(workshop_id, requested_by \\ nil) when is_binary(workshop_id) do
-    Repo.transaction(fn -> cancel_workshop_locked(workshop_id, requested_by) end)
-    |> case do
-      {:ok, workshop} -> {:ok, workshop}
-      {:error, reason} -> {:error, reason}
-    end
+    # Without a requesting coordinator nobody is recorded as asking for the
+    # Refunds, so the system cancels and leaves Registrations as they are.
+    {actor, registrations} =
+      if requested_by, do: {{:coordinator, requested_by}, :refund_owed}, else: {:system, :keep}
+
+    PaymentCommands.execute(
+      actor,
+      {:cancel_workshop, workshop_id, &mark_workshop_cancelled/1, registrations}
+    )
   end
 
-  defp cancel_workshop_locked(workshop_id, requested_by) do
-    workshop = Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE"))
+  defp mark_workshop_cancelled(%Workshop{status: "published"} = workshop),
+    do: workshop |> Ecto.Changeset.change(status: "cancelled") |> Repo.update()
 
-    case workshop do
-      nil -> Repo.rollback(:not_found)
-      %Workshop{status: status} when status != "published" -> Repo.rollback(:not_cancellable)
-      %Workshop{} = workshop -> cancel_published_workshop(workshop, requested_by)
-    end
-  end
-
-  defp cancel_published_workshop(workshop, requested_by) do
-    maybe_refund_cancelled_workshop(workshop.id, requested_by)
-
-    workshop
-    |> Ecto.Changeset.change(status: "cancelled")
-    |> Repo.update!()
-  end
-
-  defp maybe_refund_cancelled_workshop(workshop_id, requested_by) when is_binary(requested_by) do
-    workshop_id
-    |> active_paid_registrations()
-    |> Enum.each(&create_cancellation_refund(&1, requested_by))
-  end
-
-  defp maybe_refund_cancelled_workshop(_workshop_id, _requested_by), do: :ok
-
-  defp create_cancellation_refund(registration, requested_by) do
-    unless Repo.exists?(from(rf in Refund, where: rf.registration_id == ^registration.id)) do
-      refund = create_refund_attempt!(registration, "Workshop cancelled", requested_by)
-
-      refund.id
-      |> then(&Dhc.Workshops.Workers.RefundWorker.new(%{refund_id: &1}))
-      |> Oban.insert!()
-
-      mark_registration_refunded(registration)
-    end
-  end
+  defp mark_workshop_cancelled(%Workshop{}), do: {:error, :not_cancellable}
 
   # ── Private: summary query ────────────────────────────────────────────
 
@@ -1441,106 +930,6 @@ defmodule Dhc.Workshops do
     |> Repo.one()
   end
 
-  defp member_registration_workshop_for_update(workshop_id) do
-    workshop =
-      Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE"))
-
-    case workshop do
-      nil -> {:error, :not_found}
-      %Workshop{archived_at: %DateTime{}} -> {:error, :not_found}
-      %Workshop{status: status} when status != "published" -> {:error, :not_published}
-      %Workshop{} = workshop -> {:ok, workshop}
-    end
-  end
-
-  defp ensure_no_active_member_registration(workshop_id, user_id) do
-    exists? =
-      from(r in Registration,
-        where:
-          r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
-            r.status in @counted_registration_statuses
-      )
-      |> Repo.exists?()
-
-    if exists?, do: {:error, :already_registered}, else: :ok
-  end
-
-  defp ensure_workshop_capacity(workshop_id, max_capacity) do
-    if active_registration_count(workshop_id) >= max_capacity do
-      {:error, :full}
-    else
-      :ok
-    end
-  end
-
-  defp normalize_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
-
-  defp normalize_positive_integer(value) when is_float(value) and value > 0 do
-    {:ok, trunc(value)}
-  end
-
-  defp normalize_positive_integer(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {amount, ""} when amount > 0 -> {:ok, amount}
-      _ -> {:error, :invalid_amount}
-    end
-  end
-
-  defp normalize_positive_integer(_), do: {:error, :invalid_amount}
-
-  defp insert_member_registration(workshop_id, user_id, payment_intent, attempt) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    # ALE-181: capture the attendee snapshot at write time so reads no
-    # longer join back to `user_profiles`/`principals`. A missing profile
-    # resolves to the sentinel rather than failing the registration.
-    {display_name, email} = member_snapshot(user_id)
-
-    %Registration{
-      club_activity_id: workshop_id,
-      member_user_id: user_id,
-      display_name: display_name,
-      email: email,
-      status: "confirmed",
-      stripe_payment_intent_id: Map.fetch!(payment_intent, "id"),
-      payment_attempt_id: attempt.id,
-      amount_paid: Map.get(payment_intent, "amount"),
-      currency: Map.get(payment_intent, "currency", "eur"),
-      confirmed_at: now,
-      registered_at: now
-    }
-    |> Repo.insert!()
-  end
-
-  # ALE-181: resolve the member attendee snapshot (`display_name` from
-  # `user_profiles` first/last name, `email` from `principals.email`) for a
-  # `member_user_id` (which is the Principal id). Returns the
-  # `@unknown_member` sentinel with a `nil` email when the profile is
-  # missing so the registration insert never fails on a dangling id.
-  defp member_snapshot(principal_id) do
-    row =
-      from(up in UserProfile,
-        left_join: p in Principal,
-        on: p.id == up.principal_id,
-        where: up.principal_id == ^principal_id,
-        select: %{first_name: up.first_name, last_name: up.last_name, email: p.email}
-      )
-      |> Repo.one()
-
-    case row do
-      nil ->
-        {@unknown_member, nil}
-
-      %{first_name: first, last_name: last, email: email} ->
-        name = String.trim("#{first || ""} #{last || ""}")
-
-        display_name =
-          if name == "", do: @unknown_member, else: name
-
-        {display_name, email}
-    end
-  end
-
   defp external_registration_workshop(%Workshop{} = workshop) do
     %{
       id: workshop.id,
@@ -1552,392 +941,6 @@ defmodule Dhc.Workshops do
       price_non_member: trunc(workshop.price_non_member),
       max_capacity: workshop.max_capacity
     }
-  end
-
-  defp stripe_create_checkout_session(attempt, workshop, return_url) do
-    body = [
-      mode: "payment",
-      ui_mode: "embedded",
-      return_url: return_url,
-      customer_creation: "if_required",
-      "name_collection[individual][enabled]": "true",
-      "name_collection[individual][optional]": "false",
-      "invoice_creation[enabled]": "true",
-      "payment_method_types[]": "card",
-      "payment_method_types[]": "link",
-      "payment_method_types[]": "sepa_debit",
-      "phone_number_collection[enabled]": "true",
-      "line_items[0][quantity]": 1,
-      "line_items[0][price_data][currency]": "eur",
-      "line_items[0][price_data][unit_amount]": trunc(workshop.price_non_member),
-      "line_items[0][price_data][product_data][name]": workshop.title,
-      "metadata[type]": @workshop_registration_metadata_type,
-      "metadata[actor_type]": @external_registration_actor_type,
-      "metadata[workshop_id]": workshop.id,
-      "metadata[payment_attempt_id]": attempt.id
-    ]
-
-    case stripe_adapter().create_checkout_session(%{
-           body: body,
-           idempotency_key: "workshop-payment-attempt:#{attempt.id}"
-         }) do
-      {:ok, %{"id" => _id} = response} -> {:ok, response}
-      _ -> {:error, :payment_failed}
-    end
-  end
-
-  defp stripe_retrieve_checkout_session(checkout_session_id) do
-    case stripe_adapter().retrieve_checkout_session(checkout_session_id) do
-      {:ok, %{"id" => _id} = response} -> {:ok, response}
-      _ -> {:error, :checkout_session_not_found}
-    end
-  end
-
-  defp validate_external_checkout_session(checkout_session, workshop_id) do
-    metadata = Map.get(checkout_session, "metadata", %{}) || %{}
-
-    cond do
-      Map.get(checkout_session, "status") != "complete" or
-          Map.get(checkout_session, "payment_status") != "paid" ->
-        {:error, :payment_not_completed}
-
-      metadata["type"] != @workshop_registration_metadata_type or
-        metadata["actor_type"] != @external_registration_actor_type or
-          metadata["workshop_id"] != workshop_id ->
-        {:error, :payment_metadata_mismatch}
-
-      not is_integer(Map.get(checkout_session, "amount_total")) ->
-        {:error, :payment_metadata_mismatch}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp external_checkout_customer(checkout_session) do
-    details = Map.get(checkout_session, "customer_details", %{}) || %{}
-
-    email =
-      (Map.get(details, "email") || Map.get(checkout_session, "customer_email") || "")
-      |> String.trim()
-
-    name = (Map.get(details, "name") || "") |> String.trim()
-
-    case String.split(name, ~r/\s+/, parts: 2) do
-      [first_name | rest] when email != "" and first_name != "" ->
-        {:ok,
-         %{
-           email: String.downcase(email),
-           first_name: first_name,
-           last_name: Enum.at(rest, 0, ""),
-           phone_number: Map.get(details, "phone")
-         }}
-
-      _ ->
-        {:error, :customer_details_missing}
-    end
-  end
-
-  defp load_or_recover_external_attempt(workshop_id, checkout_session, email) do
-    checkout_session_id = Map.fetch!(checkout_session, "id")
-    metadata = Map.get(checkout_session, "metadata", %{}) || %{}
-
-    Repo.transaction(fn ->
-      load_or_recover_external_attempt_locked(
-        workshop_id,
-        checkout_session_id,
-        metadata,
-        email
-      )
-    end)
-    |> case do
-      {:ok, attempt} -> {:ok, attempt}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp load_or_recover_external_attempt_locked(
-         workshop_id,
-         checkout_session_id,
-         metadata,
-         email
-       ) do
-    attempt = external_attempt_from_metadata!(metadata, workshop_id, checkout_session_id)
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    attempt
-    |> Ecto.Changeset.change(
-      external_email: email,
-      stripe_checkout_session_id: checkout_session_id,
-      status: paid_attempt_status(attempt.status),
-      paid_at: attempt.paid_at || now
-    )
-    |> Repo.update!()
-  end
-
-  defp external_attempt_from_metadata!(metadata, workshop_id, checkout_session_id) do
-    case payment_attempt_from_metadata(metadata) do
-      %PaymentAttempt{
-        club_activity_id: ^workshop_id,
-        actor_type: "external",
-        stripe_checkout_session_id: stored_id
-      } = attempt
-      when is_nil(stored_id) or stored_id == checkout_session_id ->
-        attempt
-
-      %PaymentAttempt{} ->
-        Repo.rollback(:payment_metadata_mismatch)
-
-      nil ->
-        Repo.rollback(:payment_metadata_mismatch)
-    end
-  end
-
-  defp paid_attempt_status("pending"), do: "paid"
-  defp paid_attempt_status(status), do: status
-
-  defp payment_attempt_from_metadata(%{"payment_attempt_id" => id}) when is_binary(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, id} -> Repo.get(PaymentAttempt, id)
-      :error -> nil
-    end
-  end
-
-  defp payment_attempt_from_metadata(_metadata), do: nil
-
-  defp maybe_set_receipt_email(checkout_session, email) do
-    case Map.get(checkout_session, "payment_intent") do
-      payment_intent_id when is_binary(payment_intent_id) ->
-        _ = stripe_adapter().update_payment_intent(payment_intent_id, receipt_email: email)
-
-        :ok
-
-      _ ->
-        :ok
-    end
-  end
-
-  defp complete_external_registration_transaction(
-         workshop_id,
-         attempt,
-         checkout_session,
-         customer
-       ) do
-    checkout_session_id = Map.fetch!(checkout_session, "id")
-    payment_intent_id = Map.get(checkout_session, "payment_intent")
-
-    attempt =
-      Repo.one!(from(pa in PaymentAttempt, where: pa.id == ^attempt.id, lock: "FOR UPDATE"))
-
-    existing_registration =
-      Repo.get_by(Registration, payment_attempt_id: attempt.id) ||
-        Repo.get_by(Registration, stripe_checkout_session_id: checkout_session_id)
-
-    existing_refund = Repo.get_by(Refund, payment_attempt_id: attempt.id)
-
-    workshop =
-      Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE"))
-
-    with %Workshop{} = workshop <- workshop,
-         nil <- existing_registration,
-         nil <- existing_refund,
-         {:ok, _workshop} <- external_registration_workshop_for_completion(workshop),
-         {:ok, external_user} <- upsert_external_user(customer),
-         :ok <- ensure_no_active_external_registration(workshop_id, external_user.id),
-         :ok <- ensure_workshop_capacity(workshop_id, workshop.max_capacity) do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      # ALE-181: capture the attendee snapshot at write time. The external
-      # checkout customer details are the source of truth for the snapshot;
-      # `upsert_external_user/1` already normalized them, so reuse the
-      # customer map rather than re-reading the upserted `external_users` row.
-      display_name =
-        String.trim("#{customer.first_name || ""} #{customer.last_name || ""}")
-
-      display_name =
-        if display_name == "", do: @unknown_member, else: display_name
-
-      registration =
-        %Registration{
-          club_activity_id: workshop_id,
-          external_user_id: external_user.id,
-          display_name: display_name,
-          email: customer.email,
-          status: "confirmed",
-          stripe_checkout_session_id: checkout_session_id,
-          payment_attempt_id: attempt.id,
-          amount_paid: attempt.amount,
-          currency: attempt.currency,
-          confirmed_at: now,
-          registered_at: now
-        }
-        |> Repo.insert!()
-
-      attempt
-      |> Ecto.Changeset.change(status: "registered", paid_at: now, concluded_at: now)
-      |> Repo.update!()
-
-      registration
-    else
-      nil ->
-        refund =
-          create_compensating_refund!(attempt, "Workshop unavailable", payment_intent_id)
-
-        {:compensation_pending, refund}
-
-      %Registration{} = registration ->
-        registration
-
-      %Refund{} = refund ->
-        {:compensation_pending, refund}
-
-      {:error, reason} when reason in [:not_found, :already_registered, :full] ->
-        refund =
-          create_compensating_refund!(
-            attempt,
-            external_compensation_reason(reason),
-            payment_intent_id
-          )
-
-        {:compensation_pending, refund}
-
-      {:error, reason} ->
-        Repo.rollback(reason)
-    end
-  end
-
-  defp external_compensation_reason(:already_registered), do: "Attendee already registered"
-  defp external_compensation_reason(:full), do: "Workshop capacity exhausted"
-  defp external_compensation_reason(:not_found), do: "Workshop unavailable"
-
-  defp external_registration_workshop_for_completion(%Workshop{
-         status: "published",
-         archived_at: nil,
-         is_public: true,
-         price_non_member: price
-       })
-       when not is_nil(price) and price >= 0,
-       do: {:ok, :eligible}
-
-  defp external_registration_workshop_for_completion(_workshop), do: {:error, :not_found}
-
-  defp upsert_external_user(customer) do
-    %ExternalUser{
-      email: customer.email,
-      first_name: customer.first_name,
-      last_name: customer.last_name,
-      phone_number: customer.phone_number
-    }
-    |> Repo.insert(
-      on_conflict: [
-        set: [
-          first_name: customer.first_name,
-          last_name: customer.last_name,
-          phone_number: customer.phone_number,
-          updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
-        ]
-      ],
-      conflict_target: :email,
-      returning: true
-    )
-  end
-
-  defp ensure_no_active_external_registration(workshop_id, external_user_id) do
-    exists? =
-      Repo.exists?(
-        from(r in Registration,
-          where:
-            r.club_activity_id == ^workshop_id and r.external_user_id == ^external_user_id and
-              r.status in @counted_registration_statuses
-        )
-      )
-
-    if exists?, do: {:error, :already_registered}, else: :ok
-  end
-
-  defp validate_member_payment_intent(payment_intent, workshop_id, user_id) do
-    metadata = Map.get(payment_intent, "metadata", %{}) || %{}
-
-    cond do
-      Map.get(payment_intent, "status") != "succeeded" ->
-        {:error, :payment_not_completed}
-
-      metadata["type"] != @workshop_registration_metadata_type or
-        metadata["actor_type"] != @member_registration_actor_type or
-        metadata["workshop_id"] != workshop_id or metadata["user_id"] != user_id ->
-        {:error, :payment_metadata_mismatch}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp stripe_retrieve_payment_intent(payment_intent_id) do
-    case stripe_adapter().retrieve_payment_intent(payment_intent_id) do
-      {:ok, %{"id" => _id} = body} -> {:ok, body}
-      {:ok, _body} -> {:error, :payment_failed}
-      {:error, _reason} -> {:error, :payment_failed}
-    end
-  end
-
-  defp refund_deadline_passed?(_start_date, nil), do: false
-
-  defp refund_deadline_passed?(start_date, refund_days) do
-    deadline = DateTime.add(start_date, -refund_days, :day)
-    DateTime.compare(DateTime.utc_now(), deadline) == :gt
-  end
-
-  defp registration_for_refund(workshop_id, registration_id) do
-    case Repo.get_by(Registration, id: registration_id, club_activity_id: workshop_id) do
-      nil -> {:error, :registration_not_found}
-      registration -> {:ok, registration}
-    end
-  end
-
-  defp cancellation_refund_eligibility(workshop_id, registration_id) do
-    with {:ok, registration} <- registration_for_refund(workshop_id, registration_id) do
-      if Repo.exists?(from(rf in Refund, where: rf.registration_id == ^registration_id)) do
-        {:error, :already_requested}
-      else
-        {:ok, registration}
-      end
-    end
-  end
-
-  defp create_refund_attempt!(registration, reason, requested_by) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-    id = Ecto.UUID.generate()
-
-    Repo.insert!(%Refund{
-      id: id,
-      registration_id: registration.id,
-      refund_amount: registration.amount_paid,
-      refund_reason: reason,
-      status: "pending",
-      requested_at: now,
-      requested_by: requested_by,
-      stripe_payment_intent_id: registration.stripe_payment_intent_id,
-      idempotency_key: "workshop-refund:#{id}"
-    })
-  end
-
-  defp mark_registration_refunded(registration) do
-    registration
-    |> Ecto.Changeset.change(status: "refunded")
-    |> Repo.update!()
-  end
-
-  defp active_paid_registrations(workshop_id) do
-    from(r in Registration,
-      where:
-        r.club_activity_id == ^workshop_id and r.status in @counted_registration_statuses and
-          r.amount_paid > 0
-    )
-    |> Repo.all()
-  end
-
-  defp stripe_adapter do
-    Application.fetch_env!(:dhc, :workshop_stripe_adapter)
   end
 
   defp transition_workshop(workshop_id, from_status, to_status, invalid_reason) do
@@ -2138,21 +1141,6 @@ defmodule Dhc.Workshops do
       confirmed_at: row.confirmed_at,
       cancelled_at: row.cancelled_at,
       registration_notes: row.registration_notes,
-      participant: participant(row)
-    }
-  end
-
-  defp to_refund(row) do
-    %{
-      id: row.id,
-      registration_id: row.registration_id,
-      refund_amount: row.refund_amount,
-      refund_reason: row.refund_reason,
-      status: row.status,
-      stripe_refund_id: row.stripe_refund_id,
-      requested_at: row.requested_at,
-      processed_at: row.processed_at,
-      completed_at: row.completed_at,
       participant: participant(row)
     }
   end

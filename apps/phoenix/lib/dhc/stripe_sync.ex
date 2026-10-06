@@ -10,6 +10,7 @@ defmodule Dhc.StripeSync do
   require Logger
 
   alias Dhc.Stripe.LookupKeys
+  alias Dhc.Stripe.Operations
   alias Dhc.StripeSync.Repository
 
   @price_cache_ttl_hours 24
@@ -106,7 +107,7 @@ defmodule Dhc.StripeSync do
   defp fetch_price_ids_from_stripe do
     lookup_keys = LookupKeys.all()
 
-    case list_stripe_prices() do
+    case list_membership_prices() do
       {:ok, prices} when prices != [] ->
         price_ids = Enum.map(prices, & &1["id"])
 
@@ -164,9 +165,7 @@ defmodule Dhc.StripeSync do
   end
 
   defp paginate_subscriptions(price_id, target_customer_ids, acc, scanned, starting_after) do
-    params = build_list_params(price_id, starting_after)
-
-    case req_stripe_subscriptions(params) do
+    case list_subscriptions(price_id, starting_after) do
       {:ok, %{"data" => data, "has_more" => has_more}} ->
         new_acc =
           Enum.reduce(data, acc, &collect_target_subscription(&1, &2, target_customer_ids))
@@ -184,6 +183,9 @@ defmodule Dhc.StripeSync do
 
           {:ok, %{subscriptions: new_acc, scanned: new_scanned}}
         end
+
+      {:ok, response} ->
+        {:error, {:invalid_subscription_list, response}}
 
       {:error, reason} ->
         {:error, reason}
@@ -207,20 +209,6 @@ defmodule Dhc.StripeSync do
   # original `start_date`.
   @subscriptions_expand "data.latest_invoice"
 
-  defp build_list_params(price_id, nil) do
-    %{"status" => "all", "price" => price_id, "limit" => 100, "expand[]" => @subscriptions_expand}
-  end
-
-  defp build_list_params(price_id, starting_after) do
-    %{
-      "status" => "all",
-      "price" => price_id,
-      "limit" => 100,
-      "starting_after" => starting_after,
-      "expand[]" => @subscriptions_expand
-    }
-  end
-
   defp extract_customer_id(%{"customer" => customer}) when is_binary(customer), do: customer
 
   defp extract_customer_id(%{"customer" => %{"id" => id}}), do: id
@@ -229,92 +217,31 @@ defmodule Dhc.StripeSync do
   defp extract_customer_id(_sub), do: nil
 
   @doc """
-  Makes a GET request to the Stripe API to list subscriptions.
+  Lists one page (up to 100) of subscriptions on `price_id`, in every status,
+  with each latest invoice expanded. `starting_after` is the pagination
+  cursor (the last subscription id of the previous page) or `nil`.
+
+  Errors are `Dhc.Stripe.Client`'s: `{:stripe_api, status, body}`,
+  `{:http_error, exception}` or `:stripe_key_not_configured`.
   """
-  @spec req_stripe_subscriptions(map()) :: {:ok, map()} | {:error, term()}
-  def req_stripe_subscriptions(params) do
-    stripe_api_url = stripe_api_url()
-    stripe_secret_key = stripe_secret_key()
-
-    if is_nil(stripe_secret_key) or stripe_secret_key == "" do
-      {:error, :stripe_key_not_configured}
-    else
-      query_string = URI.encode_query(params)
-
-      case Req.get("#{stripe_api_url}/v1/subscriptions?#{query_string}",
-             headers: stripe_headers(stripe_secret_key),
-             decode_body: true,
-             connect_options: [timeout: 30_000],
-             retry: false
-           ) do
-        {:ok, %Req.Response{status: status, body: body}}
-        when status in 200..299 ->
-          {:ok, body}
-
-        {:ok, %Req.Response{status: status, body: body}} ->
-          Logger.error("[stripe-sync] Stripe API returned #{status}",
-            status: status,
-            body: inspect(body)
-          )
-
-          {:error, {:stripe_api, status}}
-
-        {:error, exception} ->
-          Logger.error("[stripe-sync] Stripe HTTP request failed: #{inspect(exception)}")
-          {:error, {:http_error, exception}}
-      end
-    end
+  @spec list_subscriptions(String.t(), String.t() | nil) :: {:ok, map()} | {:error, term()}
+  def list_subscriptions(price_id, starting_after \\ nil) do
+    opts = [status: "all", price: price_id, limit: 100, expand: [@subscriptions_expand]]
+    Operations.get_subscriptions(%{}, put_cursor(opts, starting_after))
   end
+
+  defp put_cursor(opts, nil), do: opts
+  defp put_cursor(opts, starting_after), do: Keyword.put(opts, :starting_after, starting_after)
 
   @doc """
-  Makes a GET request to the Stripe API to list prices.
+  Lists the active Stripe prices for the membership lookup keys.
   """
-  @spec req_stripe_prices(String.t()) :: {:ok, map()} | {:error, term()}
-  def req_stripe_prices(query_string) do
-    stripe_api_url = stripe_api_url()
-    stripe_secret_key = stripe_secret_key()
-
-    if is_nil(stripe_secret_key) or stripe_secret_key == "" do
-      {:error, :stripe_key_not_configured}
-    else
-      case Req.get("#{stripe_api_url}/v1/prices?#{query_string}",
-             headers: stripe_headers(stripe_secret_key),
-             decode_body: true,
-             connect_options: [timeout: 30_000],
-             retry: false
-           ) do
-        {:ok, %Req.Response{status: status, body: body}}
-        when status in 200..299 ->
-          {:ok, body}
-
-        {:ok, %Req.Response{status: status, body: body}} ->
-          Logger.error("[stripe-sync] Stripe prices API returned #{status}",
-            status: status,
-            body: inspect(body)
-          )
-
-          {:error, {:stripe_api, status}}
-
-        {:error, exception} ->
-          Logger.error("[stripe-sync] Stripe prices HTTP request failed: #{inspect(exception)}")
-          {:error, {:http_error, exception}}
-      end
-    end
-  end
-
-  defp list_stripe_prices do
-    lookup_keys_query =
-      LookupKeys.all()
-      |> Enum.map_join("&", &"lookup_keys[]=#{URI.encode_www_form(&1)}")
-
-    query_string = "#{lookup_keys_query}&active=true&limit=10"
-
-    case req_stripe_prices(query_string) do
-      {:ok, %{"data" => data}} ->
-        {:ok, data}
-
-      {:error, reason} ->
-        {:error, reason}
+  @spec list_membership_prices() :: {:ok, [map()]} | {:error, term()}
+  def list_membership_prices do
+    case Operations.get_prices(%{}, lookup_keys: LookupKeys.all(), active: true, limit: 10) do
+      {:ok, %{"data" => data}} when is_list(data) -> {:ok, data}
+      {:ok, response} -> {:error, {:invalid_price_list, response}}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -635,39 +562,5 @@ defmodule Dhc.StripeSync do
     )
 
     summary
-  end
-
-  # ── Config accessors ────────────────────────────────────────────────
-
-  @doc """
-  Returns the Stripe API base URL, overridable in tests via app config.
-  """
-  @spec stripe_api_url() :: String.t()
-  def stripe_api_url do
-    Application.get_env(:dhc, :stripe_api_url, "https://api.stripe.com")
-  end
-
-  @doc """
-  Returns the Stripe API version, pinned to match the Deno edge functions.
-  """
-  @spec stripe_api_version() :: String.t()
-  def stripe_api_version do
-    Application.get_env(:dhc, :stripe_api_version, "2025-10-29.clover")
-  end
-
-  @doc """
-  Returns the Stripe secret key from app config.
-  """
-  @spec stripe_secret_key() :: String.t() | nil
-  def stripe_secret_key do
-    Application.get_env(:dhc, :stripe_secret_key)
-  end
-
-  defp stripe_headers(secret_key) do
-    [
-      {"authorization", "Bearer #{secret_key}"},
-      {"stripe-version", stripe_api_version()},
-      {"content-type", "application/x-www-form-urlencoded"}
-    ]
   end
 end

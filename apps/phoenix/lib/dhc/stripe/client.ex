@@ -9,7 +9,7 @@ defmodule Dhc.Stripe.Client do
   - Pinned Stripe API version via `Stripe-Version` header
   - JSON request/response encoding
   - Error normalization into generated Stripe error types
-  - Configurable base URL (overridable in tests via app config)
+  - Configurable base URL and extra Req options (the test transport seam)
   - Idempotency keys for POST requests (optional, via `:idempotency_key` opt)
 
   ## Configuration
@@ -23,11 +23,13 @@ defmodule Dhc.Stripe.Client do
 
   ## Testing
 
-  Override `:stripe_api_url` and `:stripe_secret_key` in test config
-  to point at a Bypass server:
-
-      config :dhc, :stripe_api_url, "http://localhost:PORT"
-      config :dhc, :stripe_secret_key, "sk_test_123"
+  Every Stripe HTTP call in the app goes through `request/1`, which merges
+  `config :dhc, :stripe_req_options` into its Req options. `config/test.exs`
+  sets `plug: {Req.Test, Dhc.Stripe}`, so tests stub Stripe in-process with
+  `Req.Test.stub(Dhc.Stripe, plug)` (see `Dhc.StripeHTTPStub` for a
+  method/path router). Stubs follow Req.Test ownership: they reach Tasks and
+  other `$callers` descendants of the test process; anything else needs
+  `Req.Test.allow/3`.
 
   ## Usage with generated operations
 
@@ -69,7 +71,7 @@ defmodule Dhc.Stripe.Client do
       Logger.error("[stripe-client] STRIPE_SECRET_KEY not configured")
       {:error, :stripe_key_not_configured}
     else
-      full_url = stripe_api_url() <> url
+      full_url = stripe_api_url() <> url <> query_string(query)
 
       headers =
         [
@@ -79,11 +81,11 @@ defmodule Dhc.Stripe.Client do
         ]
         |> maybe_add_idempotency_key(opts)
 
-      req_opts = [
-        decode_body: true,
-        retry: false,
-        connect_options: [timeout: 30_000]
-      ]
+      req_opts =
+        Keyword.merge(
+          [decode_body: true, retry: false, connect_options: [timeout: 30_000]],
+          Application.get_env(:dhc, :stripe_req_options, [])
+        )
 
       req_opts =
         req_opts
@@ -91,7 +93,7 @@ defmodule Dhc.Stripe.Client do
 
       result =
         Req.request(
-          [method: method, url: full_url, headers: headers, params: format_query(query)] ++
+          [method: method, url: full_url, headers: headers] ++
             req_opts
         )
 
@@ -139,22 +141,44 @@ defmodule Dhc.Stripe.Client do
   defp normalize_form_params(params) when is_map(params), do: Map.to_list(params)
   defp normalize_form_params(params) when is_list(params), do: params
 
+  # Encoded here rather than through Req's `:params`, which keeps only the
+  # last value of a repeated key and would collapse `lookup_keys[]=a&lookup_keys[]=b`.
+  defp query_string(query) do
+    case format_query(query) do
+      [] -> ""
+      pairs -> "?" <> URI.encode_query(pairs)
+    end
+  end
+
+  # A list value becomes repeated `key[]=` pairs (a key already ending in
+  # `[]` keeps it), `nil` values are skipped rather than sent as `key=`, and
+  # nested maps are rejected: no generated list operation needs them, and
+  # guessing an encoding would silently send the wrong filter.
   defp format_query(nil), do: []
-  defp format_query([]), do: []
 
   defp format_query(query) when is_list(query) do
     Enum.flat_map(query, fn
+      {_key, nil} ->
+        []
+
       {key, values} when is_list(values) ->
         encoded_key = stripe_array_key(key)
-        Enum.map(values, &{encoded_key, &1})
+        for value <- values, not is_nil(value), do: {encoded_key, value}
+
+      {key, value} when is_map(value) ->
+        raise ArgumentError,
+              "Dhc.Stripe.Client does not encode nested map query values " <>
+                "(#{inspect(key)}: #{inspect(value)}); pass flat keys such as \"#{key}[gte]\""
 
       {key, value} ->
-        [{key, value}]
+        [{to_string(key), value}]
     end)
   end
 
-  defp stripe_array_key(key) when is_atom(key), do: "#{key}[]"
-  defp stripe_array_key(key) when is_binary(key), do: "#{key}[]"
+  defp stripe_array_key(key) do
+    key = to_string(key)
+    if String.ends_with?(key, "[]"), do: key, else: key <> "[]"
+  end
 
   @spec stripe_api_url() :: String.t()
   defp stripe_api_url do

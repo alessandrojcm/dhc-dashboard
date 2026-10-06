@@ -540,10 +540,10 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
       {refund, _registration} = durable_refund_fixture()
       payment_intent_id = refund.stripe_payment_intent_id
 
-      Application.put_env(:dhc, :durable_refund_response, {:error, :provider_unavailable})
+      unavailable = {:stripe_api, 503, %{"error" => %{"type" => "api_error"}}}
+      Application.put_env(:dhc, :durable_refund_response, {:error, unavailable})
 
-      assert {:error, :provider_unavailable} =
-               perform_job(RefundWorker, %{refund_id: refund.id})
+      assert {:error, ^unavailable} = perform_job(RefundWorker, %{refund_id: refund.id})
 
       assert_receive {:create_refund,
                       %{
@@ -557,7 +557,7 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
 
       assert idempotency_key == refund.idempotency_key
       assert %{status: "pending", last_error: last_error} = Repo.get!(Refund, refund.id)
-      assert last_error =~ "provider_unavailable"
+      assert last_error =~ "503"
 
       Application.put_env(
         :dhc,

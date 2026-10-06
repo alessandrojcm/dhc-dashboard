@@ -362,11 +362,7 @@ defmodule Dhc.Members do
   defp maybe_put_customer_change(changes, _key, _value, false), do: changes
 
   defp echo_customer_to_stripe(customer_id, changes, member_id) do
-    case Dhc.Stripe.Client.request(
-           method: :post,
-           url: "/v1/customers/#{URI.encode(customer_id)}",
-           body: changes
-         ) do
+    case Dhc.Stripe.Operations.post_customers_customer(URI.encode(customer_id), changes) do
       {:ok, _body} ->
         :ok
 
