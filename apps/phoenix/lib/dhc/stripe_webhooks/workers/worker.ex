@@ -22,7 +22,10 @@ defmodule Dhc.StripeWebhooks.Worker do
 
   Jobs are unique on `event_id` for 24 hours across all job states, so a
   Stripe redelivery of an event already enqueued (or already processed) in that
-  window inserts no second job.
+  window inserts no second job. That includes `discarded` jobs: an event whose
+  job was discarded after 3 attempts cannot be replayed by re-sending it from
+  Stripe within the window; retry the discarded job instead (see the replay
+  note beside the routing table in `Dhc.StripeWebhooks`).
   """
 
   use Oban.Worker,
