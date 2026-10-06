@@ -20,7 +20,6 @@ import {
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import {
 	ArrowLeft,
-	Check,
 	CreditCard,
 	ExternalLink,
 	HeartPulse,
@@ -451,14 +450,27 @@ let showReactivateModal = $state(false);
 						>
 							<Select.Trigger
 								id={fieldProps.name}
-								name={fieldProps.name}
-								class="w-full"
+								class="w-full min-h-11 whitespace-normal text-left data-[size=default]:h-auto"
+								aria-describedby="preferred-weapons-help"
 							>
-								{weapon.length > 0
-									? `${weapon.length} selected`
-									: "Select preferred weapons"}
+								{#if weapon.length > 0}
+									<span class="flex min-w-0 flex-wrap gap-1.5">
+										{#each weapon as selectedWeapon (selectedWeapon)}
+											<Badge
+												variant="secondary"
+												class="max-w-full whitespace-normal text-left capitalize"
+											>
+												{selectedWeapon.replace(/[_-]/g, " ")}
+											</Badge>
+										{/each}
+									</span>
+								{:else}
+									<span class="text-muted-foreground"
+										>Select preferred weapons</span
+									>
+								{/if}
 							</Select.Trigger>
-							<Select.Content>
+							<Select.Content side="bottom" align="start">
 								{#each data.weapons as option (option)}
 									<Select.Item class="capitalize" value={option}>
 										{option.replace(/[_-]/g, " ")}
@@ -466,17 +478,9 @@ let showReactivateModal = $state(false);
 								{/each}
 							</Select.Content>
 						</Select.Root>
-						<Field.Description>Select all that apply.</Field.Description>
-						{#if weapon.length > 0}
-							<div class="flex flex-wrap gap-2" aria-label="Selected weapons">
-								{#each weapon as selectedWeapon (selectedWeapon)}
-									<Badge variant="secondary" class="capitalize">
-										<Check class="size-3" aria-hidden="true" />
-										{selectedWeapon.replace(/[_-]/g, " ")}
-									</Badge>
-								{/each}
-							</div>
-						{/if}
+						<Field.Description id="preferred-weapons-help">
+							Select all that apply. Select a weapon again to remove it.
+						</Field.Description>
 						{#each updateProfile.fields.weapon.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
