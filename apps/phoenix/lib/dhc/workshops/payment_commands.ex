@@ -55,6 +55,9 @@ defmodule Dhc.Workshops.PaymentCommands do
   turns a violation into a reason the public functions already return
   (`:already_requested`, `:already_registered`, ...). The locks settle
   command-against-command; the indexes are the backstop for anything else.
+  A violation aborts the Postgres transaction, so only writes persisted with
+  `recoverable: true` (a savepoint) may be followed by more writes; every
+  other translated violation rolls the command back.
 
   Refund eligibility is decided by `Dhc.Workshops.RefundPolicy` under the
   lock — the same predicates the advisory `refund_eligibility/1` uses.
@@ -85,15 +88,18 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   @type actor ::
           {:member, user_id()}
-          | {:coordinator, user_id() | nil}
+          | {:coordinator, user_id()}
           | :external
           | :system
 
   @typedoc """
-  `{:cancel_workshop, workshop_id, transition}` takes the Workshop status
-  change as a function so it stays in `Dhc.Workshops` while running under the
-  same Workshop lock as the Refund fan-out. A coordinator of `nil` cancels
-  without refunding.
+  `{:cancel_workshop, workshop_id, transition, registrations}` takes the
+  Workshop status change as a function so it stays in `Dhc.Workshops` while
+  running under the same Workshop lock as the Refund fan-out.
+  `registrations` says whether the cancellation refunds every Registration it
+  owes (`:refund_owed`, a coordinator's cancellation, which records them as
+  the requester) or leaves Registrations untouched (`:keep`, allowed to the
+  system).
   """
   @type command ::
           {:start_member_payment, workshop_id :: binary(), customer_id :: String.t() | nil}
@@ -104,9 +110,9 @@ defmodule Dhc.Workshops.PaymentCommands do
              checkout_session_id :: String.t()}
           | {:cancel_member_registration, workshop_id :: binary()}
           | {:request_refund, workshop_id :: binary(), registration_id :: binary(),
-             reason :: String.t(), opts :: keyword()}
+             reason :: String.t()}
           | {:cancel_workshop, workshop_id :: binary(),
-             (Workshop.t() -> {:ok, Workshop.t()} | {:error, term()})}
+             (Workshop.t() -> {:ok, Workshop.t()} | {:error, term()}), :refund_owed | :keep}
           | {:submit_refund, refund_id :: binary()}
           | {:apply_refund_update, stripe_refund :: map()}
           | :reconcile_refunds
@@ -128,10 +134,23 @@ defmodule Dhc.Workshops.PaymentCommands do
     "compensating" => ~w(refunded)
   }
 
+  # A payment in progress: not yet concluded with a Registration or a Refund.
+  # At most one per member and Workshop (the active-member partial index).
+  @open_attempt_statuses ~w(pending paid)
+
+  # `pending` may go straight to a terminal status because Stripe can answer
+  # the create call terminally — `succeeded` for an instant refund, `failed`
+  # or `canceled` — and that answer is written in the same locked step as the
+  # Stripe refund id; `processing` is only the "accepted, not yet settled"
+  # answer. ADR 0027's `pending → processing → …` is the usual path, not the
+  # only one.
   @refund_transitions %{
     "pending" => ~w(processing completed failed cancelled),
     "processing" => ~w(completed failed cancelled)
   }
+
+  @refund_statuses ~w(pending processing completed failed cancelled)
+  @terminal_refund_statuses @refund_statuses -- Map.keys(@refund_transitions)
 
   # Index names as the migrations created them, and the domain reason each
   # becomes. Anything else is a programming error and may raise.
@@ -181,7 +200,7 @@ defmodule Dhc.Workshops.PaymentCommands do
   """
   @spec execute(actor(), command()) :: {:ok, term()} | {:error, term()}
   def execute(actor, command) do
-    with :ok <- authorize(actor, command_name(command)) do
+    with :ok <- authorize(actor, command) do
       run(actor, command)
     end
   end
@@ -204,22 +223,31 @@ defmodule Dhc.Workshops.PaymentCommands do
   defp command_name(command) when is_tuple(command), do: elem(command, 0)
   defp command_name(command) when is_atom(command), do: command
 
-  defp authorize({:member, id}, name) when is_binary(id) and name in @member_commands, do: :ok
-  defp authorize(:external, name) when name in @external_commands, do: :ok
+  # Only a coordinator's cancellation may refund (the Refunds record them as
+  # requester); the system may cancel a Workshop that refunds nobody.
+  defp authorize(
+         {:coordinator, id},
+         {:cancel_workshop, _workshop_id, _transition, _registrations}
+       )
+       when is_binary(id),
+       do: :ok
 
-  defp authorize({:coordinator, id}, :request_refund) when is_binary(id), do: :ok
+  defp authorize(:system, {:cancel_workshop, _workshop_id, _transition, :keep}), do: :ok
+  defp authorize(actor, command), do: authorize_name(actor, command_name(command))
 
-  defp authorize({:coordinator, id}, :cancel_workshop) when is_binary(id) or is_nil(id),
+  defp authorize_name({:member, id}, name) when is_binary(id) and name in @member_commands,
     do: :ok
 
-  defp authorize(:system, name) when name in @system_commands, do: :ok
+  defp authorize_name(:external, name) when name in @external_commands, do: :ok
+  defp authorize_name({:coordinator, id}, :request_refund) when is_binary(id), do: :ok
+  defp authorize_name(:system, name) when name in @system_commands, do: :ok
 
-  defp authorize(_actor, name)
+  defp authorize_name(_actor, name)
        when name in @member_commands or name in @external_commands or
               name in @coordinator_commands or name in @system_commands,
        do: {:error, :forbidden}
 
-  defp authorize(_actor, _name), do: {:error, :unknown_command}
+  defp authorize_name(_actor, _name), do: {:error, :unknown_command}
 
   # ── Starting a payment ──────────────────────────────────────────
 
@@ -332,7 +360,7 @@ defmodule Dhc.Workshops.PaymentCommands do
             from(r in Registration,
               where:
                 r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
-                  r.status in ^RefundPolicy.active_statuses(),
+                  r.status in ^Registration.active_statuses(),
               limit: 1
             ),
           refund: &registration_refund_query/1
@@ -342,15 +370,7 @@ defmodule Dhc.Workshops.PaymentCommands do
     end)
   end
 
-  defp run(
-         {:coordinator, requested_by},
-         {:request_refund, workshop_id, registration_id, reason, opts}
-       ) do
-    policy =
-      if Keyword.get(opts, :skip_eligibility, false),
-        do: &RefundPolicy.cancellation_refund/1,
-        else: &RefundPolicy.requested_refund(&1, DateTime.utc_now())
-
+  defp run({:coordinator, requested_by}, {:request_refund, workshop_id, registration_id, reason}) do
     transact(fn ->
       with_locked(
         %{
@@ -361,7 +381,7 @@ defmodule Dhc.Workshops.PaymentCommands do
             ),
           refund: &registration_refund_query/1
         },
-        &request_registration_refund(&1, policy, reason, requested_by)
+        &request_registration_refund(&1, reason, requested_by)
       )
     end)
     |> case do
@@ -370,24 +390,20 @@ defmodule Dhc.Workshops.PaymentCommands do
     end
   end
 
-  defp run({:coordinator, requested_by}, {:cancel_workshop, workshop_id, transition_workshop}) do
+  # Every Registration of the Workshop is locked; which of them are owed a
+  # Refund is decided over the locked rows by RefundPolicy.owed_on_cancellation?/1.
+  defp run(actor, {:cancel_workshop, workshop_id, transition_workshop, registrations}) do
     transact(fn ->
       with_locked(
         %{
           workshop: required(from(w in Workshop, where: w.id == ^workshop_id)),
-          registration: fn _locked ->
-            if requested_by, do: {:all, owed_on_cancellation_query(workshop_id)}
-          end,
-          refund: fn
-            %{registration: [_ | _] = registrations} ->
-              ids = Enum.map(registrations, & &1.id)
-              {:all, from(rf in Refund, where: rf.registration_id in ^ids)}
-
-            _locked ->
-              nil
-          end
+          registration:
+            if(registrations == :refund_owed,
+              do: {:all, from(r in Registration, where: r.club_activity_id == ^workshop_id)}
+            ),
+          refund: &owed_refunds_query/1
         },
-        &cancel_workshop(&1, transition_workshop, requested_by)
+        &cancel_workshop(&1, transition_workshop, requester(actor))
       )
     end)
   end
@@ -448,20 +464,11 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   defp open_member_attempt(%{workshop: workshop}, user_id) do
     with :ok <- member_registration_open(workshop),
-         :ok <- no_active_member_registration(workshop.id, user_id),
+         :ok <- no_active_registration(workshop.id, :member_user_id, user_id),
          :ok <- capacity_available(workshop),
          {:ok, amount} <- positive_amount(workshop.price_member),
          {:ok, attempt} <-
-           persist(
-             Ecto.Changeset.change(%PaymentAttempt{}, %{
-               club_activity_id: workshop.id,
-               member_user_id: user_id,
-               actor_type: @member_actor_type,
-               amount: amount,
-               currency: "eur",
-               status: "pending"
-             })
-           ) do
+           persist(new_attempt(workshop, amount, "pending", member_user_id: user_id)) do
       {:ok, {attempt, workshop}}
     end
   end
@@ -477,15 +484,7 @@ defmodule Dhc.Workshops.PaymentCommands do
          :ok <- capacity_available(workshop),
          {:ok, amount} <- positive_amount(workshop.price_non_member),
          {:ok, attempt} <-
-           persist(
-             Ecto.Changeset.change(%PaymentAttempt{id: payment_attempt_id}, %{
-               club_activity_id: workshop.id,
-               actor_type: @external_actor_type,
-               amount: amount,
-               currency: "eur",
-               status: "pending"
-             })
-           ) do
+           persist(new_attempt(workshop, amount, "pending", id: payment_attempt_id)) do
       {:ok, {attempt, workshop}}
     end
   end
@@ -531,21 +530,35 @@ defmodule Dhc.Workshops.PaymentCommands do
   defp record_paid_member_attempt(workshop, user_id, payment_intent_id) do
     with {:ok, amount} <- positive_amount(workshop.price_member) do
       persist(
-        Ecto.Changeset.change(%PaymentAttempt{}, %{
-          club_activity_id: workshop.id,
+        new_attempt(workshop, amount, "paid",
           member_user_id: user_id,
-          actor_type: @member_actor_type,
-          amount: amount,
-          currency: "eur",
-          status: "paid",
           stripe_payment_intent_id: payment_intent_id,
           paid_at: now()
-        })
+        )
       )
     end
   end
 
-  defp open_member_attempt?(attempt, workshop_id, user_id, statuses \\ ~w(pending paid)) do
+  # A member attempt carries `member_user_id`; an external one its
+  # caller-chosen `id` (the Checkout metadata identity). Workshop payments are
+  # always in euro.
+  defp new_attempt(workshop, amount, status, attrs) do
+    {id, attrs} = Keyword.pop(attrs, :id)
+    actor_type = if attrs[:member_user_id], do: @member_actor_type, else: @external_actor_type
+
+    Ecto.Changeset.change(
+      %PaymentAttempt{id: id},
+      Map.merge(Map.new(attrs), %{
+        club_activity_id: workshop.id,
+        actor_type: actor_type,
+        amount: amount,
+        currency: "eur",
+        status: status
+      })
+    )
+  end
+
+  defp open_member_attempt?(attempt, workshop_id, user_id, statuses \\ @open_attempt_statuses) do
     attempt.club_activity_id == workshop_id and attempt.member_user_id == user_id and
       attempt.actor_type == @member_actor_type and
       (statuses == :any or attempt.status in statuses)
@@ -570,10 +583,12 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   defp register_paid_member(workshop, attempt, user_id, payment_intent) do
     with :ok <- member_registration_open(workshop),
-         :ok <- no_active_member_registration(workshop.id, user_id),
+         :ok <- no_active_registration(workshop.id, :member_user_id, user_id),
          :ok <- capacity_available(workshop),
          {:ok, registration} <-
-           persist(member_registration_changeset(workshop, attempt, user_id, payment_intent)),
+           persist(member_registration_changeset(workshop, attempt, user_id, payment_intent),
+             recoverable: true
+           ),
          {:ok, _attempt} <- conclude_registered(attempt) do
       {:ok, {:registered, registration}}
     else
@@ -618,7 +633,7 @@ defmodule Dhc.Workshops.PaymentCommands do
     do: {:error, :payment_metadata_mismatch}
 
   defp mark_external_paid(%PaymentAttempt{status: status} = attempt, checkout_session_id, email)
-       when status in ["pending", "paid"] do
+       when status in @open_attempt_statuses do
     transition(attempt, "paid", %{
       external_email: email,
       stripe_checkout_session_id: checkout_session_id,
@@ -649,10 +664,12 @@ defmodule Dhc.Workshops.PaymentCommands do
   defp register_external(workshop, attempt, customer, payment_intent_id) do
     with :ok <- external_registration_open(workshop),
          {:ok, external_user} <- upsert_external_user(customer),
-         :ok <- no_active_external_registration(workshop.id, external_user.id),
+         :ok <- no_active_registration(workshop.id, :external_user_id, external_user.id),
          :ok <- capacity_available(workshop),
          {:ok, registration} <-
-           persist(external_registration_changeset(workshop, attempt, external_user, customer)),
+           persist(external_registration_changeset(workshop, attempt, external_user, customer),
+             recoverable: true
+           ),
          {:ok, _attempt} <- conclude_registered(attempt) do
       {:ok, {:registered, registration}}
     else
@@ -755,13 +772,14 @@ defmodule Dhc.Workshops.PaymentCommands do
     end
   end
 
-  defp request_registration_refund(%{registration: nil}, _policy, _reason, _requested_by),
+  defp request_registration_refund(%{registration: nil}, _reason, _requested_by),
     do: {:error, :registration_not_found}
 
-  defp request_registration_refund(locked, policy, reason, requested_by) do
+  defp request_registration_refund(locked, reason, requested_by) do
     %{workshop: workshop, registration: registration, refund: refund} = locked
+    facts = refund_facts(workshop, registration, refund)
 
-    with :ok <- policy.(refund_facts(workshop, registration, refund)),
+    with :ok <- RefundPolicy.requested_refund(facts, DateTime.utc_now()),
          {:ok, refund, refunded} <- record_registration_refund(registration, reason, requested_by) do
       {:ok, %{refund: refund, view: RefundProjection.project(refund, refunded)}}
     end
@@ -779,7 +797,9 @@ defmodule Dhc.Workshops.PaymentCommands do
   defp refund_cancelled_registrations(%{workshop: workshop} = locked, requested_by) do
     refunded_ids = MapSet.new(locked.refund || [], & &1.registration_id)
 
-    Enum.reduce_while(locked.registration, :ok, fn registration, :ok ->
+    locked.registration
+    |> Enum.filter(&RefundPolicy.owed_on_cancellation?/1)
+    |> Enum.reduce_while(:ok, fn registration, :ok ->
       facts = %{
         registration: registration,
         workshop: workshop,
@@ -846,7 +866,7 @@ defmodule Dhc.Workshops.PaymentCommands do
   # ── Refund submission (Stripe between two locked reads) ─────────
 
   defp submission_plan(%{refund: %Refund{status: status}})
-       when status in ["completed", "failed", "cancelled"],
+       when status in @terminal_refund_statuses,
        do: {:ok, :settled}
 
   defp submission_plan(%{refund: %Refund{status: "processing", stripe_refund_id: id}})
@@ -1115,20 +1135,28 @@ defmodule Dhc.Workshops.PaymentCommands do
     end
   end
 
-  defp persist(%Ecto.Changeset{data: %schema{}} = changeset) do
+  # A unique violation aborts the whole Postgres transaction, so a command may
+  # only *continue* after a translated violation if the write ran under a
+  # savepoint: pass `recoverable: true` for exactly those writes (the
+  # Registration inserts whose violation becomes a rejection or a
+  # compensating Refund). Every other translated violation rolls the
+  # command's transaction back.
+  defp persist(%Ecto.Changeset{data: %schema{}} = changeset, opts \\ []) do
+    repo_opts = if Keyword.get(opts, :recoverable, false), do: [mode: :savepoint], else: []
+
     changeset
     |> declare_unique_constraints(schema)
-    |> insert_or_update()
+    |> insert_or_update(repo_opts)
     |> case do
       {:ok, row} -> {:ok, row}
       {:error, %Ecto.Changeset{} = failed} -> {:error, constraint_reason(failed, schema)}
     end
   end
 
-  defp insert_or_update(%Ecto.Changeset{data: %{__meta__: %{state: :built}}} = changeset),
-    do: Repo.insert(changeset)
+  defp insert_or_update(%Ecto.Changeset{data: %{__meta__: %{state: :built}}} = changeset, opts),
+    do: Repo.insert(changeset, opts)
 
-  defp insert_or_update(changeset), do: Repo.update(changeset)
+  defp insert_or_update(changeset, opts), do: Repo.update(changeset, opts)
 
   defp declare_unique_constraints(changeset, schema) do
     @unique_constraints
@@ -1226,21 +1254,11 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   defp external_registration_open(_workshop), do: {:error, :not_found}
 
-  defp no_active_member_registration(workshop_id, user_id) do
+  defp no_active_registration(workshop_id, participant_field, participant_id) do
     from(r in Registration,
       where:
-        r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
-          r.status in ^RefundPolicy.active_statuses()
-    )
-    |> Repo.exists?()
-    |> if(do: {:error, :already_registered}, else: :ok)
-  end
-
-  defp no_active_external_registration(workshop_id, external_user_id) do
-    from(r in Registration,
-      where:
-        r.club_activity_id == ^workshop_id and r.external_user_id == ^external_user_id and
-          r.status in ^RefundPolicy.active_statuses()
+        r.club_activity_id == ^workshop_id and field(r, ^participant_field) == ^participant_id and
+          r.status in ^Registration.active_statuses()
     )
     |> Repo.exists?()
     |> if(do: {:error, :already_registered}, else: :ok)
@@ -1249,7 +1267,7 @@ defmodule Dhc.Workshops.PaymentCommands do
   defp capacity_available(%Workshop{id: id, max_capacity: max_capacity}) do
     count =
       from(r in Registration,
-        where: r.club_activity_id == ^id and r.status in ^RefundPolicy.active_statuses(),
+        where: r.club_activity_id == ^id and r.status in ^Registration.active_statuses(),
         select: count(r.id)
       )
       |> Repo.one()
@@ -1281,7 +1299,7 @@ defmodule Dhc.Workshops.PaymentCommands do
     from(pa in PaymentAttempt,
       where:
         pa.club_activity_id == ^workshop_id and pa.member_user_id == ^user_id and
-          pa.actor_type == @member_actor_type and pa.status in ["pending", "paid"]
+          pa.actor_type == @member_actor_type and pa.status in @open_attempt_statuses
     )
   end
 
@@ -1290,7 +1308,7 @@ defmodule Dhc.Workshops.PaymentCommands do
       where:
         pa.stripe_payment_intent_id == ^payment_intent_id or
           (pa.club_activity_id == ^workshop_id and pa.member_user_id == ^user_id and
-             pa.actor_type == @member_actor_type and pa.status in ["pending", "paid"])
+             pa.actor_type == @member_actor_type and pa.status in @open_attempt_statuses)
     )
   end
 
@@ -1299,13 +1317,15 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   defp registration_refund_query(_locked), do: nil
 
-  defp owed_on_cancellation_query(workshop_id) do
-    from(r in Registration,
-      where:
-        r.club_activity_id == ^workshop_id and r.status in ^RefundPolicy.active_statuses() and
-          r.amount_paid > 0
-    )
+  defp owed_refunds_query(%{registration: [_ | _] = registrations}) do
+    ids = for r <- registrations, RefundPolicy.owed_on_cancellation?(r), do: r.id
+    {:all, from(rf in Refund, where: rf.registration_id in ^ids)}
   end
+
+  defp owed_refunds_query(_locked), do: nil
+
+  defp requester({:coordinator, id}), do: id
+  defp requester(:system), do: nil
 
   # ── Registration rows ───────────────────────────────────────────
 
@@ -1331,12 +1351,11 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   defp external_registration_changeset(workshop, attempt, external_user, customer) do
     now = now()
-    name = String.trim("#{customer.first_name || ""} #{customer.last_name || ""}")
 
     Ecto.Changeset.change(%Registration{}, %{
       club_activity_id: workshop.id,
       external_user_id: external_user.id,
-      display_name: if(name == "", do: Dhc.Workshops.unknown_member(), else: name),
+      display_name: Registration.display_name(customer.first_name, customer.last_name),
       email: customer.email,
       status: "confirmed",
       stripe_checkout_session_id: attempt.stripe_checkout_session_id,
@@ -1360,11 +1379,10 @@ defmodule Dhc.Workshops.PaymentCommands do
     |> Repo.one()
     |> case do
       nil ->
-        {Dhc.Workshops.unknown_member(), nil}
+        {Registration.unknown_member(), nil}
 
       %{first_name: first, last_name: last, email: email} ->
-        name = String.trim("#{first || ""} #{last || ""}")
-        {if(name == "", do: Dhc.Workshops.unknown_member(), else: name), email}
+        {Registration.display_name(first, last), email}
     end
   end
 

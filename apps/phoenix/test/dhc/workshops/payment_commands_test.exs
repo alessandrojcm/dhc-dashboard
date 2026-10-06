@@ -288,9 +288,10 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
             {:external, {:start_member_payment, id, nil}},
             {{:coordinator, id}, {:complete_member_payment, id, "pi_x"}},
             {{:member, id}, {:start_external_payment, id, id, "x"}},
-            {{:member, id}, {:request_refund, id, id, "x", []}},
-            {:system, {:cancel_workshop, id, & &1}},
-            {{:coordinator, nil}, {:request_refund, id, id, "x", []}},
+            {{:member, id}, {:request_refund, id, id, "x"}},
+            {:system, {:cancel_workshop, id, & &1, :refund_owed}},
+            {{:coordinator, nil}, {:cancel_workshop, id, & &1, :keep}},
+            {{:coordinator, nil}, {:request_refund, id, id, "x"}},
             {{:coordinator, id}, {:submit_refund, id}},
             {:external, :reconcile_refunds}
           ] do
@@ -327,24 +328,76 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
           amount_paid: 1800
         )
 
-      # Stands in for a Refund committed by a writer that bypassed the lock:
-      # the insert fails on the registration_id unique index.
-      Repo.query!("""
-      CREATE FUNCTION ale340_duplicate_refund() RETURNS trigger AS $$
-      BEGIN
-        RAISE unique_violation USING CONSTRAINT = 'club_activity_refunds_registration_id_index';
-      END $$ LANGUAGE plpgsql
-      """)
-
-      Repo.query!("""
-      CREATE TRIGGER ale340_duplicate_refund BEFORE INSERT ON club_activity_refunds
-      FOR EACH ROW EXECUTE FUNCTION ale340_duplicate_refund()
-      """)
+      # Stands in for a Refund committed by a writer that bypassed the lock.
+      force_unique_violation!(
+        "club_activity_refunds",
+        "club_activity_refunds_registration_id_index"
+      )
 
       assert {:error, :already_requested} = Workshops.cancel_workshop(workshop.id, coordinator)
       assert %{status: "published"} = Repo.get!(Workshop, workshop.id)
       assert %{status: "confirmed"} = Repo.get!(Registration, registration.id)
       assert all_enqueued(worker: Dhc.Workshops.Workers.RefundWorker) == []
+    end
+
+    test "a member Registration lost to the active-member index commits the paid attempt and reports it" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          status: "published",
+          price_member: 1800.0,
+          max_capacity: 2
+        )
+
+      %{auth_user_id: member_id} = WorkshopFixtures.member_fixture()
+      pi = start_member_payment!(workshop, member_id)
+
+      force_unique_violation!(
+        "club_activity_registrations",
+        "club_activity_registrations_member_user_id_active_unique"
+      )
+
+      assert {:error, :already_registered} = complete_member(workshop, member_id, pi)
+      assert %{status: "paid", paid_at: %DateTime{}} = attempt_for(pi)
+      assert Repo.aggregate(Registration, :count) == 0
+    end
+
+    test "an external Registration lost to a unique index concludes with a compensating Refund" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          status: "published",
+          is_public: true,
+          price_non_member: 2400.0,
+          max_capacity: 2
+        )
+
+      attempt_id = Ecto.UUID.generate()
+
+      {:ok, %{checkout_session_id: cs}} =
+        Workshops.create_external_checkout_session(
+          workshop.id,
+          attempt_id,
+          "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+        )
+
+      StripeStub.put_object(
+        :checkout_sessions,
+        StripeStub.checkout_session(cs, workshop.id, attempt_id)
+      )
+
+      force_unique_violation!(
+        "club_activity_registrations",
+        "club_activity_registrations_external_user_id_active_unique"
+      )
+
+      assert {:error, :compensation_pending} =
+               Workshops.complete_external_registration(workshop.id, cs)
+
+      assert %{status: "compensating"} = Repo.get!(PaymentAttempt, attempt_id)
+
+      assert %Refund{status: "pending", refund_reason: "Attendee already registered"} =
+               Repo.get_by!(Refund, payment_attempt_id: attempt_id)
+
+      assert Repo.aggregate(Registration, :count) == 0
     end
   end
 
@@ -370,12 +423,14 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
       assert {:error, :deadline_passed} =
                Workshops.process_refund(workshop.id, registration.id, "Late", coordinator)
 
-      assert {:ok, %Refund{}} =
-               Workshops.process_refund(workshop.id, registration.id, "Club", coordinator,
-                 skip_eligibility: true
-               )
+      # The club's cancellation ignores the member's refund window.
+      assert {:ok, %Workshop{status: "cancelled"}} =
+               Workshops.cancel_workshop(workshop.id, coordinator)
 
       assert {:error, :already_refunded} = Workshops.refund_eligibility(registration.id)
+
+      assert {:error, :already_refunded} =
+               Workshops.process_refund(workshop.id, registration.id, "Again", coordinator)
     end
 
     test "the requested Refund returns the list_workshop_refunds projection" do
@@ -405,6 +460,23 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
   end
 
   # ── Helpers ──────────────────────────────────────────────────────────
+
+  # A BEFORE INSERT trigger that fails every insert on `table` as a unique
+  # violation of `constraint`: a deterministic stand-in for a row committed by
+  # a writer outside the lock. Created inside the sandbox, so it rolls back.
+  defp force_unique_violation!(table, constraint) do
+    Repo.query!("""
+    CREATE FUNCTION ale340_force_unique_violation() RETURNS trigger AS $$
+    BEGIN
+      RAISE unique_violation USING CONSTRAINT = '#{constraint}';
+    END $$ LANGUAGE plpgsql
+    """)
+
+    Repo.query!("""
+    CREATE TRIGGER ale340_force_unique_violation BEFORE INSERT ON #{table}
+    FOR EACH ROW EXECUTE FUNCTION ale340_force_unique_violation()
+    """)
+  end
 
   defp start_member_payment!(workshop, member_id, overrides \\ %{}) do
     {:ok, %{payment_intent_id: pi}} =

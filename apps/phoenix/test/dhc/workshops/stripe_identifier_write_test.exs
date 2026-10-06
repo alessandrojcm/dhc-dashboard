@@ -367,15 +367,8 @@ defmodule Dhc.Workshops.StripeIdentifierWriteTest do
           amount_paid: 1000
         )
 
-      # The cancellation flow skips the paid-deadline eligibility gate.
       assert {:ok, refund} =
-               Workshops.process_refund(
-                 workshop.id,
-                 registration.id,
-                 "Offline",
-                 principal_id,
-                 skip_eligibility: true
-               )
+               Workshops.process_refund(workshop.id, registration.id, "Offline", principal_id)
 
       assert refund.status == "pending"
 

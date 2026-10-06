@@ -110,7 +110,8 @@ defmodule Dhc.Workshops.PaymentLockTrace do
   @doc """
   Makes the calling process stop once, right after its first query matching
   `predicate`, and send `{:paused, pid}` to `notify`. It continues when it
-  receives `:resume`.
+  receives `:resume`. The handler is detached after that pause, or when the
+  calling process exits.
   """
   def pause_after(notify, predicate) do
     id = {__MODULE__, :pause, make_ref()}
@@ -122,6 +123,15 @@ defmodule Dhc.Workshops.PaymentLockTrace do
         predicate: predicate,
         id: id
       })
+
+    # Detaches after the one pause, or when the paused process exits without
+    # ever reaching a matching query.
+    owner = self()
+
+    spawn(fn ->
+      ref = Process.monitor(owner)
+      receive do: ({:DOWN, ^ref, :process, _pid, _reason} -> :telemetry.detach(id))
+    end)
 
     id
   end
@@ -137,6 +147,8 @@ defmodule Dhc.Workshops.PaymentLockTrace do
       after
         10_000 -> :ok
       end
+
+      :telemetry.detach(config.id)
     end
   end
 

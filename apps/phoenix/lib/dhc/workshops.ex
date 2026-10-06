@@ -519,23 +519,20 @@ defmodule Dhc.Workshops do
   @doc """
   Records a durable Refund obligation for a registration and enqueues its
   submission; the Registration becomes `refunded`.
-
-  `skip_eligibility: true` applies the club-cancellation rule (no deadline or
-  paid-status checks), as Workshop cancellation does.
   """
-  @spec process_refund(binary(), binary(), String.t(), binary(), keyword()) ::
+  @spec process_refund(binary(), binary(), String.t(), binary()) ::
           {:ok, Refund.t()} | {:error, atom()}
-  def process_refund(workshop_id, registration_id, reason, requested_by, opts \\ [])
+  def process_refund(workshop_id, registration_id, reason, requested_by)
       when is_binary(workshop_id) and is_binary(registration_id) and is_binary(reason) and
              is_binary(requested_by) do
     with {:ok, %{refund: refund}} <-
-           request_refund(workshop_id, registration_id, reason, requested_by, opts) do
+           request_refund(workshop_id, registration_id, reason, requested_by) do
       {:ok, refund}
     end
   end
 
   @doc """
-  Same command as `process_refund/5`, returning the Refund in the
+  Same command as `process_refund/4`, returning the Refund in the
   `list_workshop_refunds/1` projection so callers need no second read.
   """
   @spec refund_registration(binary(), binary(), String.t(), binary()) ::
@@ -544,15 +541,15 @@ defmodule Dhc.Workshops do
       when is_binary(workshop_id) and is_binary(registration_id) and is_binary(reason) and
              is_binary(requested_by) do
     with {:ok, %{view: view}} <-
-           request_refund(workshop_id, registration_id, reason, requested_by, []) do
+           request_refund(workshop_id, registration_id, reason, requested_by) do
       {:ok, view}
     end
   end
 
-  defp request_refund(workshop_id, registration_id, reason, requested_by, opts) do
+  defp request_refund(workshop_id, registration_id, reason, requested_by) do
     PaymentCommands.execute(
       {:coordinator, requested_by},
-      {:request_refund, workshop_id, registration_id, reason, opts}
+      {:request_refund, workshop_id, registration_id, reason}
     )
   end
 
@@ -562,12 +559,11 @@ defmodule Dhc.Workshops do
   Unknown refunds are acknowledged; a Refund in a terminal status never
   changes, so late or replayed events are ignored.
   """
-  @spec apply_stripe_refund_event(map()) :: :ok | {:error, :invalid_refund_object}
+  @spec apply_stripe_refund_event(map()) ::
+          :ok | {:error, :invalid_refund_object | :retry_exhausted | atom()}
   def apply_stripe_refund_event(object) when is_map(object) do
-    case PaymentCommands.execute(:system, {:apply_refund_update, object}) do
-      {:ok, _outcome} -> :ok
-      {:error, :invalid_refund_object} -> {:error, :invalid_refund_object}
-      {:error, reason} -> {:error, reason}
+    with {:ok, _outcome} <- PaymentCommands.execute(:system, {:apply_refund_update, object}) do
+      :ok
     end
   end
 
@@ -849,9 +845,14 @@ defmodule Dhc.Workshops do
   @spec cancel_workshop(binary(), binary() | nil) ::
           {:ok, Workshop.t()} | {:error, :not_found | :not_cancellable | :already_requested}
   def cancel_workshop(workshop_id, requested_by \\ nil) when is_binary(workshop_id) do
+    # Without a requesting coordinator nobody is recorded as asking for the
+    # Refunds, so the system cancels and leaves Registrations as they are.
+    {actor, registrations} =
+      if requested_by, do: {{:coordinator, requested_by}, :refund_owed}, else: {:system, :keep}
+
     PaymentCommands.execute(
-      {:coordinator, requested_by},
-      {:cancel_workshop, workshop_id, &mark_workshop_cancelled/1}
+      actor,
+      {:cancel_workshop, workshop_id, &mark_workshop_cancelled/1, registrations}
     )
   end
 

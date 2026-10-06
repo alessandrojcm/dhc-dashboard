@@ -33,8 +33,6 @@ defmodule Dhc.Workshops.RefundPolicy do
           | :deadline_passed
           | :already_requested
 
-  @active_statuses ~w(pending confirmed)
-
   @doc """
   Whether a member or coordinator may request a Refund for the Registration.
 
@@ -65,18 +63,14 @@ defmodule Dhc.Workshops.RefundPolicy do
   def cancellation_refund(%{refund_requested?: true}), do: {:error, :already_requested}
   def cancellation_refund(%{registration: %Registration{}}), do: :ok
 
-  @doc "Whether Workshop cancellation owes this Registration a Refund."
+  @doc """
+  Whether Workshop cancellation owes this Registration a Refund: it still
+  holds a place and was paid for. The cancellation command applies it to the
+  Workshop's Registrations under the lock; there is no SQL copy of the rule.
+  """
   @spec owed_on_cancellation?(Registration.t()) :: boolean()
   def owed_on_cancellation?(%Registration{} = registration),
-    do: active?(registration) and paid?(registration)
-
-  @doc "Whether the Registration still holds a place (pending or confirmed)."
-  @spec active?(Registration.t()) :: boolean()
-  def active?(%Registration{status: status}), do: status in @active_statuses
-
-  @doc "The Registration statuses that hold a place."
-  @spec active_statuses() :: [String.t()]
-  def active_statuses, do: @active_statuses
+    do: Registration.active?(registration) and paid?(registration)
 
   @doc "Whether the member's own refund window has closed."
   @spec deadline_passed?(Workshop.t(), DateTime.t()) :: boolean()

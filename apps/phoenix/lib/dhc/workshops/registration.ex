@@ -56,6 +56,34 @@ defmodule Dhc.Workshops.Registration do
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end
 
+  # Registration statuses that hold a place: they count toward capacity and
+  # toward "already registered" (ALE-340: the one definition).
+  @active_statuses ~w(pending confirmed)
+
+  # ALE-181: attendee-snapshot sentinel for a participant with no usable name.
+  @unknown_member "[unknown member]"
+
+  @doc "The Registration statuses that hold a place (pending, confirmed)."
+  @spec active_statuses() :: [String.t()]
+  def active_statuses, do: @active_statuses
+
+  @doc "Whether the Registration holds a place."
+  @spec active?(t()) :: boolean()
+  def active?(%__MODULE__{status: status}), do: status in @active_statuses
+
+  @doc "The attendee-snapshot sentinel for a participant with no usable name."
+  @spec unknown_member() :: String.t()
+  def unknown_member, do: @unknown_member
+
+  @doc "The attendee-snapshot display name: first and last name, or the sentinel."
+  @spec display_name(String.t() | nil, String.t() | nil) :: String.t()
+  def display_name(first_name, last_name) do
+    case String.trim("#{first_name || ""} #{last_name || ""}") do
+      "" -> @unknown_member
+      name -> name
+    end
+  end
+
   @doc false
   def fixture_changeset(registration, attrs) do
     registration
