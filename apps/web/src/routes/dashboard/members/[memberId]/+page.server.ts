@@ -77,6 +77,7 @@ export const load: PageServerLoad = async (event) => {
 			},
 			canUpdate,
 			canReactivate,
+			canEditRoles: access.can("members.roles.edit"),
 		};
 	} catch (e) {
 		Sentry.captureMessage(`Error loading member data: ${e}`, "error");

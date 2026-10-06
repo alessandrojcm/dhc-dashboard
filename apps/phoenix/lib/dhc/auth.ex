@@ -648,7 +648,7 @@ defmodule Dhc.Auth do
     |> case do
       {:ok, principal_ids} ->
         if not is_active do
-          Enum.each(principal_ids, &DhcWeb.UserSocket.disconnect/1)
+          Enum.each(principal_ids, &disconnect_sockets/1)
         end
 
         :ok
@@ -659,6 +659,14 @@ defmodule Dhc.Auth do
   end
 
   ## Socket tokens (ALE-164)
+
+  @doc "The principal-scoped socket topic used for revocation."
+  def socket_topic(principal_id), do: "users_socket:#{principal_id}"
+
+  @doc "Disconnects established sockets after authentication changes commit."
+  def disconnect_sockets(principal_id) do
+    DhcWeb.Endpoint.broadcast(socket_topic(principal_id), "disconnect", %{})
+  end
 
   @doc """
   Creates a short-lived socket token for the principal and returns the raw
@@ -677,6 +685,21 @@ defmodule Dhc.Auth do
     {:ok, token}
   end
 
+  @doc "Exchanges a still-valid session for a socket token under the access lock."
+  def create_socket_token(%Principal{} = principal, session_token) do
+    Repo.transaction(fn ->
+      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+
+      case get_principal_by_session_token(session_token) do
+        {:ok, %{id: id}} when id == principal.id -> :ok
+        _ -> Repo.rollback(:invalid)
+      end
+
+      {:ok, token} = create_socket_token(principal)
+      token
+    end)
+  end
+
   @doc """
   Looks up the Principal for a socket token.
 
@@ -690,6 +713,31 @@ defmodule Dhc.Auth do
     case Repo.one(query) do
       {principal, _row} -> {:ok, principal}
       nil -> {:error, :invalid}
+    end
+  end
+
+  @doc "Socket authentication projection and its non-secret credential reference."
+  def get_socket_projection(token) do
+    {:ok, query} = PrincipalToken.verify_socket_token_query(token)
+    socket_projection(query)
+  end
+
+  @doc "Rechecks socket authentication after the transport subscribes to revocations."
+  def get_socket_projection_by_reference(reference) do
+    {:ok, query} = PrincipalToken.verify_socket_reference_query(reference)
+    socket_projection(query)
+  end
+
+  defp socket_projection(query) do
+    case Repo.one(query) do
+      {principal, row} ->
+        with {:ok, projection} <- load_session_principal(principal),
+             :ok <- Capabilities.authorize(projection, nil) do
+          {:ok, projection, row.id}
+        end
+
+      nil ->
+        {:error, :invalid}
     end
   end
 

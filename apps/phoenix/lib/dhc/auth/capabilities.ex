@@ -91,6 +91,7 @@ defmodule Dhc.Auth.Capabilities do
     "members.invite": %{roles: @officers},
     "members.profile.read": %{roles: @member_administrators, owner: true},
     "members.profile.update": %{roles: @member_administrators, owner: true},
+    "members.roles.edit": %{roles: ~w(president admin)},
     "members.settings.edit": %{roles: @officers},
     "membership.reactivate": %{roles: @billing_authority},
     "training_announcements.manage": %{roles: @training_announcement_managers},

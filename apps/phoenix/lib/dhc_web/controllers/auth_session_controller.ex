@@ -342,11 +342,15 @@ defmodule DhcWeb.AuthSessionController do
   def socket_token(conn, _params) do
     principal = conn.assigns.current_session.principal
 
-    {:ok, token} = Auth.create_socket_token(principal)
+    case Auth.create_socket_token(principal, conn.assigns.current_session_token) do
+      {:ok, token} ->
+        conn
+        |> put_status(:ok)
+        |> json(%{data: %{socketToken: Base.url_encode64(token, padding: false)}})
 
-    conn
-    |> put_status(:ok)
-    |> json(%{data: %{socketToken: Base.url_encode64(token, padding: false)}})
+      {:error, :invalid} ->
+        {:error, :unauthorized}
+    end
   end
 
   # ── DELETE /api/auth/session ─────────────────────────────────────────

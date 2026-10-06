@@ -192,6 +192,19 @@ defmodule Dhc.Auth.PrincipalToken do
     {:ok, query}
   end
 
+  @doc "Revalidates the non-secret socket credential row after transport subscription."
+  def verify_socket_reference_query(reference) do
+    query =
+      from(t in PrincipalToken,
+        join: p in assoc(t, :principal),
+        where: t.id == ^reference and t.context == "socket",
+        where: t.created_at > ago(^@socket_validity_in_seconds, "second"),
+        select: {p, t}
+      )
+
+    {:ok, query}
+  end
+
   @doc """
   Builds a magic-link token: returns the URL-safe encoded token (to email) and
   the DB row (stores the hash). `sent_to` is the email the link was sent to;

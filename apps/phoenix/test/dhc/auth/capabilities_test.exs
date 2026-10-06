@@ -30,6 +30,7 @@ defmodule Dhc.Auth.CapabilitiesTest do
     "members.invite": {@officers, false},
     "members.profile.read": {@member_administrators, true},
     "members.profile.update": {@member_administrators, true},
+    "members.roles.edit": {~w(admin president), false},
     "members.settings.edit": {@officers, false},
     "membership.reactivate": {~w(admin president treasurer committee_coordinator), false},
     "training_announcements.manage":
