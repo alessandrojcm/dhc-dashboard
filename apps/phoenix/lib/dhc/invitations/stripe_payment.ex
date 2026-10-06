@@ -422,7 +422,7 @@ defmodule Dhc.Invitations.StripePayment do
       :succeeded ->
         :ok
 
-      :requires_confirmation ->
+      {:requires_confirmation, _id} ->
         :confirm
 
       {:processing, id} ->

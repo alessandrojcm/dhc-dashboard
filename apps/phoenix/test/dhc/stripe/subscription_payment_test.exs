@@ -79,8 +79,8 @@ defmodule Dhc.Stripe.SubscriptionPaymentTest do
       assert SubscriptionPayment.classify_payment_intent(%{"status" => "succeeded"}) ==
                :succeeded
 
-      assert SubscriptionPayment.classify_payment_intent(%{"status" => "requires_confirmation"}) ==
-               :requires_confirmation
+      assert SubscriptionPayment.classify_payment_intent(pi("requires_confirmation")) ==
+               {:requires_confirmation, "pi_1"}
 
       assert SubscriptionPayment.classify_payment_intent(pi("processing")) ==
                {:processing, "pi_1"}
@@ -105,6 +105,10 @@ defmodule Dhc.Stripe.SubscriptionPaymentTest do
 
     test "treats anything that is not a PaymentIntent with an id and status as invalid" do
       assert SubscriptionPayment.classify_payment_intent(%{"status" => "processing"}) == :invalid
+
+      assert SubscriptionPayment.classify_payment_intent(%{"status" => "requires_confirmation"}) ==
+               :invalid
+
       assert SubscriptionPayment.classify_payment_intent(%{"id" => "pi_1"}) == :invalid
       assert SubscriptionPayment.classify_payment_intent(nil) == :invalid
     end

@@ -17,8 +17,8 @@ defmodule Dhc.Stripe.SubscriptionPayment do
   A PaymentIntent's state, as either caller needs it:
 
     * `:succeeded` — paid.
-    * `:requires_confirmation` — created but never confirmed; the caller may
-      confirm it.
+    * `{:requires_confirmation, id}` — created but never confirmed; the
+      caller may confirm it.
     * `{:processing, id}` — submitted, settling asynchronously (SEPA).
     * `{:requires_action, id, next_action_type}` — the customer must act.
     * `{:failed, id, status}` — `requires_payment_method`,
@@ -28,7 +28,7 @@ defmodule Dhc.Stripe.SubscriptionPayment do
   """
   @type payment_intent_state ::
           :succeeded
-          | :requires_confirmation
+          | {:requires_confirmation, String.t()}
           | {:processing, String.t()}
           | {:requires_action, String.t(), String.t() | nil}
           | {:failed, String.t(), String.t()}
@@ -100,7 +100,10 @@ defmodule Dhc.Stripe.SubscriptionPayment do
   @doc "Classifies a PaymentIntent into a `t:payment_intent_state/0`."
   @spec classify_payment_intent(term()) :: payment_intent_state()
   def classify_payment_intent(%{"status" => "succeeded"}), do: :succeeded
-  def classify_payment_intent(%{"status" => "requires_confirmation"}), do: :requires_confirmation
+
+  def classify_payment_intent(%{"id" => id, "status" => "requires_confirmation"})
+      when is_binary(id),
+      do: {:requires_confirmation, id}
 
   def classify_payment_intent(%{"id" => id, "status" => "processing"}) when is_binary(id),
     do: {:processing, id}

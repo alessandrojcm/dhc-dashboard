@@ -657,8 +657,8 @@ defmodule Dhc.Membership.Reactivation do
       {:unrecognized, id, status} ->
         pending(id, "terminal", status)
 
-      :requires_confirmation ->
-        pending(Map.get(payment_intent, "id"), "terminal", "requires_confirmation")
+      {:requires_confirmation, id} ->
+        pending(id, "terminal", "requires_confirmation")
 
       :invalid ->
         {:error, :invalid_payment_intent_response}
