@@ -1,8 +1,11 @@
 defmodule DhcWeb.Router do
   use DhcWeb, :router
 
+  # `RequireJsonBody` rejects non-JSON bodies on unsafe methods (415) so a
+  # same-site HTML form cannot forge a cookie-authenticated command.
   pipeline :api do
     plug(:accepts, ["json"])
+    plug(DhcWeb.Plugs.RequireJsonBody)
   end
 
   # Every gated pipeline is named after the one capability it requires.
@@ -118,6 +121,7 @@ defmodule DhcWeb.Router do
   # the controller returns for a known/unknown address.
   pipeline :magic_link_request_api do
     plug(:accepts, ["json"])
+    plug(DhcWeb.Plugs.RequireJsonBody)
     plug(DhcWeb.Plugs.MagicLinkRateLimit)
   end
 

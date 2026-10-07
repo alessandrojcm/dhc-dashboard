@@ -756,7 +756,7 @@ defmodule DhcWeb.MembersControllerTest do
         assert params["customer"] == "cus_portal"
 
         assert params["return_url"] ==
-                 "https://dashboard.example.com/dashboard/members/#{member_id}"
+                 "#{Application.fetch_env!(:dhc, :app_url)}/dashboard/members/#{member_id}"
 
         stripe_json(conn, %{
           "id" => "bps_123",
@@ -769,7 +769,8 @@ defmodule DhcWeb.MembersControllerTest do
         conn
         |> put_req_header("authorization", "Bearer self-token")
         |> post("/api/members/#{member_id}/billing-portal", %{
-          "returnUrl" => "https://dashboard.example.com/dashboard/members/#{member_id}"
+          "returnUrl" =>
+            "#{Application.fetch_env!(:dhc, :app_url)}/dashboard/members/#{member_id}"
         })
 
       assert %{"data" => %{"url" => "https://billing.stripe.com/session/test"}} =
@@ -787,6 +788,38 @@ defmodule DhcWeb.MembersControllerTest do
 
       assert %{"errors" => %{"detail" => "Invalid billing portal return URL"}} =
                json_response(conn, 422)
+    end
+
+    test "rejects billing portal return URLs off the dashboard origin", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_portal")
+
+      app_uri = URI.parse(Application.fetch_env!(:dhc, :app_url))
+      downgraded_scheme = if app_uri.scheme == "https", do: "http", else: "https"
+
+      rejected = [
+        "https://evil.example.com/dashboard",
+        "#{app_uri.scheme}://#{app_uri.host}.evil.com:#{app_uri.port}/dashboard",
+        "https://dashboard.dublinhemaclub.com.evil.com/dashboard",
+        "#{downgraded_scheme}://#{app_uri.host}:#{app_uri.port}/dashboard",
+        "#{app_uri.scheme}://#{app_uri.host}:#{app_uri.port + 1}/dashboard",
+        "#{app_uri.scheme}://#{app_uri.host}:#{app_uri.port}@evil.com/dashboard",
+        "https://app@evil.com/dashboard",
+        "#{app_uri.scheme}://user@#{app_uri.host}:#{app_uri.port}/dashboard",
+        "javascript:alert(1)",
+        "//evil.com/dashboard"
+      ]
+
+      for return_url <- rejected do
+        response =
+          conn
+          |> put_req_header("authorization", "Bearer self-token")
+          |> post("/api/members/#{member_id}/billing-portal", %{"returnUrl" => return_url})
+
+        assert %{"errors" => %{"detail" => "Invalid billing portal return URL"}} =
+                 json_response(response, 422),
+               "expected #{return_url} to be rejected"
+      end
     end
 
     test "rejects out-of-range pause dates", %{conn: conn} do
