@@ -88,6 +88,10 @@ config :dhc,
        :invitation_acceptance_subject_fingerprint_secret,
        "acceptance-subject-fingerprint-test"
 
+# Authenticates the SvelteKit server's `x-dhc-client-ip` header
+# (DhcWeb.Plugs.ClientIp). Fixed so tests can present the matching value.
+config :dhc, :trusted_forwarding_secret, "trusted-forwarding-test-secret"
+
 config :dhc, :supabase_url, "https://supabase.example.com"
 config :dhc, :supabase_service_role_key, "test-service-role-key"
 app_url = System.get_env("APP_URL", "http://localhost:5173")

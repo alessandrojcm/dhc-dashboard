@@ -89,6 +89,18 @@ if config_env() != :test and length(web_push_vapid) == 3 do
   config :web_push_ex, :vapid, web_push_vapid
 end
 
+# Shared secret that authenticates the SvelteKit server's forwarded
+# `x-dhc-client-ip` header (DhcWeb.Plugs.ClientIp). Optional in every
+# environment: unset or blank means the header is ignored and client IPs come
+# from `fly-client-ip` / `remote_ip`. The web app must hold the same value.
+# Tests use the fixed value in config/test.exs instead.
+trusted_forwarding_secret = System.get_env("TRUSTED_FORWARDING_SECRET")
+
+if config_env() != :test and is_binary(trusted_forwarding_secret) and
+     String.trim(trusted_forwarding_secret) != "" do
+  config :dhc, :trusted_forwarding_secret, trusted_forwarding_secret
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

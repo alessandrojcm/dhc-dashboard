@@ -8,7 +8,10 @@ defmodule DhcWeb.Plugs.MagicLinkRateLimit do
     * responses remain generic — a limited, unknown, or inactive address all
       return the same 200 `{"data":{"sent":true}}` shape (non-enumerating)
 
-  The plug reads `params["email"]` (normalized) and the request IP. It
+  The plug reads `params["email"]` (normalized) and the client IP resolved
+  by `DhcWeb.Plugs.ClientIp` (the SvelteKit server forwards the browser's
+  address on server-side calls; `conn.remote_ip` alone would be the
+  SvelteKit egress address and put the whole club in one IP window). It
   increments two counters (email-window and ip-window) and refuses with 200
   + the generic body when either limit is exceeded — never 429, which would
   distinguish "over the limit" from "no Principal". Hitting the IP limit
@@ -37,6 +40,7 @@ defmodule DhcWeb.Plugs.MagicLinkRateLimit do
   import Phoenix.Controller, only: [json: 2]
 
   alias Dhc.Repo
+  alias DhcWeb.Plugs.ClientIp
 
   @email_window_seconds 15 * 60
   @email_max_per_window 3
@@ -49,7 +53,7 @@ defmodule DhcWeb.Plugs.MagicLinkRateLimit do
   @impl Plug
   def call(conn, _opts) do
     with {:ok, email_key} <- email_window_key(conn),
-         {:ok, ip_key} <- ip_window_key(conn),
+         ip_key = ip_window_key(conn),
          :ok <- check_window(ip_key, @ip_window_seconds, @ip_max_per_window, :ip),
          :ok <- check_window(email_key, @email_window_seconds, @email_max_per_window, :email) do
       conn
@@ -89,16 +93,7 @@ defmodule DhcWeb.Plugs.MagicLinkRateLimit do
   end
 
   defp ip_window_key(conn) do
-    case remote_ip(conn) do
-      nil -> {:error, :no_email}
-      ip -> {:ok, "magic_link:ip:#{inet_to_string(ip)}"}
-    end
-  end
-
-  defp remote_ip(%Plug.Conn{remote_ip: ip}), do: ip
-
-  defp inet_to_string(ip) do
-    :inet.ntoa(ip) |> to_string()
+    "magic_link:ip:#{ClientIp.to_string(conn)}"
   end
 
   defp check_window(key, window_seconds, max, limit) do

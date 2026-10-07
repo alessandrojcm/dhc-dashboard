@@ -53,6 +53,45 @@ defmodule DhcWeb.Plugs.MagicLinkRateLimitTest do
     end
   end
 
+  describe "client IP from the SvelteKit server (trusted forwarding)" do
+    # Every SSR call shares the SvelteKit egress address as remote_ip; the
+    # forwarded browser address must key the IP window instead.
+    @proxy_ip "192.0.2.50"
+    @secret "trusted-forwarding-test-secret"
+
+    test "two forwarded client IPs behind one proxy have independent budgets" do
+      for i <- 1..10 do
+        assert forwarded_call("fwd-a-#{i}@example.com", "198.51.100.1", @secret) == :ok
+      end
+
+      assert forwarded_call("fwd-a-11@example.com", "198.51.100.1", @secret) ==
+               {:limited, :ip}
+
+      assert forwarded_call("fwd-b@example.com", "198.51.100.2", @secret) == :ok
+    end
+
+    test "a spoofed x-dhc-client-ip with a wrong or missing secret keys on remote_ip" do
+      proxy = "192.0.2.51"
+
+      for i <- 1..5 do
+        assert forwarded_call("spoof-a-#{i}@example.com", "198.51.100.#{i}", "wrong", proxy) ==
+                 :ok
+
+        assert forwarded_call("spoof-b-#{i}@example.com", "198.51.100.#{i}", nil, proxy) ==
+                 :ok
+      end
+
+      assert forwarded_call("spoof-c@example.com", "198.51.100.99", "wrong", proxy) ==
+               {:limited, :ip}
+
+      refute Repo.exists?(
+               from(w in "auth_rate_limit_windows",
+                 where: like(w.key, "magic_link:ip:198.51.100.%")
+               )
+             )
+    end
+  end
+
   describe "non-enumerating on missing email" do
     test "short-circuits with the generic 200 body and does not consume the IP budget" do
       conn = conn_with_ip(@ip) |> plug_call(%{})
@@ -77,6 +116,25 @@ defmodule DhcWeb.Plugs.MagicLinkRateLimitTest do
       conn.status == 200 and ip_limited?(ip) -> {:limited, :ip}
       conn.status == 200 and email_limited?(email) -> {:limited, :email}
       true -> :ok
+    end
+  end
+
+  defp forwarded_call(email, client_ip, secret, proxy_ip \\ @proxy_ip) do
+    conn =
+      proxy_ip
+      |> conn_with_ip()
+      |> Plug.Conn.put_req_header("x-dhc-client-ip", client_ip)
+
+    conn =
+      if secret, do: Plug.Conn.put_req_header(conn, "x-dhc-forwarding-secret", secret), else: conn
+
+    conn = plug_call(conn, %{"email" => email})
+    keyed_ip = if secret == @secret, do: client_ip, else: proxy_ip
+
+    cond do
+      not conn.halted -> :ok
+      conn.status == 200 and ip_limited?(keyed_ip) -> {:limited, :ip}
+      true -> :halted
     end
   end
 

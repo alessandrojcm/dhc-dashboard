@@ -32,3 +32,8 @@ OPENHOLIDAYS_API_URL = { provider = "1Password", value = "OPENHOLIDAYS_API_URL" 
 WEB_PUSH_VAPID_PRIVATE_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PRIVATE_KEY" }
 WEB_PUSH_VAPID_PUBLIC_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PUBLIC_KEY" }
 WEB_PUSH_VAPID_SUBJECT= { provider = "1Password", value = "WEB_PUSH_VAPID_SUBJECT" }
+# Authenticates the SvelteKit server's forwarded `x-dhc-client-ip` header.
+# Optional to Phoenix (unset = header ignored), but fly.toml sets
+# FNOX_IF_MISSING=error, so create the 1Password item before deploying.
+# Must equal the web app's TRUSTED_FORWARDING_SECRET (Cloudflare Worker secret).
+TRUSTED_FORWARDING_SECRET = { provider = "1Password", value = "TRUSTED_FORWARDING_SECRET" }
