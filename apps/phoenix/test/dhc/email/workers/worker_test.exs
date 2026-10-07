@@ -271,6 +271,102 @@ defmodule Dhc.Email.WorkerTest do
     end
   end
 
+  describe "sealed data variables" do
+    import ExUnit.CaptureLog
+
+    @login_link "https://app.example.com/auth/magic-link?token=raw-secret-token"
+
+    defp sealed_args(sealed) do
+      %{
+        "email" => "user@example.com",
+        "transactional_id" => "magicLink",
+        "data_variables" => %{},
+        "sealed_data_variables" => sealed
+      }
+    end
+
+    test "the sealed value does not contain the plaintext" do
+      sealed = Worker.seal_data_variables(%{"LOGIN_LINK" => @login_link})
+
+      refute sealed =~ "raw-secret-token"
+      refute sealed =~ "magic-link"
+    end
+
+    test "delivers the unsealed variables to the template" do
+      sealed = Worker.seal_data_variables(%{"LOGIN_LINK" => @login_link})
+
+      assert Worker.perform(job(sealed_args(sealed))) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.provider_options.template == %{
+                 id: "magic-link",
+                 variables: %{"LOGIN_LINK" => @login_link}
+               }
+      end)
+    end
+
+    test "cancels a tampered sealed value without sending or logging it" do
+      sealed = Worker.seal_data_variables(%{"LOGIN_LINK" => @login_link})
+      tampered = String.slice(sealed, 0..-6//1) <> "AAAAA"
+
+      log =
+        capture_log(fn ->
+          assert {:cancel, {:sealed_data_variables, :invalid}} =
+                   Worker.perform(job(sealed_args(tampered)))
+        end)
+
+      refute log =~ tampered
+      refute_email_sent()
+    end
+
+    test "cancels an expired sealed value" do
+      secret = DhcWeb.Endpoint.config(:secret_key_base)
+
+      expired =
+        Plug.Crypto.encrypt(
+          secret,
+          "dhc.email.worker sealed_data_variables v1",
+          %{"LOGIN_LINK" => @login_link},
+          signed_at: System.system_time(:second) - 16 * 60
+        )
+
+      capture_log(fn ->
+        assert {:cancel, {:sealed_data_variables, :expired}} =
+                 Worker.perform(job(sealed_args(expired)))
+      end)
+
+      refute_email_sent()
+    end
+  end
+
+  describe "redaction of data variable values" do
+    import ExUnit.CaptureLog
+
+    test "a validation failure reports variable keys to Sentry and logs, never values" do
+      Sentry.Test.setup_sentry()
+
+      args =
+        @valid_args
+        |> Map.put("transactional_id", "unknownTemplate")
+        |> put_in(["data_variables", "SECRET_LINK"], "https://example.com/secret-value")
+
+      log =
+        capture_log(fn ->
+          assert {:cancel, {:validation, _}} = Worker.perform(job(args))
+        end)
+
+      refute log =~ "secret-value"
+      refute log =~ "https://example.com/invite"
+
+      assert [%Sentry.Event{extra: extra}] = Sentry.Test.pop_sentry_reports()
+      refute inspect(extra) =~ "secret-value"
+      refute inspect(extra) =~ "https://example.com/invite"
+
+      assert Enum.sort(extra.args.data_variable_keys) ==
+               ["INVITATION_LINK", "INVITEE_FIRST_NAME", "SECRET_LINK"]
+    end
+  end
+
   defp stub_delivery(result) do
     Application.put_env(:dhc, Dhc.Email.Mailer,
       adapter: Dhc.Email.AdapterStub,

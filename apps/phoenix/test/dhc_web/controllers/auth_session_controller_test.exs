@@ -490,12 +490,13 @@ defmodule DhcWeb.AuthSessionControllerTest do
         )
 
       # The args carry the friendly name and the recipient email — no token
-      # in the args (the token is in the URL data variable). The data
-      # variable key matches the code-authored Resend template contract.
+      # and no login URL: the link is sealed (`sealed_data_variables`), and
+      # the data variable key inside it matches the Resend template contract.
       assert job.args["transactional_id"] == "magicLink"
       assert job.args["email"] == known.email
-      assert Map.has_key?(job.args["data_variables"], "LOGIN_LINK")
-      refute Map.has_key?(job.args["data_variables"], "url")
+      assert job.args["data_variables"] == %{}
+      assert is_binary(job.args["sealed_data_variables"])
+      refute inspect(job.args) =~ "magic-link?token="
     end
   end
 

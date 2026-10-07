@@ -128,6 +128,11 @@ defmodule Dhc.Waitlist do
   Phoenix: normalize email/pronouns, insert the waitlist row with initial status
   `waiting`, insert the inactive `user_profiles` row, and attach one guardian
   row for minors.
+
+  An email that is already on the waitlist returns `{:error, :duplicate_email}`
+  and changes nothing. The public HTTP edge must not disclose that outcome
+  (it answers like a new entry), so callers outside admin tooling must not
+  surface it either.
   """
   @spec create_entry(map()) :: {:ok, map()} | {:error, atom()} | {:error, Ecto.Changeset.t()}
   def create_entry(attrs) when is_map(attrs) do

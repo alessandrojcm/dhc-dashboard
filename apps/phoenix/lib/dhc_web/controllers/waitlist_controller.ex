@@ -57,14 +57,23 @@ defmodule DhcWeb.WaitlistController do
 
   @doc """
   POST /waitlist/entries
+
+  Public, so it must not be an email oracle: an email already on the waitlist
+  answers exactly like a new entry (same status, same body, no entry data).
   """
   def create(conn, params) do
-    with {:ok, entry} <- Waitlist.create_entry(params) do
-      conn
-      |> put_status(:created)
-      |> put_view(json: DhcWeb.WaitlistJSON)
-      |> render(:create, entry: entry)
+    case Waitlist.create_entry(params) do
+      {:ok, _entry} -> render_received(conn)
+      {:error, :duplicate_email} -> render_received(conn)
+      error -> error
     end
+  end
+
+  defp render_received(conn) do
+    conn
+    |> put_status(:accepted)
+    |> put_view(json: DhcWeb.WaitlistJSON)
+    |> render(:create)
   end
 
   @doc """

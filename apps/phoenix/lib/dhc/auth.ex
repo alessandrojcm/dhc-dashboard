@@ -381,10 +381,16 @@ defmodule Dhc.Auth do
     # Enqueue through the shared worker so magic-link delivery uses the same
     # Resend, Sentry, and retry path as invitation and workshop emails. The
     # variable name matches the code-authored Resend template contract.
+    #
+    # The URL carries the raw login token (only its hash is stored), so it is
+    # sealed: job args persist in `oban_jobs` and ride along on Sentry events,
+    # and a plaintext link there would be a live credential. Sealing keeps
+    # Oban's retries, which sending synchronously would give up.
     %{
       email: principal.email,
       transactional_id: "magicLink",
-      data_variables: %{"LOGIN_LINK" => url}
+      data_variables: %{},
+      sealed_data_variables: Dhc.Email.Worker.seal_data_variables(%{"LOGIN_LINK" => url})
     }
     |> Dhc.Email.Worker.new()
     |> Oban.insert()

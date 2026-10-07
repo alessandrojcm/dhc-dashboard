@@ -15,6 +15,7 @@ defmodule Dhc.Notifications.WebPush.HttpSender do
   @behaviour Dhc.Notifications.WebPush.Sender
 
   alias Dhc.Notifications.PushSubscription
+  alias Dhc.Notifications.WebPush.Endpoint
 
   # How long the push service may hold the message for an offline device.
   # Notifications are the durable record; a day-old push for a row the member
@@ -24,13 +25,20 @@ defmodule Dhc.Notifications.WebPush.HttpSender do
 
   @impl true
   def push(%PushSubscription{} = subscription, payload) when is_map(payload) do
-    {url, headers, body} = build(subscription, payload)
+    # Defence in depth: `WebPush.deliver/1` already skips (and deletes) rows
+    # whose endpoint is not a known push service, but this adapter must never
+    # POST to one whoever calls it.
+    if Endpoint.allowed?(subscription.endpoint) do
+      {url, headers, body} = build(subscription, payload)
 
-    [url: url, body: body, headers: headers]
-    |> Keyword.merge(req_options())
-    |> Req.new()
-    |> Req.post()
-    |> classify()
+      [url: url, body: body, headers: headers]
+      |> Keyword.merge(req_options())
+      |> Req.new()
+      |> Req.post()
+      |> classify()
+    else
+      {:error, :endpoint_not_allowed}
+    end
   end
 
   @doc false

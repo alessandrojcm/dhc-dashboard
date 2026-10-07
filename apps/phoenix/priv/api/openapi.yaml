@@ -1417,6 +1417,11 @@ paths:
         enforces waitlist-open server-side, normalizes email/pronouns, creates
         the waitlist row and inactive profile, and records guardian details for
         16–17 year old applicants.
+
+        The endpoint is public, so it must not reveal whether an email is
+        already on the waitlist: a submission for an email that already has an
+        entry answers exactly like a new one (`202` with the same neutral
+        body) and changes nothing.
       requestBody:
         required: true
         content:
@@ -1424,20 +1429,16 @@ paths:
             schema:
               $ref: "#/components/schemas/WaitlistEntryCreateRequest"
       responses:
-        "201":
-          description: Waitlist entry created
+        "202":
+          description: |
+            Submission received. Returned both when a new entry was created and
+            when the email is already on the waitlist.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/WaitlistEntryCreateResponse"
         "403":
           description: Waitlist is closed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-        "409":
-          description: Duplicate waitlist email
           content:
             application/json:
               schema:
@@ -7666,20 +7667,20 @@ components:
           description: Required for applicants under 18; ignored for adults.
     WaitlistEntryCreateResponse:
       type: object
+      description: |
+        Deliberately carries no entry data, so a new submission and one for an
+        email already on the waitlist are indistinguishable.
       required:
         - data
       properties:
         data:
           type: object
           required:
-            - id
-            - status
+            - received
           properties:
-            id:
-              type: string
-              format: uuid
-            status:
-              $ref: "#/components/schemas/WaitlistStatus"
+            received:
+              type: boolean
+              description: Always `true`.
     MembershipStatus:
       type: string
       enum:

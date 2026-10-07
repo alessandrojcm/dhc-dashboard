@@ -82,29 +82,42 @@ defmodule Dhc.Notifications.WebPushTest do
 
   describe "subscribe/2" do
     test "stores one subscription per browser installation bound to the principal" do
-      attrs = subscription_attrs("https://push.example/one")
+      attrs = subscription_attrs("https://fcm.googleapis.com/fcm/send/one")
 
       assert {:ok, %PushSubscription{} = subscription} = WebPush.subscribe(@member_id, attrs)
 
       assert subscription.principal_id == @member_id
-      assert subscription.endpoint == "https://push.example/one"
+      assert subscription.endpoint == "https://fcm.googleapis.com/fcm/send/one"
       assert subscription.user_agent == "Test UA"
       assert [%PushSubscription{id: id}] = Repo.all(PushSubscription)
       assert id == subscription.id
     end
 
     test "two browsers of the same member are two independent subscriptions" do
-      {:ok, one} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/one"))
-      {:ok, two} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/two"))
+      {:ok, one} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/one")
+        )
+
+      {:ok, two} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/two")
+        )
 
       assert one.id != two.id
       assert [_, _] = WebPush.list_for_principal(@member_id)
     end
 
     test "re-registering the same endpoint refreshes the keys instead of adding a row" do
-      {:ok, first} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/one"))
+      {:ok, first} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/one")
+        )
 
-      refreshed = subscription_attrs("https://push.example/one")
+      refreshed = subscription_attrs("https://fcm.googleapis.com/fcm/send/one")
       {:ok, second} = WebPush.subscribe(@member_id, refreshed)
 
       assert second.id == first.id
@@ -114,10 +127,17 @@ defmodule Dhc.Notifications.WebPushTest do
     end
 
     test "the same endpoint registered by another principal is reassigned to them" do
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/shared"))
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/shared")
+        )
 
       {:ok, reassigned} =
-        WebPush.subscribe(@other_member_id, subscription_attrs("https://push.example/shared"))
+        WebPush.subscribe(
+          @other_member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/shared")
+        )
 
       assert reassigned.principal_id == @other_member_id
       assert [%PushSubscription{principal_id: @other_member_id}] = Repo.all(PushSubscription)
@@ -126,7 +146,10 @@ defmodule Dhc.Notifications.WebPushTest do
 
     test "rejects a non-https endpoint and malformed keys" do
       assert {:error, %Ecto.Changeset{} = changeset} =
-               WebPush.subscribe(@member_id, subscription_attrs("http://push.example/plain"))
+               WebPush.subscribe(
+                 @member_id,
+                 subscription_attrs("http://fcm.googleapis.com/fcm/send/plain")
+               )
 
       assert %{endpoint: _} = errors_on(changeset)
 
@@ -134,7 +157,7 @@ defmodule Dhc.Notifications.WebPushTest do
                WebPush.subscribe(
                  @member_id,
                  %{
-                   subscription_attrs("https://push.example/one")
+                   subscription_attrs("https://fcm.googleapis.com/fcm/send/one")
                    | p256dh: "not-a-key",
                      auth: "x"
                  }
@@ -153,7 +176,18 @@ defmodule Dhc.Notifications.WebPushTest do
             "https://phoenix/push",
             "https://db.internal/push",
             "https://printer.local/push",
-            "https://user:pw@push.example/push"
+            "https://user:pw@fcm.googleapis.com/fcm/send/push",
+            # Public names that may resolve anywhere, including internal ranges.
+            "https://attacker.example/push",
+            "https://push.example.org/push",
+            # Suffix tricks: the allowlist matches on a label boundary only.
+            "https://evilfcm.googleapis.com/push",
+            "https://fcm.googleapis.com.evil.example/push",
+            "https://evilfcm.googleapis.com.attacker.com/push",
+            "https://storage.googleapis.com/push",
+            "https://notify.windows.com.evil.example/push",
+            "https://evilpush.apple.com/push",
+            "https://push.services.mozilla.com.evil.example/push"
           ] do
         assert {:error, %Ecto.Changeset{} = changeset} =
                  WebPush.subscribe(@member_id, subscription_attrs(endpoint)),
@@ -183,11 +217,26 @@ defmodule Dhc.Notifications.WebPushTest do
       assert Repo.all(PushSubscription) == []
     end
 
+    test "accepts the browser push services" do
+      for endpoint <- [
+            "https://fcm.googleapis.com/fcm/send/abc",
+            "https://android.googleapis.com/gcm/send/abc",
+            "https://updates.push.services.mozilla.com/wpush/v2/abc",
+            "https://wns2-par02p.notify.windows.com/w/?token=abc",
+            "https://web.push.apple.com/abc",
+            "https://FCM.GoogleAPIs.com/fcm/send/upper"
+          ] do
+        assert {:ok, %PushSubscription{}} =
+                 WebPush.subscribe(@member_id, subscription_attrs(endpoint)),
+               endpoint
+      end
+    end
+
     test "accepts a public push endpoint after stripping one trailing root dot" do
-      assert {:ok, %PushSubscription{endpoint: "https://push.example./one"}} =
+      assert {:ok, %PushSubscription{endpoint: "https://fcm.googleapis.com./fcm/send/one"}} =
                WebPush.subscribe(
                  @member_id,
-                 subscription_attrs("https://push.example./one")
+                 subscription_attrs("https://fcm.googleapis.com./fcm/send/one")
                )
     end
 
@@ -195,7 +244,7 @@ defmodule Dhc.Notifications.WebPushTest do
       assert {:error, %Ecto.Changeset{} = changeset} =
                WebPush.subscribe(
                  Ecto.UUID.generate(),
-                 subscription_attrs("https://push.example/x")
+                 subscription_attrs("https://fcm.googleapis.com/fcm/send/x")
                )
 
       assert %{principal_id: _} = errors_on(changeset)
@@ -204,34 +253,88 @@ defmodule Dhc.Notifications.WebPushTest do
 
   describe "unsubscribe/2" do
     test "removes the caller's subscription for that endpoint and is idempotent" do
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/one"))
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/one")
+        )
 
-      assert {:ok, :removed} = WebPush.unsubscribe(@member_id, "https://push.example/one")
-      assert {:ok, :not_found} = WebPush.unsubscribe(@member_id, "https://push.example/one")
+      assert {:ok, :removed} =
+               WebPush.unsubscribe(@member_id, "https://fcm.googleapis.com/fcm/send/one")
+
+      assert {:ok, :not_found} =
+               WebPush.unsubscribe(@member_id, "https://fcm.googleapis.com/fcm/send/one")
+
       assert Repo.all(PushSubscription) == []
     end
 
     test "cannot remove another principal's subscription" do
-      {:ok, _} = WebPush.subscribe(@other_member_id, subscription_attrs("https://push.example/o"))
+      {:ok, _} =
+        WebPush.subscribe(
+          @other_member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/o")
+        )
 
-      assert {:ok, :not_found} = WebPush.unsubscribe(@member_id, "https://push.example/o")
+      assert {:ok, :not_found} =
+               WebPush.unsubscribe(@member_id, "https://fcm.googleapis.com/fcm/send/o")
+
       assert [%PushSubscription{}] = Repo.all(PushSubscription)
     end
   end
 
   describe "deliver/1" do
+    test "never sends to a stored endpoint that is not a known push service, and deletes it" do
+      # A row stored before the allowlist existed: insert it past the changeset.
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/ok")
+        )
+
+      Repo.insert!(%PushSubscription{
+        principal_id: @member_id,
+        endpoint: "https://attacker.example/internal",
+        p256dh: subscription_attrs("x").p256dh,
+        auth: subscription_attrs("x").auth,
+        created_at: DateTime.utc_now(),
+        updated_at: DateTime.utc_now()
+      })
+
+      notification = insert_notification(@member_id, "Hello")
+
+      log =
+        capture_log(fn ->
+          assert %{sent: 1, removed: 1, failed: 0} = WebPush.deliver(notification)
+        end)
+
+      assert log =~ "not a known push service"
+      refute log =~ "attacker.example"
+      refute_received {:web_push_sent, "https://attacker.example/internal", _}
+
+      assert [%PushSubscription{endpoint: "https://fcm.googleapis.com/fcm/send/ok"}] =
+               Repo.all(PushSubscription)
+    end
+
     test "sends the notification body to every browser of the recipient and nobody else" do
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/a"))
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/b"))
-      {:ok, _} = WebPush.subscribe(@other_member_id, subscription_attrs("https://push.example/z"))
+      {:ok, _} =
+        WebPush.subscribe(@member_id, subscription_attrs("https://fcm.googleapis.com/fcm/send/a"))
+
+      {:ok, _} =
+        WebPush.subscribe(@member_id, subscription_attrs("https://fcm.googleapis.com/fcm/send/b"))
+
+      {:ok, _} =
+        WebPush.subscribe(
+          @other_member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/z")
+        )
 
       notification = insert_notification(@member_id, "Your loan was approved")
 
       assert %{sent: 2, removed: 0, failed: 0} = WebPush.deliver(notification)
 
-      assert_received {:web_push_sent, "https://push.example/a", payload}
-      assert_received {:web_push_sent, "https://push.example/b", ^payload}
-      refute_received {:web_push_sent, "https://push.example/z", _}
+      assert_received {:web_push_sent, "https://fcm.googleapis.com/fcm/send/a", payload}
+      assert_received {:web_push_sent, "https://fcm.googleapis.com/fcm/send/b", ^payload}
+      refute_received {:web_push_sent, "https://fcm.googleapis.com/fcm/send/z", _}
 
       assert payload.body == "Your loan was approved"
       assert payload.tag == notification.id
@@ -239,26 +342,39 @@ defmodule Dhc.Notifications.WebPushTest do
     end
 
     test "removes a subscription the push service reports gone and keeps the rest" do
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/live"))
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/dead"))
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/live")
+        )
+
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/dead")
+        )
 
       Application.put_env(:dhc, :web_push_test_outcomes, %{
-        "https://push.example/dead" => {:error, :gone}
+        "https://fcm.googleapis.com/fcm/send/dead" => {:error, :gone}
       })
 
       notification = insert_notification(@member_id, "Reminder")
 
       assert %{sent: 1, removed: 1, failed: 0} = WebPush.deliver(notification)
 
-      assert [%PushSubscription{endpoint: "https://push.example/live"}] =
+      assert [%PushSubscription{endpoint: "https://fcm.googleapis.com/fcm/send/live"}] =
                Repo.all(PushSubscription)
     end
 
     test "a transient failure is counted and logged, the subscription stays, the row stays" do
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/flaky"))
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/flaky")
+        )
 
       Application.put_env(:dhc, :web_push_test_outcomes, %{
-        "https://push.example/flaky" => {:error, {:push_service, 500}}
+        "https://fcm.googleapis.com/fcm/send/flaky" => {:error, {:push_service, 500}}
       })
 
       notification = insert_notification(@member_id, "Reminder")
@@ -274,10 +390,14 @@ defmodule Dhc.Notifications.WebPushTest do
     end
 
     test "a sender that raises is a failure, not a crash" do
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/boom"))
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/boom")
+        )
 
       Application.put_env(:dhc, :web_push_test_outcomes, %{
-        "https://push.example/boom" => :raise
+        "https://fcm.googleapis.com/fcm/send/boom" => :raise
       })
 
       notification = insert_notification(@member_id, "Reminder")
@@ -333,12 +453,15 @@ defmodule Dhc.Notifications.WebPushTest do
 
   describe "WebPushWorker.perform/1" do
     test "delivers to the recipient's browsers" do
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/a"))
+      {:ok, _} =
+        WebPush.subscribe(@member_id, subscription_attrs("https://fcm.googleapis.com/fcm/send/a"))
+
       notification = insert_notification(@member_id, "From the worker")
 
       assert :ok = perform_job(WebPushWorker, %{"notification_id" => notification.id})
 
-      assert_received {:web_push_sent, "https://push.example/a", %{body: "From the worker"}}
+      assert_received {:web_push_sent, "https://fcm.googleapis.com/fcm/send/a",
+                       %{body: "From the worker"}}
     end
 
     test "a notification that no longer exists cancels the job rather than retrying" do
@@ -347,11 +470,20 @@ defmodule Dhc.Notifications.WebPushTest do
     end
 
     test "a failed browser does not fail the job (no retry can re-push to the healthy ones)" do
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/ok"))
-      {:ok, _} = WebPush.subscribe(@member_id, subscription_attrs("https://push.example/bad"))
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/ok")
+        )
+
+      {:ok, _} =
+        WebPush.subscribe(
+          @member_id,
+          subscription_attrs("https://fcm.googleapis.com/fcm/send/bad")
+        )
 
       Application.put_env(:dhc, :web_push_test_outcomes, %{
-        "https://push.example/bad" => {:error, {:push_service, 503}}
+        "https://fcm.googleapis.com/fcm/send/bad" => {:error, {:push_service, 503}}
       })
 
       notification = insert_notification(@member_id, "Partial")
