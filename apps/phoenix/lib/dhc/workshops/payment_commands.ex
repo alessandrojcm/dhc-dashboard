@@ -117,6 +117,7 @@ defmodule Dhc.Workshops.PaymentCommands do
           | {:submit_refund, refund_id :: binary()}
           | {:apply_refund_update, stripe_refund :: map()}
           | :reconcile_refunds
+          | {:reconcile_refunds, limit :: pos_integer()}
 
   @member_commands ~w(start_member_payment complete_member_payment cancel_member_registration)a
   @external_commands ~w(start_external_payment complete_external_payment)a
@@ -128,6 +129,10 @@ defmodule Dhc.Workshops.PaymentCommands do
   @external_actor_type "external"
 
   @refund_peek_attempts 3
+
+  # Unresolved Refunds one reconciliation pass handles; the cron runs every
+  # 15 minutes, so this bounds Stripe calls per run, not throughput.
+  @reconcile_batch_size 100
 
   @attempt_transitions %{
     "pending" => ~w(paid policy_failed),
@@ -432,25 +437,28 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   defp run(:system, {:apply_refund_update, _object}), do: {:error, :invalid_refund_object}
 
-  defp run(:system, :reconcile_refunds) do
-    submissions =
-      from(r in Refund, where: r.status == "pending", select: r.id)
-      |> Repo.all()
-      |> Enum.map(&enqueue_submission/1)
+  defp run(:system, :reconcile_refunds),
+    do: run(:system, {:reconcile_refunds, @reconcile_batch_size})
 
-    provider_updates =
-      from(r in Refund,
-        where: r.status == "processing" and not is_nil(r.stripe_refund_id),
-        select: r.stripe_refund_id
-      )
-      |> Repo.all()
-      |> Enum.map(fn stripe_refund_id ->
-        with {:ok, object} <- stripe_adapter().retrieve_refund(stripe_refund_id) do
-          run(:system, {:apply_refund_update, object})
-        end
-      end)
-
-    case Enum.find(submissions ++ provider_updates, &match?({:error, _reason}, &1)) do
+  # One bounded pass: at most `limit` unresolved Refunds, least recently
+  # written first (`updated_at`, then `id`), so a run's Stripe calls are
+  # bounded and the order is deterministic. Whatever does not fit is picked up
+  # by the next cron tick. A Refund whose Stripe status did not change is not
+  # rewritten, so it keeps its place; that only starves newer Refunds if more
+  # than `limit` stay unresolved at once, far beyond the club's volume.
+  defp run(:system, {:reconcile_refunds, limit}) when is_integer(limit) and limit > 0 do
+    from(r in Refund,
+      where:
+        r.status == "pending" or
+          (r.status == "processing" and not is_nil(r.stripe_refund_id)),
+      order_by: [asc: r.updated_at, asc: r.id],
+      limit: ^limit,
+      select: {r.id, r.status, r.stripe_refund_id}
+    )
+    |> Repo.all()
+    |> Enum.map(&reconcile_refund/1)
+    |> Enum.find(&match?({:error, _reason}, &1))
+    |> case do
       nil -> {:ok, :reconciled}
       error -> error
     end
@@ -855,6 +863,15 @@ defmodule Dhc.Workshops.PaymentCommands do
         requested_at: now()
       })
     )
+  end
+
+  defp reconcile_refund({refund_id, "pending", _stripe_refund_id}),
+    do: enqueue_submission(refund_id)
+
+  defp reconcile_refund({_refund_id, "processing", stripe_refund_id}) do
+    with {:ok, object} <- stripe_adapter().retrieve_refund(stripe_refund_id) do
+      run(:system, {:apply_refund_update, object})
+    end
   end
 
   defp enqueue_submission(refund_id) do

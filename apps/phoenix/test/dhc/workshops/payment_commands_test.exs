@@ -22,6 +22,8 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
     Workshop
   }
 
+  alias Dhc.Workshops.Workers.{RefundReconciliationWorker, RefundWorker}
+
   setup do
     on_exit(StripeStub.install())
     :ok
@@ -331,6 +333,67 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
     end
   end
 
+  describe "refund reconciliation" do
+    setup do
+      %{workshop: WorkshopFixtures.workshop_fixture(status: "published")}
+    end
+
+    test "handles at most `limit` Refunds, least recently written first", %{workshop: workshop} do
+      newest = unresolved_refund(workshop, "processing", ~U[2026-10-03 00:00:00Z])
+      oldest = unresolved_refund(workshop, "processing", ~U[2026-10-01 00:00:00Z])
+      middle = unresolved_refund(workshop, "processing", ~U[2026-10-02 00:00:00Z])
+      record_retrievals()
+
+      assert {:ok, :reconciled} = PaymentCommands.execute(:system, {:reconcile_refunds, 2})
+
+      assert retrieved() == [oldest.stripe_refund_id, middle.stripe_refund_id]
+      assert %{status: "completed"} = Repo.get!(Refund, oldest.id)
+      assert %{status: "completed"} = Repo.get!(Refund, middle.id)
+      assert %{status: "processing"} = Repo.get!(Refund, newest.id)
+
+      # The next pass carries on with what did not fit.
+      assert {:ok, :reconciled} = PaymentCommands.execute(:system, :reconcile_refunds)
+      assert retrieved() == [newest.stripe_refund_id]
+      assert %{status: "completed"} = Repo.get!(Refund, newest.id)
+    end
+
+    test "orders ties by id and counts pending Refunds against the limit", %{workshop: workshop} do
+      at = ~U[2026-10-01 00:00:00Z]
+
+      [first, second, third] =
+        [
+          unresolved_refund(workshop, "pending", at),
+          unresolved_refund(workshop, "processing", at),
+          unresolved_refund(workshop, "processing", at)
+        ]
+        |> Enum.sort_by(& &1.id)
+
+      _later = unresolved_refund(workshop, "pending", ~U[2026-10-02 00:00:00Z])
+      record_retrievals()
+
+      assert {:ok, :reconciled} = PaymentCommands.execute(:system, {:reconcile_refunds, 3})
+
+      handled =
+        retrieved() ++
+          for(%{args: %{"refund_id" => id}} <- all_enqueued(worker: RefundWorker), do: id)
+
+      assert Enum.sort(handled) ==
+               Enum.sort(
+                 for refund <- [first, second, third],
+                     do:
+                       if(refund.status == "pending",
+                         do: refund.id,
+                         else: refund.stripe_refund_id
+                       )
+               )
+    end
+
+    test "the cron worker cannot overlap an incomplete pass" do
+      assert {:ok, %Oban.Job{conflict?: false}} = Oban.insert(RefundReconciliationWorker.new(%{}))
+      assert {:ok, %Oban.Job{conflict?: true}} = Oban.insert(RefundReconciliationWorker.new(%{}))
+    end
+  end
+
   describe "constraint translation" do
     test "every index persist/1 translates exists" do
       %{rows: rows} =
@@ -366,7 +429,7 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
       assert {:error, :already_requested} = Workshops.cancel_workshop(workshop.id, coordinator)
       assert %{status: "published"} = Repo.get!(Workshop, workshop.id)
       assert %{status: "confirmed"} = Repo.get!(Registration, registration.id)
-      assert all_enqueued(worker: Dhc.Workshops.Workers.RefundWorker) == []
+      assert all_enqueued(worker: RefundWorker) == []
     end
 
     test "a member Registration lost to the active-member index commits the paid attempt and reports it" do
@@ -654,6 +717,43 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
         :system,
         {:apply_refund_update, %{"id" => stripe_refund_id, "status" => status}}
       )
+
+  defp unresolved_refund(workshop, status, updated_at) do
+    %{auth_user_id: member_id} = WorkshopFixtures.member_fixture()
+
+    registration =
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: member_id,
+        status: "refunded",
+        amount_paid: 1800,
+        stripe_payment_intent_id: "pi_#{System.unique_integer([:positive])}"
+      )
+
+    stripe_refund_id = if status == "processing", do: "re_#{System.unique_integer([:positive])}"
+
+    registration
+    |> refund_in(status, stripe_refund_id: stripe_refund_id)
+    |> Ecto.Changeset.change(updated_at: updated_at)
+    |> Repo.update!()
+  end
+
+  defp record_retrievals do
+    test_pid = self()
+
+    StripeStub.put(:retrieve_refund, fn id ->
+      send(test_pid, {:retrieved_refund, id})
+      {:ok, %{"id" => id, "status" => "succeeded"}}
+    end)
+  end
+
+  defp retrieved(acc \\ []) do
+    receive do
+      {:retrieved_refund, id} -> retrieved([id | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
 
   defp refund_in(registration, status, attrs \\ []) do
     refund =

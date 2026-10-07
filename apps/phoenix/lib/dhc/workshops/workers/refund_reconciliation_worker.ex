@@ -4,10 +4,21 @@ defmodule Dhc.Workshops.Workers.RefundReconciliationWorker do
   Refunds and applies Stripe's current status to processing ones.
 
   A driver only (ALE-340): the `:reconcile_refunds` command of
-  `Dhc.Workshops.PaymentCommands` does the work.
+  `Dhc.Workshops.PaymentCommands` does the work, and bounds each pass to a
+  fixed number of Refunds, least recently written first. A backlog larger
+  than one pass is left to the next 15-minute tick rather than chained
+  follow-up jobs: the per-Refund work is idempotent, nothing is lost by
+  waiting, and one job at a time keeps overlap impossible.
+
+  `unique` over incomplete states (including `executing` and `retryable`)
+  means a cron tick never starts a second pass while one is still running or
+  waiting to retry.
   """
 
-  use Oban.Worker, queue: :stripe, max_attempts: 5, unique: [period: 300]
+  use Oban.Worker,
+    queue: :stripe,
+    max_attempts: 5,
+    unique: [period: :infinity, fields: [:worker], states: :incomplete]
 
   alias Dhc.Workshops.PaymentCommands
 
