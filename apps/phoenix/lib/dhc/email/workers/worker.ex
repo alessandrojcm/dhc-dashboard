@@ -16,6 +16,14 @@ defmodule Dhc.Email.Worker do
       Resend template alias mechanically in kebab-case.
     * `data_variables` — key-value pairs injected into the email template
       (values must be strings or numbers)
+    * `sealed_data_variables` (optional) — more template variables, encrypted
+      with `seal_data_variables/1`. Use it for any value that is a credential
+      (the magic-link `LOGIN_LINK` carries a live login token): job args are
+      stored in `oban_jobs` until pruned and attached to Sentry events by the
+      Oban integration, so a plaintext credential there would outlive the
+      email. The ciphertext is bound to `secret_key_base` and expires after
+      15 minutes; an expired or tampered value cancels the job.
+      Sealed variables override plain ones with the same key.
 
   ## Delivery
 
@@ -52,7 +60,8 @@ defmodule Dhc.Email.Worker do
 
   Every log line carries the Oban job context (`oban_job_id`, `oban_attempt`,
   `oban_queue`, `oban_worker`) plus `email` and `transactional_id`, so
-  failures can be correlated to a specific job.
+  failures can be correlated to a specific job. Data variable **values** are
+  never logged or sent to Sentry — only their keys.
   """
 
   use Oban.Worker, queue: :emails, max_attempts: 5
@@ -65,11 +74,27 @@ defmodule Dhc.Email.Worker do
   @transactional_ids ~w(inviteMember workshopAnnouncement workshopRegistration workshopRegistrationError magicLink)
   @idempotency_header "Idempotency-Key"
 
+  # The magic-link token behind the one sealed caller is valid for 15 minutes;
+  # a sealed value older than that could only deliver a dead link.
+  @sealed_max_age_seconds 15 * 60
+  @sealed_salt "dhc.email.worker sealed_data_variables v1"
+
+  @doc """
+  Encrypts template variables for the `sealed_data_variables` job arg.
+
+  Values must be strings or numbers, like `data_variables`.
+  """
+  @spec seal_data_variables(%{optional(String.t()) => String.t() | number()}) :: String.t()
+  def seal_data_variables(variables) when is_map(variables) do
+    Plug.Crypto.encrypt(secret_key_base(), @sealed_salt, variables)
+  end
+
   @impl Worker
   def perform(%Oban.Job{args: args} = job) do
     ctx = job_log_context(job)
 
     with :ok <- validate_args(args, ctx),
+         {:ok, args} <- unseal_data_variables(args, ctx),
          :ok <- deliver(args, job, ctx) do
       :ok
     else
@@ -88,6 +113,7 @@ defmodule Dhc.Email.Worker do
       |> validate_required(args, "transactional_id")
       |> validate_transactional_id(args)
       |> validate_data_variables(args)
+      |> validate_sealed_data_variables(args)
 
     case errors do
       [] ->
@@ -106,7 +132,7 @@ defmodule Dhc.Email.Worker do
         )
 
         capture_deterministic_failure(message, ctx,
-          args: args,
+          args: redact_args(args),
           validation_errors: errors
         )
 
@@ -155,6 +181,73 @@ defmodule Dhc.Email.Worker do
   end
 
   defp validate_data_variables(errors, _args), do: errors
+
+  defp validate_sealed_data_variables(errors, %{"sealed_data_variables" => sealed})
+       when not is_nil(sealed) and not is_binary(sealed),
+       do: ["sealed_data_variables must be a string" | errors]
+
+  defp validate_sealed_data_variables(errors, _args), do: errors
+
+  # -- Sealed data variables ---------------------------------------------------
+
+  defp unseal_data_variables(%{"sealed_data_variables" => sealed} = args, ctx)
+       when is_binary(sealed) do
+    case Plug.Crypto.decrypt(secret_key_base(), @sealed_salt, sealed,
+           max_age: @sealed_max_age_seconds
+         ) do
+      {:ok, variables} when is_map(variables) ->
+        if valid_variable_values?(variables) do
+          plain = Map.get(args, "data_variables", %{})
+          {:ok, Map.put(args, "data_variables", Map.merge(plain, variables))}
+        else
+          cancel_unsealable(args, :invalid_values, ctx)
+        end
+
+      {:ok, _other} ->
+        cancel_unsealable(args, :invalid_values, ctx)
+
+      {:error, reason} ->
+        cancel_unsealable(args, reason, ctx)
+    end
+  end
+
+  defp unseal_data_variables(args, _ctx), do: {:ok, args}
+
+  # An expired or tampered value cannot be fixed by retrying. The reason is
+  # `:expired`, `:invalid` or `:invalid_values`; never the ciphertext.
+  defp cancel_unsealable(args, reason, ctx) do
+    message = "Could not unseal email data variables (#{reason})"
+
+    Logger.error(
+      "[email-worker] #{message}",
+      Keyword.merge(ctx, email: args["email"], transactional_id: args["transactional_id"])
+    )
+
+    capture_deterministic_failure(message, ctx, args: redact_args(args))
+    {:cancel, {:sealed_data_variables, reason}}
+  end
+
+  defp valid_variable_values?(variables) do
+    Enum.all?(variables, fn
+      {key, value} when is_binary(key) -> is_binary(value) or is_number(value)
+      _ -> false
+    end)
+  end
+
+  # What may leave the worker about a job's args: the recipient and kind, plus
+  # the *names* of its template variables. Values (which can carry links,
+  # names, or credentials) and ciphertext never do.
+  defp redact_args(args) when is_map(args) do
+    %{
+      email: args["email"],
+      transactional_id: args["transactional_id"],
+      data_variable_keys: variable_keys(args["data_variables"]),
+      sealed_data_variables: Map.has_key?(args, "sealed_data_variables")
+    }
+  end
+
+  defp variable_keys(vars) when is_map(vars), do: vars |> Map.keys() |> Enum.map(&to_string/1)
+  defp variable_keys(_vars), do: []
 
   # -- Delivery ----------------------------------------------------------------
 
@@ -294,6 +387,8 @@ defmodule Dhc.Email.Worker do
   defp env do
     Application.get_env(:dhc, :environment, :development)
   end
+
+  defp secret_key_base, do: DhcWeb.Endpoint.config(:secret_key_base)
 
   defp template_alias(kind) do
     ~r/([a-z0-9])([A-Z])/

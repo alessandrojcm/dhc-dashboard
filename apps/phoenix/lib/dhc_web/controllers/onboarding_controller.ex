@@ -212,9 +212,5 @@ defmodule DhcWeb.OnboardingController do
   # `data.state` responses above are deliberately not problems (ADR 0024).
   defp error_detail(conn, status, detail), do: DhcWeb.Problem.send_detail(conn, status, detail)
 
-  defp client_ip(conn) do
-    conn.remote_ip
-    |> Tuple.to_list()
-    |> Enum.join(".")
-  end
+  defp client_ip(conn), do: DhcWeb.Plugs.ClientIp.to_string(conn)
 end

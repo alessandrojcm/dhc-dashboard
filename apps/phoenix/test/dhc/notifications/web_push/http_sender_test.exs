@@ -19,9 +19,9 @@ defmodule Dhc.Notifications.WebPush.HttpSenderTest do
 
   test "builds an aes128gcm-encrypted body with VAPID authorization and a TTL" do
     {url, headers, body} =
-      HttpSender.build(subscription("https://push.example.org/send/abc"), %{body: "Hi"})
+      HttpSender.build(subscription("https://fcm.googleapis.com/fcm/send/abc"), %{body: "Hi"})
 
-    assert url == "https://push.example.org/send/abc"
+    assert url == "https://fcm.googleapis.com/fcm/send/abc"
     assert headers["Content-Encoding"] == "aes128gcm"
     assert headers["Content-Type"] == "application/octet-stream"
     assert headers["TTL"] == "86400"
@@ -50,12 +50,15 @@ defmodule Dhc.Notifications.WebPush.HttpSenderTest do
       Plug.Conn.send_resp(conn, 201, "")
     end)
 
-    assert :ok = HttpSender.push(subscription("https://push.example.org/send/abc"), %{body: "Hi"})
+    assert :ok =
+             HttpSender.push(subscription("https://fcm.googleapis.com/fcm/send/abc"), %{
+               body: "Hi"
+             })
 
     assert_received {:pushed, conn, body}
     assert conn.method == "POST"
-    assert conn.host == "push.example.org"
-    assert conn.request_path == "/send/abc"
+    assert conn.host == "fcm.googleapis.com"
+    assert conn.request_path == "/fcm/send/abc"
     assert Plug.Conn.get_req_header(conn, "ttl") == ["86400"]
     assert [<<"vapid t=", _::binary>>] = Plug.Conn.get_req_header(conn, "authorization")
     assert byte_size(body) > 86
@@ -64,20 +67,41 @@ defmodule Dhc.Notifications.WebPush.HttpSenderTest do
   test "404 and 410 are :gone; other statuses and transport errors are ordinary failures" do
     for status <- [404, 410] do
       stub(fn conn -> Plug.Conn.send_resp(conn, status, "") end)
-      assert {:error, :gone} = HttpSender.push(subscription("https://push.example.org/x"), %{})
+
+      assert {:error, :gone} =
+               HttpSender.push(subscription("https://fcm.googleapis.com/fcm/send/x"), %{})
     end
 
     for status <- [400, 413, 429, 500, 503] do
       stub(fn conn -> Plug.Conn.send_resp(conn, status, "") end)
 
       assert {:error, {:push_service, ^status}} =
-               HttpSender.push(subscription("https://push.example.org/x"), %{})
+               HttpSender.push(subscription("https://fcm.googleapis.com/fcm/send/x"), %{})
     end
 
     stub(fn conn -> Req.Test.transport_error(conn, :econnrefused) end)
 
     assert {:error, {:transport, %Req.TransportError{reason: :econnrefused}}} =
-             HttpSender.push(subscription("https://push.example.org/x"), %{})
+             HttpSender.push(subscription("https://fcm.googleapis.com/fcm/send/x"), %{})
+  end
+
+  test "never posts to an endpoint that is not a known push service" do
+    test_pid = self()
+
+    stub(fn conn ->
+      send(test_pid, :posted)
+      Plug.Conn.send_resp(conn, 201, "")
+    end)
+
+    for endpoint <- [
+          "https://attacker.example/push",
+          "https://fcm.googleapis.com.evil.example/push",
+          "https://127.0.0.1/push"
+        ] do
+      assert {:error, :endpoint_not_allowed} = HttpSender.push(subscription(endpoint), %{})
+    end
+
+    refute_received :posted
   end
 
   defp stub(plug), do: Application.put_env(:dhc, :web_push_req_options, plug: plug)

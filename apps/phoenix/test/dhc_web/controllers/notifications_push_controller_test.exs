@@ -73,7 +73,7 @@ defmodule DhcWeb.NotificationsPushControllerTest do
         post(
           conn,
           "/api/notifications/push/subscriptions",
-          browser_subscription("https://p.example/a")
+          browser_subscription("https://fcm.googleapis.com/fcm/send/a")
         )
 
       assert json_response(conn, 401)
@@ -81,7 +81,7 @@ defmodule DhcWeb.NotificationsPushControllerTest do
 
     test "stores the browser subscription for the caller and returns only id and createdAt",
          %{conn: conn} do
-      body = browser_subscription("https://p.example/a")
+      body = browser_subscription("https://fcm.googleapis.com/fcm/send/a")
 
       conn = conn |> as_user() |> post("/api/notifications/push/subscriptions", body)
 
@@ -94,11 +94,11 @@ defmodule DhcWeb.NotificationsPushControllerTest do
       assert [%PushSubscription{id: ^id, principal_id: @user_id, user_agent: "Test UA"}] =
                Repo.all(PushSubscription)
 
-      refute json_response(conn, 201) |> inspect() =~ "https://p.example/a"
+      refute json_response(conn, 201) |> inspect() =~ "https://fcm.googleapis.com/fcm/send/a"
     end
 
     test "re-registering the same endpoint answers 201 with the same id", %{conn: conn} do
-      body = browser_subscription("https://p.example/a")
+      body = browser_subscription("https://fcm.googleapis.com/fcm/send/a")
 
       first = conn |> as_user() |> post("/api/notifications/push/subscriptions", body)
       second = conn |> as_user() |> post("/api/notifications/push/subscriptions", body)
@@ -125,7 +125,9 @@ defmodule DhcWeb.NotificationsPushControllerTest do
       conn =
         conn
         |> as_user()
-        |> post("/api/notifications/push/subscriptions", %{"endpoint" => "https://p.example/a"})
+        |> post("/api/notifications/push/subscriptions", %{
+          "endpoint" => "https://fcm.googleapis.com/fcm/send/a"
+        })
 
       assert %{"errors" => %{"fields" => %{"p256dh" => _, "auth" => _}}} =
                json_response(conn, 422)
@@ -139,13 +141,13 @@ defmodule DhcWeb.NotificationsPushControllerTest do
         assert filter_includes?(filter, name), name
       end
 
-      body = browser_subscription("https://push.example/unique-secret-endpoint")
+      body = browser_subscription("https://fcm.googleapis.com/fcm/send/unique-secret-endpoint")
       filtered = Phoenix.Logger.filter_values(body)
 
       # The nested `keys` map is discarded wholesale; endpoint is redacted too.
       assert filtered["endpoint"] == "[FILTERED]"
       assert filtered["keys"] == "[FILTERED]"
-      refute inspect(filtered) =~ "https://push.example/unique-secret-endpoint"
+      refute inspect(filtered) =~ "https://fcm.googleapis.com/fcm/send/unique-secret-endpoint"
       refute inspect(filtered) =~ get_in(body, ["keys", "p256dh"])
       refute inspect(filtered) =~ get_in(body, ["keys", "auth"])
 
@@ -162,18 +164,22 @@ defmodule DhcWeb.NotificationsPushControllerTest do
       |> as_user()
       |> post(
         "/api/notifications/push/subscriptions",
-        browser_subscription("https://p.example/a")
+        browser_subscription("https://fcm.googleapis.com/fcm/send/a")
       )
 
       first =
         conn
         |> as_user()
-        |> post("/api/notifications/push/unsubscribe", %{"endpoint" => "https://p.example/a"})
+        |> post("/api/notifications/push/unsubscribe", %{
+          "endpoint" => "https://fcm.googleapis.com/fcm/send/a"
+        })
 
       second =
         conn
         |> as_user()
-        |> post("/api/notifications/push/unsubscribe", %{"endpoint" => "https://p.example/a"})
+        |> post("/api/notifications/push/unsubscribe", %{
+          "endpoint" => "https://fcm.googleapis.com/fcm/send/a"
+        })
 
       assert %{"data" => %{"removed" => true}} = json_response(first, 200)
       assert %{"data" => %{"removed" => false}} = json_response(second, 200)
@@ -185,13 +191,15 @@ defmodule DhcWeb.NotificationsPushControllerTest do
       |> as_other_user()
       |> post(
         "/api/notifications/push/subscriptions",
-        browser_subscription("https://p.example/o")
+        browser_subscription("https://fcm.googleapis.com/fcm/send/o")
       )
 
       conn =
         conn
         |> as_user()
-        |> post("/api/notifications/push/unsubscribe", %{"endpoint" => "https://p.example/o"})
+        |> post("/api/notifications/push/unsubscribe", %{
+          "endpoint" => "https://fcm.googleapis.com/fcm/send/o"
+        })
 
       assert %{"data" => %{"removed" => false}} = json_response(conn, 200)
       assert [%PushSubscription{principal_id: @other_user_id}] = Repo.all(PushSubscription)

@@ -69,8 +69,14 @@ config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
 config :dhc, Oban,
   repo: Dhc.Repo,
   prefix: "public",
+  # Queue concurrency is a ceiling on jobs running at once per node (here 36),
+  # and every job draws from the same Ecto pool as HTTP requests and Oban's own
+  # notifier/plugins (POOL_SIZE, 10 in fly.toml). Jobs only hold a connection
+  # while querying, and most of them wait on Stripe/Discord/email HTTP, so the
+  # sum may exceed the pool; raise POOL_SIZE before raising a queue. `default`
+  # only runs the hourly/daily cron passes, so 5 is plenty.
   queues: [
-    default: 10,
+    default: 5,
     emails: 5,
     discord: 5,
     announcements: 5,
@@ -98,7 +104,10 @@ config :dhc, Oban,
        # longer returns). Failures keep cached rows and are repaired by the
        # next pass, so 02:30 keeps clear of the midnight Stripe sync.
        {"30 2 * * *", Dhc.ClubCalendar.Workers.HolidayRefreshWorker},
-       {"30 3 * * *", Dhc.TrainingAnnouncements.Workers.DeliveryPruneWorker}
+       {"30 3 * * *", Dhc.TrainingAnnouncements.Workers.DeliveryPruneWorker},
+       # Deletes expired principal_tokens and stale magic-link rate-limit
+       # windows in batches; 04:10 keeps clear of the other nightly passes.
+       {"10 4 * * *", Dhc.Auth.Workers.TokenRetentionWorker}
      ]}
   ]
 

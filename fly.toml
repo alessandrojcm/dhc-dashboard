@@ -17,7 +17,11 @@ kill_signal = "SIGTERM"
   FNOX_PROFILE = "production"
   PHX_HOST = "dhc-dashboard.fly.dev"
   PHX_SERVER = "true"
-  POOL_SIZE = "5"
+  # Ecto pool per machine. Shared by HTTP requests, Oban's notifier/plugins and
+  # up to ~36 concurrent jobs (config/config.exs queues); jobs only hold a
+  # connection while querying. Production reaches Supabase through the
+  # transaction-mode pooler, so keep POOL_SIZE x machine count under its limit.
+  POOL_SIZE = "10"
   PORT = "8080"
   CORS_ALLOWED_ORIGINS = "https://dashboard.dublinhemaclub.com"
   DISCORD_REDIRECT_URI = "https://api.dublinhemaclub.com/api/auth/discord/callback"

@@ -12,5 +12,8 @@ export const variables = defineEnvVars({
 	API_BASE_URL: { schema: optional },
 	STRIPE_SECRET_KEY: { schema: optional },
 	GROQ_API_KEY: { schema: optional },
+	// Shared with Phoenix; authenticates the forwarded `x-dhc-client-ip` on
+	// server-side API calls (see #lib/server/api-client.ts).
+	TRUSTED_FORWARDING_SECRET: { schema: optional },
 	PUBLIC_PHOENIX_SOCKET_URL: { public: true, schema: optional },
 });

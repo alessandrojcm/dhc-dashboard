@@ -7,7 +7,6 @@ defmodule DhcWeb.WaitlistHTTP do
       setting_not_found: {404, "Waitlist setting not found"},
       invalid_query: {400, "Invalid waitlist entries query"},
       waitlist_closed: {403, "Waitlist is closed"},
-      duplicate_email: {409, "This email is already on the waitlist"},
       invalid_is_open: {422, "isOpen must be a boolean"},
       invalid_status: {422, "Invalid waitlist status"},
       invalid_payload: {422, "Invalid waitlist entry payload"},

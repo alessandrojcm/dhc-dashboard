@@ -28,13 +28,9 @@ defmodule DhcWeb.WaitlistJSON do
     }
   end
 
-  def render("create.json", %{entry: entry}) do
-    %{
-      data: %{
-        id: entry.id,
-        status: entry.status
-      }
-    }
+  # No entry data: a duplicate email must be indistinguishable from a new one.
+  def render("create.json", _assigns) do
+    %{data: %{received: true}}
   end
 
   def render("show.json", %{entry: entry}) do

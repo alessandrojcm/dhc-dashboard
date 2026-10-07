@@ -165,6 +165,16 @@ Controllers return `{:error, reason}`; the domain HTTP module owns status and de
 - Plugs render the shared reasons with `DhcWeb.Problem.send_reason/2` (it halts); a fixed message outside a reason table uses `Problem.send_detail/4`, which can never carry a `code`.
 - OpenAPI has one `Error` schema; a slice types its codes with `allOf: [Error, {errors.code enum}]` rather than a parallel error object.
 
+## HTTP Hardening Seams
+
+- Per-IP policy (rate limits, mandate IPs) resolves the client through `DhcWeb.Plugs.ClientIp`, never `conn.remote_ip`. SvelteKit calls Phoenix server-side, so `remote_ip` is the Worker's egress address. The trusted `x-dhc-client-ip` header counts only with a matching `x-dhc-forwarding-secret`, which `apps/web/src/lib/server/api-client.ts` adds. After that comes Fly's `fly-client-ip`; `x-forwarded-for` is never trusted. `TRUSTED_FORWARDING_SECRET` must be identical in Phoenix (fnox/1Password) and the web Worker (`wrangler secret`).
+- The `:api` pipeline rejects non-JSON bodies on unsafe methods with 415 (`DhcWeb.Plugs.RequireJsonBody`). This is CSRF hardening for the `.dublinhemaclub.com` `SameSite=Lax` cookie. `DhcWeb.ConnCase` sends params maps as `application/json`, so a test that posts a raw body sets `content-type` itself.
+- `DhcWeb.CacheBodyReader` keeps `raw_body` only for `/api/webhooks/stripe`.
+- Email variables that carry a credential (a login link) go through `Dhc.Email.Worker.seal_data_variables/1`, never plain `data_variables`. Job args persist in `oban_jobs` and reach Sentry, and the worker reports variable keys only.
+- Web Push endpoints must pass the push-service allowlist in `Dhc.Notifications.WebPush.Endpoint`. It is checked at subscribe time and again before every send (SSRF). Don't loosen it into a hostname heuristic.
+- Public intake endpoints must not distinguish "already exists". `POST /api/waitlist/entries` returns the same 202 `{received: true}` for a duplicate email.
+- Expired `principal_tokens` and old `auth_rate_limit_windows` rows are pruned daily by `Dhc.Auth.Workers.TokenRetentionWorker` (`Dhc.Auth.Retention`). Add new append-only auth tables to that pass.
+
 ## Discord External Identities
 
 - Resolve Discord login by `(provider, provider_subject)` before looking at profile email.

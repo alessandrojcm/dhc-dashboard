@@ -256,6 +256,35 @@ defmodule Dhc.Auth.PrincipalToken do
     end
   end
 
+  @doc """
+  Query for tokens that no verify query can accept any more: rows created
+  before `now` minus their context's validity minus `margin_seconds`.
+
+  The validity windows are the ones the verify queries enforce, so retention
+  can never delete a token that still authenticates. Used by
+  `Dhc.Auth.Retention`; the `created_at` index serves the scan.
+  """
+  @spec expired_query(DateTime.t(), non_neg_integer()) :: Ecto.Query.t()
+  def expired_query(%DateTime{} = now, margin_seconds)
+      when is_integer(margin_seconds) and margin_seconds >= 0 do
+    cutoff = fn context -> DateTime.add(now, -(validity_seconds(context) + margin_seconds)) end
+    login_cutoff = cutoff.("login")
+    session_cutoff = cutoff.("session")
+    socket_cutoff = cutoff.("socket")
+
+    from t in PrincipalToken,
+      where:
+        (t.context == "login" and t.created_at < ^login_cutoff) or
+          (t.context == "session" and t.created_at < ^session_cutoff) or
+          (t.context == "socket" and t.created_at < ^socket_cutoff)
+  end
+
+  @doc "How long a token of `context` authenticates after it is created, in seconds."
+  @spec validity_seconds(String.t()) :: pos_integer()
+  def validity_seconds("login"), do: @magic_link_validity_in_minutes * 60
+  def validity_seconds("session"), do: @session_validity_in_days * 24 * 60 * 60
+  def validity_seconds("socket"), do: @socket_validity_in_seconds
+
   defp by_token_and_context_query(token, context) do
     from PrincipalToken, where: [token: ^token, context: ^context]
   end

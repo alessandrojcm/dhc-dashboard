@@ -79,6 +79,50 @@ defmodule Dhc.AuthTest do
       assert oban_jobs_count() == initial_oban_count + 1
     end
 
+    test "stores no raw token in the job args, and the delivered link still signs in" do
+      import Swoosh.TestAssertions
+
+      principal = active_principal_fixture()
+      test_pid = self()
+
+      assert {:ok, :sent} =
+               Auth.deliver_magic_link(principal.email, fn token ->
+                 send(test_pid, {:raw_token, token})
+                 "https://app.example.com/auth/magic-link?token=#{token}"
+               end)
+
+      assert_received {:raw_token, raw_token}
+
+      %{id: job_id, args: args} =
+        Repo.one!(
+          from(j in "oban_jobs",
+            where: j.worker == "Dhc.Email.Worker",
+            order_by: [desc: j.id],
+            limit: 1,
+            select: %{id: j.id, args: j.args}
+          )
+        )
+
+      # Neither the token nor the URL is in what Postgres (and Sentry's Oban
+      # integration) can see.
+      refute inspect(args) =~ raw_token
+      refute inspect(args) =~ "magic-link?token="
+      assert args["data_variables"] == %{}
+      assert is_binary(args["sealed_data_variables"])
+
+      assert :ok = Dhc.Email.Worker.perform(%Oban.Job{id: job_id, args: args})
+
+      assert_email_sent(fn email ->
+        assert %{id: "magic-link", variables: %{"LOGIN_LINK" => link}} =
+                 email.provider_options.template
+
+        assert link == "https://app.example.com/auth/magic-link?token=#{raw_token}"
+      end)
+
+      assert {:ok, %{principal: %{id: principal_id}}} = Auth.consume_magic_link(raw_token)
+      assert principal_id == principal.id
+    end
+
     test "does not disclose Principal existence by side-channel timing of side effects" do
       # Second call to a known Principal still returns the same tuple shape
       # as an unknown one. (This is a shape assertion, not a timing test.)

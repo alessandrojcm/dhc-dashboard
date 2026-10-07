@@ -477,7 +477,10 @@ defmodule DhcWeb.WaitlistControllerTest do
 
       conn = post(conn, "/api/waitlist/entries", adult_payload(email: "Adult@Example.COM"))
 
-      assert %{"data" => %{"id" => id, "status" => "waiting"}} = json_response(conn, 201)
+      assert json_response(conn, 202) == %{"data" => %{"received" => true}}
+
+      %WaitlistEntry{id: id, status: "waiting"} =
+        Repo.get_by!(WaitlistEntry, email: "adult@example.com")
 
       profile = Repo.get_by!(UserProfile, waitlist_id: id)
       assert profile.is_active == false
@@ -500,8 +503,9 @@ defmodule DhcWeb.WaitlistControllerTest do
 
       conn = post(conn, "/api/waitlist/entries", payload)
 
-      assert %{"data" => %{"id" => id, "status" => "waiting"}} = json_response(conn, 201)
+      assert json_response(conn, 202) == %{"data" => %{"received" => true}}
 
+      %WaitlistEntry{id: id} = Repo.get_by!(WaitlistEntry, email: "no-pronouns@example.com")
       profile = Repo.get_by!(UserProfile, waitlist_id: id)
       assert profile.pronouns == ""
     end
@@ -521,7 +525,9 @@ defmodule DhcWeb.WaitlistControllerTest do
           )
         )
 
-      assert %{"data" => %{"id" => id, "status" => "waiting"}} = json_response(conn, 201)
+      assert json_response(conn, 202) == %{"data" => %{"received" => true}}
+
+      %WaitlistEntry{id: id} = Repo.get_by!(WaitlistEntry, email: "ada@example.com")
       profile = Repo.get_by!(UserProfile, waitlist_id: id)
 
       assert %{first_name: "Parent", last_name: "Guardian", phone_number: "+353 1 111 1111"} =
@@ -568,21 +574,32 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert persistence_counts() == persisted_before
     end
 
-    test "returns 409 for duplicate email", %{conn: conn} do
+    test "answers a duplicate email exactly like a new entry and changes nothing", %{
+      conn: conn
+    } do
       set_waitlist_open(true)
       payload = adult_payload(email: "duplicate@example.com")
 
-      assert %{"data" => %{"status" => "waiting"}} =
-               conn |> post("/api/waitlist/entries", payload) |> json_response(201)
+      first = post(conn, "/api/waitlist/entries", payload)
+      persisted_after_first = persistence_counts()
 
-      conn = post(build_conn(), "/api/waitlist/entries", payload)
+      second =
+        post(
+          build_conn(),
+          "/api/waitlist/entries",
+          %{payload | firstName: "Someone", email: "Duplicate@Example.com"}
+        )
 
-      assert json_response(conn, 409) == %{
-               "errors" => %{
-                 "detail" => "This email is already on the waitlist",
-                 "code" => "duplicate_email"
-               }
-             }
+      # Same status and byte-identical body: the public endpoint is not an
+      # oracle for whether an email is on the waitlist.
+      assert first.status == 202
+      assert second.status == first.status
+      assert second.resp_body == first.resp_body
+      assert json_response(second, 202) == %{"data" => %{"received" => true}}
+
+      assert persistence_counts() == persisted_after_first
+      assert Repo.get_by!(UserProfile, first_name: "Ada").is_active == false
+      refute Repo.get_by(UserProfile, first_name: "Someone")
     end
 
     test "enforces waitlist closed server-side", %{conn: conn} do
