@@ -16,6 +16,8 @@ import { apiClientAcceptanceApi } from "./api-client-adapter";
 import { sveltekitAcceptanceCookies } from "./cookie-store";
 import type { InvitationAcceptanceDeps } from "./ports";
 
+export { readInvitationPricing } from "./pricing-query";
+
 export {
 	applyInvitationRouteOutcome,
 	applyRouteEffects,
