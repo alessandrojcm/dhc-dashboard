@@ -173,11 +173,16 @@ defmodule Dhc.Waitlist do
   Runs inside the caller's transaction when there is one (Fast-track), so
   its writes commit or roll back with the caller's; otherwise in its own.
   Every refusal is decided before the first write.
+
+  `gender: :optional` is for the one-time spreadsheet import only
+  (`Dhc.Waitlist.Import`): the sheet has no gender column, so imported
+  people are stored with no gender rather than an invented one.
+  Registration and staff adds keep gender required.
   """
   @spec add_person(map(), keyword()) ::
           {:ok, map()} | {:error, atom()} | {:error, Ecto.Changeset.t()}
   def add_person(attrs, opts \\ []) when is_map(attrs) do
-    with {:ok, normalized} <- normalize_create_attrs(attrs) do
+    with {:ok, normalized} <- normalize_create_attrs(attrs, Keyword.get(opts, :gender, :required)) do
       in_callers_transaction(fn -> register(normalized, now(opts), :staff) end)
     end
   end
@@ -441,7 +446,7 @@ defmodule Dhc.Waitlist do
     if open?(), do: :ok, else: {:error, :waitlist_closed}
   end
 
-  defp normalize_create_attrs(attrs) do
+  defp normalize_create_attrs(attrs, gender \\ :required) do
     with {:ok, date_of_birth} <- parse_date(required(attrs, "dateOfBirth")),
          :ok <- validate_minimum_age(date_of_birth),
          {:ok, social_media_consent} <- social_media_consent(attrs) do
@@ -452,7 +457,8 @@ defmodule Dhc.Waitlist do
         phone_number: trim(required(attrs, "phoneNumber")),
         date_of_birth: date_of_birth,
         pronouns: attrs |> Map.get("pronouns", "") |> trim() |> String.downcase(),
-        gender: required(attrs, "gender"),
+        gender: gender(attrs, gender),
+        gender_required?: gender == :required,
         medical_conditions: Map.get(attrs, "medicalConditions", ""),
         social_media_consent: social_media_consent
       }
@@ -480,6 +486,17 @@ defmodule Dhc.Waitlist do
   end
 
   defp required(attrs, key), do: Map.get(attrs, key, "")
+
+  # An optional gender that is blank is stored as none (nil), which the
+  # blank-field check above lets through.
+  defp gender(attrs, :required), do: required(attrs, "gender")
+
+  defp gender(attrs, :optional) do
+    case attrs |> Map.get("gender") |> trim() do
+      "" -> nil
+      gender -> gender
+    end
+  end
 
   defp trim(value) when is_binary(value), do: String.trim(value)
   defp trim(_value), do: ""
@@ -620,18 +637,21 @@ defmodule Dhc.Waitlist do
 
   defp intake_changeset(profile, normalized, entry_id) do
     profile
-    |> UserProfile.waitlist_intake_changeset(%{
-      first_name: normalized.first_name,
-      last_name: normalized.last_name,
-      is_active: false,
-      medical_conditions: normalized.medical_conditions,
-      date_of_birth: normalized.date_of_birth,
-      gender: normalized.gender,
-      pronouns: normalized.pronouns,
-      phone_number: normalized.phone_number,
-      social_media_consent: normalized.social_media_consent,
-      waitlist_id: entry_id
-    })
+    |> UserProfile.waitlist_intake_changeset(
+      %{
+        first_name: normalized.first_name,
+        last_name: normalized.last_name,
+        is_active: false,
+        medical_conditions: normalized.medical_conditions,
+        date_of_birth: normalized.date_of_birth,
+        gender: normalized.gender,
+        pronouns: normalized.pronouns,
+        phone_number: normalized.phone_number,
+        social_media_consent: normalized.social_media_consent,
+        waitlist_id: entry_id
+      },
+      require_gender: normalized.gender_required?
+    )
     |> Ecto.Changeset.validate_length(:first_name, max: @first_name_max_length)
   end
 

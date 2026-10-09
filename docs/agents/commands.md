@@ -196,6 +196,26 @@ they must be different. The ID arguments are not authentication credentials.
 The roster exporter is throwaway migration tooling, not a recurring sync or
 Phoenix runtime task.
 
+### One-time Waitlist spreadsheet import (ALE-376)
+
+Imports the club's Waitlist Google Forms export (CSV or TSV, header row as
+exported) once. Always dry-run first: it validates every row against the
+database and prints the full report (imported, refused with reasons, notes,
+each row's Paid/Carried Fee value) without writing. A sheet with
+month-first-only dates or a missing column is refused whole. Do not run it
+against the shared dev database, and do not run it in production until
+ALE-388 makes `Dhc.Waitlist.Import.create_carried_fee/2` create Carried Fees.
+
+```bash
+cd apps/phoenix
+mix dhc.waitlist.import /secure/path/waitlist.tsv --dry-run
+mix dhc.waitlist.import /secure/path/waitlist.tsv
+
+# In a release (no Mix):
+bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv", dry_run: true)'
+bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv")'
+```
+
 # Code quality
 mise run phx-format         # Format all Elixir files
 mise run phx-format-check   # Check formatting (CI)
