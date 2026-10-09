@@ -90,6 +90,64 @@ defmodule Dhc.BeginnersIntakeStripe do
     )
   end
 
+  # ── Refunds (ALE-382) ──────────────────────────────────────────
+
+  @doc "The Stripe refund id a refund row's create answers with."
+  def stripe_refund_id(%{id: id}), do: stripe_refund_id(id)
+  def stripe_refund_id(refund_id) when is_binary(refund_id), do: "re_" <> refund_id
+
+  @doc """
+  Answers `POST /v1/refunds` with a refund in `status` whose id derives from
+  the idempotency key (`beginners-intake-refund:<id>` → `re_<id>`), and
+  sends `{:refund_created, form, idempotency_key}` to `notify`.
+  """
+  def stub_refund_create(status \\ "pending", notify \\ self()) do
+    StripeHTTPStub.stub("POST", "/v1/refunds", fn conn ->
+      key = StripeHTTPStub.header(conn, "idempotency-key")
+      form = StripeHTTPStub.form(conn)
+      send(notify, {:refund_created, form, key})
+      refund_id = key |> String.split(":") |> List.last()
+
+      StripeHTTPStub.json(
+        conn,
+        refund_object(refund_id, %{
+          "status" => status,
+          "amount" => String.to_integer(form["amount"]),
+          "payment_intent" => form["payment_intent"]
+        })
+      )
+    end)
+  end
+
+  @doc "Makes `POST /v1/refunds` fail with `status`."
+  def fail_refund_create(status) do
+    StripeHTTPStub.stub("POST", "/v1/refunds", fn conn ->
+      StripeHTTPStub.stripe_error(conn, status, %{"message" => "stubbed refund failure"})
+    end)
+  end
+
+  @doc "Answers `GET /v1/refunds/<id>` with `object`."
+  def stub_refund_retrieve(%{"id" => id} = object) do
+    StripeHTTPStub.stub("GET", "/v1/refunds/#{id}", fn conn ->
+      StripeHTTPStub.json(conn, object)
+    end)
+  end
+
+  @doc "A Stripe refund object for a refund row id, `succeeded` unless overridden."
+  def refund_object(refund_id, overrides \\ %{}) when is_binary(refund_id) do
+    Map.merge(
+      %{
+        "id" => stripe_refund_id(refund_id),
+        "object" => "refund",
+        "status" => "succeeded",
+        "amount" => 4000,
+        "currency" => "eur",
+        "metadata" => %{"type" => "beginners_intake_refund", "refund_id" => refund_id}
+      },
+      overrides
+    )
+  end
+
   @doc "A Stripe webhook event carrying `object`."
   def event(type, object),
     do: %{

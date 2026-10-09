@@ -30,6 +30,10 @@ defmodule Dhc.StripeWebhooks do
       completes or releases the Seat Hold whose Checkout Session the event
       carries. A session that is not an Intake payment (a Workshop guest
       checkout) is acknowledged without effect.
+    * `{:beginners_intake, :apply_refund_event}` — the Beginners' Workshop
+      boundary applies a Stripe Refund object to the Intake refund it belongs
+      to (ALE-382). `refund.*` events run the Workshops target first, then
+      this one; each acknowledges a refund it does not own without effect.
 
   Targets run in table order; the first error stops the event and is returned.
 
@@ -50,6 +54,7 @@ defmodule Dhc.StripeWebhooks do
   @workshop_refund :workshop_refund
   @intake_complete {:beginners_intake, :complete_payment}
   @intake_release {:beginners_intake, :release_payment}
+  @intake_refund {:beginners_intake, :apply_refund_event}
 
   # The routing table. Every target must be idempotent (see moduledoc).
   #
@@ -84,7 +89,7 @@ defmodule Dhc.StripeWebhooks do
        payment_intent.payment_failed
        payment_intent.canceled
      ), [@acceptance, @membership_optional]},
-    {~w(refund.created refund.updated refund.failed), [@workshop_refund]},
+    {~w(refund.created refund.updated refund.failed), [@workshop_refund, @intake_refund]},
     {~w(checkout.session.completed), [@intake_complete]},
     {~w(checkout.session.expired), [@intake_release]}
   ]
@@ -95,7 +100,7 @@ defmodule Dhc.StripeWebhooks do
   @type target ::
           :acceptance
           | :workshop_refund
-          | {:beginners_intake, :complete_payment | :release_payment}
+          | {:beginners_intake, :complete_payment | :release_payment | :apply_refund_event}
           | {:stripe_sync, :customer_required | :customer_optional}
 
   @doc """

@@ -17,8 +17,13 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       `send_due_batch` would contact now — with minors badged;
     * `roster` — Intakes grouped by meaning before finalisation: `seated`
       (paid), `asked` (contacted, not paid yet) and `out`; each Intake with
-      a live Seat Hold carries when its hold runs out (ALE-381), and each
-      its door check-in time (ALE-390);
+      a live Seat Hold carries when its hold runs out (ALE-381), each paid
+      Intake its door check-in time (ALE-390), and each Intake with a
+      refund carries its latest refund's status, method and
+      whether it was automatic (ALE-382);
+    * `failed_refunds` — the Needs attention list of refunds that failed
+      and have not been followed up (Retry or Record manual refund), oldest
+      first (ALE-382);
     * `attention` — `:nobody_waiting` when a Batch is due with free seats
       but nobody eligible is waiting;
     * `fast_track_open` — whether Fast-track is offered now
@@ -38,6 +43,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     Clock,
     Intake,
     IntakePayment,
+    IntakeRefund,
     WorkshopFacts,
     WorkshopPolicy,
     WorkshopProjection
@@ -52,6 +58,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           pause: map(),
           next_batch: map(),
           roster: %{seated: [map()], asked: [map()], out: [map()]},
+          failed_refunds: [map()],
           attention: [:nobody_waiting],
           fast_track_open: boolean()
         }
@@ -72,6 +79,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
          pause: pause(workshop),
          next_batch: next_batch,
          roster: roster(workshop),
+         failed_refunds: failed_refunds(id),
          attention: attention(next_batch),
          fast_track_open: WorkshopPolicy.payment_open?(workshop, reading)
        }}
@@ -135,6 +143,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
   end
 
   defp roster(workshop) do
+    refunds = latest_refunds(workshop.id)
+
     rows =
       from(i in Intake,
         left_join: b in Batch,
@@ -164,6 +174,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         row
         |> Map.delete(:date_of_birth)
         |> Map.put(:minor, WorkshopPolicy.minor?(row.date_of_birth, workshop.date))
+        |> Map.put(:refund, Map.get(refunds, row.id))
       end)
 
     %{
@@ -171,6 +182,49 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       asked: Enum.filter(rows, &(&1.state == "contacted")),
       out: Enum.reject(rows, &(&1.state in Intake.open_states()))
     }
+  end
+
+  # The latest refund of each Intake, by when it was requested.
+  defp latest_refunds(workshop_id) do
+    from(r in IntakeRefund,
+      where: r.workshop_id == ^workshop_id,
+      order_by: [asc: r.requested_at, asc: r.created_at]
+    )
+    |> Repo.all()
+    |> Map.new(fn refund ->
+      {refund.intake_id,
+       %{
+         status: refund.status,
+         method: refund.method,
+         automatic: IntakeRefund.automatic?(refund),
+         amount_cents: refund.amount_cents,
+         currency: refund.currency
+       }}
+    end)
+  end
+
+  defp failed_refunds(workshop_id) do
+    from(r in IntakeRefund,
+      join: i in Intake,
+      on: i.id == r.intake_id,
+      left_join: p in UserProfile,
+      on: p.waitlist_id == i.waitlist_id and not is_nil(i.waitlist_id),
+      left_join: f in IntakeRefund,
+      on: f.follows_refund_id == r.id,
+      where: r.workshop_id == ^workshop_id and r.status == "failed" and is_nil(f.id),
+      order_by: [asc: r.failed_at, asc: r.id],
+      select: %{
+        id: r.id,
+        intake_id: r.intake_id,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        amount_cents: r.amount_cents,
+        currency: r.currency,
+        reason: r.reason,
+        failed_at: r.failed_at
+      }
+    )
+    |> Repo.all()
   end
 
   defp attention(%{status: :due, people: []}), do: [:nobody_waiting]

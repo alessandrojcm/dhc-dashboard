@@ -7,6 +7,8 @@
  */
 import type {
 	BeginnersWorkshopConsole,
+	BeginnersWorkshopFailedRefund,
+	BeginnersWorkshopIntakeRefund,
 	BeginnersWorkshopIntakeState,
 	BeginnersWorkshopNextBatch,
 	BeginnersWorkshopRosterIntake,
@@ -296,4 +298,47 @@ export function personName(person: {
 }): string {
 	const name = [person.firstName, person.lastName].filter(Boolean).join(" ");
 	return name || "Anonymised";
+}
+
+/**
+ * ALE-382: an Intake's refund status on its roster row — failed, automatic
+ * or manual — or `null` without a refund.
+ */
+export function refundLabel(intake: {
+	refund: BeginnersWorkshopIntakeRefund | null;
+}): { text: string; tone: "failed" | "progress" | "done" } | null {
+	const refund = intake.refund;
+	if (!refund) return null;
+	if (refund.status === "failed")
+		return { text: "Refund failed", tone: "failed" };
+	if (refund.method === "manual")
+		return { text: "Refunded manually", tone: "done" };
+	const kind = refund.automatic ? "Automatic refund" : "Refund";
+	if (refund.status === "completed")
+		return {
+			text: refund.automatic ? "Refunded automatically" : "Refunded",
+			tone: "done",
+		};
+	return { text: `${kind} in progress`, tone: "progress" };
+}
+
+const REFUND_REASONS = new Map([
+	["policy_failed", "the payment didn't match the fee"],
+	["paid_after_close", "they paid after their Intake closed"],
+]);
+
+/** A refund amount: `€40.00`, or `12.50 GBP` outside euro. */
+export function formatRefundAmount(cents: number, currency: string): string {
+	const amount = (cents / 100).toFixed(2);
+	return currency === "eur"
+		? `€${amount}`
+		: `${amount} ${currency.toUpperCase()}`;
+}
+
+/** The Needs attention line of a failed refund. */
+export function failedRefundText(
+	refund: BeginnersWorkshopFailedRefund,
+): string {
+	const reason = REFUND_REASONS.get(refund.reason);
+	return `Refund of ${formatRefundAmount(refund.amountCents, refund.currency)} to ${personName(refund)} failed${reason ? ` (${reason})` : ""}. Retry it, or record a manual refund if you paid them back another way.`;
 }

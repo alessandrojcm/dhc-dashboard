@@ -20,6 +20,7 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
         nextBatch: next_batch(console.next_batch),
         roster:
           Map.new(console.roster, fn {group, rows} -> {group, Enum.map(rows, &intake/1)} end),
+        failedRefunds: Enum.map(console.failed_refunds, &failed_refund/1),
         attention: console.attention,
         fastTrackOpen: console.fast_track_open
       }
@@ -77,7 +78,49 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       queueDate: row.queue_date,
       contactedAt: row.contacted_at,
       holdExpiresAt: row.hold_expires_at,
-      checkedInAt: row.checked_in_at
+      checkedInAt: row.checked_in_at,
+      refund: row.refund && intake_refund(row.refund)
+    }
+  end
+
+  defp intake_refund(refund) do
+    %{
+      status: refund.status,
+      method: refund.method,
+      automatic: refund.automatic,
+      amountCents: refund.amount_cents,
+      currency: refund.currency
+    }
+  end
+
+  defp failed_refund(refund) do
+    %{
+      id: refund.id,
+      intakeId: refund.intake_id,
+      firstName: refund.first_name,
+      lastName: refund.last_name,
+      amountCents: refund.amount_cents,
+      currency: refund.currency,
+      reason: refund.reason,
+      failedAt: refund.failed_at
+    }
+  end
+
+  @doc "A refund after Retry or Record manual refund (ALE-382)."
+  def refund(%{result: refund}) do
+    %{
+      data: %{
+        id: refund.id,
+        intakeId: refund.intake_id,
+        followsRefundId: refund.follows_refund_id,
+        status: refund.status,
+        method: refund.method,
+        reason: refund.reason,
+        amountCents: refund.amount_cents,
+        currency: refund.currency,
+        requestedAt: refund.requested_at,
+        completedAt: refund.completed_at
+      }
     }
   end
 

@@ -102,6 +102,9 @@ config :dhc, Oban,
        # ALE-380: the one Beginners' Workshop sweep. Batches go out at 10:00
        # Dublin time, so a 5-minute tick sends them by 10:05.
        {"*/5 * * * *", Dhc.BeginnersWorkshops.Workers.SweepWorker},
+       # ALE-382: repairs missed Beginners' Workshop checkout and refund
+       # events (the Workshop refund reconciliation shape, offset by 7 min).
+       {"7,22,37,52 * * * *", Dhc.BeginnersWorkshops.Workers.ReconcileWorker},
        # ALE-319: daily refresh of the Irish bank-holiday cache (current +
        # next Dublin year; upserts by date, deletes dates the source no
        # longer returns). Failures keep cached rows and are repaired by the

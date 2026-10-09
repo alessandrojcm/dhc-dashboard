@@ -4,7 +4,8 @@
 	preview with Pause/Resume beside it, and the roster grouped by meaning.
 	Everything shown is Phoenix's console read model. Pause/Resume and
 	(ALE-384) Fast-track are its commands; Batches themselves come only from
-	the system sweep.
+	the system sweep. (ALE-382) Failed refunds sit under Needs attention with
+	Retry and Record manual refund, and each roster row shows its refund.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopConsole } from "@dhc/api-client";
@@ -31,6 +32,7 @@ import {
 	nextBatchSize,
 	nowCard,
 	personName,
+	refundLabel,
 	rosterGroups,
 	type TimelineStep,
 } from "#lib/beginners-workshops/console.js";
@@ -47,6 +49,7 @@ import * as Empty from "#lib/components/ui/empty/index.js";
 import { cn } from "#lib/utils.js";
 import SeatMeter from "../../seat-meter.svelte";
 import { pauseBatches, resumeBatches } from "./console.remote";
+import FailedRefundItem from "./failed-refund-item.svelte";
 import FastTrackDialog from "./fast-track-dialog.svelte";
 
 let {
@@ -170,7 +173,7 @@ const attention = $derived(
 			{/if}
 		</section>
 
-		{#if attention.length || workshop.alerts.length}
+		{#if attention.length || workshop.alerts.length || view.failedRefunds.length}
 			<section class="flex flex-col gap-2" aria-labelledby="bw-attention">
 				<h2
 					id="bw-attention"
@@ -183,6 +186,9 @@ const attention = $derived(
 						<WorkshopAlerts alerts={workshop.alerts} />
 					</div>
 				{/if}
+				{#each view.failedRefunds as refund (refund.id)}
+					<FailedRefundItem workshopId={workshop.id} {refund} />
+				{/each}
 				{#each attention as item (item)}
 					<div
 						class="flex items-center gap-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-sm"
@@ -295,6 +301,7 @@ const attention = $derived(
 					</h2>
 					<ul class="flex flex-col gap-1.5">
 						{#each group.intakes as intake (intake.id)}
+							{@const refund = refundLabel(intake)}
 							<li
 								class="flex flex-wrap items-center gap-3 rounded-xl border bg-card px-3 py-2 text-sm"
 							>
@@ -303,6 +310,18 @@ const attention = $derived(
 								<span class="text-xs text-muted-foreground"
 									>{intakeOrigin(intake)}</span
 								>
+								{#if refund}<Badge
+										variant="outline"
+										class={cn(
+											refund.tone === "failed" &&
+												"border-destructive bg-destructive text-white",
+											refund.tone === "progress" &&
+												"border-amber-500 text-amber-900",
+											refund.tone === "done" &&
+												"border-emerald-700 text-emerald-900",
+										)}
+										data-testid="refund-status">{refund.text}</Badge
+									>{/if}
 								{#if holdLabel(intake)}<Badge
 										variant="outline"
 										class="border-sky-600 text-sky-800"

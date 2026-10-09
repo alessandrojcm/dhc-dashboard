@@ -4042,6 +4042,79 @@ paths:
         "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
         "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+  /beginners-workshops/{id}/refunds/{refundId}/retry:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopRefundId"
+    post:
+      operationId: beginnersWorkshopRefunds.retry
+      tags: [BeginnersWorkshops]
+      summary: Retry a failed refund
+      description: |
+        Requests a new Stripe refund of the same full amount against the same
+        payment, under a new idempotency key; the failed refund stays as
+        history. A failed refund is followed up once (Retry or Record manual
+        refund). No email is sent. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "201":
+          description: The new refund, pending submission to Stripe
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Refund not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: The refund has not failed, or was already followed up
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundConflictError"}
+  /beginners-workshops/{id}/refunds/{refundId}/manual:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopRefundId"
+    post:
+      operationId: beginnersWorkshopRefunds.recordManual
+      tags: [BeginnersWorkshops]
+      summary: Record a manual refund for a failed refund
+      description: |
+        Records that the coordinator paid the person back outside Stripe: a
+        `completed` refund with method `manual` that follows the failed one.
+        No email is sent. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopManualRefundRequest"}
+      responses:
+        "201":
+          description: The manual refund
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Refund not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: The refund has not failed, or was already followed up
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundConflictError"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
   /beginners-workshops/{id}/fast-track:
     parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
     post:
@@ -7487,6 +7560,11 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    BeginnersWorkshopRefundId:
+      name: refundId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     BeginnersWorkshopIntakeId:
       name: intakeId
       in: path
@@ -8347,7 +8425,7 @@ components:
       description: |
         One Intake on the console roster. Names are null once the person is
         anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, queueDate, contactedAt, holdExpiresAt, checkedInAt]
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, queueDate, contactedAt, holdExpiresAt, checkedInAt, refund]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -8368,6 +8446,86 @@ components:
           format: date-time
           nullable: true
           description: When the person was checked in at the door (null until then).
+        refund:
+          allOf: [{$ref: "#/components/schemas/BeginnersWorkshopIntakeRefund"}]
+          nullable: true
+          description: The Intake's latest refund (null without one).
+    BeginnersWorkshopRefundStatus:
+      type: string
+      description: |
+        `pending` (not yet submitted), `processing` (Stripe accepted it),
+        `completed`, `failed`. `completed` and `failed` are final.
+      enum: [pending, processing, completed, failed]
+    BeginnersWorkshopRefundMethod:
+      type: string
+      description: "`stripe`: refunded through Stripe. `manual`: paid back outside Stripe and recorded."
+      enum: [stripe, manual]
+    BeginnersWorkshopIntakeRefund:
+      type: object
+      description: |
+        A roster Intake's latest refund. `automatic`: the system owed it (a
+        payment that failed the amount/currency check, or one that completed
+        after the Intake closed).
+      required: [status, method, automatic, amountCents, currency]
+      properties:
+        status: {$ref: "#/components/schemas/BeginnersWorkshopRefundStatus"}
+        method: {$ref: "#/components/schemas/BeginnersWorkshopRefundMethod"}
+        automatic: {type: boolean}
+        amountCents: {type: integer, minimum: 1}
+        currency: {type: string}
+    BeginnersWorkshopFailedRefund:
+      type: object
+      description: A refund that failed and has not been retried or recorded as manual.
+      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt]
+      properties:
+        id: {type: string, format: uuid}
+        intakeId: {type: string, format: uuid}
+        firstName: {type: string, nullable: true}
+        lastName: {type: string, nullable: true}
+        amountCents: {type: integer, minimum: 1}
+        currency: {type: string}
+        reason: {type: string, description: "Why the refund was owed, e.g. `policy_failed`, `paid_after_close`."}
+        failedAt: {type: string, format: date-time, nullable: true}
+    BeginnersWorkshopRefund:
+      type: object
+      required: [id, intakeId, followsRefundId, status, method, reason, amountCents, currency, requestedAt, completedAt]
+      properties:
+        id: {type: string, format: uuid}
+        intakeId: {type: string, format: uuid}
+        followsRefundId: {type: string, format: uuid, nullable: true}
+        status: {$ref: "#/components/schemas/BeginnersWorkshopRefundStatus"}
+        method: {$ref: "#/components/schemas/BeginnersWorkshopRefundMethod"}
+        reason: {type: string}
+        amountCents: {type: integer, minimum: 1}
+        currency: {type: string}
+        requestedAt: {type: string, format: date-time}
+        completedAt: {type: string, format: date-time, nullable: true}
+    BeginnersWorkshopRefundResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopRefund"}
+    BeginnersWorkshopManualRefundRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          maxLength: 500
+          description: How the person was paid back (optional).
+    BeginnersWorkshopRefundConflictError:
+      description: 409 refusal of `retry` or `recordManual`.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [refund_not_failed, refund_followed_up, already_requested]
     BeginnersIntakeState:
       type: string
       description: |
@@ -8466,7 +8624,7 @@ components:
       enum: [nobody_waiting]
     BeginnersWorkshopConsole:
       type: object
-      required: [workshop, batches, pause, nextBatch, roster, attention, fastTrackOpen]
+      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, attention, fastTrackOpen]
       properties:
         workshop: {$ref: "#/components/schemas/BeginnersWorkshop"}
         batches:
@@ -8476,6 +8634,10 @@ components:
         pause: {$ref: "#/components/schemas/BeginnersWorkshopBatchPause"}
         nextBatch: {$ref: "#/components/schemas/BeginnersWorkshopNextBatch"}
         roster: {$ref: "#/components/schemas/BeginnersWorkshopRoster"}
+        failedRefunds:
+          type: array
+          description: Needs attention — refunds that failed and wait for Retry or Record manual refund, oldest first.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopFailedRefund"}
         attention:
           type: array
           items: {$ref: "#/components/schemas/BeginnersWorkshopAttention"}

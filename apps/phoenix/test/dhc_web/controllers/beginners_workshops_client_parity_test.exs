@@ -44,6 +44,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
                 beginnersWorkshopFastTrack.candidates beginnersWorkshopFastTrack.newPerson
                 beginnersWorkshopFastTrack.waitlistPerson
+                beginnersWorkshopRefunds.recordManual beginnersWorkshopRefunds.retry
                 beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.schedule
                 beginnersWorkshops.setStaff beginnersWorkshops.staffCandidates
                 beginnersWorkshops.updateSettings)
@@ -117,7 +118,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
 
     codes =
       for name <-
-            ~w(BeginnersWorkshopConflictError BeginnersWorkshopInvalidError BeginnersWorkshopCheckInConflictError),
+            ~w(BeginnersWorkshopConflictError BeginnersWorkshopInvalidError
+               BeginnersWorkshopRefundConflictError BeginnersWorkshopCheckInConflictError),
           code <-
             get_in(schemas, [
               name,

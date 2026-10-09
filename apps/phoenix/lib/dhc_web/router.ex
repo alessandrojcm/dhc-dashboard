@@ -75,6 +75,9 @@ defmodule DhcWeb.Router do
     get("/:id/fast-track/candidates", BeginnersWorkshopFastTrackController, :candidates)
     post("/:id/fast-track", BeginnersWorkshopFastTrackController, :waitlist_person)
     post("/:id/fast-track/new-person", BeginnersWorkshopFastTrackController, :new_person)
+    # ALE-382 — follow-ups to a failed refund.
+    post("/:id/refunds/:refundId/retry", BeginnersWorkshopRefundsController, :retry)
+    post("/:id/refunds/:refundId/manual", BeginnersWorkshopRefundsController, :record_manual)
 
     # ALE-383 — Intake Email templates.
     get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)

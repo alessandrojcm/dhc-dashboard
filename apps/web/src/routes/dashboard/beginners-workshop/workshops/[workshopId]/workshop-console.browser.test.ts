@@ -79,6 +79,7 @@ function view(
 					contactedAt: "2026-10-20T09:00:00Z",
 					holdExpiresAt: null,
 					checkedInAt: null,
+					refund: null,
 				},
 			],
 			asked: [
@@ -94,10 +95,12 @@ function view(
 					contactedAt: "2026-10-20T09:00:00Z",
 					holdExpiresAt: null,
 					checkedInAt: null,
+					refund: null,
 				},
 			],
 			out: [],
 		},
+		failedRefunds: [],
 		attention: [],
 		fastTrackOpen: true,
 		...overrides,
@@ -245,6 +248,7 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						contactedAt: "2026-10-20T12:00:00Z",
 						holdExpiresAt: null,
 						checkedInAt: null,
+						refund: null,
 					},
 				],
 			},
@@ -254,4 +258,78 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 		.getByRole("listitem")
 		.filter({ hasText: "Ciara Referral" });
 	await expect.element(row).toHaveTextContent("Fast-track");
+});
+
+test("ALE-382: a failed refund needs attention with Retry and Record manual refund, and rows show refund status", async () => {
+	const base = view();
+	const failed = "9a3f5a8e-2b1c-4d7e-8f90-1a2b3c4d5e6f";
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			roster: {
+				...base.roster,
+				asked: [
+					{
+						...base.roster.asked[0],
+						refund: {
+							status: "failed",
+							method: "stripe",
+							automatic: true,
+							amountCents: 3500,
+							currency: "eur",
+						},
+					},
+				],
+				seated: [
+					{
+						...base.roster.seated[0],
+						refund: {
+							status: "completed",
+							method: "manual",
+							automatic: true,
+							amountCents: 4000,
+							currency: "eur",
+						},
+					},
+				],
+			},
+			failedRefunds: [
+				{
+					id: failed,
+					intakeId: base.roster.asked[0].id,
+					firstName: "Dara",
+					lastName: "Nolan",
+					amountCents: 3500,
+					currency: "eur",
+					reason: "policy_failed",
+					failedAt: "2026-10-22T12:00:00Z",
+				},
+			],
+		}),
+	});
+
+	const attention = screen.getByRole("region", { name: "Needs attention" });
+	await expect
+		.element(attention.getByTestId("failed-refund"))
+		.toHaveTextContent("Refund of €35.00 to Dara Nolan failed");
+	await expect
+		.element(attention.getByRole("button", { name: "Retry" }))
+		.toBeVisible();
+	await expect
+		.element(attention.getByRole("button", { name: "Record manual refund" }))
+		.toBeVisible();
+
+	await expect
+		.element(
+			screen
+				.getByRole("region", { name: "Asked, not paid yet" })
+				.getByTestId("refund-status"),
+		)
+		.toHaveTextContent("Refund failed");
+	await expect
+		.element(
+			screen
+				.getByRole("region", { name: "Seated (paid)" })
+				.getByTestId("refund-status"),
+		)
+		.toHaveTextContent("Refunded manually");
 });
