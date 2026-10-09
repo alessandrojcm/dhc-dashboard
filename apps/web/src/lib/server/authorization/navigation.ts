@@ -21,7 +21,7 @@ export const navigation: NavigationDefinition = [
 	{
 		title: "Beginners Workshop",
 		url: resolve("dashboard/beginners-workshop"),
-		requires: "beginners.workshop.read",
+		requires: "beginners.waitlist.manage",
 	},
 	{
 		title: "Members",

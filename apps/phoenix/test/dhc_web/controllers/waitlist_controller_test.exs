@@ -9,7 +9,10 @@ defmodule DhcWeb.WaitlistControllerTest do
 
   alias DhcWeb.OpenApiVerifier
 
+  # `coach` gets a token so the tests can show it no longer holds
+  # `beginners.waitlist.manage` (spec story 23).
   @waitlist_admin_roles ~w(admin president committee_coordinator beginners_coordinator coach)
+  @waitlist_managers ~w(admin president committee_coordinator beginners_coordinator)
 
   setup do
     original =
@@ -23,6 +26,56 @@ defmodule DhcWeb.WaitlistControllerTest do
       )
 
     on_exit(fn -> OpenApiVerifier.restore(original) end)
+  end
+
+  describe "contract" do
+    setup do
+      {:ok, spec} =
+        :dhc |> Application.app_dir("priv/api/openapi.yaml") |> YamlElixir.read_from_file()
+
+      %{schemas: spec["components"]["schemas"], spec: spec}
+    end
+
+    test "WaitlistStatus is the five standings", %{schemas: schemas} do
+      assert schemas["WaitlistStatus"]["enum"] == Dhc.Waitlist.Standing.statuses()
+    end
+
+    test "the update request admits admin notes only", %{schemas: schemas} do
+      request = schemas["WaitlistEntryUpdateRequest"]
+
+      assert Map.keys(request["properties"]) == ["adminNotes"]
+      assert request["additionalProperties"] == false
+    end
+
+    test "the entries filter lists waiting or removed people", %{spec: spec} do
+      [status] =
+        for %{"name" => "status"} = param <-
+              spec["paths"]["/waitlist/entries"]["get"]["parameters"],
+            do: param
+
+      assert status["schema"]["enum"] == ~w(waiting removed)
+      assert status["schema"]["default"] == "waiting"
+    end
+
+    test "an entry renders exactly the WaitlistEntry properties", %{
+      conn: conn,
+      schemas: schemas
+    } do
+      id = insert_waitlist_profile(status: "removed")
+
+      entry =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries/#{id}")
+        |> json_response(200)
+        |> Map.fetch!("data")
+
+      assert Enum.sort(Map.keys(entry)) ==
+               Enum.sort(Map.keys(schemas["WaitlistEntry"]["properties"]))
+
+      assert %{"status" => "removed", "removedAt" => removed_at} = entry
+      assert is_binary(removed_at)
+    end
   end
 
   describe "index" do
@@ -114,11 +167,13 @@ defmodule DhcWeb.WaitlistControllerTest do
   end
 
   describe "analytics" do
-    test "returns waitlist analytics in the dashboard chart shape", %{conn: conn} do
+    test "returns analytics over waiting people only", %{conn: conn} do
       insert_waitlist_profile(status: "waiting", gender: "man (cis)", age: 20)
-      insert_waitlist_profile(status: "invited", gender: "woman (cis)", age: 30)
+      insert_waitlist_profile(status: "waiting", gender: "woman (cis)", age: 30)
       insert_waitlist_profile(status: "waiting", gender: "man (cis)", age: 20)
-      insert_waitlist_profile(status: "joined", gender: "other", age: 50)
+      insert_waitlist_profile(status: "removed", gender: "other", age: 40)
+      insert_waitlist_profile(status: "attended", gender: "other", age: 50)
+      insert_waitlist_profile(status: "invited", gender: "other", age: 60)
 
       conn =
         conn
@@ -147,8 +202,8 @@ defmodule DhcWeb.WaitlistControllerTest do
              ]
     end
 
-    test "allows all waitlist admin roles", %{conn: _conn} do
-      for role <- ~w(admin president committee_coordinator beginners_coordinator coach) do
+    test "allows every Waitlist manager and refuses coaches", %{conn: _conn} do
+      for role <- @waitlist_managers do
         conn =
           build_conn()
           |> put_req_header("authorization", "Bearer #{role}-token")
@@ -156,6 +211,13 @@ defmodule DhcWeb.WaitlistControllerTest do
 
         assert %{"data" => %{"totalCount" => 0}} = json_response(conn, 200)
       end
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer coach-token")
+        |> get("/api/waitlist/analytics")
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
     end
 
     test "returns 401 without a bearer token", %{conn: conn} do
@@ -175,14 +237,23 @@ defmodule DhcWeb.WaitlistControllerTest do
   end
 
   describe "entries" do
-    test "allows all waitlist admin roles", %{conn: _conn} do
-      for role <- ~w(admin president committee_coordinator beginners_coordinator coach) do
+    test "allows every Waitlist manager and refuses coaches", %{conn: _conn} do
+      for role <- @waitlist_managers do
         conn =
           build_conn()
           |> put_req_header("authorization", "Bearer #{role}-token")
           |> get("/api/waitlist/entries")
 
         assert %{"data" => %{"entries" => [], "totalCount" => 0}} = json_response(conn, 200)
+      end
+
+      for path <- ["/api/waitlist/entries", "/api/waitlist/entries/#{insert_waitlist_profile()}"] do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer coach-token")
+          |> get(path)
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
       end
     end
 
@@ -201,7 +272,7 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
     end
 
-    test "returns camelCase entries and excludes joined by default", %{conn: conn} do
+    test "returns camelCase entries and lists only waiting people by default", %{conn: conn} do
       insert_waitlist_profile(
         status: "waiting",
         first_name: "Ada",
@@ -209,7 +280,9 @@ defmodule DhcWeb.WaitlistControllerTest do
         age: 20
       )
 
-      insert_waitlist_profile(status: "joined", first_name: "Grace", last_name: "Hopper", age: 30)
+      for status <- ~w(removed attended invited joined) do
+        insert_waitlist_profile(status: status, first_name: "Grace", last_name: status, age: 30)
+      end
 
       conn =
         conn
@@ -225,20 +298,40 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert entry["adminNotes"] == "Initial note"
       assert entry["guardianFirstName"] == "Parent"
       assert entry["insuranceFormSubmitted"] == false
+      assert entry["status"] == "waiting"
+      assert entry["removedAt"] == nil
       refute Map.has_key?(entry, "searchText")
     end
 
-    test "supports explicit joined status filter", %{conn: conn} do
+    test "lists removed people behind the removed filter", %{conn: conn} do
       insert_waitlist_profile(status: "waiting", first_name: "Ada", last_name: "Lovelace")
-      insert_waitlist_profile(status: "joined", first_name: "Grace", last_name: "Hopper")
+      insert_waitlist_profile(status: "removed", first_name: "Grace", last_name: "Hopper")
 
       conn =
         conn
         |> put_req_header("authorization", "Bearer admin-token")
-        |> get("/api/waitlist/entries", status: "joined")
+        |> get("/api/waitlist/entries", status: "removed")
 
-      assert %{"data" => %{"entries" => [%{"status" => "joined"}], "totalCount" => 1}} =
-               json_response(conn, 200)
+      assert %{
+               "data" => %{
+                 "entries" => [%{"status" => "removed", "removedAt" => removed_at}],
+                 "totalCount" => 1
+               }
+             } = json_response(conn, 200)
+
+      assert {:ok, _at, 0} = DateTime.from_iso8601(removed_at)
+    end
+
+    test "returns 400 for a status outside the Waitlist view", %{conn: _conn} do
+      for status <- ~w(attended invited joined paid) do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> get("/api/waitlist/entries", status: status)
+
+        assert %{"errors" => %{"detail" => "Invalid waitlist entries query"}} =
+                 json_response(conn, 400)
+      end
     end
 
     test "supports cursor next and previous pagination", %{conn: conn} do
@@ -375,6 +468,18 @@ defmodule DhcWeb.WaitlistControllerTest do
                json_response(conn, 200)
     end
 
+    test "numbers a waiting entry within the queue, like the default listing", %{conn: conn} do
+      insert_waitlist_profile(status: "removed", seconds: 0)
+      id = insert_waitlist_profile(status: "waiting", seconds: 1)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries/#{id}")
+
+      assert %{"data" => %{"id" => ^id, "position" => 1}} = json_response(conn, 200)
+    end
+
     test "returns 404 for missing waitlist entry", %{conn: conn} do
       missing_id = Ecto.UUID.generate()
 
@@ -399,22 +504,29 @@ defmodule DhcWeb.WaitlistControllerTest do
   end
 
   describe "update" do
-    test "updates waitlist status and last status change", %{conn: conn} do
+    test "refuses to edit Waitlist Status (422) and changes nothing", %{conn: _conn} do
       id = insert_waitlist_profile(status: "waiting")
-      before_update = Repo.get!(WaitlistEntry, id).last_status_change
+      before = Repo.get!(WaitlistEntry, id)
 
-      conn =
-        conn
-        |> put_req_header("authorization", "Bearer admin-token")
-        |> patch("/api/waitlist/entries/#{id}", %{status: "deferred"})
+      for payload <- [
+            %{status: "removed"},
+            %{status: "attended", adminNotes: "Sneaky"},
+            %{}
+          ] do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> patch("/api/waitlist/entries/#{id}", payload)
 
-      assert %{"data" => %{"id" => ^id, "status" => "deferred", "lastStatusChange" => changed_at}} =
-               json_response(conn, 200)
+        assert %{
+                 "errors" => %{
+                   "detail" => "Invalid waitlist entry update payload",
+                   "code" => "invalid_payload"
+                 }
+               } = json_response(conn, 422)
+      end
 
-      assert DateTime.compare(DateTime.from_iso8601(changed_at) |> elem(1), before_update) in [
-               :gt,
-               :eq
-             ]
+      assert Repo.get!(WaitlistEntry, id) == before
     end
 
     test "updates admin notes through Phoenix", %{conn: conn} do
@@ -429,15 +541,22 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert Repo.get!(WaitlistEntry, id).admin_notes == "Call after grading"
     end
 
-    test "returns 422 for invalid status", %{conn: conn} do
-      id = insert_waitlist_profile()
+    test "editing admin notes leaves the standing and its timestamp alone", %{conn: conn} do
+      id = insert_waitlist_profile(status: "removed")
+      before = Repo.get!(WaitlistEntry, id)
 
       conn =
         conn
         |> put_req_header("authorization", "Bearer admin-token")
-        |> patch("/api/waitlist/entries/#{id}", %{status: "declined"})
+        |> patch("/api/waitlist/entries/#{id}", %{adminNotes: nil})
 
-      assert %{"errors" => %{"detail" => "Invalid waitlist status"}} = json_response(conn, 422)
+      assert %{"data" => %{"adminNotes" => nil, "status" => "removed"}} = json_response(conn, 200)
+
+      assert %{status: "removed", removed_at: removed_at, last_status_change: changed} =
+               Repo.get!(WaitlistEntry, id)
+
+      assert removed_at == before.removed_at
+      assert changed == before.last_status_change
     end
   end
 
@@ -685,6 +804,7 @@ defmodule DhcWeb.WaitlistControllerTest do
         id: waitlist_id,
         email: "#{waitlist_id}@example.com",
         status: Keyword.get(attrs, :status, "waiting"),
+        removed_at: if(Keyword.get(attrs, :status) == "removed", do: registration_date),
         initial_registration_date: registration_date,
         last_contacted: Keyword.get(attrs, :last_contacted),
         last_status_change: registration_date,

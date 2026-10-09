@@ -1,7 +1,9 @@
 import { faker } from "@faker-js/faker";
 import { expect, type Page, test } from "@playwright/test";
 import dayjs, { type Dayjs } from "dayjs";
-import { seedE2EScenario } from "./e2eApi";
+import { loginAsUser } from "./auth";
+import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
+import { createMember } from "./setupFunctions";
 
 const successMessage =
 	"You have been added to the waitlist, we will be in contact soon!";
@@ -108,5 +110,96 @@ test.describe("Beginners waitlist", () => {
 		await page.getByRole("button", { name: "Submit" }).click();
 
 		await expect(page.getByText(successMessage)).toBeVisible();
+	});
+});
+
+test.describe("Beginners waitlist view", () => {
+	const waitlistPath = "/dashboard/beginners-workshop?tab=waitlist";
+	const suffix = `${Date.now()}-${faker.string.alphanumeric(6)}`;
+	const waitingName = `QueueWaiting${faker.string.alpha(6)}`;
+	const removedName = `QueueRemoved${faker.string.alpha(6)}`;
+	const attendedName = `QueueAttended${faker.string.alpha(6)}`;
+	const waitlistIds: string[] = [];
+	let coordinator: Awaited<ReturnType<typeof createMember>>;
+	let coach: Awaited<ReturnType<typeof createMember>>;
+
+	test.beforeAll(async () => {
+		coordinator = await createMember({
+			email: `beginners-coordinator-${suffix}@test.com`,
+			roles: new Set(["beginners_coordinator"]),
+		});
+		coach = await createMember({
+			email: `beginners-coach-${suffix}@test.com`,
+			roles: new Set(["coach"]),
+		});
+
+		for (const [firstName, status] of [
+			[waitingName, "waiting"],
+			[removedName, "removed"],
+			[attendedName, "attended"],
+		] as const) {
+			const seeded = await seedE2EScenario("waitlist", {
+				firstName,
+				lastName: "Queue",
+				email: `${firstName.toLowerCase()}-${suffix}@example.com`,
+				status,
+			});
+			waitlistIds.push(seeded.waitlistId);
+		}
+	});
+
+	test.afterAll(async () => {
+		for (const id of waitlistIds) await deleteE2EFixture("waitlist", id);
+		await coordinator?.cleanUp();
+		await coach?.cleanUp();
+	});
+
+	test("lists waiting people by default, with removed people behind a filter", async ({
+		context,
+		page,
+	}) => {
+		await page.setViewportSize({ width: 1280, height: 720 });
+		await loginAsUser(context, coordinator.email);
+		await page.goto(waitlistPath);
+
+		const table = page.getByRole("table");
+		await expect(table.getByText(`${waitingName} Queue`)).toBeVisible();
+		await expect(table.getByText(`${removedName} Queue`)).toHaveCount(0);
+		await expect(table.getByText(`${attendedName} Queue`)).toHaveCount(0);
+
+		// Status is read-only and nobody is invited from the Waitlist view.
+		await expect(page.getByRole("button", { name: /invite/i })).toHaveCount(0);
+
+		await page.getByRole("radio", { name: "Removed" }).click();
+		await expect(page).toHaveURL(/status=removed/);
+		await expect(table.getByText(`${removedName} Queue`)).toBeVisible();
+		await expect(table.getByText(`${waitingName} Queue`)).toHaveCount(0);
+		await expect(
+			table.getByText(/^Removed \d{2}\/\d{2}\/\d{4}$/),
+		).toBeVisible();
+
+		await page.getByRole("radio", { name: "Waiting" }).click();
+		await expect(page).not.toHaveURL(/status=/);
+		await expect(table.getByText(`${waitingName} Queue`)).toBeVisible();
+	});
+
+	test("reports the waiting queue as Waiting", async ({ context, page }) => {
+		await loginAsUser(context, coordinator.email);
+		await page.goto("/dashboard/beginners-workshop");
+
+		await expect(
+			page.getByLabel("Dashboard").getByText("Waiting", { exact: true }),
+		).toBeVisible();
+		await expect(page.getByText("Total waitlist")).toHaveCount(0);
+	});
+
+	test("coaches no longer see the Waitlist", async ({ context, page }) => {
+		await loginAsUser(context, coach.email);
+		await page.goto(waitlistPath);
+
+		await expect(page).not.toHaveURL(/beginners-workshop/);
+		await expect(
+			page.getByRole("link", { name: "Beginners Workshop" }),
+		).toHaveCount(0);
 	});
 });

@@ -1380,10 +1380,10 @@ paths:
         - Waitlist
       summary: Read waitlist analytics
       description: |
-        Returns dashboard analytics for current beginners workshop waitlist entries.
+        Returns dashboard analytics over the `waiting` Waitlist queue only.
+        `totalCount` is the number of people waiting.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+        Requires the `beginners.waitlist.manage` capability.
       security:
         - bearerAuth: []
       responses:
@@ -1400,7 +1400,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Authenticated user lacks a waitlist admin role
+          description: Session lacks the `beginners.waitlist.manage` capability
           content:
             application/json:
               schema:
@@ -1458,8 +1458,7 @@ paths:
         Returns a domain-shaped, cursor-paginated list of beginners workshop
         waitlist entries for the dashboard table.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+        Requires the `beginners.waitlist.manage` capability.
       security:
         - bearerAuth: []
       parameters:
@@ -1482,8 +1481,10 @@ paths:
         - name: status
           in: query
           schema:
-            $ref: "#/components/schemas/WaitlistStatus"
-          description: Defaults to all statuses except `joined`; pass `joined` explicitly to include joined entries only.
+            type: string
+            enum: [waiting, removed]
+            default: waiting
+          description: Waitlist Status to list. Defaults to `waiting`, the queue; pass `removed` to list removed people instead.
         - name: sort
           in: query
           schema:
@@ -1515,7 +1516,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Authenticated user lacks a waitlist admin role
+          description: Session lacks the `beginners.waitlist.manage` capability
           content:
             application/json:
               schema:
@@ -1530,8 +1531,7 @@ paths:
       description: |
         Returns one domain-shaped waitlist entry for admin inspection.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+        Requires the `beginners.waitlist.manage` capability.
       security:
         - bearerAuth: []
       parameters:
@@ -1555,7 +1555,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Authenticated user lacks a waitlist admin role
+          description: Session lacks the `beginners.waitlist.manage` capability
           content:
             application/json:
               schema:
@@ -1572,12 +1572,11 @@ paths:
         - Waitlist
       summary: Update waitlist entry admin fields
       description: |
-        Updates admin-owned Waitlist entry fields. Status updates refresh the
-        `lastStatusChange` timestamp. `adminNotes` is included to keep the
-        existing admin-notes workflow off direct Supabase table mutation.
+        Updates the entry's admin notes. Waitlist Status is not editable here:
+        it changes only through named commands (spec story 121), so a
+        `status` property is rejected.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+        Requires the `beginners.waitlist.manage` capability.
       security:
         - bearerAuth: []
       parameters:
@@ -1607,7 +1606,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Authenticated user lacks a waitlist admin role
+          description: Session lacks the `beginners.waitlist.manage` capability
           content:
             application/json:
               schema:
@@ -1635,8 +1634,7 @@ paths:
         Returns guardian contact details for a minor waitlist applicant, or
         `data: null` when the entry exists but has no guardian details.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
-        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+        Requires the `beginners.waitlist.manage` capability.
       security:
         - bearerAuth: []
       parameters:
@@ -1660,7 +1658,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "403":
-          description: Authenticated user lacks a waitlist admin role
+          description: Session lacks the `beginners.waitlist.manage` capability
           content:
             application/json:
               schema:
@@ -7603,14 +7601,14 @@ components:
           minimum: 0
     WaitlistStatus:
       type: string
+      description: |
+        A person's standing in the Waitlist, independent of any one Beginners'
+        Workshop. It changes only through the Waitlist standing function.
       enum:
         - waiting
+        - removed
+        - attended
         - invited
-        - paid
-        - deferred
-        - cancelled
-        - completed
-        - no_reply
         - joined
     SocialMediaConsent:
       type: string
@@ -8312,11 +8310,10 @@ components:
           $ref: "#/components/schemas/WaitlistEntry"
     WaitlistEntryUpdateRequest:
       type: object
-      minProperties: 1
+      required:
+        - adminNotes
       additionalProperties: false
       properties:
-        status:
-          $ref: "#/components/schemas/WaitlistStatus"
         adminNotes:
           type: string
           nullable: true
@@ -8356,6 +8353,7 @@ components:
         - socialMediaConsent
         - insuranceFormSubmitted
         - lastStatusChange
+        - removedAt
       properties:
         id:
           type: string
@@ -8405,6 +8403,13 @@ components:
         lastStatusChange:
           type: string
           format: date-time
+        removedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            When the entry's current `removed` standing started, which starts
+            the 3-month retention clock; `null` unless the status is `removed`.
     NotificationsListResponse:
       type: object
       required:
@@ -11263,8 +11268,8 @@ components:
         A capability name from the `Dhc.Auth.Capabilities` registry, shared
         with the dashboard's `#lib/server/authorization` registry.
       enum:
+        - beginners.waitlist.manage
         - beginners.waitlist.toggle
-        - beginners.workshop.read
         - discord.assignments.manage
         - discord.doctor.use
         - inventory.catalog.read

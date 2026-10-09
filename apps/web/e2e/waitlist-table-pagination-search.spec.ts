@@ -179,7 +179,7 @@ test.describe("Waitlist table pagination and search", () => {
 		// The footer counts the whole waitlist, not just the visible page; this
 		// suite seeds 15 entries, so at least that many exist across pages.
 		const footerCell = page.locator("table tfoot tr td", {
-			hasText: /Total \d+ people on the waitlist/,
+			hasText: /Total \d+ people waiting/,
 		});
 		await expect(footerCell).toBeVisible();
 		const total = Number(

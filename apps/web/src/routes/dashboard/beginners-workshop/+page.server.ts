@@ -7,7 +7,7 @@ export const load: PageServerLoad = async ({ locals, cookies, depends }) => {
 	depends("wailist:status");
 	const { session } = await locals.safeGetSession();
 	const access = authorizationFor(session);
-	access.require("beginners.workshop.read");
+	access.require("beginners.waitlist.manage");
 
 	const statusResponse = await waitlistStatus({
 		...apiClientOptions(cookies),

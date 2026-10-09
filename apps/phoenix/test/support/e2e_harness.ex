@@ -249,10 +249,13 @@ defmodule Dhc.E2EHarness do
       end
 
     with {:ok, result} <- Waitlist.create_entry(payload) do
+      # Seeds an arbitrary standing directly; product code changes standing
+      # only through `Dhc.Waitlist.change_standing/2`.
       status = Map.get(attrs, "status", "waiting")
+      removed_at = if status == "removed", do: DateTime.utc_now() |> DateTime.truncate(:second)
 
       from(w in WaitlistEntry, where: w.id == ^result.id)
-      |> Repo.update_all(set: [status: status])
+      |> Repo.update_all(set: [status: status, removed_at: removed_at])
 
       Map.merge(result, %{email: email, waitlistId: result.id, profileId: result.profile_id})
     end
