@@ -1627,7 +1627,12 @@ defmodule Dhc.E2EHarness do
     from(profile in UserProfile, where: profile.waitlist_id == ^id)
     |> Repo.delete_all()
 
-    Waitlist.delete_entry(id)
+    # Teardown, not the product's delete (`delete_person`, ALE-396): it
+    # removes whatever the scenario left, whatever the person's standing.
+    case Repo.delete_all(from(w in WaitlistEntry, where: w.id == ^id)) do
+      {0, _} -> {:error, :not_found}
+      {_deleted, _} -> :ok
+    end
   end
 
   # Teardown for the frozen structure scenario. Accepts either a category id

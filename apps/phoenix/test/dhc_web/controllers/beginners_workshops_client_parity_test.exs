@@ -51,6 +51,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopIntakes.cancelWithRefund beginnersWorkshopIntakes.confirm
                 beginnersWorkshopIntakes.correctAttendance
                 beginnersWorkshopIntakes.decline beginnersWorkshopIntakes.defer
+                beginnersWorkshopIntakes.deletePerson
                 beginnersWorkshopIntakes.refundCarriedFee beginnersWorkshopIntakes.resendLink
                 beginnersWorkshopIntakes.rotateLink beginnersWorkshopIntakes.withdraw
                 beginnersWorkshopIntakes.withdrawPerson

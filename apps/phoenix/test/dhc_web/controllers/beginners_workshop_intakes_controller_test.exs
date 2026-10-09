@@ -392,4 +392,73 @@ defmodule DhcWeb.BeginnersWorkshopIntakesControllerTest do
                |> json_response(200)
     end
   end
+
+  describe "delete a person (ALE-396)" do
+    defp delete_path(id), do: "/api/beginners-workshops/people/#{id}/delete"
+
+    test "needs beginners.waitlist.manage", %{conn: conn} do
+      person = BeginnersWorkshopFixtures.waiting_person_fixture(~U[2025-05-01 12:00:00Z])
+      assert conn |> post(delete_path(person.id), %{}) |> json_response(401)
+
+      for role <- ~w(coach member),
+          do:
+            assert(
+              conn
+              |> as_role(role)
+              |> post(delete_path(person.id), %{})
+              |> json_response(403)
+            )
+
+      assert Repo.get(WaitlistEntry, person.id)
+    end
+
+    test "deletes a person, settling a Carried Fee by the choice", %{conn: conn} do
+      coordinator = as_role(conn, "beginners_coordinator")
+      person = BeginnersWorkshopFixtures.waiting_person_fixture(~U[2025-05-01 12:00:00Z])
+
+      {:ok, %{id: fee_id}} =
+        Dhc.BeginnersWorkshops.execute(:system, {:import_carried_fee, person.id, "Yes"})
+
+      assert %{"errors" => %{"code" => "refund_choice_required", "fields" => %{"refund" => [_]}}} =
+               coordinator |> post(delete_path(person.id), %{}) |> json_response(422)
+
+      assert %{"errors" => %{"code" => "payment_not_linked"}} =
+               coordinator
+               |> post(delete_path(person.id), %{"refund" => true})
+               |> json_response(409)
+
+      assert %{
+               "data" => %{
+                 "waitlistId" => id,
+                 "anonymisedIntakes" => 0,
+                 "carriedFee" => %{"id" => ^fee_id, "status" => "forfeited"}
+               }
+             } =
+               coordinator
+               |> post(delete_path(person.id), %{"refund" => false})
+               |> json_response(200)
+
+      assert id == person.id
+      refute Repo.get(WaitlistEntry, person.id)
+
+      assert coordinator |> post(delete_path(person.id), %{}) |> json_response(404)
+    end
+
+    test "refuses an open Intake and an Invitation under way",
+         %{conn: conn, contacted: contacted} do
+      coordinator = as_role(conn, "beginners_coordinator")
+
+      assert %{"errors" => %{"code" => "open_intake"}} =
+               coordinator |> post(delete_path(contacted.waitlist_id), %{}) |> json_response(409)
+
+      invited =
+        ~U[2025-05-01 12:00:00Z]
+        |> BeginnersWorkshopFixtures.waiting_person_fixture()
+        |> Ecto.Changeset.change(status: "invited")
+        |> Repo.update!()
+
+      assert %{"errors" => %{"code" => "not_deletable"}} =
+               coordinator |> post(delete_path(invited.id), %{}) |> json_response(409)
+    end
+  end
 end

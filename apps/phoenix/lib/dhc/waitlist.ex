@@ -314,12 +314,47 @@ defmodule Dhc.Waitlist do
     end
   end
 
-  @doc false
-  @spec delete_entry(Ecto.UUID.t()) :: :ok | {:error, :not_found}
-  def delete_entry(id) do
-    case Repo.get(WaitlistEntry, id) do
-      nil -> {:error, :not_found}
-      entry -> Repo.delete(entry) |> then(fn {:ok, _entry} -> :ok end)
+  @doc """
+  Hard-deletes one person from the Waitlist (ALE-396, spec stories 119 and
+  120): their Guardian, their unclaimed UserProfile and the Waitlist entry.
+
+  The Waitlist's only delete. It runs **inside the caller's transaction**
+  (the Beginners' Workshop boundary's `delete_person` and `purge_retention`,
+  which first settle the person's Carried Fee and anonymise their Intakes)
+  and raises `ArgumentError` outside one. It takes the entry row lock and
+  decides under it.
+
+  Refused with `:not_found`, and with `:not_deletable` for standing
+  `invited` or `joined`, a claimed profile (a Member's, which is never
+  deleted) or an Invitation that still names the entry (Onboarding's).
+  """
+  @spec hard_delete(Ecto.UUID.t()) :: :ok | {:error, :not_found | :not_deletable}
+  def hard_delete(entry_id) when is_binary(entry_id) do
+    unless Repo.in_transaction?() do
+      raise ArgumentError, "Dhc.Waitlist.hard_delete/1 must run inside a transaction"
+    end
+
+    with {:ok, entry} <- lock_entry(entry_id),
+         {:ok, profiles} <- deletable_profiles(entry) do
+      profile_ids = Enum.map(profiles, & &1.id)
+      Repo.delete_all(from(g in WaitlistGuardian, where: g.profile_id in ^profile_ids))
+      Repo.delete_all(from(p in UserProfile, where: p.id in ^profile_ids))
+      Repo.delete_all(from(w in WaitlistEntry, where: w.id == ^entry.id))
+      :ok
+    end
+  end
+
+  defp deletable_profiles(%WaitlistEntry{status: status}) when status in ~w(invited joined),
+    do: {:error, :not_deletable}
+
+  defp deletable_profiles(%WaitlistEntry{id: id}) do
+    profiles =
+      Repo.all(from(p in UserProfile, where: p.waitlist_id == ^id, lock: "FOR UPDATE"))
+
+    cond do
+      Enum.any?(profiles, &(not is_nil(&1.principal_id))) -> {:error, :not_deletable}
+      Repo.exists?(from(i in Invitation, where: i.waitlist_id == ^id)) -> {:error, :not_deletable}
+      true -> {:ok, profiles}
     end
   end
 

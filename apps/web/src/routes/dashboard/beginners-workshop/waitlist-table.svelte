@@ -31,6 +31,7 @@ import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
 import ActionButtons from "./actions-buttons.svelte";
 import WaitlistEntryDetails from "./waitlist-entry-details.svelte";
 import WaitlistStatusBadge from "./waitlist-status-badge.svelte";
+import WaitlistDeleteDialog from "./waitlist-delete-dialog.svelte";
 import WaitlistWithdrawDialog from "./waitlist-withdraw-dialog.svelte";
 import {
 	createWaitlistTable,
@@ -56,6 +57,15 @@ let withdrawOpen = $state(false);
 function openWithdraw(entry: WaitlistEntry) {
 	withdrawing = entry;
 	withdrawOpen = true;
+}
+
+// ALE-396: the person the Delete dialog is for.
+let deleting = $state<WaitlistEntry | null>(null);
+let deleteOpen = $state(false);
+
+function openDelete(entry: WaitlistEntry) {
+	deleting = entry;
+	deleteOpen = true;
 }
 
 const standingLabel = $derived(
@@ -117,6 +127,9 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 					restoreDisabled: waitlist.isRestoring,
 					onWithdraw: waitlist.canWithdraw(row.original)
 						? () => openWithdraw(row.original)
+						: undefined,
+					onDelete: waitlist.canDelete(row.original)
+						? () => openDelete(row.original)
 						: undefined,
 				});
 			},
@@ -418,6 +431,9 @@ const table = createSvelteTable(tableOptions);
 							onWithdraw={waitlist.canWithdraw(row.original)
 								? () => openWithdraw(row.original)
 								: undefined}
+							onDelete={waitlist.canDelete(row.original)
+								? () => openDelete(row.original)
+								: undefined}
 						/>
 					</div>
 				</div>
@@ -554,6 +570,19 @@ const table = createSvelteTable(tableOptions);
 			bind:open={withdrawOpen}
 			pending={waitlist.isWithdrawing}
 			onWithdraw={(body) => waitlist.withdraw(person.id, body)}
+		/>
+	{/key}
+{/if}
+
+{#if deleting}
+	{@const person = deleting}
+	{#key person.id}
+		<WaitlistDeleteDialog
+			entry={person}
+			carriedFee={waitlist.carriedFee(person.id)}
+			bind:open={deleteOpen}
+			pending={waitlist.isDeleting}
+			onDelete={(body) => waitlist.deletePerson(person.id, body)}
 		/>
 	{/key}
 {/if}

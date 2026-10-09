@@ -153,7 +153,10 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
         {409, "Attendance can be corrected only once the workshop is finished"},
       not_correctable:
         {409, "Only attended ↔ no-show, or a no-show to deferred, can be corrected"},
-      invalid_correction: {422, "Choose attended, no-show or deferred"}
+      invalid_correction: {422, "Choose attended, no-show or deferred"},
+      # Hard delete (ALE-396).
+      not_deletable:
+        {409, "This person has been invited or has joined, so they can't be deleted here"}
     },
     fields: @internal_to_public
 

@@ -4958,6 +4958,55 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/people/{waitlistId}/delete:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopWaitlistId"
+    post:
+      operationId: beginnersWorkshopIntakes.deletePerson
+      tags: [BeginnersWorkshops]
+      summary: Delete a person (Waitlist tab)
+      description: |
+        The Waitlist tab's Delete (ALE-396): a hard delete, at any time on
+        request, exactly as the 3-month retention purge does it. The
+        Waitlist entry, the unclaimed profile and the Guardian are deleted;
+        the person's Intakes are anonymised (each keeps its queue date, an
+        attended one records whether they had been invited or joined); the
+        Carried Fee row is kept with no link to them. When the person holds
+        a Carried Fee, `refund` is required first: `true` refunds it in full
+        against its original payment, `false` forfeits it. Nobody is
+        emailed. Refused: `person_not_found`, `open_intake`, `not_deletable`
+        (standing `invited` or `joined`, or a Member's profile),
+        `payment_not_linked`.
+        Requires `beginners.waitlist.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopDeletePersonRequest"}
+      responses:
+        "200":
+          description: The person was deleted
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopDeletePersonResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Waitlist person not found
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: An open Intake, an Invitation under way, or a fee that can't be refunded yet
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopDeletePersonConflictError"}
+        "422":
+          description: The refund-or-forfeit choice missing or invalid
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
 
   /beginners-workshops/people/{waitlistId}/carried-fee:
     parameters:
@@ -9595,6 +9644,36 @@ components:
       required: [data]
       properties:
         data: {$ref: "#/components/schemas/BeginnersWorkshopWithdrawPersonResult"}
+    BeginnersWorkshopDeletePersonRequest:
+      type: object
+      properties:
+        refund:
+          type: boolean
+          description: |
+            Required whenever the person holds a Carried Fee: `true` refunds
+            it in full, `false` forfeits it.
+    BeginnersWorkshopDeletePersonResult:
+      type: object
+      required: [waitlistId, anonymisedIntakes, carriedFee]
+      properties:
+        waitlistId: {type: string, format: uuid}
+        anonymisedIntakes:
+          type: integer
+          minimum: 0
+          description: How many of the person's Intakes were anonymised.
+        carriedFee:
+          description: The Carried Fee the delete settled, or null without one.
+          nullable: true
+          type: object
+          required: [id, status]
+          properties:
+            id: {type: string, format: uuid}
+            status: {$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}
+    BeginnersWorkshopDeletePersonResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopDeletePersonResult"}
     BeginnersWorkshopIntakeCommandOutcome:
       type: string
       description: "`done`: the command acted. `already_done`: the Intake was already where it leads; nothing happened again."
@@ -10200,6 +10279,25 @@ components:
                     - already_cancelled
                     - not_correctable
                     - open_intake
+    BeginnersWorkshopDeletePersonConflictError:
+      description: 409 refusal of a person's delete (ALE-396).
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - open_intake
+                    - not_deletable
+                    - payment_not_linked
+                    - already_requested
+                    - concurrent_change
     BeginnersWorkshopCarriedFees:
       type: object
       description: |
