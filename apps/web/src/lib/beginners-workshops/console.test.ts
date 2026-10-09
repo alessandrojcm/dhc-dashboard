@@ -140,7 +140,7 @@ describe("consoleTimeline", () => {
 		expect(steps[1]?.when).toBe("Tue 20 Oct, 10:00 → Tue 27 Oct, 23:59");
 	});
 
-	it("has no next Batch once payment has closed", () => {
+	it("has no next Batch once payment has closed, and marks the cutoff done", () => {
 		const base = view();
 		const steps = consoleTimeline(
 			view({
@@ -153,7 +153,7 @@ describe("consoleTimeline", () => {
 		);
 		expect(
 			steps.find((step) => step.label.startsWith("Payment Cutoff"))?.state,
-		).toBe("now");
+		).toBe("done");
 	});
 
 	it("strikes through what a cancelled workshop will never do", () => {
@@ -181,6 +181,50 @@ describe("nowCard", () => {
 			title: "Batch 1 window open — ends Tue 27 Oct, 23:59",
 			body: "1 of 3 paid. Batch 2 goes out Wed 28 Oct, 10:00.",
 		});
+	});
+});
+
+describe("nowCard after the Payment Cutoff (ALE-385)", () => {
+	const intake = (holdExpiresAt: string | null) => ({
+		id: crypto.randomUUID(),
+		state: "contacted" as const,
+		origin: "batch" as const,
+		batchNumber: 1,
+		queueDate: "2025-01-01T12:00:00Z",
+		contactedAt: "2026-10-20T09:00:00Z",
+		holdExpiresAt,
+		firstName: "Aoife",
+		lastName: "Byrne",
+		minor: false,
+	});
+
+	it("says what the cutoff did", () => {
+		const base = view();
+		expect(
+			nowCard(
+				view({ workshop: { ...base.workshop, stage: "payment_closed" } }),
+			),
+		).toEqual({
+			title: "Payment closed",
+			body: "1 of 3 paid. Paid people get the pre-workshop info; unpaid people lapse, or go back to the queue if the workshop was full.",
+		});
+	});
+
+	it("names who is still in checkout or not settled yet", () => {
+		const base = view();
+		const card = nowCard(
+			view({
+				workshop: { ...base.workshop, stage: "payment_closed" },
+				roster: {
+					seated: [],
+					asked: [intake("2026-11-11T18:50:00Z"), intake(null)],
+					out: [],
+				},
+			}),
+		);
+		expect(card.body).toMatch(
+			/1 still in checkout — settled when Stripe ends the payment\. 1 settled at the next sweep\.$/,
+		);
 	});
 });
 

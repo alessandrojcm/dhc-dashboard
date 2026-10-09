@@ -36,12 +36,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   change, and `transition/3` is the only writer of a status:
 
       Beginners' Workshop  scheduled → finalised | cancelled
-      Intake               contacted → paid
+      Intake               contacted → paid | lapsed | returned
       payment (Seat Hold)  open → paid | releasing | released | policy_failed
                            releasing → released | paid
 
   The workshop end states are terminal. Intakes are created `contacted`
-  (ALE-380); ALE-381 adds `contacted → paid` and the payment rows. Later
+  (ALE-380); ALE-381 adds `contacted → paid` and the payment rows; ALE-385
+  adds the Payment Cutoff's `contacted → lapsed | returned`. Later
   Intake moves, refunds and Carried Fees join the table with the tickets
   that create them.
 
@@ -135,6 +136,23 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       (expired → released, completed → paid). Our clock alone never frees a
       seat.
 
+  ## Payment Cutoff (ALE-385)
+
+  `pass_payment_cutoff` (`:system`, a sweep pass) runs for a scheduled
+  workshop at or after its Payment Cutoff. Under the Beginners' Workshop
+  lock, then the contacted people's Waitlist entries, the open Intakes and
+  the live Seat Holds, it queues "Pre-workshop info" to every `paid` Intake
+  that has not had it (log occasion `pre_workshop`, unique per Intake) and
+  settles every `contacted` Intake by `WorkshopPolicy.cutoff_settlement/3`:
+  `lapsed` (standing `removed` through `Dhc.Waitlist.change_standing/2`)
+  when seats were free, `returned` (standing left `waiting`, so the
+  original priority stands) when the workshop was full, and left alone
+  while its own Seat Hold is live — the cutoff stops only new holds, so a
+  later sweep settles it once Stripe ends the hold. Neither close sends an
+  email. An Intake that becomes `paid` after the cutoff gets Pre-workshop
+  info in the same transaction (`complete_payment`). Re-running the pass
+  finds nothing owed, so it is exactly-once.
+
   A payment-started command peeks the row by session id without a lock,
   then locks Beginners' Workshop → Intake → payment from the top down and
   decides on the re-read row. The row's workshop and Intake never change,
@@ -204,6 +222,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:complete_payment, session_id_or_object :: String.t() | map()}
           | {:release_payment, session_id_or_object :: String.t() | map()}
           | :reap_holds
+          | {:pass_payment_cutoff, workshop_id :: binary()}
           | {:fast_track, workshop_id :: binary(), fast_track_person()}
 
   @typedoc """
@@ -265,7 +284,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   }
 
   # Commands only the `:system` actor (time-driven passes) may run.
-  @system_commands [:send_due_batch, :reap_holds]
+  @system_commands [:send_due_batch, :reap_holds, :pass_payment_cutoff]
 
   # The person's Intake-page commands (`{:intake_link, token}`).
   @intake_link_commands [:start_payment]
@@ -289,7 +308,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   @transitions %{
     workshop: %{"scheduled" => ~w(finalised cancelled)},
-    intake: %{"contacted" => ~w(paid)},
+    intake: %{"contacted" => ~w(paid lapsed returned)},
     payment: %{
       "open" => ~w(paid releasing released policy_failed),
       "releasing" => ~w(released paid)
@@ -517,6 +536,22 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp run(:system, :reap_holds, clock), do: reap_holds(clock)
+
+  defp run(:system, {:pass_payment_cutoff, workshop_id}, clock) do
+    with {:ok, workshop_id} <- cast_id(workshop_id) do
+      transact(fn ->
+        with_locked(
+          %{
+            workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+            waitlist_entry: &cutoff_entries(&1, clock),
+            intake: &cutoff_intakes/1,
+            payment: &cutoff_holds/1
+          },
+          &pass_cutoff_locked(&1, clock)
+        )
+      end)
+    end
+  end
 
   defp run({:staff, _principal_id}, {:fast_track, workshop_id, person}, clock) do
     with {:ok, workshop_id} <- cast_id(workshop_id),
@@ -1270,17 +1305,82 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
+  # A person paid after the Payment Cutoff gets Pre-workshop info at once
+  # (story 49); before it, the cutoff pass sends it.
   defp pay_intake(intake, workshop, reading) do
     with {:ok, intake} <-
            transition(:intake, intake, Intake.paid_changeset(intake, "stripe", reading.now)),
-         :ok <- queue_place_confirmed(intake, workshop, reading) do
+         :ok <- queue_place_confirmed(intake, workshop, reading),
+         :ok <- pre_workshop_if_cutoff_passed(intake, workshop, reading) do
       {:ok, %{outcome: :paid}}
     end
   end
 
-  defp queue_place_confirmed(%Intake{waitlist_id: nil}, _workshop, _reading), do: :ok
-
   defp queue_place_confirmed(intake, workshop, reading) do
+    queue_intake_email(
+      intake,
+      "place_confirmed_paid",
+      "place_confirmed",
+      &Map.put(base_values(workshop, &1), "fee", Values.money(workshop.fee_cents)),
+      reading
+    )
+  end
+
+  # Only a scheduled workshop past its cutoff: a cancelled or finalised one
+  # sends no Pre-workshop info.
+  defp pre_workshop_if_cutoff_passed(intake, workshop, reading) do
+    if cutoff_due?(workshop, reading) do
+      with {:ok, _queued_or_not} <- queue_pre_workshop(intake, workshop, reading), do: :ok
+    else
+      :ok
+    end
+  end
+
+  # "Pre-workshop info", once per Intake (per schedule; a reschedule's
+  # resend arrives with that ticket). Every writer of it holds the workshop
+  # lock, so the log row read here cannot appear concurrently; the unique
+  # `occasion` index is the backstop. An anonymised person is owed nothing.
+  defp queue_pre_workshop(%Intake{waitlist_id: nil}, _workshop, _reading), do: {:ok, :not_owed}
+
+  defp queue_pre_workshop(intake, workshop, reading) do
+    sent? =
+      Repo.exists?(
+        from(l in IntakeEmailLog,
+          where: l.intake_id == ^intake.id and l.occasion == "pre_workshop"
+        )
+      )
+
+    if sent? do
+      {:ok, :not_owed}
+    else
+      with :ok <-
+             queue_intake_email(
+               intake,
+               "pre_workshop",
+               "pre_workshop",
+               &base_values(workshop, &1),
+               reading
+             ),
+           do: {:ok, :queued}
+    end
+  end
+
+  defp base_values(workshop, first_name) do
+    %{
+      "firstName" => first_name,
+      "date" => Values.date(workshop.date),
+      "startTime" => Values.start_time(workshop.start_time),
+      "venue" => workshop.venue
+    }
+  end
+
+  # Queues one Intake Email to the Intake's person, with their Intake link as
+  # the button, and writes its log row in the same transaction. An
+  # anonymised person (no Waitlist entry) is not emailed.
+  defp queue_intake_email(%Intake{waitlist_id: nil}, _type, _occasion, _values, _reading),
+    do: :ok
+
+  defp queue_intake_email(intake, type, occasion, values, reading) do
     entry = Repo.get!(WaitlistEntry, intake.waitlist_id)
 
     first_name =
@@ -1294,24 +1394,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     with {:ok, _job} <-
            IntakeEmails.queue(
-             "place_confirmed_paid",
+             type,
              entry,
-             %{
-               "firstName" => first_name,
-               "date" => Values.date(workshop.date),
-               "startTime" => Values.start_time(workshop.start_time),
-               "venue" => workshop.venue,
-               "fee" => Values.money(workshop.fee_cents)
-             },
+             values.(first_name),
              button_url: IntakeLink.url(IntakeLink.token(intake.id, intake.link_generation))
            ),
          {:ok, _log} <-
-           %{
-             intake_id: intake.id,
-             email_type: "place_confirmed_paid",
-             occasion: "place_confirmed",
-             queued_at: reading.now
-           }
+           %{intake_id: intake.id, email_type: type, occasion: occasion, queued_at: reading.now}
            |> IntakeEmailLog.changeset()
            |> persist() do
       :ok
@@ -1399,6 +1488,116 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp released?(%IntakePayment{id: id}),
     do: Repo.exists?(from(p in IntakePayment, where: p.id == ^id and p.status == "released"))
+
+  # ── pass_payment_cutoff ─────────────────────────────────────────
+
+  # Under the workshop lock: the Waitlist entries of its `contacted` people
+  # (whose standing a lapse changes). Nothing is locked before the cutoff.
+  defp cutoff_entries(%{workshop: workshop}, clock) do
+    if cutoff_due?(workshop, Clock.read(clock)) do
+      contacted =
+        from(i in Intake,
+          where: i.workshop_id == ^workshop.id and i.state == "contacted",
+          select: i.waitlist_id
+        )
+
+      {:all, from(e in WaitlistEntry, where: e.id in subquery(contacted))}
+    end
+  end
+
+  # The workshop's open Intakes, once its entries are locked.
+  defp cutoff_intakes(%{workshop: workshop, waitlist_entry: entries}) when is_list(entries) do
+    open = Intake.open_states()
+    {:all, from(i in Intake, where: i.workshop_id == ^workshop.id and i.state in ^open)}
+  end
+
+  defp cutoff_intakes(_locked), do: nil
+
+  # Its live Seat Holds: an Intake holding one is left for Stripe to settle.
+  defp cutoff_holds(%{workshop: workshop, intake: intakes}) when is_list(intakes),
+    do:
+      {:all,
+       from(p in IntakePayment, where: p.workshop_id == ^workshop.id and p.status == "open")}
+
+  defp cutoff_holds(_locked), do: nil
+
+  defp cutoff_due?(workshop, reading),
+    do: workshop.status == "scheduled" and not WorkshopPolicy.payment_open?(workshop, reading)
+
+  defp pass_cutoff_locked(%{intake: nil}, _clock), do: {:ok, %{outcome: :not_due}}
+
+  defp pass_cutoff_locked(locked, clock) do
+    %{workshop: workshop, waitlist_entry: entries, intake: intakes, payment: holds} = locked
+    reading = Clock.read(clock)
+
+    if cutoff_due?(workshop, reading) do
+      pass = %{
+        workshop: workshop,
+        facts: facts_for(workshop),
+        held: MapSet.new(holds, & &1.intake_id),
+        entries: Map.new(entries, &{&1.id, &1}),
+        reading: reading
+      }
+
+      tally = %{outcome: :passed, pre_workshop: 0, lapsed: 0, returned: 0, awaiting_hold: 0}
+
+      Enum.reduce_while(intakes, {:ok, tally}, fn intake, {:ok, tally} ->
+        intake
+        |> pass_intake(pass)
+        |> count_passed(tally)
+      end)
+    else
+      {:ok, %{outcome: :not_due}}
+    end
+  end
+
+  defp count_passed({:ok, nil}, tally), do: {:cont, {:ok, tally}}
+
+  defp count_passed({:ok, counted}, tally),
+    do: {:cont, {:ok, Map.update!(tally, counted, &(&1 + 1))}}
+
+  defp count_passed({:error, reason}, _tally), do: {:halt, {:error, reason}}
+
+  defp pass_intake(%Intake{state: "paid"} = intake, %{workshop: workshop, reading: reading}) do
+    case queue_pre_workshop(intake, workshop, reading) do
+      {:ok, :queued} -> {:ok, :pre_workshop}
+      {:ok, :not_owed} -> {:ok, nil}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp pass_intake(%Intake{state: "contacted"} = intake, pass) do
+    hold_live? = MapSet.member?(pass.held, intake.id)
+
+    case {entry_of(intake, pass.entries),
+          WorkshopPolicy.cutoff_settlement(hold_live?, pass.workshop, pass.facts)} do
+      # A person contacted after this pass peeked the entries: the next sweep.
+      {:not_locked, _settlement} -> {:ok, nil}
+      {_entry, :await_hold} -> {:ok, :awaiting_hold}
+      {entry, :lapse} -> lapse(intake, entry)
+      {_entry, :return} -> close(intake, "returned", :returned)
+    end
+  end
+
+  defp entry_of(%Intake{waitlist_id: nil}, _entries), do: nil
+  defp entry_of(%Intake{waitlist_id: id}, entries), do: Map.get(entries, id, :not_locked)
+
+  # A lapse removes a waiting person (story 86). A person staff already
+  # removed stays removed; an anonymised one has no standing.
+  defp lapse(intake, %WaitlistEntry{status: "waiting", id: id}) do
+    with {:ok, counted} <- close(intake, "lapsed", :lapsed),
+         {:ok, _entry} <- Waitlist.change_standing(id, "removed"),
+         do: {:ok, counted}
+  end
+
+  defp lapse(intake, _entry), do: close(intake, "lapsed", :lapsed)
+
+  # A return leaves the standing alone: a contacted person is still
+  # `waiting`, and their priority date was never touched (story 87).
+  defp close(intake, state, counted) do
+    with {:ok, _intake} <- transition(:intake, intake, Intake.close_changeset(intake, state)),
+         do: {:ok, counted}
+  end
 
   # ── set_staff ───────────────────────────────────────────────────
 

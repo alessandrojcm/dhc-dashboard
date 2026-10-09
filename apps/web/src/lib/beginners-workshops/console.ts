@@ -89,13 +89,8 @@ export function consoleTimeline(
 	steps.push({
 		label: "Payment Cutoff · pre-workshop info",
 		when: formatDublinInstant(workshop.paymentCutoff),
-		state: cancelled
-			? "skipped"
-			: stage === "payment_closed"
-				? "now"
-				: AFTER_CUTOFF.has(stage)
-					? "done"
-					: "next",
+		// ALE-385: the cutoff pass runs at the first sweep after the cutoff.
+		state: cancelled ? "skipped" : AFTER_CUTOFF.has(stage) ? "done" : "next",
 	});
 	steps.push({
 		label: "Workshop · check-in from an hour before",
@@ -184,9 +179,36 @@ export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 				title: stageLabel(workshop.stage),
 				body: `${seats}. ${nextBatchHeadline(nextBatch)}.`,
 			};
+		case "payment_closed":
+			return {
+				title: stageLabel(workshop.stage),
+				body: paymentClosedBody(view, seats),
+			};
 		default:
 			return { title: stageLabel(workshop.stage), body: seats };
 	}
+}
+
+/**
+ * ALE-385: what the Payment Cutoff did. Paid people got the pre-workshop
+ * info; unpaid people lapsed or went back to the queue. Someone still in
+ * checkout at the cutoff stays "asked" until Stripe ends their hold.
+ */
+function paymentClosedBody(
+	view: BeginnersWorkshopConsole,
+	seats: string,
+): string {
+	const inCheckout = view.roster.asked.filter((intake) => intake.holdExpiresAt);
+	const waiting = view.roster.asked.length - inCheckout.length;
+	const parts = [
+		`${seats}. Paid people get the pre-workshop info; unpaid people lapse, or go back to the queue if the workshop was full`,
+	];
+	if (inCheckout.length)
+		parts.push(
+			`${inCheckout.length} still in checkout — settled when Stripe ends the payment`,
+		);
+	if (waiting) parts.push(`${waiting} settled at the next sweep`);
+	return `${parts.join(". ")}.`;
 }
 
 /** The roster groups before Attendance Finalisation, in display order. */
