@@ -12,7 +12,7 @@ defmodule Dhc.BeginnersWorkshops.Intake do
 
   The capability link token is rebuilt from the Intake id and
   `link_generation` (`Dhc.BeginnersWorkshops.IntakeLink`); only its hash is
-  stored.
+  stored. `rotate_link` (ALE-386) increments the generation.
   """
 
   use Ecto.Schema
@@ -113,10 +113,18 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     do: change(intake, checked_in_at: nil, checked_in_by_principal_id: nil)
 
   @doc """
+  The Intake's link rotated (ALE-386): the next link generation and the
+  hash of its token, so the old link no longer resolves.
+  """
+  @spec rotate_link_changeset(t(), binary()) :: Ecto.Changeset.t()
+  def rotate_link_changeset(%__MODULE__{link_generation: generation} = intake, token_hash),
+    do: change(intake, link_generation: generation + 1, link_token_hash: token_hash)
+
+  @doc """
   An open Intake closing into a terminal `state` that carries no stamps of
   its own (ALE-385: `lapsed` and `returned` at the Payment Cutoff; ALE-391:
   `attended` and `no_show` at Attendance Finalisation, whose evidence is the
-  check-in record).
+  check-in record; ALE-386: `declined`).
   """
   @spec close_changeset(t(), String.t()) :: Ecto.Changeset.t()
   def close_changeset(%__MODULE__{} = intake, state) do

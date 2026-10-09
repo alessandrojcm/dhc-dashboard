@@ -88,6 +88,12 @@ function view(
 					holdExpiresAt: null,
 					checkedInAt: null,
 					refund: null,
+					medical: false,
+					windowEndsAt: "2026-10-27T22:59:59.999999Z",
+					linkGeneration: 1,
+					emailLog: [],
+					history: [],
+					availableCommands: [],
 				},
 			],
 			asked: [
@@ -104,6 +110,12 @@ function view(
 					holdExpiresAt: null,
 					checkedInAt: null,
 					refund: null,
+					medical: false,
+					windowEndsAt: "2026-10-27T22:59:59.999999Z",
+					linkGeneration: 1,
+					emailLog: [],
+					history: [],
+					availableCommands: [],
 				},
 			],
 			attended: [],
@@ -111,6 +123,7 @@ function view(
 			out: [],
 		},
 		failedRefunds: [],
+		unpaidAfterWindow: [],
 		attention: [],
 		fastTrackOpen: true,
 		finalisation: null,
@@ -267,6 +280,12 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						holdExpiresAt: null,
 						checkedInAt: null,
 						refund: null,
+						medical: false,
+						windowEndsAt: "2026-10-27T22:59:59.999999Z",
+						linkGeneration: 1,
+						emailLog: [],
+						history: [],
+						availableCommands: [],
 					},
 				],
 			},
@@ -417,4 +436,162 @@ test("ALE-394: a cancelled workshop offers no Reschedule", async () => {
 	await expect
 		.element(screen.getByRole("button", { name: "Reschedule" }))
 		.not.toBeInTheDocument();
+});
+
+/** ALE-386: the roster with each Intake's own `availableCommands`. */
+function commandsView(): BeginnersWorkshopConsole {
+	const base = view();
+	return view({
+		roster: {
+			seated: [
+				{
+					...base.roster.seated[0],
+					medical: true,
+					linkGeneration: 2,
+					availableCommands: ["resend_link", "rotate_link"],
+					emailLog: [
+						{
+							emailType: "contact_pay",
+							at: "2026-10-20T09:00:00Z",
+							scheduled: false,
+						},
+						{
+							emailType: "place_confirmed_paid",
+							at: "2026-10-21T18:00:00Z",
+							scheduled: false,
+						},
+						{
+							emailType: "pre_workshop",
+							at: "2099-11-11T18:30:00Z",
+							scheduled: true,
+						},
+					],
+					history: [
+						{
+							command: "rotate_link",
+							actor: "Róisín Walsh",
+							occurredAt: "2026-10-22T11:00:00Z",
+							note: "Forwarded the email to a friend",
+						},
+					],
+				},
+			],
+			asked: [
+				{
+					...base.roster.asked[0],
+					availableCommands: ["decline", "resend_link", "rotate_link"],
+				},
+			],
+			out: [
+				{
+					...base.roster.asked[0],
+					id: "0b0c3b2e-8a43-4a8d-9a39-5b9d8a2ab003",
+					state: "declined",
+					firstName: "Eimear",
+					lastName: "Ryan",
+					availableCommands: [],
+				},
+			],
+			attended: [],
+			noShow: [],
+		},
+	});
+}
+
+async function openIntake(
+	screen: Awaited<ReturnType<typeof render>>,
+	name: RegExp,
+) {
+	await screen.getByRole("button", { name }).click();
+	const detail = screen.getByTestId("intake-detail");
+	await expect.element(detail).toBeVisible();
+	return detail;
+}
+
+// Closing the sheet before the test ends lets its exit run; unmounting it
+// open reads the console's state after it is gone.
+async function closeIntake(screen: Awaited<ReturnType<typeof render>>) {
+	await userEvent.keyboard("{Escape}");
+	await expect
+		.element(screen.getByTestId("intake-detail"))
+		.not.toBeInTheDocument();
+}
+
+test("ALE-386: a contacted Intake offers exactly Phoenix's availableCommands", async () => {
+	const screen = await render(WorkshopConsole, { view: commandsView() });
+	const detail = await openIntake(screen, /^Dara Nolan/);
+
+	const buttons = detail.getByTestId("intake-commands").getByRole("button");
+	expect(
+		buttons.elements().map((button) => button.textContent?.trim()),
+	).toEqual(["Decline", "Resend link", "Rotate link"]);
+	await expect.element(detail.getByLabelText(/^Note/)).toBeVisible();
+	expect(document.body.textContent).not.toMatch(/copy link/i);
+	await closeIntake(screen);
+});
+
+test("ALE-386: a paid Intake offers no Decline, and shows its flag, link, emails and history", async () => {
+	const screen = await render(WorkshopConsole, { view: commandsView() });
+	const detail = await openIntake(screen, /^Cian Doyle/);
+
+	const buttons = detail.getByTestId("intake-commands").getByRole("button");
+	expect(
+		buttons.elements().map((button) => button.textContent?.trim()),
+	).toEqual(["Resend link", "Rotate link"]);
+	await expect.element(detail.getByTestId("medical-flag")).toBeVisible();
+	await expect
+		.element(detail.getByTestId("link-generation"))
+		.toHaveTextContent("generation 2");
+
+	const emails = detail.getByTestId("email-log").getByRole("listitem");
+	expect(emails.elements()).toHaveLength(3);
+	await expect.element(emails.nth(0)).toHaveTextContent("Contact — pay");
+	await expect
+		.element(emails.nth(2))
+		.toHaveTextContent("Pre-workshop info (scheduled)");
+
+	await expect
+		.element(detail.getByTestId("intake-history"))
+		.toHaveTextContent(
+			"Link rotated · Róisín Walsh · Thu 22 Oct, 12:00 “Forwarded the email to a friend”",
+		);
+	await closeIntake(screen);
+});
+
+test("ALE-386: a closed Intake offers no commands", async () => {
+	const screen = await render(WorkshopConsole, { view: commandsView() });
+	const detail = await openIntake(screen, /^Eimear Ryan/);
+
+	await expect
+		.element(detail.getByText("No commands for a declined Intake."))
+		.toBeVisible();
+	expect(detail.getByRole("button").elements()).toHaveLength(0);
+
+	await closeIntake(screen);
+});
+
+test("ALE-386: contacted people unpaid after their window need attention", async () => {
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			unpaidAfterWindow: [
+				{
+					id: "0b0c3b2e-8a43-4a8d-9a39-5b9d8a2ab002",
+					firstName: "Dara",
+					lastName: "Nolan",
+					batchNumber: 1,
+					windowEndsAt: "2026-10-27T23:59:59.999999Z",
+				},
+			],
+		}),
+	});
+
+	await expect
+		.element(
+			screen
+				.getByRole("region", { name: "Needs attention" })
+				.getByTestId("unpaid-after-window"),
+		)
+		.toHaveTextContent(
+			"Dara Nolan hasn't paid — their Batch 1 window ended Tue 27 Oct, 23:59.",
+		);
 });

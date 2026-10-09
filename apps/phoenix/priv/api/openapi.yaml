@@ -4359,6 +4359,126 @@ paths:
         "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
         "409": {$ref: "#/components/responses/BeginnersWorkshopFinishConflict"}
+  /beginners-workshops/{id}/intakes/{intakeId}/decline:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.decline
+      tags: [BeginnersWorkshops]
+      summary: Decline a contacted Intake
+      description: |
+        The person said "not this one": the `contacted` Intake becomes
+        `declined`, the person stays on the Waitlist as `waiting` with their
+        original priority, and "Declined" is queued. A live Seat Hold
+        becomes `releasing`; a payment that completes anyway is refunded in
+        full automatically. Repeating it on a `declined` Intake answers
+        `already_done` and does nothing again.
+        The optional note is recorded in the Intake's history with who ran
+        the command and when. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandRequest"}
+      responses:
+        "200":
+          description: The Intake after the command
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/{id}/intakes/{intakeId}/resend-link:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.resendLink
+      tags: [BeginnersWorkshops]
+      summary: Resend an Intake's link
+      description: |
+        Sends the person's own email again: "Contact – pay" while the
+        Intake is `contacted`, "Place confirmed" once it is `paid`, with the
+        same link. Open Intakes only (`intake_closed`).
+        The optional note is recorded in the Intake's history with who ran
+        the command and when. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandRequest"}
+      responses:
+        "200":
+          description: The Intake after the command
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/{id}/intakes/{intakeId}/rotate-link:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.rotateLink
+      tags: [BeginnersWorkshops]
+      summary: Rotate an Intake's link
+      description: |
+        Increments the link generation, so the old link no longer works
+        (its page says "no longer active"), and sends the same email as
+        Resend link with the new one. Open Intakes only (`intake_closed`).
+        The optional note is recorded in the Intake's history with who ran
+        the command and when. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandRequest"}
+      responses:
+        "200":
+          description: The Intake after the command
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
 
   /beginners/intake/{token}:
     parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
@@ -7549,6 +7669,11 @@ components:
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
+    BeginnersWorkshopIntakeCommandConflict:
+      description: The Intake's state does not allow the command
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandConflictError"}
     BeginnersWorkshopCheckInConflict:
       description: Outside the check-in window, or the person has not paid
       content:
@@ -8528,7 +8653,7 @@ components:
       description: |
         One Intake on the console roster. Names are null once the person is
         anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, queueDate, contactedAt, holdExpiresAt, checkedInAt, refund]
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -8537,8 +8662,15 @@ components:
         firstName: {type: string, nullable: true}
         lastName: {type: string, nullable: true}
         minor: {type: boolean}
+        medical:
+          type: boolean
+          description: Whether the person gave medical conditions (the details stay on their profile).
         queueDate: {type: string, format: date-time}
         contactedAt: {type: string, format: date-time}
+        windowEndsAt:
+          type: string
+          format: date-time
+          description: When the person's payment window ends — their Batch's, or the Payment Cutoff for a fast-track.
         holdExpiresAt:
           type: string
           format: date-time
@@ -8553,6 +8685,84 @@ components:
           allOf: [{$ref: "#/components/schemas/BeginnersWorkshopIntakeRefund"}]
           nullable: true
           description: The Intake's latest refund (null without one).
+        linkGeneration:
+          type: integer
+          minimum: 1
+          description: Which link the person has; Rotate link increments it.
+        emailLog:
+          type: array
+          description: |
+            The Intake Emails queued for the person, oldest first (queued, not
+            delivery status), followed by the scheduled ones still owed.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeEmailLogEntry"}
+        history:
+          type: array
+          description: The console commands run on the Intake, oldest first.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeHistoryEntry"}
+        availableCommands:
+          type: array
+          description: |
+            The commands valid in the Intake's current state, from the same
+            rule the boundary applies under the lock. Advisory: a stale list
+            is refused with a named reason.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommand"}
+    BeginnersWorkshopIntakeCommand:
+      type: string
+      enum: [decline, resend_link, rotate_link]
+    BeginnersWorkshopIntakeEmailLogEntry:
+      type: object
+      description: |
+        One Intake Email. `scheduled: false` — queued at `at`. `scheduled:
+        true` — not queued yet; a time-driven pass sends it at `at` (a past
+        `at` means at the next sweep).
+      required: [emailType, at, scheduled]
+      properties:
+        emailType: {$ref: "#/components/schemas/IntakeEmailType"}
+        at: {type: string, format: date-time}
+        scheduled: {type: boolean}
+    BeginnersWorkshopIntakeHistoryEntry:
+      type: object
+      description: One console command run on an Intake. `actor` is null once the person who ran it is gone.
+      required: [command, actor, occurredAt, note]
+      properties:
+        command: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommand"}
+        actor: {type: string, nullable: true}
+        occurredAt: {type: string, format: date-time}
+        note: {type: string, nullable: true}
+    BeginnersWorkshopIntakeCommandRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          maxLength: 500
+          description: Why (optional), recorded in the Intake's history.
+    BeginnersWorkshopIntakeCommandOutcome:
+      type: string
+      description: "`done`: the command acted. `already_done`: the Intake was already where it leads; nothing happened again."
+      enum: [done, already_done]
+    BeginnersWorkshopIntakeCommandResult:
+      type: object
+      required: [id, state, linkGeneration, outcome]
+      properties:
+        id: {type: string, format: uuid}
+        state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
+        linkGeneration: {type: integer, minimum: 1}
+        outcome: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandOutcome"}
+    BeginnersWorkshopIntakeCommandResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResult"}
+    BeginnersWorkshopUnpaidAfterWindow:
+      type: object
+      description: A contacted person still unpaid after their payment window ended.
+      required: [id, firstName, lastName, batchNumber, windowEndsAt]
+      properties:
+        id: {type: string, format: uuid, description: The Intake id}
+        firstName: {type: string, nullable: true}
+        lastName: {type: string, nullable: true}
+        batchNumber: {type: integer, nullable: true, minimum: 1}
+        windowEndsAt: {type: string, format: date-time}
     BeginnersWorkshopRefundStatus:
       type: string
       description: |
@@ -8736,7 +8946,7 @@ components:
       enum: [nobody_waiting]
     BeginnersWorkshopConsole:
       type: object
-      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, attention, fastTrackOpen, finalisation]
+      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, unpaidAfterWindow, attention, fastTrackOpen, finalisation]
       properties:
         workshop: {$ref: "#/components/schemas/BeginnersWorkshop"}
         batches:
@@ -8750,6 +8960,10 @@ components:
           type: array
           description: Needs attention — refunds that failed and wait for Retry or Record manual refund, oldest first.
           items: {$ref: "#/components/schemas/BeginnersWorkshopFailedRefund"}
+        unpaidAfterWindow:
+          type: array
+          description: Needs attention — contacted people still unpaid after their payment window, oldest window first.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopUnpaidAfterWindow"}
         attention:
           type: array
           items: {$ref: "#/components/schemas/BeginnersWorkshopAttention"}
@@ -8937,6 +9151,21 @@ components:
                     - invalid_staff
                     - not_a_coach
                     - not_a_member
+                    - invalid_note
+    BeginnersWorkshopIntakeCommandConflictError:
+      description: 409 refusal of a console Intake command.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [already_paid, intake_closed]
     OnboardingStartAcceptanceRequest:
       type: object
       required: [invitationId, email, dateOfBirth]

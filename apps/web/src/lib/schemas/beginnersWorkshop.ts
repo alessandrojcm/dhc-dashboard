@@ -7,6 +7,7 @@
  */
 import type {
 	BeginnersWorkshopFastTrackRequest,
+	BeginnersWorkshopIntakeCommandRequest,
 	BeginnersWorkshopManualRefundRequest,
 	BeginnersWorkshopRescheduleRequest,
 	BeginnersWorkshopScheduleRequest,
@@ -15,6 +16,7 @@ import type {
 	WaitlistEntryCreateRequest,
 } from "@dhc/api-client";
 import * as v from "valibot";
+import { INTAKE_COMMANDS } from "#lib/beginners-workshops/console.js";
 import { waitlistRegistrationEntries } from "#lib/schemas/beginnersWaitlist.js";
 import {
 	civilDate,
@@ -261,5 +263,36 @@ export const recordManualRefundSchema = v.pipe(
 		id,
 		refundId,
 		body: (note ? { note } : {}) satisfies BeginnersWorkshopManualRefundRequest,
+	})),
+);
+
+const intakeId = v.pipe(v.string(), v.uuid("Unknown Intake."));
+
+/**
+ * ALE-386: one console Intake command. Each command is a submit button of
+ * the same form (`command`), so the Intake's one optional note goes with
+ * whichever is pressed; a blank note is left out.
+ */
+export const intakeCommandSchema = v.pipe(
+	v.object({
+		id: workshopId,
+		intakeId,
+		command: v.picklist(INTAKE_COMMANDS, "Unknown command."),
+		note: v.optional(
+			v.pipe(
+				v.string(),
+				v.trim(),
+				v.maxLength(500, "Keep the note under 500 characters."),
+			),
+			"",
+		),
+	}),
+	v.transform(({ id, intakeId, command, note }) => ({
+		id,
+		intakeId,
+		command,
+		body: (note
+			? { note }
+			: {}) satisfies BeginnersWorkshopIntakeCommandRequest,
 	})),
 );

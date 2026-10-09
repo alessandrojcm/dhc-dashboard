@@ -37,6 +37,12 @@ test("pay: the person's name, the workshop, the fee and one Pay button", async (
 		.element(screen.getByRole("button", { name: "Pay for your place" }))
 		.toBeEnabled();
 	expect(screen.getByRole("button").elements()).toHaveLength(1);
+	// ALE-386 (story 54): no self-service decline or withdraw — every exit
+	// goes through a coordinator, by replying to the email.
+	for (const role of ["button", "link"] as const)
+		expect(
+			screen.getByRole(role, { name: /decline|withdraw/i }).elements(),
+		).toHaveLength(0);
 	expect(
 		document.querySelector("input[type=hidden]")?.getAttribute("value"),
 	).toBe(token);

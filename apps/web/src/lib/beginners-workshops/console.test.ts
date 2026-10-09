@@ -5,15 +5,21 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
 	consoleTimeline,
+	emailLogLine,
 	failedRefundText,
 	formatDublinInstant,
 	formatRefundAmount,
+	historyLine,
 	holdLabel,
+	INTAKE_COMMANDS,
+	intakeCommandDone,
+	intakeCommandLabel,
 	nextBatchHeadline,
 	nextBatchSize,
 	nowCard,
 	refundLabel,
 	rosterGroups,
+	unpaidAfterWindowText,
 } from "#lib/beginners-workshops/console.js";
 
 function next(
@@ -92,6 +98,7 @@ function view(
 		nextBatch: next(),
 		roster: { seated: [], asked: [], attended: [], noShow: [], out: [] },
 		failedRefunds: [],
+		unpaidAfterWindow: [],
 		attention: [],
 		fastTrackOpen: true,
 		finalisation: null,
@@ -211,6 +218,12 @@ describe("nowCard", () => {
 			holdExpiresAt: null,
 			checkedInAt,
 			refund: null,
+			medical: false,
+			windowEndsAt: "2026-10-27T22:59:59.999999Z",
+			linkGeneration: 1,
+			emailLog: [],
+			history: [],
+			availableCommands: [],
 		});
 		const today = (stage: "today_before_check_in" | "check_in_open") =>
 			view({
@@ -246,6 +259,12 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 		holdExpiresAt,
 		checkedInAt: null,
 		refund: null,
+		medical: false,
+		windowEndsAt: "2026-10-27T22:59:59.999999Z",
+		linkGeneration: 1,
+		emailLog: [],
+		history: [],
+		availableCommands: [],
 		firstName: "Aoife",
 		lastName: "Byrne",
 		minor: false,
@@ -314,6 +333,12 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 		lastName: "Byrne",
 		minor: false,
 		refund: null,
+		medical: false,
+		windowEndsAt: "2026-10-27T22:59:59.999999Z",
+		linkGeneration: 1,
+		emailLog: [],
+		history: [],
+		availableCommands: [],
 	});
 
 	function finalised(by: string | null = "Aoife Coach") {
@@ -424,6 +449,86 @@ describe("refundLabel (ALE-382)", () => {
 			}),
 		).toBe(
 			"Refund of €35.00 to Dara failed (they paid after their Intake closed). Retry it, or record a manual refund if you paid them back another way.",
+		);
+	});
+});
+
+describe("ALE-386: console Intake commands, email log and history", () => {
+	it("names every command and words a repeat that changed nothing", () => {
+		expect(INTAKE_COMMANDS).toEqual(["decline", "resend_link", "rotate_link"]);
+		expect(INTAKE_COMMANDS.map(intakeCommandLabel)).toEqual([
+			"Decline",
+			"Resend link",
+			"Rotate link",
+		]);
+		expect(intakeCommandDone("rotate_link", "done")).toBe(
+			"Link rotated — the old one no longer works",
+		);
+		expect(intakeCommandDone("decline", "already_done")).toBe(
+			"Already done — nothing changed",
+		);
+	});
+
+	it("shows a queued email's time and a scheduled one's due time or the next sweep", () => {
+		const now = new Date("2026-11-01T12:00:00Z");
+		expect(
+			emailLogLine(
+				{ emailType: "declined", at: "2026-10-22T11:00:00Z", scheduled: false },
+				now,
+			),
+		).toEqual({
+			label: "Declined",
+			when: "Thu 22 Oct, 12:00",
+			scheduled: false,
+		});
+		expect(
+			emailLogLine(
+				{
+					emailType: "pre_workshop",
+					at: "2026-11-11T18:30:00Z",
+					scheduled: true,
+				},
+				now,
+			),
+		).toEqual({
+			label: "Pre-workshop info (scheduled)",
+			when: "Wed 11 Nov, 18:30",
+			scheduled: true,
+		});
+		expect(
+			emailLogLine(
+				{
+					emailType: "pre_workshop",
+					at: "2026-10-30T18:30:00Z",
+					scheduled: true,
+				},
+				now,
+			).when,
+		).toBe("at the next sweep");
+	});
+
+	it("words a history entry, and an actor who is gone", () => {
+		expect(
+			historyLine({
+				command: "decline",
+				actor: null,
+				occurredAt: "2026-10-22T11:00:00Z",
+				note: null,
+			}),
+		).toBe("Declined · a former member · Thu 22 Oct, 12:00");
+	});
+
+	it("words someone unpaid after a fast-track window", () => {
+		expect(
+			unpaidAfterWindowText({
+				id: "0b0c3b2e-8a43-4a8d-9a39-5b9d8a2ab002",
+				firstName: null,
+				lastName: null,
+				batchNumber: null,
+				windowEndsAt: "2026-11-11T18:30:00Z",
+			}),
+		).toMatch(
+			/^Anonymised hasn't paid — their payment window ended Wed 11 Nov, 18:30\./,
 		);
 	});
 });

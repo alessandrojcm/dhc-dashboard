@@ -484,7 +484,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
       transitions = Commands.transitions()
 
       assert transitions.intake == %{
-               "contacted" => ~w(paid lapsed returned),
+               "contacted" => ~w(paid lapsed returned declined),
                "paid" => ~w(attended no_show)
              }
 

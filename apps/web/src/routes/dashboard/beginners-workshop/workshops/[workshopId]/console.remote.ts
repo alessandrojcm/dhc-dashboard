@@ -3,7 +3,10 @@
  * (ALE-384) Fast-track. Thin adapters — authorize, one generated Phoenix
  * call, translate the problem. Coordinators never send a Batch: the system
  * sweep does. (ALE-382) Retry and Record manual refund follow up a failed
- * refund from Needs attention. (ALE-394) Reschedule.
+ * refund from Needs attention. (ALE-394) Reschedule. (ALE-386)
+ * `runIntakeCommand` runs one console Intake command — Decline, Resend link,
+ * Rotate link — with its optional note; the console offers only Phoenix's
+ * `availableCommands`.
  */
 import { form } from "$app/server";
 import {
@@ -11,6 +14,9 @@ import {
 	beginnersWorkshopBatchesResume,
 	beginnersWorkshopFastTrackNewPerson,
 	beginnersWorkshopFastTrackWaitlistPerson,
+	beginnersWorkshopIntakesDecline,
+	beginnersWorkshopIntakesResendLink,
+	beginnersWorkshopIntakesRotateLink,
 	beginnersWorkshopRefundsRecordManual,
 	beginnersWorkshopRefundsRetry,
 	beginnersWorkshopsReschedule,
@@ -19,6 +25,7 @@ import {
 	batchesCommandSchema,
 	fastTrackNewPersonSchema,
 	fastTrackWaitlistPersonSchema,
+	intakeCommandSchema,
 	recordManualRefundSchema,
 	retryRefundSchema,
 	rescheduleWorkshopSchema,
@@ -115,5 +122,25 @@ export const rescheduleWorkshop = form(
 				formPath: rescheduleFormPath,
 			},
 		);
+	},
+);
+
+export const runIntakeCommand = form(
+	intakeCommandSchema,
+	async ({ id, intakeId, command, body }) => {
+		const options = await beginnersWorkshopsManageOptions();
+		const request = { ...options, path: { id, intakeId }, body };
+		const call =
+			command === "decline"
+				? beginnersWorkshopIntakesDecline(request)
+				: command === "resend_link"
+					? beginnersWorkshopIntakesResendLink(request)
+					: beginnersWorkshopIntakesRotateLink(request);
+		const result = await beginnersWorkshopCommand(call, {
+			fallback: "Could not run this command",
+			formPath: (field) => (field === "note" ? ["note"] : undefined),
+		});
+		// Which button was pressed, so the console can word the outcome.
+		return result.ok ? { ...result, command } : result;
 	},
 );

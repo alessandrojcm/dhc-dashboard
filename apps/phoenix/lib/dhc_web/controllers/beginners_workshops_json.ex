@@ -20,6 +20,7 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
         nextBatch: next_batch(console.next_batch),
         roster: roster(console.roster),
         failedRefunds: Enum.map(console.failed_refunds, &failed_refund/1),
+        unpaidAfterWindow: Enum.map(console.unpaid_after_window, &unpaid_after_window/1),
         attention: console.attention,
         fastTrackOpen: console.fast_track_open,
         finalisation: console_finalisation(console.finalisation)
@@ -102,11 +103,50 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       firstName: row.first_name,
       lastName: row.last_name,
       minor: row.minor,
+      medical: row.medical,
       queueDate: row.queue_date,
       contactedAt: row.contacted_at,
+      windowEndsAt: row.window_ends_at,
       holdExpiresAt: row.hold_expires_at,
       checkedInAt: row.checked_in_at,
-      refund: row.refund && intake_refund(row.refund)
+      refund: row.refund && intake_refund(row.refund),
+      linkGeneration: row.link_generation,
+      emailLog:
+        Enum.map(row.email_log, fn entry ->
+          %{emailType: entry.email_type, at: entry.at, scheduled: entry.scheduled}
+        end),
+      history:
+        Enum.map(row.history, fn entry ->
+          %{
+            command: entry.command,
+            actor: entry.actor,
+            occurredAt: entry.occurred_at,
+            note: entry.note
+          }
+        end),
+      availableCommands: row.available_commands
+    }
+  end
+
+  defp unpaid_after_window(row) do
+    %{
+      id: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      batchNumber: row.batch_number,
+      windowEndsAt: row.window_ends_at
+    }
+  end
+
+  @doc "An Intake after a console Intake command (ALE-386)."
+  def intake_command(%{result: intake}) do
+    %{
+      data: %{
+        id: intake.id,
+        state: intake.state,
+        linkGeneration: intake.link_generation,
+        outcome: intake.outcome
+      }
     }
   end
 
