@@ -4311,6 +4311,30 @@ paths:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopStaffCandidatesResponse"}
         "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
         "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+  /beginners-workshops/report:
+    get:
+      operationId: beginnersWorkshopReport.show
+      tags: [BeginnersWorkshops]
+      summary: The Dashboard tab's report — queue health and per-workshop outcomes
+      description: |
+        Report only; it offers no command. Live figures, no stored
+        aggregates. Queue figures are over today's `waiting` people; the
+        12-month figures cover finalised workshops whose Dublin date is in
+        the last 12 months. Outcomes list past workshops (finalised and
+        cancelled), newest first. Cancelled workshops carry no rates and are
+        left out of the 12-month figures. Anonymised Intakes count in every
+        figure. Rates are fractions from 0 to 1, `null` when nobody could
+        take the step or the workshop was cancelled. Requires
+        `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The report
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopReportResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
   /beginners-workshops/mine:
     get:
       operationId: beginnersWorkshopAssignments.list
@@ -10176,6 +10200,152 @@ components:
           type: string
           format: date-time
           description: When it was queued (`sent`) or goes out (`scheduled`).
+    BeginnersWorkshopReportRate:
+      type: number
+      nullable: true
+      minimum: 0
+      maximum: 1
+      description: A fraction from 0 to 1; null when nobody could take the step or the workshop was cancelled.
+    BeginnersWorkshopReportQueue:
+      type: object
+      description: Queue health now, over today's `waiting` people, plus the liabilities.
+      required: [waiting, medianWaitDays, longestWaitDays, medianDaysToSeat, workshopsToClear, removedInRetention, invitable, carriedFees]
+      properties:
+        waiting: {type: integer, minimum: 0}
+        medianWaitDays: {type: number, nullable: true, description: Median days since the priority date of today's waiting people}
+        longestWaitDays: {type: integer, nullable: true}
+        medianDaysToSeat:
+          type: number
+          nullable: true
+          description: Median days from queue date to workshop date, over Batch Intakes that attended a workshop in the last 12 months
+        workshopsToClear:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: Waiting people ÷ average attendees per workshop over the last 12 months, rounded up; null with no attendees
+        removedInRetention: {type: integer, minimum: 0, description: Removed people still within the 3-month retention period}
+        invitable: {type: integer, minimum: 0}
+        carriedFees: {$ref: "#/components/schemas/BeginnersWorkshopReportCarriedFees"}
+    BeginnersWorkshopReportCarriedFees:
+      type: object
+      description: Outstanding (`held`) Carried Fees and the total originally paid for them.
+      required: [count, totalPaidCents, unlinked]
+      properties:
+        count: {type: integer, minimum: 0}
+        totalPaidCents: {type: integer, minimum: 0}
+        unlinked: {type: integer, minimum: 0, description: Imported fees not yet linked to a Stripe payment, so missing from the total}
+    BeginnersWorkshopReportTwelveMonths:
+      type: object
+      description: Finalised workshops whose Dublin date is in the last 12 months.
+      required: [workshops, attended, joined, invitable, invitedNotJoined, averageAttendees, conversionRate]
+      properties:
+        workshops: {type: integer, minimum: 0}
+        attended: {type: integer, minimum: 0}
+        joined: {type: integer, minimum: 0}
+        invitable: {type: integer, minimum: 0}
+        invitedNotJoined: {type: integer, minimum: 0}
+        averageAttendees: {type: number, nullable: true, minimum: 0}
+        conversionRate: {$ref: "#/components/schemas/BeginnersWorkshopReportRate"}
+    BeginnersWorkshopReportContacted:
+      type: object
+      required: [total, batch, fastTrack]
+      properties:
+        total: {type: integer, minimum: 0}
+        batch: {type: integer, minimum: 0}
+        fastTrack: {type: integer, minimum: 0}
+    BeginnersWorkshopReportExitsBeforePaying:
+      type: object
+      description: Unpaid Intakes that closed before paying; the rate is out of contacted.
+      required: [declined, lapsed, returned, withdrawn, total, rate]
+      properties:
+        declined: {type: integer, minimum: 0}
+        lapsed: {type: integer, minimum: 0}
+        returned: {type: integer, minimum: 0}
+        withdrawn: {type: integer, minimum: 0}
+        total: {type: integer, minimum: 0}
+        rate: {$ref: "#/components/schemas/BeginnersWorkshopReportRate"}
+    BeginnersWorkshopReportPaid:
+      type: object
+      required: [total, carriedFee]
+      properties:
+        total: {type: integer, minimum: 0}
+        carriedFee: {type: integer, minimum: 0, description: Of which confirmed with a Carried Fee}
+    BeginnersWorkshopReportExitsAfterPaying:
+      type: object
+      description: Paid Intakes that left before Attendance Finalisation; the rate is out of paid.
+      required: [deferred, cancelledRefunded, withdrawn, total, rate]
+      properties:
+        deferred: {type: integer, minimum: 0}
+        cancelledRefunded: {type: integer, minimum: 0}
+        withdrawn: {type: integer, minimum: 0}
+        total: {type: integer, minimum: 0}
+        rate: {$ref: "#/components/schemas/BeginnersWorkshopReportRate"}
+    BeginnersWorkshopReportAttendance:
+      type: object
+      description: |
+        Out of the paid people still seated at Attendance Finalisation
+        (`seated`); a no-show later corrected to deferred stays a no-show.
+      required: [seated, attended, noShow, rate]
+      properties:
+        seated: {type: integer, minimum: 0}
+        attended: {type: integer, minimum: 0}
+        noShow: {type: integer, minimum: 0}
+        rate: {$ref: "#/components/schemas/BeginnersWorkshopReportRate"}
+    BeginnersWorkshopReportAfterAttending:
+      type: object
+      description: What became of the attendees (an anonymised attendee by its recorded outcome).
+      required: [invitable, invitedNotJoined, joined]
+      properties:
+        invitable: {type: integer, minimum: 0}
+        invitedNotJoined: {type: integer, minimum: 0}
+        joined: {type: integer, minimum: 0}
+    BeginnersWorkshopReportGroup:
+      type: object
+      description: One Batch, or the workshop's fast-tracks (`number` and `windowEndsAt` null).
+      required: [kind, number, windowEndsAt, contacted, paidInWindow, paidLater, declined, unpaidAtCutoff]
+      properties:
+        kind: {$ref: "#/components/schemas/BeginnersWorkshopIntakeOrigin"}
+        number: {type: integer, nullable: true, minimum: 1}
+        windowEndsAt: {type: string, format: date-time, nullable: true}
+        contacted: {type: integer, minimum: 0}
+        paidInWindow: {type: integer, minimum: 0}
+        paidLater: {type: integer, minimum: 0}
+        declined: {type: integer, minimum: 0}
+        unpaidAtCutoff: {type: integer, minimum: 0, description: Lapsed or returned at the Payment Cutoff}
+    BeginnersWorkshopReportOutcome:
+      type: object
+      description: One past workshop's Intake counts, contacted through joined.
+      required: [workshopId, date, venue, status, batchesSent, contacted, exitsBeforePaying, paid, exitsAfterPaying, attendance, afterAttending, conversionRate, groups]
+      properties:
+        workshopId: {type: string, format: uuid}
+        date: {type: string, format: date, description: Europe/Dublin civil date}
+        venue: {type: string}
+        status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
+        batchesSent: {type: integer, minimum: 0}
+        contacted: {$ref: "#/components/schemas/BeginnersWorkshopReportContacted"}
+        exitsBeforePaying: {$ref: "#/components/schemas/BeginnersWorkshopReportExitsBeforePaying"}
+        paid: {$ref: "#/components/schemas/BeginnersWorkshopReportPaid"}
+        exitsAfterPaying: {$ref: "#/components/schemas/BeginnersWorkshopReportExitsAfterPaying"}
+        attendance: {$ref: "#/components/schemas/BeginnersWorkshopReportAttendance"}
+        afterAttending: {$ref: "#/components/schemas/BeginnersWorkshopReportAfterAttending"}
+        conversionRate: {$ref: "#/components/schemas/BeginnersWorkshopReportRate"}
+        groups:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopReportGroup"}
+    BeginnersWorkshopReport:
+      type: object
+      required: [queue, twelveMonths, outcomes]
+      properties:
+        queue: {$ref: "#/components/schemas/BeginnersWorkshopReportQueue"}
+        twelveMonths: {$ref: "#/components/schemas/BeginnersWorkshopReportTwelveMonths"}
+        outcomes:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopReportOutcome"}
+    BeginnersWorkshopReportResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopReport"}
     BeginnersWorkshopInvitable:
       type: object
       description: One Invitable person and the attended Intake to invite them from.

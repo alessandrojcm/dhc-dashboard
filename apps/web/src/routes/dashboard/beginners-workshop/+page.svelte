@@ -152,7 +152,7 @@ let viewLabel = $derived(
 		</div>
 
 		<Content value="dashboard">
-			<Analytics />
+			<Analytics canManageWorkshops={data.canManageWorkshops} />
 		</Content>
 		<Content value="waitlist">
 			<WaitlistTable />

@@ -105,6 +105,51 @@ defmodule Dhc.Waitlist do
   end
 
   @doc """
+  The queue as the Beginners' Workshop report reads it (ALE-397): the
+  priority date (`initial_registration_date`) of every `waiting` person,
+  oldest first, and how many `removed` people are still within the
+  #{@restore_window_months}-month retention period at `now` (the
+  `restorable?/2` rule). Lock-free.
+  """
+  @spec queue_report(DateTime.t()) :: %{
+          waiting_since: [DateTime.t()],
+          removed_in_retention: non_neg_integer()
+        }
+  def queue_report(%DateTime{} = now) do
+    waiting_since =
+      Repo.all(
+        from(w in WaitlistEntry,
+          where: w.status == "waiting",
+          order_by: [asc: w.initial_registration_date, asc: w.id],
+          select: w.initial_registration_date
+        )
+      )
+
+    removed_in_retention =
+      from(w in WaitlistEntry,
+        where: w.status == "removed" and not is_nil(w.removed_at),
+        select: w.removed_at
+      )
+      |> Repo.all()
+      |> Enum.count(&restorable?(&1, now))
+
+    %{waiting_since: waiting_since, removed_in_retention: removed_in_retention}
+  end
+
+  @doc """
+  The current standing of each given Waitlist entry, `%{id => status}`
+  (ALE-397). Unknown ids are absent. Lock-free.
+  """
+  @spec standings([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => String.t()}
+  def standings([]), do: %{}
+
+  def standings(ids) when is_list(ids) do
+    from(w in WaitlistEntry, where: w.id in ^Enum.uniq(ids), select: {w.id, w.status})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   Returns cursor-paginated, domain-shaped waitlist entries for the dashboard.
 
   Cursor payloads bind to the query semantics (limit, search, status, sort and

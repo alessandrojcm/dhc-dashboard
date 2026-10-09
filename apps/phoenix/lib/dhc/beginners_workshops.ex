@@ -26,6 +26,7 @@ defmodule Dhc.BeginnersWorkshops do
     IntakePage,
     Invitable,
     MyWorkshops,
+    Report,
     StaffCandidates,
     WorkshopConsole,
     WorkshopList
@@ -67,6 +68,14 @@ defmodule Dhc.BeginnersWorkshops do
   """
   @spec invitable() :: [Invitable.t()]
   defdelegate invitable(), to: Invitable, as: :list
+
+  @doc """
+  The Dashboard tab's report (ALE-397): queue health, the last 12 months'
+  planning figures and per-workshop outcomes. Report only; see
+  `Dhc.BeginnersWorkshops.Report`. Option `clock:` fixes the time.
+  """
+  @spec report(keyword()) :: Report.t()
+  def report(opts \\ []), do: Report.load(Clock.from_opts(opts))
 
   @doc """
   The person's Intake page behind an Intake link (ALE-381), or
