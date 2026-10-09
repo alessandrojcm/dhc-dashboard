@@ -9,6 +9,7 @@ import {
 import { QueryClient } from "@tanstack/svelte-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	canRestore,
 	createWaitlistTable,
 	type WaitlistTableDeps,
 } from "./waitlist-table.svelte.js";
@@ -206,5 +207,59 @@ describe("createWaitlistTable", () => {
 		);
 		await expect.poll(() => invalidate.mock.calls.length).toBe(1);
 		expect(notify.success).not.toHaveBeenCalled();
+	});
+
+	it("restores a removed person, notifies, and invalidates the waitlist once", async () => {
+		const restoreEntry = vi.fn(async () => ({
+			data: entry("r", { status: "waiting" }),
+		}));
+		const { table, queryClient, notify } = setup([entry("a")], {
+			restoreEntry,
+		});
+		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+		table.restore("r");
+
+		await expect.poll(() => notify.success.mock.calls.length).toBe(1);
+		expect(notify.success).toHaveBeenCalledWith(
+			"Restored to the Waitlist with their original date.",
+		);
+		expect(restoreEntry).toHaveBeenCalledWith(
+			expect.objectContaining({ path: { id: "r" } }),
+		);
+		await expect.poll(() => invalidate.mock.calls.length).toBe(1);
+	});
+
+	it("shows Phoenix's reason when a restore is refused", async () => {
+		const { table, notify } = setup([entry("a")], {
+			restoreEntry: vi.fn(async () => {
+				throw {
+					errors: {
+						detail: "The 3-month restore window has passed",
+						code: "restore_window_passed",
+					},
+				};
+			}),
+		});
+
+		table.restore("r");
+
+		await expect.poll(() => notify.error.mock.calls.length).toBe(1);
+		expect(notify.error).toHaveBeenCalledWith(
+			"The 3-month restore window has passed",
+		);
+	});
+
+	it("offers restore only for people removed within 3 months", () => {
+		const now = new Date("2026-10-09T12:00:00Z");
+		const removed = (removedAt: string) =>
+			entry("r", { status: "removed", removedAt });
+
+		expect(canRestore(removed("2026-07-09T12:00:00Z"), now)).toBe(true);
+		expect(canRestore(removed("2026-07-09T11:59:59Z"), now)).toBe(false);
+		expect(canRestore(entry("w"), now)).toBe(false);
+
+		const { table } = setup([entry("a")], { now: () => now });
+		expect(table.canRestore(removed("2026-09-01T00:00:00Z"))).toBe(true);
 	});
 });

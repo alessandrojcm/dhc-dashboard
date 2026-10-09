@@ -27,8 +27,8 @@ defmodule Dhc.Invitations.BulkInviteWorker do
 
   ## Job args
 
-    * `invites` — list of invite maps or waitlist IDs. Invite maps require
-      `firstName`, `lastName`, `email`, `phoneNumber`, and `dateOfBirth`.
+    * `invites` — list of invite maps. Invite maps require `firstName`,
+      `lastName`, `email`, `phoneNumber`, and `dateOfBirth`.
     * `user` — admin context map containing `id` and optionally `email`.
 
   The worker intentionally records per-invite failures and continues processing
@@ -42,11 +42,9 @@ defmodule Dhc.Invitations.BulkInviteWorker do
 
   require Logger
 
-  alias Dhc.Email.Worker, as: EmailWorker
   alias Dhc.Invitations.Repository
+  alias Dhc.Onboarding
   alias Dhc.Repo
-
-  @invite_email_template "inviteMember"
 
   @impl Worker
   def backoff(%Oban.Job{attempt: attempt}), do: trunc(:math.pow(attempt, 4) + 15)
@@ -154,11 +152,15 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     {:ok, results}
   end
 
+  # Each invite already wrote its own processing-log entry (issued through
+  # `Dhc.Onboarding.issue_invitation/3`, or refused through
+  # `record_refused_invitation/3`); the batch adds only the summary
+  # Notification.
   defp finalize_batch(results, created_by_id, ctx) do
-    with :ok <- Repository.store_processing_results(results, created_by_id),
-         :ok <- Repository.create_processing_notification(results, created_by_id) do
-      :ok
-    else
+    case Repository.create_processing_notification(results, created_by_id) do
+      :ok ->
+        :ok
+
       {:error, reason} ->
         Logger.error(
           "[bulk-invite-worker] Batch finalization failed after invitation issue completed",
@@ -170,14 +172,16 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   end
 
   defp process_one_invite(invite, index, created_by_id, ctx) do
-    with {:ok, invite_data} <- resolve_invite_data(invite),
+    with {:ok, invite_data} <- invite_shape(invite),
          invite_data <- put_issue_key(invite_data, issue_key(ctx, index)),
-         {:ok, result} <- create_invitation_pipeline(invite, invite_data, created_by_id, ctx) do
+         {:ok, result} <- issue(invite_data, created_by_id, ctx) do
       result
     else
       {:error, reason} ->
         email = invite_email(invite)
         reason_map = reason_to_map(reason)
+
+        record_refusal(email, reason, created_by_id, ctx)
 
         Sentry.capture_message("Bulk invitation failed",
           level: :error,
@@ -200,68 +204,53 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     end
   end
 
-  defp resolve_invite_data(waitlist_id) when is_binary(waitlist_id) do
-    Repository.get_waitlist_invite_data(waitlist_id)
-  end
+  # Direct Invitations only: a Waitlist entry id is no longer an invite
+  # (ALE-376); Waitlist people are invited from their Intake.
+  defp invite_shape(invite) when is_map(invite), do: {:ok, invite}
+  defp invite_shape(_invite), do: {:error, :invalid_invite_shape}
 
-  defp resolve_invite_data(invite) when is_map(invite) do
-    required = ~w(firstName lastName email phoneNumber dateOfBirth)
-    missing = Enum.filter(required, &(is_nil(invite[&1]) or invite[&1] == ""))
-
-    invalid_tier? =
-      invite["pricingTier"] not in [nil, "" | ~w(standard coach student)]
-
-    cond do
-      missing != [] -> {:error, {:invalid_invite, missing}}
-      invalid_tier? -> {:error, {:invalid_invite, ["pricingTier"]}}
-      true -> {:ok, invite}
-    end
-  end
-
-  defp resolve_invite_data(_invite), do: {:error, :invalid_invite_shape}
-
-  defp create_invitation_pipeline(original_invite, invite_data, created_by_id, ctx) do
-    # ALE-162 (ADR 0010): issue time is one insert. No Supabase admin call,
-    # no Stripe customer, no user_profiles row. Acceptance materializes the
-    # Principal + record set; acceptance creates the Stripe customer.
+  defp issue(invite_data, created_by_id, ctx) do
     issue_key = get_in(invite_data, ["metadata", "issue_key"])
 
     case Repository.invitation_id_for_issue_key(issue_key) do
       {:ok, invitation_id} ->
-        {:ok, invitation_result(invite_data, invitation_id)}
+        {:ok, invitation_result(invite_data["email"], invitation_id)}
 
       :not_found ->
-        Repo.transaction(fn ->
-          create_invitation(original_invite, invite_data, created_by_id, ctx)
-        end)
-        |> case do
-          {:ok, result} -> {:ok, result}
-          {:error, reason} -> {:error, reason}
-        end
+        Repo.transaction(fn -> issue_in_transaction(invite_data, created_by_id, ctx) end)
     end
   end
 
-  defp create_invitation(original_invite, invite_data, created_by_id, ctx) do
-    with {:ok, invitation_id} <-
-           Repository.create_invitation_record(original_invite, invite_data, created_by_id),
-         :ok <- enqueue_invitation_email(invite_data, invitation_id),
-         :ok <- maybe_update_waitlist(original_invite) do
-      Logger.info(
-        "[bulk-invite-worker] Processed invitation",
-        Keyword.merge(ctx,
-          email: invite_data["email"],
-          invitation_id: invitation_id
+  defp issue_in_transaction(invite_data, created_by_id, ctx) do
+    case Onboarding.issue_invitation(invite_data, created_by_id) do
+      {:ok, %{invitation_id: invitation_id, email: email}} ->
+        Logger.info(
+          "[bulk-invite-worker] Processed invitation",
+          Keyword.merge(ctx, email: email, invitation_id: invitation_id)
         )
-      )
 
-      invitation_result(invite_data, invitation_id)
-    else
-      {:error, reason} -> Repo.rollback(reason)
+        invitation_result(email, invitation_id)
+
+      {:error, reason} ->
+        Repo.rollback(reason)
     end
   end
 
-  defp invitation_result(invite_data, invitation_id) do
-    %{email: invite_data["email"], success: true, invitationId: invitation_id}
+  defp record_refusal(email, reason, created_by_id, ctx) do
+    case Onboarding.record_refused_invitation(email, reason, created_by_id) do
+      :ok ->
+        :ok
+
+      {:error, log_reason} ->
+        Logger.error(
+          "[bulk-invite-worker] Failed to record a refused invitation",
+          Keyword.merge(ctx, created_by: created_by_id, reason: format_reason(log_reason))
+        )
+    end
+  end
+
+  defp invitation_result(email, invitation_id) do
+    %{email: email, success: true, invitationId: invitation_id}
   end
 
   defp issue_key(ctx, index), do: "bulk-invite:#{ctx[:oban_job_id] || "unpersisted"}:#{index}"
@@ -269,49 +258,6 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   defp put_issue_key(invite_data, issue_key) do
     metadata = Map.get(invite_data, "metadata") || %{}
     Map.put(invite_data, "metadata", Map.put(metadata, "issue_key", issue_key))
-  end
-
-  defp enqueue_invitation_email(invite_data, invitation_id) do
-    invitation_link = invitation_link(invite_data, invitation_id)
-
-    args = %{
-      "email" => invite_data["email"],
-      "transactional_id" => @invite_email_template,
-      "data_variables" =>
-        %{
-          "INVITEE_FIRST_NAME" => invite_data["firstName"],
-          "INVITEE_LAST_NAME" => invite_data["lastName"],
-          "INVITATION_LINK" => invitation_link,
-          "INSURANCE_FORM_LINK" => Dhc.Members.insurance_form().link
-        }
-        |> Map.reject(fn {_key, value} -> is_nil(value) end)
-    }
-
-    case Oban.insert(EmailWorker.new(args)) do
-      {:ok, _job} -> :ok
-      {:error, reason} -> {:error, {:email_enqueue, reason}}
-    end
-  end
-
-  defp maybe_update_waitlist(waitlist_id) when is_binary(waitlist_id) do
-    Repository.mark_waitlist_invited(waitlist_id)
-  end
-
-  defp maybe_update_waitlist(_invite), do: :ok
-
-  defp invitation_link(invite_data, invitation_id) do
-    app_url = Application.fetch_env!(:dhc, :app_url)
-
-    app_url
-    |> URI.merge("/members/signup/#{invitation_id}")
-    |> Map.put(
-      :query,
-      URI.encode_query(%{
-        "dateOfBirth" => Repository.date_string(invite_data["dateOfBirth"]),
-        "email" => invite_data["email"]
-      })
-    )
-    |> URI.to_string()
   end
 
   defp invite_email(%{"email" => email}), do: email

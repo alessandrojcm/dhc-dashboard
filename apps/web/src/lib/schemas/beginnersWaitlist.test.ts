@@ -55,6 +55,21 @@ describe("beginners waitlist form schema", () => {
 		});
 	});
 
+	it("holds firstName to its 40-character Intake Email placeholder", () => {
+		expect(issuePaths({ ...adult, firstName: "a".repeat(41) })).toEqual([
+			{
+				path: "firstName",
+				message: "First name must be at most 40 characters.",
+			},
+		]);
+		expect(
+			v.safeParse(beginnersWaitlistSchema, {
+				...adult,
+				firstName: "a".repeat(40),
+			}).success,
+		).toBe(true);
+	});
+
 	it("rejects an applicant under 16 on dateOfBirth", () => {
 		expect(issuePaths({ ...adult, dateOfBirth: "2010-10-07" })).toEqual([
 			{ path: "dateOfBirth", message: "You must be at least 16 years old." },

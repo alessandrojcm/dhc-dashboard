@@ -264,6 +264,7 @@ defmodule DhcWeb.Router do
     get("/waitlist/entries/:id", WaitlistController, :show)
     patch("/waitlist/entries/:id", WaitlistController, :update)
     get("/waitlist/entries/:id/guardian", WaitlistController, :guardian)
+    post("/waitlist/entries/:id/restore", WaitlistController, :restore)
   end
 
   scope "/api", DhcWeb do

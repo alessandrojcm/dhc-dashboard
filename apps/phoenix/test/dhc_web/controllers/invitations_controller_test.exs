@@ -67,22 +67,29 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert_enqueued(worker: Dhc.Invitations.BulkInviteWorker)
     end
 
-    test "accepts waitlist entry ids and enqueues them for worker resolution", %{conn: conn} do
-      waitlist_id = Ecto.UUID.generate()
-
+    test "refuses Waitlist entry ids (400) and enqueues nothing", %{conn: conn} do
       conn =
         conn
         |> put_req_header("authorization", "Bearer admin-token")
-        |> post("/api/invitations", %{"invites" => [waitlist_id]})
+        |> post("/api/invitations", %{"invites" => [Ecto.UUID.generate()]})
 
-      response = json_response(conn, 202)
-      assert response["data"]["queued"] == true
-      assert is_integer(response["data"]["job_id"])
+      assert %{
+               "errors" => %{
+                 "detail" => "invites must be invite objects; Waitlist entry ids are not accepted"
+               }
+             } = json_response(conn, 400)
 
-      assert [%Oban.Job{args: args}] = all_enqueued(worker: Dhc.Invitations.BulkInviteWorker)
-      assert args["invites"] == [waitlist_id]
-      assert args["user"]["email"] == "admin@example.com"
-      assert Ecto.UUID.cast(args["user"]["id"]) == {:ok, args["user"]["id"]}
+      assert [] = all_enqueued(worker: Dhc.Invitations.BulkInviteWorker)
+    end
+
+    test "the contract accepts invite objects only" do
+      {:ok, spec} =
+        :dhc |> Application.app_dir("priv/api/openapi.yaml") |> YamlElixir.read_from_file()
+
+      items =
+        spec["components"]["schemas"]["InvitationCreateRequest"]["properties"]["invites"]["items"]
+
+      assert items == %{"$ref" => "#/components/schemas/InvitationCreateInvite"}
     end
 
     test "returns 401 without a bearer token", %{conn: conn} do

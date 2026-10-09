@@ -14,11 +14,9 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
 
   # ALE-162 (ADR 0010): issue time is side-effect free. The worker no longer
   # calls the Supabase admin API, creates a Stripe customer, or inserts a
-  # user_profiles row. It only:
-  #   - mints a fresh Phoenix UUID for invitation.prospective_principal_id;
-  #   - inserts the pending invitation carrying first/last/phone/DOB;
-  #   - enqueues the inviteMember email;
-  #   - marks the waitlist entry invited (when the invite came from a waitlist).
+  # user_profiles row. Each invite goes through Dhc.Onboarding.issue_invitation/3
+  # (ALE-376), which inserts the pending invitation, enqueues the inviteMember
+  # email and writes one processing-log entry; refusals are logged too.
   #
   # Acceptance (not the worker) materializes the Principal + UserProfile +
   # MemberProfile + role. Acceptance creates the Stripe customer; pricing is
@@ -108,8 +106,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
 
       refute Repo.get_by(Invitation, email: "gold-invite@example.com")
 
-      log = Repo.get_by!(ProcessingLog, principal_id: created_by_id)
-      assert log.failure_count == 1
+      assert [%ProcessingLog{failure_count: 1} = log] = logs_for(created_by_id)
 
       assert [%{"success" => false, "error" => error}] = log.results["items"]
       assert error =~ "invalid_invite"
@@ -117,91 +114,60 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
     end
   end
 
-  describe "perform/1 waitlist invitations" do
-    test "resolves a waitlist id and creates the invitation with no profile or Stripe customer" do
+  describe "perform/1 direct-invitation refusals" do
+    test "issues a direct invite with no profile or Stripe customer, logging it" do
       created_by_id = insert_principal!("admin@example.com")
       insurance_link = "https://insurance.example.com/onboarding.html"
       assert {:ok, _} = Dhc.Settings.update("hema_insurance_form_link", insurance_link)
-      waitlist_entry = insert_waitlist_entry!("ada@example.com", "attended")
-
-      insert_waitlist_profile!(waitlist_entry.id,
-        first_name: "Ada",
-        last_name: "Lovelace",
-        phone_number: "+353810000001",
-        date_of_birth: ~D[1990-01-01]
-      )
 
       args = %{
-        "invites" => [waitlist_entry.id],
+        "invites" => [base_invite("Ada@Example.com")],
         "user" => %{"id" => created_by_id, "email" => "admin@example.com"}
       }
 
-      # Subscribe to the admin's Notification realtime topic before perform so
-      # the commit-safe broadcast attempt is observable. The bulk invitation
-      # workflow must produce exactly one notification_created signal for the
-      # admin alongside its existing processing Notification row.
+      # The bulk invitation workflow must produce exactly one
+      # notification_created signal for the admin.
       Phoenix.PubSub.subscribe(Dhc.PubSub, Broadcaster.topic(created_by_id))
 
       assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
 
       assert %Invitation{} = invitation = Repo.get_by(Invitation, email: "ada@example.com")
       assert invitation.status == "pending"
-      assert invitation.waitlist_id == waitlist_entry.id
+      assert invitation.waitlist_id == nil
       assert invitation.created_by_principal_id == created_by_id
       assert invitation.date_of_birth == ~D[1990-01-01]
       assert invitation.first_name == "Ada"
-      assert invitation.last_name == "Lovelace"
-      assert invitation.phone_number == "+353810000001"
-
-      # ALE-162: the prospective Principal id is a fresh UUID.
       assert invitation.prospective_principal_id != nil
 
-      assert Ecto.UUID.cast!(invitation.prospective_principal_id) ==
-               invitation.prospective_principal_id
-
-      # No user_profiles row was created at issue time.
       refute Repo.exists?(
                from up in UserProfile,
                  where: up.principal_id == ^invitation.prospective_principal_id
              )
 
-      # The attended waitlist entry was marked invited.
-      assert %WaitlistEntry{status: "invited"} = Repo.get(WaitlistEntry, waitlist_entry.id)
-
-      # The inviteMember email was enqueued.
       assert [%Oban.Job{args: email_args}] = all_enqueued(worker: Dhc.Email.Worker)
       assert email_args["email"] == "ada@example.com"
       assert email_args["transactional_id"] == "inviteMember"
       assert email_args["data_variables"]["INSURANCE_FORM_LINK"] == insurance_link
-      assert email_args["data_variables"]["INVITEE_FIRST_NAME"] == "Ada"
-      assert email_args["data_variables"]["INVITEE_LAST_NAME"] == "Lovelace"
 
       assert email_args["data_variables"]["INVITATION_LINK"] =~
                "/members/signup/#{invitation.id}"
 
-      assert %ProcessingLog{total_count: 1, success_count: 1, failure_count: 0} =
-               Repo.get_by(ProcessingLog, principal_id: created_by_id)
+      assert [%ProcessingLog{total_count: 1, success_count: 1, failure_count: 0} = log] =
+               logs_for(created_by_id)
 
-      assert %Notification{body: body} =
+      assert [%{"success" => true, "invitationId" => invitation_id}] = log.results["items"]
+      assert invitation_id == invitation.id
+
+      assert %Notification{body: "Successfully processed 1 invitations out of 1"} =
                Repo.get_by(Notification, principal_id: created_by_id)
 
-      assert body == "Successfully processed 1 invitations out of 1"
-
-      # Exactly one commit-safe creation signal for the admin's topic.
       assert_received %Phoenix.Socket.Broadcast{event: "notification_created", payload: %{}}
       refute_received %Phoenix.Socket.Broadcast{event: "notification_created"}
     end
 
-    test "refuses to invite a waiting person directly and issues nothing" do
+    test "refuses a Waitlist entry id and issues nothing" do
       created_by_id = insert_principal!("refusal-admin@example.com")
-      waitlist_entry = insert_waitlist_entry!("waiting@example.com", "waiting")
-
-      insert_waitlist_profile!(waitlist_entry.id,
-        first_name: "Wai",
-        last_name: "Ting",
-        phone_number: "+353810000002",
-        date_of_birth: ~D[1990-01-01]
-      )
+      waitlist_entry = insert_waitlist_entry!("attended@example.com", "attended")
 
       args = %{
         "invites" => [waitlist_entry.id],
@@ -210,12 +176,55 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
 
       assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
 
-      refute Repo.get_by(Invitation, email: "waiting@example.com")
-      assert %WaitlistEntry{status: "waiting"} = Repo.get(WaitlistEntry, waitlist_entry.id)
+      refute Repo.get_by(Invitation, email: "attended@example.com")
+      assert %WaitlistEntry{status: "attended"} = Repo.get(WaitlistEntry, waitlist_entry.id)
       assert [] = all_enqueued(worker: Dhc.Email.Worker)
 
-      assert %ProcessingLog{success_count: 0, failure_count: 1} =
-               Repo.get_by(ProcessingLog, principal_id: created_by_id)
+      assert [%ProcessingLog{success_count: 0, failure_count: 1} = log] =
+               logs_for(created_by_id)
+
+      assert [%{"success" => false, "error" => error}] = log.results["items"]
+      assert error =~ "invalid_invite_shape"
+    end
+
+    for standing <- Dhc.Waitlist.Standing.statuses() do
+      @standing standing
+      test "refuses an email on the Waitlist as #{standing} and records it" do
+        created_by_id = insert_principal!("waitlist-refusal-admin@example.com")
+        insert_waitlist_entry!("queued@example.com", @standing)
+
+        args = %{
+          "invites" => [base_invite("Queued@Example.com")],
+          "user" => %{"id" => created_by_id}
+        }
+
+        assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+
+        refute Repo.get_by(Invitation, email: "queued@example.com")
+        assert [] = all_enqueued(worker: Dhc.Email.Worker)
+
+        assert [%ProcessingLog{failure_count: 1} = log] = logs_for(created_by_id)
+        assert [%{"success" => false, "error" => error}] = log.results["items"]
+        assert error =~ "email_on_waitlist"
+      end
+    end
+
+    test "refuses an email that belongs to a Principal and records it" do
+      created_by_id = insert_principal!("principal-refusal-admin@example.com")
+      insert_principal!("former-member@example.com")
+
+      args = %{
+        "invites" => [base_invite("Former-Member@example.com")],
+        "user" => %{"id" => created_by_id}
+      }
+
+      assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+
+      refute Repo.get_by(Invitation, email: "former-member@example.com")
+
+      assert [%ProcessingLog{failure_count: 1} = log] = logs_for(created_by_id)
+      assert [%{"success" => false, "error" => error}] = log.results["items"]
+      assert error =~ "email_is_principal"
     end
 
     test "replaying the same Oban job does not reissue an already completed invitation" do
@@ -283,8 +292,8 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
 
       assert [%Invitation{id: ^original_id, status: "pending"}] = invitations
 
-      # The duplicate surfaced as a per-invite failure in the processing log.
-      log = Repo.get_by!(ProcessingLog, principal_id: created_by_id)
+      # The duplicate surfaced as a refused entry in the processing log.
+      assert [log] = logs_for(created_by_id)
       assert log.total_count == 1
       assert log.success_count == 0
       assert log.failure_count == 1
@@ -325,8 +334,10 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
 
       assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
 
-      assert %ProcessingLog{total_count: 2, success_count: 1, failure_count: 1} =
-               Repo.get_by!(ProcessingLog, principal_id: created_by_id)
+      # One processing-log entry per invite: the refusal and the issue.
+      assert logs_for(created_by_id)
+             |> Enum.map(&{&1.success_count, &1.failure_count})
+             |> Enum.sort() == [{0, 1}, {1, 0}]
 
       assert %Invitation{status: "pending"} =
                Repo.get_by!(Invitation, email: "fresh@example.com")
@@ -364,22 +375,14 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
     %WaitlistEntry{
       email: email,
       status: status,
+      removed_at: if(status == "removed", do: now),
       initial_registration_date: now,
       last_status_change: now
     }
     |> Repo.insert!()
   end
 
-  defp insert_waitlist_profile!(waitlist_id, attrs) do
-    %UserProfile{
-      first_name: Keyword.fetch!(attrs, :first_name),
-      last_name: Keyword.fetch!(attrs, :last_name),
-      phone_number: Keyword.fetch!(attrs, :phone_number),
-      date_of_birth: Keyword.fetch!(attrs, :date_of_birth),
-      waitlist_id: waitlist_id,
-      is_active: false,
-      social_media_consent: "no"
-    }
-    |> Repo.insert!()
+  defp logs_for(principal_id) do
+    Repo.all(from(l in ProcessingLog, where: l.principal_id == ^principal_id))
   end
 end

@@ -50,6 +50,15 @@ defmodule DhcWeb.InvitationsController do
   POST /invitations
   """
   def create(conn, %{"invites" => [_ | _] = invites}) do
+    # Direct Invitations only (ALE-376): a Waitlist entry id is not an invite.
+    if Enum.all?(invites, &is_map/1),
+      do: enqueue_invites(conn, invites),
+      else: {:error, :invite_objects_required}
+  end
+
+  def create(_conn, _params), do: {:error, :invites_required}
+
+  defp enqueue_invites(conn, invites) do
     current_session = conn.assigns.current_session
 
     user = %{
@@ -78,8 +87,6 @@ defmodule DhcWeb.InvitationsController do
         {:error, :enqueue_failed}
     end
   end
-
-  def create(_conn, _params), do: {:error, :invites_required}
 
   @doc """
   POST /invitations/resend

@@ -135,3 +135,44 @@ test("renders a removed person's removal date from the URL filter", async () => 
 		.element(desktop.getByText("Total 1 people removed"))
 		.toBeVisible();
 });
+
+test("offers restore from the removed filter for a recent removal only", async () => {
+	const recent = entry("b", {
+		fullName: "Bea Recent",
+		status: "removed",
+		removedAt: "2026-09-01T10:00:00Z",
+	});
+	const old = entry("c", {
+		fullName: "Cal Old",
+		status: "removed",
+		removedAt: "2026-01-01T10:00:00Z",
+	});
+	const restoreEntry = vi.fn(async () => ({
+		data: { ...recent, status: "waiting" as const, removedAt: null },
+	}));
+
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries: vi.fn(async () => page([recent, old])),
+			restoreEntry,
+			now: () => new Date("2026-10-09T12:00:00Z"),
+			notify: { success: () => {}, error: () => {} },
+			url: () => new URL(`${BASE}?status=removed`),
+			navigate: () => {},
+		},
+	});
+
+	const desktop = screen.getByRole("table");
+	await expect.element(desktop.getByText("Bea Recent")).toBeVisible();
+
+	const restoreButtons = desktop.getByRole("button", {
+		name: "Restore to the Waitlist",
+	});
+	expect(restoreButtons.elements()).toHaveLength(1);
+
+	await restoreButtons.click();
+
+	expect(restoreEntry).toHaveBeenCalledWith(
+		expect.objectContaining({ path: { id: "b" } }),
+	);
+});

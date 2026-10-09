@@ -1,6 +1,12 @@
 <script lang="ts">
 import { Button } from "#lib/components/ui/button/index.js";
-import { ChevronUp, ChevronDown, SquarePen, NotebookPen } from "@lucide/svelte";
+import {
+	ChevronUp,
+	ChevronDown,
+	SquarePen,
+	NotebookPen,
+	Undo2,
+} from "@lucide/svelte";
 import * as Popover from "#lib/components/ui/popover/index.js";
 import { Label } from "#lib/components/ui/label/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
@@ -10,6 +16,9 @@ type Props = {
 	onEdit: (newValue: string) => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
+	/** Offered only for a person removed within the restore window. */
+	onRestore?: () => void;
+	restoreDisabled?: boolean;
 };
 let isEdit = $state(false);
 let {
@@ -17,6 +26,8 @@ let {
 	onEdit,
 	isExpanded = false,
 	onToggleExpand,
+	onRestore,
+	restoreDisabled = false,
 }: Props = $props();
 let value = $state(adminNotes);
 </script>
@@ -35,6 +46,18 @@ let value = $state(adminNotes);
 			{:else}
 				<ChevronDown class="h-4 w-4" />
 			{/if}
+		</Button>
+	{/if}
+	{#if onRestore}
+		<Button
+			variant="ghost"
+			onclick={onRestore}
+			disabled={restoreDisabled}
+			aria-label="Restore to the Waitlist"
+			title="Restore to the Waitlist with their original date"
+		>
+			<Undo2 class="h-4 w-4" />
+			Restore
 		</Button>
 	{/if}
 	<!-- Admin Notes -->

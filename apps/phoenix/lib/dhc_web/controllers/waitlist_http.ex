@@ -9,7 +9,9 @@ defmodule DhcWeb.WaitlistHTTP do
       waitlist_closed: {403, "Waitlist is closed"},
       invalid_is_open: {422, "isOpen must be a boolean"},
       invalid_payload: {422, "Invalid waitlist entry payload"},
-      invalid_update: {422, "Invalid waitlist entry update payload", :invalid_payload}
+      invalid_update: {422, "Invalid waitlist entry update payload", :invalid_payload},
+      not_removed: {409, "Only a removed Waitlist entry can be restored"},
+      restore_window_passed: {409, "The 3-month restore window has passed"}
     },
     fields: %{
       first_name: "firstName",

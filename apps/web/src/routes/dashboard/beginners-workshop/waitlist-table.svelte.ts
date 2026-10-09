@@ -4,19 +4,23 @@
  *
  * The Waitlist view is the queue: it lists `waiting` people by default, with
  * `removed` people behind the standing filter (ALE-375). Waitlist Status is
- * not editable here — it changes only through named commands — so the only
- * write is the entry's admin notes. The controller owns the URL-backed list
- * request, cache invalidation and the toasts; markup only renders and calls
- * these actions.
+ * not editable here — it changes only through named commands — so the
+ * writes are the entry's admin notes and `restore` (ALE-376), which returns a
+ * removed person to the queue with their original date. The controller owns
+ * the URL-backed list request, cache invalidation and the toasts; markup only
+ * renders and calls these actions.
  */
 import {
 	waitlistEntriesOptions,
 	waitlistEntriesQueryKey,
+	waitlistRestoreEntryMutation,
 	waitlistUpdateEntryMutation,
 	type Options,
 	type WaitlistEntriesData,
 	type WaitlistEntriesResponse2,
 	type WaitlistEntry,
+	type WaitlistRestoreEntryData,
+	type WaitlistRestoreEntryResponse,
 	type WaitlistUpdateEntryData,
 	type WaitlistUpdateEntryResponse,
 } from "@dhc/api-client";
@@ -27,7 +31,9 @@ import {
 	useQueryClient,
 	type QueryClient,
 } from "@tanstack/svelte-query";
+import dayjs from "dayjs";
 import { toast } from "svelte-sonner";
+import { apiProblem } from "#lib/api-error.js";
 import {
 	createCursorTableUrl,
 	type CursorTableNavigate,
@@ -64,12 +70,31 @@ export type WaitlistTableDeps = {
 	updateEntry?: (
 		options: Options<WaitlistUpdateEntryData>,
 	) => Promise<WaitlistUpdateEntryResponse>;
+	restoreEntry?: (
+		options: Options<WaitlistRestoreEntryData>,
+	) => Promise<WaitlistRestoreEntryResponse>;
+	/** Defaults to the current time; decides which removed people are offered restore. */
+	now?: () => Date;
 	/** Defaults to svelte-sonner's `toast`. */
 	notify?: WaitlistNotify;
 	/** URL source and navigation for the cursor-table URL state. */
 	url?: () => URL;
 	navigate?: CursorTableNavigate;
 };
+
+/** Phoenix restores a removed person within this many calendar months. */
+export const RESTORE_WINDOW_MONTHS = 3;
+
+/**
+ * Whether restore is offered for `entry`: removed within the restore window.
+ * Advisory only — Phoenix decides and answers `restore_window_passed`.
+ */
+export function canRestore(entry: WaitlistEntry, now: Date): boolean {
+	if (entry.status !== "removed" || !entry.removedAt) return false;
+	return !dayjs(now).isAfter(
+		dayjs(entry.removedAt).add(RESTORE_WINDOW_MONTHS, "month"),
+	);
+}
 
 /** Prefix shared by every Waitlist page's query key. */
 const allWaitlistPages = () => waitlistEntriesQueryKey();
@@ -134,6 +159,30 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		() => queryClient,
 	);
 
+	const restoreWaitlistEntry = createMutation(
+		() => {
+			const options = waitlistRestoreEntryMutation();
+			const request = deps.restoreEntry;
+			if (request) options.mutationFn = (vars) => request(vars);
+			return {
+				...options,
+				onSuccess: () => {
+					notify.success("Restored to the Waitlist with their original date.");
+				},
+				onError: (error) => {
+					notify.error(
+						apiProblem(error)?.detail ?? "Failed to restore waitlist entry.",
+					);
+				},
+				onSettled: () =>
+					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+			};
+		},
+		() => queryClient,
+	);
+
+	const now = deps.now ?? (() => new Date());
+
 	return {
 		/** URL-backed search, page size, cursor paging and table sort state. */
 		url,
@@ -166,6 +215,17 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		},
 		get isUpdating() {
 			return updateWaitlistEntry.isPending;
+		},
+		/** Whether restore is offered for this entry (removed within 3 months). */
+		canRestore(entry: WaitlistEntry) {
+			return canRestore(entry, now());
+		},
+		/** Moves a removed person back to `waiting` with their original date. */
+		restore(id: string) {
+			restoreWaitlistEntry.mutate({ path: { id } });
+		},
+		get isRestoring() {
+			return restoreWaitlistEntry.isPending;
 		},
 	};
 }

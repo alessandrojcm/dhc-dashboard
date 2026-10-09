@@ -916,10 +916,14 @@ paths:
         inserts a `user_profiles` row — acceptance materializes the
         Principal + Member record set atomically.
 
-        An invite whose email already has a pending invitation is rejected
-        per-invite (case-insensitively) and surfaces as a failure in the
-        processing log; re-inviting is possible again once the pending
-        invitation expires or is revoked.
+        Each invite is a direct Invitation; Waitlist entry ids are not
+        accepted (a Waitlist person is invited from their Beginners' Workshop
+        Intake instead). An invite is refused per-invite (case-insensitively)
+        when its email already has a pending invitation, belongs to a
+        Principal (a Member or former Member), or is on the Waitlist in any
+        standing. Every invite, issued or refused, is recorded in the
+        processing log; re-inviting a pending email is possible again once
+        the pending invitation expires or is revoked.
       security:
         - bearerAuth: []
       requestBody:
@@ -1508,9 +1512,14 @@ paths:
         16–17 year old applicants.
 
         The endpoint is public, so it must not reveal whether an email is
-        already on the waitlist: a submission for an email that already has an
-        entry answers exactly like a new one (`202` with the same neutral
-        body) and changes nothing.
+        known: a submission is refused, changing nothing, when its email is
+        on the waitlist in any standing but `removed`, belongs to a Principal
+        (a Member or former Member), or has a pending invitation, and that
+        refusal answers exactly like a new entry (`202` with the same neutral
+        body).
+
+        A `removed` email that registers again reopens at the back of the
+        queue: `waiting`, with its priority set to the re-registration date.
       requestBody:
         required: true
         content:
@@ -1520,8 +1529,8 @@ paths:
       responses:
         "202":
           description: |
-            Submission received. Returned both when a new entry was created and
-            when the email is already on the waitlist.
+            Submission received. Returned both when an entry was created or
+            reopened and when registration refused the email.
           content:
             application/json:
               schema:
@@ -1754,6 +1763,61 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: Waitlist entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /waitlist/entries/{id}/restore:
+    post:
+      operationId: waitlist.restoreEntry
+      tags:
+        - Waitlist
+      summary: Restore a removed waitlist entry
+      description: |
+        Moves a `removed` entry back to `waiting` with its original priority
+        (its initial registration date), within 3 months of its removal.
+
+        Requires the `beginners.waitlist.manage` capability.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The restored waitlist entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistEntryResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Session lacks the `beginners.waitlist.manage` capability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Waitlist entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |
+            The entry cannot be restored: `not_removed` (its standing is not
+            `removed`) or `restore_window_passed` (removed more than 3 months
+            ago).
           content:
             application/json:
               schema:
@@ -7737,11 +7801,7 @@ components:
           type: array
           minItems: 1
           items:
-            oneOf:
-              - $ref: "#/components/schemas/InvitationCreateInvite"
-              - type: string
-                format: uuid
-                description: Waitlist entry ID to convert into an invitation.
+            $ref: "#/components/schemas/InvitationCreateInvite"
     InvitationCreateInvite:
       type: object
       required:
@@ -8113,6 +8173,8 @@ components:
         firstName:
           type: string
           minLength: 1
+          maxLength: 40
+          description: At most 40 characters, the Intake Email `firstName` placeholder maximum.
         lastName:
           type: string
           minLength: 1
