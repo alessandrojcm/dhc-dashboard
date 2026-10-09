@@ -84,7 +84,22 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   `pause_batches` / `resume_batches` stop and restart new Batches only.
 
-  No staff command sends email.
+  ## Fast-track (ALE-384)
+
+  `fast_track` places one person straight into a workshop outside Batch
+  order: a `waiting` Waitlist entry, a `removed` one within the 3-month
+  retention window (restored to `waiting` through `Dhc.Waitlist.restore/2`)
+  or a new person added through the staff path `Dhc.Waitlist.add_person/2`,
+  all inside this transaction under the Beginners' Workshop lock and then the
+  person's Waitlist entry lock. It is refused with `:open_intake`,
+  `:not_eligible` (attended, invited or joined, or removed too long ago) and
+  `:after_cutoff`, and the staff path's own refusals pass through. The new
+  `contacted` Intake has origin `fast_track` and no Batch; its Contact email
+  is the Batch one, with `{{windowEnd}}` rendering the Payment Cutoff. The
+  person pays the workshop fee like everyone else.
+
+  No staff command sends email itself; `fast_track`'s Contact email is
+  queued by the Intake it creates, exactly as a Batch's is.
   """
 
   import Ecto.Query
@@ -112,6 +127,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   alias Dhc.Notifications
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist
   alias Dhc.Waitlist.WaitlistEntry
 
   @type principal_id :: binary()
@@ -143,6 +159,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:resume_batches, workshop_id :: binary()}
           | {:send_due_batch, workshop_id :: binary()}
           | {:set_staff, workshop_id :: binary(), map()}
+          | {:fast_track, workshop_id :: binary(), fast_track_person()}
+
+  @typedoc """
+  Who `fast_track` places: an existing Waitlist entry by id, or a new
+  person's registration details (the public registration body, string keys).
+  """
+  @type fast_track_person :: {:waitlist_entry, binary()} | {:new_person, map()}
 
   @typedoc """
   A refusal. A failed `schedule_workshop` names the (0-based) workshop it
@@ -166,6 +189,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :not_a_coach
           | :not_a_member
           | :staff_conflict
+          | :person_not_found
+          | :open_intake
+          | :not_eligible
+          | :after_cutoff
+          | :email_on_waitlist
+          | :email_is_principal
+          | :email_has_pending_invitation
+          | :invalid_payload
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -176,7 +207,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     update_workshop: :"beginners.workshops.manage",
     pause_batches: :"beginners.workshops.manage",
     resume_batches: :"beginners.workshops.manage",
-    set_staff: :"beginners.workshops.manage"
+    set_staff: :"beginners.workshops.manage",
+    fast_track: :"beginners.workshops.manage"
   }
 
   # Commands only the `:system` actor (time-driven passes) may run.
@@ -374,6 +406,21 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       end
       |> transact()
       |> signal_after_commit()
+    end
+  end
+
+  defp run({:staff, _principal_id}, {:fast_track, workshop_id, person}, clock) do
+    with {:ok, workshop_id} <- cast_id(workshop_id),
+         {:ok, person} <- fast_track_person(person) do
+      transact(fn ->
+        with_locked(
+          %{
+            workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+            waitlist_entry: fast_track_entry_query(person)
+          },
+          &fast_track_locked(&1, person, clock)
+        )
+      end)
     end
   end
 
@@ -626,6 +673,102 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
+  # ── fast_track ──────────────────────────────────────────────────
+
+  defp fast_track_person({:waitlist_entry, id}) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> {:ok, {:waitlist_entry, id}}
+      :error -> {:error, :person_not_found}
+    end
+  end
+
+  defp fast_track_person({:new_person, attrs}) when is_map(attrs), do: {:ok, {:new_person, attrs}}
+  defp fast_track_person(_person), do: {:error, :invalid_payload}
+
+  # An existing person's entry is locked after the workshop. A new person
+  # has no entry yet: the staff path locks and inserts it under ours.
+  defp fast_track_entry_query({:waitlist_entry, id}),
+    do: from(e in WaitlistEntry, where: e.id == ^id)
+
+  defp fast_track_entry_query({:new_person, _attrs}), do: nil
+
+  defp fast_track_locked(%{workshop: workshop, waitlist_entry: entry}, person, clock) do
+    reading = Clock.read(clock)
+
+    with :ok <- still_scheduled(workshop),
+         :ok <- payment_open(workshop, reading),
+         {:ok, entry, placed} <- fast_track_entry(person, entry, reading),
+         {:ok, first_name} <- contactable(entry),
+         {:ok, intake} <-
+           contact(workshop, :fast_track, entry, first_name, workshop.payment_cutoff, reading) do
+      {:ok, fast_track_view(intake, placed)}
+    end
+  end
+
+  # The Carried Fee holder exception after the cutoff joins this rule with
+  # the defer-and-confirm ticket.
+  defp payment_open(workshop, reading) do
+    if WorkshopPolicy.payment_open?(workshop, reading), do: :ok, else: {:error, :after_cutoff}
+  end
+
+  defp fast_track_entry({:waitlist_entry, _id}, nil, _reading), do: {:error, :person_not_found}
+
+  defp fast_track_entry({:waitlist_entry, _id}, %WaitlistEntry{} = entry, reading) do
+    with :ok <- no_open_intake(entry) do
+      place_existing(entry, reading)
+    end
+  end
+
+  defp fast_track_entry({:new_person, attrs}, nil, reading) do
+    with {:ok, %{id: id}} <- Waitlist.add_person(attrs, now: reading.now) do
+      {:ok, Repo.get!(WaitlistEntry, id), :added}
+    end
+  end
+
+  defp place_existing(%WaitlistEntry{status: "waiting"} = entry, _reading),
+    do: {:ok, entry, :waiting}
+
+  # Checked here first so the restore (which runs in this transaction)
+  # cannot refuse and leave it marked for rollback.
+  defp place_existing(%WaitlistEntry{status: "removed", removed_at: %DateTime{}} = entry, reading) do
+    if Waitlist.restorable?(entry.removed_at, reading.now) do
+      with {:ok, _view} <- Waitlist.restore(entry.id, now: reading.now) do
+        {:ok, Repo.get!(WaitlistEntry, entry.id), :restored}
+      end
+    else
+      {:error, :not_eligible}
+    end
+  end
+
+  defp place_existing(%WaitlistEntry{}, _reading), do: {:error, :not_eligible}
+
+  # Read under the person's entry lock, which every Intake writer takes; the
+  # one-open-Intake index is the backstop.
+  defp no_open_intake(%WaitlistEntry{id: id}) do
+    open = Intake.open_states()
+
+    if Repo.exists?(from(i in Intake, where: i.waitlist_id == ^id and i.state in ^open)),
+      do: {:error, :open_intake},
+      else: :ok
+  end
+
+  # The Contact email is addressed by first name, so an anonymised person
+  # (no email or profile) cannot be placed.
+  defp contactable(%WaitlistEntry{email: nil}), do: {:error, :not_eligible}
+
+  defp contactable(%WaitlistEntry{id: id}) do
+    case Repo.one(from(p in UserProfile, where: p.waitlist_id == ^id, select: p.first_name)) do
+      nil -> {:error, :not_eligible}
+      first_name -> {:ok, first_name}
+    end
+  end
+
+  defp fast_track_view(%Intake{} = intake, placed) do
+    intake
+    |> Map.take([:id, :workshop_id, :waitlist_id, :state, :origin, :contacted_at])
+    |> Map.put(:placed, placed)
+  end
+
   defp create_batch(workshop, facts, people, reading) do
     number = facts.batches_sent + 1
     window_end = WorkshopPolicy.window_end(workshop, reading)
@@ -646,27 +789,35 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp contact_all(workshop, batch, people, reading) do
-    Enum.reduce_while(people, :ok, fn person, :ok ->
-      case contact(workshop, batch, person, reading) do
-        :ok -> {:cont, :ok}
+    Enum.reduce_while(people, :ok, fn %{entry: entry, first_name: first_name}, :ok ->
+      case contact(workshop, {:batch, batch}, entry, first_name, batch.window_ends_at, reading) do
+        {:ok, _intake} -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
   # One new `contacted` Intake, its "Contact – pay" email with the person's
-  # own link, and the Intake Email log row — all in this transaction.
-  defp contact(workshop, batch, %{entry: entry, first_name: first_name}, reading) do
+  # own link, and the Intake Email log row — all in this transaction. A
+  # Batch Intake's `{{windowEnd}}` is its Batch window; a fast-track's is the
+  # Payment Cutoff.
+  defp contact(workshop, origin, entry, first_name, window_end, reading) do
     intake_id = Ecto.UUID.generate()
     token = IntakeLink.token(intake_id, 1)
+
+    {origin, batch_id} =
+      case origin do
+        {:batch, %Batch{id: batch_id}} -> {"batch", batch_id}
+        :fast_track -> {"fast_track", nil}
+      end
 
     with {:ok, intake} <-
            %{
              id: intake_id,
              workshop_id: workshop.id,
              waitlist_id: entry.id,
-             origin: "batch",
-             batch_id: batch.id,
+             origin: origin,
+             batch_id: batch_id,
              queue_date: entry.initial_registration_date,
              link_token_hash: IntakeLink.hash(token),
              contacted_at: reading.now
@@ -677,7 +828,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            IntakeEmails.queue(
              "contact_pay",
              entry,
-             contact_values(workshop, batch, first_name),
+             contact_values(workshop, window_end, first_name),
              button_url: IntakeLink.url(token)
            ),
          {:ok, _log} <-
@@ -689,18 +840,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            }
            |> IntakeEmailLog.changeset()
            |> persist() do
-      :ok
+      {:ok, intake}
     end
   end
 
-  defp contact_values(workshop, batch, first_name) do
+  defp contact_values(workshop, window_end, first_name) do
     %{
       "firstName" => first_name,
       "date" => Values.date(workshop.date),
       "startTime" => Values.start_time(workshop.start_time),
       "venue" => workshop.venue,
       "fee" => Values.money(workshop.fee_cents),
-      "windowEnd" => Values.deadline(batch.window_ends_at),
+      "windowEnd" => Values.deadline(window_end),
       "paymentCutoff" => Values.deadline(workshop.payment_cutoff)
     }
   end

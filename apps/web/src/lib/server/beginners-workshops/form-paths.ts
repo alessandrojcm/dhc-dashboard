@@ -55,3 +55,24 @@ export function settingsFormPath(field: string): FormPath | undefined {
 export function staffFormPath(field: string): FormPath | undefined {
 	return STAFF_FIELDS.has(field) ? [field] : undefined;
 }
+
+// ALE-384: the registration fields of the Fast-track "add a new person" form.
+const NEW_PERSON_FIELDS = new Set([
+	"firstName",
+	"lastName",
+	"email",
+	"phoneNumber",
+	"dateOfBirth",
+	"gender",
+	"pronouns",
+	"medicalConditions",
+	"socialMediaConsent",
+	"guardianFirstName",
+	"guardianLastName",
+	"guardianPhoneNumber",
+]);
+
+/** A registration field → its control in the Fast-track "add a new person" form. */
+export function newPersonFormPath(field: string): FormPath | undefined {
+	return NEW_PERSON_FIELDS.has(field) ? [field] : undefined;
+}

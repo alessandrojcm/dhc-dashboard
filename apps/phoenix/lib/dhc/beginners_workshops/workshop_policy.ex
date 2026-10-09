@@ -114,6 +114,18 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
       else: workshop.payment_cutoff
   end
 
+  @doc """
+  Whether a scheduled workshop still takes new Stripe payers at `reading`:
+  before its Payment Cutoff. `fast_track` (ALE-384) is refused after it, and
+  the console offers Fast-track only while it holds; the Carried Fee holder
+  exception joins this rule with the defer-and-confirm ticket.
+  """
+  @spec payment_open?(BeginnersWorkshop.t(), map()) :: boolean()
+  def payment_open?(%BeginnersWorkshop{status: "scheduled", payment_cutoff: cutoff}, reading),
+    do: DateTime.compare(reading.now, cutoff) == :lt
+
+  def payment_open?(%BeginnersWorkshop{}, _reading), do: false
+
   @typedoc """
   When the next Batch goes out: `:due` (at the next sweep), `{:at, instant}`,
   `:paused`, `:full` (no unpaid seats; it goes as soon as a seat frees) or

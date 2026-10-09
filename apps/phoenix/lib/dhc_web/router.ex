@@ -72,6 +72,9 @@ defmodule DhcWeb.Router do
     post("/:id/batches/pause", BeginnersWorkshopBatchesController, :pause)
     post("/:id/batches/resume", BeginnersWorkshopBatchesController, :resume)
     put("/:id/staff", BeginnersWorkshopsController, :set_staff)
+    get("/:id/fast-track/candidates", BeginnersWorkshopFastTrackController, :candidates)
+    post("/:id/fast-track", BeginnersWorkshopFastTrackController, :waitlist_person)
+    post("/:id/fast-track/new-person", BeginnersWorkshopFastTrackController, :new_person)
 
     # ALE-383 — Intake Email templates.
     get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)

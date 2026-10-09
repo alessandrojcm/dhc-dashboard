@@ -18,6 +18,7 @@ defmodule Dhc.BeginnersWorkshops do
     Clock,
     Commands,
     DoorView,
+    FastTrackCandidates,
     MyWorkshops,
     StaffCandidates,
     WorkshopConsole,
@@ -50,6 +51,16 @@ defmodule Dhc.BeginnersWorkshops do
           {:ok, WorkshopConsole.t()} | {:error, :not_found}
   def workshop_console(workshop_id, opts \\ []),
     do: WorkshopConsole.show(workshop_id, Clock.from_opts(opts))
+
+  @doc """
+  The Fast-track dialog's search for `workshop_id` (ALE-384): waiting people
+  and people removed within retention, without an open Intake, matching
+  `search`. Option `clock:` fixes the time retention is judged at.
+  """
+  @spec fast_track_candidates(binary(), String.t() | nil, keyword()) ::
+          {:ok, [FastTrackCandidates.t()]} | {:error, :not_found}
+  def fast_track_candidates(workshop_id, search, opts \\ []),
+    do: FastTrackCandidates.search(workshop_id, search, Clock.from_opts(opts))
 
   @doc """
   The periodic sweep (ALE-380): runs every time-driven pass through

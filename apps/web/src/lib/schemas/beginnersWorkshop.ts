@@ -6,14 +6,18 @@
  * rule; these schemas only check what one field can know on its own.
  */
 import type {
+	BeginnersWorkshopFastTrackRequest,
 	BeginnersWorkshopScheduleRequest,
 	BeginnersWorkshopSettingsRequest,
 	BeginnersWorkshopStaffRequest,
+	WaitlistEntryCreateRequest,
 } from "@dhc/api-client";
 import * as v from "valibot";
+import { waitlistRegistrationEntries } from "#lib/schemas/beginnersWaitlist.js";
 import {
 	civilDate,
 	euroAmountInCents,
+	guardianRules,
 	optionalCivilDate,
 	optionalPrincipalId,
 	principalIds,
@@ -151,3 +155,42 @@ export const workshopStaffSchema = v.pipe(
 );
 
 export type WorkshopStaffInput = v.InferInput<typeof workshopStaffSchema>;
+
+const workshopId = v.pipe(v.string(), v.uuid("Unknown workshop."));
+
+/**
+ * ALE-384: fast-track one Waitlist person (waiting, or removed within the
+ * 3-month window) into a workshop. Phoenix decides eligibility under the lock.
+ */
+export const fastTrackWaitlistPersonSchema = v.pipe(
+	v.object({
+		id: workshopId,
+		waitlistId: v.pipe(v.string(), v.uuid("Pick someone from the list.")),
+	}),
+	v.transform(({ id, waitlistId }) => ({
+		id,
+		body: { waitlistId } satisfies BeginnersWorkshopFastTrackRequest,
+	})),
+);
+
+const newPersonEntries = { id: workshopId, ...waitlistRegistrationEntries };
+
+/**
+ * ALE-384: "Not on the Waitlist? Add them" — the public registration form,
+ * sent through the staff path (works while registration is closed), then the
+ * same Fast-track. The output body is the registration request.
+ */
+export const fastTrackNewPersonSchema = v.pipe(
+	v.object(newPersonEntries),
+	...guardianRules<
+		v.InferOutput<v.ObjectSchema<typeof newPersonEntries, undefined>>
+	>(),
+	v.transform(({ id, ...body }) => ({
+		id,
+		body: body satisfies WaitlistEntryCreateRequest,
+	})),
+);
+
+export type FastTrackNewPersonInput = v.InferInput<
+	typeof fastTrackNewPersonSchema
+>;
