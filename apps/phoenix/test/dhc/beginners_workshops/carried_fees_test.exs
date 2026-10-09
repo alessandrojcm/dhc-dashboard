@@ -129,12 +129,14 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeesTest do
     test "declares the Carried Fee moves, and paid → deferred for the Intake" do
       assert Commands.transitions().carried_fee == %{
                "held" => ~w(applied refunded forfeited),
-               "applied" => ~w(held spent refunded forfeited)
+               "applied" => ~w(held spent refunded forfeited),
+               # Attendance corrections (ALE-393).
+               "spent" => ~w(forfeited),
+               "forfeited" => ~w(spent held)
              }
 
-      for from <- ~w(spent refunded forfeited),
-          to <- CarriedFee.statuses(),
-          do: refute(Commands.transition_allowed?(:carried_fee, from, to))
+      for to <- CarriedFee.statuses(),
+          do: refute(Commands.transition_allowed?(:carried_fee, "refunded", to))
 
       assert Commands.transition_allowed?(:intake, "paid", "deferred")
       refute Commands.transition_allowed?(:intake, "deferred", "paid")

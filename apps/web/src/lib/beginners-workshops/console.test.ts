@@ -12,6 +12,8 @@ import {
 	formatDublinInstant,
 	formatRefundAmount,
 	historyLine,
+	attendanceCorrectionDone,
+	attendanceCorrectionLabel,
 	holdLabel,
 	invitationSummary,
 	INTAKE_COMMANDS,
@@ -237,6 +239,7 @@ describe("nowCard", () => {
 			emailLog: [],
 			history: [],
 			availableCommands: [],
+			attendanceCorrections: [],
 			paidVia: null,
 			carriedFee: null,
 		});
@@ -281,6 +284,7 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 		emailLog: [],
 		history: [],
 		availableCommands: [],
+		attendanceCorrections: [],
 		paidVia: null,
 		carriedFee: null,
 		firstName: "Aoife",
@@ -359,6 +363,7 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 		emailLog: [],
 		history: [],
 		availableCommands: [],
+		attendanceCorrections: [],
 		paidVia: null,
 		carriedFee: null,
 	});
@@ -510,6 +515,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			"withdraw",
 			"resend_link",
 			"rotate_link",
+			"correct_attendance",
 		]);
 		expect(INTAKE_COMMANDS.map(intakeCommandLabel)).toEqual([
 			"Decline",
@@ -519,6 +525,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			"Withdraw…",
 			"Resend link",
 			"Rotate link",
+			"Correct attendance",
 		]);
 		expect(intakeCommandDone("rotate_link", "done")).toBe(
 			"Link rotated — the old one no longer works",
@@ -526,6 +533,27 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 		expect(intakeCommandDone("decline", "already_done")).toBe(
 			"Already done — nothing changed",
 		);
+	});
+
+	it("ALE-393: words attendance corrections and their history", () => {
+		expect(attendanceCorrectionLabel("attended")).toBe("Mark attended");
+		expect(attendanceCorrectionLabel("no_show")).toBe("Mark no-show");
+		expect(attendanceCorrectionLabel("deferred")).toBe("Defer instead");
+		expect(attendanceCorrectionDone("no_show", "already_done")).toBe(
+			"Already done — nothing changed",
+		);
+		expect(attendanceCorrectionDone("attended", "done")).toBe(
+			"Corrected to attended",
+		);
+		expect(
+			historyLine({
+				command: "correct_attendance",
+				actor: "Clare Coord",
+				occurredAt: "2026-11-16T11:00:00Z",
+				note: null,
+				correction: "deferred",
+			}),
+		).toBe("No-show corrected to deferred · Clare Coord · Mon 16 Nov, 11:00");
 	});
 
 	it("ALE-388: words Carried Fees, a person's own confirm and a holder who hasn't confirmed", () => {
@@ -537,6 +565,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				actor: null,
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
+				correction: null,
 			}),
 		).toBe("Confirmed with Carried Fee · by the person · Thu 22 Oct, 12:00");
 		expect(
@@ -545,6 +574,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				actor: null,
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
+				correction: null,
 			}),
 		).toBe("Deferred · a former member · Thu 22 Oct, 12:00");
 		expect(
@@ -605,6 +635,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				actor: null,
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
+				correction: null,
 			}),
 		).toBe("Declined · a former member · Thu 22 Oct, 12:00");
 	});

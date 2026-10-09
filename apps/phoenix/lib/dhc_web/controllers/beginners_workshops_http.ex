@@ -47,7 +47,8 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     email_has_pending_invitation: "email",
     invalid_note: "note",
     refund_choice_required: "refund",
-    invalid_refund_choice: "refund"
+    invalid_refund_choice: "refund",
+    invalid_correction: "to"
   }
 
   use DhcWeb.Problem,
@@ -122,7 +123,13 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       no_carried_fee: {409, "This person has no Carried Fee to confirm with"},
       full: {409, "Every seat is taken; the Carried Fee stays held"},
       payment_not_found: {409, "The payment that paid this Intake can't be found"},
-      invalid_ids: {422, "Pass at most 100 Waitlist entry ids"}
+      invalid_ids: {422, "Pass at most 100 Waitlist entry ids"},
+      # Attendance corrections (ALE-393).
+      before_finalisation:
+        {409, "Attendance can be corrected only once the workshop is finished"},
+      not_correctable:
+        {409, "Only attended ↔ no-show, or a no-show to deferred, can be corrected"},
+      invalid_correction: {422, "Choose attended, no-show or deferred"}
     },
     fields: @internal_to_public
 

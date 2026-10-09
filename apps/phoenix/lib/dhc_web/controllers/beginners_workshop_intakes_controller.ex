@@ -2,7 +2,8 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
   @moduledoc """
   The `beginnersWorkshopIntakes` slice (ALE-386): the console's Intake
   commands — Decline, Defer and Confirm (ALE-388), Cancel with refund and
-  Withdraw (ALE-387), Resend link and Rotate link — each with an optional
+  Withdraw (ALE-387), Resend link, Rotate link and Correct attendance
+  (ALE-393) — each with an optional
   note recorded in the Intake's history, plus the Waitlist tab's Withdraw of
   a person. The router gates them on their capability
   (`beginners.workshops.manage`; withdraw `beginners.waitlist.manage`); the
@@ -53,6 +54,13 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
   @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/rotate-link"
   def rotate_link(conn, params), do: command(conn, :rotate_link, params)
 
+  @doc """
+  POST /beginners-workshops/{id}/intakes/{intakeId}/correct-attendance
+  (ALE-393): after Attendance Finalisation, correct one Intake `to`
+  `attended`, `no_show` or `deferred`.
+  """
+  def correct_attendance(conn, params), do: command(conn, :correct_attendance, params)
+
   defp command(conn, name, %{"id" => id, "intakeId" => intake_id} = params) do
     conn
     |> BeginnersWorkshopsHTTP.actor()
@@ -60,7 +68,7 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
     |> BeginnersWorkshopsHTTP.respond(conn, :intake_command)
   end
 
-  # The note, and `withdraw`'s refund-or-forfeit choice; the boundary
-  # ignores what a command does not take.
-  defp command_attrs(params), do: Map.take(params, ["note", "refund"])
+  # The note, `withdraw`'s refund-or-forfeit choice and a correction's
+  # `to`; the boundary ignores what a command does not take.
+  defp command_attrs(params), do: Map.take(params, ["note", "refund", "to"])
 end

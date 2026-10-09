@@ -485,7 +485,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
 
       assert transitions.intake == %{
                "contacted" => ~w(paid lapsed returned declined),
-               "paid" => ~w(attended no_show deferred cancelled_refunded withdrawn)
+               "paid" => ~w(attended no_show deferred cancelled_refunded withdrawn),
+               # Attendance corrections after finalisation (ALE-393).
+               "attended" => ~w(no_show),
+               "no_show" => ~w(attended deferred)
              }
 
       assert transitions.payment == %{

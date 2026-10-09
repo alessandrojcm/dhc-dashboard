@@ -93,6 +93,13 @@ defmodule DhcWeb.Router do
       :cancel_with_refund
     )
 
+    # ALE-393: attendance corrections after finalisation.
+    post(
+      "/:id/intakes/:intakeId/correct-attendance",
+      BeginnersWorkshopIntakesController,
+      :correct_attendance
+    )
+
     # ALE-383 — Intake Email templates.
     get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)
     put("/email-templates/:emailType", BeginnersWorkshopEmailTemplatesController, :update)

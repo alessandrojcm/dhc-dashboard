@@ -7,6 +7,7 @@
  */
 import type {
 	BeginnersCarriedFeeStatus,
+	BeginnersWorkshopAttendanceCorrection,
 	BeginnersWorkshopConsole,
 	BeginnersWorkshopConsoleInvitations,
 	BeginnersWorkshopFollowUp,
@@ -470,6 +471,11 @@ const INTAKE_COMMAND_COPY = {
 		done: "Link rotated — the old one no longer works",
 		history: "Link rotated",
 	},
+	correct_attendance: {
+		label: "Correct attendance",
+		done: "Attendance corrected",
+		history: "Attendance corrected",
+	},
 } satisfies Record<
 	BeginnersWorkshopIntakeCommand,
 	{ label: string; done: string; history: string }
@@ -484,12 +490,64 @@ export const INTAKE_COMMANDS = [
 	"withdraw",
 	"resend_link",
 	"rotate_link",
+	"correct_attendance",
 ] as const satisfies readonly BeginnersWorkshopIntakeCommand[];
+
+/**
+ * ALE-393: how the console words each attendance correction. Which ones an
+ * Intake offers is Phoenix's `attendanceCorrections`; exhaustive over the
+ * generated enum.
+ */
+const ATTENDANCE_CORRECTION_COPY = {
+	attended: {
+		label: "Mark attended",
+		done: "Corrected to attended",
+		history: "Attendance corrected to attended",
+	},
+	no_show: {
+		label: "Mark no-show",
+		done: "Corrected to no-show — they are removed from the Waitlist",
+		history: "Attendance corrected to no-show",
+	},
+	deferred: {
+		label: "Defer instead",
+		done: "Deferred — their fee is a Carried Fee and they keep their place in the queue",
+		history: "No-show corrected to deferred",
+	},
+} satisfies Record<
+	BeginnersWorkshopAttendanceCorrection,
+	{ label: string; done: string; history: string }
+>;
+
+/** Every attendance correction, in display order (Phoenix lists them in this order too). */
+export const ATTENDANCE_CORRECTIONS = [
+	"attended",
+	"no_show",
+	"deferred",
+] as const satisfies readonly BeginnersWorkshopAttendanceCorrection[];
+
+/** The button label of an attendance correction. */
+export function attendanceCorrectionLabel(
+	to: BeginnersWorkshopAttendanceCorrection,
+): string {
+	return ATTENDANCE_CORRECTION_COPY[to].label;
+}
+
+/** The toast after an attendance correction; a repeat that changed nothing says so. */
+export function attendanceCorrectionDone(
+	to: BeginnersWorkshopAttendanceCorrection,
+	outcome: "done" | "already_done",
+): string {
+	return outcome === "already_done"
+		? "Already done — nothing changed"
+		: ATTENDANCE_CORRECTION_COPY[to].done;
+}
 
 /**
  * ALE-387: the commands that run straight from the Intake detail's command
  * buttons. `withdraw` needs the refund-or-forfeit choice, so it opens its
- * own dialog instead.
+ * own dialog instead; (ALE-393) `correct_attendance` has a button per
+ * correction in its own form.
  */
 export const INTAKE_BUTTON_COMMANDS = [
 	"decline",
@@ -573,7 +631,9 @@ export function historyLine(
 		entry.actor ??
 		(entry.command === "confirm" ? "by the person" : "a former member");
 	return [
-		INTAKE_COMMAND_COPY[entry.command].history,
+		entry.correction
+			? ATTENDANCE_CORRECTION_COPY[entry.correction].history
+			: INTAKE_COMMAND_COPY[entry.command].history,
 		actor,
 		formatDublinInstant(entry.occurredAt),
 	].join(" · ");

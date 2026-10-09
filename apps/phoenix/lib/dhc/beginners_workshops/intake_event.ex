@@ -3,7 +3,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEvent do
   Ecto schema for `beginners_workshop_intake_events` (ALE-386): an Intake's
   history. One row per console Intake command that did something — which
   command, which Principal ran it, when, and the optional note the
-  coordinator gave. A repeated command that found nothing to do writes no
+  coordinator gave, and (ALE-393) for an attendance correction the state it
+  corrected the Intake to. A repeated command that found nothing to do writes no
   row. Rows are only ever inserted, by the boundary, in the command's own
   transaction.
   """
@@ -23,6 +24,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEvent do
     field :command, :string
     field :actor_principal_id, :binary_id
     field :note, :string
+    # ALE-393: the state a `correct_attendance` row corrected the Intake to.
+    field :correction, :string
     field :occurred_at, :utc_datetime_usec
   end
 
@@ -34,7 +37,15 @@ defmodule Dhc.BeginnersWorkshops.IntakeEvent do
   @spec changeset(map()) :: Ecto.Changeset.t()
   def changeset(attrs) do
     %__MODULE__{}
-    |> cast(attrs, [:id, :intake_id, :command, :actor_principal_id, :note, :occurred_at])
+    |> cast(attrs, [
+      :id,
+      :intake_id,
+      :command,
+      :actor_principal_id,
+      :note,
+      :correction,
+      :occurred_at
+    ])
     |> validate_required([:intake_id, :command, :occurred_at])
     |> validate_length(:note, max: @note_max)
   end

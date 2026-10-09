@@ -27,6 +27,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
           | :withdraw
           | :resend_link
           | :rotate_link
+          | :correct_attendance
   @type decision ::
           :ok
           | :already_done
@@ -40,12 +41,18 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
   @typedoc """
   What the rule reads: the Intake's `state` (and `paid_via` once paid), and
   `carried_fee` — the status of the person's live Carried Fee, or `nil`
-  (ALE-388; only `confirm` reads it).
+  (ALE-388; only `confirm` reads it). `correct_attendance` (ALE-393) also
+  reads `workshop_status`, the person's Waitlist `standing` (`nil` once
+  anonymised) and `correction`, the state asked for (`nil` when the console
+  asks whether any correction is possible).
   """
   @type facts :: %{
           required(:state) => String.t(),
           optional(:paid_via) => String.t() | nil,
           optional(:carried_fee) => String.t() | nil,
+          optional(:workshop_status) => String.t(),
+          optional(:standing) => String.t() | nil,
+          optional(:correction) => String.t() | nil,
           optional(atom()) => term()
         }
 
@@ -56,9 +63,14 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
     :cancel_with_refund,
     :withdraw,
     :resend_link,
-    :rotate_link
+    :rotate_link,
+    :correct_attendance
   ]
   @open_states ~w(contacted paid)
+
+  # ALE-393: the attendance corrections, from → the states it may become.
+  @corrections %{"attended" => ~w(no_show), "no_show" => ~w(attended deferred)}
+  @correction_states ~w(attended no_show deferred)
 
   @doc "Every console Intake command, in display order."
   @spec commands() :: [command()]
@@ -90,7 +102,15 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       `:intake_closed`. Whether the refund choice was given is the
       command's own input, not the Intake's state, so the boundary checks it;
     * `resend_link` / `rotate_link` — open Intakes only (`:intake_closed`).
-      They have no target state, so each run sends again.
+      They have no target state, so each run sends again;
+    * `correct_attendance` (ALE-393) — after Attendance Finalisation only
+      (`:before_finalisation`; a cancelled workshop is `:already_cancelled`):
+      `attended → no_show`, `no_show → attended | deferred`. An Intake
+      already in the asked state is already there; once the person's
+      standing is `invited` or `joined` it is `:already_invited` (membership
+      never rests on a changed record); any other move is
+      `:not_correctable`. Without a `correction` it answers whether any
+      correction is possible (the console's question).
   """
   @spec check(command(), facts()) :: decision()
   def check(:decline, %{state: "contacted"}), do: :ok
@@ -127,6 +147,44 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
 
   def check(command, %{state: state}) when command in [:resend_link, :rotate_link],
     do: if(state in @open_states, do: :ok, else: {:error, :intake_closed})
+
+  def check(:correct_attendance, facts) do
+    case Map.get(facts, :workshop_status) do
+      "finalised" -> check_correction(facts, Map.get(facts, :correction))
+      "cancelled" -> {:error, :already_cancelled}
+      _scheduled -> {:error, :before_finalisation}
+    end
+  end
+
+  @doc """
+  ALE-393: the states `correct_attendance` would move this Intake to now, in
+  display order — each one `check/2` allows.
+  """
+  @spec attendance_corrections(facts()) :: [String.t()]
+  def attendance_corrections(facts) do
+    facts.state
+    |> then(&Map.get(@corrections, &1, []))
+    |> Enum.filter(&(check(:correct_attendance, Map.put(facts, :correction, &1)) == :ok))
+  end
+
+  @doc "The states an attendance correction may name."
+  @spec correction_states() :: [String.t()]
+  def correction_states, do: @correction_states
+
+  # After finalisation: where the Intake already is, then the standing, then
+  # the table.
+  defp check_correction(%{state: state}, state), do: :already_done
+
+  defp check_correction(facts, correction) do
+    targets = Map.get(@corrections, facts.state, [])
+
+    cond do
+      Map.get(facts, :standing) in ~w(invited joined) -> {:error, :already_invited}
+      correction == nil and targets != [] -> :ok
+      correction in targets -> :ok
+      true -> {:error, :not_correctable}
+    end
+  end
 
   # A paid Intake's money is a Stripe payment unless it says otherwise; a
   # Carried Fee's refund or forfeit belongs to the Carried Fee commands.

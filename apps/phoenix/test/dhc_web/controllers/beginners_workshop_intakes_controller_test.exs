@@ -324,4 +324,72 @@ defmodule DhcWeb.BeginnersWorkshopIntakesControllerTest do
       assert [%IntakeRefund{reason: "withdrawn"}] = Repo.all(IntakeRefund)
     end
   end
+
+  describe "correct attendance (ALE-393)" do
+    test "needs beginners.workshops.manage", %{conn: conn, workshop: w, paid: paid} do
+      assert conn
+             |> post(intake_path(w, paid.id, "correct-attendance"), %{"to" => "no_show"})
+             |> json_response(401)
+
+      for role <- ~w(coach member),
+          do:
+            assert(
+              conn
+              |> as_role(role)
+              |> post(intake_path(w, paid.id, "correct-attendance"), %{"to" => "no_show"})
+              |> json_response(403)
+            )
+    end
+
+    test "refuses before finalisation and an unknown target",
+         %{conn: conn, workshop: w, paid: paid} do
+      coordinator = as_role(conn, "beginners_coordinator")
+      BeginnersWorkshopFixtures.force_intake_state!(paid.id, "attended")
+
+      assert %{"errors" => %{"code" => "before_finalisation"}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "correct-attendance"), %{"to" => "no_show"})
+               |> json_response(409)
+
+      assert %{"errors" => %{"code" => "invalid_correction", "fields" => %{"to" => [_]}}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "correct-attendance"), %{"to" => "paid"})
+               |> json_response(422)
+    end
+
+    test "corrects a finalised Intake and the console shows it",
+         %{conn: conn, workshop: w, paid: paid} do
+      coordinator = as_role(conn, "beginners_coordinator")
+      BeginnersWorkshopFixtures.force_intake_state!(paid.id, "attended")
+      BeginnersWorkshopFixtures.force_status!(w.id, "finalised")
+
+      assert %{"data" => %{"roster" => %{"attended" => [attended]}}} = console(coordinator, w)
+      assert "correct_attendance" in attended["availableCommands"]
+      assert attended["attendanceCorrections"] == ["no_show"]
+
+      assert %{"data" => %{"state" => "no_show", "outcome" => "done"}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "correct-attendance"), %{
+                 "to" => "no_show",
+                 "note" => "Left early"
+               })
+               |> json_response(200)
+
+      assert %{"data" => %{"roster" => %{"noShow" => [no_show]}}} = console(coordinator, w)
+      assert no_show["attendanceCorrections"] == ["attended", "deferred"]
+
+      assert [
+               %{
+                 "command" => "correct_attendance",
+                 "correction" => "no_show",
+                 "note" => "Left early"
+               }
+             ] = no_show["history"]
+
+      assert %{"data" => %{"outcome" => "already_done"}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "correct-attendance"), %{"to" => "no_show"})
+               |> json_response(200)
+    end
+  end
 end

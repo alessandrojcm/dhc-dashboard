@@ -97,6 +97,7 @@ function view(
 					emailLog: [],
 					history: [],
 					availableCommands: [],
+					attendanceCorrections: [],
 					paidVia: null,
 					carriedFee: null,
 				},
@@ -122,6 +123,7 @@ function view(
 					emailLog: [],
 					history: [],
 					availableCommands: [],
+					attendanceCorrections: [],
 					paidVia: null,
 					carriedFee: null,
 				},
@@ -297,6 +299,7 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						emailLog: [],
 						history: [],
 						availableCommands: [],
+						attendanceCorrections: [],
 						paidVia: null,
 						carriedFee: null,
 					},
@@ -586,6 +589,7 @@ function commandsView(): BeginnersWorkshopConsole {
 							actor: "Róisín Walsh",
 							occurredAt: "2026-10-22T11:00:00Z",
 							note: "Forwarded the email to a friend",
+							correction: null,
 						},
 					],
 				},
@@ -606,6 +610,7 @@ function commandsView(): BeginnersWorkshopConsole {
 					firstName: "Eimear",
 					lastName: "Ryan",
 					availableCommands: [],
+					attendanceCorrections: [],
 					paidVia: null,
 					carriedFee: null,
 				},
@@ -685,6 +690,82 @@ test("ALE-386: a closed Intake offers no commands", async () => {
 		.toBeVisible();
 	expect(detail.getByRole("button").elements()).toHaveLength(0);
 
+	await closeIntake(screen);
+});
+
+test("ALE-393: the finalised roster offers the corrections Phoenix allows", async () => {
+	const base = view();
+	const [seated] = base.roster.seated;
+	const [asked] = base.roster.asked;
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			workshop: { ...base.workshop, status: "finalised", stage: "finalised" },
+			roster: {
+				seated: [],
+				asked: [],
+				attended: [
+					{
+						...seated,
+						state: "attended",
+						availableCommands: ["correct_attendance"],
+						attendanceCorrections: ["no_show"],
+					},
+				],
+				noShow: [
+					{
+						...asked,
+						state: "no_show",
+						standing: "removed",
+						availableCommands: ["correct_attendance"],
+						attendanceCorrections: ["attended", "deferred"],
+						history: [
+							{
+								command: "correct_attendance",
+								actor: "Clare Coord",
+								occurredAt: "2026-11-16T11:00:00Z",
+								note: "Door mix-up",
+								correction: "no_show",
+							},
+						],
+					},
+				],
+				out: [],
+			},
+			fastTrackOpen: false,
+			fastTrackHoldersOnly: false,
+			finalisation: {
+				at: "2026-11-14T20:05:00Z",
+				by: "Aoife Coach",
+				followUpAt: "2026-11-15T10:00:00Z",
+				invitations: { attended: 1, invited: 0, joined: 0 },
+			},
+		}),
+	});
+
+	const noShow = await openIntake(screen, /^Dara Nolan/);
+	const buttons = noShow
+		.getByTestId("attendance-corrections")
+		.getByRole("button");
+	expect(
+		buttons.elements().map((button) => button.textContent?.trim()),
+	).toEqual(["Mark attended", "Defer instead"]);
+	expect(noShow.getByTestId("intake-commands").elements()).toHaveLength(0);
+	expect(document.body.textContent).not.toMatch(/No commands for/);
+	await expect
+		.element(noShow.getByTestId("intake-history"))
+		.toHaveTextContent(
+			"Attendance corrected to no-show · Clare Coord · Mon 16 Nov, 11:00 “Door mix-up”",
+		);
+	await closeIntake(screen);
+
+	const attended = await openIntake(screen, /^Cian Doyle/);
+	expect(
+		attended
+			.getByTestId("attendance-corrections")
+			.getByRole("button")
+			.elements()
+			.map((button) => button.textContent?.trim()),
+	).toEqual(["Mark no-show"]);
 	await closeIntake(screen);
 });
 
@@ -854,6 +935,7 @@ test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need
 				actor: null,
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
+				correction: null,
 			},
 		],
 	};

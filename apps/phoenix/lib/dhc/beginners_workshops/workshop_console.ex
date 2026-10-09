@@ -31,7 +31,11 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       its history (command, actor, time, note) and its `available_commands`
       — `IntakePolicy.available_commands/1`, the very rule the boundary
       applies under the lock — and (ALE-388) `carried_fee`: the status of
-      the Carried Fee that paid it, else of the person's live one, or `nil`;
+      the Carried Fee that paid it, else of the person's live one, or `nil`.
+      After finalisation (ALE-393) a correctable Intake offers
+      `correct_attendance`, and `attendance_corrections` lists the states it
+      may be corrected to (`IntakePolicy.attendance_corrections/1`); a
+      correction's history row names its `correction`;
     * `unpaid_after_window` — the Needs attention list of `contacted`
       people whose payment window (their Batch's, or the Payment Cutoff for
       a fast-track) has ended, oldest window first (ALE-386);
@@ -260,7 +264,14 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         |> Map.put(:refund, Map.get(refunds, row.id))
         |> Map.put(:email_log, logged ++ scheduled_emails(row, logged, workshop))
         |> Map.put(:history, Map.get(history, row.id, []))
-        |> Map.put(:available_commands, IntakePolicy.available_commands(row))
+        |> then(fn row ->
+          # The rule's facts: the row plus the workshop's status (ALE-393).
+          facts = Map.put(row, :workshop_status, workshop.status)
+
+          row
+          |> Map.put(:available_commands, IntakePolicy.available_commands(facts))
+          |> Map.put(:attendance_corrections, IntakePolicy.attendance_corrections(facts))
+        end)
       end)
 
     %{
@@ -334,7 +345,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
            command: e.command,
            actor: fragment("nullif(trim(concat_ws(' ', ?, ?)), '')", p.first_name, p.last_name),
            occurred_at: e.occurred_at,
-           note: e.note
+           note: e.note,
+           correction: e.correction
          }}
     )
     |> Repo.all()
