@@ -421,6 +421,7 @@ const REFUND_REASONS = new Map([
 	["paid_after_close", "they paid after their Intake closed"],
 	["cancelled_with_refund", "cancelled with a refund"],
 	["withdrawn", "withdrawn with a refund"],
+	["carried_fee_refunded", "their Carried Fee"],
 ]);
 
 /** A refund amount: `€40.00`, or `12.50 GBP` outside euro. */
@@ -436,7 +437,10 @@ export function failedRefundText(
 	refund: BeginnersWorkshopFailedRefund,
 ): string {
 	const reason = REFUND_REASONS.get(refund.reason);
-	return `Refund of ${formatRefundAmount(refund.amountCents, refund.currency)} to ${personName(refund)} failed${reason ? ` (${reason})` : ""}. Retry it, or record a manual refund if you paid them back another way.`;
+	const next = refund.carriedFee
+		? "Their Carried Fee is held again: retry the refund, record a manual refund if you paid them back another way, or forfeit the fee."
+		: "Retry it, or record a manual refund if you paid them back another way.";
+	return `Refund of ${formatRefundAmount(refund.amountCents, refund.currency)} to ${personName(refund)} failed${reason ? ` (${reason})` : ""}. ${next}`;
 }
 
 /** ALE-392: a finalised workshop's handoff line — `3 attended · 2 invited · 1 joined`. */
@@ -508,6 +512,11 @@ const INTAKE_COMMAND_COPY = {
 		done: "Withdrawn from the Waitlist",
 		history: "Withdrawn",
 	},
+	refund_carried_fee: {
+		label: "Refund Carried Fee",
+		done: "Carried Fee refund requested — they'll pay normally next time",
+		history: "Carried Fee refunded",
+	},
 	resend_link: {
 		label: "Resend link",
 		done: "Link resent",
@@ -535,6 +544,7 @@ export const INTAKE_COMMANDS = [
 	"confirm",
 	"cancel_with_refund",
 	"withdraw",
+	"refund_carried_fee",
 	"resend_link",
 	"rotate_link",
 	"correct_attendance",
@@ -601,6 +611,7 @@ export const INTAKE_BUTTON_COMMANDS = [
 	"defer",
 	"confirm",
 	"cancel_with_refund",
+	"refund_carried_fee",
 	"resend_link",
 	"rotate_link",
 ] as const satisfies readonly BeginnersWorkshopIntakeCommand[];

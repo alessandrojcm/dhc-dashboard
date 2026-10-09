@@ -16,6 +16,7 @@ defmodule Dhc.BeginnersWorkshops do
   alias Dhc.BeginnersWorkshops.{
     BeginnersWorkshop,
     CarriedFee,
+    CarriedFeeView,
     Clock,
     Commands,
     DoorView,
@@ -331,6 +332,18 @@ defmodule Dhc.BeginnersWorkshops do
     |> Repo.all()
     |> Map.new()
   end
+
+  @doc """
+  One person's Carried Fee as the Waitlist tab shows it (ALE-389): the live
+  one, else their latest, with its original payment, a failed refund still
+  to follow up and what may be done with it. `{:error, :no_carried_fee}`
+  when they never held one. Option `clock:` fixes the time retention is
+  judged at. See `Dhc.BeginnersWorkshops.CarriedFeeView`.
+  """
+  @spec carried_fee(binary(), keyword()) ::
+          {:ok, CarriedFeeView.t()} | {:error, :no_carried_fee | :person_not_found}
+  def carried_fee(waitlist_id, opts \\ []),
+    do: CarriedFeeView.show(waitlist_id, Clock.read(Clock.from_opts(opts)).now)
 
   @doc """
   The one-time Waitlist spreadsheet import (ALE-376) with its Carried Fees

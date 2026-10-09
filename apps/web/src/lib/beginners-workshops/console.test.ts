@@ -513,9 +513,28 @@ describe("refundLabel (ALE-382)", () => {
 				currency: "eur",
 				reason: "paid_after_close",
 				failedAt: null,
+				carriedFee: false,
 			}),
 		).toBe(
 			"Refund of €35.00 to Dara failed (they paid after their Intake closed). Retry it, or record a manual refund if you paid them back another way.",
+		);
+	});
+
+	it("ALE-389: a Carried Fee's failed refund offers forfeit too", () => {
+		expect(
+			failedRefundText({
+				id: "r",
+				intakeId: "i",
+				firstName: "Dara",
+				lastName: null,
+				amountCents: 4000,
+				currency: "eur",
+				reason: "carried_fee_refunded",
+				failedAt: null,
+				carriedFee: true,
+			}),
+		).toBe(
+			"Refund of €40.00 to Dara failed (their Carried Fee). Their Carried Fee is held again: retry the refund, record a manual refund if you paid them back another way, or forfeit the fee.",
 		);
 	});
 });
@@ -552,6 +571,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			"confirm",
 			"cancel_with_refund",
 			"withdraw",
+			"refund_carried_fee",
 			"resend_link",
 			"rotate_link",
 			"correct_attendance",
@@ -562,6 +582,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			"Confirm with Carried Fee",
 			"Cancel with refund",
 			"Withdraw…",
+			"Refund Carried Fee",
 			"Resend link",
 			"Rotate link",
 			"Correct attendance",

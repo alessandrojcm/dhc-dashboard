@@ -43,7 +43,9 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       Carried Fee holders who have not confirmed yet (ALE-388);
     * `failed_refunds` — the Needs attention list of refunds that failed
       and have not been followed up (Retry or Record manual refund), oldest
-      first (ALE-382);
+      first (ALE-382); `carried_fee` marks a Carried Fee's refund, which can
+      also be forfeited, and is listed only while the fee is owed back
+      (ALE-389);
     * `finalisation` (ALE-391) — `nil` until Attendance Finalisation, then
       when, who pressed Finish (`nil`: automatically at the end of the day)
       and when the Follow-up goes out (`WorkshopPolicy.follow_up_at/1`),
@@ -445,17 +447,34 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
 
   defp failed_refunds(workshop_id) do
     from(r in IntakeRefund,
+      as: :refund,
       join: i in Intake,
       on: i.id == r.intake_id,
       left_join: p in UserProfile,
       on: p.waitlist_id == i.waitlist_id and not is_nil(i.waitlist_id),
       left_join: f in IntakeRefund,
       on: f.follows_refund_id == r.id,
+      left_join: fee in CarriedFee,
+      on: fee.id == r.carried_fee_id,
       where: r.workshop_id == ^workshop_id and r.status == "failed" and is_nil(f.id),
+      # ALE-389: a Carried Fee's failed refund needs attention while the fee
+      # is still owed back (held again) and no later refund of it exists.
+      where:
+        is_nil(r.carried_fee_id) or
+          (fee.status in ["held", "refunded"] and
+             not exists(
+               from(later in IntakeRefund,
+                 where:
+                   later.carried_fee_id == parent_as(:refund).carried_fee_id and
+                     later.id != parent_as(:refund).id and
+                     later.created_at > parent_as(:refund).created_at
+               )
+             )),
       order_by: [asc: r.failed_at, asc: r.id],
       select: %{
         id: r.id,
         intake_id: r.intake_id,
+        carried_fee: not is_nil(r.carried_fee_id),
         first_name: p.first_name,
         last_name: p.last_name,
         amount_cents: r.amount_cents,

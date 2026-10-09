@@ -148,6 +148,39 @@ defmodule Dhc.BeginnersIntakeStripe do
     )
   end
 
+  # ── Original payments of imported Carried Fees (ALE-389) ───────
+
+  @doc """
+  Answers `GET /v1/payment_intents/<id>` with a `succeeded` PaymentIntent
+  that took `amount` (overridable), its latest charge expanded.
+  """
+  def stub_payment_intent(id, overrides \\ %{}) do
+    object =
+      Map.merge(
+        %{
+          "id" => id,
+          "object" => "payment_intent",
+          "status" => "succeeded",
+          "amount" => 4000,
+          "amount_received" => 4000,
+          "currency" => "eur",
+          "latest_charge" => %{"id" => "ch_" <> id, "amount_refunded" => 0}
+        },
+        overrides
+      )
+
+    StripeHTTPStub.stub("GET", "/v1/payment_intents/#{id}", fn conn ->
+      StripeHTTPStub.json(conn, object)
+    end)
+  end
+
+  @doc "Makes `GET /v1/payment_intents/<id>` fail with `status`."
+  def fail_payment_intent(id, status) do
+    StripeHTTPStub.stub("GET", "/v1/payment_intents/#{id}", fn conn ->
+      StripeHTTPStub.stripe_error(conn, status, %{"message" => "No such payment_intent"})
+    end)
+  end
+
   @doc "A Stripe webhook event carrying `object`."
   def event(type, object),
     do: %{

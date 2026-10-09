@@ -47,6 +47,7 @@ import {
 import dayjs from "dayjs";
 import { toast } from "svelte-sonner";
 import { apiProblem } from "#lib/api-error.js";
+import type { CarriedFeePanelDeps } from "./carried-fee-panel.svelte.js";
 import {
 	createCursorTableUrl,
 	type CursorTableNavigate,
@@ -93,6 +94,8 @@ export type WaitlistTableDeps = {
 	withdrawEntry?: (
 		options: Options<BeginnersWorkshopIntakesWithdrawPersonData>,
 	) => Promise<BeginnersWorkshopIntakesWithdrawPersonResponse>;
+	/** ALE-389: the Carried Fee panel's requests, when a person's fee is managed. */
+	carriedFee?: CarriedFeePanelDeps;
 	/** Defaults to the current time; decides which removed people are offered restore. */
 	now?: () => Date;
 	/** Defaults to svelte-sonner's `toast`. */

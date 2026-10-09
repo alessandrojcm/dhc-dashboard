@@ -48,6 +48,52 @@ defmodule Dhc.BeginnersWorkshops.IntakeRefunds do
     end
   end
 
+  @doc """
+  ALE-389: the original Stripe payment of an imported Carried Fee, by its
+  PaymentIntent id — what a refund of the fee will be made against. Only a
+  `succeeded` payment that took money and was not refunded in Stripe is
+  usable; the amount is what Stripe says it took, never typed in.
+  """
+  @spec original_payment(String.t()) ::
+          {:ok, %{amount: pos_integer(), currency: String.t()}}
+          | {:error,
+             :stripe_payment_not_found
+             | :payment_not_succeeded
+             | :payment_already_refunded
+             | :stripe_unavailable}
+  def original_payment(payment_intent_id) when is_binary(payment_intent_id) do
+    case Operations.get_payment_intents_intent(payment_intent_id, %{}, expand: ["latest_charge"]) do
+      {:ok, %{"id" => ^payment_intent_id} = intent} ->
+        usable_payment(intent)
+
+      {:ok, _unexpected} ->
+        {:error, :stripe_unavailable}
+
+      {:error, {:stripe_api, 404, _body}} ->
+        {:error, :stripe_payment_not_found}
+
+      {:error, reason} ->
+        if(Failure.retryable?(reason),
+          do: {:error, :stripe_unavailable},
+          else: {:error, :stripe_payment_not_found}
+        )
+    end
+  end
+
+  defp usable_payment(%{"status" => "succeeded", "amount_received" => amount} = intent)
+       when is_integer(amount) and amount > 0 do
+    if refunded_in_stripe?(intent["latest_charge"]),
+      do: {:error, :payment_already_refunded},
+      else: {:ok, %{amount: amount, currency: intent["currency"] || "eur"}}
+  end
+
+  defp usable_payment(_not_paid), do: {:error, :payment_not_succeeded}
+
+  defp refunded_in_stripe?(%{"amount_refunded" => refunded}) when is_integer(refunded),
+    do: refunded > 0
+
+  defp refunded_in_stripe?(_charge), do: false
+
   @doc "The refund row a Stripe refund object names, when it is one of ours."
   @spec refund_id(map()) :: String.t() | nil
   def refund_id(%{"metadata" => %{"type" => @metadata_type, "refund_id" => id}})

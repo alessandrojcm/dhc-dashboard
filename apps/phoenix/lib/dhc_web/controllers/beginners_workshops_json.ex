@@ -207,7 +207,8 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       amountCents: refund.amount_cents,
       currency: refund.currency,
       reason: refund.reason,
-      failedAt: refund.failed_at
+      failedAt: refund.failed_at,
+      carriedFee: refund.carried_fee
     }
   end
 
@@ -228,6 +229,10 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       }
     }
   end
+
+  @doc "A Carried Fee after Forfeit (ALE-389)."
+  def forfeited(%{result: result}),
+    do: %{data: %{id: result.id, status: result.status, refundId: result.refund_id}}
 
   def staff_candidates(%{result: candidates}),
     do: %{

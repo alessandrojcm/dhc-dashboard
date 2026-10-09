@@ -49,6 +49,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     invalid_reason: "reason",
     refund_choice_required: "refund",
     invalid_refund_choice: "refund",
+    invalid_payment_reference: "paymentIntentId",
     invalid_correction: "to"
   }
 
@@ -116,16 +117,37 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       intake_not_paid:
         {409,
          "Only a paid Intake can be cancelled with a refund or deferred; decline or withdraw instead"},
-      carried_fee_paid:
-        {409, "This place was paid with a Carried Fee, which can't be refunded or forfeited yet"},
       nothing_to_refund: {409, "There is no Stripe payment to refund for this Intake"},
       refund_choice_required: {422, "Choose whether to refund or forfeit their fee"},
       invalid_refund_choice: {422, "Refund must be true or false"},
       # Carried Fees (ALE-388).
-      no_carried_fee: {409, "This person has no Carried Fee to confirm with"},
+      no_carried_fee: {409, "This person holds no Carried Fee"},
+      carried_fee_not_found: {404, "This person has never held a Carried Fee"},
       full: {409, "Every seat is taken; the Carried Fee stays held"},
       payment_not_found: {409, "The payment that paid this Intake can't be found"},
       invalid_ids: {422, "Pass at most 100 Waitlist entry ids"},
+      # Carried Fee refunds and forfeits (ALE-389).
+      fee_not_refundable:
+        {409,
+         "Only someone waiting, or removed in the last 3 months, can have a Carried Fee refunded"},
+      carried_fee_applied:
+        {409,
+         "This Carried Fee paid for a place; cancel with refund or withdraw that Intake instead"},
+      carried_fee_not_held: {409, "This Carried Fee is no longer held, so it can't be forfeited"},
+      not_a_carried_fee_refund: {409, "Only a Carried Fee's failed refund can be forfeited"},
+      payment_not_linked:
+        {409,
+         "This imported Carried Fee isn't linked to its Stripe payment yet; link the payment first"},
+      not_imported: {409, "Only an imported Carried Fee is linked to a payment by hand"},
+      already_linked: {409, "This Carried Fee is already linked to a different Stripe payment"},
+      payment_already_linked:
+        {409, "That Stripe payment already belongs to another Carried Fee or Intake payment"},
+      invalid_payment_reference:
+        {422, "Enter the Stripe payment's PaymentIntent id (it starts with pi_)"},
+      stripe_payment_not_found: {409, "Stripe has no payment with that id"},
+      payment_not_succeeded: {409, "That Stripe payment didn't succeed, so it can't be refunded"},
+      payment_already_refunded: {409, "That Stripe payment was already refunded in Stripe"},
+      stripe_unavailable: {503, "Stripe couldn't be reached; try again in a moment"},
       # Attendance corrections (ALE-393).
       before_finalisation:
         {409, "Attendance can be corrected only once the workshop is finished"},

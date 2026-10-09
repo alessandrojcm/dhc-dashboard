@@ -25,6 +25,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
           | :confirm
           | :cancel_with_refund
           | :withdraw
+          | :refund_carried_fee
           | :resend_link
           | :rotate_link
           | :correct_attendance
@@ -35,13 +36,12 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
              :already_paid
              | :intake_closed
              | :intake_not_paid
-             | :carried_fee_paid
              | :no_carried_fee}
 
   @typedoc """
   What the rule reads: the Intake's `state` (and `paid_via` once paid), and
   `carried_fee` — the status of the person's live Carried Fee, or `nil`
-  (ALE-388; only `confirm` reads it). `correct_attendance` (ALE-393) also
+  (ALE-388; `confirm` and `refund_carried_fee` read it). `correct_attendance` (ALE-393) also
   reads `workshop_status`, the person's Waitlist `standing` (`nil` once
   anonymised) and `correction`, the state asked for (`nil` when the console
   asks whether any correction is possible).
@@ -62,6 +62,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
     :confirm,
     :cancel_with_refund,
     :withdraw,
+    :refund_carried_fee,
     :resend_link,
     :rotate_link,
     :correct_attendance
@@ -90,17 +91,23 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       Intake already paid by confirmation is already there, one paid through
       Stripe is `:already_paid`; every other state is `:intake_closed`.
       Seats (`:full`) are judged by the boundary under the lock;
-    * `cancel_with_refund` (ALE-387) — a Stripe-paid `paid` Intake becomes
-      `cancelled_refunded`; a `cancelled_refunded` one is already there; a
-      `contacted` one is `:intake_not_paid` (decline or withdraw instead); a
-      Carried-Fee-paid one is `:carried_fee_paid` until Carried Fee refunds
-      arrive; every other state is `:intake_closed`;
+    * `cancel_with_refund` (ALE-387) — a `paid` Intake becomes
+      `cancelled_refunded`, refunding the Stripe payment or (ALE-389) the
+      Carried Fee that paid it; a `cancelled_refunded` one is already there;
+      a `contacted` one is `:intake_not_paid` (decline or withdraw instead);
+      every other state is `:intake_closed`;
     * `withdraw` (ALE-387) — a `contacted` Intake becomes `declined` and a
-      Stripe-paid `paid` one `withdrawn`; a `withdrawn` one is already
-      there; a Carried-Fee-paid one is `:carried_fee_paid` until the Carried
-      Fee can follow the refund-or-forfeit choice; every other state is
-      `:intake_closed`. Whether the refund choice was given is the
-      command's own input, not the Intake's state, so the boundary checks it;
+      `paid` one `withdrawn`; a `withdrawn` one is already there; every
+      other state is `:intake_closed`. Whether the refund choice was given
+      (required for a paid Intake and, ALE-389, whenever the person holds a
+      Carried Fee) is the command's own input, not the Intake's state, so
+      the boundary checks it;
+    * `refund_carried_fee` (ALE-389) — the person's `held` Carried Fee is
+      refunded; the Intake itself does not move (a `contacted` one stays
+      contacted and asks for payment). A `paid` Intake is `:already_paid`
+      (cancel with refund or withdraw instead); without a held fee it is
+      `:no_carried_fee`. Whether the person may still have it refunded (not
+      after attending) is judged by the boundary from their standing;
     * `resend_link` / `rotate_link` — open Intakes only (`:intake_closed`).
       They have no target state, so each run sends again;
     * `correct_attendance` (ALE-393) — after Attendance Finalisation only
@@ -135,15 +142,20 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
 
   def check(:confirm, %{state: _closed}), do: {:error, :intake_closed}
 
-  def check(:cancel_with_refund, %{state: "paid"} = intake), do: stripe_paid(intake)
+  def check(:cancel_with_refund, %{state: "paid"}), do: :ok
   def check(:cancel_with_refund, %{state: "cancelled_refunded"}), do: :already_done
   def check(:cancel_with_refund, %{state: "contacted"}), do: {:error, :intake_not_paid}
   def check(:cancel_with_refund, %{state: _closed}), do: {:error, :intake_closed}
 
   def check(:withdraw, %{state: "contacted"}), do: :ok
-  def check(:withdraw, %{state: "paid"} = intake), do: stripe_paid(intake)
+  def check(:withdraw, %{state: "paid"}), do: :ok
   def check(:withdraw, %{state: "withdrawn"}), do: :already_done
   def check(:withdraw, %{state: _closed}), do: {:error, :intake_closed}
+
+  def check(:refund_carried_fee, %{state: "paid"}), do: {:error, :already_paid}
+
+  def check(:refund_carried_fee, facts),
+    do: if(Map.get(facts, :carried_fee) == "held", do: :ok, else: {:error, :no_carried_fee})
 
   def check(command, %{state: state}) when command in [:resend_link, :rotate_link],
     do: if(state in @open_states, do: :ok, else: {:error, :intake_closed})
@@ -185,11 +197,6 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       true -> {:error, :not_correctable}
     end
   end
-
-  # A paid Intake's money is a Stripe payment unless it says otherwise; a
-  # Carried Fee's refund or forfeit belongs to the Carried Fee commands.
-  defp stripe_paid(%{paid_via: "carried_fee"}), do: {:error, :carried_fee_paid}
-  defp stripe_paid(_stripe_paid), do: :ok
 
   @doc "The commands the console offers for an Intake: those `check/2` allows now."
   @spec available_commands(facts()) :: [command()]

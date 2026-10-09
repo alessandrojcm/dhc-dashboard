@@ -397,9 +397,11 @@ defmodule Dhc.BeginnersWorkshops.CancelWorkshopTest do
 
       assert scheduled == []
 
+      # The only command left on a cancelled workshop is Refund Carried Fee
+      # for the people whose fee it carried (ALE-389, story 132).
       assert Enum.all?(
                console.roster |> Map.values() |> List.flatten(),
-               &(&1.available_commands == [])
+               &(&1.available_commands in [[], [:refund_carried_fee]])
              )
     end
   end
