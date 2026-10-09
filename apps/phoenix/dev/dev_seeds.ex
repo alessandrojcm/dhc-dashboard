@@ -436,6 +436,70 @@ defmodule Dhc.DevSeeds do
     end
   end
 
+  @doc """
+  Schedules `count` Beginners' Workshops through the
+  `Dhc.BeginnersWorkshops` boundary, two weeks apart from three weeks out, as
+  a dedicated beginners coordinator. They are all `scheduled`; later tickets
+  extend this seed with their lifecycle stages.
+  """
+  @spec seed_beginners_workshops(pos_integer()) :: :ok
+  def seed_beginners_workshops(count) do
+    coordinator_id = ensure_beginners_coordinator()
+    first = Date.add(ClubCalendar.today(), 21)
+    venues = ["St. Andrew's Resource Centre", "Ringsend Community Hall", "DCU Sports Hall"]
+
+    workshops =
+      for index <- 0..(count - 1) do
+        %{
+          venue: Enum.at(venues, rem(index, length(venues))),
+          date: Date.add(first, index * 14),
+          start_time: ~T[18:30:00],
+          capacity: Enum.at([16, 12, 20], rem(index, 3)),
+          fee_cents: 4000,
+          # Batch 1 two weeks before each workshop, never in the past.
+          contact_from: Enum.max([ClubCalendar.today(), Date.add(first, index * 14 - 14)], Date)
+        }
+      end
+
+    workshops
+    |> Enum.chunk_every(20)
+    |> Enum.each(fn chunk ->
+      case Dhc.BeginnersWorkshops.execute(
+             {:staff, coordinator_id},
+             {:schedule_workshop, chunk}
+           ) do
+        {:ok, _views} -> :ok
+        {:error, reason} -> Mix.raise("Could not schedule Beginners' Workshops: #{inspect(reason)}")
+      end
+    end)
+  end
+
+  defp ensure_beginners_coordinator do
+    email = "beginners.seeder@example.com"
+    {:ok, %{id: id}} = create_principal(email)
+
+    unless Repo.exists?(from(p in UserProfile, where: p.principal_id == ^id)) do
+      attrs = %{
+        email: email,
+        first_name: "Beginners",
+        last_name: "Seeder",
+        phone_number: "+353800000001",
+        date_of_birth: ~D[1985-01-01],
+        pronouns: "they/them",
+        gender: "non-binary",
+        medical_conditions: nil,
+        social_media_consent: "no"
+      }
+
+      {:ok, profile} = insert_user_profile(attrs, id, nil, true, id)
+      :ok = insert_member_profile(id, profile.id, attrs)
+    end
+
+    :ok = insert_user_roles(id, ~w(member beginners_coordinator))
+
+    id
+  end
+
   # ── Workshop seeding helpers ─────────────────────────────────────
 
   # Creates a minimal Principal + user profile + member profile to satisfy the

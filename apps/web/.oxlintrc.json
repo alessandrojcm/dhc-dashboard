@@ -50,6 +50,73 @@
 					}
 				]
 			}
+		},
+		{
+			"files": [
+				"src/routes/dashboard/beginners-workshop/**",
+				"src/lib/beginners-workshops/**",
+				"src/lib/server/beginners-workshops/**",
+				"src/lib/schemas/beginnersWorkshop*"
+			],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"**/components/workshops",
+									"**/components/workshops/*",
+									"**/routes/dashboard/workshops",
+									"**/routes/dashboard/workshops/*",
+									"**/routes/dashboard/my-workshops",
+									"**/routes/dashboard/my-workshops/*",
+									"**/routes/(public)/workshops",
+									"**/routes/(public)/workshops/*",
+									"../workshops",
+									"../workshops/*",
+									"../my-workshops",
+									"../my-workshops/*",
+									"**/schemas/workshop*",
+									"**/server/api/workshop-*",
+									"**/server/api/external-workshop-*"
+								],
+								"message": "A Beginners' Workshop is not a Workshop. ADR 0029 keeps the two apart; build it under the beginners-workshop route or $lib/beginners-workshops instead."
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"files": [
+				"src/lib/components/workshops/**",
+				"src/routes/dashboard/workshops/**",
+				"src/routes/dashboard/my-workshops/**",
+				"src/routes/(public)/workshops/**",
+				"src/lib/schemas/workshop*",
+				"src/lib/server/api/workshop-*",
+				"src/lib/server/api/external-workshop-*"
+			],
+			"rules": {
+				"no-restricted-imports": [
+					"error",
+					{
+						"patterns": [
+							{
+								"group": [
+									"**/beginners-workshop",
+									"**/beginners-workshop/*",
+									"**/beginners-workshops",
+									"**/beginners-workshops/*",
+									"**/schemas/beginnersWorkshop*"
+								],
+								"message": "A Workshop is not a Beginners' Workshop. ADR 0029 keeps the two apart."
+							}
+						]
+					}
+				]
+			}
 		}
 	]
 }

@@ -20,6 +20,8 @@ defmodule Dhc.Auth.CapabilitiesTest do
     "beginners.waitlist.manage":
       {~w(admin president committee_coordinator beginners_coordinator), false},
     "beginners.waitlist.toggle": {@officers, false},
+    "beginners.workshops.manage":
+      {~w(admin president committee_coordinator beginners_coordinator), false},
     "discord.assignments.manage": {@member_administrators, false},
     "discord.doctor.use": {@officers, false},
     "inventory.manage": {~w(quartermaster admin president), false},

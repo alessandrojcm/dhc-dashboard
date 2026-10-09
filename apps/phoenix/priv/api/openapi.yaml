@@ -79,6 +79,15 @@ tags:
     x-context: Dhc.MemberAnnouncements
     x-resource: Announcement
 
+  - name: BeginnersWorkshops
+    description: |
+      Beginners' Workshops (ADR 0029): the club's intake events between the
+      Waitlist and Invitation. Never a Workshop, never listed publicly or
+      announced. Every write is one command on the `Dhc.BeginnersWorkshops`
+      boundary.
+    x-context: Dhc.BeginnersWorkshops
+    x-resource: BeginnersWorkshop
+
 paths:
   /training-announcements/occurrences/window:
     get:
@@ -3696,6 +3705,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /beginners-workshops:
+    get:
+      operationId: beginnersWorkshops.list
+      tags: [BeginnersWorkshops]
+      summary: The Workshops list, upcoming first, then past and cancelled
+      description: |
+        Lock-free read model. Each row carries its stage, seat meter and
+        alerts as Phoenix judges them now; the dashboard only displays them.
+        Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Upcoming and past/cancelled Beginners' Workshops
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopListResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+    post:
+      operationId: beginnersWorkshops.schedule
+      tags: [BeginnersWorkshops]
+      summary: Schedule one or several Beginners' Workshops in one go
+      description: |
+        All or nothing. A refusal names the workshop through dotted `fields`
+        keys (`workshops.<index>.<field>`). Nothing is emailed. Requires
+        `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopScheduleRequest"}
+      responses:
+        "201":
+          description: The scheduled workshops, in request order
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopScheduleResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+  /beginners-workshops/{id}/settings:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    put:
+      operationId: beginnersWorkshops.updateSettings
+      tags: [BeginnersWorkshops]
+      summary: Change capacity, fee, Payment Cutoff, contact-from date or window length
+      description: |
+        Omitted fields keep their value. The Payment Cutoff must stay before
+        the start; the contact-from date can change until Batch 1 has gone
+        out; a new window length applies to later Batches only. Nothing is
+        emailed and no Batch is triggered. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopSettingsRequest"}
+      responses:
+        "200":
+          description: The updated workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
+        "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+
   /settings:
     get:
       operationId: settings.index
@@ -6761,6 +6840,31 @@ paths:
 
 components:
   responses:
+    BeginnersWorkshopUnauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    BeginnersWorkshopForbidden:
+      description: The `beginners.workshops.manage` capability is required
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    BeginnersWorkshopNotFound:
+      description: Beginners' Workshop not found
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    BeginnersWorkshopConflict:
+      description: Lifecycle conflict (finalised, cancelled, or Batch 1 already sent)
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/BeginnersWorkshopConflictError"}
+    BeginnersWorkshopInvalid:
+      description: Invalid workshop details or a refused schedule rule
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
     TrainingAnnouncementUnauthorized:
       description: Authentication required
       content:
@@ -6810,6 +6914,11 @@ components:
         Short-lived signed HttpOnly browser proof for one Invitation Acceptance.
         It is transport state only and is never a DHC authenticated Session.
   parameters:
+    BeginnersWorkshopId:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     TrainingAnnouncementId:
       name: id
       in: path
@@ -7170,6 +7279,189 @@ components:
                     - retired
                     - delivery_started
                     - concurrent_change
+    BeginnersWorkshopStage:
+      type: string
+      description: |
+        Where a Beginners' Workshop is in its lifecycle, as Phoenix judges it
+        now. `before_contact_from`: Batch 1 waits for the contact-from date
+        (10:00 Dublin time). `next_batch_due`: the next Batch goes out at the
+        next sweep.
+      enum:
+        - before_contact_from
+        - window_open
+        - next_batch_due
+        - batches_paused
+        - full
+        - payment_closed
+        - today_before_check_in
+        - check_in_open
+        - awaiting_finalisation
+        - finalised
+        - cancelled
+    BeginnersWorkshopStatus:
+      type: string
+      enum: [scheduled, finalised, cancelled]
+    BeginnersWorkshopAlert:
+      type: string
+      description: "`unstaffed`: no coach is assigned yet."
+      enum: [unstaffed]
+    BeginnersWorkshopSeats:
+      type: object
+      description: Seats taken are paid Intakes plus live Seat Holds.
+      required: [capacity, paid, holds, free]
+      properties:
+        capacity: {type: integer, minimum: 1}
+        paid: {type: integer, minimum: 0}
+        holds: {type: integer, minimum: 0}
+        free: {type: integer, minimum: 0}
+    BeginnersWorkshop:
+      type: object
+      description: |
+        One Beginners' Workshop. `date`, `startTime`, `paymentCutoffDate`,
+        `paymentCutoffTime` and `contactFromDate` are Europe/Dublin civil
+        values; `paymentCutoff` is the same cutoff as an instant.
+      required:
+        - id
+        - status
+        - venue
+        - date
+        - startTime
+        - capacity
+        - feeCents
+        - paymentCutoff
+        - paymentCutoffDate
+        - paymentCutoffTime
+        - contactFromDate
+        - contactFromEditable
+        - paymentWindowDays
+        - stage
+        - seats
+        - alerts
+      properties:
+        id: {type: string, format: uuid}
+        status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
+        venue: {type: string, maxLength: 80}
+        date: {type: string, format: date}
+        startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'}
+        capacity: {type: integer, minimum: 1}
+        feeCents: {type: integer, minimum: 1}
+        paymentCutoff: {type: string, format: date-time}
+        paymentCutoffDate: {type: string, format: date}
+        paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'}
+        contactFromDate: {type: string, format: date}
+        contactFromEditable:
+          type: boolean
+          description: Whether the contact-from date can still change (Batch 1 has not gone out).
+        paymentWindowDays: {type: integer, minimum: 1}
+        stage: {$ref: "#/components/schemas/BeginnersWorkshopStage"}
+        seats: {$ref: "#/components/schemas/BeginnersWorkshopSeats"}
+        alerts:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopAlert"}
+    BeginnersWorkshopScheduleItem:
+      type: object
+      description: |
+        One workshop to schedule. Civil values are Europe/Dublin. The Payment
+        Cutoff defaults to the start time 3 days before the date
+        (`paymentCutoffDate` and `paymentCutoffTime` default independently);
+        it must be before the start. `contactFromDate` defaults to the Dublin
+        day it is scheduled and must be on or before the cutoff date.
+      required: [venue, date, startTime, capacity, feeCents]
+      properties:
+        venue: {type: string, minLength: 1, maxLength: 80}
+        date: {type: string, format: date}
+        startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
+        capacity: {type: integer, minimum: 1}
+        feeCents: {type: integer, minimum: 1, maximum: 99999}
+        paymentCutoffDate: {type: string, format: date}
+        paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
+        contactFromDate: {type: string, format: date}
+        paymentWindowDays: {type: integer, minimum: 1}
+    BeginnersWorkshopScheduleRequest:
+      type: object
+      required: [workshops]
+      properties:
+        workshops:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: {$ref: "#/components/schemas/BeginnersWorkshopScheduleItem"}
+    BeginnersWorkshopSettingsRequest:
+      type: object
+      description: |
+        Any subset of the workshop settings; omitted fields keep their value.
+        `paymentCutoffDate` and `paymentCutoffTime` each keep the current
+        cutoff's other half. Civil values are Europe/Dublin.
+      properties:
+        capacity: {type: integer, minimum: 1}
+        feeCents: {type: integer, minimum: 1, maximum: 99999}
+        paymentCutoffDate: {type: string, format: date}
+        paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
+        contactFromDate: {type: string, format: date}
+        paymentWindowDays: {type: integer, minimum: 1}
+    BeginnersWorkshopResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshop"}
+    BeginnersWorkshopScheduleResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshop"}
+    BeginnersWorkshopListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [upcoming, past]
+          properties:
+            upcoming:
+              type: array
+              description: Scheduled workshops, soonest first.
+              items: {$ref: "#/components/schemas/BeginnersWorkshop"}
+            past:
+              type: array
+              description: Finalised and cancelled workshops, most recent first.
+              items: {$ref: "#/components/schemas/BeginnersWorkshop"}
+    BeginnersWorkshopConflictError:
+      description: 409 lifecycle conflict on a Beginners' Workshop command.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [after_finalisation, already_cancelled, contact_from_locked]
+    BeginnersWorkshopInvalidError:
+      description: |
+        422 refusal on a Beginners' Workshop command. Domain reasons carry a
+        `code`; plain validation failures carry `fields` only.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - invalid_workshop
+                    - start_in_past
+                    - invalid_payment_cutoff
+                    - invalid_contact_from
+                    - no_workshops
+                    - too_many_workshops
     OnboardingStartAcceptanceRequest:
       type: object
       required: [invitationId, email, dateOfBirth]
@@ -11270,6 +11562,7 @@ components:
       enum:
         - beginners.waitlist.manage
         - beginners.waitlist.toggle
+        - beginners.workshops.manage
         - discord.assignments.manage
         - discord.doctor.use
         - inventory.catalog.read

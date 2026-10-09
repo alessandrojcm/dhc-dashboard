@@ -44,3 +44,24 @@ Apart from about five scheduling columns, almost nothing else matches:
 - **Own context on top of Workshop storage.** Rejected for the same reasons, with the added cost of two modules writing one table.
 - **Generalise `PaymentCommands`** with a second parent and an Intake payer. Rejected: it makes the riskiest code in the app more complex for a workflow whose seat rule is the opposite (reserve before Stripe rather than compensate after).
 - **Extract a shared payment ledger first.** Rejected for now: one real consumer means the shared module would have only one user.
+
+## Amendment (2026-10-09, ALE-374 / ALE-378): one boundary for every write
+
+Spec assembly (ALE-374) settled the boundary's shape and ALE-378 built it.
+**Every** Beginners' Workshop write — staff commands, the person's Intake-page
+commands, Stripe-driven commands and time-driven passes — goes through one
+`Dhc.BeginnersWorkshops.execute(actor, command, opts)` (implemented in
+`Dhc.BeginnersWorkshops.Commands`), not a separate payment boundary beside a
+workshop one. It has one private lock primitive whose levels are Beginners'
+Workshop → Waitlist entry → Intake → Carried Fee → payment → refund, one
+transition table, one `persist/1`, and a `Dhc.ClubCalendar`-based clock passed
+in `opts` and read inside the lock. Actors are `{:staff, principal_id}`
+(authorized through `Dhc.Auth.Capabilities` before any read),
+`{:intake_link, token}`, `:stripe` and `:system`.
+
+The Stripe-facing Intake payment logic is an **internal module** reached only
+through `execute`. The decision above still holds: Intake payments have their
+own boundary in the ADR 0027 shape, share no code with `Dhc.Workshops`, and
+there is a single lock order — it is just the same boundary as every other
+Beginners' Workshop write, so a payment and a staff command on the same Intake
+can never take locks in different orders.

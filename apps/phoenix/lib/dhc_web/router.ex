@@ -20,6 +20,10 @@ defmodule DhcWeb.Router do
     plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.waitlist.manage")
   end
 
+  pipeline :beginners_workshops_manage do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.workshops.manage")
+  end
+
   pipeline :beginners_waitlist_toggle do
     plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.waitlist.toggle")
   end
@@ -49,6 +53,14 @@ defmodule DhcWeb.Router do
 
   pipeline :training_announcements_manage do
     plug(DhcWeb.Plugs.RequireSession, capability: :"training_announcements.manage")
+  end
+
+  scope "/api/beginners-workshops", DhcWeb do
+    pipe_through([:api, :beginners_workshops_manage])
+
+    get("/", BeginnersWorkshopsController, :index)
+    post("/", BeginnersWorkshopsController, :create)
+    put("/:id/settings", BeginnersWorkshopsController, :update_settings)
   end
 
   scope "/api/training-announcements", DhcWeb do

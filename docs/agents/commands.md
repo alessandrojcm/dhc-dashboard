@@ -372,6 +372,8 @@ mise run seed-committee
 mise run seed-committee ./scripts/users.csv
 mise run seed-inventory
 mise run seed-inventory 30
+mise run seed-beginners-workshops
+mise run seed-beginners-workshops 6
 
 # Or run directly from Phoenix app
 cd apps/phoenix && mix seed.waitlist 50
@@ -381,7 +383,7 @@ cd apps/phoenix && mix seed.committee_members ../../scripts/users.csv
 cd apps/phoenix && mix seed.inventory 30
 ```
 
-`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.invitations` creates direct, pending member invitations without a waitlist entry or an issuing administrator. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. `seed.inventory` creates typed categories, nested containers, physical items, active members as needed, and a spread of available, maintenance, requested, approved, and checked-out states. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
+`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. An exported `DATABASE_URL` does **not** override `.env` under `mise exec`/`mise run` — every linked worktree's `.env` points at the shared local dev DB. To migrate or seed a throwaway database, pass it inside the command: `mise exec -- env DATABASE_URL=postgres://… mix ecto.migrate`. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.invitations` creates direct, pending member invitations without a waitlist entry or an issuing administrator. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. `seed.beginners_workshops` schedules workshops through the `Dhc.BeginnersWorkshops` boundary as `beginners.seeder@example.com` (a beginners coordinator it creates); later tickets extend it with lifecycle stages. `seed.inventory` creates typed categories, nested containers, physical items, active members as needed, and a spread of available, maintenance, requested, approved, and checked-out states. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
 
 ## CI (full check)
 
