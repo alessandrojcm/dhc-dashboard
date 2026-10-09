@@ -176,3 +176,94 @@ test("offers restore from the removed filter for a recent removal only", async (
 		expect.objectContaining({ path: { id: "b" } }),
 	);
 });
+
+test("ALE-387: Withdraw asks to refund or forfeit only when Phoenix says the person has paid", async () => {
+	const ada = entry("a", { fullName: "Ada Paid" });
+	const withdrawEntry = vi
+		.fn()
+		.mockRejectedValueOnce({
+			errors: {
+				detail: "Choose whether to refund or forfeit their fee",
+				code: "refund_choice_required",
+				fields: { refund: ["Choose whether to refund or forfeit their fee"] },
+			},
+		})
+		.mockResolvedValueOnce({
+			data: {
+				waitlistId: "a",
+				status: "removed",
+				intake: null,
+				outcome: "done",
+			},
+		});
+	const success = vi.fn();
+
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries: vi.fn(async () => page([ada])),
+			withdrawEntry,
+			notify: { success, error: () => {} },
+			url: () => new URL(BASE),
+			navigate: () => {},
+		},
+	});
+
+	const desktop = screen.getByRole("table");
+	await expect.element(desktop.getByText("Ada Paid")).toBeVisible();
+	await desktop
+		.getByRole("button", { name: "Withdraw from the Waitlist" })
+		.click();
+
+	const dialog = screen.getByRole("dialog", {
+		name: "Withdraw Ada Paid from the Waitlist",
+	});
+	await expect.element(dialog).toBeVisible();
+	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
+
+	await dialog.getByRole("button", { name: "Withdraw", exact: true }).click();
+	await expect
+		.element(dialog.getByRole("alert"))
+		.toHaveTextContent("Choose whether to refund or forfeit their fee");
+	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
+	await expect.element(submit).toBeDisabled();
+
+	await dialog.getByRole("radio", { name: /Refund the full fee/ }).click();
+	await submit.click();
+
+	await expect.poll(() => success.mock.calls.length).toBe(1);
+	expect(withdrawEntry).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			path: { waitlistId: "a" },
+			body: { refund: true },
+		}),
+	);
+	expect(withdrawEntry.mock.calls[0][0]).toEqual(
+		expect.objectContaining({ body: {} }),
+	);
+});
+
+test("ALE-387: Withdraw is offered to waiting people, not removed ones", async () => {
+	const removed = entry("b", {
+		fullName: "Bea Removed",
+		status: "removed",
+		removedAt: "2026-09-01T10:00:00Z",
+	});
+
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries: vi.fn(async () => page([removed])),
+			now: () => new Date("2026-10-09T12:00:00Z"),
+			notify: { success: () => {}, error: () => {} },
+			url: () => new URL(`${BASE}?status=removed`),
+			navigate: () => {},
+		},
+	});
+
+	const desktop = screen.getByRole("table");
+	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
+	expect(
+		desktop
+			.getByRole("button", { name: "Withdraw from the Waitlist" })
+			.elements(),
+	).toHaveLength(0);
+});

@@ -45,7 +45,9 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     email_on_waitlist: "email",
     email_is_principal: "email",
     email_has_pending_invitation: "email",
-    invalid_note: "note"
+    invalid_note: "note",
+    refund_choice_required: "refund",
+    invalid_refund_choice: "refund"
   }
 
   use DhcWeb.Problem,
@@ -103,8 +105,16 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       intake_not_found: {404, "Intake not found in this workshop"},
       already_paid:
         {409, "This person has paid; defer, cancel with refund or withdraw them instead"},
-      intake_closed: {409, "This Intake is closed, so it no longer has a link"},
-      invalid_note: {422, "Keep the note under 500 characters"}
+      intake_closed: {409, "This Intake is already closed"},
+      invalid_note: {422, "Keep the note under 500 characters"},
+      # Cancel with refund and withdraw (ALE-387).
+      intake_not_paid:
+        {409, "Only a paid Intake can be cancelled with a refund; decline or withdraw instead"},
+      carried_fee_paid:
+        {409, "This place was paid with a Carried Fee, which can't be refunded or forfeited yet"},
+      nothing_to_refund: {409, "There is no Stripe payment to refund for this Intake"},
+      refund_choice_required: {422, "Choose whether to refund or forfeit their fee"},
+      invalid_refund_choice: {422, "Refund must be true or false"}
     },
     fields: @internal_to_public
 

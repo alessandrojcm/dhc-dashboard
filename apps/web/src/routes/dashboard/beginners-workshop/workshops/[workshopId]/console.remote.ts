@@ -5,8 +5,9 @@
  * sweep does. (ALE-382) Retry and Record manual refund follow up a failed
  * refund from Needs attention. (ALE-394) Reschedule. (ALE-386)
  * `runIntakeCommand` runs one console Intake command — Decline, Resend link,
- * Rotate link — with its optional note; the console offers only Phoenix's
- * `availableCommands`.
+ * Rotate link, and (ALE-387) Cancel with refund — with its optional note;
+ * the console offers only Phoenix's `availableCommands`. (ALE-387)
+ * `withdrawIntake` runs Withdraw with its refund-or-forfeit choice.
  */
 import { form } from "$app/server";
 import {
@@ -14,9 +15,11 @@ import {
 	beginnersWorkshopBatchesResume,
 	beginnersWorkshopFastTrackNewPerson,
 	beginnersWorkshopFastTrackWaitlistPerson,
+	beginnersWorkshopIntakesCancelWithRefund,
 	beginnersWorkshopIntakesDecline,
 	beginnersWorkshopIntakesResendLink,
 	beginnersWorkshopIntakesRotateLink,
+	beginnersWorkshopIntakesWithdraw,
 	beginnersWorkshopRefundsRecordManual,
 	beginnersWorkshopRefundsRetry,
 	beginnersWorkshopsReschedule,
@@ -29,13 +32,17 @@ import {
 	recordManualRefundSchema,
 	retryRefundSchema,
 	rescheduleWorkshopSchema,
+	withdrawIntakeSchema,
 } from "#lib/schemas/beginnersWorkshop.js";
 import { beginnersWorkshopCommand } from "#lib/server/beginners-workshops/command.js";
 import {
 	newPersonFormPath,
 	rescheduleFormPath,
 } from "#lib/server/beginners-workshops/form-paths.js";
-import { beginnersWorkshopsManageOptions } from "#lib/server/beginners-workshops/options.js";
+import {
+	beginnersWaitlistManageOptions,
+	beginnersWorkshopsManageOptions,
+} from "#lib/server/beginners-workshops/options.js";
 
 const noFormFields = () => undefined;
 
@@ -133,14 +140,36 @@ export const runIntakeCommand = form(
 		const call =
 			command === "decline"
 				? beginnersWorkshopIntakesDecline(request)
-				: command === "resend_link"
-					? beginnersWorkshopIntakesResendLink(request)
-					: beginnersWorkshopIntakesRotateLink(request);
+				: command === "cancel_with_refund"
+					? beginnersWorkshopIntakesCancelWithRefund(request)
+					: command === "resend_link"
+						? beginnersWorkshopIntakesResendLink(request)
+						: beginnersWorkshopIntakesRotateLink(request);
 		const result = await beginnersWorkshopCommand(call, {
 			fallback: "Could not run this command",
 			formPath: (field) => (field === "note" ? ["note"] : undefined),
 		});
 		// Which button was pressed, so the console can word the outcome.
 		return result.ok ? { ...result, command } : result;
+	},
+);
+
+/** ALE-387: withdraw the Intake's person from the Waitlist. */
+export const withdrawIntake = form(
+	withdrawIntakeSchema,
+	async ({ id, intakeId, body }) => {
+		const options = await beginnersWaitlistManageOptions();
+		return beginnersWorkshopCommand(
+			beginnersWorkshopIntakesWithdraw({
+				...options,
+				path: { id, intakeId },
+				body,
+			}),
+			{
+				fallback: "Could not withdraw this person",
+				formPath: (field) =>
+					field === "note" || field === "refund" ? [field] : undefined,
+			},
+		);
 	},
 );

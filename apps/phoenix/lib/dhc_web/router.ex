@@ -83,10 +83,26 @@ defmodule DhcWeb.Router do
     post("/:id/intakes/:intakeId/decline", BeginnersWorkshopIntakesController, :decline)
     post("/:id/intakes/:intakeId/resend-link", BeginnersWorkshopIntakesController, :resend_link)
     post("/:id/intakes/:intakeId/rotate-link", BeginnersWorkshopIntakesController, :rotate_link)
+    # ALE-387.
+    post(
+      "/:id/intakes/:intakeId/cancel-with-refund",
+      BeginnersWorkshopIntakesController,
+      :cancel_with_refund
+    )
 
     # ALE-383 — Intake Email templates.
     get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)
     put("/email-templates/:emailType", BeginnersWorkshopEmailTemplatesController, :update)
+  end
+
+  # ALE-387: withdraw is the Waitlist's exit (`beginners.waitlist.manage`),
+  # offered on the Waitlist tab (by person) and the console (by Intake), and
+  # run by the Beginners' Workshop boundary.
+  scope "/api/beginners-workshops", DhcWeb do
+    pipe_through([:api, :beginners_waitlist_manage])
+
+    post("/people/:waitlistId/withdraw", BeginnersWorkshopIntakesController, :withdraw_person)
+    post("/:id/intakes/:intakeId/withdraw", BeginnersWorkshopIntakesController, :withdraw)
   end
 
   scope "/api/beginners-workshops", DhcWeb do

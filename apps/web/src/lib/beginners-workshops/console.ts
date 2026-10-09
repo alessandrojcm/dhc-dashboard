@@ -369,6 +369,8 @@ export function refundLabel(intake: {
 const REFUND_REASONS = new Map([
 	["policy_failed", "the payment didn't match the fee"],
 	["paid_after_close", "they paid after their Intake closed"],
+	["cancelled_with_refund", "cancelled with a refund"],
+	["withdrawn", "withdrawn with a refund"],
 ]);
 
 /** A refund amount: `€40.00`, or `12.50 GBP` outside euro. */
@@ -436,6 +438,16 @@ const INTAKE_COMMAND_COPY = {
 		done: "Declined — they keep their place in the queue",
 		history: "Declined",
 	},
+	cancel_with_refund: {
+		label: "Cancel with refund",
+		done: "Cancelled — refund requested; they keep their place in the queue",
+		history: "Cancelled with refund",
+	},
+	withdraw: {
+		label: "Withdraw…",
+		done: "Withdrawn from the Waitlist",
+		history: "Withdrawn",
+	},
 	resend_link: {
 		label: "Resend link",
 		done: "Link resent",
@@ -454,9 +466,70 @@ const INTAKE_COMMAND_COPY = {
 /** Every Intake command, in display order (Phoenix lists them in this order too). */
 export const INTAKE_COMMANDS = [
 	"decline",
+	"cancel_with_refund",
+	"withdraw",
 	"resend_link",
 	"rotate_link",
 ] as const satisfies readonly BeginnersWorkshopIntakeCommand[];
+
+/**
+ * ALE-387: the commands that run straight from the Intake detail's command
+ * buttons. `withdraw` needs the refund-or-forfeit choice, so it opens its
+ * own dialog instead.
+ */
+export const INTAKE_BUTTON_COMMANDS = [
+	"decline",
+	"cancel_with_refund",
+	"resend_link",
+	"rotate_link",
+] as const satisfies readonly BeginnersWorkshopIntakeCommand[];
+
+export type IntakeButtonCommand = (typeof INTAKE_BUTTON_COMMANDS)[number];
+
+/** Whether `command` runs from a command button (not its own dialog). */
+export function isIntakeButtonCommand(
+	command: BeginnersWorkshopIntakeCommand,
+): command is IntakeButtonCommand {
+	return INTAKE_BUTTON_COMMANDS.some((button) => button === command);
+}
+
+/** ALE-387: the refund-timing hint shows this many days before the workshop, or fewer. */
+export const REFUND_HINT_DAYS = 7;
+
+const dublinDate = new Intl.DateTimeFormat("en-CA", {
+	timeZone: "Europe/Dublin",
+	year: "numeric",
+	month: "2-digit",
+	day: "2-digit",
+});
+
+/** Whole calendar days from Dublin today to the workshop's civil `date`. */
+export function daysToGo(date: string, now: Date = new Date()): number {
+	const today = Date.parse(`${dublinDate.format(now)}T00:00:00Z`);
+	return Math.round((Date.parse(`${date}T00:00:00Z`) - today) / 86_400_000);
+}
+
+/**
+ * ALE-387 (story 77): the "less than N days to go" hint shown when choosing
+ * between keeping the fee (defer) and refunding — from
+ * `REFUND_HINT_DAYS` days before the workshop until its day, `null`
+ * otherwise. There is no deadline: the club's policy is informal, so this
+ * only reminds the coordinator how close the workshop is.
+ */
+export function refundTimingHint(
+	date: string,
+	now: Date = new Date(),
+): string | null {
+	const days = daysToGo(date, now);
+	if (days < 0 || days > REFUND_HINT_DAYS) return null;
+	const when =
+		days === 0
+			? "The workshop is today"
+			: days === 1
+				? "The workshop is tomorrow"
+				: `Less than ${days} days to go`;
+	return `${when} — there's no deadline; whether to refund is your call.`;
+}
 
 /** The button label of an Intake command. */
 export function intakeCommandLabel(

@@ -210,6 +210,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         select: %{
           id: i.id,
           state: i.state,
+          paid_via: i.paid_via,
           origin: i.origin,
           batch_number: b.number,
           queue_date: i.queue_date,

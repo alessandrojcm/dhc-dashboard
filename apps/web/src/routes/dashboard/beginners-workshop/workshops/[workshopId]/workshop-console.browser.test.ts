@@ -695,3 +695,122 @@ test("ALE-386: contacted people unpaid after their window need attention", async
 			"Dara Nolan hasn't paid — their Batch 1 window ended Tue 27 Oct, 23:59.",
 		);
 });
+
+/** ALE-387: a Dublin civil date `days` from today. */
+function dublinDateIn(days: number): string {
+	const today = new Intl.DateTimeFormat("en-CA", {
+		timeZone: "Europe/Dublin",
+	}).format(new Date());
+	const date = new Date(`${today}T00:00:00Z`);
+	date.setUTCDate(date.getUTCDate() + days);
+	return date.toISOString().slice(0, 10);
+}
+
+/** ALE-387: a paid Intake offering Cancel with refund and Withdraw, `days` out. */
+function refundView(days: number): BeginnersWorkshopConsole {
+	const base = commandsView();
+	return {
+		...base,
+		workshop: { ...base.workshop, date: dublinDateIn(days) },
+		roster: {
+			...base.roster,
+			seated: [
+				{
+					...base.roster.seated[0],
+					availableCommands: [
+						"cancel_with_refund",
+						"withdraw",
+						"resend_link",
+						"rotate_link",
+					],
+				},
+			],
+			asked: [
+				{
+					...base.roster.asked[0],
+					availableCommands: [
+						"decline",
+						"withdraw",
+						"resend_link",
+						"rotate_link",
+					],
+				},
+			],
+		},
+	};
+}
+
+test("ALE-387: a paid Intake offers Cancel with refund and Withdraw, with the refund-timing hint 7 days out or closer", async () => {
+	const screen = await render(WorkshopConsole, { view: refundView(3) });
+	const detail = await openIntake(screen, /^Cian Doyle/);
+
+	const buttons = detail.getByTestId("intake-commands").getByRole("button");
+	expect(
+		buttons.elements().map((button) => button.textContent?.trim()),
+	).toEqual(["Cancel with refund", "Resend link", "Rotate link", "Withdraw…"]);
+	await expect
+		.element(detail.getByTestId("refund-timing-hint"))
+		.toHaveTextContent("Less than 3 days to go");
+	await closeIntake(screen);
+});
+
+test("ALE-387: no refund-timing hint more than 7 days out, nor on an unpaid Intake", async () => {
+	const screen = await render(WorkshopConsole, { view: refundView(8) });
+	let detail = await openIntake(screen, /^Cian Doyle/);
+	await expect
+		.element(detail.getByTestId("refund-timing-hint"))
+		.not.toBeInTheDocument();
+	await closeIntake(screen);
+
+	screen.rerender({ view: refundView(2) });
+	detail = await openIntake(screen, /^Dara Nolan/);
+	await expect
+		.element(detail.getByTestId("refund-timing-hint"))
+		.not.toBeInTheDocument();
+	await closeIntake(screen);
+});
+
+test("ALE-387: the Withdraw dialog asks to refund or forfeit a paid person's fee", async () => {
+	const screen = await render(WorkshopConsole, { view: refundView(7) });
+	const detail = await openIntake(screen, /^Cian Doyle/);
+	await detail.getByRole("button", { name: "Withdraw…" }).click();
+
+	const dialog = screen.getByRole("dialog", {
+		name: "Withdraw Cian Doyle from the Waitlist",
+	});
+	await expect.element(dialog).toBeVisible();
+	await expect
+		.element(dialog.getByTestId("refund-timing-hint"))
+		.toHaveTextContent("Less than 7 days to go");
+	await expect
+		.element(dialog.getByRole("radio", { name: /Refund €40\.00/ }))
+		.toBeVisible();
+	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
+	await expect.element(submit).toBeDisabled();
+
+	await dialog.getByRole("radio", { name: /Forfeit the fee/ }).click();
+	await expect.element(submit).toBeEnabled();
+
+	await dialog.getByRole("button", { name: "Keep them" }).click();
+	await expect.element(dialog).not.toBeInTheDocument();
+	await closeIntake(screen);
+});
+
+test("ALE-387: withdrawing a contacted person asks no money question", async () => {
+	const screen = await render(WorkshopConsole, { view: refundView(3) });
+	const detail = await openIntake(screen, /^Dara Nolan/);
+	await detail.getByRole("button", { name: "Withdraw…" }).click();
+
+	const dialog = screen.getByRole("dialog", {
+		name: "Withdraw Dara Nolan from the Waitlist",
+	});
+	await expect
+		.element(dialog)
+		.toHaveTextContent("their Intake closes as declined");
+	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
+	await expect
+		.element(dialog.getByRole("button", { name: "Withdraw", exact: true }))
+		.toBeEnabled();
+	await dialog.getByRole("button", { name: "Keep them" }).click();
+	await closeIntake(screen);
+});

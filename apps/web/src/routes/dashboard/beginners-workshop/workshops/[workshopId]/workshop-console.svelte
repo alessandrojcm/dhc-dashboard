@@ -454,7 +454,12 @@ const attention = $derived(
 		<div class="p-5">
 			{#if selectedIntake}
 				{#key selectedIntake.id}
-					<IntakeDetail workshopId={workshop.id} intake={selectedIntake} />
+					<IntakeDetail
+						workshopId={workshop.id}
+						workshopDate={workshop.date}
+						feeCents={workshop.feeCents}
+						intake={selectedIntake}
+					/>
 				{/key}
 			{/if}
 		</div>

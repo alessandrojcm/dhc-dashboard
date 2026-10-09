@@ -6,6 +6,7 @@ import {
 	SquarePen,
 	NotebookPen,
 	Undo2,
+	UserMinus,
 } from "@lucide/svelte";
 import * as Popover from "#lib/components/ui/popover/index.js";
 import { Label } from "#lib/components/ui/label/index.js";
@@ -19,6 +20,8 @@ type Props = {
 	/** Offered only for a person removed within the restore window. */
 	onRestore?: () => void;
 	restoreDisabled?: boolean;
+	/** ALE-387: offered for someone still on the Waitlist. */
+	onWithdraw?: () => void;
 };
 let isEdit = $state(false);
 let {
@@ -28,6 +31,7 @@ let {
 	onToggleExpand,
 	onRestore,
 	restoreDisabled = false,
+	onWithdraw,
 }: Props = $props();
 let value = $state(adminNotes);
 </script>
@@ -58,6 +62,16 @@ let value = $state(adminNotes);
 		>
 			<Undo2 class="h-4 w-4" />
 			Restore
+		</Button>
+	{/if}
+	{#if onWithdraw}
+		<Button
+			variant="ghost"
+			onclick={onWithdraw}
+			aria-label="Withdraw from the Waitlist"
+			title="Withdraw from the Waitlist"
+		>
+			<UserMinus class="h-4 w-4" />
 		</Button>
 	{/if}
 	<!-- Admin Notes -->
