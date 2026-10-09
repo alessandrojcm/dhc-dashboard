@@ -5,8 +5,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   here; nothing else in the context opens a write transaction. Staff
   commands, the person's Intake-page commands, Stripe-driven commands and
   time-driven passes all arrive as a `command` with an `actor`. The
-  Stripe-facing Intake payment logic (ALE-381) will be an internal module
-  reached only through this boundary.
+  Stripe-facing Intake payment logic (ALE-381) is the internal
+  `Dhc.BeginnersWorkshops.IntakeCheckout`, reached only through this
+  boundary.
 
   ## The protocol
 
@@ -32,13 +33,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   after an authoritative re-read under the lock.
 
   **One transition table** (`@transitions`) declares every legal status
-  change. ALE-378 has the workshop lifecycle only:
+  change, and `transition/3` is the only writer of a status:
 
       Beginners' Workshop  scheduled → finalised | cancelled
+      Intake               contacted → paid
+      payment (Seat Hold)  open → paid | releasing | released | policy_failed
+                           releasing → released | paid
 
-  Both end states are terminal. Intakes are created `contacted` (ALE-380)
-  and join the table with the commands that move them; payment, refund and
-  Carried Fee rows join it with the tickets that create them.
+  The workshop end states are terminal. Intakes are created `contacted`
+  (ALE-380); ALE-381 adds `contacted → paid` and the payment rows. Later
+  Intake moves, refunds and Carried Fees join the table with the tickets
+  that create them.
 
   **Constraints are translated, never raised.** `persist/1` declares every
   unique and check constraint and turns a violation into a domain reason or a
@@ -100,6 +105,40 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   No staff command sends email itself; `fast_track`'s Contact email is
   queued by the Intake it creates, exactly as a Batch's is.
+
+  ## Intake payment (ALE-381)
+
+  Seats taken = Intakes in `paid` + payment rows in `open` (Seat Holds);
+  `WorkshopFacts` counts them and `WorkshopPolicy` judges them.
+
+    * `start_payment` (`{:intake_link, token}`) is refused with
+      `:after_cutoff` or `:full`. Otherwise it takes the Seat Hold under the
+      Beginners' Workshop lock — an `open` payment row with the fee frozen
+      and 30 minutes to run — and then, **between transactions**, creates the
+      Checkout Session (`IntakeCheckout.create/2`, idempotency key
+      `beginners-intake-payment:<id>`) and records it after re-reading the
+      row under the lock. While a hold is live, pressing Pay again reuses its
+      session. A hold whose 30 minutes ran out is `:payment_in_progress`
+      until Stripe ends it. A session Stripe refused to create frees the hold
+      at once (no session exists that could still be paid).
+    * `complete_payment` (`:stripe`) runs from `checkout.session.completed`
+      and from the success return (which passes the session id, so it is
+      retrieved server-side). It is idempotent and always finds the row by
+      session id. An amount or non-`eur` currency mismatch makes the row
+      `policy_failed` and leaves the Intake `contacted` (the automatic
+      refund arrives with the refunds ticket). Otherwise the row becomes
+      `paid`, an open Intake becomes `paid` (`paid_via: stripe`) and "Place
+      confirmed – paid" is queued with its log row in the same transaction.
+    * `release_payment` (`:stripe`) runs on `checkout.session.expired`.
+    * `reap_holds` (`:system`, a sweep pass) asks Stripe to expire every
+      session whose hold ran out and settles the row from Stripe's answer
+      (expired → released, completed → paid). Our clock alone never frees a
+      seat.
+
+  A payment-started command peeks the row by session id without a lock,
+  then locks Beginners' Workshop → Intake → payment from the top down and
+  decides on the re-read row. The row's workshop and Intake never change,
+  so the peek never goes stale.
   """
 
   import Ecto.Query
@@ -113,9 +152,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     BeginnersWorkshop,
     Clock,
     Intake,
+    IntakeCheckout,
     IntakeEmailLog,
     IntakeEmails,
     IntakeLink,
+    IntakePayment,
     StaffAssignment,
     WorkshopFacts,
     WorkshopPolicy,
@@ -159,6 +200,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:resume_batches, workshop_id :: binary()}
           | {:send_due_batch, workshop_id :: binary()}
           | {:set_staff, workshop_id :: binary(), map()}
+          | :start_payment
+          | {:complete_payment, session_id_or_object :: String.t() | map()}
+          | {:release_payment, session_id_or_object :: String.t() | map()}
+          | :reap_holds
           | {:fast_track, workshop_id :: binary(), fast_track_person()}
 
   @typedoc """
@@ -189,10 +234,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :not_a_coach
           | :not_a_member
           | :staff_conflict
+          | :capacity_below_taken
+          | :after_cutoff
+          | :full
+          | :already_paid
+          | :intake_closed
+          | :payment_in_progress
+          | :payment_unavailable
+          | :session_not_recorded
+          | :illegal_transition
           | :person_not_found
           | :open_intake
           | :not_eligible
-          | :after_cutoff
           | :email_on_waitlist
           | :email_is_principal
           | :email_has_pending_invitation
@@ -212,7 +265,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   }
 
   # Commands only the `:system` actor (time-driven passes) may run.
-  @system_commands [:send_due_batch]
+  @system_commands [:send_due_batch, :reap_holds]
+
+  # The person's Intake-page commands (`{:intake_link, token}`).
+  @intake_link_commands [:start_payment]
+
+  # Stripe-driven commands (webhooks and the success return).
+  @stripe_commands [:complete_payment, :release_payment]
+
+  # How many expired holds one `reap_holds` pass settles; the next sweep
+  # takes the rest.
+  @reap_batch 100
 
   # The coordinator-alert recipients (ALE-380).
   @alerts_capability :"beginners.workshops.alerts.receive"
@@ -225,8 +288,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   @lock_levels [:workshop, :waitlist_entry, :intake, :carried_fee, :payment, :refund]
 
   @transitions %{
-    workshop: %{"scheduled" => ~w(finalised cancelled)}
+    workshop: %{"scheduled" => ~w(finalised cancelled)},
+    intake: %{"contacted" => ~w(paid)},
+    payment: %{
+      "open" => ~w(paid releasing released policy_failed),
+      "releasing" => ~w(released paid)
+    }
   }
+
+  # The status field of each entity in the transition table.
+  @status_fields %{workshop: :status, intake: :state, payment: :status}
 
   # One request plans a season, not a year of weekly sessions.
   @max_scheduled_at_once 20
@@ -263,6 +334,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     StaffAssignment => [
       {:principal_id, "beginners_workshop_staff_workshop_principal_unique", :staff_conflict},
       {:workshop_id, "beginners_workshop_staff_one_coach", :staff_conflict}
+    ],
+    # Holds are taken under the Intake lock, so these are backstops.
+    IntakePayment => [
+      {:intake_id, "beginners_workshop_intake_payments_one_open_index", :concurrent_change},
+      {:stripe_checkout_session_id, "beginners_workshop_intake_payments_session_index",
+       :concurrent_change}
     ]
   }
 
@@ -282,7 +359,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     Intake => [
       {:state, "beginners_workshop_intakes_state_check"},
       {:origin, "beginners_workshop_intakes_origin_check"},
-      {:link_generation, "beginners_workshop_intakes_link_generation_check"}
+      {:link_generation, "beginners_workshop_intakes_link_generation_check"},
+      {:paid_via, "beginners_workshop_intakes_paid_via_check"},
+      {:state, "beginners_workshop_intakes_paid_check"}
+    ],
+    IntakePayment => [
+      {:status, "beginners_workshop_intake_payments_status_check"},
+      {:amount_cents, "beginners_workshop_intake_payments_amount_check"},
+      {:currency, "beginners_workshop_intake_payments_currency_check"}
     ],
     StaffAssignment => [{:role, "beginners_workshop_staff_role_check"}]
   }
@@ -330,12 +414,25 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     case Map.fetch(@staff_capabilities, name) do
       {:ok, capability} -> authorize_staff(actor, capability)
       :error when name in @system_commands -> authorize_system(actor)
+      :error when name in @intake_link_commands -> authorize_intake_link(actor)
+      :error when name in @stripe_commands -> authorize_stripe(actor)
       :error -> {:error, :unknown_command}
     end
   end
 
   defp authorize_system(:system), do: :ok
   defp authorize_system(_actor), do: {:error, :forbidden}
+
+  # The link itself is the capability (ALE-374 "Intake link"): any
+  # well-formed token may try; one that resolves to no Intake is `:not_found`.
+  defp authorize_intake_link({:intake_link, token})
+       when is_binary(token) and byte_size(token) in 1..128,
+       do: :ok
+
+  defp authorize_intake_link(_actor), do: {:error, :forbidden}
+
+  defp authorize_stripe(:stripe), do: :ok
+  defp authorize_stripe(_actor), do: {:error, :forbidden}
 
   defp authorize_staff({:staff, principal_id}, capability) when is_binary(principal_id) do
     with {:ok, id} <- Ecto.UUID.cast(principal_id),
@@ -408,6 +505,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       |> signal_after_commit()
     end
   end
+
+  defp run({:intake_link, token}, :start_payment, clock), do: start_payment(token, clock)
+
+  defp run(:stripe, {:complete_payment, session}, clock) do
+    with {:ok, session} <- session_object(session), do: complete_payment(session, clock)
+  end
+
+  defp run(:stripe, {:release_payment, session}, clock) do
+    with {:ok, session} <- session_object(session), do: release_payment(session, clock)
+  end
+
+  defp run(:system, :reap_holds, clock), do: reap_holds(clock)
 
   defp run({:staff, _principal_id}, {:fast_track, workshop_id, person}, clock) do
     with {:ok, workshop_id} <- cast_id(workshop_id),
@@ -506,13 +615,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     with {:ok, next} <- Ecto.Changeset.apply_action(input, :update),
          :ok <- fee_change_allowed(input, facts),
+         :ok <- capacity_change_allowed(input, next.capacity, facts),
          :ok <- contact_from_change_allowed(input, facts),
          cutoff = resolve_cutoff(next, workshop),
          :ok <- cutoff_before_start(cutoff, WorkshopPolicy.starts_at(workshop)),
          :ok <- contact_from_still_valid(next.contact_from, cutoff, facts),
-         # Capacity may rise at any time before finalisation. Lowering it
-         # below the seats taken is refused once Seat Holds exist (ALE-381).
-         # A new window length applies to Batches sent after it: a sent
+         # Capacity may rise at any time before finalisation; lowering it
+         # below the seats taken (paid + live holds) is refused. A new window length applies to Batches sent after it: a sent
          # Batch keeps its stored window end.
          {:ok, workshop} <-
            workshop
@@ -526,6 +635,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            |> persist() do
       {:ok, WorkshopProjection.view(workshop, facts, reading)}
     end
+  end
+
+  # Seats taken are judged under the workshop lock every hold takes.
+  defp capacity_change_allowed(input, capacity, facts) do
+    if Ecto.Changeset.changed?(input, :capacity) and
+         not WorkshopPolicy.capacity_allowed?(capacity, facts),
+       do: {:error, :capacity_below_taken},
+       else: :ok
   end
 
   # People contacted at one price are never charged another.
@@ -890,6 +1007,399 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end)
   end
 
+  # ── start_payment ───────────────────────────────────────────────
+
+  defp start_payment(token, clock) do
+    with {:ok, peek} <- peek_intake(token),
+         {:ok, row} <- transact(fn -> hold_locked(peek, clock) end) do
+      checkout(row, token, clock)
+    end
+  end
+
+  defp hold_locked(peek, clock) do
+    peek
+    |> intake_spec(fn _locked -> open_payment(peek.intake_id) end)
+    |> with_locked(&take_hold(&1, clock))
+  end
+
+  # The Intake a link resolves to (unlocked): only its stored hash matches.
+  defp peek_intake(token) do
+    hash = IntakeLink.hash(token)
+
+    from(i in Intake,
+      where: i.link_token_hash == ^hash,
+      select: %{intake_id: i.id, workshop_id: i.workshop_id}
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      peek -> {:ok, peek}
+    end
+  end
+
+  defp intake_spec(%{workshop_id: workshop_id, intake_id: intake_id}, payment) do
+    %{
+      workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+      intake: required(from(i in Intake, where: i.id == ^intake_id)),
+      payment: payment
+    }
+  end
+
+  defp open_payment(intake_id),
+    do: from(p in IntakePayment, where: p.intake_id == ^intake_id and p.status == "open")
+
+  # Seats are judged under the workshop lock, which every hold takes, so N
+  # people racing for the last seat get exactly one hold.
+  defp take_hold(%{workshop: workshop, intake: intake, payment: open}, clock) do
+    reading = Clock.read(clock)
+
+    cond do
+      intake.state == "paid" -> {:error, :already_paid}
+      intake.state != "contacted" or workshop.status != "scheduled" -> {:error, :intake_closed}
+      open != nil -> live_hold(open, reading)
+      true -> new_hold(workshop, intake, reading)
+    end
+  end
+
+  # Pressing Pay again reuses a live hold; one whose 30 minutes ran out
+  # waits for Stripe to end its session.
+  defp live_hold(open, reading) do
+    if DateTime.compare(open.expires_at, reading.now) == :gt,
+      do: {:ok, open},
+      else: {:error, :payment_in_progress}
+  end
+
+  defp new_hold(workshop, intake, reading) do
+    cond do
+      not WorkshopPolicy.payment_open?(workshop, reading) ->
+        {:error, :after_cutoff}
+
+      not WorkshopPolicy.seat_free?(workshop, facts_for(workshop)) ->
+        {:error, :full}
+
+      true ->
+        %{
+          workshop_id: workshop.id,
+          intake_id: intake.id,
+          amount_cents: workshop.fee_cents,
+          expires_at: WorkshopPolicy.hold_expires_at(reading)
+        }
+        |> IntakePayment.hold_changeset()
+        |> persist()
+    end
+  end
+
+  # Between transactions: reuse the live hold's session, or create it.
+  defp checkout(%IntakePayment{checkout_url: url}, _token, _clock) when is_binary(url),
+    do: {:ok, %{checkout_url: url}}
+
+  defp checkout(%IntakePayment{} = row, token, clock) do
+    case create_session(row, token, clock) do
+      {:ok, %{url: url}} when is_binary(url) -> {:ok, %{checkout_url: url}}
+      {:ok, _no_url} -> {:error, :payment_unavailable}
+      {:error, _reason} -> {:error, :payment_unavailable}
+    end
+  end
+
+  # Creates (or replays) the row's Checkout Session and records it. A
+  # session Stripe refused to create cannot exist, so its hold is freed.
+  defp create_session(%IntakePayment{} = row, token, clock) do
+    case IntakeCheckout.create(row, checkout_person(row, token)) do
+      {:ok, session} ->
+        record_session(row, session)
+
+      {:error, :rejected} ->
+        _ = release_unsessioned(row, clock)
+        {:error, :payment_unavailable}
+
+      {:error, :retryable} ->
+        {:error, :payment_unavailable}
+    end
+  end
+
+  defp checkout_person(%IntakePayment{intake_id: intake_id, workshop_id: workshop_id}, token) do
+    email =
+      from(i in Intake,
+        join: e in WaitlistEntry,
+        on: e.id == i.waitlist_id,
+        where: i.id == ^intake_id,
+        select: e.email
+      )
+      |> Repo.one()
+
+    date = Repo.one!(from(w in BeginnersWorkshop, where: w.id == ^workshop_id, select: w.date))
+    %{token: token || intake_token(intake_id), email: email, date: date}
+  end
+
+  defp intake_token(intake_id) do
+    generation =
+      Repo.one!(from(i in Intake, where: i.id == ^intake_id, select: i.link_generation))
+
+    IntakeLink.token(intake_id, generation)
+  end
+
+  # After an authoritative re-read: the session is recorded once; a
+  # concurrent press that recorded it first wins (the idempotency key makes
+  # it the same session).
+  defp record_session(row, session),
+    do: transact(fn -> with_locked(payment_spec(row), &record_session_locked(&1, session)) end)
+
+  defp record_session_locked(%{payment: payment}, %{id: session_id, url: url}) do
+    cond do
+      payment.stripe_checkout_session_id == session_id ->
+        {:ok, %{id: session_id, url: payment.checkout_url}}
+
+      payment.status == "open" and is_nil(payment.stripe_checkout_session_id) ->
+        with {:ok, payment} <-
+               payment |> IntakePayment.session_changeset(session_id, url) |> persist(),
+             do: {:ok, %{id: session_id, url: payment.checkout_url}}
+
+      true ->
+        {:error, :concurrent_change}
+    end
+  end
+
+  defp release_unsessioned(row, clock),
+    do: transact(fn -> with_locked(payment_spec(row), &release_unsessioned_locked(&1, clock)) end)
+
+  defp release_unsessioned_locked(%{payment: payment}, clock) do
+    if payment.status == "open" and is_nil(payment.stripe_checkout_session_id),
+      do: release(payment, Clock.read(clock).now),
+      else: {:ok, payment}
+  end
+
+  defp payment_spec(%{id: id, workshop_id: workshop_id, intake_id: intake_id}),
+    do:
+      intake_spec(
+        %{workshop_id: workshop_id, intake_id: intake_id},
+        required(from(p in IntakePayment, where: p.id == ^id))
+      )
+
+  defp release(payment, at),
+    do:
+      transition(
+        :payment,
+        payment,
+        Ecto.Changeset.change(payment, status: "released", released_at: at)
+      )
+
+  # ── complete_payment / release_payment ──────────────────────────
+
+  # A webhook passes the event's session object; the success return passes
+  # only the id, so the session is retrieved server-side.
+  defp session_object(%{"id" => id} = session) when is_binary(id), do: {:ok, session}
+
+  defp session_object(id) when is_binary(id) and id != "" do
+    case IntakeCheckout.retrieve(id) do
+      {:ok, session} -> {:ok, session}
+      {:error, :retryable} -> {:error, :payment_unavailable}
+      {:error, :rejected} -> {:error, :not_found}
+    end
+  end
+
+  defp session_object(_session), do: {:error, :not_found}
+
+  defp peek_payment(session_id),
+    do: Repo.one(from(p in IntakePayment, where: p.stripe_checkout_session_id == ^session_id))
+
+  defp complete_payment(%{"id" => session_id} = session, clock) do
+    case peek_payment(session_id) do
+      nil ->
+        # Ours but not recorded yet (the webhook beat `record_session`): fail
+        # so the webhook retries; the reaper repairs it otherwise.
+        if IntakeCheckout.ours?(session),
+          do: {:error, :session_not_recorded},
+          else: {:ok, %{outcome: :not_ours}}
+
+      row ->
+        transact(fn ->
+          with_locked(payment_spec(row), &complete_locked(&1, session, clock))
+        end)
+    end
+  end
+
+  defp complete_locked(%{payment: payment} = locked, session, clock) do
+    reading = Clock.read(clock)
+
+    case {payment.status, IntakeCheckout.outcome(session)} do
+      {status, _outcome} when status in ~w(paid policy_failed released) ->
+        {:ok, %{outcome: :already_recorded}}
+
+      {_status, {:complete, details}} ->
+        if details.amount == payment.amount_cents and details.currency == payment.currency,
+          do: record_paid(locked, details, reading),
+          else: record_policy_failure(payment, details, reading)
+
+      {_status, _not_paid} ->
+        {:ok, %{outcome: :not_paid}}
+    end
+  end
+
+  defp record_policy_failure(payment, details, reading) do
+    changeset =
+      Ecto.Changeset.change(payment,
+        status: "policy_failed",
+        policy_failed_at: reading.now,
+        amount_received_cents: details.amount,
+        currency_received: details.currency,
+        stripe_payment_intent_id: details.payment_intent
+      )
+
+    with {:ok, _payment} <- transition(:payment, payment, changeset),
+         do: {:ok, %{outcome: :policy_failed}}
+  end
+
+  defp record_paid(%{payment: payment, intake: intake, workshop: workshop}, details, reading) do
+    was_open? = payment.status == "open"
+
+    changeset =
+      Ecto.Changeset.change(payment,
+        status: "paid",
+        paid_at: reading.now,
+        amount_received_cents: details.amount,
+        currency_received: details.currency,
+        stripe_payment_intent_id: details.payment_intent
+      )
+
+    with {:ok, _payment} <- transition(:payment, payment, changeset) do
+      if was_open? and intake.state == "contacted",
+        do: pay_intake(intake, workshop, reading),
+        # A completion for a hold whose Intake already closed: the payment is
+        # recorded; the automatic refund arrives with the refunds ticket.
+        else: {:ok, %{outcome: :paid_after_close}}
+    end
+  end
+
+  defp pay_intake(intake, workshop, reading) do
+    with {:ok, intake} <-
+           transition(:intake, intake, Intake.paid_changeset(intake, "stripe", reading.now)),
+         :ok <- queue_place_confirmed(intake, workshop, reading) do
+      {:ok, %{outcome: :paid}}
+    end
+  end
+
+  defp queue_place_confirmed(%Intake{waitlist_id: nil}, _workshop, _reading), do: :ok
+
+  defp queue_place_confirmed(intake, workshop, reading) do
+    entry = Repo.get!(WaitlistEntry, intake.waitlist_id)
+
+    first_name =
+      Repo.one(
+        from(p in UserProfile,
+          where: p.waitlist_id == ^intake.waitlist_id,
+          limit: 1,
+          select: p.first_name
+        )
+      ) || ""
+
+    with {:ok, _job} <-
+           IntakeEmails.queue(
+             "place_confirmed_paid",
+             entry,
+             %{
+               "firstName" => first_name,
+               "date" => Values.date(workshop.date),
+               "startTime" => Values.start_time(workshop.start_time),
+               "venue" => workshop.venue,
+               "fee" => Values.money(workshop.fee_cents)
+             },
+             button_url: IntakeLink.url(IntakeLink.token(intake.id, intake.link_generation))
+           ),
+         {:ok, _log} <-
+           %{
+             intake_id: intake.id,
+             email_type: "place_confirmed_paid",
+             occasion: "place_confirmed",
+             queued_at: reading.now
+           }
+           |> IntakeEmailLog.changeset()
+           |> persist() do
+      :ok
+    end
+  end
+
+  defp release_payment(%{"id" => session_id} = session, clock) do
+    case {IntakeCheckout.outcome(session), peek_payment(session_id)} do
+      {:expired, nil} ->
+        # Not recorded (or not ours): the reaper settles an unrecorded hold.
+        {:ok, %{outcome: :not_ours}}
+
+      {:expired, row} ->
+        transact(fn -> with_locked(payment_spec(row), &release_locked(&1, clock)) end)
+
+      {_still_open_or_complete, _row} ->
+        {:ok, %{outcome: :not_expired}}
+    end
+  end
+
+  defp release_locked(%{payment: payment}, clock) do
+    if payment.status in ~w(open releasing) do
+      with {:ok, _payment} <- release(payment, Clock.read(clock).now),
+           do: {:ok, %{outcome: :released}}
+    else
+      {:ok, %{outcome: :already_recorded}}
+    end
+  end
+
+  # ── reap_holds ──────────────────────────────────────────────────
+
+  # Holds whose 30 minutes ran out. Each is settled from Stripe's answer
+  # through the same locked paths as the webhooks; a hold Stripe has not
+  # ended stays open (and its seat taken) until the next pass.
+  defp reap_holds(clock) do
+    now = Clock.read(clock).now
+
+    from(p in IntakePayment,
+      where: p.status == "open" and p.expires_at <= ^now,
+      order_by: [asc: p.expires_at, asc: p.id],
+      limit: @reap_batch
+    )
+    |> Repo.all()
+    |> Enum.reduce(%{released: 0, completed: 0, waiting: 0}, fn row, tally ->
+      Map.update!(tally, reap(row, clock), &(&1 + 1))
+    end)
+    |> then(&{:ok, &1})
+  end
+
+  defp reap(%IntakePayment{stripe_checkout_session_id: nil} = row, clock) do
+    # The session was never recorded: replaying the create either returns
+    # the session Stripe made (then settle it) or proves none exists.
+    case create_session(row, nil, clock) do
+      {:ok, %{id: session_id}} -> reap_session(session_id, clock)
+      {:error, _reason} -> if released?(row), do: :released, else: :waiting
+    end
+  end
+
+  defp reap(%IntakePayment{stripe_checkout_session_id: session_id}, clock),
+    do: reap_session(session_id, clock)
+
+  defp reap_session(session_id, clock) do
+    with {:error, _not_open} <- IntakeCheckout.expire(session_id),
+         {:error, _unavailable} <- IntakeCheckout.retrieve(session_id) do
+      :waiting
+    else
+      {:ok, session} -> settle(session, clock)
+    end
+  end
+
+  defp settle(session, clock) do
+    case IntakeCheckout.outcome(session) do
+      :expired ->
+        if match?({:ok, %{outcome: :released}}, release_payment(session, clock)),
+          do: :released,
+          else: :waiting
+
+      {:complete, _details} ->
+        if match?({:ok, _}, complete_payment(session, clock)), do: :completed, else: :waiting
+
+      _open_or_unpaid ->
+        :waiting
+    end
+  end
+
+  defp released?(%IntakePayment{id: id}),
+    do: Repo.exists?(from(p in IntakePayment, where: p.id == ^id and p.status == "released"))
+
   # ── set_staff ───────────────────────────────────────────────────
 
   defp set_staff_locked(%{workshop: workshop}, staff, actor_id, clock) do
@@ -1140,6 +1650,20 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  # ── transition/3 ────────────────────────────────────────────────
+
+  # The only writer of a status: refuses a change the table does not list,
+  # then persists the changeset (which also carries the change's stamps).
+  defp transition(entity, row, %Ecto.Changeset{} = changeset) do
+    field = Map.fetch!(@status_fields, entity)
+    from = Map.fetch!(row, field)
+    to = Ecto.Changeset.get_field(changeset, field)
+
+    if transition_allowed?(entity, from, to),
+      do: persist(changeset),
+      else: {:error, :illegal_transition}
   end
 
   # ── persist/1 ───────────────────────────────────────────────────

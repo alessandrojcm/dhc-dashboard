@@ -24,6 +24,12 @@ defmodule Dhc.StripeWebhooks do
       or PaymentIntent event without one is a no-op.
     * `:workshop_refund` — `Dhc.Workshops.apply_stripe_refund_event/1` applies
       a Stripe Refund object to the Workshop Refund it belongs to.
+    * `{:beginners_intake, :complete_payment}` /
+      `{:beginners_intake, :release_payment}` — the Beginners' Workshop
+      boundary (`Dhc.BeginnersWorkshops.execute(:stripe, …)`, ALE-381)
+      completes or releases the Seat Hold whose Checkout Session the event
+      carries. A session that is not an Intake payment (a Workshop guest
+      checkout) is acknowledged without effect.
 
   Targets run in table order; the first error stops the event and is returned.
 
@@ -42,6 +48,8 @@ defmodule Dhc.StripeWebhooks do
   @membership_required {:stripe_sync, :customer_required}
   @membership_optional {:stripe_sync, :customer_optional}
   @workshop_refund :workshop_refund
+  @intake_complete {:beginners_intake, :complete_payment}
+  @intake_release {:beginners_intake, :release_payment}
 
   # The routing table. Every target must be idempotent (see moduledoc).
   #
@@ -76,7 +84,9 @@ defmodule Dhc.StripeWebhooks do
        payment_intent.payment_failed
        payment_intent.canceled
      ), [@acceptance, @membership_optional]},
-    {~w(refund.created refund.updated refund.failed), [@workshop_refund]}
+    {~w(refund.created refund.updated refund.failed), [@workshop_refund]},
+    {~w(checkout.session.completed), [@intake_complete]},
+    {~w(checkout.session.expired), [@intake_release]}
   ]
 
   @routes for {types, targets} <- @route_groups, type <- types, into: %{}, do: {type, targets}
@@ -85,6 +95,7 @@ defmodule Dhc.StripeWebhooks do
   @type target ::
           :acceptance
           | :workshop_refund
+          | {:beginners_intake, :complete_payment | :release_payment}
           | {:stripe_sync, :customer_required | :customer_optional}
 
   @doc """
@@ -166,6 +177,13 @@ defmodule Dhc.StripeWebhooks do
 
   defp run_target(@workshop_refund, _event_type, object),
     do: Dhc.Workshops.apply_stripe_refund_event(object)
+
+  defp run_target({:beginners_intake, command}, _event_type, object) do
+    case Dhc.BeginnersWorkshops.execute(:stripe, {command, object}) do
+      {:ok, _outcome} -> :ok
+      {:error, reason} -> {:error, {:beginners_intake, reason}}
+    end
+  end
 
   defp run_target({:stripe_sync, customer_policy}, event_type, object) do
     case {customer_id(object), customer_policy} do

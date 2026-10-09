@@ -39,6 +39,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     invalid_contact_from: "contactFromDate",
     contact_from_locked: "contactFromDate",
     fee_locked: "feeCents",
+    capacity_below_taken: "capacity",
     not_a_coach: "coachPrincipalId",
     not_a_member: "assistantPrincipalIds",
     email_on_waitlist: "email",
@@ -54,6 +55,8 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       contact_from_locked:
         {409, "Batch 1 has gone out, so the contact-from date can no longer change"},
       fee_locked: {409, "People have been contacted at this fee, so it can no longer change"},
+      capacity_below_taken:
+        {409, "Capacity can't go below the seats already paid or held by people paying now"},
       invalid_workshop: {422, "Check the workshop details"},
       start_in_past: {422, "The workshop must start in the future"},
       invalid_payment_cutoff: {422, "The Payment Cutoff must be before the workshop starts"},

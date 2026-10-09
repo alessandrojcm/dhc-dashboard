@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
 	consoleTimeline,
 	formatDublinInstant,
+	holdLabel,
 	nextBatchHeadline,
 	nextBatchSize,
 	nowCard,
@@ -180,5 +181,22 @@ describe("nowCard", () => {
 			title: "Batch 1 window open — ends Tue 27 Oct, 23:59",
 			body: "1 of 3 paid. Batch 2 goes out Wed 28 Oct, 10:00.",
 		});
+	});
+});
+
+describe("holdLabel (ALE-381)", () => {
+	const now = new Date("2026-10-22T11:00:00Z");
+
+	it("names when a live Seat Hold runs out on the Dublin clock", () => {
+		expect(holdLabel({ holdExpiresAt: "2026-10-22T11:30:00Z" }, now)).toBe(
+			"Paying now · hold until 12:30",
+		);
+	});
+
+	it("keeps a hold Stripe has not ended yet as ending, and is null without one", () => {
+		expect(holdLabel({ holdExpiresAt: "2026-10-22T10:59:00Z" }, now)).toBe(
+			"Paying now · hold ending",
+		);
+		expect(holdLabel({ holdExpiresAt: null }, now)).toBeNull();
 	});
 });

@@ -22,6 +22,7 @@ import { toast } from "svelte-sonner";
 import {
 	consoleTimeline,
 	formatDublinInstant,
+	holdLabel,
 	intakeOrigin,
 	intakeStateLabel,
 	nextBatchHeadline,
@@ -288,6 +289,11 @@ const attention = $derived(
 								<span class="text-xs text-muted-foreground"
 									>{intakeOrigin(intake)}</span
 								>
+								{#if holdLabel(intake)}<Badge
+										variant="outline"
+										class="border-sky-600 text-sky-800"
+										data-testid="hold-expiry">{holdLabel(intake)}</Badge
+									>{/if}
 								<Badge variant="secondary"
 									>{intakeStateLabel(intake.state)}</Badge
 								>

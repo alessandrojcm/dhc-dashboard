@@ -88,6 +88,21 @@ defmodule DhcWeb.Router do
     get("/:id/door", BeginnersWorkshopDoorController, :show)
   end
 
+  # ALE-381: the person's Intake link. The token in the path is the only
+  # credential; the pipeline sends `Referrer-Policy: no-referrer` and logs the
+  # request with the token redacted.
+  pipeline :intake_link do
+    plug(DhcWeb.Plugs.IntakeLinkPage)
+  end
+
+  scope "/api/beginners/intake", DhcWeb do
+    pipe_through([:api, :intake_link])
+
+    get("/:token", BeginnersWorkshopIntakeController, :show)
+    post("/:token/payment", BeginnersWorkshopIntakeController, :start_payment)
+    post("/:token/return", BeginnersWorkshopIntakeController, :return_from_checkout)
+  end
+
   scope "/api/training-announcements", DhcWeb do
     pipe_through([:api, :training_announcements_manage])
 

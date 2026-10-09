@@ -19,6 +19,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   # the minute, so no Batch can go out between 23:59 and midnight).
   @window_end_time ~T[23:59:59.999999]
   @check_in_lead_minutes 60
+  # A Seat Hold keeps a seat for 30 minutes of checkout (ALE-381).
+  @hold_minutes 30
 
   @type stage ::
           :before_contact_from
@@ -116,7 +118,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
 
   @doc """
   Whether a scheduled workshop still takes new Stripe payers at `reading`:
-  before its Payment Cutoff. `fast_track` (ALE-384) is refused after it, and
+  before its Payment Cutoff. `fast_track` (ALE-384) and a new Seat Hold
+  (`start_payment`, ALE-381) are refused after it, and
   the console offers Fast-track only while it holds; the Carried Fee holder
   exception joins this rule with the defer-and-confirm ticket.
   """
@@ -184,6 +187,24 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
     Date.compare(workshop_date, eighteenth) == :lt
   end
 
+  @doc "When a Seat Hold taken at `reading` runs out (the reaper then asks Stripe to expire it)."
+  @spec hold_expires_at(map()) :: DateTime.t()
+  def hold_expires_at(%{now: now}), do: DateTime.add(now, @hold_minutes * 60, :second)
+
+  @doc "Seats taken: Intakes in `paid` + payment rows in `open` (live Seat Holds)."
+  @spec seats_taken(map()) :: non_neg_integer()
+  def seats_taken(%{paid: paid, holds: holds}), do: paid + holds
+
+  @doc "Whether a new Seat Hold (or a Carried Fee confirm) can take a seat."
+  @spec seat_free?(BeginnersWorkshop.t(), map()) :: boolean()
+  def seat_free?(%BeginnersWorkshop{capacity: capacity}, facts),
+    do: capacity - seats_taken(facts) > 0
+
+  @doc "Whether `capacity` may replace the current one: never below the seats taken."
+  @spec capacity_allowed?(integer(), map()) :: boolean()
+  def capacity_allowed?(capacity, facts) when is_integer(capacity),
+    do: capacity >= seats_taken(facts)
+
   @doc "Seats: capacity, paid, live holds and free (never negative)."
   @spec seats(BeginnersWorkshop.t(), map()) :: %{
           capacity: pos_integer(),
@@ -197,8 +218,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
 
   @doc """
   The workshop's current stage at `reading`. A scheduled workshop is judged
-  day-of first (check-in, today, past), then payment (cutoff, full), then
-  Batch timing.
+  day-of first (check-in, today, past), then payment (cutoff, `full` when
+  every seat is paid or held), then Batch timing.
   """
   @spec stage(BeginnersWorkshop.t(), map(), map()) :: stage()
   def stage(%BeginnersWorkshop{status: "cancelled"}, _facts, _reading), do: :cancelled
@@ -220,7 +241,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   defp before_the_day(workshop, facts, reading) do
     cond do
       DateTime.compare(reading.now, workshop.payment_cutoff) != :lt -> :payment_closed
-      workshop.capacity - facts.paid <= 0 -> :full
+      not seat_free?(workshop, facts) -> :full
       facts.batches_paused -> :batches_paused
       window_open?(facts, reading) -> :window_open
       before_first_batch?(workshop, facts, reading) -> :before_contact_from

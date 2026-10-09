@@ -4,6 +4,7 @@ defmodule Dhc.DevSeeds do
   import Ecto.Query
 
   alias Dhc.Auth.{Principal, UserRole}
+  alias Dhc.BeginnersWorkshops.{Intake, IntakePayment}
   alias Dhc.Invitations.Repository, as: InvitationRepository
   alias Dhc.Inventory
   alias Dhc.ClubCalendar
@@ -447,6 +448,16 @@ defmodule Dhc.DevSeeds do
   window**: Batch 1 is sent through the boundary's `send_due_batch` pass at
   yesterday's 10:00 Dublin, so its 7-day window is still open (waiting
   Waitlist entries are seeded first when there are too few).
+
+  ALE-381: one more workshop, also contacted yesterday, has **paid and
+  mid-checkout Intakes**: two Intakes are paid through the boundary's
+  `complete_payment` (as `:stripe`, from a synthetic completed Checkout
+  Session) and two hold a live 30-minute Seat Hold. The seed writes those
+  four payment rows directly — the one deliberate exception to "holds are
+  taken by `start_payment`", because a dev seed must not need Stripe. The
+  holds have no Checkout Session, so the sweep's `reap_holds` settles them
+  30 minutes later (it replays the create, which Stripe refuses without a
+  secret key, and frees the seat).
   """
   @spec seed_beginners_workshops(pos_integer()) :: :ok
   def seed_beginners_workshops(count) do
@@ -480,13 +491,13 @@ defmodule Dhc.DevSeeds do
     end)
 
     seed_open_batch_window(coordinator_id)
+    seed_paid_and_in_checkout(coordinator_id)
   end
 
   defp seed_open_batch_window(coordinator_id) do
     capacity = 8
     yesterday = Date.add(ClubCalendar.today(), -1)
-    waiting = Repo.aggregate(from(w in WaitlistEntry, where: w.status == "waiting"), :count)
-    if waiting < capacity, do: seed_waitlist(capacity - waiting)
+    ensure_waiting(capacity)
 
     {:ok, [workshop]} =
       Dhc.BeginnersWorkshops.execute(
@@ -515,6 +526,90 @@ defmodule Dhc.DevSeeds do
       other ->
         Mix.shell().error("Batch 1 was not sent for the seeded workshop: #{inspect(other)}")
     end
+  end
+
+  defp ensure_waiting(count) do
+    waiting = Repo.aggregate(from(w in WaitlistEntry, where: w.status == "waiting"), :count)
+    if waiting < count, do: seed_waitlist(count - waiting)
+  end
+
+  defp seed_paid_and_in_checkout(coordinator_id) do
+    capacity = 6
+    yesterday = Date.add(ClubCalendar.today(), -1)
+
+    # People already holding an open Intake are skipped by the Batch.
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "Ringsend Community Hall",
+             date: Date.add(yesterday, 25),
+             start_time: ~T[19:00:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: yesterday
+           }
+         ]}
+      )
+
+    batch_clock = Dhc.BeginnersWorkshops.Clock.fixed(ClubCalendar.to_utc(yesterday, ~T[10:00:00]))
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id}, clock: batch_clock)
+
+    intakes =
+      Repo.all(
+        from(i in Intake, where: i.workshop_id == ^workshop.id, order_by: [i.queue_date, i.id])
+      )
+
+    now = DateTime.utc_now()
+
+    {paid, rest} = Enum.split(intakes, 2)
+    {holding, _asked} = Enum.split(rest, 2)
+
+    for intake <- paid do
+      row = insert_seed_hold!(intake, workshop, now, "cs_seed_#{intake.id}")
+
+      {:ok, %{outcome: :paid}} =
+        Dhc.BeginnersWorkshops.execute(
+          :stripe,
+          {:complete_payment,
+           %{
+             "id" => row.stripe_checkout_session_id,
+             "status" => "complete",
+             "payment_status" => "paid",
+             "amount_total" => row.amount_cents,
+             "currency" => "eur",
+             "payment_intent" => "pi_seed_#{intake.id}",
+             "metadata" => %{"type" => "beginners_intake_payment", "payment_id" => row.id}
+           }}
+        )
+    end
+
+    for intake <- holding, do: %IntakePayment{} = insert_seed_hold!(intake, workshop, now, nil)
+
+    Mix.shell().info(
+      "Seeded the workshop on #{workshop.date}: #{length(paid)} paid, #{length(holding)} in checkout"
+    )
+  end
+
+  defp insert_seed_hold!(intake, workshop, now, session_id) do
+    %{
+      workshop_id: workshop.id,
+      intake_id: intake.id,
+      amount_cents: workshop.fee_cents,
+      expires_at: DateTime.add(now, 30 * 60, :second)
+    }
+    |> IntakePayment.hold_changeset()
+    |> Ecto.Changeset.put_change(:stripe_checkout_session_id, session_id)
+    |> Repo.insert!()
   end
 
   defp ensure_beginners_coordinator do

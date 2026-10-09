@@ -26,6 +26,7 @@ defmodule Dhc.BeginnersWorkshops.Intake do
   @states ~w(contacted paid attended no_show lapsed declined returned deferred cancelled_refunded withdrawn)
   @open_states ~w(contacted paid)
   @origins ~w(batch fast_track)
+  @paid_via ~w(stripe carried_fee)
 
   schema "beginners_workshop_intakes" do
     field :workshop_id, :binary_id
@@ -37,6 +38,10 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     field :link_generation, :integer, default: 1
     field :link_token_hash, :binary, redact: true
     field :contacted_at, :utc_datetime_usec
+    # How a `paid` Intake was paid (ALE-381: `stripe`; `carried_fee` arrives
+    # with the Carried Fee) and when.
+    field :paid_via, :string
+    field :paid_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end
@@ -83,5 +88,13 @@ defmodule Dhc.BeginnersWorkshops.Intake do
       :contacted_at
     ])
     |> validate_inclusion(:origin, @origins)
+  end
+
+  @doc "A `contacted` Intake becoming `paid` (`paid_via` is how)."
+  @spec paid_changeset(t(), String.t(), DateTime.t()) :: Ecto.Changeset.t()
+  def paid_changeset(%__MODULE__{} = intake, paid_via, at) do
+    intake
+    |> change(state: "paid", paid_via: paid_via, paid_at: at)
+    |> validate_inclusion(:paid_via, @paid_via)
   end
 end

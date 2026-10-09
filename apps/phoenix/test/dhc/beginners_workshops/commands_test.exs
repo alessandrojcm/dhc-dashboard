@@ -43,7 +43,7 @@ defmodule Dhc.BeginnersWorkshops.CommandsTest do
             do: {from, to}
 
       assert Enum.sort(legal) == [{"scheduled", "cancelled"}, {"scheduled", "finalised"}]
-      assert Commands.transitions() == %{workshop: %{"scheduled" => ~w(finalised cancelled)}}
+      assert Commands.transitions().workshop == %{"scheduled" => ~w(finalised cancelled)}
     end
 
     test "the lock order is Beginners' Workshop → Waitlist entry → Intake → Carried Fee → payment → refund" do

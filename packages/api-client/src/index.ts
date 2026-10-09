@@ -1945,6 +1945,48 @@ export {
 	type QueryKey,
 } from "./client/@tanstack/svelte-query.gen";
 
+// ALE-381: the public Intake link (Beginners' Workshop Intake page)
+export {
+	beginnersWorkshopIntakeShow,
+	beginnersWorkshopIntakeStartPayment,
+	beginnersWorkshopIntakeReturnFromCheckout,
+} from "./client/sdk.gen";
+export {
+	beginnersWorkshopIntakeShowOptions,
+	beginnersWorkshopIntakeShowQueryKey,
+	beginnersWorkshopIntakeStartPaymentMutation,
+	beginnersWorkshopIntakeStartPaymentMutationKey,
+	beginnersWorkshopIntakeReturnFromCheckoutMutation,
+	beginnersWorkshopIntakeReturnFromCheckoutMutationKey,
+} from "./client/@tanstack/svelte-query.gen";
+export type {
+	BeginnersIntakeAction,
+	BeginnersIntakeCheckoutResponse,
+	BeginnersIntakeClosedReason,
+	BeginnersIntakeConflictError,
+	BeginnersIntakePage,
+	BeginnersIntakePageResponse,
+	BeginnersIntakeReturnRequest,
+	BeginnersIntakeState,
+	BeginnersIntakeToken,
+	BeginnersIntakeWorkshop,
+	BeginnersWorkshopIntakeReturnFromCheckoutData,
+	BeginnersWorkshopIntakeReturnFromCheckoutError,
+	BeginnersWorkshopIntakeReturnFromCheckoutErrors,
+	BeginnersWorkshopIntakeReturnFromCheckoutResponse,
+	BeginnersWorkshopIntakeReturnFromCheckoutResponses,
+	BeginnersWorkshopIntakeShowData,
+	BeginnersWorkshopIntakeShowError,
+	BeginnersWorkshopIntakeShowErrors,
+	BeginnersWorkshopIntakeShowResponse,
+	BeginnersWorkshopIntakeShowResponses,
+	BeginnersWorkshopIntakeStartPaymentData,
+	BeginnersWorkshopIntakeStartPaymentError,
+	BeginnersWorkshopIntakeStartPaymentErrors,
+	BeginnersWorkshopIntakeStartPaymentResponse,
+	BeginnersWorkshopIntakeStartPaymentResponses,
+} from "./client/types.gen";
+
 // Client configuration
 export { configureClient, getClient } from "./config";
 export type { ClientConfig, SupabaseJwtGetter } from "./config";
