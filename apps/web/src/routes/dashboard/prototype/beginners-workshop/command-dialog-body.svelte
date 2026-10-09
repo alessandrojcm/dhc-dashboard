@@ -7,13 +7,12 @@ import dayjs from "dayjs";
 import { untrack } from "svelte";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
-import { Checkbox } from "#lib/components/ui/checkbox/index.js";
 import DatePicker from "#lib/components/ui/date-picker.svelte";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
 import type { DialogRequest } from "./bw-prototype-store.svelte";
+import MemberPicker from "./member-picker.svelte";
 import { Input } from "#lib/components/ui/input/index.js";
 import { Label } from "#lib/components/ui/label/index.js";
-import * as NativeSelect from "#lib/components/ui/native-select/index.js";
 import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
 import {
@@ -163,36 +162,41 @@ function rescheduleCutoffFollows(nextDate: string) {
 
 {#snippet staffFields()}
 	<div class="grid gap-2">
-		<Label for="bw-coach">Coach</Label>
-		<NativeSelect.Root id="bw-coach" bind:value={coachId} class="w-full">
-			<NativeSelect.Option value=""
-				>No coach yet (Unstaffed)</NativeSelect.Option
-			>
-			{#each STAFF.filter((member) => member.isCoach) as member (member.id)}
-				<NativeSelect.Option value={member.id}
-					>{member.name}</NativeSelect.Option
-				>
-			{/each}
-		</NativeSelect.Root>
-	</div>
-	<fieldset class="grid gap-2">
-		<legend class="mb-1 text-sm font-medium"
-			>Assistants <span class="text-muted-foreground">(any active Member)</span
-			></legend
+		<Label for="bw-coach"
+			>Coach <span class="font-normal text-muted-foreground"
+				>(Members with the coach role)</span
+			></Label
 		>
-		{#each STAFF.filter((member) => member.id !== coachId) as member (member.id)}
-			<label class="flex items-center gap-2 text-sm">
-				<Checkbox
-					checked={assistantIds.includes(member.id)}
-					onCheckedChange={(checked) =>
-						(assistantIds = checked
-							? [...assistantIds, member.id]
-							: assistantIds.filter((id) => id !== member.id))}
-				/>
-				{member.name}{member.isCoach ? " (coach)" : ""}
-			</label>
-		{/each}
-	</fieldset>
+		<MemberPicker
+			id="bw-coach"
+			label="Coach"
+			placeholder="No coach yet (Unstaffed)"
+			members={STAFF.filter((member) => member.isCoach)}
+			selected={coachId ? [coachId] : []}
+			onChange={(ids) => {
+				coachId = ids[0] ?? "";
+				assistantIds = assistantIds.filter((id) => id !== coachId);
+			}}
+		/>
+	</div>
+	<div class="grid gap-2">
+		<Label for="bw-assistants"
+			>Assistants <span class="font-normal text-muted-foreground"
+				>(any active Member, coaches included)</span
+			></Label
+		>
+		<MemberPicker
+			id="bw-assistants"
+			label="Assistants"
+			placeholder="Add assistants"
+			multiple
+			members={STAFF.filter((member) => member.id !== coachId)}
+			selected={assistantIds}
+			onChange={(ids) => {
+				assistantIds = ids;
+			}}
+		/>
+	</div>
 {/snippet}
 
 {#if request.kind === "schedule"}

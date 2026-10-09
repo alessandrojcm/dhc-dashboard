@@ -495,7 +495,7 @@ function makePeople(): Person[] {
 	});
 }
 
-export const STAFF: StaffMember[] = [
+const NAMED_MEMBERS: StaffMember[] = [
 	{ id: "s-ciaran", name: "Ciarán Walsh", isCoach: true },
 	{ id: "s-aoife", name: "Aoife Brennan", isCoach: true },
 	{ id: "s-tomas", name: "Tomás Kelly", isCoach: true },
@@ -504,6 +504,63 @@ export const STAFF: StaffMember[] = [
 	{ id: "s-roisin", name: "Róisín Hughes", isCoach: false },
 	{ id: "s-alessandro", name: "Alessandro Cuppari", isCoach: false },
 ];
+const MEMBER_FIRST = [
+	"Declan",
+	"Siobhán",
+	"Ronan",
+	"Aisling",
+	"Kieran",
+	"Maeve",
+	"Shane",
+	"Gráinne",
+	"Colm",
+	"Nuala",
+	"Barry",
+	"Deirdre",
+	"Fergal",
+	"Úna",
+	"Killian",
+	"Laoise",
+	"Brendan",
+	"Ailbhe",
+	"Cathal",
+	"Muireann",
+	"Eamon",
+	"Sorcha",
+	"Lorcan",
+	"Treasa",
+	"Odhrán",
+	"Fiadh",
+	"Seamus",
+	"Caoimhe",
+	"Diarmuid",
+	"Ríona",
+	"Ultan",
+	"Bláthnaid",
+];
+const MEMBER_LAST = [
+	"Ahern",
+	"Boyle",
+	"Cronin",
+	"Daly",
+	"Egan",
+	"Flood",
+	"Geraghty",
+	"Hennessy",
+	"Joyce",
+	"Lennon",
+	"McCarthy",
+	"Nugent",
+];
+/** Every active Member: coaches are Members too, so a coach can also assist. */
+export const STAFF: StaffMember[] = [
+	...NAMED_MEMBERS,
+	...MEMBER_FIRST.map((first, index) => ({
+		id: `s-m${index}`,
+		name: `${first} ${must(MEMBER_LAST[index % MEMBER_LAST.length])}`,
+		isCoach: index % 7 === 3,
+	})),
+].sort((a, b) => a.name.localeCompare(b.name));
 
 /** The assigned assistant the "Assistant" viewer impersonates. */
 export const ASSISTANT_ID = "s-sean";
