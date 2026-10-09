@@ -30,6 +30,7 @@ import {
 import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
 import ActionButtons from "./actions-buttons.svelte";
 import WaitlistEntryDetails from "./waitlist-entry-details.svelte";
+import WaitlistStatusBadge from "./waitlist-status-badge.svelte";
 import WaitlistWithdrawDialog from "./waitlist-withdraw-dialog.svelte";
 import {
 	createWaitlistTable,
@@ -65,11 +66,16 @@ function formatDate(value: string | null | undefined) {
 	return value ? dayjs(value).format("DD/MM/YYYY") : "N/A";
 }
 
-/** The Status cell: the standing, and when a removed person was removed. */
+/**
+ * The Status cell: the standing, when a removed person was removed, and
+ * whether they hold a Carried Fee (ALE-388).
+ */
 function statusText(entry: WaitlistEntry) {
-	return entry.status === "removed"
-		? `Removed ${formatDate(entry.removedAt)}`
-		: "Waiting";
+	const standing =
+		entry.status === "removed"
+			? `Removed ${formatDate(entry.removedAt)}`
+			: "Waiting";
+	return waitlist.carriedFee(entry.id) ? `${standing} · Carried Fee` : standing;
 }
 
 const tableOptions = $state<TableOptions<WaitlistEntry>>({
@@ -188,12 +194,9 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 			accessorKey: "status",
 			header: "Status",
 			cell: ({ row }) => {
-				return renderComponent(Badge, {
-					variant: row.original.status === "removed" ? "outline" : "secondary",
-					class: "h-8 whitespace-nowrap",
-					children: createRawSnippet(() => ({
-						render: () => `<span>${statusText(row.original)}</span>`,
-					})),
+				return renderComponent(WaitlistStatusBadge, {
+					removed: row.original.status === "removed",
+					text: () => statusText(row.original),
 				});
 			},
 		},
@@ -350,7 +353,11 @@ const table = createSvelteTable(tableOptions);
 							colspan={row.getVisibleCells().length}
 							class="p-4 bg-muted/20"
 						>
-							<WaitlistEntryDetails entry={row.original} layout="table" />
+							<WaitlistEntryDetails
+								entry={row.original}
+								layout="table"
+								carriedFee={waitlist.carriedFee(row.original.id)}
+							/>
 						</Table.Cell>
 					</Table.Row>
 				{/if}
@@ -479,7 +486,11 @@ const table = createSvelteTable(tableOptions);
 				<!-- Expanded Content -->
 				{#if row.getIsExpanded()}
 					<div class="mt-4 pt-4 border-t border-muted">
-						<WaitlistEntryDetails entry={row.original} layout="card" />
+						<WaitlistEntryDetails
+							entry={row.original}
+							layout="card"
+							carriedFee={waitlist.carriedFee(row.original.id)}
+						/>
 					</div>
 				{/if}
 			</li>

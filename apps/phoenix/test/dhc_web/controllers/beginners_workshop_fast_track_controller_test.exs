@@ -119,7 +119,8 @@ defmodule DhcWeb.BeginnersWorkshopFastTrackControllerTest do
              "email" => person.email,
              "status" => "waiting",
              "removedAt" => nil,
-             "minor" => false
+             "minor" => false,
+             "carriedFee" => false
            }
 
     assert conn

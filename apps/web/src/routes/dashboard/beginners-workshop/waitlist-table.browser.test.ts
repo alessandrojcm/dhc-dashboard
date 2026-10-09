@@ -267,3 +267,36 @@ test("ALE-387: Withdraw is offered to waiting people, not removed ones", async (
 			.elements(),
 	).toHaveLength(0);
 });
+
+// ALE-388: the Waitlist entry shows the person's Carried Fee.
+test("shows a Carried Fee holder's fee on their entry", async () => {
+	const holder = entry("a", { fullName: "Ada Holder" });
+	const other = entry("b", { fullName: "Bea Payer", position: 2 });
+	const listCarriedFees = vi.fn(async (_ids: string[]) => ({
+		a: "held" as const,
+	}));
+
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries: vi.fn(async () => page([holder, other])),
+			listCarriedFees,
+			notify: { success: () => {}, error: () => {} },
+			url: () => new URL(BASE),
+			navigate: () => {},
+		},
+	});
+
+	const desktop = screen.getByRole("table");
+	await expect
+		.element(desktop.getByText("Waiting · Carried Fee"))
+		.toBeVisible();
+	expect(listCarriedFees).toHaveBeenCalledWith(["a", "b"]);
+	expect(desktop.getByText("Waiting · Carried Fee").elements()).toHaveLength(1);
+	await expect
+		.element(
+			screen
+				.getByRole("list", { name: "Waitlist entries" })
+				.getByText("Waiting · Carried Fee"),
+		)
+		.toBeVisible();
+});

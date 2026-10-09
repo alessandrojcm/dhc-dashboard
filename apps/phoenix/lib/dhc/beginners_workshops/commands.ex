@@ -37,17 +37,20 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
       Beginners' Workshop  scheduled → finalised | cancelled
       Intake               contacted → paid | lapsed | returned | declined
-                           paid → attended | no_show
+                           paid → attended | no_show | deferred
       payment (Seat Hold)  open → paid | releasing | released | policy_failed
                            releasing → released | paid
       refund               pending → processing | completed | failed
                            processing → completed | failed
+      Carried Fee          held → applied | refunded | forfeited
+                           applied → held | spent | refunded | forfeited
 
   The workshop end states are terminal. Intakes are created `contacted`
   (ALE-380); ALE-381 adds `contacted → paid` and the payment rows; ALE-385
   adds the Payment Cutoff's `contacted → lapsed | returned`; ALE-391 adds
   Attendance Finalisation's `paid → attended | no_show`; ALE-386 adds
-  `decline`'s `contacted → declined`. A Stripe refund
+  `decline`'s `contacted → declined`; ALE-388 adds `defer`'s
+  `paid → deferred` and the Carried Fee. A Stripe refund
   is created `pending`; a manual refund is written `completed` (both by
   `persist/1`, the transition table governs every later change). Later
   Intake moves and Carried Fees join the table with the tickets that
@@ -204,6 +207,36 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       or, with none, only removes the standing. A Carried-Fee-paid Intake is
       `:carried_fee_paid` for both until Carried Fee refunds exist.
 
+  ## Carried Fees (ALE-388)
+
+  A Carried Fee is a prepaid seat owned by the person (`CarriedFee`); a
+  person holds at most one live one. It is created `held` by `defer` on a
+  Stripe-paid Intake (pointing at that Intake's payment row) or by the
+  Waitlist spreadsheet import (`import_carried_fee`, `:system`, inside the
+  import row's transaction), and is read under the Carried Fee lock level.
+
+    * `defer` (`beginners.workshops.manage`, a console Intake command) locks
+      Beginners' Workshop → Waitlist entry → Intake → Carried Fee: the `paid`
+      Intake becomes `deferred`, the person stays (or goes back to)
+      `waiting` with their original priority, a Stripe-paid Intake creates
+      a `held` Carried Fee and a Carried-Fee-paid one returns its fee to
+      `held`, and "Deferred" is queued.
+    * A holder of a `held` Carried Fee who is contacted (a Batch, a
+      fast-track, a resent link) gets "Contact – confirm (Carried Fee)".
+    * `confirm` (the person, `{:intake_link, token}`, or a console Intake
+      command) moves a `contacted` Intake whose person holds a `held` fee
+      to `paid` (`paid_via: carried_fee`) and the fee to `applied`, in one
+      transaction with no Stripe call and no Seat Hold; it is refused with
+      `:full` (the same seat rule as a hold) or `:no_carried_fee`. The
+      Payment Cutoff does not stop it — the cutoff pass leaves a holder's
+      `contacted` Intake open, and Attendance Finalisation settles it — so it
+      is allowed until finalisation. "Place confirmed – Carried Fee" is
+      queued, and Pre-workshop info too when the cutoff has passed.
+    * `start_payment` is refused with `:confirm_instead` for a holder, and
+      `fast_track` after the cutoff places holders only.
+    * Attendance Finalisation spends an `applied` fee on an attended Intake
+      and forfeits it on a no-show.
+
   No staff command sends email itself; `fast_track`'s Contact email is
   queued by the Intake it creates, exactly as a Batch's is.
 
@@ -343,6 +376,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     Batch,
     BatchProposal,
     BeginnersWorkshop,
+    CarriedFee,
     Clock,
     Intake,
     IntakeCheckout,
@@ -405,6 +439,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:send_due_batch, workshop_id :: binary()}
           | {:set_staff, workshop_id :: binary(), map()}
           | :start_payment
+          | :confirm
+          | {:import_carried_fee, waitlist_id :: binary(), paid_text :: String.t()}
           | {:complete_payment, session_id_or_object :: String.t() | map()}
           | {:release_payment, session_id_or_object :: String.t() | map()}
           | :reap_holds
@@ -490,6 +526,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :invalid_refund_choice
           | :nothing_to_refund
           | :person_not_found
+          | :no_carried_fee
+          | :confirm_instead
+          | :payment_not_found
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -514,6 +553,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     invite: :"members.invite",
     # Console Intake commands (ALE-386).
     decline: :"beginners.workshops.manage",
+    # Carried Fees (ALE-388).
+    defer: :"beginners.workshops.manage",
+    confirm: :"beginners.workshops.manage",
     resend_link: :"beginners.workshops.manage",
     rotate_link: :"beginners.workshops.manage",
     # ALE-387. `withdraw` is the Waitlist's own exit, offered on the Waitlist
@@ -533,11 +575,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     :submit_refund,
     :reconcile,
     :finalise_attendance,
-    :send_follow_ups
+    :send_follow_ups,
+    :import_carried_fee
   ]
 
   # The person's Intake-page commands (`{:intake_link, token}`).
-  @intake_link_commands [:start_payment]
+  @intake_link_commands [:start_payment, :confirm]
 
   # Stripe-driven commands (webhooks and the success return).
   @stripe_commands [:complete_payment, :release_payment, :apply_refund_event]
@@ -566,7 +609,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     workshop: %{"scheduled" => ~w(finalised cancelled)},
     intake: %{
       "contacted" => ~w(paid lapsed returned declined),
-      "paid" => ~w(attended no_show cancelled_refunded withdrawn)
+      "paid" => ~w(attended no_show deferred cancelled_refunded withdrawn)
     },
     payment: %{
       "open" => ~w(paid releasing released policy_failed),
@@ -577,11 +620,21 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     refund: %{
       "pending" => ~w(processing completed failed),
       "processing" => ~w(completed failed)
+    },
+    carried_fee: %{
+      "held" => ~w(applied refunded forfeited),
+      "applied" => ~w(held spent refunded forfeited)
     }
   }
 
   # The status field of each entity in the transition table.
-  @status_fields %{workshop: :status, intake: :state, payment: :status, refund: :status}
+  @status_fields %{
+    workshop: :status,
+    intake: :state,
+    payment: :status,
+    refund: :status,
+    carried_fee: :status
+  }
 
   # One request plans a season, not a year of weekly sessions.
   @max_scheduled_at_once 20
@@ -636,6 +689,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
        :concurrent_change},
       {:stripe_refund_id, "beginners_workshop_intake_refunds_stripe_refund_index",
        :concurrent_change}
+    ],
+    # Carried Fees are written under the person's entry or Intake lock and
+    # then the Carried Fee lock, so these are backstops.
+    CarriedFee => [
+      {:waitlist_id, "beginners_workshop_carried_fees_one_live_per_person_index",
+       :concurrent_change},
+      {:payment_id, "beginners_workshop_carried_fees_payment_index", :concurrent_change}
     ]
   }
 
@@ -660,7 +720,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:link_generation, "beginners_workshop_intakes_link_generation_check"},
       {:paid_via, "beginners_workshop_intakes_paid_via_check"},
       {:state, "beginners_workshop_intakes_paid_check"},
-      {:checked_in_at, "beginners_workshop_intakes_check_in_check"}
+      {:checked_in_at, "beginners_workshop_intakes_check_in_check"},
+      {:carried_fee_id, "beginners_workshop_intakes_carried_fee_check"}
+    ],
+    CarriedFee => [
+      {:status, "beginners_workshop_carried_fees_status_check"},
+      {:origin, "beginners_workshop_carried_fees_origin_check"},
+      {:applied_intake_id, "beginners_workshop_carried_fees_applied_check"},
+      {:amount_cents, "beginners_workshop_carried_fees_amount_check"}
     ],
     IntakePayment => [
       {:status, "beginners_workshop_intake_payments_status_check"},
@@ -712,6 +779,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   # ── Authorization ───────────────────────────────────────────────
+
+  # `confirm` is both a console command and the person's own (ALE-388): the
+  # Intake link actor takes the Intake-page path.
+  defp authorize({:intake_link, _token} = actor, command) when command in @intake_link_commands,
+    do: authorize_intake_link(actor)
 
   defp authorize(actor, command) do
     name = command_name(command)
@@ -864,6 +936,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp run({:intake_link, token}, :start_payment, clock), do: start_payment(token, clock)
 
+  defp run({:intake_link, token}, :confirm, clock), do: confirm_by_link(token, clock)
+
+  defp run(:system, {:import_carried_fee, waitlist_id, paid_text}, clock)
+       when is_binary(paid_text),
+       do: import_carried_fee(waitlist_id, paid_text, clock)
+
   defp run(:stripe, {:complete_payment, session}, clock) do
     with {:ok, session} <- session_object(session), do: complete_payment(session, clock)
   end
@@ -882,6 +960,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
             workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
             waitlist_entry: &cutoff_entries(&1, clock),
             intake: &cutoff_intakes/1,
+            carried_fee: &held_fees_of_contacted/1,
             payment: &cutoff_holds/1
           },
           &pass_cutoff_locked(&1, clock)
@@ -897,7 +976,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         with_locked(
           %{
             workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
-            waitlist_entry: fast_track_entry_query(person)
+            waitlist_entry: fast_track_entry_query(person),
+            carried_fee: fn
+              %{waitlist_entry: %WaitlistEntry{id: id}} -> live_fee_query(id)
+              _new_person -> nil
+            end
           },
           &fast_track_locked(&1, person, clock)
         )
@@ -1417,23 +1500,39 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp fast_track_entry_query({:new_person, _attrs}), do: nil
 
-  defp fast_track_locked(%{workshop: workshop, waitlist_entry: entry}, person, clock) do
+  defp fast_track_locked(%{workshop: workshop, waitlist_entry: entry} = locked, person, clock) do
     reading = Clock.read(clock)
 
     with :ok <- still_scheduled(workshop),
-         :ok <- payment_open(workshop, reading),
+         :ok <- payment_open(workshop, locked.carried_fee, reading),
          {:ok, entry, placed} <- fast_track_entry(person, entry, reading),
          {:ok, first_name} <- contactable(entry),
          {:ok, intake} <-
-           contact(workshop, :fast_track, entry, first_name, workshop.payment_cutoff, reading) do
+           contact(
+             workshop,
+             :fast_track,
+             entry,
+             first_name,
+             fast_track_window_end(workshop, reading),
+             reading
+           ) do
       {:ok, fast_track_view(intake, placed)}
     end
   end
 
-  # The Carried Fee holder exception after the cutoff joins this rule with
-  # the defer-and-confirm ticket.
-  defp payment_open(workshop, reading) do
-    if WorkshopPolicy.payment_open?(workshop, reading), do: :ok, else: {:error, :after_cutoff}
+  # After the cutoff only a holder of a `held` Carried Fee may be placed:
+  # they confirm, so a late placement never needs a Stripe payment (story 38).
+  defp payment_open(workshop, fee, reading) do
+    if WorkshopPolicy.payment_open?(workshop, reading) or held?(fee),
+      do: :ok,
+      else: {:error, :after_cutoff}
+  end
+
+  # A holder placed after the cutoff may confirm until the workshop starts.
+  defp fast_track_window_end(workshop, reading) do
+    if WorkshopPolicy.payment_open?(workshop, reading),
+      do: workshop.payment_cutoff,
+      else: WorkshopPolicy.starts_at(workshop)
   end
 
   defp fast_track_entry({:waitlist_entry, _id}, nil, _reading), do: {:error, :person_not_found}
@@ -1563,23 +1662,24 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  # The one "Contact – pay" path: the Batch and Fast-track contact, and a
-  # resent or rotated link (ALE-386), each with its own log occasion. The
-  # button is the Intake's link at its current generation.
+  # The one Contact path: the Batch and Fast-track contact, and a resent or
+  # rotated link (ALE-386), each with its own log occasion. The button is
+  # the Intake's link at its current generation. A holder of a `held`
+  # Carried Fee is asked to confirm, not to pay (ALE-388, story 60).
   defp queue_contact_email(intake, entry, first_name, workshop, window_end, occasion, reading) do
     token = IntakeLink.token(intake.id, intake.link_generation)
 
+    {type, values} =
+      if held_fee?(entry.id),
+        do: {"contact_confirm", confirm_values(workshop, window_end, first_name)},
+        else: {"contact_pay", contact_values(workshop, window_end, first_name)}
+
     with {:ok, _job} <-
-           IntakeEmails.queue(
-             "contact_pay",
-             entry,
-             contact_values(workshop, window_end, first_name),
-             button_url: IntakeLink.url(token)
-           ),
+           IntakeEmails.queue(type, entry, values, button_url: IntakeLink.url(token)),
          {:ok, _log} <-
            %{
              intake_id: intake.id,
-             email_type: "contact_pay",
+             email_type: type,
              occasion: occasion,
              queued_at: reading.now
            }
@@ -1600,6 +1700,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       "paymentCutoff" => Values.deadline(workshop.payment_cutoff)
     }
   end
+
+  defp confirm_values(workshop, window_end, first_name),
+    do: workshop |> contact_values(window_end, first_name) |> Map.delete("fee")
 
   defp batch_view(%Batch{} = batch) do
     Map.take(batch, [:id, :workshop_id, :number, :size, :sent_at, :window_ends_at])
@@ -1647,6 +1750,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp hold_locked(peek, clock) do
     peek
     |> intake_spec(fn _locked -> open_payment(peek.intake_id) end)
+    |> Map.put(:carried_fee, &locked_intake_fee/1)
     |> with_locked(&take_hold(&1, clock))
   end
 
@@ -1678,12 +1782,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # Seats are judged under the workshop lock, which every hold takes, so N
   # people racing for the last seat get exactly one hold.
-  defp take_hold(%{workshop: workshop, intake: intake, payment: open}, clock) do
+  defp take_hold(%{workshop: workshop, intake: intake, payment: open} = locked, clock) do
     reading = Clock.read(clock)
 
     cond do
       intake.state == "paid" -> {:error, :already_paid}
       intake.state != "contacted" or workshop.status != "scheduled" -> {:error, :intake_closed}
+      # A Carried Fee holder is never asked for money twice (ALE-388).
+      held?(locked.carried_fee) -> {:error, :confirm_instead}
       open != nil -> live_hold(open, reading)
       true -> new_hold(workshop, intake, reading)
     end
@@ -2685,6 +2791,19 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     )
   end
 
+  # `defer` returns the person to `waiting` and carries their fee: it locks
+  # their entry, their Carried Fee and the payment that paid a Stripe-paid
+  # Intake (the fee points at it); `confirm` applies the fee.
+  defp intake_command_spec(:defer, peek) do
+    peek
+    |> intake_spec(paying_payment(peek.intake_id))
+    |> Map.put(:waitlist_entry, entry_query(peek))
+    |> Map.put(:carried_fee, &locked_intake_fee/1)
+  end
+
+  defp intake_command_spec(:confirm, peek),
+    do: peek |> intake_spec(nil) |> Map.put(:carried_fee, &locked_intake_fee/1)
+
   # `cancel_with_refund` refunds the payment that paid the Intake and puts
   # the person back to `waiting`, so it locks their entry and that payment.
   defp intake_command_spec(:cancel_with_refund, peek) do
@@ -2733,7 +2852,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp intake_command_locked(%{intake: intake} = locked, command, context, clock) do
     reading = Clock.read(clock)
 
-    case IntakePolicy.check(command, intake) do
+    case IntakePolicy.check(command, policy_facts(locked)) do
       :ok ->
         event_id = Ecto.UUID.generate()
 
@@ -2770,6 +2889,28 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
+  # A deferral keeps the person's money as a Carried Fee and their place in
+  # the queue (story 69): a Stripe-paid Intake creates a `held` fee pointing
+  # at its payment, a Carried-Fee-paid one returns its fee to `held`.
+  defp act_on_intake(:defer, locked, _event_id, reading) do
+    %{workshop: workshop, waitlist_entry: entry, intake: intake} = locked
+
+    with {:ok, _fee} <- carry_fee(intake, locked, reading),
+         {:ok, intake} <-
+           transition(:intake, intake, Intake.close_changeset(intake, "deferred")),
+         :ok <- back_to_waiting(entry),
+         :ok <-
+           queue_intake_email(
+             intake,
+             "deferred",
+             "deferred",
+             &%{"firstName" => &1, "date" => Values.date(workshop.date)},
+             reading
+           ) do
+      {:ok, intake}
+    end
+  end
+
   # ALE-387: a Stripe-paid person wants their money back. The seat is free
   # at once (it counted only while `paid`); the person keeps their priority.
   defp act_on_intake(:cancel_with_refund, locked, _event_id, reading) do
@@ -2792,6 +2933,40 @@ defmodule Dhc.BeginnersWorkshops.Commands do
              reading
            ) do
       {:ok, intake}
+    end
+  end
+
+  # Takes a seat under the workshop lock with the same rule as a Seat Hold,
+  # but needs no hold: nothing outside this transaction is called. The
+  # Payment Cutoff does not stop it (only new Stripe holds); finalisation
+  # closes the Intake, which ends it.
+  defp act_on_intake(:confirm, locked, _event_id, reading) do
+    %{workshop: workshop, intake: intake, carried_fee: fee} = locked
+
+    cond do
+      workshop.status != "scheduled" ->
+        {:error, :intake_closed}
+
+      not WorkshopPolicy.seat_free?(workshop, facts_for(workshop)) ->
+        {:error, :full}
+
+      true ->
+        with {:ok, intake} <-
+               transition(
+                 :intake,
+                 intake,
+                 Intake.paid_changeset(intake, {"carried_fee", fee.id}, reading.now)
+               ),
+             {:ok, _fee} <-
+               transition(
+                 :carried_fee,
+                 fee,
+                 CarriedFee.status_changeset(fee, "applied", intake.id, reading.now)
+               ),
+             :ok <- queue_place_confirmed(intake, workshop, "place_confirmed", reading),
+             :ok <- pre_workshop_if_cutoff_passed(intake, workshop, reading) do
+          {:ok, intake}
+        end
     end
   end
 
@@ -2925,6 +3100,20 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp intake_window_end(%Intake{batch_id: batch_id}, _workshop),
     do: Repo.one!(from(b in Batch, where: b.id == ^batch_id, select: b.window_ends_at))
 
+  # What `IntakePolicy.check/2` reads: the locked Intake and, for the
+  # commands that lock it, the person's live Carried Fee.
+  defp policy_facts(%{intake: intake} = locked) do
+    %{
+      state: intake.state,
+      paid_via: intake.paid_via,
+      carried_fee:
+        case Map.get(locked, :carried_fee) do
+          %CarriedFee{status: status} -> status
+          nil -> nil
+        end
+    }
+  end
+
   defp record_intake_event(intake, command, event_id, %{actor: actor, note: note}, reading) do
     %{
       id: event_id,
@@ -3037,6 +3226,115 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
+  # ── Carried Fees (ALE-388) ──────────────────────────────────────
+
+  # The person's live (`held` or `applied`) Carried Fee: at most one.
+  defp live_fee_query(waitlist_id),
+    do:
+      from(f in CarriedFee,
+        where: f.waitlist_id == ^waitlist_id and f.status in ^CarriedFee.live_statuses()
+      )
+
+  # The Carried Fee level for a command that locked an Intake.
+  defp locked_intake_fee(%{intake: %Intake{waitlist_id: id}}) when is_binary(id),
+    do: live_fee_query(id)
+
+  defp locked_intake_fee(_locked), do: nil
+
+  defp held?(%CarriedFee{status: "held"}), do: true
+  defp held?(_no_held_fee), do: false
+
+  # Unlocked: which Contact email a person gets. Every writer of a fee holds
+  # the person's entry or Intake lock, which the Contact paths hold too.
+  defp held_fee?(waitlist_id),
+    do:
+      Repo.exists?(
+        from(f in CarriedFee, where: f.waitlist_id == ^waitlist_id and f.status == "held")
+      )
+
+  defp carry_fee(
+         %Intake{paid_via: "carried_fee", carried_fee_id: id, id: intake_id},
+         %{
+           carried_fee: %CarriedFee{id: id, status: "applied", applied_intake_id: intake_id} = fee
+         },
+         reading
+       ),
+       do:
+         transition(:carried_fee, fee, CarriedFee.status_changeset(fee, "held", nil, reading.now))
+
+  # The payment that paid it is locked by the command (`paying_payment/1`).
+  defp carry_fee(%Intake{paid_via: "stripe"} = intake, %{carried_fee: nil} = locked, reading) do
+    case locked.payment do
+      nil ->
+        {:error, :payment_not_found}
+
+      payment ->
+        %{
+          waitlist_id: intake.waitlist_id,
+          payment_id: payment.id,
+          amount_cents: payment.amount_received_cents || payment.amount_cents,
+          currency: payment.currency_received || payment.currency,
+          status_changed_at: reading.now
+        }
+        |> CarriedFee.deferral_changeset()
+        |> persist()
+    end
+  end
+
+  # A Carried-Fee-paid Intake whose fee moved on, or a Stripe payer who
+  # somehow already holds one: the table has no move for it.
+  defp carry_fee(_intake, _locked, _reading), do: {:error, :illegal_transition}
+
+  # The person's own confirm from their Intake page: the console command's
+  # rule and act, with no actor and no note.
+  defp confirm_by_link(token, clock) do
+    with {:ok, peek} <- peek_intake(token),
+         {:ok, %{outcome: outcome}} <-
+           transact(fn ->
+             peek
+             |> intake_spec(nil)
+             |> Map.put(:carried_fee, &locked_intake_fee/1)
+             |> with_locked(
+               &intake_command_locked(&1, :confirm, %{actor: nil, note: nil, options: %{}}, clock)
+             )
+           end) do
+      {:ok, %{outcome: outcome}}
+    end
+  end
+
+  # The Waitlist spreadsheet import's Paid cell (ALE-376): a `held` fee whose
+  # original payment is the imported record. Runs inside the import row's
+  # transaction; a person who already holds a live fee keeps it.
+  defp import_carried_fee(waitlist_id, paid_text, clock) do
+    with {:ok, waitlist_id} <- cast_id(waitlist_id) do
+      transact(fn ->
+        with_locked(
+          %{
+            waitlist_entry: required(from(e in WaitlistEntry, where: e.id == ^waitlist_id)),
+            carried_fee: live_fee_query(waitlist_id)
+          },
+          &import_fee_locked(&1, paid_text, clock)
+        )
+      end)
+    end
+  end
+
+  defp import_fee_locked(%{carried_fee: %CarriedFee{} = fee}, _paid_text, _clock),
+    do: {:ok, %{outcome: :already_held, id: fee.id, status: fee.status}}
+
+  defp import_fee_locked(%{waitlist_entry: entry}, paid_text, clock) do
+    with {:ok, fee} <-
+           %{
+             waitlist_id: entry.id,
+             imported_paid_text: paid_text,
+             status_changed_at: Clock.read(clock).now
+           }
+           |> CarriedFee.import_changeset()
+           |> persist() do
+      {:ok, %{outcome: :created, id: fee.id, status: fee.status}}
+    end
+  end
+
   # ── check_in / undo_check_in ────────────────────────────────────
 
   defp door_check_in(principal_id, workshop_id, intake_id, action, clock) do
@@ -3121,6 +3419,21 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp cutoff_intakes(_locked), do: nil
 
+  # The `held` Carried Fees of the contacted people: they may still confirm
+  # after the cutoff (ALE-388), so the pass leaves their Intakes open.
+  defp held_fees_of_contacted(%{workshop: workshop, intake: intakes}) when is_list(intakes) do
+    contacted =
+      from(i in Intake,
+        where: i.workshop_id == ^workshop.id and i.state == "contacted",
+        select: i.waitlist_id
+      )
+
+    {:all,
+     from(f in CarriedFee, where: f.status == "held" and f.waitlist_id in subquery(contacted))}
+  end
+
+  defp held_fees_of_contacted(_locked), do: nil
+
   # Its live Seat Holds: an Intake holding one is left for Stripe to settle.
   defp cutoff_holds(%{workshop: workshop, intake: intakes}) when is_list(intakes),
     do:
@@ -3144,6 +3457,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         facts: facts_for(workshop),
         held: MapSet.new(holds, & &1.intake_id),
         entries: Map.new(entries, &{&1.id, &1}),
+        fee_holders: MapSet.new(locked.carried_fee, & &1.waitlist_id),
         reading: reading
       }
 
@@ -3175,6 +3489,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp pass_intake(%Intake{state: "contacted"} = intake, pass) do
+    if MapSet.member?(pass.fee_holders, intake.waitlist_id),
+      do: {:ok, nil},
+      else: settle_at_cutoff(intake, pass)
+  end
+
+  defp settle_at_cutoff(intake, pass) do
     hold_live? = MapSet.member?(pass.held, intake.id)
 
     case {entry_of(intake, pass.entries),
@@ -3217,6 +3537,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
             workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
             waitlist_entry: &finalise_entries(&1, by, clock),
             intake: &finalise_intakes/1,
+            carried_fee: &applied_fees/1,
             payment: &cutoff_holds/1
           },
           &finalise_locked(&1, by, clock)
@@ -3249,6 +3570,21 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp finalise_intakes(_locked), do: nil
 
+  # The Carried Fees applied to the workshop's paid Intakes: spent on
+  # attendance, forfeited on a no-show (ALE-367).
+  defp applied_fees(%{workshop: workshop, intake: intakes}) when is_list(intakes) do
+    paid =
+      from(i in Intake,
+        where: i.workshop_id == ^workshop.id and i.state == "paid",
+        select: i.id
+      )
+
+    {:all,
+     from(f in CarriedFee, where: f.status == "applied" and f.applied_intake_id in subquery(paid))}
+  end
+
+  defp applied_fees(_locked), do: nil
+
   defp may_finalise?(workshop, {:staff, _id}, reading),
     do: WorkshopPolicy.finish_allowed?(workshop, reading)
 
@@ -3273,6 +3609,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       facts: facts_for(workshop),
       held: MapSet.new(locked.payment, & &1.intake_id),
       entries: Map.new(locked.waitlist_entry, &{&1.id, &1}),
+      fees: Map.new(locked.carried_fee || [], &{&1.applied_intake_id, &1}),
       reading: reading
     }
 
@@ -3353,6 +3690,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
         with {:ok, counted} <- close(intake, state, counted),
              {:ok, _entry} <- follow_standing(entry, standing),
+             {:ok, _fee} <- end_fee(Map.get(pass.fees, intake.id), state, pass.reading),
              do: {:ok, counted}
     end
   end
@@ -3366,6 +3704,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {entry, :lapse} -> lapse(intake, entry)
       {_entry, :return} -> close(intake, "returned", :returned)
     end
+  end
+
+  defp end_fee(nil, _state, _reading), do: {:ok, nil}
+
+  defp end_fee(%CarriedFee{} = fee, state, reading) do
+    status = if state == "attended", do: "spent", else: "forfeited"
+
+    transition(
+      :carried_fee,
+      fee,
+      CarriedFee.status_changeset(fee, status, fee.applied_intake_id, reading.now)
+    )
   end
 
   # An anonymised person has no standing; one whose standing already moved

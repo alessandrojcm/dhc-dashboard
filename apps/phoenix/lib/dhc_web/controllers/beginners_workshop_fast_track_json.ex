@@ -25,7 +25,8 @@ defmodule DhcWeb.BeginnersWorkshopFastTrackJSON do
       email: row.email,
       status: row.status,
       removedAt: row.removed_at,
-      minor: row.minor
+      minor: row.minor,
+      carriedFee: row.carried_fee
     }
   end
 end

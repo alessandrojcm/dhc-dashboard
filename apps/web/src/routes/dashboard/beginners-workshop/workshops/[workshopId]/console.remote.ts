@@ -4,10 +4,11 @@
  * call, translate the problem. Coordinators never send a Batch: the system
  * sweep does. (ALE-382) Retry and Record manual refund follow up a failed
  * refund from Needs attention. (ALE-394) Reschedule. (ALE-386)
- * `runIntakeCommand` runs one console Intake command — Decline, Resend link,
- * Rotate link, and (ALE-387) Cancel with refund — with its optional note;
- * the console offers only Phoenix's `availableCommands`. (ALE-387)
- * `withdrawIntake` runs Withdraw with its refund-or-forfeit choice.
+ * `runIntakeCommand` runs one console Intake command — Decline, Defer and
+ * Confirm with Carried Fee (ALE-388), Cancel with refund (ALE-387), Resend
+ * link, Rotate link — with its optional note; the console offers only
+ * Phoenix's `availableCommands`. (ALE-387) `withdrawIntake` runs Withdraw
+ * with its refund-or-forfeit choice.
  */
 import { form } from "$app/server";
 import {
@@ -15,8 +16,10 @@ import {
 	beginnersWorkshopBatchesResume,
 	beginnersWorkshopFastTrackNewPerson,
 	beginnersWorkshopFastTrackWaitlistPerson,
+	beginnersWorkshopIntakesConfirm,
 	beginnersWorkshopIntakesCancelWithRefund,
 	beginnersWorkshopIntakesDecline,
+	beginnersWorkshopIntakesDefer,
 	beginnersWorkshopIntakesResendLink,
 	beginnersWorkshopIntakesRotateLink,
 	beginnersWorkshopIntakesWithdraw,
@@ -137,14 +140,15 @@ export const runIntakeCommand = form(
 	async ({ id, intakeId, command, body }) => {
 		const options = await beginnersWorkshopsManageOptions();
 		const request = { ...options, path: { id, intakeId }, body };
-		const call =
-			command === "decline"
-				? beginnersWorkshopIntakesDecline(request)
-				: command === "cancel_with_refund"
-					? beginnersWorkshopIntakesCancelWithRefund(request)
-					: command === "resend_link"
-						? beginnersWorkshopIntakesResendLink(request)
-						: beginnersWorkshopIntakesRotateLink(request);
+		const calls = {
+			decline: beginnersWorkshopIntakesDecline,
+			defer: beginnersWorkshopIntakesDefer,
+			confirm: beginnersWorkshopIntakesConfirm,
+			cancel_with_refund: beginnersWorkshopIntakesCancelWithRefund,
+			resend_link: beginnersWorkshopIntakesResendLink,
+			rotate_link: beginnersWorkshopIntakesRotateLink,
+		} satisfies Record<typeof command, typeof beginnersWorkshopIntakesDecline>;
+		const call = calls[command](request);
 		const result = await beginnersWorkshopCommand(call, {
 			fallback: "Could not run this command",
 			formPath: (field) => (field === "note" ? ["note"] : undefined),

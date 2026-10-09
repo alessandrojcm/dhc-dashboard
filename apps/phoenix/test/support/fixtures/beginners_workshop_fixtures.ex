@@ -203,6 +203,35 @@ defmodule Dhc.BeginnersWorkshopFixtures do
   end
 
   @doc """
+  Test-only (ALE-388): forces an Intake `paid` by its person's Carried Fee,
+  inserting the `applied` fee that paid it (the `carried_fee` check ties
+  `paid_via: carried_fee` to a Carried Fee). Returns the Intake.
+  """
+  def force_carried_fee_paid!(%Intake{} = intake) do
+    intake = Repo.reload!(intake)
+    at = %{@now | microsecond: {0, 6}}
+
+    fee =
+      Repo.insert!(%Dhc.BeginnersWorkshops.CarriedFee{
+        waitlist_id: intake.waitlist_id,
+        status: "applied",
+        origin: "import",
+        imported_paid_text: "Yes",
+        applied_intake_id: intake.id,
+        status_changed_at: at
+      })
+
+    intake
+    |> Ecto.Changeset.change(
+      state: "paid",
+      paid_via: "carried_fee",
+      carried_fee_id: fee.id,
+      paid_at: at
+    )
+    |> Repo.update!()
+  end
+
+  @doc """
   Test-only (ALE-390): a `paid` Intake for a new person in `workshop_id`;
   returns the Intake. Options `first_name`, `date_of_birth`,
   `medical_conditions` and `guardian` (`{first, last, phone}`, attached to

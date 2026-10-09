@@ -75,7 +75,9 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       open_intake: {409, "This person already has an open Intake"},
       not_eligible:
         {409, "Only someone waiting, or removed in the last 3 months, can be fast-tracked"},
-      after_cutoff: {409, "Payment is closed for this workshop, so nobody can be fast-tracked"},
+      after_cutoff:
+        {409,
+         "Payment is closed for this workshop, so only Carried Fee holders can be fast-tracked"},
       email_on_waitlist: {409, "This email is already on the Waitlist; search for them instead"},
       email_is_principal: {409, "This email belongs to a Member or former Member"},
       email_has_pending_invitation: {409, "This email already has a pending Invitation"},
@@ -109,12 +111,18 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       invalid_note: {422, "Keep the note under 500 characters"},
       # Cancel with refund and withdraw (ALE-387).
       intake_not_paid:
-        {409, "Only a paid Intake can be cancelled with a refund; decline or withdraw instead"},
+        {409,
+         "Only a paid Intake can be cancelled with a refund or deferred; decline or withdraw instead"},
       carried_fee_paid:
         {409, "This place was paid with a Carried Fee, which can't be refunded or forfeited yet"},
       nothing_to_refund: {409, "There is no Stripe payment to refund for this Intake"},
       refund_choice_required: {422, "Choose whether to refund or forfeit their fee"},
-      invalid_refund_choice: {422, "Refund must be true or false"}
+      invalid_refund_choice: {422, "Refund must be true or false"},
+      # Carried Fees (ALE-388).
+      no_carried_fee: {409, "This person has no Carried Fee to confirm with"},
+      full: {409, "Every seat is taken; the Carried Fee stays held"},
+      payment_not_found: {409, "The payment that paid this Intake can't be found"},
+      invalid_ids: {422, "Pass at most 100 Waitlist entry ids"}
     },
     fields: @internal_to_public
 

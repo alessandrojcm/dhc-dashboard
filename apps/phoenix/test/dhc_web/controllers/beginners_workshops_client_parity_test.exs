@@ -39,13 +39,15 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     # ALE-383's Intake Email template slice shares the one tag and URL root.
     assert operations |> Enum.map(&elem(&1, 1)["operationId"]) |> Enum.sort() ==
              ~w(beginnersWorkshopAssignments.list beginnersWorkshopBatches.pause
-                beginnersWorkshopBatches.resume beginnersWorkshopDoor.checkIn
+                beginnersWorkshopBatches.resume beginnersWorkshopCarriedFees.index
+                beginnersWorkshopDoor.checkIn
                 beginnersWorkshopDoor.finish beginnersWorkshopDoor.show beginnersWorkshopDoor.undoCheckIn
                 beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
                 beginnersWorkshopFastTrack.candidates beginnersWorkshopFastTrack.newPerson
                 beginnersWorkshopFastTrack.waitlistPerson
-                beginnersWorkshopIntakes.cancelWithRefund
-                beginnersWorkshopIntakes.decline beginnersWorkshopIntakes.resendLink
+                beginnersWorkshopIntakes.cancelWithRefund beginnersWorkshopIntakes.confirm
+                beginnersWorkshopIntakes.decline beginnersWorkshopIntakes.defer
+                beginnersWorkshopIntakes.resendLink
                 beginnersWorkshopIntakes.rotateLink beginnersWorkshopIntakes.withdraw
                 beginnersWorkshopIntakes.withdrawPerson
                 beginnersWorkshopInvitations.invitable beginnersWorkshopInvitations.invite

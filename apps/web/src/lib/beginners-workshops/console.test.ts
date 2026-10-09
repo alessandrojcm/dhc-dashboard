@@ -4,6 +4,7 @@ import type {
 } from "@dhc/api-client";
 import { describe, expect, it } from "vitest";
 import {
+	carriedFeeLabel,
 	consoleTimeline,
 	emailLogLine,
 	failedRefundText,
@@ -24,6 +25,7 @@ import {
 	daysToGo,
 	isIntakeButtonCommand,
 	rosterGroups,
+	unconfirmedCarriedFeeText,
 	standingLabel,
 	unpaidAfterWindowText,
 } from "#lib/beginners-workshops/console.js";
@@ -44,12 +46,14 @@ function next(
 				lastName: "Byrne",
 				minor: false,
 				queueDate: "2025-01-01T12:00:00Z",
+				confirms: false,
 			},
 			{
 				firstName: "Bea",
 				lastName: "Kelly",
 				minor: true,
 				queueDate: "2025-02-01T12:00:00Z",
+				confirms: false,
 			},
 		],
 		...overrides,
@@ -105,8 +109,10 @@ function view(
 		roster: { seated: [], asked: [], attended: [], noShow: [], out: [] },
 		failedRefunds: [],
 		unpaidAfterWindow: [],
+		unconfirmedCarriedFees: [],
 		attention: [],
 		fastTrackOpen: true,
+		fastTrackHoldersOnly: false,
 		finalisation: null,
 		...overrides,
 	};
@@ -231,6 +237,8 @@ describe("nowCard", () => {
 			emailLog: [],
 			history: [],
 			availableCommands: [],
+			paidVia: null,
+			carriedFee: null,
 		});
 		const today = (stage: "today_before_check_in" | "check_in_open") =>
 			view({
@@ -273,6 +281,8 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 		emailLog: [],
 		history: [],
 		availableCommands: [],
+		paidVia: null,
+		carriedFee: null,
 		firstName: "Aoife",
 		lastName: "Byrne",
 		minor: false,
@@ -349,6 +359,8 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 		emailLog: [],
 		history: [],
 		availableCommands: [],
+		paidVia: null,
+		carriedFee: null,
 	});
 
 	function finalised(by: string | null = "Aoife Coach") {
@@ -492,6 +504,8 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 	it("names every command and words a repeat that changed nothing", () => {
 		expect(INTAKE_COMMANDS).toEqual([
 			"decline",
+			"defer",
+			"confirm",
 			"cancel_with_refund",
 			"withdraw",
 			"resend_link",
@@ -499,6 +513,8 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 		]);
 		expect(INTAKE_COMMANDS.map(intakeCommandLabel)).toEqual([
 			"Decline",
+			"Defer",
+			"Confirm with Carried Fee",
 			"Cancel with refund",
 			"Withdraw…",
 			"Resend link",
@@ -509,6 +525,38 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 		);
 		expect(intakeCommandDone("decline", "already_done")).toBe(
 			"Already done — nothing changed",
+		);
+	});
+
+	it("ALE-388: words Carried Fees, a person's own confirm and a holder who hasn't confirmed", () => {
+		expect(carriedFeeLabel("held")).toBe("Carried Fee · held");
+		expect(carriedFeeLabel(null)).toBeNull();
+		expect(
+			historyLine({
+				command: "confirm",
+				actor: null,
+				occurredAt: "2026-10-22T11:00:00Z",
+				note: null,
+			}),
+		).toBe("Confirmed with Carried Fee · by the person · Thu 22 Oct, 12:00");
+		expect(
+			historyLine({
+				command: "defer",
+				actor: null,
+				occurredAt: "2026-10-22T11:00:00Z",
+				note: null,
+			}),
+		).toBe("Deferred · a former member · Thu 22 Oct, 12:00");
+		expect(
+			unconfirmedCarriedFeeText({
+				id: "0b0c3b2e-8a43-4a8d-9a39-5b9d8a2ab002",
+				firstName: "Dara",
+				lastName: "Nolan",
+				batchNumber: 1,
+				contactedAt: "2026-10-20T09:00:00Z",
+			}),
+		).toMatch(
+			/^Dara Nolan holds a Carried Fee and hasn't confirmed \(contacted Tue 20 Oct, 10:00\)/,
 		);
 	});
 

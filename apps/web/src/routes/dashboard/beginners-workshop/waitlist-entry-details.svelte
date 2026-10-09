@@ -1,5 +1,6 @@
 <script lang="ts">
-import type { WaitlistEntry } from "@dhc/api-client";
+import type { BeginnersCarriedFeeStatus, WaitlistEntry } from "@dhc/api-client";
+import { carriedFeeLabel } from "#lib/beginners-workshops/console.js";
 import { cn } from "#lib/utils.js";
 
 type Props = {
@@ -12,9 +13,11 @@ type Props = {
 	>;
 	/** `table` lays the panels out as bordered cards side by side; `card` stacks them. */
 	layout: "table" | "card";
+	/** The person's live Carried Fee (ALE-388), from Beginners' Workshops. */
+	carriedFee?: BeginnersCarriedFeeStatus | null;
 };
 
-let { entry, layout }: Props = $props();
+let { entry, layout, carriedFee = null }: Props = $props();
 
 const hasGuardian = $derived(
 	Boolean(
@@ -61,6 +64,17 @@ const panel = $derived(
 		<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
 		<p class="text-xs">
 			{entry.medicalConditions || "None reported"}
+		</p>
+	</div>
+
+	<div class={panel} data-testid="waitlist-carried-fee">
+		<h3 class="text-sm font-medium mb-2">Carried Fee</h3>
+		<p class="text-xs">
+			{carriedFee === "held"
+				? "Held — a prepaid seat: they confirm instead of paying when contacted"
+				: carriedFee === "applied"
+					? "Applied — it paid their current Intake"
+					: (carriedFeeLabel(carriedFee) ?? "None")}
 		</p>
 	</div>
 </div>

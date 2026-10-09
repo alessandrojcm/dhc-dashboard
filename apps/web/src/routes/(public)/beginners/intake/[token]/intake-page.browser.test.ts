@@ -138,3 +138,65 @@ test("closed: an inactive (or unknown) link says it is no longer active and show
 	).toHaveLength(0);
 	expect(screen.getByRole("button").elements()).toHaveLength(0);
 });
+
+// ALE-388: a Carried Fee holder confirms instead of paying.
+test("confirm: a Carried Fee holder gets one Confirm my place button and no fee", async () => {
+	const screen = await render(IntakePage, {
+		page: page({ state: "confirm", action: "confirm", feeCents: null }),
+		token,
+	});
+
+	await expect
+		.element(
+			screen.getByRole("heading", {
+				name: "Confirm your place at the Beginners' Workshop",
+			}),
+		)
+		.toBeVisible();
+	await expect.element(screen.getByText(/nothing to pay/)).toBeVisible();
+	await expect
+		.element(screen.getByRole("list", { name: "Workshop" }))
+		.toHaveTextContent("St. Andrew's Hall");
+	await expect
+		.element(screen.getByRole("button", { name: "Confirm my place" }))
+		.toBeEnabled();
+	expect(screen.getByRole("button").elements()).toHaveLength(1);
+	expect(screen.getByText("€40.00").elements()).toHaveLength(0);
+	expect(screen.getByRole("button", { name: /Pay/ }).elements()).toHaveLength(
+		0,
+	);
+	expect(
+		document.querySelector("input[type=hidden]")?.getAttribute("value"),
+	).toBe(token);
+});
+
+test("a Carried Fee holder who finds the workshop full keeps their fee and checks again", async () => {
+	const refresh = vi.fn();
+	const screen = await render(IntakePage, {
+		page: page({ state: "full", action: "check_again", feeCents: null }),
+		token,
+		refresh,
+	});
+
+	await expect
+		.element(screen.getByText(/Your Carried Fee is kept/))
+		.toBeVisible();
+	await screen.getByRole("button", { name: "Check again" }).click();
+	expect(refresh).toHaveBeenCalledOnce();
+});
+
+test("paid by a Carried Fee: confirmed, with no fee shown", async () => {
+	const screen = await render(IntakePage, {
+		page: page({ state: "paid", action: "none", feeCents: null }),
+		token,
+	});
+
+	await expect
+		.element(screen.getByRole("heading", { name: "Your place is confirmed" }))
+		.toBeVisible();
+	await expect
+		.element(screen.getByText(/Your Carried Fee covers your place/))
+		.toBeVisible();
+	expect(screen.getByText(/paid$/).elements()).toHaveLength(0);
+	expect(screen.getByRole("button").elements()).toHaveLength(0);
+});

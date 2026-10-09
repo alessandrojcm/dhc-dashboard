@@ -7,13 +7,15 @@ defmodule Dhc.BeginnersWorkshops.FastTrackCandidates do
   authorization, and the boundary decides again under the lock.
 
   Only people with a Waitlist profile and an email are listed (the Contact
-  email is addressed by first name). Matches the search text against first
+  email is addressed by first name). Each says whether they hold a `held`
+  Carried Fee; after the Payment Cutoff only those holders are listed, as
+  only they may be placed then (ALE-388). Matches the search text against first
   name, last name and email; oldest priority first, at most `@limit` rows.
   """
 
   import Ecto.Query
 
-  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Clock, Intake, WorkshopPolicy}
+  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, CarriedFee, Clock, Intake, WorkshopPolicy}
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist
@@ -33,7 +35,8 @@ defmodule Dhc.BeginnersWorkshops.FastTrackCandidates do
           email: String.t(),
           status: String.t(),
           removed_at: DateTime.t() | nil,
-          minor: boolean()
+          minor: boolean(),
+          carried_fee: boolean()
         }
 
   @doc "The candidates for `workshop_id` matching `search`, judged at the clock's reading."
@@ -41,11 +44,13 @@ defmodule Dhc.BeginnersWorkshops.FastTrackCandidates do
   def search(workshop_id, search, %Clock{} = clock) do
     with {:ok, id} <- Ecto.UUID.cast(workshop_id),
          %BeginnersWorkshop{} = workshop <- Repo.get(BeginnersWorkshop, id) do
-      now = Clock.read(clock).now
+      reading = Clock.read(clock)
+      now = reading.now
 
       rows =
         now
         |> candidates()
+        |> holders_only(not WorkshopPolicy.payment_open?(workshop, reading))
         |> matching(search)
         |> Repo.all()
         |> Enum.filter(&(&1.status == "waiting" or Waitlist.restorable?(&1.removed_at, now)))
@@ -96,10 +101,21 @@ defmodule Dhc.BeginnersWorkshops.FastTrackCandidates do
         email: e.email,
         status: e.status,
         removed_at: e.removed_at,
-        date_of_birth: p.date_of_birth
+        date_of_birth: p.date_of_birth,
+        carried_fee: exists(held_fee())
       }
     )
   end
+
+  defp held_fee,
+    do:
+      from(f in CarriedFee,
+        where: f.waitlist_id == parent_as(:entry).id and f.status == "held",
+        select: 1
+      )
+
+  defp holders_only(query, false), do: query
+  defp holders_only(query, true), do: where(query, exists(held_fee()))
 
   defp matching(query, search) when is_binary(search) do
     case String.trim(search) do

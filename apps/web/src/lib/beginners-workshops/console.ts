@@ -6,6 +6,7 @@
  * Instants are shown on the Europe/Dublin wall clock.
  */
 import type {
+	BeginnersCarriedFeeStatus,
 	BeginnersWorkshopConsole,
 	BeginnersWorkshopConsoleInvitations,
 	BeginnersWorkshopFollowUp,
@@ -17,6 +18,7 @@ import type {
 	BeginnersWorkshopIntakeState,
 	BeginnersWorkshopNextBatch,
 	BeginnersWorkshopRosterIntake,
+	BeginnersWorkshopUnconfirmedCarriedFee,
 	WaitlistStatus,
 	BeginnersWorkshopUnpaidAfterWindow,
 } from "@dhc/api-client";
@@ -438,6 +440,16 @@ const INTAKE_COMMAND_COPY = {
 		done: "Declined — they keep their place in the queue",
 		history: "Declined",
 	},
+	defer: {
+		label: "Defer",
+		done: "Deferred — their fee is a Carried Fee and they keep their place in the queue",
+		history: "Deferred",
+	},
+	confirm: {
+		label: "Confirm with Carried Fee",
+		done: "Place confirmed with their Carried Fee",
+		history: "Confirmed with Carried Fee",
+	},
 	cancel_with_refund: {
 		label: "Cancel with refund",
 		done: "Cancelled — refund requested; they keep their place in the queue",
@@ -466,6 +478,8 @@ const INTAKE_COMMAND_COPY = {
 /** Every Intake command, in display order (Phoenix lists them in this order too). */
 export const INTAKE_COMMANDS = [
 	"decline",
+	"defer",
+	"confirm",
 	"cancel_with_refund",
 	"withdraw",
 	"resend_link",
@@ -479,6 +493,8 @@ export const INTAKE_COMMANDS = [
  */
 export const INTAKE_BUTTON_COMMANDS = [
 	"decline",
+	"defer",
+	"confirm",
 	"cancel_with_refund",
 	"resend_link",
 	"rotate_link",
@@ -552,11 +568,40 @@ export function intakeCommandDone(
 export function historyLine(
 	entry: BeginnersWorkshopIntakeHistoryEntry,
 ): string {
+	// A confirm without an actor is the person's own, from their Intake page.
+	const actor =
+		entry.actor ??
+		(entry.command === "confirm" ? "by the person" : "a former member");
 	return [
 		INTAKE_COMMAND_COPY[entry.command].history,
-		entry.actor ?? "a former member",
+		actor,
 		formatDublinInstant(entry.occurredAt),
 	].join(" · ");
+}
+
+const CARRIED_FEE_LABELS = {
+	held: "Carried Fee · held",
+	applied: "Carried Fee · applied",
+	spent: "Carried Fee · spent",
+	refunded: "Carried Fee · refunded",
+	forfeited: "Carried Fee · forfeited",
+} satisfies Record<BeginnersCarriedFeeStatus, string>;
+
+/**
+ * ALE-388: a Carried Fee's status as the console and the Waitlist show it,
+ * or `null` without one.
+ */
+export function carriedFeeLabel(
+	status: BeginnersCarriedFeeStatus | null | undefined,
+): string | null {
+	return status ? CARRIED_FEE_LABELS[status] : null;
+}
+
+/** The Needs attention line of a Carried Fee holder who hasn't confirmed. */
+export function unconfirmedCarriedFeeText(
+	person: BeginnersWorkshopUnconfirmedCarriedFee,
+): string {
+	return `${personName(person)} holds a Carried Fee and hasn't confirmed (contacted ${formatDublinInstant(person.contactedAt)}). They can confirm until the workshop is finished; confirm for them if they replied by email.`;
 }
 
 /** One line of an Intake's email log, as the console shows it. */

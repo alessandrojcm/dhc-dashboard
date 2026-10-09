@@ -46,6 +46,8 @@ import {
 	personName,
 	refundLabel,
 	rosterGroups,
+	carriedFeeLabel,
+	unconfirmedCarriedFeeText,
 	standingLabel,
 	type TimelineStep,
 	unpaidAfterWindowText,
@@ -222,7 +224,7 @@ const attention = $derived(
 			{/if}
 		</section>
 
-		{#if attention.length || workshop.alerts.length || view.failedRefunds.length || view.unpaidAfterWindow.length}
+		{#if attention.length || workshop.alerts.length || view.failedRefunds.length || view.unpaidAfterWindow.length || view.unconfirmedCarriedFees.length}
 			<section class="flex flex-col gap-2" aria-labelledby="bw-attention">
 				<h2
 					id="bw-attention"
@@ -247,6 +249,18 @@ const attention = $derived(
 					>
 						<AlertTriangle class="size-4 shrink-0" /><span
 							>{unpaidAfterWindowText(person)}</span
+						>
+					</button>
+				{/each}
+				{#each view.unconfirmedCarriedFees as person (person.id)}
+					<button
+						type="button"
+						class="flex items-center gap-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-left text-sm"
+						data-testid="unconfirmed-carried-fee"
+						onclick={() => (selectedIntakeId = person.id)}
+					>
+						<AlertTriangle class="size-4 shrink-0" /><span
+							>{unconfirmedCarriedFeeText(person)}</span
 						>
 					</button>
 				{/each}
@@ -297,7 +311,7 @@ const attention = $derived(
 						<Button
 							type="button"
 							variant="outline"
-							disabled={!view.fastTrackOpen}
+							disabled={!view.fastTrackOpen && !view.fastTrackHoldersOnly}
 							onclick={() => {
 								fastTrackMounted = true;
 								fastTrackDialogOpen = true;
@@ -340,6 +354,11 @@ const attention = $derived(
 								>
 								<span class="flex-1 font-medium">{personName(person)}</span>
 								{#if person.minor}<Badge variant="outline">Minor</Badge>{/if}
+								{#if person.confirms}<Badge
+										variant="outline"
+										class="border-emerald-700 text-emerald-900"
+										data-testid="confirms">confirms</Badge
+									>{/if}
 							</li>
 						{/each}
 					</ol>
@@ -386,6 +405,11 @@ const attention = $derived(
 													"border-emerald-700 text-emerald-900",
 											)}
 											data-testid="refund-status">{refund.text}</Badge
+										>{/if}
+									{#if carriedFeeLabel(intake.carriedFee)}<Badge
+											variant="outline"
+											data-testid="carried-fee"
+											>{carriedFeeLabel(intake.carriedFee)}</Badge
 										>{/if}
 									{#if holdLabel(intake)}<Badge
 											variant="outline"
@@ -470,6 +494,7 @@ const attention = $derived(
 	<FastTrackDialog
 		{workshop}
 		fastTrackOpen={view.fastTrackOpen}
+		holdersOnly={view.fastTrackHoldersOnly}
 		{genders}
 		bind:open={fastTrackDialogOpen}
 	/>

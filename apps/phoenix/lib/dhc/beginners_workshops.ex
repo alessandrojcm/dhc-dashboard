@@ -15,6 +15,7 @@ defmodule Dhc.BeginnersWorkshops do
 
   alias Dhc.BeginnersWorkshops.{
     BeginnersWorkshop,
+    CarriedFee,
     Clock,
     Commands,
     DoorView,
@@ -30,6 +31,7 @@ defmodule Dhc.BeginnersWorkshops do
   }
 
   alias Dhc.Repo
+  alias Dhc.Waitlist.Import
 
   @doc """
   Executes one Beginners' Workshop command as `actor` — the only write path.
@@ -233,6 +235,7 @@ defmodule Dhc.BeginnersWorkshops do
   defp cutoff_owed_ids(now) do
     owed =
       from(i in Intake,
+        as: :intake,
         join: w in BeginnersWorkshop,
         on: w.id == i.workshop_id,
         left_join: l in IntakeEmailLog,
@@ -244,8 +247,16 @@ defmodule Dhc.BeginnersWorkshops do
                 w.reschedule_count,
                 w.reschedule_count
               ),
+        # A Carried Fee holder's contacted Intake stays open until
+        # finalisation (ALE-388), so it owes the cutoff pass nothing.
         where:
-          i.state == "contacted" or
+          (i.state == "contacted" and
+             not exists(
+               from(f in CarriedFee,
+                 where: f.waitlist_id == parent_as(:intake).waitlist_id and f.status == "held",
+                 select: 1
+               )
+             )) or
             (i.state == "paid" and not is_nil(i.waitlist_id) and is_nil(l.id)),
         select: i.workshop_id
       )
@@ -300,6 +311,52 @@ defmodule Dhc.BeginnersWorkshops do
   @spec door_view(term(), keyword()) ::
           {:ok, DoorView.t(), DoorView.resource()} | {:error, :not_found}
   def door_view(workshop_id, opts \\ []), do: DoorView.load(workshop_id, Clock.from_opts(opts))
+
+  @doc """
+  The status of each person's live Carried Fee (ALE-388), for the Waitlist
+  view: `%{waitlist_id => "held" | "applied"}`; people without one are
+  absent. The Waitlist cannot read Beginners' Workshops, so the dashboard
+  asks here.
+  """
+  @spec carried_fees([binary()]) :: %{binary() => String.t()}
+  def carried_fees([]), do: %{}
+
+  def carried_fees(waitlist_ids) when is_list(waitlist_ids) do
+    live = CarriedFee.live_statuses()
+
+    from(f in CarriedFee,
+      where: f.waitlist_id in ^waitlist_ids and f.status in ^live,
+      select: {f.waitlist_id, f.status}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
+  The one-time Waitlist spreadsheet import (ALE-376) with its Carried Fees
+  (ALE-388): `Dhc.Waitlist.Import.import_sheet/2`, with every row whose Paid
+  cell is set given a `held` Carried Fee inside that row's transaction
+  (`{:import_carried_fee, …}` through `execute/3`). The Waitlist cannot call
+  up into Beginners' Workshops, so this is the entry point the mix task and
+  `Dhc.Release.import_waitlist/2` use. `dry_run: true` rolls every row back.
+  """
+  @spec import_waitlist(String.t(), keyword()) :: {:ok, map()} | {:error, String.t()}
+  def import_waitlist(contents, opts \\ []) when is_binary(contents) do
+    command_opts = Keyword.take(opts, [:clock])
+
+    carried_fee = fn
+      _waitlist_id, %{carried_fee?: false} ->
+        :ok
+
+      waitlist_id, %{carried_fee?: true, raw: raw} ->
+        case execute(:system, {:import_carried_fee, waitlist_id, raw}, command_opts) do
+          {:ok, _fee} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+
+    Import.import_sheet(contents, Keyword.put(opts, :carried_fee, carried_fee))
+  end
 
   @doc "Every active Member the Staff dialog may pick, coaches marked."
   @spec staff_candidates() :: [StaffCandidates.t()]

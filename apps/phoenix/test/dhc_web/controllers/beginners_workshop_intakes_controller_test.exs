@@ -89,7 +89,7 @@ defmodule DhcWeb.BeginnersWorkshopIntakesControllerTest do
     assert seated["id"] == paid.id
 
     assert seated["availableCommands"] ==
-             ~w(cancel_with_refund withdraw resend_link rotate_link)
+             ~w(defer cancel_with_refund withdraw resend_link rotate_link)
 
     assert [_contact, %{"emailType" => "pre_workshop", "scheduled" => true}] =
              seated["emailLog"]

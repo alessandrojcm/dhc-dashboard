@@ -9,10 +9,12 @@ import FastTrackDialog from "./fast-track-dialog.svelte";
 let {
 	workshop,
 	fastTrackOpen,
+	holdersOnly = false,
 	searchCandidates,
 }: {
 	workshop: BeginnersWorkshop;
 	fastTrackOpen: boolean;
+	holdersOnly?: boolean;
 	searchCandidates: (
 		query: string,
 	) => Promise<BeginnersWorkshopFastTrackCandidate[]>;
@@ -27,6 +29,7 @@ const queryClient = new QueryClient({
 	<FastTrackDialog
 		{workshop}
 		{fastTrackOpen}
+		{holdersOnly}
 		genders={["woman (cis)", "man (cis)", "non-binary"]}
 		open={true}
 		{searchCandidates}

@@ -4465,6 +4465,92 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/{id}/intakes/{intakeId}/defer:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.defer
+      tags: [BeginnersWorkshops]
+      summary: Defer a paid Intake (its fee becomes a Carried Fee)
+      description: |
+        The person can't make the date: the `paid` Intake becomes `deferred`
+        and the person goes back to the Waitlist as `waiting` with their
+        original priority. A Stripe-paid Intake's fee becomes a `held`
+        Carried Fee (a prepaid seat that never expires); a Carried-Fee-paid
+        Intake's fee goes back to `held`. "Deferred" is queued. Refused with
+        `intake_not_paid` for a contacted Intake and `intake_closed` for a closed
+        one; repeating it answers `already_done`.
+        The optional note is recorded in the Intake's history with who ran
+        the command and when. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandRequest"}
+      responses:
+        "200":
+          description: The Intake after the command
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/{id}/intakes/{intakeId}/confirm:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.confirm
+      tags: [BeginnersWorkshops]
+      summary: Confirm a Carried Fee holder's place on their behalf
+      description: |
+        The same as the person pressing "Confirm my place": a `contacted`
+        Intake whose person holds a `held` Carried Fee becomes `paid` by the
+        fee (no Stripe payment, no Seat Hold) and the fee is applied. Not
+        stopped by the Payment Cutoff; allowed until Attendance
+        Finalisation. Refused with `full` (every seat paid or held),
+        `no_carried_fee`, `already_paid` or `intake_closed`; repeating it
+        answers `already_done`. Queues "Place confirmed – Carried Fee".
+        The optional note is recorded in the Intake's history with who ran
+        the command and when. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandRequest"}
+      responses:
+        "200":
+          description: The Intake after the command
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
   /beginners-workshops/{id}/intakes/{intakeId}/resend-link:
     parameters:
       - $ref: "#/components/parameters/BeginnersWorkshopId"
@@ -4544,6 +4630,40 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
 
+  /beginners-workshops/carried-fees:
+    get:
+      operationId: beginnersWorkshopCarriedFees.index
+      tags: [BeginnersWorkshops]
+      summary: Carried Fee status of Waitlist people
+      description: |
+        For the Waitlist view: the status of each listed person's live
+        Carried Fee (`held` or `applied`), keyed by Waitlist entry id; people
+        without one are absent. At most 100 ids. Requires
+        `beginners.waitlist.manage`.
+      security: [{cookieSession: []}]
+      parameters:
+        - name: waitlistIds
+          in: query
+          required: true
+          description: Comma-separated Waitlist entry ids (at most 100).
+          schema: {type: string}
+      responses:
+        "200":
+          description: The live Carried Fees of the given people
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeesResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403":
+          description: The `beginners.waitlist.manage` capability is required
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422":
+          description: Not a list of at most 100 ids
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
   /beginners-workshops/{id}/intakes/{intakeId}/cancel-with-refund:
     parameters:
       - $ref: "#/components/parameters/BeginnersWorkshopId"
@@ -4684,7 +4804,7 @@ paths:
       description: |
         Public: the token in the path is the capability (no login, no
         verification). Answers a closed safe view whose `state` is the
-        discriminator: `pay | payment_in_progress | full | paid | closed`.
+        discriminator: `pay | confirm | payment_in_progress | full | paid | closed`.
         It carries the first name, the workshop date, start time and venue,
         the fee and one action, never an id or a Stripe object; an inactive
         Intake's page carries none of them. An unknown link is 404, which
@@ -4711,9 +4831,10 @@ paths:
         row with the fee frozen) and creates the hosted Checkout Session;
         while the person's hold is live it answers the same session again.
         Refused with `full` when every seat is paid or held, `after_cutoff`
-        after the Payment Cutoff, `already_paid`, `intake_closed`, or
+        after the Payment Cutoff, `already_paid`, `intake_closed`,
         `payment_in_progress` when the hold ran out and Stripe has not ended
-        it yet. `success_url` and `cancel_url` return to the same Intake
+        it yet, or `confirm_instead` when the person holds a Carried Fee
+        (they confirm instead of paying). `success_url` and `cancel_url` return to the same Intake
         link. 503 when Stripe is unavailable (try again).
       security: []
       responses:
@@ -4727,6 +4848,30 @@ paths:
         "404": {$ref: "#/components/responses/BeginnersIntakeNotFound"}
         "409": {$ref: "#/components/responses/BeginnersIntakeConflict"}
         "503": {$ref: "#/components/responses/BeginnersIntakeUnavailable"}
+  /beginners/intake/{token}/confirm:
+    parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
+    post:
+      operationId: beginnersWorkshopIntake.confirm
+      tags: [BeginnersWorkshops]
+      summary: Confirm my place with my Carried Fee
+      description: |
+        The `confirm` page action: a Carried Fee holder takes a seat in one
+        click, with the same seat rule as a payment and no Stripe call. It is
+        not stopped by the Payment Cutoff. Answers the Intake page (`paid`);
+        pressing it again answers the same page. Refused with `full` (the
+        fee stays held; try again), `no_carried_fee`, `already_paid` or
+        `intake_closed`.
+      security: []
+      responses:
+        "200":
+          description: The Intake page after confirming
+          headers:
+            Referrer-Policy: {$ref: "#/components/headers/NoReferrer"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersIntakePageResponse"}
+        "404": {$ref: "#/components/responses/BeginnersIntakeNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersIntakeConflict"}
   /beginners/intake/{token}/return:
     parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
     post:
@@ -8809,12 +8954,15 @@ components:
     BeginnersWorkshopProposedPerson:
       type: object
       description: One person in the Next Batch proposal, in Waitlist priority order.
-      required: [firstName, lastName, minor, queueDate]
+      required: [firstName, lastName, minor, queueDate, confirms]
       properties:
         firstName: {type: string, nullable: true}
         lastName: {type: string, nullable: true}
         minor: {type: boolean, description: Under 18 on the workshop date.}
         queueDate: {type: string, format: date-time}
+        confirms:
+          type: boolean
+          description: Holds a Carried Fee, so they will be asked to confirm rather than pay.
     BeginnersWorkshopNextBatch:
       type: object
       description: |
@@ -8854,7 +9002,7 @@ components:
       description: |
         One Intake on the console roster. Names are null once the person is
         anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands, standing]
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands, paidVia, carriedFee, standing]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -8914,9 +9062,27 @@ components:
             rule the boundary applies under the lock. Advisory: a stale list
             is refused with a named reason.
           items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommand"}
+        paidVia:
+          type: string
+          nullable: true
+          enum: [stripe, carried_fee, null]
+          description: How a paid Intake was paid (null until then).
+        carriedFee:
+          allOf: [{$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}]
+          nullable: true
+          description: |
+            The Carried Fee that paid this Intake, else the person's live one
+            (null without one).
+    BeginnersCarriedFeeStatus:
+      type: string
+      description: |
+        A Carried Fee (a prepaid seat that never expires): `held` (the person
+        will confirm instead of paying), `applied` (it paid an Intake),
+        `spent` (they attended), `refunded`, `forfeited`.
+      enum: [held, applied, spent, refunded, forfeited]
     BeginnersWorkshopIntakeCommand:
       type: string
-      enum: [decline, cancel_with_refund, withdraw, resend_link, rotate_link]
+      enum: [decline, defer, confirm, cancel_with_refund, withdraw, resend_link, rotate_link]
     BeginnersWorkshopIntakeEmailLogEntry:
       type: object
       description: |
@@ -8930,7 +9096,10 @@ components:
         scheduled: {type: boolean}
     BeginnersWorkshopIntakeHistoryEntry:
       type: object
-      description: One console command run on an Intake. `actor` is null once the person who ran it is gone.
+      description: |
+        One console command run on an Intake. `actor` is null once the person
+        who ran it is gone, and for a `confirm` the person made themselves
+        on their Intake page.
       required: [command, actor, occurredAt, note]
       properties:
         command: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommand"}
@@ -9000,6 +9169,16 @@ components:
         lastName: {type: string, nullable: true}
         batchNumber: {type: integer, nullable: true, minimum: 1}
         windowEndsAt: {type: string, format: date-time}
+    BeginnersWorkshopUnconfirmedCarriedFee:
+      type: object
+      description: A contacted Carried Fee holder who has not confirmed yet.
+      required: [id, firstName, lastName, batchNumber, contactedAt]
+      properties:
+        id: {type: string, format: uuid, description: The Intake id}
+        firstName: {type: string, nullable: true}
+        lastName: {type: string, nullable: true}
+        batchNumber: {type: integer, nullable: true, minimum: 1}
+        contactedAt: {type: string, format: date-time}
     BeginnersWorkshopRefundStatus:
       type: string
       description: |
@@ -9080,17 +9259,20 @@ components:
       type: string
       description: |
         `pay`: a seat is free (or the person's own hold is live).
+        `confirm`: the person holds a Carried Fee and a seat is free; they
+        confirm instead of paying (not closed by the Payment Cutoff).
         `payment_in_progress`: back from checkout, or the hold ran out and
         Stripe has not ended it yet — refresh until `paid`. `full`: every seat
         is paid or held; seats may free up before the cutoff. `paid`.
         `closed`: see `closedReason`.
-      enum: [pay, payment_in_progress, full, paid, closed]
+      enum: [pay, confirm, payment_in_progress, full, paid, closed]
     BeginnersIntakeAction:
       type: string
       description: |
-        The one action: `pay` (start checkout), `continue_payment` (back to the
-        live hold's checkout), `check_again` (reload), `none`.
-      enum: [pay, continue_payment, check_again, none]
+        The one action: `pay` (start checkout), `confirm` (confirm with the
+        Carried Fee), `continue_payment` (back to the live hold's checkout),
+        `check_again` (reload), `none`.
+      enum: [pay, confirm, continue_payment, check_again, none]
     BeginnersIntakeClosedReason:
       type: string
       description: "`inactive`: the Intake is no longer open. `payment_closed`: the Payment Cutoff has passed."
@@ -9108,6 +9290,7 @@ components:
         The person's Intake page (`Dhc.BeginnersWorkshops.IntakePage`): a
         closed safe view; `state` is the discriminator. The person and
         workshop details are null only on an `inactive` closed page.
+        `feeCents` is null for a Carried Fee holder (a prepaid seat).
       required: [state, action, closedReason, firstName, workshop, feeCents]
       properties:
         state: {$ref: "#/components/schemas/BeginnersIntakeState"}
@@ -9141,7 +9324,7 @@ components:
           type: string
           description: The Checkout Session id Stripe put in the success URL.
     BeginnersIntakeConflictError:
-      description: 409 refusal of `startPayment`.
+      description: 409 refusal of `startPayment` or `confirm`.
       allOf:
         - $ref: "#/components/schemas/Error"
         - type: object
@@ -9153,7 +9336,7 @@ components:
               properties:
                 code:
                   type: string
-                  enum: [after_cutoff, full, already_paid, intake_closed, payment_in_progress]
+                  enum: [after_cutoff, full, already_paid, intake_closed, payment_in_progress, confirm_instead, no_carried_fee]
     BeginnersWorkshopRoster:
       type: object
       description: |
@@ -9183,7 +9366,7 @@ components:
       enum: [nobody_waiting]
     BeginnersWorkshopConsole:
       type: object
-      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, unpaidAfterWindow, attention, fastTrackOpen, finalisation]
+      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, unpaidAfterWindow, unconfirmedCarriedFees, attention, fastTrackOpen, fastTrackHoldersOnly, finalisation]
       properties:
         workshop: {$ref: "#/components/schemas/BeginnersWorkshop"}
         batches:
@@ -9201,6 +9384,10 @@ components:
           type: array
           description: Needs attention — contacted people still unpaid after their payment window, oldest window first.
           items: {$ref: "#/components/schemas/BeginnersWorkshopUnpaidAfterWindow"}
+        unconfirmedCarriedFees:
+          type: array
+          description: Needs attention — contacted Carried Fee holders who have not confirmed yet.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopUnconfirmedCarriedFee"}
         attention:
           type: array
           items: {$ref: "#/components/schemas/BeginnersWorkshopAttention"}
@@ -9209,6 +9396,11 @@ components:
           description: |
             Whether Fast-track is offered now: the workshop is scheduled and
             before its Payment Cutoff (the rule `fast_track` applies).
+        fastTrackHoldersOnly:
+          type: boolean
+          description: |
+            After the Payment Cutoff of a scheduled workshop: only Carried
+            Fee holders may still be fast-tracked (they confirm, never pay).
         finalisation:
           allOf:
             - $ref: "#/components/schemas/BeginnersWorkshopConsoleFinalisation"
@@ -9238,8 +9430,9 @@ components:
       description: |
         A person the Fast-track dialog may place: `waiting`, or `removed`
         within the 3-month retention window (placing them restores them).
-        Nobody with an open Intake is listed.
-      required: [waitlistId, firstName, lastName, email, status, removedAt, minor]
+        Nobody with an open Intake is listed. After the Payment Cutoff only
+        Carried Fee holders are listed.
+      required: [waitlistId, firstName, lastName, email, status, removedAt, minor, carriedFee]
       properties:
         waitlistId: {type: string, format: uuid}
         firstName: {type: string, nullable: true}
@@ -9250,6 +9443,9 @@ components:
         minor:
           type: boolean
           description: Under 18 on the workshop date.
+        carriedFee:
+          type: boolean
+          description: Holds a `held` Carried Fee (will confirm rather than pay).
     BeginnersWorkshopFastTrackCandidatesResponse:
       type: object
       required: [data]
@@ -9499,6 +9695,20 @@ components:
                     - nothing_to_refund
                     - already_requested
                     - already_invited
+                    - no_carried_fee
+                    - full
+                    - payment_not_found
+    BeginnersWorkshopCarriedFees:
+      type: object
+      description: |
+        The status of each person's live Carried Fee, keyed by Waitlist entry
+        id. People without one are absent.
+      additionalProperties: {$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}
+    BeginnersWorkshopCarriedFeesResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFees"}
     OnboardingStartAcceptanceRequest:
       type: object
       required: [invitationId, email, dateOfBirth]
