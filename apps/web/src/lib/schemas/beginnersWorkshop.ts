@@ -141,6 +141,11 @@ export const doorCheckInSchema = v.object({
 	intakeId: v.pipe(v.string(), v.uuid("Unknown person.")),
 });
 
+/** ALE-391: Finish workshop (Attendance Finalisation) from the door. */
+export const doorFinishSchema = v.object({
+	id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+});
+
 export type ScheduleWorkshopsInput = v.InferInput<
 	typeof scheduleWorkshopsSchema
 >;

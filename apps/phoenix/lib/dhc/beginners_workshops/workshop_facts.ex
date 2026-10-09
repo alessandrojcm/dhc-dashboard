@@ -14,6 +14,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
   (`staff`, and `coach_assigned` derived from it). ALE-381 adds **Seat
   Holds** (`holds`): payment rows in `open`. Seats taken = `paid` + `holds`;
   `releasing` rows do not count, because their Intake is already closed.
+  ALE-391 adds the attendance outcome (`attended`, `no_show`) and reads a
+  finalised workshop's Staff by their frozen names.
   """
 
   import Ecto.Query
@@ -30,6 +32,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
   @type t :: %{
           paid: non_neg_integer(),
           holds: non_neg_integer(),
+          attended: non_neg_integer(),
+          no_show: non_neg_integer(),
           batches_sent: non_neg_integer(),
           latest_window_end: DateTime.t() | nil,
           batches_paused: boolean(),
@@ -43,6 +47,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
   @empty %{
     paid: 0,
     holds: 0,
+    attended: 0,
+    no_show: 0,
     batches_sent: 0,
     latest_window_end: nil,
     batches_paused: false,
@@ -76,7 +82,14 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
       from(i in Intake,
         where: i.workshop_id in ^workshop_ids,
         group_by: i.workshop_id,
-        select: {i.workshop_id, %{all: count(i.id), paid: filter(count(i.id), i.state == "paid")}}
+        select:
+          {i.workshop_id,
+           %{
+             all: count(i.id),
+             paid: filter(count(i.id), i.state == "paid"),
+             attended: filter(count(i.id), i.state == "attended"),
+             no_show: filter(count(i.id), i.state == "no_show")
+           }}
       )
       |> Repo.all()
       |> Map.new()
@@ -92,11 +105,13 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
 
     Map.new(workshop_ids, fn id ->
       batch = Map.get(batches, id, %{sent: 0, latest_window_end: nil})
-      intake = Map.get(intakes, id, %{all: 0, paid: 0})
+      intake = Map.get(intakes, id, %{all: 0, paid: 0, attended: 0, no_show: 0})
 
       facts = %{
         @empty
         | paid: intake.paid,
+          attended: intake.attended,
+          no_show: intake.no_show,
           holds: Map.get(holds, id, 0),
           intakes: intake.all,
           batches_sent: batch.sent,
@@ -122,7 +137,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
   defp with_staff(facts, staff), do: %{facts | staff: staff, coach_assigned: staff.coach != nil}
 
   # Assistants are listed by name, so the list reads the same everywhere. A
-  # Staff member without a profile (never expected) is still listed.
+  # Staff member without a profile (never expected) is still listed. A frozen
+  # row (ALE-391) names the person as they were at finalisation.
   defp load_staff(workshop_ids) do
     from(s in StaffAssignment,
       left_join: p in UserProfile,
@@ -134,7 +150,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
         role: s.role,
         principal_id: s.principal_id,
         first_name: p.first_name,
-        last_name: p.last_name
+        last_name: p.last_name,
+        frozen_name: s.frozen_name
       }
     )
     |> Repo.all()
@@ -152,7 +169,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
   end
 
   defp member(row),
-    do: %{principal_id: row.principal_id, name: display_name(row.first_name, row.last_name)}
+    do: %{
+      principal_id: row.principal_id,
+      name: row.frozen_name || display_name(row.first_name, row.last_name)
+    }
 
   @doc false
   @spec display_name(String.t() | nil, String.t() | nil) :: String.t()

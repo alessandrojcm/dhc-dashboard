@@ -15,15 +15,19 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       (when it goes out, or that it is paused, full or closed), its size as
       capacity − paid, and the live `BatchProposal` — exactly the people
       `send_due_batch` would contact now — with minors badged;
-    * `roster` — Intakes grouped by meaning before finalisation: `seated`
-      (paid), `asked` (contacted, not paid yet) and `out`; each Intake with
-      a live Seat Hold carries when its hold runs out (ALE-381), each paid
-      Intake its door check-in time (ALE-390), and each Intake with a
-      refund carries its latest refund's status, method and
-      whether it was automatic (ALE-382);
+    * `roster` — Intakes grouped by meaning: before finalisation `seated`
+      (paid), `asked` (contacted, not paid yet) and `out`; after it
+      (ALE-391) `attended`, `no_show` and `out`. Each Intake with a live
+      Seat Hold carries when its hold runs out (ALE-381), each paid Intake
+      its door check-in time (ALE-390), and each Intake with a refund
+      carries its latest refund's status, method and whether it was
+      automatic (ALE-382);
     * `failed_refunds` — the Needs attention list of refunds that failed
       and have not been followed up (Retry or Record manual refund), oldest
       first (ALE-382);
+    * `finalisation` (ALE-391) — `nil` until Attendance Finalisation, then
+      when, who pressed Finish (`nil`: automatically at the end of the day)
+      and when the Follow-up goes out (`WorkshopPolicy.follow_up_at/1`);
     * `attention` — `:nobody_waiting` when a Batch is due with free seats
       but nobody eligible is waiting;
     * `fast_track_open` — whether Fast-track is offered now
@@ -41,6 +45,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     BatchProposal,
     BeginnersWorkshop,
     Clock,
+    DoorView,
     Intake,
     IntakePayment,
     IntakeRefund,
@@ -52,12 +57,23 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
 
+  # Every state with a roster group of its own; the rest are `out`.
+  @not_out ~w(contacted paid attended no_show)
+
   @type t :: %{
           workshop: WorkshopProjection.t(),
           batches: [map()],
           pause: map(),
           next_batch: map(),
-          roster: %{seated: [map()], asked: [map()], out: [map()]},
+          roster: %{
+            seated: [map()],
+            asked: [map()],
+            attended: [map()],
+            no_show: [map()],
+            out: [map()]
+          },
+          finalisation:
+            %{at: DateTime.t(), by: String.t() | nil, follow_up_at: DateTime.t()} | nil,
           failed_refunds: [map()],
           attention: [:nobody_waiting],
           fast_track_open: boolean()
@@ -81,6 +97,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
          roster: roster(workshop),
          failed_refunds: failed_refunds(id),
          attention: attention(next_batch),
+         finalisation: finalisation(workshop),
          fast_track_open: WorkshopPolicy.payment_open?(workshop, reading)
        }}
     else
@@ -180,9 +197,21 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     %{
       seated: Enum.filter(rows, &(&1.state == "paid")),
       asked: Enum.filter(rows, &(&1.state == "contacted")),
-      out: Enum.reject(rows, &(&1.state in Intake.open_states()))
+      attended: Enum.filter(rows, &(&1.state == "attended")),
+      no_show: Enum.filter(rows, &(&1.state == "no_show")),
+      out: Enum.reject(rows, &(&1.state in @not_out))
     }
   end
+
+  defp finalisation(%BeginnersWorkshop{status: "finalised"} = workshop) do
+    %{
+      at: workshop.finalised_at,
+      by: DoorView.finaliser_name(workshop.finalised_by_principal_id),
+      follow_up_at: WorkshopPolicy.follow_up_at(workshop)
+    }
+  end
+
+  defp finalisation(%BeginnersWorkshop{}), do: nil
 
   # The latest refund of each Intake, by when it was requested.
   defp latest_refunds(workshop_id) do

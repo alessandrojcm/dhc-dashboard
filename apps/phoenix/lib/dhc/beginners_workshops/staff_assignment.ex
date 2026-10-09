@@ -4,8 +4,10 @@ defmodule Dhc.BeginnersWorkshops.StaffAssignment do
   Workshop's Staff, as its `coach` (at most one) or an `assistant`.
 
   Written only by `Dhc.BeginnersWorkshops.Commands` under the Beginners'
-  Workshop lock, and never updated: a change of role deletes the row and
-  inserts a new one, so a row id names exactly one assignment. Who may be
+  Workshop lock, and never updated except to freeze it: a change of role
+  deletes the row and inserts a new one, so a row id names exactly one
+  assignment, and Attendance Finalisation stamps `frozen_name` once, after
+  which the workshop's Staff never change again. Who may be
   assigned (a coach must hold `beginners.workshops.lead` at assignment) is
   the boundary's rule, not this schema's.
   """
@@ -26,6 +28,9 @@ defmodule Dhc.BeginnersWorkshops.StaffAssignment do
     field :principal_id, :binary_id
     field :role, :string
     field :assigned_by_principal_id, :binary_id
+    # ALE-391: the name at Attendance Finalisation, so the frozen Staff list
+    # keeps naming people who later leave the club.
+    field :frozen_name, :string
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at, updated_at: false)
   end
@@ -42,4 +47,9 @@ defmodule Dhc.BeginnersWorkshops.StaffAssignment do
     |> validate_required([:workshop_id, :principal_id, :role])
     |> validate_inclusion(:role, @roles)
   end
+
+  @doc "Freezes the assignment at Attendance Finalisation with the person's name then."
+  @spec freeze_changeset(t(), String.t()) :: Ecto.Changeset.t()
+  def freeze_changeset(%__MODULE__{} = row, name) when is_binary(name),
+    do: change(row, frozen_name: name)
 end

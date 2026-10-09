@@ -40,7 +40,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     assert operations |> Enum.map(&elem(&1, 1)["operationId"]) |> Enum.sort() ==
              ~w(beginnersWorkshopAssignments.list beginnersWorkshopBatches.pause
                 beginnersWorkshopBatches.resume beginnersWorkshopDoor.checkIn
-                beginnersWorkshopDoor.show beginnersWorkshopDoor.undoCheckIn
+                beginnersWorkshopDoor.finish beginnersWorkshopDoor.show beginnersWorkshopDoor.undoCheckIn
                 beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
                 beginnersWorkshopFastTrack.candidates beginnersWorkshopFastTrack.newPerson
                 beginnersWorkshopFastTrack.waitlistPerson
@@ -120,7 +120,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     codes =
       for name <-
             ~w(BeginnersWorkshopConflictError BeginnersWorkshopInvalidError
-               BeginnersWorkshopRefundConflictError BeginnersWorkshopCheckInConflictError),
+               BeginnersWorkshopRefundConflictError BeginnersWorkshopCheckInConflictError
+               BeginnersWorkshopFinishConflictError),
           code <-
             get_in(schemas, [
               name,

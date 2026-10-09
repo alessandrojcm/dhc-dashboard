@@ -56,6 +56,7 @@ function door(
 				checkedIn: { at: "2026-11-14T18:05:00Z", by: "Aoife Coach" },
 			}),
 		],
+		finalisation: null,
 		...overrides,
 	};
 }
@@ -188,4 +189,108 @@ test("before the window opens it says when, and offers no Check-in", async () =>
 	expect(
 		screen.getByRole("button", { name: /^Check in / }).elements(),
 	).toHaveLength(0);
+});
+
+test("Finish lists who becomes a no-show, then shows the finalised summary", async () => {
+	const calls: { id: string }[] = [];
+	const finishWorkshop = async (input: { id: string }) => {
+		calls.push(input);
+		const base = door();
+		return {
+			ok: true as const,
+			data: door({
+				status: "finalised",
+				stage: "finalised",
+				checkIn: { window: "closed", opensAt: base.checkIn.opensAt },
+				people: base.people.map((p) => ({
+					...p,
+					state: p.checkedIn ? ("attended" as const) : ("no_show" as const),
+				})),
+				finalisation: {
+					at: "2026-11-14T20:05:00Z",
+					by: "Aoife Coach",
+					attended: 1,
+					noShow: 2,
+				},
+			}),
+		};
+	};
+	const changes: string[] = [];
+	const screen = await render(DoorCheckIn, {
+		door: door(),
+		finishWorkshop,
+		onchange: (view: BeginnersWorkshopDoor) => changes.push(view.stage),
+	});
+
+	await userEvent.click(
+		screen.getByRole("button", { name: "Finish workshop (2 will be no-show)" }),
+	);
+
+	const dialog = screen.getByRole("dialog");
+	await expect.element(dialog).toHaveTextContent("Finish workshop?");
+	const noShows = screen.getByRole("list", { name: "Will be no-show" });
+	await expect.element(noShows).toHaveTextContent("Ciara Byrne");
+	await expect.element(noShows).toHaveTextContent("Dara Kelly");
+	await expect.element(noShows).not.toHaveTextContent("Niamh Walsh");
+
+	await userEvent.click(screen.getByRole("button", { name: "Not yet" }));
+	expect(calls).toEqual([]);
+
+	await userEvent.click(
+		screen.getByRole("button", { name: "Finish workshop (2 will be no-show)" }),
+	);
+	await userEvent.click(
+		screen.getByRole("button", { name: "Finish workshop", exact: true }),
+	);
+
+	expect(calls).toEqual([{ id: WORKSHOP }]);
+	expect(changes).toEqual(["finalised"]);
+	const summary = screen.getByTestId("door-finalised");
+	await expect
+		.element(summary)
+		.toHaveTextContent("Finalised Sat 14 Nov, 20:05 by Aoife Coach");
+	await expect.element(summary).toHaveTextContent("1 attended · 2 no-show");
+	await expect.element(screen.getByRole("dialog")).not.toBeInTheDocument();
+	expect(
+		screen.getByRole("button", { name: /^Finish workshop/ }).elements(),
+	).toHaveLength(0);
+	expect(
+		screen.getByRole("button", { name: /^Check in / }).elements(),
+	).toHaveLength(0);
+});
+
+test("before check-in opens there is no Finish", async () => {
+	const screen = await render(DoorCheckIn, {
+		door: door({
+			stage: "today_before_check_in",
+			checkIn: { window: "before", opensAt: "2026-11-14T17:30:00Z" },
+		}),
+	});
+
+	await expect.element(screen.getByTestId("door-window")).toBeVisible();
+	expect(
+		screen.getByRole("button", { name: /^Finish workshop/ }).elements(),
+	).toHaveLength(0);
+});
+
+test("an automatic finalisation says so", async () => {
+	const screen = await render(DoorCheckIn, {
+		door: door({
+			status: "finalised",
+			stage: "finalised",
+			checkIn: { window: "closed", opensAt: "2026-11-14T17:30:00Z" },
+			finalisation: {
+				at: "2026-11-15T00:00:00Z",
+				by: null,
+				attended: 1,
+				noShow: 2,
+			},
+		}),
+	});
+
+	await expect
+		.element(screen.getByTestId("door-finalised"))
+		.toHaveTextContent(
+			"Finalised Sun 15 Nov, 00:00 automatically at the end of the day",
+		);
 });

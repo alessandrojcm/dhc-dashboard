@@ -13,7 +13,11 @@ defmodule Dhc.BeginnersWorkshops.DoorView do
       Attendance Finalisation, `attended` / `no_show`), by name. Each carries
       name, pronouns, Intake state, medical conditions, the check-in record
       (when, and who by name) and, for a minor (under 18 on the workshop
-      date), a `minor` badge and the Guardian's name and phone.
+      date), a `minor` badge and the Guardian's name and phone;
+    * `finalisation` (ALE-391) — `nil` until Attendance Finalisation, then
+      the finalised summary: when, who pressed Finish (`nil` when it
+      finalised automatically at the end of the day) and how many attended
+      and were no-shows.
 
   Lock-free and actor-free. `load/2` also returns the assignment-scope
   resource (`assigned_principal_ids`) so the caller authorizes
@@ -60,7 +64,15 @@ defmodule Dhc.BeginnersWorkshops.DoorView do
           alerts: [WorkshopPolicy.alert()],
           staff: WorkshopFacts.staff(),
           check_in: %{window: WorkshopPolicy.check_in_window(), opens_at: DateTime.t()},
-          people: [person()]
+          people: [person()],
+          finalisation: finalisation() | nil
+        }
+
+  @type finalisation :: %{
+          at: DateTime.t(),
+          by: String.t() | nil,
+          attended: non_neg_integer(),
+          no_show: non_neg_integer()
         }
 
   @type resource :: %{assigned_principal_ids: [binary()]}
@@ -86,7 +98,8 @@ defmodule Dhc.BeginnersWorkshops.DoorView do
           window: WorkshopPolicy.check_in_window(workshop, reading),
           opens_at: WorkshopPolicy.check_in_opens_at(workshop)
         },
-        people: people(workshop)
+        people: people(workshop),
+        finalisation: finalisation(workshop, facts)
       }
 
       {:ok, view, %{assigned_principal_ids: WorkshopFacts.assigned_principal_ids(facts)}}
@@ -94,6 +107,25 @@ defmodule Dhc.BeginnersWorkshops.DoorView do
       _ -> {:error, :not_found}
     end
   end
+
+  defp finalisation(%BeginnersWorkshop{status: "finalised"} = workshop, facts) do
+    %{
+      at: workshop.finalised_at,
+      by: finaliser_name(workshop.finalised_by_principal_id),
+      attended: facts.attended,
+      no_show: facts.no_show
+    }
+  end
+
+  defp finalisation(%BeginnersWorkshop{}, _facts), do: nil
+
+  @doc false
+  # Who pressed Finish, by name (`nil`: the automatic end-of-day pass).
+  @spec finaliser_name(binary() | nil) :: String.t() | nil
+  def finaliser_name(nil), do: nil
+
+  def finaliser_name(principal_id),
+    do: principal_id |> List.wrap() |> staff_names() |> Map.get(principal_id, "Unnamed member")
 
   defp people(workshop) do
     rows =

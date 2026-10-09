@@ -47,6 +47,10 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
     field :batches_paused_by_principal_id, :binary_id
     field :batches_resumed_at, :utc_datetime_usec
     field :batches_resumed_by_principal_id, :binary_id
+    # ALE-391: when attendance became final, and who pressed Finish (nil
+    # when the automatic end-of-day pass finalised it).
+    field :finalised_at, :utc_datetime_usec
+    field :finalised_by_principal_id, :binary_id
     # ALE-394: how many times it was rescheduled; names each reschedule.
     field :reschedule_count, :integer, default: 0
 
@@ -142,6 +146,19 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
       batches_resumed_by_principal_id: principal_id
     )
   end
+
+  @doc """
+  Attendance Finalisation (`finish_workshop` / `finalise_attendance`): the
+  status change with when, and who (`nil` for the automatic pass).
+  """
+  @spec finalise_changeset(t(), binary() | nil, DateTime.t()) :: Ecto.Changeset.t()
+  def finalise_changeset(%__MODULE__{} = workshop, principal_id, at),
+    do:
+      change(workshop,
+        status: "finalised",
+        finalised_at: usec(at),
+        finalised_by_principal_id: principal_id
+      )
 
   defp usec(%DateTime{microsecond: {value, _precision}} = at),
     do: %{at | microsecond: {value, 6}}

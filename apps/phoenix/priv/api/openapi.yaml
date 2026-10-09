@@ -4331,6 +4331,34 @@ paths:
         "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
         "409": {$ref: "#/components/responses/BeginnersWorkshopCheckInConflict"}
+  /beginners-workshops/{id}/door/finish:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    post:
+      operationId: beginnersWorkshopDoor.finish
+      tags: [BeginnersWorkshops]
+      summary: Finish the workshop (Attendance Finalisation)
+      description: |
+        Attendance Finalisation from the door, once check-in has opened.
+        Checked-in `paid` Intakes become `attended` (standing `attended`)
+        and the rest `no_show` (standing `removed`, no email); any Intake
+        still `contacted` is settled by the Payment Cutoff rule. Check-in
+        closes and the Staff list is frozen as the permanent record of who
+        ran the workshop. Refused while someone is still in checkout
+        (`payment_in_progress`). Requires the assignment-scoped
+        `beginners.workshops.run`; anyone else gets the same 404 as an
+        unknown workshop. Answers the refreshed door view, carrying the
+        finalised summary.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The door view
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopDoorResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopFinishConflict"}
 
   /beginners/intake/{token}:
     parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
@@ -7526,6 +7554,11 @@ components:
       content:
         application/json:
           schema: {$ref: "#/components/schemas/BeginnersWorkshopCheckInConflictError"}
+    BeginnersWorkshopFinishConflict:
+      description: Already finalised or cancelled, check-in not open yet, or someone still paying
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/BeginnersWorkshopFinishConflictError"}
     BeginnersWorkshopConflict:
       description: Lifecycle conflict (finalised, cancelled, Batch 1 already sent, or the fee locked by an Intake)
       content:
@@ -8105,13 +8138,17 @@ components:
       enum: [unstaffed]
     BeginnersWorkshopSeats:
       type: object
-      description: Seats taken are paid Intakes plus live Seat Holds.
-      required: [capacity, paid, holds, free]
+      description: |
+        Seats taken are paid Intakes plus live Seat Holds. After Attendance
+        Finalisation the meter reads `attended` / `noShow` (both 0 before).
+      required: [capacity, paid, holds, free, attended, noShow]
       properties:
         capacity: {type: integer, minimum: 1}
         paid: {type: integer, minimum: 0}
         holds: {type: integer, minimum: 0}
         free: {type: integer, minimum: 0}
+        attended: {type: integer, minimum: 0}
+        noShow: {type: integer, minimum: 0}
     BeginnersWorkshop:
       type: object
       description: |
@@ -8231,7 +8268,7 @@ components:
       description: |
         The door view. Its own shape: it never carries email, payment,
         refund or Waitlist fields. Civil values are Europe/Dublin.
-      required: [id, status, venue, date, startTime, stage, alerts, staff, checkIn, people]
+      required: [id, status, venue, date, startTime, stage, alerts, staff, checkIn, people, finalisation]
       properties:
         id: {type: string, format: uuid}
         status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
@@ -8248,6 +8285,22 @@ components:
           type: array
           description: Everyone with a seat (`paid`, then `attended` / `no_show`), by name.
           items: {$ref: "#/components/schemas/BeginnersWorkshopDoorPerson"}
+        finalisation:
+          allOf:
+            - $ref: "#/components/schemas/BeginnersWorkshopDoorFinalisation"
+          nullable: true
+          description: The finalised summary; null until Attendance Finalisation.
+    BeginnersWorkshopDoorFinalisation:
+      type: object
+      required: [at, by, attended, noShow]
+      properties:
+        at: {type: string, format: date-time}
+        by:
+          type: string
+          nullable: true
+          description: Who pressed Finish, by name; null when it finalised automatically at the end of the day.
+        attended: {type: integer, minimum: 0}
+        noShow: {type: integer, minimum: 0}
     BeginnersWorkshopCheckInWindow:
       type: string
       description: |
@@ -8656,13 +8709,22 @@ components:
                   enum: [after_cutoff, full, already_paid, intake_closed, payment_in_progress]
     BeginnersWorkshopRoster:
       type: object
-      description: "`seated`: paid. `asked`: contacted, not paid yet. `out`: every closed Intake."
-      required: [seated, asked, out]
+      description: |
+        Before Attendance Finalisation: `seated` (paid), `asked` (contacted,
+        not paid yet) and `out`. After it: `attended`, `noShow` and `out`.
+        `out` is every other closed Intake.
+      required: [seated, asked, attended, noShow, out]
       properties:
         seated:
           type: array
           items: {$ref: "#/components/schemas/BeginnersWorkshopRosterIntake"}
         asked:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopRosterIntake"}
+        attended:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopRosterIntake"}
+        noShow:
           type: array
           items: {$ref: "#/components/schemas/BeginnersWorkshopRosterIntake"}
         out:
@@ -8674,7 +8736,7 @@ components:
       enum: [nobody_waiting]
     BeginnersWorkshopConsole:
       type: object
-      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, attention, fastTrackOpen]
+      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, attention, fastTrackOpen, finalisation]
       properties:
         workshop: {$ref: "#/components/schemas/BeginnersWorkshop"}
         batches:
@@ -8696,6 +8758,24 @@ components:
           description: |
             Whether Fast-track is offered now: the workshop is scheduled and
             before its Payment Cutoff (the rule `fast_track` applies).
+        finalisation:
+          allOf:
+            - $ref: "#/components/schemas/BeginnersWorkshopConsoleFinalisation"
+          nullable: true
+          description: Attendance Finalisation; null until the workshop is finalised.
+    BeginnersWorkshopConsoleFinalisation:
+      type: object
+      required: [at, by, followUpAt]
+      properties:
+        at: {type: string, format: date-time}
+        by:
+          type: string
+          nullable: true
+          description: Who pressed Finish, by name; null when it finalised automatically at the end of the day.
+        followUpAt:
+          type: string
+          format: date-time
+          description: When attended people get the Follow-up (10:00 Dublin the morning after).
     BeginnersWorkshopConsoleResponse:
       type: object
       required: [data]
@@ -8819,6 +8899,20 @@ components:
                 code:
                   type: string
                   enum: [check_in_not_open, check_in_closed, not_paid]
+    BeginnersWorkshopFinishConflictError:
+      description: 409 on Finish workshop.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [after_finalisation, already_cancelled, check_in_not_open, payment_in_progress]
     BeginnersWorkshopInvalidError:
       description: |
         422 refusal on a Beginners' Workshop command. Domain reasons carry a

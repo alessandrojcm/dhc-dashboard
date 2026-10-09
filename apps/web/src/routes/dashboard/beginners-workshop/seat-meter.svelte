@@ -1,17 +1,29 @@
-<!-- ALE-378: Phoenix's seat meter — paid seats, live Seat Holds, free seats. -->
+<!--
+	ALE-378: Phoenix's seat meter — paid seats, live Seat Holds, free seats.
+	ALE-391: after Attendance Finalisation it reads attended / no-show.
+-->
 <script lang="ts">
 import type { BeginnersWorkshopSeats } from "@dhc/api-client";
 import { cn } from "#lib/utils.js";
 
-let { seats }: { seats: BeginnersWorkshopSeats } = $props();
+let {
+	seats,
+	finalised = false,
+}: { seats: BeginnersWorkshopSeats; finalised?: boolean } = $props();
 
 const cells = $derived(
 	Array.from({ length: seats.capacity }, (_, index) =>
-		index < seats.paid
-			? "paid"
-			: index < seats.paid + seats.holds
-				? "held"
-				: "free",
+		finalised
+			? index < seats.attended
+				? "attended"
+				: index < seats.attended + seats.noShow
+					? "no_show"
+					: "free"
+			: index < seats.paid
+				? "paid"
+				: index < seats.paid + seats.holds
+					? "held"
+					: "free",
 	),
 );
 </script>
@@ -24,15 +36,22 @@ const cells = $derived(
 					"size-2.5 rounded-sm border",
 					cell === "paid" && "border-primary bg-primary",
 					cell === "held" && "border-sky-600 bg-sky-200",
+					cell === "attended" && "border-emerald-700 bg-emerald-600",
+					cell === "no_show" && "border-destructive bg-destructive/20",
 					cell === "free" && "border-border bg-background",
 				)}
 			></span>
 		{/each}
 	</div>
 	<p class="text-[11px] text-muted-foreground" data-testid="seat-meter">
-		<strong class="text-foreground">{seats.paid}</strong> paid
-		{#if seats.holds}· <strong class="text-sky-800">{seats.holds}</strong> paying
-			now{/if}
-		· <strong class="text-foreground">{seats.free}</strong> free of {seats.capacity}
+		{#if finalised}
+			<strong class="text-emerald-800">{seats.attended}</strong> attended ·
+			<strong class="text-destructive">{seats.noShow}</strong> no-show of {seats.capacity}
+		{:else}
+			<strong class="text-foreground">{seats.paid}</strong> paid
+			{#if seats.holds}· <strong class="text-sky-800">{seats.holds}</strong> paying
+				now{/if}
+			· <strong class="text-foreground">{seats.free}</strong> free of {seats.capacity}
+		{/if}
 	</p>
 </div>

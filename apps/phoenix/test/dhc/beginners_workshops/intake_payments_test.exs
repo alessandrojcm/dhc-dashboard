@@ -483,7 +483,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
     test "declares the Intake and payment-row moves" do
       transitions = Commands.transitions()
 
-      assert transitions.intake == %{"contacted" => ~w(paid lapsed returned)}
+      assert transitions.intake == %{
+               "contacted" => ~w(paid lapsed returned),
+               "paid" => ~w(attended no_show)
+             }
 
       assert transitions.payment == %{
                "open" => ~w(paid releasing released policy_failed),

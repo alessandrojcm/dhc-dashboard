@@ -83,8 +83,10 @@ defmodule Dhc.BeginnersWorkshops do
   `pass_payment_cutoff` (ALE-385) runs for each scheduled workshop past its
   cutoff that still owes something (a `contacted` Intake, or a `paid` one
   without Pre-workshop info), after the reaper so a hold Stripe ended in
-  this sweep is settled in it too. The finalisation and follow-up passes
-  join it with their tickets. A pass that is not due does nothing, so
+  this sweep is settled in it too. Then `finalise_attendance` (ALE-391)
+  runs for each scheduled workshop whose Dublin date has ended, and
+  `send_follow_ups` for each finalised workshop with an attended Intake
+  still owed its Follow-up. A pass that is not due does nothing, so
   running the sweep again is safe — there are no per-workshop scheduled
   jobs.
 
@@ -93,7 +95,9 @@ defmodule Dhc.BeginnersWorkshops do
   or has not ended yet (`holds_waiting`, retried by the next sweep); and
   what the cutoff passes did: Pre-workshop info queued, Intakes lapsed,
   Intakes returned, and Intakes left for Stripe to end their hold
-  (`cutoff_awaiting_hold`).
+  (`cutoff_awaiting_hold`); how many workshops were finalised
+  (`finalised`, and `finalise_awaiting_hold` when one waits for a live
+  Seat Hold) and how many Follow-ups were queued (`follow_ups`).
   """
   @spec run_due_passes(keyword()) :: %{
           sent: non_neg_integer(),
@@ -106,7 +110,10 @@ defmodule Dhc.BeginnersWorkshops do
           cutoff_pre_workshop: non_neg_integer(),
           cutoff_lapsed: non_neg_integer(),
           cutoff_returned: non_neg_integer(),
-          cutoff_awaiting_hold: non_neg_integer()
+          cutoff_awaiting_hold: non_neg_integer(),
+          finalised: non_neg_integer(),
+          finalise_awaiting_hold: non_neg_integer(),
+          follow_ups: non_neg_integer()
         }
   def run_due_passes(opts \\ []) do
     sum_failed = fn :failed, a, b -> a + b end
@@ -115,6 +122,67 @@ defmodule Dhc.BeginnersWorkshops do
     |> run_batch_passes()
     |> Map.merge(run_reap_pass(opts), sum_failed)
     |> Map.merge(run_cutoff_passes(opts), sum_failed)
+    |> Map.merge(run_finalise_passes(opts), sum_failed)
+    |> Map.merge(run_follow_up_passes(opts), sum_failed)
+  end
+
+  defp run_finalise_passes(opts) do
+    today = Clock.read(Clock.from_opts(opts)).today
+
+    from(w in BeginnersWorkshop,
+      where: w.status == "scheduled" and w.date < ^today,
+      order_by: [asc: w.date, asc: w.id],
+      select: w.id
+    )
+    |> Repo.all()
+    |> Enum.reduce(%{finalised: 0, finalise_awaiting_hold: 0, failed: 0}, fn id, tally ->
+      case execute(:system, {:finalise_attendance, id}, opts) do
+        {:ok, %{outcome: :finalised}} ->
+          Map.update!(tally, :finalised, &(&1 + 1))
+
+        {:ok, %{outcome: :awaiting_hold}} ->
+          Map.update!(tally, :finalise_awaiting_hold, &(&1 + 1))
+
+        {:ok, %{outcome: :not_due}} ->
+          tally
+
+        {:error, _reason} ->
+          Map.update!(tally, :failed, &(&1 + 1))
+      end
+    end)
+  end
+
+  # Only a filter (finalised workshops whose day has passed with an
+  # attended Intake not yet followed up): the pass decides under the lock.
+  defp run_follow_up_passes(opts) do
+    today = Clock.read(Clock.from_opts(opts)).today
+
+    owed =
+      from(i in Intake,
+        left_join: l in IntakeEmailLog,
+        on: l.intake_id == i.id and l.occasion == "follow_up",
+        where: i.state == "attended" and not is_nil(i.waitlist_id) and is_nil(l.id),
+        select: i.workshop_id
+      )
+
+    from(w in BeginnersWorkshop,
+      where: w.status == "finalised" and w.date < ^today and w.id in subquery(owed),
+      order_by: [asc: w.date, asc: w.id],
+      select: w.id
+    )
+    |> Repo.all()
+    |> Enum.reduce(%{follow_ups: 0, failed: 0}, fn id, tally ->
+      case execute(:system, {:send_follow_ups, id}, opts) do
+        {:ok, %{outcome: :sent, follow_ups: sent}} ->
+          Map.update!(tally, :follow_ups, &(&1 + sent))
+
+        {:ok, %{outcome: :not_due}} ->
+          tally
+
+        {:error, _reason} ->
+          Map.update!(tally, :failed, &(&1 + 1))
+      end
+    end)
   end
 
   @cutoff_tally %{

@@ -25,7 +25,14 @@ function view(
 			contactFromEditable: false,
 			paymentWindowDays: 7,
 			stage: "window_open",
-			seats: { capacity: 3, paid: 1, holds: 0, free: 2 },
+			seats: {
+				capacity: 3,
+				paid: 1,
+				holds: 0,
+				free: 2,
+				attended: 0,
+				noShow: 0,
+			},
 			alerts: [],
 			staff: { coach: null, assistants: [] },
 		},
@@ -99,11 +106,14 @@ function view(
 					refund: null,
 				},
 			],
+			attended: [],
+			noShow: [],
 			out: [],
 		},
 		failedRefunds: [],
 		attention: [],
 		fastTrackOpen: true,
+		finalisation: null,
 		...overrides,
 	};
 }
@@ -149,7 +159,14 @@ test("ALE-381: the seat meter counts live holds and each Intake shows when its h
 			workshop: {
 				...base.workshop,
 				stage: "full",
-				seats: { capacity: 2, paid: 1, holds: 1, free: 0 },
+				seats: {
+					capacity: 2,
+					paid: 1,
+					holds: 1,
+					free: 0,
+					attended: 0,
+					noShow: 0,
+				},
 			},
 			roster: {
 				...base.roster,
@@ -259,6 +276,51 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 		.getByRole("listitem")
 		.filter({ hasText: "Ciara Referral" });
 	await expect.element(row).toHaveTextContent("Fast-track");
+});
+
+test("ALE-391: a finalised workshop reads attended / no-show and is read-only", async () => {
+	const base = view();
+	const [seated] = base.roster.seated;
+	const [asked] = base.roster.asked;
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			workshop: {
+				...base.workshop,
+				status: "finalised",
+				stage: "finalised",
+				seats: { ...base.workshop.seats, attended: 1, noShow: 1 },
+			},
+			roster: {
+				seated: [],
+				asked: [],
+				attended: [{ ...seated, state: "attended" }],
+				noShow: [{ ...asked, state: "no_show" }],
+				out: [],
+			},
+			fastTrackOpen: false,
+			finalisation: {
+				at: "2026-11-14T20:05:00Z",
+				by: "Aoife Coach",
+				followUpAt: "2026-11-15T10:00:00Z",
+			},
+		}),
+	});
+
+	await expect
+		.element(screen.getByTestId("seat-meter"))
+		.toHaveTextContent("1 attended · 1 no-show of 3");
+	await expect
+		.element(screen.getByRole("region", { name: "Attended" }))
+		.toHaveTextContent("Cian Doyle");
+	await expect
+		.element(screen.getByRole("region", { name: "No-show" }))
+		.toHaveTextContent("Dara Nolan");
+	await expect
+		.element(screen.getByRole("region", { name: "Now" }))
+		.toHaveTextContent("Finalised Sat 14 Nov, 20:05 by Aoife Coach");
+	expect(
+		screen.getByRole("button", { name: /Fast-track|Pause Batches/ }).elements(),
+	).toHaveLength(0);
 });
 
 test("ALE-382: a failed refund needs attention with Retry and Record manual refund, and rows show refund status", async () => {

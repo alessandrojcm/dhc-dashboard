@@ -203,7 +203,7 @@ defmodule DhcWeb.BeginnersWorkshopStaffControllerTest do
         assert %{"data" => data} = conn |> as(name) |> get(path) |> json_response(200)
 
         assert Map.keys(data) |> Enum.sort() ==
-                 ~w(alerts checkIn date id people staff stage startTime status venue)
+                 ~w(alerts checkIn date finalisation id people staff stage startTime status venue)
 
         assert %{"id" => id, "staff" => %{"coach" => %{"name" => "Aoife Coach"}}} = data
         assert id == ctx.workshop.id

@@ -18,12 +18,39 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
         batches: Enum.map(console.batches, &batch/1),
         pause: pause(console.pause),
         nextBatch: next_batch(console.next_batch),
-        roster:
-          Map.new(console.roster, fn {group, rows} -> {group, Enum.map(rows, &intake/1)} end),
+        roster: roster(console.roster),
         failedRefunds: Enum.map(console.failed_refunds, &failed_refund/1),
         attention: console.attention,
-        fastTrackOpen: console.fast_track_open
+        fastTrackOpen: console.fast_track_open,
+        finalisation: console_finalisation(console.finalisation)
       }
+    }
+  end
+
+  defp roster(roster) do
+    %{
+      seated: Enum.map(roster.seated, &intake/1),
+      asked: Enum.map(roster.asked, &intake/1),
+      attended: Enum.map(roster.attended, &intake/1),
+      noShow: Enum.map(roster.no_show, &intake/1),
+      out: Enum.map(roster.out, &intake/1)
+    }
+  end
+
+  defp console_finalisation(nil), do: nil
+
+  defp console_finalisation(finalisation),
+    do: %{at: finalisation.at, by: finalisation.by, followUpAt: finalisation.follow_up_at}
+
+  @doc "The seat meter, shared with every workshop row."
+  def seats(seats) do
+    %{
+      capacity: seats.capacity,
+      paid: seats.paid,
+      holds: seats.holds,
+      free: seats.free,
+      attended: seats.attended,
+      noShow: seats.no_show
     }
   end
 
@@ -151,7 +178,7 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       contactFromEditable: view.contact_from_editable,
       paymentWindowDays: view.payment_window_days,
       stage: view.stage,
-      seats: view.seats,
+      seats: seats(view.seats),
       alerts: view.alerts,
       staff: staff(view.staff)
     }

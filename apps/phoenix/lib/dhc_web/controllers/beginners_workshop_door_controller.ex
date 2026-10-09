@@ -10,7 +10,8 @@ defmodule DhcWeb.BeginnersWorkshopDoorController do
 
   `check_in` / `undo_check_in` (ALE-390) run the boundary command, which
   authorizes the same capability against the same Staff before any read, and
-  answer the refreshed door view.
+  answer the refreshed door view, as does `finish` (ALE-391: Attendance
+  Finalisation from the door).
   """
   use DhcWeb, :controller
 
@@ -35,6 +36,9 @@ defmodule DhcWeb.BeginnersWorkshopDoorController do
   @doc "DELETE /beginners-workshops/{id}/door/people/{intakeId}/check-in"
   def undo_check_in(conn, %{"id" => id, "intakeId" => intake_id}),
     do: run(conn, id, {:undo_check_in, id, intake_id})
+
+  @doc "POST /beginners-workshops/{id}/door/finish"
+  def finish(conn, %{"id" => id}), do: run(conn, id, {:finish_workshop, id})
 
   defp run(conn, id, command) do
     with {:ok, _record} <- BeginnersWorkshops.execute(BeginnersWorkshopsHTTP.actor(conn), command),
