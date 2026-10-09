@@ -74,6 +74,42 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   @spec contact_from_editable?(map()) :: boolean()
   def contact_from_editable?(%{batches_sent: sent}), do: sent == 0
 
+  @doc """
+  ALE-394: the Payment Cutoff a rescheduled workshop keeps — the same Dublin
+  civil offset before its new start (`next`'s `date` and `start_time`) as the
+  current cutoff had before the current start. Civil, so a move across a
+  clock change keeps "3 days before at the start time".
+  """
+  @spec kept_offset_cutoff(BeginnersWorkshop.t(), %{date: Date.t(), start_time: Time.t()}) ::
+          DateTime.t()
+  def kept_offset_cutoff(%BeginnersWorkshop{} = workshop, %{date: date, start_time: start_time}) do
+    current_cutoff =
+      NaiveDateTime.new!(
+        ClubCalendar.on_date(workshop.payment_cutoff),
+        ClubCalendar.time_on(workshop.payment_cutoff)
+      )
+
+    offset =
+      workshop.date
+      |> NaiveDateTime.new!(workshop.start_time)
+      |> NaiveDateTime.diff(current_cutoff, :microsecond)
+
+    kept = date |> NaiveDateTime.new!(start_time) |> NaiveDateTime.add(-offset, :microsecond)
+    ClubCalendar.to_utc(NaiveDateTime.to_date(kept), NaiveDateTime.to_time(kept))
+  end
+
+  @doc """
+  ALE-394: the contact-from date a rescheduled workshop keeps while Batch 1
+  has not gone out — the same number of days before the new date — or Dublin
+  today when that would fall after the new cutoff date, so Batch 1 goes out
+  at the next 10:00.
+  """
+  @spec kept_contact_from(BeginnersWorkshop.t(), Date.t(), DateTime.t(), map()) :: Date.t()
+  def kept_contact_from(%BeginnersWorkshop{} = workshop, %Date{} = date, cutoff, reading) do
+    kept = Date.add(date, -Date.diff(workshop.date, workshop.contact_from))
+    if contact_from_valid?(kept, cutoff), do: kept, else: reading.today
+  end
+
   @doc "Whether the fee can still change: until the first Intake exists (`:fee_locked`)."
   @spec fee_editable?(map()) :: boolean()
   def fee_editable?(%{intakes: intakes}), do: intakes == 0

@@ -47,6 +47,8 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
     field :batches_paused_by_principal_id, :binary_id
     field :batches_resumed_at, :utc_datetime_usec
     field :batches_resumed_by_principal_id, :binary_id
+    # ALE-394: how many times it was rescheduled; names each reschedule.
+    field :reschedule_count, :integer, default: 0
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end
@@ -103,6 +105,21 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
       :contact_from,
       :payment_window_days
     ])
+    |> validate_shape()
+  end
+
+  @doc """
+  The shape of a reschedule (`reschedule_workshop`, ALE-394): the new date,
+  start time, venue, Payment Cutoff and contact-from date, already resolved
+  by the boundary, and the next reschedule number.
+  """
+  @spec reschedule_changeset(t(), map()) :: Ecto.Changeset.t()
+  def reschedule_changeset(%__MODULE__{} = workshop, attrs) do
+    workshop
+    |> cast(attrs, [:venue, :date, :start_time, :payment_cutoff, :contact_from])
+    |> update_change(:venue, &String.trim/1)
+    |> validate_required([:venue, :date, :start_time, :payment_cutoff, :contact_from])
+    |> change(reschedule_count: workshop.reschedule_count + 1)
     |> validate_shape()
   end
 

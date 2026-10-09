@@ -209,4 +209,71 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
     assert %{"errors" => %{"code" => "after_finalisation"}} =
              coordinator |> put(path, %{"capacity" => 30}) |> json_response(409)
   end
+
+  test "reschedules a workshop and maps every refusal", %{conn: conn} do
+    [workshop] = schedule!(conn)
+    path = "/api/beginners-workshops/#{workshop["id"]}/reschedule"
+    coordinator = as_role(conn, "beginners_coordinator")
+    date = Date.add(Date.from_iso8601!(workshop["date"]), 7)
+
+    assert %{
+             "data" => %{
+               "date" => new_date,
+               "startTime" => "19:00",
+               "venue" => "The Hub",
+               "paymentCutoffDate" => cutoff_date,
+               "paymentCutoffTime" => "19:00"
+             }
+           } =
+             coordinator
+             |> post(path, %{
+               "date" => Date.to_iso8601(date),
+               "startTime" => "19:00",
+               "venue" => "The Hub"
+             })
+             |> json_response(200)
+
+    assert new_date == Date.to_iso8601(date)
+    # The cutoff kept its 3 days before the start.
+    assert cutoff_date == date |> Date.add(-3) |> Date.to_iso8601()
+
+    assert %{"errors" => %{"fields" => %{"date" => [_]}} = errors} =
+             coordinator |> post(path, %{"venue" => "The Hub"}) |> json_response(422)
+
+    refute Map.has_key?(errors, "code")
+
+    assert %{
+             "errors" => %{
+               "code" => "invalid_payment_cutoff",
+               "fields" => %{"paymentCutoffDate" => [_]}
+             }
+           } =
+             coordinator
+             |> post(path, %{
+               "venue" => "St. Andrew's Hall",
+               "paymentCutoffDate" => Date.to_iso8601(Date.add(date, 1))
+             })
+             |> json_response(422)
+
+    assert coordinator
+           |> post("/api/beginners-workshops/#{Ecto.UUID.generate()}/reschedule", %{
+             "venue" => "Elsewhere"
+           })
+           |> json_response(404)
+
+    assert conn
+           |> as_role("treasurer")
+           |> post(path, %{"venue" => "Elsewhere"})
+           |> json_response(403)
+
+    BeginnersWorkshopFixtures.force_status!(workshop["id"], "cancelled")
+
+    assert %{"errors" => %{"code" => "already_cancelled"}} =
+             coordinator |> post(path, %{"venue" => "Elsewhere"}) |> json_response(409)
+
+    BeginnersWorkshopFixtures.force_status!(workshop["id"], "finalised")
+
+    assert %{"errors" => %{"code" => "after_finalisation"}} =
+             coordinator |> post(path, %{"venue" => "Elsewhere"}) |> json_response(409)
+  end
 end

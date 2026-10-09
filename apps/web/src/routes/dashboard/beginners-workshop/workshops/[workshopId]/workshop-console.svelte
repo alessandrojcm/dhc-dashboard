@@ -3,15 +3,17 @@
 	lifecycle timeline, the "Now" card, Needs attention, the Next Batch
 	preview with Pause/Resume beside it, and the roster grouped by meaning.
 	Everything shown is Phoenix's console read model. Pause/Resume and
-	(ALE-384) Fast-track are its commands; Batches themselves come only from
-	the system sweep. (ALE-382) Failed refunds sit under Needs attention with
-	Retry and Record manual refund, and each roster row shows its refund.
+	(ALE-384) Fast-track and (ALE-394) Reschedule are its commands; Batches
+	themselves come only from the system sweep. (ALE-382) Failed refunds sit
+	under Needs attention with Retry and Record manual refund, and each roster
+	row shows its refund.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopConsole } from "@dhc/api-client";
 import {
 	AlertTriangle,
 	ArrowLeft,
+	CalendarClock,
 	Check,
 	Circle,
 	CircleDot,
@@ -42,6 +44,7 @@ import {
 	formatFee,
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
+import { rescheduleRecipients } from "#lib/beginners-workshops/reschedule.js";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -51,6 +54,7 @@ import SeatMeter from "../../seat-meter.svelte";
 import { pauseBatches, resumeBatches } from "./console.remote";
 import FailedRefundItem from "./failed-refund-item.svelte";
 import FastTrackDialog from "./fast-track-dialog.svelte";
+import RescheduleDialog from "./reschedule-dialog.svelte";
 
 let {
 	view,
@@ -58,6 +62,7 @@ let {
 }: { view: BeginnersWorkshopConsole; genders?: string[] } = $props();
 
 let fastTrackDialogOpen = $state(false);
+let rescheduleOpen = $state(false);
 // Mounted on first open, so the console renders without a search query.
 let fastTrackMounted = $state(false);
 
@@ -113,6 +118,16 @@ const attention = $derived(
 				{staffSummary(workshop.staff)}
 			</p>
 		</div>
+		{#if scheduled}
+			<Button
+				type="button"
+				variant="outline"
+				class="w-fit"
+				onclick={() => (rescheduleOpen = true)}
+			>
+				<CalendarClock /> Reschedule
+			</Button>
+		{/if}
 		<ol
 			class="relative flex flex-col gap-3 border-l-2 border-border pl-4"
 			aria-label="Lifecycle"
@@ -363,4 +378,15 @@ const attention = $derived(
 		{genders}
 		bind:open={fastTrackDialogOpen}
 	/>
+{/if}
+
+{#if scheduled}
+	<!-- A reschedule remounts it, so the new values are the ones that follow. -->
+	{#key `${workshop.id}:${workshop.date}:${workshop.startTime}:${workshop.venue}`}
+		<RescheduleDialog
+			{workshop}
+			recipients={rescheduleRecipients(view)}
+			bind:open={rescheduleOpen}
+		/>
+	{/key}
 {/if}

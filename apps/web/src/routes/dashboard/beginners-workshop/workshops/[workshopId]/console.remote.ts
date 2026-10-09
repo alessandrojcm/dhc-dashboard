@@ -3,7 +3,7 @@
  * (ALE-384) Fast-track. Thin adapters — authorize, one generated Phoenix
  * call, translate the problem. Coordinators never send a Batch: the system
  * sweep does. (ALE-382) Retry and Record manual refund follow up a failed
- * refund from Needs attention.
+ * refund from Needs attention. (ALE-394) Reschedule.
  */
 import { form } from "$app/server";
 import {
@@ -13,6 +13,7 @@ import {
 	beginnersWorkshopFastTrackWaitlistPerson,
 	beginnersWorkshopRefundsRecordManual,
 	beginnersWorkshopRefundsRetry,
+	beginnersWorkshopsReschedule,
 } from "@dhc/api-client";
 import {
 	batchesCommandSchema,
@@ -20,9 +21,13 @@ import {
 	fastTrackWaitlistPersonSchema,
 	recordManualRefundSchema,
 	retryRefundSchema,
+	rescheduleWorkshopSchema,
 } from "#lib/schemas/beginnersWorkshop.js";
 import { beginnersWorkshopCommand } from "#lib/server/beginners-workshops/command.js";
-import { newPersonFormPath } from "#lib/server/beginners-workshops/form-paths.js";
+import {
+	newPersonFormPath,
+	rescheduleFormPath,
+} from "#lib/server/beginners-workshops/form-paths.js";
 import { beginnersWorkshopsManageOptions } from "#lib/server/beginners-workshops/options.js";
 
 const noFormFields = () => undefined;
@@ -93,6 +98,21 @@ export const recordManualRefund = form(
 			{
 				fallback: "Could not record the manual refund",
 				formPath: (field) => (field === "note" ? ["note"] : undefined),
+			},
+		);
+	},
+);
+
+/** ALE-394: move the workshop's date, start time or venue. */
+export const rescheduleWorkshop = form(
+	rescheduleWorkshopSchema,
+	async ({ id, body }) => {
+		const options = await beginnersWorkshopsManageOptions();
+		return beginnersWorkshopCommand(
+			beginnersWorkshopsReschedule({ ...options, path: { id }, body }),
+			{
+				fallback: "Could not reschedule the workshop",
+				formPath: rescheduleFormPath,
 			},
 		);
 	},

@@ -1,7 +1,8 @@
 defmodule DhcWeb.BeginnersWorkshopsController do
   @moduledoc """
   The `beginnersWorkshops` slice (ALE-378): the Workshops list, scheduling,
-  settings, (ALE-379) Staff and (ALE-380) the console read model. The
+  settings, (ALE-379) Staff, (ALE-380) the console read model and (ALE-394)
+  reschedule. The
   router gates every action on `beginners.workshops.manage`; the boundary
   authorizes the actor again before any read.
   """
@@ -56,6 +57,15 @@ defmodule DhcWeb.BeginnersWorkshopsController do
     BeginnersWorkshops.execute(
       BeginnersWorkshopsHTTP.actor(conn),
       {:update_workshop, id, BeginnersWorkshopsHTTP.attrs(params)}
+    )
+    |> BeginnersWorkshopsHTTP.respond(conn, :show)
+  end
+
+  @doc "POST /beginners-workshops/{id}/reschedule"
+  def reschedule(conn, %{"id" => id} = params) do
+    BeginnersWorkshops.execute(
+      BeginnersWorkshopsHTTP.actor(conn),
+      {:reschedule_workshop, id, BeginnersWorkshopsHTTP.attrs(params)}
     )
     |> BeginnersWorkshopsHTTP.respond(conn, :show)
   end
