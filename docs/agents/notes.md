@@ -1,5 +1,9 @@
 # Notes
 
+## Version control
+
+- The main checkout is a GitButler workspace: every commit goes through `but` there (`but diff`, then `but commit -b <branch> -m "<msg>" <file-ids>`), never plain `git commit`. A commit made with plain Git in a linked worktree (e.g. an OpenCode worktree) is invisible to the GitButler stack and gets left out; apply its net change to the main checkout (`git diff <stack-top> <worktree-head>` piped to `patch -p1`, since Git writes are blocked there) and commit it with `but`, leaving the user's own uncommitted files out of the IDs.
+
 ## Opencode config
 
 - Project `opencode.json` disables `sentry_*` MCP tools by default via top-level `tools` and exposes them only through the primary `triaging` agent. Restart opencode after config edits before expecting agent/MCP tool changes to take effect.
