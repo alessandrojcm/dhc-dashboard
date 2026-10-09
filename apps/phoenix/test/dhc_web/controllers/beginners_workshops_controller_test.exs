@@ -276,4 +276,58 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
     assert %{"errors" => %{"code" => "after_finalisation"}} =
              coordinator |> post(path, %{"venue" => "Elsewhere"}) |> json_response(409)
   end
+
+  test "cancels a workshop and maps every refusal (ALE-395)", %{conn: conn} do
+    [workshop] = schedule!(conn)
+    path = "/api/beginners-workshops/#{workshop["id"]}/cancel"
+    coordinator = as_role(conn, "beginners_coordinator")
+
+    assert conn |> as_role("treasurer") |> post(path, %{}) |> json_response(403)
+
+    assert %{"errors" => %{"code" => "invalid_reason", "fields" => %{"reason" => [_]}}} =
+             coordinator
+             |> post(path, %{"reason" => String.duplicate("x", 501)})
+             |> json_response(422)
+
+    assert coordinator
+           |> post("/api/beginners-workshops/#{Ecto.UUID.generate()}/cancel", %{})
+           |> json_response(404)
+
+    assert %{
+             "data" => %{
+               "workshop" => %{"status" => "cancelled", "stage" => "cancelled"},
+               "deferred" => 0,
+               "returned" => 0,
+               "released" => 0
+             }
+           } = coordinator |> post(path, %{"reason" => "Hall flooded"}) |> json_response(200)
+
+    assert %{
+             "data" => %{
+               "cancelPreview" => nil,
+               "cancellation" => %{"at" => _, "by" => _, "reason" => "Hall flooded"}
+             }
+           } =
+             coordinator
+             |> get("/api/beginners-workshops/#{workshop["id"]}/console")
+             |> json_response(200)
+
+    assert %{"errors" => %{"code" => "already_cancelled"}} =
+             coordinator |> post(path, %{}) |> json_response(409)
+  end
+
+  test "the console previews what Cancel would do while scheduled", %{conn: conn} do
+    [workshop] = schedule!(conn)
+
+    assert %{
+             "data" => %{
+               "cancelPreview" => %{"deferred" => 0, "returned" => 0, "released" => 0},
+               "cancellation" => nil
+             }
+           } =
+             conn
+             |> as_role("beginners_coordinator")
+             |> get("/api/beginners-workshops/#{workshop["id"]}/console")
+             |> json_response(200)
+  end
 end

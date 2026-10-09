@@ -479,6 +479,12 @@ defmodule Dhc.DevSeeds do
   boundary's `defer`, so they are back on the Waitlist holding a `held`
   Carried Fee. The next Batch of any upcoming workshop marks them
   "confirms" and asks them to confirm instead of paying.
+
+  ALE-395: one more workshop, contacted yesterday, is **cancelled** through
+  the boundary's `cancel_workshop` with a reason: its two paid people are
+  deferred (each holding a `held` Carried Fee), one person mid-checkout has
+  their Seat Hold released and they and the other contacted person are
+  back on the Waitlist. It stays visible, read-only, in the past list.
   """
   @spec seed_beginners_workshops(pos_integer()) :: :ok
   def seed_beginners_workshops(count) do
@@ -516,6 +522,59 @@ defmodule Dhc.DevSeeds do
     seed_past_cutoff(coordinator_id)
     seed_finalised(coordinator_id)
     seed_carried_fee(coordinator_id)
+    seed_cancelled(coordinator_id)
+  end
+
+  defp seed_cancelled(coordinator_id) do
+    capacity = 4
+    yesterday = Date.add(ClubCalendar.today(), -1)
+    batch_at = %{ClubCalendar.to_utc(yesterday, ~T[10:00:00]) | microsecond: {0, 6}}
+
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "DCU Sports Hall",
+             date: Date.add(yesterday, 22),
+             start_time: ~T[18:30:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: yesterday
+           }
+         ]}
+      )
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(batch_at)
+      )
+
+    intakes =
+      Repo.all(
+        from(i in Intake, where: i.workshop_id == ^workshop.id, order_by: [i.queue_date, i.id])
+      )
+
+    {paid, rest} = Enum.split(intakes, 2)
+    Enum.each(paid, &seed_pay!(&1, workshop, DateTime.add(batch_at, 3600, :second)))
+    for intake <- Enum.take(rest, 1), do: insert_seed_hold!(intake, workshop, DateTime.utc_now(), nil)
+
+    {:ok, done} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:cancel_workshop, workshop.id, %{"reason" => "Venue unavailable (seeded)"}}
+      )
+
+    Mix.shell().info(
+      "Seeded the cancelled workshop on #{workshop.date}: #{done.deferred} deferred, " <>
+        "#{done.returned} returned, #{done.released} hold released"
+    )
   end
 
   defp seed_carried_fee(coordinator_id) do

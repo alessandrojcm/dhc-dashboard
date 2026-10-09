@@ -3954,6 +3954,40 @@ paths:
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
         "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
         "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+  /beginners-workshops/{id}/cancel:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    post:
+      operationId: beginnersWorkshops.cancel
+      tags: [BeginnersWorkshops]
+      summary: Cancel a workshop
+      description: |
+        Any time before Attendance Finalisation; it can't be undone. Every
+        paid Intake is deferred (a Stripe payment becomes a `held` Carried
+        Fee; a Carried Fee that paid goes back to `held`) and its door
+        check-in discarded, and the person gets "Workshop cancelled – paid".
+        Every contacted Intake is `returned` (the person keeps their place
+        in the queue) with "Workshop cancelled – unpaid", and its live Seat
+        Hold is released (a payment that lands anyway is refunded
+        automatically). The optional reason is kept on the workshop and each
+        Intake's history; assigned Staff are notified. The workshop stays
+        visible and read-only. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopCancelRequest"}
+      responses:
+        "200":
+          description: The cancelled workshop and what the cancellation did
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopCancelResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
+        "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
   /beginners-workshops/{id}/console:
     parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
     get:
@@ -8946,6 +8980,26 @@ components:
       required: [data]
       properties:
         data: {$ref: "#/components/schemas/BeginnersWorkshop"}
+    BeginnersWorkshopCancelRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: Why (optional), kept on the workshop and in each Intake's history.
+    BeginnersWorkshopCancellationResult:
+      type: object
+      required: [workshop, deferred, returned, released]
+      properties:
+        workshop: {$ref: "#/components/schemas/BeginnersWorkshop"}
+        deferred: {type: integer, minimum: 0, description: Paid Intakes deferred.}
+        returned: {type: integer, minimum: 0, description: Contacted Intakes returned to the Waitlist.}
+        released: {type: integer, minimum: 0, description: Live Seat Holds released.}
+    BeginnersWorkshopCancelResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopCancellationResult"}
     BeginnersWorkshopScheduleResponse:
       type: object
       required: [data]
@@ -9164,15 +9218,22 @@ components:
         emailType: {$ref: "#/components/schemas/IntakeEmailType"}
         at: {type: string, format: date-time}
         scheduled: {type: boolean}
+    BeginnersWorkshopIntakeHistoryCommand:
+      type: string
+      description: |
+        What an Intake history row records: a console Intake command, or
+        (ALE-395) `cancel_workshop`, the workshop's cancellation.
+      enum: [decline, defer, confirm, cancel_with_refund, withdraw, resend_link, rotate_link, correct_attendance, cancel_workshop]
     BeginnersWorkshopIntakeHistoryEntry:
       type: object
       description: |
         One console command run on an Intake. `actor` is null once the person
         who ran it is gone, and for a `confirm` the person made themselves
-        on their Intake page.
+        on their Intake page. `note` is the command's note, or the
+        cancellation's reason.
       required: [command, actor, occurredAt, note, correction]
       properties:
-        command: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommand"}
+        command: {$ref: "#/components/schemas/BeginnersWorkshopIntakeHistoryCommand"}
         actor: {type: string, nullable: true}
         occurredAt: {type: string, format: date-time}
         note: {type: string, nullable: true}
@@ -9440,7 +9501,7 @@ components:
       enum: [nobody_waiting]
     BeginnersWorkshopConsole:
       type: object
-      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, unpaidAfterWindow, unconfirmedCarriedFees, attention, fastTrackOpen, fastTrackHoldersOnly, finalisation]
+      required: [workshop, batches, pause, nextBatch, roster, failedRefunds, unpaidAfterWindow, unconfirmedCarriedFees, attention, fastTrackOpen, fastTrackHoldersOnly, finalisation, cancelPreview, cancellation]
       properties:
         workshop: {$ref: "#/components/schemas/BeginnersWorkshop"}
         batches:
@@ -9480,6 +9541,34 @@ components:
             - $ref: "#/components/schemas/BeginnersWorkshopConsoleFinalisation"
           nullable: true
           description: Attendance Finalisation; null until the workshop is finalised.
+        cancelPreview:
+          allOf:
+            - $ref: "#/components/schemas/BeginnersWorkshopConsoleCancelPreview"
+          nullable: true
+          description: What Cancel would do now; null unless the workshop is scheduled.
+        cancellation:
+          allOf:
+            - $ref: "#/components/schemas/BeginnersWorkshopConsoleCancellation"
+          nullable: true
+          description: The cancellation; null unless the workshop is cancelled.
+    BeginnersWorkshopConsoleCancelPreview:
+      type: object
+      description: Counted from the roster rows, so the Cancel dialog and the roster agree.
+      required: [deferred, returned, released]
+      properties:
+        deferred: {type: integer, minimum: 0, description: Paid Intakes that would be deferred.}
+        returned: {type: integer, minimum: 0, description: Contacted Intakes that would return to the Waitlist.}
+        released: {type: integer, minimum: 0, description: Live Seat Holds that would be released.}
+    BeginnersWorkshopConsoleCancellation:
+      type: object
+      required: [at, by, reason]
+      properties:
+        at: {type: string, format: date-time}
+        by:
+          type: string
+          nullable: true
+          description: Who cancelled it, by name; null once they are gone.
+        reason: {type: string, nullable: true}
     BeginnersWorkshopConsoleFinalisation:
       type: object
       required: [at, by, followUpAt, invitations]
@@ -9748,6 +9837,7 @@ components:
                     - invalid_note
                     - refund_choice_required
                     - invalid_refund_choice
+                    - invalid_reason
     BeginnersWorkshopIntakeCommandConflictError:
       description: 409 refusal of a console Intake command.
       allOf:

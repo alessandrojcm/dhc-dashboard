@@ -46,6 +46,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     email_is_principal: "email",
     email_has_pending_invitation: "email",
     invalid_note: "note",
+    invalid_reason: "reason",
     refund_choice_required: "refund",
     invalid_refund_choice: "refund",
     invalid_correction: "to"
@@ -56,6 +57,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       not_found: {404, "Beginners' Workshop not found"},
       after_finalisation: {409, "This workshop's attendance is final; it can no longer change"},
       already_cancelled: {409, "This workshop is cancelled"},
+      invalid_reason: {422, "Keep the reason under 500 characters"},
       contact_from_locked:
         {409, "Batch 1 has gone out, so the contact-from date can no longer change"},
       fee_locked: {409, "People have been contacted at this fee, so it can no longer change"},

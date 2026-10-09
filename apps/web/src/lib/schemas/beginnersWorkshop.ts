@@ -6,6 +6,7 @@
  * rule; these schemas only check what one field can know on its own.
  */
 import type {
+	BeginnersWorkshopCancelRequest,
 	BeginnersWorkshopCorrectAttendanceRequest,
 	BeginnersWorkshopFastTrackRequest,
 	BeginnersWorkshopIntakeCommandRequest,
@@ -219,6 +220,28 @@ export const rescheduleWorkshopSchema = v.pipe(
 export type RescheduleWorkshopInput = v.InferInput<
 	typeof rescheduleWorkshopSchema
 >;
+
+/**
+ * ALE-395: Cancel the workshop, with an optional reason kept on the
+ * workshop and each Intake's history.
+ */
+export const cancelWorkshopSchema = v.pipe(
+	v.object({
+		id: workshopId,
+		reason: v.optional(
+			v.pipe(
+				v.string(),
+				v.trim(),
+				v.maxLength(500, "Keep the reason under 500 characters."),
+			),
+			"",
+		),
+	}),
+	v.transform(({ id, reason }) => ({
+		id,
+		body: (reason ? { reason } : {}) satisfies BeginnersWorkshopCancelRequest,
+	})),
+);
 
 const newPersonEntries = { id: workshopId, ...waitlistRegistrationEntries };
 

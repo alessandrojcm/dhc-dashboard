@@ -5,6 +5,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
 	carriedFeeLabel,
+	cancelPreviewLines,
 	consoleTimeline,
 	emailLogLine,
 	failedRefundText,
@@ -116,6 +117,8 @@ function view(
 		fastTrackOpen: true,
 		fastTrackHoldersOnly: false,
 		finalisation: null,
+		cancelPreview: null,
+		cancellation: null,
 		...overrides,
 	};
 }
@@ -206,6 +209,42 @@ describe("consoleTimeline", () => {
 			"Attendance Finalisation",
 			"Follow-up email",
 		]);
+	});
+});
+
+describe("ALE-395 cancellation", () => {
+	it("words the Cancel dialog's counts, holds only when there are some", () => {
+		expect(
+			cancelPreviewLines({ deferred: 2, returned: 1, released: 1 }),
+		).toEqual([
+			"2 paid people deferred: their fee becomes a Carried Fee. Email: “Workshop cancelled – paid” (refund, or keep the fee for a later workshop).",
+			"1 contacted person back on the Waitlist with their original priority. Email: “Workshop cancelled – unpaid”.",
+			"1 live Seat Hold released; a payment that lands anyway is refunded automatically.",
+			"Assigned Staff get a Notification.",
+		]);
+		expect(
+			cancelPreviewLines({ deferred: 0, returned: 0, released: 0 }),
+		).toHaveLength(3);
+	});
+
+	it("names who cancelled it in the Now card", () => {
+		const base = view();
+		expect(
+			nowCard(
+				view({
+					workshop: {
+						...base.workshop,
+						status: "cancelled",
+						stage: "cancelled",
+					},
+					cancellation: {
+						at: "2026-10-22T12:00:00Z",
+						by: null,
+						reason: null,
+					},
+				}),
+			).title,
+		).toBe("Cancelled Thu 22 Oct, 13:00");
 	});
 });
 

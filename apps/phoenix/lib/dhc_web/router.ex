@@ -69,6 +69,7 @@ defmodule DhcWeb.Router do
     get("/staff-candidates", BeginnersWorkshopsController, :staff_candidates)
     put("/:id/settings", BeginnersWorkshopsController, :update_settings)
     post("/:id/reschedule", BeginnersWorkshopsController, :reschedule)
+    post("/:id/cancel", BeginnersWorkshopsController, :cancel)
     get("/:id/console", BeginnersWorkshopsController, :console)
     post("/:id/batches/pause", BeginnersWorkshopBatchesController, :pause)
     post("/:id/batches/resume", BeginnersWorkshopBatchesController, :resume)

@@ -50,6 +50,13 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       and (ALE-392) `invitations`: how many attended, and how many of
       them are now `invited` or `joined` — counted from the attended roster
       rows themselves, so the line and the list cannot disagree;
+    * `cancel_preview` (ALE-395) — while the workshop is scheduled, what
+      Cancel would do now: how many paid Intakes it defers, contacted ones
+      it returns and live Seat Holds it releases (from the roster rows
+      themselves, so the dialog and the list cannot disagree); `nil`
+      otherwise;
+    * `cancellation` (ALE-395) — `nil` unless cancelled, then when, by
+      whom (by name) and the optional reason;
     * `attention` — `:nobody_waiting` when a Batch is due with free seats
       but nobody eligible is waiting;
     * `fast_track_open` — whether Fast-track is offered now for anyone
@@ -113,6 +120,14 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
               }
             }
             | nil,
+          cancel_preview:
+            %{
+              deferred: non_neg_integer(),
+              returned: non_neg_integer(),
+              released: non_neg_integer()
+            }
+            | nil,
+          cancellation: %{at: DateTime.t(), by: String.t() | nil, reason: String.t() | nil} | nil,
           failed_refunds: [map()],
           unpaid_after_window: [map()],
           unconfirmed_carried_fees: [map()],
@@ -143,6 +158,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
          unconfirmed_carried_fees: unconfirmed_carried_fees(roster),
          attention: attention(next_batch),
          finalisation: finalisation(workshop, roster.attended),
+         cancel_preview: cancel_preview(workshop, roster),
+         cancellation: cancellation(workshop),
          fast_track_open: WorkshopPolicy.payment_open?(workshop, reading),
          fast_track_holders_only:
            workshop.status == "scheduled" and not WorkshopPolicy.payment_open?(workshop, reading)
@@ -386,6 +403,26 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
   end
 
   defp finalisation(%BeginnersWorkshop{}, _attended), do: nil
+
+  defp cancel_preview(%BeginnersWorkshop{status: "scheduled"}, roster) do
+    %{
+      deferred: length(roster.seated),
+      returned: length(roster.asked),
+      released: Enum.count(roster.asked, &(not is_nil(&1.hold_expires_at)))
+    }
+  end
+
+  defp cancel_preview(%BeginnersWorkshop{}, _roster), do: nil
+
+  defp cancellation(%BeginnersWorkshop{status: "cancelled"} = workshop) do
+    %{
+      at: workshop.cancelled_at,
+      by: name_of(workshop.cancelled_by_principal_id),
+      reason: workshop.cancel_reason
+    }
+  end
+
+  defp cancellation(%BeginnersWorkshop{}), do: nil
 
   # The latest refund of each Intake, by when it was requested.
   defp latest_refunds(workshop_id) do

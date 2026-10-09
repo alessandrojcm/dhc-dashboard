@@ -53,6 +53,10 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
     field :finalised_by_principal_id, :binary_id
     # ALE-394: how many times it was rescheduled; names each reschedule.
     field :reschedule_count, :integer, default: 0
+    # ALE-395: when the club cancelled it, who did, and the optional reason.
+    field :cancelled_at, :utc_datetime_usec
+    field :cancelled_by_principal_id, :binary_id
+    field :cancel_reason, :string
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end
@@ -158,6 +162,20 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
         status: "finalised",
         finalised_at: usec(at),
         finalised_by_principal_id: principal_id
+      )
+
+  @doc """
+  Cancellation (`cancel_workshop`, ALE-395): the status change with when,
+  who, and the optional reason.
+  """
+  @spec cancel_changeset(t(), binary(), String.t() | nil, DateTime.t()) :: Ecto.Changeset.t()
+  def cancel_changeset(%__MODULE__{} = workshop, principal_id, reason, at),
+    do:
+      change(workshop,
+        status: "cancelled",
+        cancelled_at: usec(at),
+        cancelled_by_principal_id: principal_id,
+        cancel_reason: reason
       )
 
   defp usec(%DateTime{microsecond: {value, _precision}} = at),
