@@ -26,6 +26,7 @@
 		"@ai-sdk/svelte": "3.0.92",
 		"@ai-sdk/valibot": "1.0.17",
 		"@dhc/api-client": "workspace:*",
+		"@dhc/email-templates": "workspace:*",
 		"@event-calendar/core": "^4.7.1",
 		"@internationalized/date": "^3.10.0",
 		"@sentry/sveltekit": "^11.4.0",

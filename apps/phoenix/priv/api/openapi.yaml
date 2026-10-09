@@ -84,7 +84,9 @@ tags:
       Beginners' Workshops (ADR 0029): the club's intake events between the
       Waitlist and Invitation. Never a Workshop, never listed publicly or
       announced. Every write is one command on the `Dhc.BeginnersWorkshops`
-      boundary.
+      boundary. Its slices share the one `/api/beginners-workshops` root; the
+      Intake Email template slice (`beginnersWorkshopEmailTemplates`, ALE-383)
+      edits the club-wide subject and body of every Intake Email type.
     x-context: Dhc.BeginnersWorkshops
     x-resource: BeginnersWorkshop
 
@@ -621,6 +623,84 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/Error"}
+
+  /beginners-workshops/email-templates:
+    get:
+      operationId: beginnersWorkshopEmailTemplates.list
+      tags: [BeginnersWorkshops]
+      summary: List the Intake Email templates
+      description: |
+        One club-wide template per Intake Email type, in display order
+        (action emails first). Each row carries the placeholders its type can
+        fill and, for action emails, the fixed button label the app adds.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: Every Intake Email template.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IntakeEmailTemplateListResponse"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "403":
+          description: The `beginners.workshops.manage` capability is required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  /beginners-workshops/email-templates/{emailType}:
+    put:
+      operationId: beginnersWorkshopEmailTemplates.update
+      tags: [BeginnersWorkshops]
+      summary: Save an Intake Email template
+      description: |
+        Replaces the type's subject and body. Only emails queued afterwards
+        use the new copy; there is no preview. Refused when the subject or
+        body uses a placeholder the type can't fill
+        (`code: placeholder_not_allowed`), when the body with every
+        placeholder at its longest exceeds 2,000 characters
+        (`code: template_too_long`), or when it is otherwise invalid
+        (`code: invalid_template`). `fields.subject` / `fields.body` carry
+        every message.
+      security: [{cookieSession: []}]
+      parameters:
+        - name: emailType
+          in: path
+          required: true
+          schema: {$ref: "#/components/schemas/IntakeEmailType"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/IntakeEmailTemplateUpdate"}
+      responses:
+        "200":
+          description: The saved template.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IntakeEmailTemplateResponse"}
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "403":
+          description: The `beginners.workshops.manage` capability is required.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "404":
+          description: Not an Intake Email type.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "422":
+          description: The template was refused; see `code` and `fields`.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/IntakeEmailTemplateValidationError"}
 
   /health:
     get:
@@ -7055,6 +7135,117 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemberAnnouncement"
+    IntakeEmailType:
+      type: string
+      description: An Intake Email type (`Dhc.BeginnersWorkshops.IntakeEmails.EmailType`).
+      enum:
+        - contact_pay
+        - contact_confirm
+        - place_confirmed_paid
+        - place_confirmed_carried
+        - pre_workshop
+        - rescheduled
+        - follow_up
+        - declined
+        - deferred
+        - cancelled_with_refund
+        - withdrawn_refunded
+        - withdrawn_forfeited
+        - carried_fee_refunded
+        - payment_refunded
+        - cancelled_paid
+        - cancelled_unpaid
+    IntakeEmailKind:
+      type: string
+      description: |
+        `action` emails (open Intakes) end with an app-added button;
+        `notice` emails (closed Intakes) are a message only.
+      enum: [action, notice]
+    IntakeEmailPlaceholder:
+      type: string
+      description: A placeholder name in the closed Intake Email vocabulary.
+      enum: [firstName, date, startTime, venue, fee, windowEnd, paymentCutoff, refundAmount]
+    IntakeEmailDocument:
+      type: object
+      description: |
+        A Tiptap (ProseMirror) JSON document in the Member Announcement
+        vocabulary plus the inline placeholder node
+        `{"type": "placeholder", "attrs": {"name": "<placeholder>"}}`
+        (marks allowed).
+      required: [type]
+      additionalProperties: true
+      properties:
+        type:
+          type: string
+          enum: [doc]
+        content:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+    IntakeEmailTemplate:
+      type: object
+      required: [emailType, kind, buttonLabel, placeholders, subject, body, updatedAt]
+      properties:
+        emailType: {$ref: "#/components/schemas/IntakeEmailType"}
+        kind: {$ref: "#/components/schemas/IntakeEmailKind"}
+        buttonLabel:
+          type: string
+          nullable: true
+          description: The fixed label of the app-added button; null for notices.
+        placeholders:
+          type: array
+          description: The placeholders this type can fill, in display order.
+          items: {$ref: "#/components/schemas/IntakeEmailPlaceholder"}
+        subject:
+          type: string
+          description: Plain text with `{{placeholder}}` tokens.
+        body: {$ref: "#/components/schemas/IntakeEmailDocument"}
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the template was last saved (or seeded).
+    IntakeEmailTemplateUpdate:
+      type: object
+      required: [subject, body]
+      additionalProperties: false
+      properties:
+        subject:
+          type: string
+          maxLength: 200
+          description: One line with `{{placeholder}}` tokens.
+        body: {$ref: "#/components/schemas/IntakeEmailDocument"}
+    IntakeEmailTemplateResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/IntakeEmailTemplate"}
+    IntakeEmailTemplateListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/IntakeEmailTemplate"}
+    IntakeEmailTemplateValidationError:
+      description: 422 refusals of an Intake Email template save.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required:
+            - errors
+          properties:
+            errors:
+              type: object
+              required:
+                - code
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - placeholder_not_allowed
+                    - template_too_long
+                    - invalid_template
     TrainingAnnouncementOccurrenceListResponse:
       type: object
       required: [data]

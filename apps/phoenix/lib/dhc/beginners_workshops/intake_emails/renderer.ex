@@ -39,6 +39,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Renderer do
           {:placeholder_not_allowed, [String.t()]}
           | {:missing_values, [String.t()]}
           | {:invalid_body, String.t()}
+  @type refusal :: :placeholder_not_allowed | :template_too_long | :invalid_template
 
   @doc "Resend's per-variable limit, which the body measure is checked against."
   @spec limit() :: pos_integer()
@@ -93,9 +94,15 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Renderer do
   The save check: the subject and body use only the type's placeholders, the
   subject is one non-blank line of at most #{@subject_max} characters, and the
   worst-case body fits the limit.
+
+  Each refusal names its field, its reason and a message. The reasons are
+  `:placeholder_not_allowed` (a placeholder the type can't fill),
+  `:template_too_long` (the worst-case body is over the limit) and
+  `:invalid_template` (anything else: a blank or multi-line subject, a body
+  outside the vocabulary or without text).
   """
   @spec validate(EmailType.id(), term(), term()) ::
-          :ok | {:error, [{:subject | :body, String.t()}]}
+          :ok | {:error, [{:subject | :body, refusal(), String.t()}]}
   def validate(type, subject, body) do
     case subject_errors(type, subject) ++ body_errors(type, body) do
       [] -> :ok
@@ -114,13 +121,13 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Renderer do
   defp subject_errors(type, subject) when is_binary(subject) do
     cond do
       String.trim(subject) == "" ->
-        [{:subject, "can't be blank"}]
+        [{:subject, :invalid_template, "can't be blank"}]
 
       String.contains?(subject, ["\r", "\n"]) ->
-        [{:subject, "must be a single line"}]
+        [{:subject, :invalid_template, "must be a single line"}]
 
       String.length(subject) > @subject_max ->
-        [{:subject, "must be at most #{@subject_max} characters"}]
+        [{:subject, :invalid_template, "must be at most #{@subject_max} characters"}]
 
       true ->
         %{placeholders: allowed} = EmailType.fetch!(type)
@@ -130,12 +137,12 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Renderer do
             []
 
           {:error, {:placeholder_not_allowed, names}} ->
-            Enum.map(names, &{:subject, cant_fill(&1)})
+            Enum.map(names, &{:subject, :placeholder_not_allowed, cant_fill(&1)})
         end
     end
   end
 
-  defp subject_errors(_type, _subject), do: [{:subject, "must be text"}]
+  defp subject_errors(_type, _subject), do: [{:subject, :invalid_template, "must be text"}]
 
   defp body_errors(type, body) do
     case measure(type, body) do
@@ -144,15 +151,15 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Renderer do
 
       {:ok, %{length: length}} ->
         [
-          {:body,
+          {:body, :template_too_long,
            "is #{length} characters with every placeholder at its longest; the limit is #{@limit}"}
         ]
 
       {:error, {:placeholder_not_allowed, names}} ->
-        Enum.map(names, &{:body, cant_fill(&1)})
+        Enum.map(names, &{:body, :placeholder_not_allowed, cant_fill(&1)})
 
       {:error, {:invalid_body, message}} ->
-        [{:body, message}]
+        [{:body, :invalid_template, message}]
     end
   end
 

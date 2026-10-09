@@ -68,28 +68,68 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailsTest do
     end
 
     test "refuses a placeholder the type can't fill, in the subject or the body" do
-      assert {:error, changeset} =
+      assert {:error, :placeholder_not_allowed, messages} =
                IntakeEmails.update_template("withdrawn_forfeited", %{
                  subject: "See you on {{date}}",
                  body: doc([p([t("Refunded "), ph("refundAmount")])])
                })
 
-      assert %{
+      assert messages == %{
                subject: ["uses {{date}}, which this email can't fill"],
                body: ["uses {{refundAmount}}, which this email can't fill"]
-             } = errors_on(changeset)
+             }
 
       assert IntakeEmails.get_template!("withdrawn_forfeited").subject =~ "waitlist"
     end
 
+    test "refuses a placeholder outside the vocabulary" do
+      assert {:error, :placeholder_not_allowed, %{body: ["uses {{coachName}}, " <> _]}} =
+               IntakeEmails.update_template("contact_pay", %{
+                 body: doc([p([t("Your coach is "), ph("coachName")])])
+               })
+    end
+
     test "refuses a body over the limit at worst case" do
-      assert {:error, changeset} =
+      before = IntakeEmails.get_template!("contact_pay")
+
+      assert {:error, :template_too_long, %{body: [message]}} =
                IntakeEmails.update_template("contact_pay", %{
                  body: doc([p(List.duplicate(ph("venue"), 25))])
                })
 
-      assert %{body: [message]} = errors_on(changeset)
       assert message =~ "the limit is 2000"
+      assert IntakeEmails.get_template!("contact_pay") == before
+    end
+
+    test "names the placeholder refusal first when a template is also too long" do
+      assert {:error, :placeholder_not_allowed, %{subject: [subject], body: [body]}} =
+               IntakeEmails.update_template("follow_up", %{
+                 subject: "At {{venue}}",
+                 body: doc([p(List.duplicate(ph("firstName"), 60))])
+               })
+
+      assert subject == "uses {{venue}}, which this email can't fill"
+      assert body =~ "the limit is 2000"
+    end
+
+    test "refuses any other invalid template" do
+      for {attrs, field} <- [
+            {%{subject: ""}, :subject},
+            {%{subject: "Two\nlines"}, :subject},
+            {%{body: doc([p([])])}, :body},
+            {%{body: "<p>HTML</p>"}, :body},
+            {%{body: doc([%{"type" => "codeBlock"}])}, :body}
+          ] do
+        assert {:error, :invalid_template, messages} =
+                 IntakeEmails.update_template("declined", attrs)
+
+        assert Map.keys(messages) == [field]
+      end
+    end
+
+    test "refuses an id that is not an Intake Email type" do
+      assert {:error, :unknown_email_type} =
+               IntakeEmails.update_template("coach_reminder", %{subject: "Hi"})
     end
   end
 

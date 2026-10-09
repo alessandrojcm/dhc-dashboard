@@ -9,6 +9,7 @@ import Button from "#lib/components/ui/button/button.svelte";
 import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import * as Select from "#lib/components/ui/select/index.js";
 import { Content, List, Root, Trigger } from "#lib/components/ui/tabs/index.js";
+import IntakeEmailTemplates from "#lib/components/beginners-workshops/intake-email-templates.svelte";
 import WaitlistTable from "./waitlist-table.svelte";
 import Analytics from "./workshop-analytics.svelte";
 import WorkshopsTab from "./workshops-tab.svelte";
@@ -44,7 +45,7 @@ function onTabChange(value: string) {
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
 	goto(url);
 }
-let views = $derived([
+const views = $derived([
 	{
 		id: "dashboard",
 		label: "Dashboard",
@@ -53,7 +54,12 @@ let views = $derived([
 		id: "waitlist",
 		label: "Waitlist",
 	},
-	...(data.canManageWorkshops ? [{ id: "workshops", label: "Workshops" }] : []),
+	...(data.canManageWorkshops
+		? [
+				{ id: "workshops", label: "Workshops" },
+				{ id: "email-templates", label: "Email templates" },
+			]
+		: []),
 ]);
 let viewLabel = $derived(
 	views.find((view) => view.id === value)?.label || "Dashboard",
@@ -135,6 +141,7 @@ let viewLabel = $derived(
 				<Trigger value="waitlist">Waitlist</Trigger>
 				{#if data.canManageWorkshops}
 					<Trigger value="workshops">Workshops</Trigger>
+					<Trigger value="email-templates">Email templates</Trigger>
 				{/if}
 			</List>
 		</div>
@@ -148,6 +155,11 @@ let viewLabel = $derived(
 		{#if data.workshops}
 			<Content value="workshops">
 				<WorkshopsTab workshops={data.workshops} />
+			</Content>
+		{/if}
+		{#if data.canManageWorkshops}
+			<Content value="email-templates">
+				<IntakeEmailTemplates />
 			</Content>
 		{/if}
 	</Root>

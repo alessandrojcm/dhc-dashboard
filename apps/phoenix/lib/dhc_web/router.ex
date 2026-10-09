@@ -61,6 +61,10 @@ defmodule DhcWeb.Router do
     get("/", BeginnersWorkshopsController, :index)
     post("/", BeginnersWorkshopsController, :create)
     put("/:id/settings", BeginnersWorkshopsController, :update_settings)
+
+    # ALE-383 — Intake Email templates.
+    get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)
+    put("/email-templates/:emailType", BeginnersWorkshopEmailTemplatesController, :update)
   end
 
   scope "/api/training-announcements", DhcWeb do

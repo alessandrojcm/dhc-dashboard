@@ -29,7 +29,7 @@ const future: string[] = [];
 // Keep template syntax at the value boundary, never editable inside a tag.
 function parts(source: string) {
 	return source
-		.split(/(\{\{[a-z]+\}\})/g)
+		.split(/(\{\{[A-Za-z]+\}\})/g)
 		.filter(Boolean)
 		.map((text) => ({
 			text,

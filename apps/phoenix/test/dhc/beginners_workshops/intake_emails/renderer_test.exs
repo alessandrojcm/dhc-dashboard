@@ -32,6 +32,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.RendererTest do
     test "agree with the email type table on the limit and every maximum" do
       assert @fixtures["limit"] == Renderer.limit()
       assert @fixtures["maxima"] == EmailType.maxima()
+
+      assert @fixtures["placeholders"] ==
+               Map.new(EmailType.all(), &{&1.id, &1.placeholders})
     end
 
     for %{"name" => name} = fixture <- @fixtures["cases"] do
@@ -153,8 +156,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.RendererTest do
                  doc([p([ph("refundAmount")])])
                )
 
-      assert {:subject, "uses {{date}}, which this email can't fill"} in errors
-      assert {:body, "uses {{refundAmount}}, which this email can't fill"} in errors
+      assert {:subject, :placeholder_not_allowed, "uses {{date}}, which this email can't fill"} in errors
+
+      assert {:body, :placeholder_not_allowed,
+              "uses {{refundAmount}}, which this email can't fill"} in errors
     end
 
     test "refuses a body whose worst-case render exceeds the limit" do
@@ -162,7 +167,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.RendererTest do
 
       assert {:error,
               [
-                {:body,
+                {:body, :template_too_long,
                  "is 2007 characters with every placeholder at its longest; the limit is 2000"}
               ]} =
                Renderer.validate("contact_pay", "Subject", body)
@@ -172,7 +177,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.RendererTest do
       body = doc([p([t("Hi")])])
 
       for subject <- ["", "  ", "Line\nbreak", String.duplicate("a", 201)] do
-        assert {:error, [{:subject, _}]} = Renderer.validate("declined", subject, body)
+        assert {:error, [{:subject, :invalid_template, _}]} =
+                 Renderer.validate("declined", subject, body)
       end
     end
   end
