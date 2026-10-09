@@ -131,6 +131,12 @@ export const batchesCommandSchema = v.object({
 	id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
 });
 
+/** ALE-390: one person's door check-in (or its undo). */
+export const doorCheckInSchema = v.object({
+	id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+	intakeId: v.pipe(v.string(), v.uuid("Unknown person.")),
+});
+
 export type ScheduleWorkshopsInput = v.InferInput<
 	typeof scheduleWorkshopsSchema
 >;

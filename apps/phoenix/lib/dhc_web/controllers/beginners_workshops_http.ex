@@ -76,7 +76,11 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       email_on_waitlist: {409, "This email is already on the Waitlist; search for them instead"},
       email_is_principal: {409, "This email belongs to a Member or former Member"},
       email_has_pending_invitation: {409, "This email already has a pending Invitation"},
-      invalid_payload: {422, "Check the person's details"}
+      invalid_payload: {422, "Check the person's details"},
+      # Door check-in (ALE-390).
+      check_in_not_open: {409, "Check-in opens an hour before the workshop starts"},
+      check_in_closed: {409, "Check-in has closed for this workshop"},
+      not_paid: {409, "Only people who have paid can be checked in"}
     },
     fields: @internal_to_public
 

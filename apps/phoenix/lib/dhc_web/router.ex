@@ -86,6 +86,8 @@ defmodule DhcWeb.Router do
 
     get("/mine", BeginnersWorkshopAssignmentsController, :list)
     get("/:id/door", BeginnersWorkshopDoorController, :show)
+    post("/:id/door/people/:intakeId/check-in", BeginnersWorkshopDoorController, :check_in)
+    delete("/:id/door/people/:intakeId/check-in", BeginnersWorkshopDoorController, :undo_check_in)
   end
 
   # ALE-381: the person's Intake link. The token in the path is the only

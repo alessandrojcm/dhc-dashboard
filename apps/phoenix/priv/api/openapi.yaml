@@ -4177,6 +4177,51 @@ paths:
         "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
         "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+  /beginners-workshops/{id}/door/people/{intakeId}/check-in:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopDoor.checkIn
+      tags: [BeginnersWorkshops]
+      summary: Check a paid person in at the door
+      description: |
+        Records who checked the person in and when (kept even if that Staff
+        member is later unassigned). Only a `paid` Intake (no walk-ins), and
+        only inside the check-in window: from 1 hour before the start on the
+        workshop date until Attendance Finalisation or the end of that
+        Dublin day. Idempotent: an existing check-in is kept. Requires the
+        assignment-scoped `beginners.workshops.run`; anyone else gets the
+        same 404 as an unknown workshop. Answers the refreshed door view.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The door view
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopDoorResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopCheckInConflict"}
+    delete:
+      operationId: beginnersWorkshopDoor.undoCheckIn
+      tags: [BeginnersWorkshops]
+      summary: Undo a door check-in
+      description: |
+        Clears the person's check-in, under the same rules as check-in.
+        Idempotent. Answers the refreshed door view.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The door view
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopDoorResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopCheckInConflict"}
 
   /beginners/intake/{token}:
     parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
@@ -7367,6 +7412,11 @@ components:
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
+    BeginnersWorkshopCheckInConflict:
+      description: Outside the check-in window, or the person has not paid
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/BeginnersWorkshopCheckInConflictError"}
     BeginnersWorkshopConflict:
       description: Lifecycle conflict (finalised, cancelled, Batch 1 already sent, or the fee locked by an Intake)
       content:
@@ -7434,6 +7484,11 @@ components:
       schema: {type: string, minLength: 1, maxLength: 128}
     BeginnersWorkshopId:
       name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    BeginnersWorkshopIntakeId:
+      name: intakeId
       in: path
       required: true
       schema: {type: string, format: uuid}
@@ -8060,9 +8115,9 @@ components:
     BeginnersWorkshopDoor:
       type: object
       description: |
-        The door view header. Its own shape: it never carries email,
-        payment, refund or Waitlist fields. Civil values are Europe/Dublin.
-      required: [id, status, venue, date, startTime, stage, alerts, staff]
+        The door view. Its own shape: it never carries email, payment,
+        refund or Waitlist fields. Civil values are Europe/Dublin.
+      required: [id, status, venue, date, startTime, stage, alerts, staff, checkIn, people]
       properties:
         id: {type: string, format: uuid}
         status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
@@ -8074,6 +8129,63 @@ components:
           type: array
           items: {$ref: "#/components/schemas/BeginnersWorkshopAlert"}
         staff: {$ref: "#/components/schemas/BeginnersWorkshopStaff"}
+        checkIn: {$ref: "#/components/schemas/BeginnersWorkshopCheckIn"}
+        people:
+          type: array
+          description: Everyone with a seat (`paid`, then `attended` / `no_show`), by name.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopDoorPerson"}
+    BeginnersWorkshopCheckInWindow:
+      type: string
+      description: |
+        `open` from 1 hour before the start on the workshop date until
+        Attendance Finalisation or the end of that Dublin day; `before` until
+        then; `closed` after it (or once finalised or cancelled).
+      enum: [before, open, closed]
+    BeginnersWorkshopCheckIn:
+      type: object
+      required: [window, opensAt]
+      properties:
+        window: {$ref: "#/components/schemas/BeginnersWorkshopCheckInWindow"}
+        opensAt:
+          type: string
+          format: date-time
+          description: When check-in opens (1 hour before the start).
+    BeginnersWorkshopDoorPerson:
+      type: object
+      description: |
+        One person at the door. A minor (under 18 on the workshop date)
+        carries `minor: true` and the Guardian's name and phone; nobody
+        else carries a Guardian.
+      required: [id, firstName, lastName, pronouns, state, minor, medicalConditions, guardian, checkedIn]
+      properties:
+        id: {type: string, format: uuid, description: The Intake id.}
+        firstName: {type: string, nullable: true}
+        lastName: {type: string, nullable: true}
+        pronouns: {type: string, nullable: true}
+        state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
+        minor: {type: boolean}
+        medicalConditions: {type: string, nullable: true}
+        guardian:
+          allOf:
+            - $ref: "#/components/schemas/BeginnersWorkshopGuardian"
+          nullable: true
+        checkedIn:
+          allOf:
+            - $ref: "#/components/schemas/BeginnersWorkshopCheckInRecord"
+          nullable: true
+    BeginnersWorkshopGuardian:
+      type: object
+      required: [name, phoneNumber]
+      properties:
+        name: {type: string}
+        phoneNumber: {type: string}
+    BeginnersWorkshopCheckInRecord:
+      type: object
+      description: Who checked the person in, by name, and when.
+      required: [at, by]
+      properties:
+        at: {type: string, format: date-time}
+        by: {type: string}
     BeginnersWorkshopDoorResponse:
       type: object
       required: [data]
@@ -8235,7 +8347,7 @@ components:
       description: |
         One Intake on the console roster. Names are null once the person is
         anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, queueDate, contactedAt, holdExpiresAt]
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, queueDate, contactedAt, holdExpiresAt, checkedInAt]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -8251,6 +8363,11 @@ components:
           format: date-time
           nullable: true
           description: When the person's live Seat Hold runs out (null without one).
+        checkedInAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the person was checked in at the door (null until then).
     BeginnersIntakeState:
       type: string
       description: |
@@ -8476,6 +8593,20 @@ components:
                 code:
                   type: string
                   enum: [after_finalisation, already_cancelled, contact_from_locked, fee_locked, staff_conflict, capacity_below_taken]
+    BeginnersWorkshopCheckInConflictError:
+      description: 409 on a door check-in or its undo.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [check_in_not_open, check_in_closed, not_paid]
     BeginnersWorkshopInvalidError:
       description: |
         422 refusal on a Beginners' Workshop command. Domain reasons carry a

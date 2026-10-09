@@ -16,8 +16,26 @@ defmodule DhcWeb.BeginnersWorkshopDoorJSON do
         startTime: BeginnersWorkshopsJSON.hh_mm(view.start_time),
         stage: view.stage,
         alerts: view.alerts,
-        staff: BeginnersWorkshopsJSON.staff(view.staff)
+        staff: BeginnersWorkshopsJSON.staff(view.staff),
+        checkIn: %{window: view.check_in.window, opensAt: view.check_in.opens_at},
+        people: Enum.map(view.people, &person/1)
       }
+    }
+  end
+
+  defp person(person) do
+    %{
+      id: person.id,
+      firstName: person.first_name,
+      lastName: person.last_name,
+      pronouns: person.pronouns,
+      state: person.state,
+      minor: person.minor,
+      medicalConditions: person.medical_conditions,
+      guardian:
+        person.guardian &&
+          %{name: person.guardian.name, phoneNumber: person.guardian.phone_number},
+      checkedIn: person.checked_in && %{at: person.checked_in.at, by: person.checked_in.by}
     }
   end
 end

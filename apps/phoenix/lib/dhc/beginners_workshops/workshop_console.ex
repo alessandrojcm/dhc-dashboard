@@ -17,7 +17,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       `send_due_batch` would contact now — with minors badged;
     * `roster` — Intakes grouped by meaning before finalisation: `seated`
       (paid), `asked` (contacted, not paid yet) and `out`; each Intake with
-      a live Seat Hold carries when its hold runs out (ALE-381);
+      a live Seat Hold carries when its hold runs out (ALE-381), and each
+      its door check-in time (ALE-390);
     * `attention` — `:nobody_waiting` when a Batch is due with free seats
       but nobody eligible is waiting;
     * `fast_track_open` — whether Fast-track is offered now
@@ -152,6 +153,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           queue_date: i.queue_date,
           contacted_at: i.contacted_at,
           hold_expires_at: h.expires_at,
+          checked_in_at: i.checked_in_at,
           first_name: p.first_name,
           last_name: p.last_name,
           date_of_birth: p.date_of_birth

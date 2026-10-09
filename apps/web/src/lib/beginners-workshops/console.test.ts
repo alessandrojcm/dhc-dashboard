@@ -182,6 +182,41 @@ describe("nowCard", () => {
 			body: "1 of 3 paid. Batch 2 goes out Wed 28 Oct, 10:00.",
 		});
 	});
+
+	it("counts who is in once door check-in is open (ALE-390)", () => {
+		const base = view();
+		const seated = (id: string, checkedInAt: string | null) => ({
+			id,
+			state: "paid" as const,
+			origin: "batch" as const,
+			batchNumber: 1,
+			firstName: "Cian",
+			lastName: "Doyle",
+			minor: false,
+			queueDate: "2024-12-01T12:00:00Z",
+			contactedAt: "2026-10-20T09:00:00Z",
+			holdExpiresAt: null,
+			checkedInAt,
+		});
+		const today = (stage: "today_before_check_in" | "check_in_open") =>
+			view({
+				workshop: { ...base.workshop, stage },
+				roster: {
+					seated: [seated("a", "2026-11-14T18:00:00Z"), seated("b", null)],
+					asked: [],
+					out: [],
+				},
+			});
+
+		expect(nowCard(today("today_before_check_in"))).toEqual({
+			title: "Today — check-in opens an hour before",
+			body: "1 of 3 paid. Door check-in opens an hour before the 18:30 start.",
+		});
+		expect(nowCard(today("check_in_open"))).toEqual({
+			title: "Today — check-in open",
+			body: "1 of 2 in. 1 of 3 paid.",
+		});
+	});
 });
 
 describe("nowCard after the Payment Cutoff (ALE-385)", () => {
@@ -193,6 +228,7 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 		queueDate: "2025-01-01T12:00:00Z",
 		contactedAt: "2026-10-20T09:00:00Z",
 		holdExpiresAt,
+		checkedInAt: null,
 		firstName: "Aoife",
 		lastName: "Byrne",
 		minor: false,

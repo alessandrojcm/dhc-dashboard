@@ -290,10 +290,36 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
 
   def alerts(%BeginnersWorkshop{}, _facts), do: []
 
-  defp check_in_open?(workshop, reading) do
-    opens = DateTime.add(starts_at(workshop), -@check_in_lead_minutes * 60, :second)
-    DateTime.compare(reading.now, opens) != :lt
+  defp check_in_open?(workshop, reading),
+    do: DateTime.compare(reading.now, check_in_opens_at(workshop)) != :lt
+
+  @doc "When door check-in opens: 1 hour before the start (Dublin) on the workshop date."
+  @spec check_in_opens_at(BeginnersWorkshop.t() | %{date: Date.t(), start_time: Time.t()}) ::
+          DateTime.t()
+  def check_in_opens_at(workshop),
+    do: DateTime.add(starts_at(workshop), -@check_in_lead_minutes * 60, :second)
+
+  @typedoc "Where `reading` falls against the door check-in window."
+  @type check_in_window :: :before | :open | :closed
+
+  @doc """
+  The door check-in window at `reading` (spec stories 91–92): `:open` from
+  1 hour before the start on the workshop date until Attendance
+  Finalisation or the end of that Dublin day, whichever comes first;
+  `:before` while it has not opened; `:closed` once it has ended (or the
+  workshop is finalised or cancelled). `check_in` and `undo_check_in`
+  work only while it is `:open`.
+  """
+  @spec check_in_window(BeginnersWorkshop.t(), map()) :: check_in_window()
+  def check_in_window(%BeginnersWorkshop{status: "scheduled"} = workshop, reading) do
+    case Date.compare(reading.today, workshop.date) do
+      :lt -> :before
+      :gt -> :closed
+      :eq -> if check_in_open?(workshop, reading), do: :open, else: :before
+    end
   end
+
+  def check_in_window(%BeginnersWorkshop{}, _reading), do: :closed
 
   defp window_open?(%{latest_window_end: nil}, _reading), do: false
 

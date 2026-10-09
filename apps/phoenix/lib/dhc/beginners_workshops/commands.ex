@@ -104,6 +104,21 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   is the Batch one, with `{{windowEnd}}` rendering the Payment Cutoff. The
   person pays the workshop fee like everyone else.
 
+  ## Door check-in (ALE-390)
+
+  `check_in` / `undo_check_in` (`beginners.workshops.run`) record or clear
+  who checked a `paid` Intake in at the door and when — never a walk-in, and
+  only while `WorkshopPolicy.check_in_window/2` is `:open` (from 1 hour
+  before the start on the workshop date until Attendance Finalisation or the
+  end of that Dublin day). The capability is assignment-scoped, so the actor
+  is authorized against the workshop's Staff **before any read** of the
+  workshop or its Intakes (a denial is `:not_found`, concealing the
+  workshop), and again under the Beginners' Workshop lock, which every
+  Staff change takes. The record names a Principal, not a Staff row, so it
+  stays when that person is later unassigned. Both are idempotent: checking
+  in a checked-in person keeps the first record. Neither is a state change;
+  Attendance Finalisation turns the record into `attended` / `no_show`.
+
   No staff command sends email itself; `fast_track`'s Contact email is
   queued by the Intake it creates, exactly as a Batch's is.
 
@@ -224,6 +239,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :reap_holds
           | {:pass_payment_cutoff, workshop_id :: binary()}
           | {:fast_track, workshop_id :: binary(), fast_track_person()}
+          | {:check_in, workshop_id :: binary(), intake_id :: binary()}
+          | {:undo_check_in, workshop_id :: binary(), intake_id :: binary()}
 
   @typedoc """
   Who `fast_track` places: an existing Waitlist entry by id, or a new
@@ -269,6 +286,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :email_is_principal
           | :email_has_pending_invitation
           | :invalid_payload
+          | :check_in_not_open
+          | :check_in_closed
+          | :not_paid
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -280,7 +300,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     pause_batches: :"beginners.workshops.manage",
     resume_batches: :"beginners.workshops.manage",
     set_staff: :"beginners.workshops.manage",
-    fast_track: :"beginners.workshops.manage"
+    fast_track: :"beginners.workshops.manage",
+    # Assignment-scoped (ALE-379): authorized against the workshop's Staff.
+    check_in: :"beginners.workshops.run",
+    undo_check_in: :"beginners.workshops.run"
   }
 
   # Commands only the `:system` actor (time-driven passes) may run.
@@ -380,7 +403,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:origin, "beginners_workshop_intakes_origin_check"},
       {:link_generation, "beginners_workshop_intakes_link_generation_check"},
       {:paid_via, "beginners_workshop_intakes_paid_via_check"},
-      {:state, "beginners_workshop_intakes_paid_check"}
+      {:state, "beginners_workshop_intakes_paid_check"},
+      {:checked_in_at, "beginners_workshop_intakes_check_in_check"}
     ],
     IntakePayment => [
       {:status, "beginners_workshop_intake_payments_status_check"},
@@ -431,7 +455,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     name = command_name(command)
 
     case Map.fetch(@staff_capabilities, name) do
-      {:ok, capability} -> authorize_staff(actor, capability)
+      {:ok, capability} -> authorize_staff(actor, capability, command)
       :error when name in @system_commands -> authorize_system(actor)
       :error when name in @intake_link_commands -> authorize_intake_link(actor)
       :error when name in @stripe_commands -> authorize_stripe(actor)
@@ -453,7 +477,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp authorize_stripe(:stripe), do: :ok
   defp authorize_stripe(_actor), do: {:error, :forbidden}
 
-  defp authorize_staff({:staff, principal_id}, capability) when is_binary(principal_id) do
+  defp authorize_staff({:staff, principal_id}, capability, command)
+       when is_binary(principal_id) do
+    if Capabilities.assignment_scoped?(capability),
+      do: authorize_assigned(principal_id, capability, elem(command, 1)),
+      else: authorize_role(principal_id, capability)
+  end
+
+  defp authorize_staff(_actor, _capability, _command), do: {:error, :forbidden}
+
+  defp authorize_role(principal_id, capability) do
     with {:ok, id} <- Ecto.UUID.cast(principal_id),
          {:ok, projection} <- Auth.load_session_principal(%Principal{id: id}),
          :ok <- Capabilities.authorize(projection, capability) do
@@ -463,7 +496,32 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp authorize_staff(_actor, _capability), do: {:error, :forbidden}
+  # An assignment-scoped capability is decided against the workshop's Staff
+  # rows only — the resource, read before anything the capability protects.
+  # A denial conceals the workshop (`:not_found`, the door view's 404).
+  defp authorize_assigned(principal_id, capability, workshop_id) do
+    with {:ok, id} <- Ecto.UUID.cast(principal_id),
+         {:ok, workshop_id} <- Ecto.UUID.cast(workshop_id),
+         {:ok, projection} <- Auth.load_session_principal(%Principal{id: id}) do
+      case Capabilities.authorize(projection, capability, staff_resource(workshop_id)) do
+        :ok -> :ok
+        {:error, :not_found} -> {:error, :not_found}
+        {:error, _denied} -> {:error, :forbidden}
+      end
+    else
+      :error -> {:error, :not_found}
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  defp staff_resource(workshop_id) do
+    %{
+      assigned_principal_ids:
+        Repo.all(
+          from(s in StaffAssignment, where: s.workshop_id == ^workshop_id, select: s.principal_id)
+        )
+    }
+  end
 
   defp command_name(command) when is_tuple(command), do: elem(command, 0)
   defp command_name(command) when is_atom(command), do: command
@@ -567,6 +625,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       end)
     end
   end
+
+  defp run({:staff, principal_id}, {:check_in, workshop_id, intake_id}, clock),
+    do: door_check_in(principal_id, workshop_id, intake_id, :check_in, clock)
+
+  defp run({:staff, principal_id}, {:undo_check_in, workshop_id, intake_id}, clock),
+    do: door_check_in(principal_id, workshop_id, intake_id, :undo, clock)
 
   defp run(_actor, _command, _clock), do: {:error, :unknown_command}
 
@@ -1488,6 +1552,66 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp released?(%IntakePayment{id: id}),
     do: Repo.exists?(from(p in IntakePayment, where: p.id == ^id and p.status == "released"))
+
+  # ── check_in / undo_check_in ────────────────────────────────────
+
+  defp door_check_in(principal_id, workshop_id, intake_id, action, clock) do
+    with {:ok, workshop_id} <- cast_id(workshop_id),
+         {:ok, intake_id} <- cast_id(intake_id) do
+      transact(fn ->
+        with_locked(
+          %{
+            workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+            intake:
+              required(
+                from(i in Intake, where: i.id == ^intake_id and i.workshop_id == ^workshop_id)
+              )
+          },
+          &check_in_locked(&1, principal_id, action, clock)
+        )
+      end)
+    end
+  end
+
+  # Staff rows change only under the workshop lock, so this re-check is
+  # authoritative: someone unassigned since the pre-read check is refused.
+  defp check_in_locked(%{workshop: workshop, intake: intake}, principal_id, action, clock) do
+    reading = Clock.read(clock)
+
+    with :ok <- authorize_assigned(principal_id, :"beginners.workshops.run", workshop.id),
+         :ok <- check_in_window_open(workshop, reading),
+         :ok <- check_in_paid(intake),
+         {:ok, intake} <- record_check_in(intake, principal_id, action, reading) do
+      {:ok, check_in_view(intake)}
+    end
+  end
+
+  defp check_in_window_open(workshop, reading) do
+    case WorkshopPolicy.check_in_window(workshop, reading) do
+      :open -> :ok
+      :before -> {:error, :check_in_not_open}
+      :closed -> {:error, :check_in_closed}
+    end
+  end
+
+  # No walk-ins: only a paid person is checked in.
+  defp check_in_paid(%Intake{state: "paid"}), do: :ok
+  defp check_in_paid(%Intake{}), do: {:error, :not_paid}
+
+  defp record_check_in(%Intake{checked_in_at: %DateTime{}} = intake, _id, :check_in, _reading),
+    do: {:ok, intake}
+
+  defp record_check_in(%Intake{} = intake, principal_id, :check_in, reading),
+    do: intake |> Intake.check_in_changeset(principal_id, reading.now) |> persist()
+
+  defp record_check_in(%Intake{checked_in_at: nil} = intake, _id, :undo, _reading),
+    do: {:ok, intake}
+
+  defp record_check_in(%Intake{} = intake, _id, :undo, _reading),
+    do: intake |> Intake.undo_check_in_changeset() |> persist()
+
+  defp check_in_view(%Intake{} = intake),
+    do: Map.take(intake, [:id, :workshop_id, :checked_in_at, :checked_in_by_principal_id])
 
   # ── pass_payment_cutoff ─────────────────────────────────────────
 

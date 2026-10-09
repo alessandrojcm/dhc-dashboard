@@ -39,7 +39,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     # ALE-383's Intake Email template slice shares the one tag and URL root.
     assert operations |> Enum.map(&elem(&1, 1)["operationId"]) |> Enum.sort() ==
              ~w(beginnersWorkshopAssignments.list beginnersWorkshopBatches.pause
-                beginnersWorkshopBatches.resume beginnersWorkshopDoor.show
+                beginnersWorkshopBatches.resume beginnersWorkshopDoor.checkIn
+                beginnersWorkshopDoor.show beginnersWorkshopDoor.undoCheckIn
                 beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
                 beginnersWorkshopFastTrack.candidates beginnersWorkshopFastTrack.newPerson
                 beginnersWorkshopFastTrack.waitlistPerson
@@ -95,6 +96,9 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
 
     assert schemas["BeginnersWorkshopAlert"]["enum"] ==
              Enum.map(WorkshopPolicy.alerts(), &Atom.to_string/1)
+
+    # `WorkshopPolicy.check_in_window/2` (ALE-390).
+    assert schemas["BeginnersWorkshopCheckInWindow"]["enum"] == ~w(before open closed)
   end
 
   test "the Intake and Next Batch vocabularies are Phoenix's" do
@@ -112,7 +116,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     schemas = spec()["components"]["schemas"]
 
     codes =
-      for name <- ~w(BeginnersWorkshopConflictError BeginnersWorkshopInvalidError),
+      for name <-
+            ~w(BeginnersWorkshopConflictError BeginnersWorkshopInvalidError BeginnersWorkshopCheckInConflictError),
           code <-
             get_in(schemas, [
               name,

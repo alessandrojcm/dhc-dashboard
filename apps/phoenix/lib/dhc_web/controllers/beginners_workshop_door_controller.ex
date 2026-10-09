@@ -7,6 +7,10 @@ defmodule DhcWeb.BeginnersWorkshopDoorController do
   it against the workshop's Staff. Anyone who is neither on the Staff nor a
   manager gets the same 404 as an unknown workshop: they cannot tell the
   workshop exists.
+
+  `check_in` / `undo_check_in` (ALE-390) run the boundary command, which
+  authorizes the same capability against the same Staff before any read, and
+  answer the refreshed door view.
   """
   use DhcWeb, :controller
 
@@ -14,11 +18,27 @@ defmodule DhcWeb.BeginnersWorkshopDoorController do
 
   alias Dhc.Auth.Capabilities
   alias Dhc.BeginnersWorkshops
+  alias DhcWeb.BeginnersWorkshopsHTTP
 
   @doc "GET /beginners-workshops/{id}/door"
   def show(conn, %{"id" => id}) do
     with {:ok, view, resource} <- BeginnersWorkshops.door_view(id),
          :ok <- authorize(conn, resource) do
+      render(conn, :show, view: view)
+    end
+  end
+
+  @doc "POST /beginners-workshops/{id}/door/people/{intakeId}/check-in"
+  def check_in(conn, %{"id" => id, "intakeId" => intake_id}),
+    do: run(conn, id, {:check_in, id, intake_id})
+
+  @doc "DELETE /beginners-workshops/{id}/door/people/{intakeId}/check-in"
+  def undo_check_in(conn, %{"id" => id, "intakeId" => intake_id}),
+    do: run(conn, id, {:undo_check_in, id, intake_id})
+
+  defp run(conn, id, command) do
+    with {:ok, _record} <- BeginnersWorkshops.execute(BeginnersWorkshopsHTTP.actor(conn), command),
+         {:ok, view, _resource} <- BeginnersWorkshops.door_view(id) do
       render(conn, :show, view: view)
     end
   end

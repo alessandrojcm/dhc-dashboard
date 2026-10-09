@@ -76,7 +76,8 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       minor: row.minor,
       queueDate: row.queue_date,
       contactedAt: row.contacted_at,
-      holdExpiresAt: row.hold_expires_at
+      holdExpiresAt: row.hold_expires_at,
+      checkedInAt: row.checked_in_at
     }
   end
 
