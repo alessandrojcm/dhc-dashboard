@@ -3,6 +3,7 @@ import * as v from "valibot";
 import {
 	scheduleWorkshopsSchema,
 	workshopSettingsSchema,
+	workshopStaffSchema,
 } from "#lib/schemas/beginnersWorkshop.js";
 
 const shared = {
@@ -39,6 +40,8 @@ describe("scheduleWorkshopsSchema", () => {
 					capacity: 16,
 					feeCents: 3999,
 					paymentWindowDays: 7,
+					coachPrincipalId: null,
+					assistantPrincipalIds: [],
 				},
 				{
 					date: "2026-12-05",
@@ -49,6 +52,8 @@ describe("scheduleWorkshopsSchema", () => {
 					capacity: 16,
 					feeCents: 3999,
 					paymentWindowDays: 7,
+					coachPrincipalId: null,
+					assistantPrincipalIds: [],
 				},
 			],
 		});
@@ -119,5 +124,62 @@ describe("workshopSettingsSchema", () => {
 				contactFromDate: undefined,
 			},
 		});
+	});
+});
+
+const WORKSHOP = "11111111-1111-4111-8111-111111111111";
+const COACH = "22222222-2222-4222-8222-222222222222";
+const ASSISTANT = "33333333-3333-4333-8333-333333333333";
+
+describe("workshopStaffSchema", () => {
+	it("sends the whole Staff list", () => {
+		expect(
+			v.parse(workshopStaffSchema, {
+				id: WORKSHOP,
+				coachPrincipalId: COACH,
+				assistantPrincipalIds: [ASSISTANT],
+			}),
+		).toEqual({
+			id: WORKSHOP,
+			body: { coachPrincipalId: COACH, assistantPrincipalIds: [ASSISTANT] },
+		});
+	});
+
+	it("sends no coach and no assistants as null and an empty list", () => {
+		for (const input of [
+			{ id: WORKSHOP },
+			{ id: WORKSHOP, coachPrincipalId: "" },
+		]) {
+			expect(v.parse(workshopStaffSchema, input)).toEqual({
+				id: WORKSHOP,
+				body: { coachPrincipalId: null, assistantPrincipalIds: [] },
+			});
+		}
+	});
+
+	it("refuses a pick that is not a Member id", () => {
+		expect(
+			v.safeParse(workshopStaffSchema, {
+				id: WORKSHOP,
+				assistantPrincipalIds: ["nope"],
+			}).success,
+		).toBe(false);
+	});
+});
+
+describe("scheduleWorkshopsSchema Staff", () => {
+	it("gives every date the same optional Staff", () => {
+		const output = v.parse(scheduleWorkshopsSchema, {
+			...shared,
+			coachPrincipalId: COACH,
+			assistantPrincipalIds: [ASSISTANT],
+			workshops: [{ date: "2026-11-14" }, { date: "2026-11-21" }],
+		});
+		for (const workshop of output.workshops) {
+			expect(workshop).toMatchObject({
+				coachPrincipalId: COACH,
+				assistantPrincipalIds: [ASSISTANT],
+			});
+		}
 	});
 });

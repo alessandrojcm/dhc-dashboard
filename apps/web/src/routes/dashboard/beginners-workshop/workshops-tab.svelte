@@ -1,34 +1,46 @@
 <!--
 	ALE-378: the Workshops tab — Phoenix's list read model, upcoming first,
 	then past and cancelled. Stage, seats and alerts are Phoenix's; this
-	component names and lays them out.
+	component names and lays them out. ALE-379: each row names its Staff and
+	opens the Staff dialog and the door view.
 -->
 <script lang="ts">
 import type {
 	BeginnersWorkshop,
 	BeginnersWorkshopListResponse,
+	BeginnersWorkshopStaffCandidate,
 } from "@dhc/api-client";
-import { AlertTriangle, CalendarPlus, Settings2 } from "@lucide/svelte";
+import { CalendarPlus, DoorOpen, Settings2, Users } from "@lucide/svelte";
+import { resolve } from "$app/paths";
 import {
-	alertLabel,
 	dateTile,
 	formatFee,
 	stageLabel,
+	staffSummary,
 	stageTone,
 } from "#lib/beginners-workshops/presentation.js";
+import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Empty from "#lib/components/ui/empty/index.js";
 import ScheduleWorkshopsDialog from "./schedule-workshops-dialog.svelte";
 import SeatMeter from "./seat-meter.svelte";
+import StaffDialog from "./staff-dialog.svelte";
 import WorkshopSettingsDialog from "./workshop-settings-dialog.svelte";
 
-let { workshops }: { workshops: BeginnersWorkshopListResponse["data"] } =
-	$props();
+let {
+	workshops,
+	candidates,
+}: {
+	workshops: BeginnersWorkshopListResponse["data"];
+	candidates: BeginnersWorkshopStaffCandidate[];
+} = $props();
 
 let scheduleOpen = $state(false);
 let settingsOpen = $state(false);
 let editing = $state<BeginnersWorkshop | null>(null);
+let staffOpen = $state(false);
+let staffing = $state<BeginnersWorkshop | null>(null);
 
 const toneClass = {
 	neutral: "",
@@ -41,6 +53,11 @@ const toneClass = {
 function editSettings(workshop: BeginnersWorkshop) {
 	editing = workshop;
 	settingsOpen = true;
+}
+
+function editStaff(workshop: BeginnersWorkshop) {
+	staffing = workshop;
+	staffOpen = true;
 }
 </script>
 
@@ -66,18 +83,14 @@ function editSettings(workshop: BeginnersWorkshop) {
 				<Badge variant="outline" class={toneClass[stageTone(workshop.stage)]}
 					>{stageLabel(workshop.stage)}</Badge
 				>
-				{#each workshop.alerts as alert (alert)}
-					<Badge
-						variant="outline"
-						class="border-amber-500 bg-amber-50 text-amber-900"
-					>
-						<AlertTriangle />
-						{alertLabel(alert)}
-					</Badge>
-				{/each}
+				<WorkshopAlerts alerts={workshop.alerts} />
 			</div>
 			<p class="truncate text-sm text-muted-foreground">
 				{workshop.venue} · {formatFee(workshop.feeCents)}
+			</p>
+			<p class="flex items-center gap-1.5 truncate text-sm">
+				<Users class="size-4 shrink-0 text-muted-foreground" />
+				<span class="truncate">{staffSummary(workshop.staff)}</span>
 			</p>
 		</div>
 		<div class="col-span-2 sm:col-span-1">
@@ -85,18 +98,37 @@ function editSettings(workshop: BeginnersWorkshop) {
 					seats={workshop.seats}
 				/>{/if}
 		</div>
-		{#if workshop.status === "scheduled"}
+		<div class="flex items-center gap-1">
 			<Button
 				variant="ghost"
 				size="icon"
-				aria-label={`Capacity, fee and cutoff for ${workshop.date}`}
-				onclick={() => editSettings(workshop)}
+				aria-label={`Door view for ${workshop.date}`}
+				href={resolve(
+					"/dashboard/beginners-workshop/workshops/[workshopId]/door",
+					{ workshopId: workshop.id },
+				)}
 			>
-				<Settings2 />
+				<DoorOpen />
 			</Button>
-		{:else}
-			<span class="hidden sm:block"></span>
-		{/if}
+			{#if workshop.status === "scheduled"}
+				<Button
+					variant="ghost"
+					size="icon"
+					aria-label={`Staff for ${workshop.date}`}
+					onclick={() => editStaff(workshop)}
+				>
+					<Users />
+				</Button>
+				<Button
+					variant="ghost"
+					size="icon"
+					aria-label={`Capacity, fee and cutoff for ${workshop.date}`}
+					onclick={() => editSettings(workshop)}
+				>
+					<Settings2 />
+				</Button>
+			{/if}
+		</div>
 	</li>
 {/snippet}
 
@@ -155,9 +187,14 @@ function editSettings(workshop: BeginnersWorkshop) {
 	{/if}
 </div>
 
-<ScheduleWorkshopsDialog bind:open={scheduleOpen} />
+<ScheduleWorkshopsDialog bind:open={scheduleOpen} {candidates} />
 {#if editing}
 	{#key editing.id}
 		<WorkshopSettingsDialog workshop={editing} bind:open={settingsOpen} />
+	{/key}
+{/if}
+{#if staffing}
+	{#key staffing.id}
+		<StaffDialog workshop={staffing} {candidates} bind:open={staffOpen} />
 	{/key}
 {/if}

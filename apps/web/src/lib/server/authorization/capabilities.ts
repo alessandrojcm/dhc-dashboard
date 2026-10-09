@@ -26,6 +26,8 @@ export type Capability = AuthCapability;
  */
 export type ResourceContext = {
 	ownerPrincipalId?: string;
+	/** ALE-379: the principals assigned to the resource (a workshop's Staff). */
+	assignedPrincipalIds?: readonly string[];
 };
 
 export type AccessDecision =
@@ -43,12 +45,21 @@ type CapabilityRule = {
 	 * forbidden resource exists (403). Mirrors the Phoenix owner rule.
 	 */
 	ownerMayAccess?: true;
+	/**
+	 * ALE-379: when set, the capability is also granted to the resource's
+	 * assigned principals, and a denial conceals the resource (404). Mirrors
+	 * the Phoenix assignment scope (`assigned: true`).
+	 */
+	assignedMayAccess?: true;
 };
 
 const RULES = {
 	"beginners.waitlist.manage": {},
 	"beginners.waitlist.toggle": {},
+	"beginners.workshops.assigned.read": {},
+	"beginners.workshops.lead": {},
 	"beginners.workshops.manage": {},
+	"beginners.workshops.run": { assignedMayAccess: true },
 	"discord.assignments.manage": {},
 	"discord.doctor.use": {},
 	"inventory.manage": {},
@@ -96,6 +107,13 @@ export function decide(
 			resource?.ownerPrincipalId !== undefined &&
 			resource.ownerPrincipalId === session.principal.id
 		) {
+			return { allowed: true };
+		}
+		return { allowed: false, status: 404, reason: "concealed_resource" };
+	}
+
+	if (rule.assignedMayAccess) {
+		if (resource?.assignedPrincipalIds?.includes(session.principal.id)) {
 			return { allowed: true };
 		}
 		return { allowed: false, status: 404, reason: "concealed_resource" };

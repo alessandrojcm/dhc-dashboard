@@ -53,7 +53,10 @@ defmodule Dhc.BeginnersWorkshops.CommandsTest do
 
     test "every constraint persist/1 translates exists in the database" do
       existing =
-        Repo.query!("SELECT conname FROM pg_constraint", []).rows
+        Repo.query!(
+          "SELECT conname FROM pg_constraint UNION SELECT indexname FROM pg_indexes",
+          []
+        ).rows
         |> List.flatten()
         |> MapSet.new()
 

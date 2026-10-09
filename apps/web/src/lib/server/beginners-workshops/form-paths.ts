@@ -15,7 +15,11 @@ const SCHEDULE_SHARED_FIELDS = new Set([
 	"capacity",
 	"fee",
 	"paymentWindowDays",
+	"coachPrincipalId",
+	"assistantPrincipalIds",
 ]);
+
+const STAFF_FIELDS = new Set(["coachPrincipalId", "assistantPrincipalIds"]);
 
 const SETTINGS_FIELDS = new Set([
 	"capacity",
@@ -45,4 +49,9 @@ export function scheduleFormPath(field: string): FormPath | undefined {
 export function settingsFormPath(field: string): FormPath | undefined {
 	const key = formField(field);
 	return SETTINGS_FIELDS.has(key) ? [key] : undefined;
+}
+
+/** A Staff field → its picker in the Staff dialog. */
+export function staffFormPath(field: string): FormPath | undefined {
+	return STAFF_FIELDS.has(field) ? [field] : undefined;
 }

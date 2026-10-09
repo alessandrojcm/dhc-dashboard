@@ -154,7 +154,10 @@ let viewLabel = $derived(
 		</Content>
 		{#if data.workshops}
 			<Content value="workshops">
-				<WorkshopsTab workshops={data.workshops} />
+				<WorkshopsTab
+					workshops={data.workshops}
+					candidates={data.staffCandidates}
+				/>
 			</Content>
 		{/if}
 		{#if data.canManageWorkshops}

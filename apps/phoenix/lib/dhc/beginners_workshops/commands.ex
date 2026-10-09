@@ -58,6 +58,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   taken before the rows were held. Tests pass `Clock.fixed/1`.
 
   No command here sends email.
+
+  ## Staff (ALE-379)
+
+  `beginners_workshop_staff` rows are written only under the Beginners'
+  Workshop lock (by `set_staff`, and `schedule_workshop` with optional
+  Staff), so they need no lock level of their own. A Staff change notifies
+  the people added and removed with keyed Notifications created inside the
+  transaction (`Dhc.Notifications.create_keyed_in_transaction/3`) and
+  signalled only after it commits.
   """
 
   import Ecto.Query
@@ -68,12 +77,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   alias Dhc.BeginnersWorkshops.{
     BeginnersWorkshop,
     Clock,
+    StaffAssignment,
     WorkshopFacts,
     WorkshopPolicy,
     WorkshopProjection
   }
 
   alias Dhc.ClubCalendar
+  alias Dhc.Notifications
   alias Dhc.Repo
 
   @type principal_id :: binary()
@@ -89,13 +100,19 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   `start_time`, `capacity`, `fee_cents`, and the optional
   `payment_cutoff_date`, `payment_cutoff_time` (Dublin civil; default the
   start time 3 days before), `contact_from` (default the Dublin day it is
-  scheduled) and `payment_window_days` (default 7). Update attributes are
-  any of `capacity`, `fee_cents`, `payment_cutoff_date`,
-  `payment_cutoff_time`, `contact_from`, `payment_window_days`.
+  scheduled) and `payment_window_days` (default 7), plus optional Staff.
+  Update attributes are any of `capacity`, `fee_cents`,
+  `payment_cutoff_date`, `payment_cutoff_time`, `contact_from`,
+  `payment_window_days`.
+
+  Staff attributes (`set_staff`, and optional on a schedule) are
+  `coach_principal_id` (`nil` for no coach) and `assistant_principal_ids`
+  (a list). `set_staff` replaces the whole Staff list.
   """
   @type command ::
           {:schedule_workshop, [map()]}
           | {:update_workshop, workshop_id :: binary(), map()}
+          | {:set_staff, workshop_id :: binary(), map()}
 
   @typedoc """
   A refusal. A failed `schedule_workshop` names the (0-based) workshop it
@@ -113,6 +130,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :contact_from_locked
           | :after_finalisation
           | :already_cancelled
+          | :invalid_staff
+          | :not_a_coach
+          | :not_a_member
+          | :staff_conflict
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -120,7 +141,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # listed; `authorize/2` refuses anything else before a read.
   @staff_capabilities %{
     schedule_workshop: :"beginners.workshops.manage",
-    update_workshop: :"beginners.workshops.manage"
+    update_workshop: :"beginners.workshops.manage",
+    set_staff: :"beginners.workshops.manage"
   }
 
   @lock_levels [:workshop, :waitlist_entry, :intake, :carried_fee, :payment, :refund]
@@ -150,7 +172,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # becomes. Unique constraints become a domain reason; check constraints
   # become a field error on the changeset (the changesets already enforce the
   # same shape, so these are the backstop for writers outside the seam).
-  @unique_constraints %{BeginnersWorkshop => []}
+  @unique_constraints %{
+    BeginnersWorkshop => [],
+    # Staff rows are written under the workshop lock, so these are backstops.
+    StaffAssignment => [
+      {:principal_id, "beginners_workshop_staff_workshop_principal_unique", :staff_conflict},
+      {:workshop_id, "beginners_workshop_staff_one_coach", :staff_conflict}
+    ]
+  }
 
   @check_constraints %{
     BeginnersWorkshop => [
@@ -159,7 +188,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:capacity, "beginners_workshops_capacity_check"},
       {:fee_cents, "beginners_workshops_fee_check"},
       {:payment_window_days, "beginners_workshops_payment_window_check"}
-    ]
+    ],
+    StaffAssignment => [{:role, "beginners_workshop_staff_role_check"}]
   }
 
   @doc """
@@ -235,7 +265,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       true ->
         # A new workshop has no row to lock yet; the clock is still read
         # inside the transaction that writes it.
-        transact(fn -> schedule_all(list, principal_id, Clock.read(clock)) end)
+        fn -> schedule_all(list, principal_id, Clock.read(clock)) end
+        |> transact()
+        |> signal_after_commit()
     end
   end
 
@@ -251,6 +283,20 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
+  defp run({:staff, principal_id}, {:set_staff, workshop_id, attrs}, clock) when is_map(attrs) do
+    with {:ok, workshop_id} <- cast_id(workshop_id),
+         {:ok, staff} <- staff_input(attrs) do
+      fn ->
+        with_locked(
+          %{workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id))},
+          &set_staff_locked(&1, staff, principal_id, clock)
+        )
+      end
+      |> transact()
+      |> signal_after_commit()
+    end
+  end
+
   defp run(_actor, _command, _clock), do: {:error, :unknown_command}
 
   # ── schedule_workshop ───────────────────────────────────────────
@@ -258,14 +304,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp schedule_all(list, principal_id, reading) do
     list
     |> Enum.with_index()
-    |> Enum.reduce_while({:ok, []}, fn {attrs, index}, {:ok, acc} ->
+    |> Enum.reduce_while({:ok, {[], []}}, fn {attrs, index}, {:ok, {views, created}} ->
       case schedule_one(attrs, principal_id, reading) do
-        {:ok, view} -> {:cont, {:ok, [view | acc]}}
+        {:ok, {view, notifications}} -> {:cont, {:ok, {[view | views], created ++ notifications}}}
         {:error, reason} -> {:halt, {:error, {:workshop, index, reason}}}
       end
     end)
     |> case do
-      {:ok, views} -> {:ok, Enum.reverse(views)}
+      {:ok, {views, created}} -> {:ok, {Enum.reverse(views), created}}
       error -> error
     end
   end
@@ -277,6 +323,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       |> Ecto.Changeset.validate_required([:venue, :date, :start_time, :capacity, :fee_cents])
 
     with {:ok, input} <- Ecto.Changeset.apply_action(input, :insert),
+         {:ok, staff} <- staff_input(attrs),
          starts_at = WorkshopPolicy.starts_at(input),
          :ok <- in_future(starts_at, reading),
          cutoff = resolve_cutoff(input, input),
@@ -295,8 +342,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
              scheduled_by_principal_id: principal_id
            })
            |> BeginnersWorkshop.schedule_changeset()
-           |> persist() do
-      {:ok, WorkshopProjection.view(workshop, WorkshopFacts.empty(), reading)}
+           |> persist(),
+         {:ok, created} <- apply_staff(workshop, [], staff, principal_id) do
+      {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), reading), created}}
     end
   end
 
@@ -366,6 +414,169 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       do: contact_from_on_or_before(contact_from, cutoff),
       else: :ok
   end
+
+  # ── set_staff ───────────────────────────────────────────────────
+
+  defp set_staff_locked(%{workshop: workshop}, staff, actor_id, clock) do
+    with :ok <- staff_editable(workshop),
+         {:ok, created} <- apply_staff(workshop, current_staff(workshop), staff, actor_id) do
+      {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), Clock.read(clock)), created}}
+    end
+  end
+
+  # Staff can change at any time before Attendance Finalisation (story 17);
+  # the Staff list of a finalised workshop is its permanent record.
+  defp staff_editable(%BeginnersWorkshop{status: "scheduled"}), do: :ok
+  defp staff_editable(%BeginnersWorkshop{status: "finalised"}), do: {:error, :after_finalisation}
+  defp staff_editable(%BeginnersWorkshop{status: "cancelled"}), do: {:error, :already_cancelled}
+
+  # Read under the workshop lock: no other writer can touch these rows.
+  defp current_staff(%BeginnersWorkshop{id: id}),
+    do: Repo.all(from(s in StaffAssignment, where: s.workshop_id == ^id))
+
+  # `%{coach: id | nil, assistants: [id]}` from the command's attributes. A
+  # person picked as coach is dropped from the assistants (story 14).
+  defp staff_input(attrs) do
+    coach = fetch_attr(attrs, :coach_principal_id)
+    assistants = fetch_attr(attrs, :assistant_principal_ids) || []
+
+    with {:ok, coach} <- cast_optional_id(coach),
+         true <- is_list(assistants),
+         {:ok, assistants} <- cast_ids(assistants) do
+      {:ok, %{coach: coach, assistants: assistants |> Enum.uniq() |> List.delete(coach)}}
+    else
+      _ -> {:error, :invalid_staff}
+    end
+  end
+
+  defp fetch_attr(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
+
+  defp cast_optional_id(nil), do: {:ok, nil}
+  defp cast_optional_id(""), do: {:ok, nil}
+  defp cast_optional_id(id) when is_binary(id), do: Ecto.UUID.cast(id)
+  defp cast_optional_id(_id), do: :error
+
+  defp cast_ids(ids) do
+    Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, acc} ->
+      case cast_optional_id(id) do
+        {:ok, id} when is_binary(id) -> {:cont, {:ok, [id | acc]}}
+        _ -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, ids} -> {:ok, Enum.reverse(ids)}
+      :error -> :error
+    end
+  end
+
+  # Replaces the workshop's Staff with `staff`. Only a *new* role is checked:
+  # a coach must hold `beginners.workshops.lead` and an assistant must be an
+  # active Member at assignment, so a coach who later loses the coach role
+  # keeps the assignment (story 24). A change of role is a removed row and a
+  # new one. Returns the Notifications to signal after commit.
+  defp apply_staff(workshop, current, staff, actor_id) do
+    desired =
+      Map.new(staff.assistants, &{&1, "assistant"})
+      |> then(&if(staff.coach, do: Map.put(&1, staff.coach, "coach"), else: &1))
+
+    held = Map.new(current, &{&1.principal_id, &1.role})
+    added = for {id, role} <- desired, Map.get(held, id) != role, do: {id, role}
+    stale = Enum.filter(current, &(Map.get(desired, &1.principal_id) != &1.role))
+
+    with :ok <- eligible(added, "coach", :"beginners.workshops.lead", :not_a_coach),
+         :ok <-
+           eligible(added, "assistant", :"beginners.workshops.assigned.read", :not_a_member),
+         :ok <- delete_staff(stale),
+         {:ok, inserted} <- insert_staff(workshop, added, actor_id) do
+      removed = Enum.reject(stale, &Map.has_key?(desired, &1.principal_id))
+
+      notify_staff(
+        workshop,
+        Enum.map(inserted, &{:assigned, &1}) ++ Enum.map(removed, &{:unassigned, &1}),
+        actor_id
+      )
+    end
+  end
+
+  defp eligible(added, role, capability, refusal) do
+    ids = for {id, ^role} <- added, do: id
+
+    if ids == [] or
+         length(Capabilities.principal_ids_with(capability, only: ids)) == length(ids),
+       do: :ok,
+       else: {:error, refusal}
+  end
+
+  defp delete_staff([]), do: :ok
+
+  defp delete_staff(rows) do
+    ids = Enum.map(rows, & &1.id)
+    {_count, _} = Repo.delete_all(from(s in StaffAssignment, where: s.id in ^ids))
+    :ok
+  end
+
+  # Eligibility was checked and stale rows deleted before this runs, so the
+  # one-coach index never sees two coaches. Sorted only for a stable order.
+  defp insert_staff(workshop, added, actor_id) do
+    added
+    |> Enum.sort_by(fn {id, role} -> {role == "coach", id} end)
+    |> Enum.reduce_while({:ok, []}, fn {id, role}, {:ok, acc} ->
+      %{
+        workshop_id: workshop.id,
+        principal_id: id,
+        role: role,
+        assigned_by_principal_id: actor_id
+      }
+      |> StaffAssignment.changeset()
+      |> persist()
+      |> case do
+        {:ok, row} -> {:cont, {:ok, [row | acc]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # One keyed Notification per assignment row and event, so assigning,
+  # removing and assigning the same person again notifies each time, and a
+  # retried command never twice. The person making the change already knows.
+  defp notify_staff(workshop, events, actor_id) do
+    events
+    |> Enum.reject(fn {_event, row} -> row.principal_id == actor_id end)
+    |> Enum.reduce_while({:ok, []}, fn {event, row}, {:ok, acc} ->
+      case Notifications.create_keyed_in_transaction(
+             row.principal_id,
+             "beginners-workshop-staff:#{row.id}:#{event}",
+             staff_message(event, row.role, workshop)
+           ) do
+        {:ok, :created, notification} -> {:cont, {:ok, [notification | acc]}}
+        {:ok, :already_created} -> {:cont, {:ok, acc}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp staff_message(:assigned, "coach", workshop),
+    do: "You're the coach for the Beginners' Workshop on #{when_where(workshop)}."
+
+  defp staff_message(:assigned, "assistant", workshop),
+    do: "You're assisting at the Beginners' Workshop on #{when_where(workshop)}."
+
+  defp staff_message(:unassigned, _role, workshop),
+    do: "You're no longer on the Staff for the Beginners' Workshop on #{when_where(workshop)}."
+
+  defp when_where(workshop) do
+    "#{Calendar.strftime(workshop.date, "%a %-d %b %Y")} at " <>
+      "#{Calendar.strftime(workshop.start_time, "%H:%M")}, #{workshop.venue}"
+  end
+
+  # Signals the Notifications a committed command created (ADR 0025: the row
+  # is the source of truth; the channel follows the commit).
+  defp signal_after_commit({:ok, {result, created}}) do
+    Enum.each(created, &Notifications.signal_created/1)
+    {:ok, result}
+  end
+
+  defp signal_after_commit(error), do: error
 
   # ── Shared rules ────────────────────────────────────────────────
 

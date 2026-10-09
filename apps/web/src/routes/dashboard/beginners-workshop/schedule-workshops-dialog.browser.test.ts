@@ -118,3 +118,25 @@ test("a picked date is submitted as a civil YYYY-MM-DD value", async () => {
 		.element(screen.getByRole("button", { name: "Workshop date 1" }))
 		.toHaveTextContent("January 16, 2027");
 });
+
+test("offers optional Staff shared by every date (ALE-379)", async () => {
+	const coach = "0f3f9d0c-3b52-4a4f-9a51-6a3f1b2a2f10";
+	const screen = await render(ScheduleWorkshopsDialog, {
+		open: true,
+		candidates: [{ principalId: coach, name: "Aoife Coach", coach: true }],
+	});
+	const form = screen.getByRole("form", {
+		name: "Schedule Beginners' Workshops",
+	});
+	await expect
+		.element(screen.getByRole("combobox", { name: "Coach" }))
+		.toHaveTextContent("No coach yet (Unstaffed)");
+	expect(fieldNames(formElement(form.element()))).not.toContain(
+		"coachPrincipalId",
+	);
+
+	await userEvent.click(screen.getByRole("combobox", { name: "Coach" }));
+	await userEvent.click(screen.getByRole("option", { name: /Aoife Coach/ }));
+
+	expect(fieldNames(formElement(form.element()))).toContain("coachPrincipalId");
+});

@@ -14,14 +14,19 @@ defmodule Dhc.Auth.CapabilitiesTest do
   @member_administrators ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
 
   # Capability → the only roles that hold it without resource context, plus
-  # whether the resource owner is also granted it. Changing a role
+  # its resource scope: `true` when the resource owner is also granted it,
+  # `:assigned` when the resource's assigned principals are. Changing a role
   # assignment must show up as exactly one intentional diff here.
   @policy %{
     "beginners.waitlist.manage":
       {~w(admin president committee_coordinator beginners_coordinator), false},
     "beginners.waitlist.toggle": {@officers, false},
+    "beginners.workshops.assigned.read": {~w(member), false},
+    "beginners.workshops.lead": {~w(coach), false},
     "beginners.workshops.manage":
       {~w(admin president committee_coordinator beginners_coordinator), false},
+    "beginners.workshops.run":
+      {~w(admin president committee_coordinator beginners_coordinator), :assigned},
     "discord.assignments.manage": {@member_administrators, false},
     "discord.doctor.use": {@officers, false},
     "inventory.manage": {~w(quartermaster admin president), false},
@@ -75,12 +80,12 @@ defmodule Dhc.Auth.CapabilitiesTest do
       end
 
       test "owner rule" do
-        assert Capabilities.owner_scoped?(@capability) == @owner
+        assert Capabilities.owner_scoped?(@capability) == (@owner == true)
         own = %{owner_principal_id: @self}
         other = %{owner_principal_id: @other}
 
         assert Capabilities.can?(session(["member"]), @capability, own) ==
-                 (@owner or "member" in @allowed)
+                 (@owner == true or "member" in @allowed)
 
         expected_denial = if @owner, do: {:error, :not_found}, else: {:error, :forbidden}
 
@@ -90,6 +95,14 @@ defmodule Dhc.Auth.CapabilitiesTest do
 
           assert Capabilities.authorize(session(["member"]), @capability) == expected_denial
         end
+      end
+
+      test "assignment rule" do
+        assert Capabilities.assignment_scoped?(@capability) == (@owner == :assigned)
+        assigned = %{assigned_principal_ids: [@other, @self]}
+
+        assert Capabilities.can?(session(["member"]), @capability, assigned) ==
+                 (@owner == :assigned or "member" in @allowed)
       end
 
       test "an inactive session holds nothing" do
@@ -102,7 +115,7 @@ defmodule Dhc.Auth.CapabilitiesTest do
   describe "for_roles/1" do
     test "lists the wire names of every capability the roles hold" do
       assert Capabilities.for_roles(["member"]) ==
-               ~w(inventory.catalog.read inventory.loans.own.read workshops.own.read)
+               ~w(beginners.workshops.assigned.read inventory.catalog.read inventory.loans.own.read workshops.own.read)
 
       assert Capabilities.for_roles([]) == []
 
@@ -120,6 +133,53 @@ defmodule Dhc.Auth.CapabilitiesTest do
 
     test "unknown capabilities raise" do
       assert_raise ArgumentError, fn -> Capabilities.can?(session(["admin"]), :"nope.nope") end
+    end
+  end
+
+  describe "the assignment scope" do
+    @run :"beginners.workshops.run"
+
+    test "grants an assigned principal and conceals the resource from anyone else" do
+      member = session(["member"])
+
+      assert Capabilities.authorize(member, @run, %{assigned_principal_ids: [@self]}) == :ok
+
+      assert Capabilities.authorize(member, @run, %{assigned_principal_ids: [@other]}) ==
+               {:error, :not_found}
+
+      assert Capabilities.authorize(member, @run, %{assigned_principal_ids: []}) ==
+               {:error, :not_found}
+
+      # No resource is the same as nobody assigned: still concealed.
+      assert Capabilities.authorize(member, @run) == {:error, :not_found}
+    end
+
+    test "the role grant needs no assignment" do
+      assert Capabilities.authorize(session(["beginners_coordinator"]), @run, %{
+               assigned_principal_ids: []
+             }) == :ok
+    end
+
+    test "ownership does not grant an assignment-scoped capability" do
+      assert Capabilities.authorize(session(["member"]), @run, %{owner_principal_id: @self}) ==
+               {:error, :not_found}
+    end
+
+    test "an inactive assigned principal holds nothing" do
+      assert Capabilities.authorize(session(["member"], is_active: false), @run, %{
+               assigned_principal_ids: [@self]
+             }) == {:error, :inactive}
+    end
+
+    test "is listed in the session's capabilities only through a role" do
+      refute "beginners.workshops.run" in Capabilities.for_roles(["member"])
+      assert "beginners.workshops.run" in Capabilities.for_roles(["beginners_coordinator"])
+    end
+
+    test "router pipelines cannot use it" do
+      assert_raise ArgumentError, ~r/assignment-scoped/, fn ->
+        DhcWeb.Plugs.RequireSession.init(capability: @run)
+      end
     end
   end
 
@@ -153,6 +213,19 @@ defmodule Dhc.Auth.CapabilitiesTest do
 
       assert Capabilities.principal_ids_with(:"inventory.manage") == [active]
       assert Capabilities.principal_ids_with(:"inventory.manage", except: active) == []
+    end
+
+    test "only: narrows to the given principals" do
+      %{principal_id: one} = Dhc.MemberFixtures.member_fixture()
+      %{principal_id: two} = Dhc.MemberFixtures.member_fixture()
+
+      Repo.insert_all("user_roles", [
+        [principal_id: Ecto.UUID.dump!(one), role: "coach"],
+        [principal_id: Ecto.UUID.dump!(two), role: "coach"]
+      ])
+
+      assert Capabilities.principal_ids_with(:"beginners.workshops.lead", only: [one]) == [one]
+      assert Capabilities.principal_ids_with(:"beginners.workshops.lead", only: []) == []
     end
   end
 end

@@ -24,7 +24,9 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     "paymentCutoffDate" => "payment_cutoff_date",
     "paymentCutoffTime" => "payment_cutoff_time",
     "contactFromDate" => "contact_from",
-    "paymentWindowDays" => "payment_window_days"
+    "paymentWindowDays" => "payment_window_days",
+    "coachPrincipalId" => "coach_principal_id",
+    "assistantPrincipalIds" => "assistant_principal_ids"
   }
 
   @internal_to_public Map.new(@fields, fn {public, internal} -> {internal, public} end)
@@ -35,7 +37,9 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     start_in_past: "date",
     invalid_payment_cutoff: "paymentCutoffDate",
     invalid_contact_from: "contactFromDate",
-    contact_from_locked: "contactFromDate"
+    contact_from_locked: "contactFromDate",
+    not_a_coach: "coachPrincipalId",
+    not_a_member: "assistantPrincipalIds"
   }
 
   use DhcWeb.Problem,
@@ -50,6 +54,10 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       invalid_payment_cutoff: {422, "The Payment Cutoff must be before the workshop starts"},
       invalid_contact_from: {422, "The contact-from date must be on or before the cutoff date"},
       no_workshops: {422, "Add at least one workshop"},
+      invalid_staff: {422, "Check the Staff"},
+      not_a_coach: {422, "The coach must be a Member with the coach role"},
+      not_a_member: {422, "Assistants must be active Members"},
+      staff_conflict: {409, "The Staff changed at the same time; try again"},
       too_many_workshops: {422, "Schedule at most 20 workshops at once"}
     },
     fields: @internal_to_public
@@ -65,6 +73,17 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
   end
 
   def attrs(_params), do: :invalid
+
+  @doc """
+  A `set_staff` request: the whole Staff list. A missing `coachPrincipalId`
+  means no coach and missing `assistantPrincipalIds` no assistants.
+  """
+  def staff_attrs(params) when is_map(params) do
+    %{
+      "coach_principal_id" => Map.get(params, "coachPrincipalId"),
+      "assistant_principal_ids" => Map.get(params, "assistantPrincipalIds", [])
+    }
+  end
 
   @doc "The `workshops` list of a schedule request, each entry mapped by `attrs/1`."
   def schedule_attrs(%{"workshops" => workshops}) when is_list(workshops),

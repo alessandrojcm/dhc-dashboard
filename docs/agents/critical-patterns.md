@@ -83,7 +83,7 @@ Substitute the control you are about to type for the component that owns it:
 | `<input type="date">`, `type="time"` | `date-picker.svelte`; a date range is `Popover` + `RangeCalendar` |
 | `<dialog>`, a modal | `Dialog.*`; `AlertDialog.*` to confirm, `Sheet.*` for a side or bottom panel |
 | `<details>` / `<summary>` | `Collapsible.*` or `Accordion.*` |
-| a filterable dropdown | `Popover` + `Command` |
+| a filterable dropdown, a searchable (multi-)select | `Combobox` (`ui/combobox`, `Popover` + `Command`; `multiple` adds removable chips) |
 | a label + control + error trio | `Field.Field` + `Field.Label` + `Field.Error` (see "Remote Forms") |
 | a bare `<label for>` on a custom control | `Label` bound to the trigger's `id` |
 
@@ -95,7 +95,7 @@ Every other name comes from the registry — add a missing one rather than writi
 pnpm dlx shadcn-svelte@latest add <name> -c apps/web -y
 ```
 
-Two rows are compositions that already exist rather than registry items, so they are not `add` targets: `date-picker.svelte` (this project's `Popover` + `Calendar`) and a combobox (`Popover` + `Command`). `apps/web/components.json` holds the alias map (`ui` → `#lib/components/ui`) and the registry URL; the primitives underneath are `bits-ui` 2.18.1, which feature code imports only through `ui/`. Not yet vendored and worth adding: `empty`, `spinner`, `input-group`. The project is on `@lucide/svelte` 1.x (the registry's major): type an icon component as `LucideIcon`, not `Component<IconProps>` — in 1.x `IconProps` belongs to the base `Icon` component and requires `iconNode`. Icons default to `aria-hidden="true"`; an icon-only control still needs its own `aria-label` or `sr-only` text. Upstream components type refs as `WithElementRef<Attrs, HTMLSelectElement>`; `#lib/utils.ts` accepts that second element argument.
+Two rows are compositions that already exist rather than registry items, so they are not `add` targets: `date-picker.svelte` (this project's `Popover` + `Calendar`) and `ui/combobox` (the registry's documented `Popover` + `Command` combobox example, vendored by ALE-379; it renders no form input, so the owning remote form adds `field.as("hidden", …)` inputs from its value). `apps/web/components.json` holds the alias map (`ui` → `#lib/components/ui`) and the registry URL; the primitives underneath are `bits-ui` 2.18.1, which feature code imports only through `ui/`. Not yet vendored and worth adding: `empty`, `spinner`, `input-group`. The project is on `@lucide/svelte` 1.x (the registry's major): type an icon component as `LucideIcon`, not `Component<IconProps>` — in 1.x `IconProps` belongs to the base `Icon` component and requires `iconNode`. Icons default to `aria-hidden="true"`; an icon-only control still needs its own `aria-label` or `sr-only` text. Upstream components type refs as `WithElementRef<Attrs, HTMLSelectElement>`; `#lib/utils.ts` accepts that second element argument.
 
 Copy the shape from a page that already does it: `apps/web/src/routes/(public)/waitlist/+page.svelte` (Field + Input + Select + RadioGroup + date picker in one remote form), `apps/web/src/routes/dashboard/members/[memberId]/+page.svelte`, and `apps/web/src/lib/components/ui/pause-subscription-modal.svelte` for a dialog over a date field.
 

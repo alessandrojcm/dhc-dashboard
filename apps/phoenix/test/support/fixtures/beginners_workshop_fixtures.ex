@@ -12,14 +12,32 @@ defmodule Dhc.BeginnersWorkshopFixtures do
   def now, do: @now
   def clock(now \\ @now), do: Clock.fixed(now)
 
-  @doc "An active member holding `role` (plus `member`); returns the principal id."
-  def staff_fixture(role \\ "beginners_coordinator") do
-    member = Dhc.MemberFixtures.member_fixture()
+  @doc """
+  An active member holding `role` plus `member` (as every real member does);
+  returns the principal id. `attrs` go to `Dhc.MemberFixtures.member_fixture/1`.
+  """
+  def staff_fixture(role \\ "beginners_coordinator", attrs \\ %{}) do
+    member = Dhc.MemberFixtures.member_fixture(attrs)
 
-    if role != "member",
-      do: Repo.insert!(%UserRole{principal_id: member.principal_id, role: role})
+    for role <- Enum.uniq(["member", role]),
+        do: Repo.insert!(%UserRole{principal_id: member.principal_id, role: role})
 
     member.principal_id
+  end
+
+  @doc "Sets a workshop's Staff through the boundary (as a fresh coordinator unless given)."
+  def set_staff!(workshop_id, coach, assistants \\ [], opts \\ []) do
+    actor = Keyword.get_lazy(opts, :actor, fn -> staff_fixture() end)
+
+    {:ok, view} =
+      BeginnersWorkshops.execute(
+        {:staff, actor},
+        {:set_staff, workshop_id,
+         %{"coach_principal_id" => coach, "assistant_principal_ids" => assistants}},
+        Keyword.put_new(opts, :clock, clock())
+      )
+
+    view
   end
 
   def workshop_attrs(overrides \\ %{}) do

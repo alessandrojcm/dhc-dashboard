@@ -8,12 +8,15 @@
 import type {
 	BeginnersWorkshopScheduleRequest,
 	BeginnersWorkshopSettingsRequest,
+	BeginnersWorkshopStaffRequest,
 } from "@dhc/api-client";
 import * as v from "valibot";
 import {
 	civilDate,
 	euroAmountInCents,
 	optionalCivilDate,
+	optionalPrincipalId,
+	principalIds,
 	wallTime,
 	wholeNumber,
 } from "#lib/schemas/fields.js";
@@ -28,6 +31,12 @@ const settingsEntries = {
 	capacity: wholeNumber("Capacity must be at least 1."),
 	fee: euroAmountInCents("Enter the fee in euro."),
 	paymentWindowDays: wholeNumber("The payment window is at least 1 day."),
+};
+
+/** ALE-379: one coach (optional) and any assistants, as Member picks. */
+const staffEntries = {
+	coachPrincipalId: optionalPrincipalId("Pick a coach from the list."),
+	assistantPrincipalIds: principalIds("Pick assistants from the list."),
 };
 
 const scheduleEntries = {
@@ -53,17 +62,27 @@ const scheduleEntries = {
 			`Schedule at most ${MAX_SCHEDULED_AT_ONCE} workshops at once.`,
 		),
 	),
+	...staffEntries,
 };
 
 /**
  * Schedule one or several workshops that share a venue, start time,
- * capacity, fee and window length; each date may override its cutoff date
- * and contact-from date.
+ * capacity, fee, window length and optional Staff; each date may override
+ * its cutoff date and contact-from date.
  */
 export const scheduleWorkshopsSchema = v.pipe(
 	v.object(scheduleEntries),
 	v.transform(
-		({ workshops, venue, startTime, capacity, fee, paymentWindowDays }) =>
+		({
+			workshops,
+			venue,
+			startTime,
+			capacity,
+			fee,
+			paymentWindowDays,
+			coachPrincipalId,
+			assistantPrincipalIds,
+		}) =>
 			({
 				workshops: workshops.map((workshop) => ({
 					...workshop,
@@ -72,6 +91,8 @@ export const scheduleWorkshopsSchema = v.pipe(
 					capacity,
 					feeCents: fee,
 					paymentWindowDays,
+					coachPrincipalId,
+					assistantPrincipalIds,
 				})),
 			}) satisfies BeginnersWorkshopScheduleRequest,
 	),
@@ -102,3 +123,23 @@ export type ScheduleWorkshopsInput = v.InferInput<
 	typeof scheduleWorkshopsSchema
 >;
 export type WorkshopSettingsInput = v.InferInput<typeof workshopSettingsSchema>;
+
+/**
+ * ALE-379: the Staff dialog. Replaces the whole Staff list; Phoenix drops a
+ * coach from the assistants and checks who may be assigned.
+ */
+export const workshopStaffSchema = v.pipe(
+	v.object({
+		id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+		...staffEntries,
+	}),
+	v.transform(({ id, coachPrincipalId, assistantPrincipalIds }) => ({
+		id,
+		body: {
+			coachPrincipalId,
+			assistantPrincipalIds,
+		} satisfies BeginnersWorkshopStaffRequest,
+	})),
+);
+
+export type WorkshopStaffInput = v.InferInput<typeof workshopStaffSchema>;

@@ -246,3 +246,18 @@ export const euroAmountInCents = (message: string) =>
 		v.maxValue(999.99, "The fee can be at most €999.99."),
 		v.transform((euros) => Math.round(euros * 100)),
 	);
+
+/**
+ * ALE-379: an optional Member pick (a combobox's hidden input). Blank means
+ * "nobody", which Phoenix receives as `null`.
+ */
+export const optionalPrincipalId = (message: string) =>
+	v.pipe(
+		v.optional(v.string(), ""),
+		v.transform((input) => input || null),
+		v.nullable(v.pipe(v.string(), v.uuid(message))),
+	);
+
+/** ALE-379: several Member picks (one hidden input each); none is `[]`. */
+export const principalIds = (message: string) =>
+	v.optional(v.array(v.pipe(v.string(), v.uuid(message))), []);

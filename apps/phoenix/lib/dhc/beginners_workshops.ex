@@ -11,7 +11,14 @@ defmodule Dhc.BeginnersWorkshops do
   gate is their authorization.
   """
 
-  alias Dhc.BeginnersWorkshops.{Clock, Commands, WorkshopList}
+  alias Dhc.BeginnersWorkshops.{
+    Clock,
+    Commands,
+    DoorView,
+    MyWorkshops,
+    StaffCandidates,
+    WorkshopList
+  }
 
   @doc """
   Executes one Beginners' Workshop command as `actor` — the only write path.
@@ -28,4 +35,24 @@ defmodule Dhc.BeginnersWorkshops do
   """
   @spec list_workshops(keyword()) :: WorkshopList.t()
   def list_workshops(opts \\ []), do: WorkshopList.list(Clock.from_opts(opts))
+
+  @doc """
+  "My Beginners' Workshops": the principal's upcoming and same-day Staff
+  assignments, soonest first. Option `clock:` fixes the time.
+  """
+  @spec my_workshops(binary(), keyword()) :: [MyWorkshops.row()]
+  def my_workshops(principal_id, opts \\ []),
+    do: MyWorkshops.list(principal_id, Clock.from_opts(opts))
+
+  @doc """
+  The door view of one workshop and the assignment-scope resource to
+  authorize `beginners.workshops.run` against. Option `clock:` fixes the time.
+  """
+  @spec door_view(term(), keyword()) ::
+          {:ok, DoorView.t(), DoorView.resource()} | {:error, :not_found}
+  def door_view(workshop_id, opts \\ []), do: DoorView.load(workshop_id, Clock.from_opts(opts))
+
+  @doc "Every active Member the Staff dialog may pick, coaches marked."
+  @spec staff_candidates() :: [StaffCandidates.t()]
+  defdelegate staff_candidates(), to: StaffCandidates, as: :list
 end

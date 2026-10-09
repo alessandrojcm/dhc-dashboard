@@ -6,6 +6,8 @@
  */
 import type {
 	BeginnersWorkshopAlert,
+	BeginnersWorkshopStaff,
+	BeginnersWorkshopStaffRole,
 	BeginnersWorkshopStage,
 } from "@dhc/api-client";
 import dayjs from "dayjs";
@@ -44,6 +46,24 @@ const STAGE_TONES = {
 const ALERT_LABELS = {
 	unstaffed: "Unstaffed: no coach assigned",
 } satisfies Record<BeginnersWorkshopAlert, string>;
+
+const STAFF_ROLE_LABELS = {
+	coach: "Coach",
+	assistant: "Assistant",
+} satisfies Record<BeginnersWorkshopStaffRole, string>;
+
+export function staffRoleLabel(role: BeginnersWorkshopStaffRole): string {
+	return STAFF_ROLE_LABELS[role];
+}
+
+/** `Aoife (coach), Brian, Cara`, or `No Staff yet`. */
+export function staffSummary(staff: BeginnersWorkshopStaff): string {
+	const names = [
+		...(staff.coach ? [`${staff.coach.name} (coach)`] : []),
+		...staff.assistants.map((assistant) => assistant.name),
+	];
+	return names.length ? names.join(", ") : "No Staff yet";
+}
 
 export type StageTone = (typeof STAGE_TONES)[BeginnersWorkshopStage];
 

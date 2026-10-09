@@ -6,7 +6,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
   as its instant and as its Dublin date and time.
   """
 
-  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, WorkshopPolicy}
+  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, WorkshopFacts, WorkshopPolicy}
   alias Dhc.ClubCalendar
 
   @type t :: %{
@@ -25,7 +25,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
           payment_window_days: pos_integer(),
           stage: WorkshopPolicy.stage(),
           seats: map(),
-          alerts: [WorkshopPolicy.alert()]
+          alerts: [WorkshopPolicy.alert()],
+          staff: WorkshopFacts.staff()
         }
 
   @doc "Projects a workshop with its facts at a clock reading."
@@ -48,7 +49,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
       payment_window_days: workshop.payment_window_days,
       stage: WorkshopPolicy.stage(workshop, facts, reading),
       seats: WorkshopPolicy.seats(workshop, facts),
-      alerts: WorkshopPolicy.alerts(workshop, facts)
+      alerts: WorkshopPolicy.alerts(workshop, facts),
+      staff: facts.staff
     }
   end
 end

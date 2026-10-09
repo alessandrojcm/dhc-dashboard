@@ -3,8 +3,10 @@
 	dates share a venue, start time, capacity, fee and payment window; each
 	date may override its Payment Cutoff date and contact-from date. Phoenix
 	applies every default and rule — this form only collects values.
+	ALE-379: optional Staff, shared by every date.
 -->
 <script lang="ts">
+import type { BeginnersWorkshopStaffCandidate } from "@dhc/api-client";
 import { CalendarPlus, Plus, Trash2 } from "@lucide/svelte";
 import { parseDate, type DateValue } from "@internationalized/date";
 import { toast } from "svelte-sonner";
@@ -18,14 +20,21 @@ import {
 	scheduleWorkshopsSchema,
 	VENUE_MAX,
 } from "#lib/schemas/beginnersWorkshop.js";
+import StaffPickers from "./staff-pickers.svelte";
 import { scheduleWorkshops } from "./workshops.remote";
 
-let { open = $bindable(false) }: { open?: boolean } = $props();
+let {
+	open = $bindable(false),
+	candidates = [],
+}: { open?: boolean; candidates?: BeginnersWorkshopStaffCandidate[] } =
+	$props();
 
 const form = scheduleWorkshops;
 const fields = form.fields;
 let dateCount = $state(1);
 let formError = $state<string | null>(null);
+let coach = $state("");
+let assistants = $state<string[]>([]);
 
 type DateKey = "date" | "paymentCutoffDate" | "contactFromDate";
 
@@ -56,6 +65,8 @@ function removeDate(index: number) {
 function reset() {
 	dateCount = 1;
 	formError = null;
+	coach = "";
+	assistants = [];
 }
 </script>
 
@@ -224,6 +235,30 @@ function reset() {
 				>
 					<Plus /> Add another date
 				</Button>
+			</fieldset>
+
+			<fieldset class="grid gap-3">
+				<legend class="mb-2 text-sm font-medium">Staff (optional)</legend>
+				{#if coach}
+					<input {...fields.coachPrincipalId.as("hidden", coach)} />
+				{/if}
+				{#each assistants as assistant, index (assistant)}
+					<input
+						{...fields.assistantPrincipalIds[index].as("hidden", assistant)}
+					/>
+				{/each}
+				<StaffPickers
+					idPrefix="schedule"
+					{candidates}
+					bind:coach
+					bind:assistants
+					coachIssues={fields.coachPrincipalId.issues() ?? []}
+					assistantIssues={fields.assistantPrincipalIds.issues() ?? []}
+				/>
+				<p class="text-xs text-muted-foreground">
+					Every date gets the same Staff. You can change them until attendance
+					is final; without a coach the workshop shows as Unstaffed.
+				</p>
 			</fieldset>
 
 			{#if formError}

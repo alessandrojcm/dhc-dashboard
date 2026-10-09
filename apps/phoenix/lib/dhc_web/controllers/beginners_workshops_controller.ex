@@ -1,7 +1,7 @@
 defmodule DhcWeb.BeginnersWorkshopsController do
   @moduledoc """
-  The `beginnersWorkshops` slice (ALE-378): the Workshops list, scheduling
-  and settings. The router gates every action on
+  The `beginnersWorkshops` slice (ALE-378): the Workshops list, scheduling,
+  settings and (ALE-379) Staff. The router gates every action on
   `beginners.workshops.manage`; the boundary authorizes the actor again
   before any read.
   """
@@ -27,6 +27,21 @@ defmodule DhcWeb.BeginnersWorkshopsController do
       )
     end
     |> BeginnersWorkshopsHTTP.respond(conn, :schedule, :created)
+  end
+
+  @doc "GET /beginners-workshops/staff-candidates"
+  def staff_candidates(conn, _params) do
+    {:ok, BeginnersWorkshops.staff_candidates()}
+    |> BeginnersWorkshopsHTTP.respond(conn, :staff_candidates)
+  end
+
+  @doc "PUT /beginners-workshops/{id}/staff"
+  def set_staff(conn, %{"id" => id} = params) do
+    BeginnersWorkshops.execute(
+      BeginnersWorkshopsHTTP.actor(conn),
+      {:set_staff, id, BeginnersWorkshopsHTTP.staff_attrs(params)}
+    )
+    |> BeginnersWorkshopsHTTP.respond(conn, :show)
   end
 
   @doc "PUT /beginners-workshops/{id}/settings"
