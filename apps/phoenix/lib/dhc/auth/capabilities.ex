@@ -124,7 +124,9 @@ defmodule Dhc.Auth.Capabilities do
     # ADR 0028: emailing the whole membership is an officer decision.
     "member_announcements.send": %{roles: @officers},
     "members.directory.read": %{roles: @member_administrators},
-    "members.invite": %{roles: @officers},
+    # ALE-392: the beginners coordinator invites the people who attended a
+    # Beginners' Workshop.
+    "members.invite": %{roles: @officers ++ ~w(beginners_coordinator)},
     "members.profile.read": %{roles: @member_administrators, owner: true},
     "members.profile.update": %{roles: @member_administrators, owner: true},
     "members.roles.edit": %{roles: ~w(president admin)},

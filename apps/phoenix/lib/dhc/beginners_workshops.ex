@@ -22,6 +22,7 @@ defmodule Dhc.BeginnersWorkshops do
     Intake,
     IntakeEmailLog,
     IntakePage,
+    Invitable,
     MyWorkshops,
     StaffCandidates,
     WorkshopConsole,
@@ -54,6 +55,14 @@ defmodule Dhc.BeginnersWorkshops do
           {:ok, WorkshopConsole.t()} | {:error, :not_found}
   def workshop_console(workshop_id, opts \\ []),
     do: WorkshopConsole.show(workshop_id, Clock.from_opts(opts))
+
+  @doc """
+  The Invitable view (ALE-392): everyone with standing `attended`, across
+  workshops, with the attended Intake to invite from, its workshop date and
+  the Follow-up's status. See `Dhc.BeginnersWorkshops.Invitable`.
+  """
+  @spec invitable() :: [Invitable.t()]
+  defdelegate invitable(), to: Invitable, as: :list
 
   @doc """
   The person's Intake page behind an Intake link (ALE-381), or

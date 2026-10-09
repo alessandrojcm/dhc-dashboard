@@ -12,3 +12,13 @@ export async function beginnersWorkshopsManageOptions() {
 	await authorize(event.locals, "beginners.workshops.manage");
 	return apiClientOptions(event.cookies);
 }
+
+/**
+ * ALE-392: generated-client options for the Invitation handoff, after
+ * checking `members.invite` (Phoenix checks it again).
+ */
+export async function membersInviteOptions() {
+	const event = getRequestEvent();
+	await authorize(event.locals, "members.invite");
+	return apiClientOptions(event.cookies);
+}

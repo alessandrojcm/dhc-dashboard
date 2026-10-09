@@ -7,10 +7,12 @@ import {
 	consoleTimeline,
 	emailLogLine,
 	failedRefundText,
+	followUpLabel,
 	formatDublinInstant,
 	formatRefundAmount,
 	historyLine,
 	holdLabel,
+	invitationSummary,
 	INTAKE_COMMANDS,
 	intakeCommandDone,
 	intakeCommandLabel,
@@ -19,6 +21,7 @@ import {
 	nowCard,
 	refundLabel,
 	rosterGroups,
+	standingLabel,
 	unpaidAfterWindowText,
 } from "#lib/beginners-workshops/console.js";
 
@@ -218,6 +221,7 @@ describe("nowCard", () => {
 			holdExpiresAt: null,
 			checkedInAt,
 			refund: null,
+			standing: "waiting" as const,
 			medical: false,
 			windowEndsAt: "2026-10-27T22:59:59.999999Z",
 			linkGeneration: 1,
@@ -259,6 +263,7 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 		holdExpiresAt,
 		checkedInAt: null,
 		refund: null,
+		standing: "waiting" as const,
 		medical: false,
 		windowEndsAt: "2026-10-27T22:59:59.999999Z",
 		linkGeneration: 1,
@@ -333,6 +338,8 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 		lastName: "Byrne",
 		minor: false,
 		refund: null,
+		standing:
+			state === "attended" ? ("attended" as const) : ("removed" as const),
 		medical: false,
 		windowEndsAt: "2026-10-27T22:59:59.999999Z",
 		linkGeneration: 1,
@@ -362,6 +369,7 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 				at: "2026-11-14T20:05:00Z",
 				by,
 				followUpAt: "2026-11-15T10:00:00Z",
+				invitations: { attended: 2, invited: 1, joined: 0 },
 			},
 		});
 	}
@@ -449,6 +457,30 @@ describe("refundLabel (ALE-382)", () => {
 			}),
 		).toBe(
 			"Refund of €35.00 to Dara failed (they paid after their Intake closed). Retry it, or record a manual refund if you paid them back another way.",
+		);
+	});
+});
+
+describe("Invitation handoff (ALE-392)", () => {
+	it("words the finalised console's handoff line", () => {
+		expect(invitationSummary({ attended: 3, invited: 2, joined: 1 })).toBe(
+			"3 attended · 2 invited · 1 joined",
+		);
+	});
+
+	it("labels an attended person's standing, leaving the Invitable ones to the Invite button", () => {
+		expect(standingLabel("attended")).toBeNull();
+		expect(standingLabel("invited")).toBe("Invited");
+		expect(standingLabel("joined")).toBe("Joined");
+		expect(standingLabel(null)).toBeNull();
+	});
+
+	it("says whether the Follow-up went out or when it goes", () => {
+		expect(
+			followUpLabel({ status: "scheduled", at: "2026-11-15T10:00:00Z" }),
+		).toBe("Scheduled Sun 15 Nov, 10:00");
+		expect(followUpLabel({ status: "sent", at: "2026-11-15T10:00:01Z" })).toBe(
+			"Sent Sun 15 Nov, 10:00",
 		);
 	});
 });

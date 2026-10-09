@@ -99,6 +99,14 @@ defmodule DhcWeb.Router do
     post("/:id/door/finish", BeginnersWorkshopDoorController, :finish)
   end
 
+  # ALE-392: the Invitation handoff is an Invitation, gated like one.
+  scope "/api/beginners-workshops", DhcWeb do
+    pipe_through([:api, :members_invite])
+
+    get("/invitable", BeginnersWorkshopInvitationsController, :invitable)
+    post("/:id/intakes/:intakeId/invite", BeginnersWorkshopInvitationsController, :invite)
+  end
+
   # ALE-381: the person's Intake link. The token in the path is the only
   # credential; the pipeline sends `Referrer-Policy: no-referrer` and logs the
   # request with the token redacted.

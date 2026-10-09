@@ -4359,6 +4359,70 @@ paths:
         "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
         "409": {$ref: "#/components/responses/BeginnersWorkshopFinishConflict"}
+  /beginners-workshops/invitable:
+    get:
+      operationId: beginnersWorkshopInvitations.invitable
+      tags: [BeginnersWorkshops]
+      summary: Everyone Invitable, across workshops
+      description: |
+        Everyone whose Waitlist standing is `attended`, with the attended
+        Intake to invite from (the latest one), that workshop's date and
+        whether its Follow-up has gone out. A person leaves the list once
+        invited and returns if that Invitation is deleted. Oldest workshop
+        first. Requires `members.invite`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The Invitable people
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvitableResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+  /beginners-workshops/{id}/intakes/{intakeId}/invite:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopInvitations.invite
+      tags: [BeginnersWorkshops]
+      summary: Send an attended person their Invitation
+      description: |
+        One click, one person. Requires the workshop to be finalised, the
+        Intake `attended` and the standing `attended`; the Follow-up does
+        not need to have gone out. Issues the standard-tier, 7-day
+        Invitation (the `inviteMember` email) for the person's Waitlist
+        profile and moves their standing to `invited`, in one transaction.
+        Refused with `not_finalised`, `not_attended`, `already_invited`,
+        `already_joined`, `not_invitable`, `email_is_principal`,
+        `email_has_pending_invitation` (409) or `incomplete_details` (422).
+        Resend and delete the Invitation from the Invitations table;
+        deleting it makes the person Invitable again. Requires
+        `members.invite`.
+      security: [{cookieSession: []}]
+      responses:
+        "201":
+          description: The Invitation was issued
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvitationResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Beginners' Workshop, Intake or Waitlist person not found
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: The person cannot be invited
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInviteConflictError"}
+        "422":
+          description: The person's Waitlist details are incomplete
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInviteInvalidError"}
   /beginners-workshops/{id}/intakes/{intakeId}/decline:
     parameters:
       - $ref: "#/components/parameters/BeginnersWorkshopId"
@@ -8653,7 +8717,7 @@ components:
       description: |
         One Intake on the console roster. Names are null once the person is
         anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands]
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands, standing]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -8685,6 +8749,13 @@ components:
           allOf: [{$ref: "#/components/schemas/BeginnersWorkshopIntakeRefund"}]
           nullable: true
           description: The Intake's latest refund (null without one).
+        standing:
+          allOf: [{$ref: "#/components/schemas/WaitlistStatus"}]
+          nullable: true
+          description: |
+            The person's Waitlist standing now (null once anonymised). After
+            finalisation it says whether an attended person is still
+            Invitable (`attended`), `invited` or `joined`.
         linkGeneration:
           type: integer
           minimum: 1
@@ -8979,7 +9050,7 @@ components:
           description: Attendance Finalisation; null until the workshop is finalised.
     BeginnersWorkshopConsoleFinalisation:
       type: object
-      required: [at, by, followUpAt]
+      required: [at, by, followUpAt, invitations]
       properties:
         at: {type: string, format: date-time}
         by:
@@ -8990,6 +9061,7 @@ components:
           type: string
           format: date-time
           description: When attended people get the Follow-up (10:00 Dublin the morning after).
+        invitations: {$ref: "#/components/schemas/BeginnersWorkshopConsoleInvitations"}
     BeginnersWorkshopConsoleResponse:
       type: object
       required: [data]
@@ -9127,6 +9199,92 @@ components:
                 code:
                   type: string
                   enum: [after_finalisation, already_cancelled, check_in_not_open, payment_in_progress]
+    BeginnersWorkshopInviteConflictError:
+      description: 409 refusal of an Invitation handoff.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [not_finalised, not_attended, already_invited, already_joined, not_invitable, email_is_principal, email_has_pending_invitation, email_on_waitlist, concurrent_change]
+    BeginnersWorkshopInviteInvalidError:
+      description: 422 refusal of an Invitation handoff.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [incomplete_details]
+    BeginnersWorkshopFollowUpStatus:
+      type: string
+      description: "`sent`: the Follow-up was queued. `scheduled`: it goes out at `at` (10:00 Dublin the morning after)."
+      enum: [sent, scheduled]
+    BeginnersWorkshopFollowUp:
+      type: object
+      required: [status, at]
+      properties:
+        status: {$ref: "#/components/schemas/BeginnersWorkshopFollowUpStatus"}
+        at:
+          type: string
+          format: date-time
+          description: When it was queued (`sent`) or goes out (`scheduled`).
+    BeginnersWorkshopInvitable:
+      type: object
+      description: One Invitable person and the attended Intake to invite them from.
+      required: [intakeId, workshopId, workshopDate, waitlistId, firstName, lastName, email, followUp]
+      properties:
+        intakeId: {type: string, format: uuid}
+        workshopId: {type: string, format: uuid}
+        workshopDate: {type: string, format: date, description: Europe/Dublin civil date}
+        waitlistId: {type: string, format: uuid}
+        firstName: {type: string, nullable: true}
+        lastName: {type: string, nullable: true}
+        email: {type: string, format: email}
+        followUp: {$ref: "#/components/schemas/BeginnersWorkshopFollowUp"}
+    BeginnersWorkshopInvitableResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopInvitable"}
+    BeginnersWorkshopInvitation:
+      type: object
+      description: The Invitation handoff's result; the standing is now `invited`.
+      required: [intakeId, workshopId, waitlistId, invitationId, standing]
+      properties:
+        intakeId: {type: string, format: uuid}
+        workshopId: {type: string, format: uuid}
+        waitlistId: {type: string, format: uuid}
+        invitationId: {type: string, format: uuid}
+        standing: {$ref: "#/components/schemas/WaitlistStatus"}
+    BeginnersWorkshopInvitationResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopInvitation"}
+    BeginnersWorkshopConsoleInvitations:
+      type: object
+      description: |
+        "N attended · N invited · N joined": every attended Intake, and how
+        many of those people's standing is now `invited` or `joined`.
+      required: [attended, invited, joined]
+      properties:
+        attended: {type: integer, minimum: 0}
+        invited: {type: integer, minimum: 0}
+        joined: {type: integer, minimum: 0}
     BeginnersWorkshopInvalidError:
       description: |
         422 refusal on a Beginners' Workshop command. Domain reasons carry a
