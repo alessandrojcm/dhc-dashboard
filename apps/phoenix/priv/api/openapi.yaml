@@ -3918,6 +3918,71 @@ paths:
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
         "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
         "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+  /beginners-workshops/{id}/console:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    get:
+      operationId: beginnersWorkshops.console
+      tags: [BeginnersWorkshops]
+      summary: One workshop's coordinator console
+      description: |
+        Lock-free read model: the workshop row, the Batches sent, the pause
+        state, the Next Batch preview (the live proposal — exactly who the
+        automatic Batch pass would contact now — its size as capacity − paid,
+        and when it goes out or that Batches are paused), the roster grouped
+        by meaning and what needs attention. Requires
+        `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The workshop console
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopConsoleResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+  /beginners-workshops/{id}/batches/pause:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    post:
+      operationId: beginnersWorkshopBatches.pause
+      tags: [BeginnersWorkshops]
+      summary: Pause automatic Batches for a workshop
+      description: |
+        Stops new Batches only: an open window and people already contacted
+        are untouched. Idempotent; records who paused and when. Allowed
+        while the workshop is scheduled. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The workshop, with its stage
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
+  /beginners-workshops/{id}/batches/resume:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    post:
+      operationId: beginnersWorkshopBatches.resume
+      tags: [BeginnersWorkshops]
+      summary: Resume automatic Batches for a workshop
+      description: |
+        A Batch that is due goes out at the next sweep. Idempotent; records
+        who resumed and when. Allowed while the workshop is scheduled.
+        Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The workshop, with its stage
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
   /beginners-workshops/{id}/staff:
     parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
     put:
@@ -7094,7 +7159,7 @@ components:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
     BeginnersWorkshopConflict:
-      description: Lifecycle conflict (finalised, cancelled, or Batch 1 already sent)
+      description: Lifecycle conflict (finalised, cancelled, Batch 1 already sent, or the fee locked by an Intake)
       content:
         application/json:
           schema: {$ref: "#/components/schemas/BeginnersWorkshopConflictError"}
@@ -7877,6 +7942,133 @@ components:
               type: array
               description: Finalised and cancelled workshops, most recent first.
               items: {$ref: "#/components/schemas/BeginnersWorkshop"}
+    BeginnersWorkshopBatch:
+      type: object
+      description: |
+        One automatic Batch. Its payment window ends at `windowEndsAt`
+        (23:59 Dublin time, or the Payment Cutoff when it reaches the cutoff
+        date).
+      required: [number, size, sentAt, windowEndsAt]
+      properties:
+        number: {type: integer, minimum: 1}
+        size: {type: integer, minimum: 1}
+        sentAt: {type: string, format: date-time}
+        windowEndsAt: {type: string, format: date-time}
+    BeginnersWorkshopBatchPause:
+      type: object
+      description: Whether automatic Batches are paused, and who paused or resumed them last.
+      required: [paused, pausedAt, pausedBy, resumedAt, resumedBy]
+      properties:
+        paused: {type: boolean}
+        pausedAt: {type: string, nullable: true, format: date-time}
+        pausedBy: {type: string, nullable: true}
+        resumedAt: {type: string, nullable: true, format: date-time}
+        resumedBy: {type: string, nullable: true}
+    BeginnersWorkshopNextBatchStatus:
+      type: string
+      description: |
+        `due`: it goes out at the next sweep. `scheduled`: it goes out at
+        `goesOutAt` (10:00 Dublin time). `paused`: Batches are paused.
+        `full`: every seat is paid; it goes as soon as a seat frees. `closed`:
+        no further Batch can go before the Payment Cutoff.
+      enum: [due, scheduled, paused, full, closed]
+    BeginnersWorkshopProposedPerson:
+      type: object
+      description: One person in the Next Batch proposal, in Waitlist priority order.
+      required: [firstName, lastName, minor, queueDate]
+      properties:
+        firstName: {type: string, nullable: true}
+        lastName: {type: string, nullable: true}
+        minor: {type: boolean, description: Under 18 on the workshop date.}
+        queueDate: {type: string, format: date-time}
+    BeginnersWorkshopNextBatch:
+      type: object
+      description: |
+        The Next Batch preview. `size` is capacity − Intakes already paid;
+        `people` is the live proposal (at most `size` waiting people without
+        an open Intake), empty when the Batch is `full` or `closed`.
+      required: [status, goesOutAt, number, size, capacity, paid, people]
+      properties:
+        status: {$ref: "#/components/schemas/BeginnersWorkshopNextBatchStatus"}
+        goesOutAt: {type: string, nullable: true, format: date-time}
+        number: {type: integer, minimum: 1}
+        size: {type: integer, minimum: 0}
+        capacity: {type: integer, minimum: 1}
+        paid: {type: integer, minimum: 0}
+        people:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopProposedPerson"}
+    BeginnersWorkshopIntakeState:
+      type: string
+      description: "`contacted` and `paid` are open; every other state is terminal."
+      enum:
+        - contacted
+        - paid
+        - attended
+        - no_show
+        - lapsed
+        - declined
+        - returned
+        - deferred
+        - cancelled_refunded
+        - withdrawn
+    BeginnersWorkshopIntakeOrigin:
+      type: string
+      enum: [batch, fast_track]
+    BeginnersWorkshopRosterIntake:
+      type: object
+      description: |
+        One Intake on the console roster. Names are null once the person is
+        anonymised; `batchNumber` is null for a fast-track.
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, queueDate, contactedAt]
+      properties:
+        id: {type: string, format: uuid}
+        state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
+        origin: {$ref: "#/components/schemas/BeginnersWorkshopIntakeOrigin"}
+        batchNumber: {type: integer, nullable: true, minimum: 1}
+        firstName: {type: string, nullable: true}
+        lastName: {type: string, nullable: true}
+        minor: {type: boolean}
+        queueDate: {type: string, format: date-time}
+        contactedAt: {type: string, format: date-time}
+    BeginnersWorkshopRoster:
+      type: object
+      description: "`seated`: paid. `asked`: contacted, not paid yet. `out`: every closed Intake."
+      required: [seated, asked, out]
+      properties:
+        seated:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopRosterIntake"}
+        asked:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopRosterIntake"}
+        out:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopRosterIntake"}
+    BeginnersWorkshopAttention:
+      type: string
+      description: "`nobody_waiting`: a Batch is due with free seats, but nobody eligible is waiting."
+      enum: [nobody_waiting]
+    BeginnersWorkshopConsole:
+      type: object
+      required: [workshop, batches, pause, nextBatch, roster, attention]
+      properties:
+        workshop: {$ref: "#/components/schemas/BeginnersWorkshop"}
+        batches:
+          type: array
+          description: Every Batch sent, oldest first.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopBatch"}
+        pause: {$ref: "#/components/schemas/BeginnersWorkshopBatchPause"}
+        nextBatch: {$ref: "#/components/schemas/BeginnersWorkshopNextBatch"}
+        roster: {$ref: "#/components/schemas/BeginnersWorkshopRoster"}
+        attention:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopAttention"}
+    BeginnersWorkshopConsoleResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopConsole"}
     BeginnersWorkshopConflictError:
       description: 409 lifecycle conflict on a Beginners' Workshop command.
       allOf:
@@ -7890,7 +8082,7 @@ components:
               properties:
                 code:
                   type: string
-                  enum: [after_finalisation, already_cancelled, contact_from_locked, staff_conflict]
+                  enum: [after_finalisation, already_cancelled, contact_from_locked, fee_locked, staff_conflict]
     BeginnersWorkshopInvalidError:
       description: |
         422 refusal on a Beginners' Workshop command. Domain reasons carry a
@@ -12013,6 +12205,7 @@ components:
       enum:
         - beginners.waitlist.manage
         - beginners.waitlist.toggle
+        - beginners.workshops.alerts.receive
         - beginners.workshops.assigned.read
         - beginners.workshops.lead
         - beginners.workshops.manage

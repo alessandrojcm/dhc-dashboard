@@ -3,8 +3,10 @@ defmodule Dhc.BeginnersWorkshopFixtures do
 
   alias Dhc.Auth.UserRole
   alias Dhc.BeginnersWorkshops
-  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Clock}
+  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Clock, Intake}
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist.WaitlistEntry
 
   # 2026-10-09 12:00 Dublin (IST, UTC+1).
   @now ~U[2026-10-09 11:00:00Z]
@@ -72,6 +74,52 @@ defmodule Dhc.BeginnersWorkshopFixtures do
   def force_status!(workshop_id, status) do
     Repo.get!(BeginnersWorkshop, workshop_id)
     |> Ecto.Changeset.change(status: status)
+    |> Repo.update!()
+  end
+
+  @doc """
+  A `waiting` Waitlist person with an inactive profile. `registered_at` sets
+  the priority (`initial_registration_date`); options `first_name`,
+  `date_of_birth` and `status`.
+  """
+  def waiting_person_fixture(registered_at, opts \\ []) do
+    status = Keyword.get(opts, :status, "waiting")
+    at = DateTime.truncate(registered_at, :second)
+
+    entry =
+      Repo.insert!(%WaitlistEntry{
+        email: "#{System.unique_integer([:positive])}@waitlist.example.com",
+        status: status,
+        removed_at: if(status == "removed", do: at),
+        initial_registration_date: at,
+        last_status_change: at
+      })
+
+    Repo.insert!(%UserProfile{
+      waitlist_id: entry.id,
+      first_name: Keyword.get(opts, :first_name, "Person#{System.unique_integer([:positive])}"),
+      last_name: "Waiting",
+      phone_number: "+353810000000",
+      date_of_birth: Keyword.get(opts, :date_of_birth, ~D[1995-05-05]),
+      gender: "non-binary",
+      pronouns: "they/them",
+      is_active: false,
+      social_media_consent: "no"
+    })
+
+    Repo.get!(WaitlistEntry, entry.id)
+  end
+
+  @doc "`count` waiting people registered a day apart, oldest first."
+  def waiting_people_fixture(count, from \\ ~U[2025-01-01 12:00:00Z]) do
+    for index <- 0..(count - 1)//1,
+        do: waiting_person_fixture(DateTime.add(from, index * 86_400, :second))
+  end
+
+  @doc "Test-only: forces an Intake's state (no ALE-380 command pays an Intake)."
+  def force_intake_state!(intake_id, state) do
+    Repo.get!(Intake, intake_id)
+    |> Ecto.Changeset.change(state: state)
     |> Repo.update!()
   end
 end

@@ -15,6 +15,9 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   @default_payment_window_days 7
   # Batches go out at 10:00 Dublin time (spec: automatic Batches).
   @batch_time ~T[10:00:00]
+  # A Batch window ends at 23:59 Dublin time (stored as the last instant of
+  # the minute, so no Batch can go out between 23:59 and midnight).
+  @window_end_time ~T[23:59:59.999999]
   @check_in_lead_minutes 60
 
   @type stage ::
@@ -68,6 +71,106 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   @doc "Whether the contact-from date can still change: until Batch 1 has gone out."
   @spec contact_from_editable?(map()) :: boolean()
   def contact_from_editable?(%{batches_sent: sent}), do: sent == 0
+
+  @doc "Whether the fee can still change: until the first Intake exists (`:fee_locked`)."
+  @spec fee_editable?(map()) :: boolean()
+  def fee_editable?(%{intakes: intakes}), do: intakes == 0
+
+  @doc "The size of the next Batch: capacity − Intakes already paid (holds are not subtracted)."
+  @spec batch_size(BeginnersWorkshop.t(), map()) :: non_neg_integer()
+  def batch_size(%BeginnersWorkshop{capacity: capacity}, %{paid: paid}),
+    do: max(capacity - paid, 0)
+
+  @doc """
+  Whether the workshop's next Batch is due at `reading`, apart from whether
+  anyone eligible is waiting (the boundary reads the Waitlist under the
+  lock): the workshop is scheduled and not paused, Dublin today is on or
+  after the contact-from date and it is 10:00 or later, no Batch window is
+  open, it is before the Payment Cutoff and capacity − paid is above zero.
+  """
+  @spec batch_due?(BeginnersWorkshop.t(), map(), map()) :: boolean()
+  def batch_due?(%BeginnersWorkshop{status: "scheduled"} = workshop, facts, reading) do
+    not facts.batches_paused and
+      Date.compare(reading.today, workshop.contact_from) != :lt and
+      Time.compare(reading.now_time, @batch_time) != :lt and
+      not window_open?(facts, reading) and
+      DateTime.compare(reading.now, workshop.payment_cutoff) == :lt and
+      batch_size(workshop, facts) > 0
+  end
+
+  def batch_due?(%BeginnersWorkshop{}, _facts, _reading), do: false
+
+  @doc """
+  When a Batch sent at `reading` closes its payment window: 23:59 Dublin
+  time, window-length days after the send date — or the Payment Cutoff
+  itself when that date is on or after the cutoff date.
+  """
+  @spec window_end(BeginnersWorkshop.t(), map()) :: DateTime.t()
+  def window_end(%BeginnersWorkshop{} = workshop, reading) do
+    end_date = Date.add(reading.today, workshop.payment_window_days)
+
+    if Date.compare(end_date, ClubCalendar.on_date(workshop.payment_cutoff)) == :lt,
+      do: ClubCalendar.to_utc(end_date, @window_end_time),
+      else: workshop.payment_cutoff
+  end
+
+  @typedoc """
+  When the next Batch goes out: `:due` (at the next sweep), `{:at, instant}`,
+  `:paused`, `:full` (no unpaid seats; it goes as soon as a seat frees) or
+  `:closed` (no further Batch can go before the Payment Cutoff).
+  """
+  @type next_batch :: :due | {:at, DateTime.t()} | :paused | :full | :closed
+
+  @doc "When the workshop's next Batch goes out, judged at `reading`."
+  @spec next_batch(BeginnersWorkshop.t(), map(), map()) :: next_batch()
+  def next_batch(%BeginnersWorkshop{} = workshop, facts, reading) do
+    cond do
+      workshop.status != "scheduled" -> :closed
+      DateTime.compare(reading.now, workshop.payment_cutoff) != :lt -> :closed
+      batch_size(workshop, facts) == 0 -> :full
+      facts.batches_paused -> :paused
+      batch_due?(workshop, facts, reading) -> :due
+      true -> next_slot(workshop, facts, reading)
+    end
+  end
+
+  # The first 10:00 Dublin at or after the latest of: 10:00 on the
+  # contact-from date, the end of the open window, and now.
+  defp next_slot(workshop, facts, reading) do
+    earliest =
+      [
+        ClubCalendar.to_utc(workshop.contact_from, @batch_time),
+        facts.latest_window_end,
+        reading.now
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.max(DateTime)
+
+    day = ClubCalendar.on_date(earliest)
+    same_day = ClubCalendar.to_utc(day, @batch_time)
+
+    at =
+      if DateTime.compare(earliest, same_day) == :gt,
+        do: ClubCalendar.to_utc(Date.add(day, 1), @batch_time),
+        else: same_day
+
+    if DateTime.compare(at, workshop.payment_cutoff) == :lt, do: {:at, at}, else: :closed
+  end
+
+  @doc "Whether a person born on `date_of_birth` is a minor (under 18) on the workshop date."
+  @spec minor?(Date.t() | nil, Date.t()) :: boolean()
+  def minor?(nil, _workshop_date), do: false
+
+  def minor?(%Date{} = date_of_birth, %Date{} = workshop_date) do
+    eighteenth =
+      case Date.new(date_of_birth.year + 18, date_of_birth.month, date_of_birth.day) do
+        {:ok, date} -> date
+        # Born on 29 February: an adult from 1 March.
+        {:error, _} -> Date.new!(date_of_birth.year + 18, 3, 1)
+      end
+
+    Date.compare(workshop_date, eighteenth) == :lt
+  end
 
   @doc "Seats: capacity, paid, live holds and free (never negative)."
   @spec seats(BeginnersWorkshop.t(), map()) :: %{

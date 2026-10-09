@@ -442,6 +442,11 @@ defmodule Dhc.DevSeeds do
   `Dhc.BeginnersWorkshops` boundary, two weeks apart from three weeks out, as
   a dedicated beginners coordinator. They are all `scheduled`; later tickets
   extend this seed with their lifecycle stages.
+
+  ALE-380: one more workshop, contacted from yesterday, has an **open Batch
+  window**: Batch 1 is sent through the boundary's `send_due_batch` pass at
+  yesterday's 10:00 Dublin, so its 7-day window is still open (waiting
+  Waitlist entries are seeded first when there are too few).
   """
   @spec seed_beginners_workshops(pos_integer()) :: :ok
   def seed_beginners_workshops(count) do
@@ -473,6 +478,43 @@ defmodule Dhc.DevSeeds do
         {:error, reason} -> Mix.raise("Could not schedule Beginners' Workshops: #{inspect(reason)}")
       end
     end)
+
+    seed_open_batch_window(coordinator_id)
+  end
+
+  defp seed_open_batch_window(coordinator_id) do
+    capacity = 8
+    yesterday = Date.add(ClubCalendar.today(), -1)
+    waiting = Repo.aggregate(from(w in WaitlistEntry, where: w.status == "waiting"), :count)
+    if waiting < capacity, do: seed_waitlist(capacity - waiting)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "St. Andrew's Resource Centre",
+             date: Date.add(yesterday, 18),
+             start_time: ~T[18:30:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: yesterday
+           }
+         ]}
+      )
+
+    batch_clock = Dhc.BeginnersWorkshops.Clock.fixed(ClubCalendar.to_utc(yesterday, ~T[10:00:00]))
+
+    case Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+           clock: batch_clock
+         ) do
+      {:ok, %{outcome: :sent, batch: batch}} ->
+        Mix.shell().info("Sent Batch 1 (#{batch.size} contacted) for the workshop on #{workshop.date}")
+
+      other ->
+        Mix.shell().error("Batch 1 was not sent for the seeded workshop: #{inspect(other)}")
+    end
   end
 
   defp ensure_beginners_coordinator do

@@ -41,6 +41,12 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
     field :contact_from, :date
     field :payment_window_days, :integer
     field :scheduled_by_principal_id, :binary_id
+    # ALE-380: who paused or resumed automatic Batches last, and when.
+    field :batches_paused, :boolean, default: false
+    field :batches_paused_at, :utc_datetime_usec
+    field :batches_paused_by_principal_id, :binary_id
+    field :batches_resumed_at, :utc_datetime_usec
+    field :batches_resumed_by_principal_id, :binary_id
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end
@@ -99,6 +105,29 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
     ])
     |> validate_shape()
   end
+
+  @doc "Pauses automatic Batches (`pause_batches`), recording who and when."
+  @spec pause_changeset(t(), binary(), DateTime.t()) :: Ecto.Changeset.t()
+  def pause_changeset(%__MODULE__{} = workshop, principal_id, at),
+    do:
+      change(workshop,
+        batches_paused: true,
+        batches_paused_at: usec(at),
+        batches_paused_by_principal_id: principal_id
+      )
+
+  @doc "Resumes automatic Batches (`resume_batches`), recording who and when."
+  @spec resume_changeset(t(), binary(), DateTime.t()) :: Ecto.Changeset.t()
+  def resume_changeset(%__MODULE__{} = workshop, principal_id, at) do
+    change(workshop,
+      batches_paused: false,
+      batches_resumed_at: usec(at),
+      batches_resumed_by_principal_id: principal_id
+    )
+  end
+
+  defp usec(%DateTime{microsecond: {value, _precision}} = at),
+    do: %{at | microsecond: {value, 6}}
 
   defp validate_shape(changeset) do
     changeset

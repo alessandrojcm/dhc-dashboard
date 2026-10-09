@@ -119,6 +119,14 @@ export const workshopSettingsSchema = v.pipe(
 	})),
 );
 
+/**
+ * ALE-380: Pause or Resume automatic Batches. The form carries only the
+ * workshop; Phoenix records who and when, and is idempotent.
+ */
+export const batchesCommandSchema = v.object({
+	id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+});
+
 export type ScheduleWorkshopsInput = v.InferInput<
 	typeof scheduleWorkshopsSchema
 >;

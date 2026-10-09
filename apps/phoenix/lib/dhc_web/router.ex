@@ -68,6 +68,9 @@ defmodule DhcWeb.Router do
     post("/", BeginnersWorkshopsController, :create)
     get("/staff-candidates", BeginnersWorkshopsController, :staff_candidates)
     put("/:id/settings", BeginnersWorkshopsController, :update_settings)
+    get("/:id/console", BeginnersWorkshopsController, :console)
+    post("/:id/batches/pause", BeginnersWorkshopBatchesController, :pause)
+    post("/:id/batches/resume", BeginnersWorkshopBatchesController, :resume)
     put("/:id/staff", BeginnersWorkshopsController, :set_staff)
 
     # ALE-383 — Intake Email templates.

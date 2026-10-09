@@ -83,6 +83,10 @@ defmodule Dhc.Auth.Capabilities do
   # are deliberately excluded.
   @beginners_workshop_managers @officers ++ ~w(beginners_coordinator)
 
+  # ALE-380: the coordinator alerts (Batch sent, free seats but nobody
+  # waiting) go to the beginners coordinator only. Recipients-only: no route
+  # is gated on it, it only names who is notified.
+  @beginners_coordinator_alert_recipients ~w(beginners_coordinator)
   # ALE-379: who may be assigned as a Beginners' Workshop's coach. Checked at
   # assignment only; losing the role later keeps the assignment.
   @beginners_workshop_leads ~w(coach)
@@ -108,6 +112,7 @@ defmodule Dhc.Auth.Capabilities do
     "beginners.workshops.assigned.read": %{roles: @members},
     "beginners.workshops.lead": %{roles: @beginners_workshop_leads},
     "beginners.workshops.manage": %{roles: @beginners_workshop_managers},
+    "beginners.workshops.alerts.receive": %{roles: @beginners_coordinator_alert_recipients},
     # Running a workshop (its door view, check-in): the managers by role,
     # anyone else only while on that workshop's Staff.
     "beginners.workshops.run": %{roles: @beginners_workshop_managers, assigned: true},
