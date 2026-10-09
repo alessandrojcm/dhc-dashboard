@@ -5,9 +5,9 @@ React Email component in `emails/` whose file also declares its metadata —
 default subject, default sender, declared variables — via `defineTemplate`,
 making TypeScript the single schema authority for what each Kind requires.
 
-The five whitelisted kinds mirror `@transactional_ids` in `Dhc.Email.Worker`:
+The whitelisted kinds mirror `@transactional_ids` in `Dhc.Email.Worker`:
 `inviteMember`, `workshopAnnouncement`, `workshopRegistration`,
-`workshopRegistrationError`, `magicLink`.
+`workshopRegistrationError`, `magicLink`, `beginnersWorkshopAction`, `beginnersWorkshopNotice`.
 
 ## How templates reach Resend
 
@@ -55,7 +55,7 @@ changed; lint, typecheck and tests run first.
 
 - **Pull requests upload drafts only.** Nothing on Resend changes publicly
   until merge.
-- **Merging to main publishes**, then smoke-checks that all five aliases
+- **Merging to main publishes**, then smoke-checks that every whitelisted alias
   resolve to published templates. Publishing therefore gates on review plus
   required checks — never an arbitrary push.
 

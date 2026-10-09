@@ -25,6 +25,8 @@ import type { CreateTemplateOptions, ErrorResponse, Template, UpdateTemplateOpti
 import { Resend } from "resend";
 import { render } from "react-email";
 
+import BeginnersWorkshopActionEmail from "../emails/beginners-workshop-action";
+import BeginnersWorkshopNoticeEmail from "../emails/beginners-workshop-notice";
 import InviteMemberEmail from "../emails/invite-member";
 import MagicLinkEmail from "../emails/magic-link";
 import WorkshopAnnouncementEmail from "../emails/workshop-announcement";
@@ -121,6 +123,16 @@ const RENDERERS = {
   ),
   workshopRegistrationError: (p: PlaceholderProps): ReactElement => (
     <WorkshopRegistrationErrorEmail WORKSHOP_NAME={p.WORKSHOP_NAME ?? ""} />
+  ),
+  beginnersWorkshopAction: (p: PlaceholderProps): ReactElement => (
+    <BeginnersWorkshopActionEmail
+      MESSAGE_HTML={p.MESSAGE_HTML ?? ""}
+      BUTTON_URL={p.BUTTON_URL ?? ""}
+      BUTTON_LABEL={p.BUTTON_LABEL ?? ""}
+    />
+  ),
+  beginnersWorkshopNotice: (p: PlaceholderProps): ReactElement => (
+    <BeginnersWorkshopNoticeEmail MESSAGE_HTML={p.MESSAGE_HTML ?? ""} />
   ),
 } satisfies Record<EmailKind, (props: PlaceholderProps) => ReactElement>;
 

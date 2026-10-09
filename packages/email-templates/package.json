@@ -6,13 +6,15 @@
 	"main": "./src/index.ts",
 	"types": "./src/index.ts",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./fixtures/intake-email-measure.json": "./fixtures/intake-email-measure.json"
 	},
 	"scripts": {
 		"dev": "email dev --dir emails",
 		"sync": "tsx scripts/sync.tsx",
 		"sync:publish": "tsx scripts/sync.tsx --publish",
 		"smoke": "tsx scripts/sync.tsx --smoke",
+		"verify:html-variable": "tsx scripts/verify-html-variable.tsx",
 		"render:shells": "tsx scripts/render-shells.tsx",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",

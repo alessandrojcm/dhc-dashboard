@@ -124,7 +124,9 @@ defmodule Dhc.Email.WorkerTest do
         "workshopAnnouncement" => "workshop-announcement",
         "workshopRegistration" => "workshop-registration",
         "workshopRegistrationError" => "workshop-registration-error",
-        "magicLink" => "magic-link"
+        "magicLink" => "magic-link",
+        "beginnersWorkshopAction" => "beginners-workshop-action",
+        "beginnersWorkshopNotice" => "beginners-workshop-notice"
       }
 
       for {kind, template_alias} <- aliases do
@@ -136,6 +138,46 @@ defmodule Dhc.Email.WorkerTest do
           assert email.provider_options.template == %{id: template_alias, variables: %{}}
         end)
       end
+    end
+  end
+
+  describe "subject override" do
+    test "an optional subject arg overrides the template's default subject" do
+      args = Map.put(@valid_args, "subject", "Your Beginners' Workshop on Saturday")
+
+      Application.put_env(:dhc, :environment, :prod)
+      assert Worker.perform(job(args)) == :ok
+
+      assert_email_sent(subject: "Your Beginners' Workshop on Saturday")
+    end
+
+    test "without a subject arg the provider's template subject applies in prod" do
+      Application.put_env(:dhc, :environment, :prod)
+      assert Worker.perform(job(@valid_args)) == :ok
+
+      assert_email_sent(fn email -> assert email.subject == "" end)
+    end
+
+    test "the dev inbox shows the override subject" do
+      args = Map.put(@valid_args, "subject", "Place confirmed")
+
+      assert Worker.perform(job(args)) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.subject == "[dev] Place confirmed"
+        assert Jason.decode!(email.text_body)["subject"] == "Place confirmed"
+      end)
+    end
+
+    test "a non-string or blank subject is invalid" do
+      for subject <- [42, "", "   "] do
+        assert {:cancel, {:validation, errors}} =
+                 Worker.perform(job(Map.put(@valid_args, "subject", subject)))
+
+        assert "subject must be a non-blank string" in errors
+      end
+
+      refute_email_sent()
     end
   end
 
@@ -333,6 +375,58 @@ defmodule Dhc.Email.WorkerTest do
       capture_log(fn ->
         assert {:cancel, {:sealed_data_variables, :expired}} =
                  Worker.perform(job(sealed_args(expired)))
+      end)
+
+      refute_email_sent()
+    end
+  end
+
+  describe "sealed data variables for Beginners' Workshop Kinds" do
+    import ExUnit.CaptureLog
+
+    @intake_link "https://app.example.com/beginners/intake/raw-intake-token"
+
+    defp sealed_at(kind, age_seconds) do
+      sealed =
+        Plug.Crypto.encrypt(
+          DhcWeb.Endpoint.config(:secret_key_base),
+          "dhc.email.worker sealed_data_variables v1",
+          %{"BUTTON_URL" => @intake_link},
+          signed_at: System.system_time(:second) - age_seconds
+        )
+
+      %{
+        "email" => "person@example.com",
+        "transactional_id" => kind,
+        "data_variables" => %{"MESSAGE_HTML" => "<p>Hi</p>", "BUTTON_LABEL" => "Pay"},
+        "sealed_data_variables" => sealed
+      }
+    end
+
+    test "an action email sealed 23 hours ago still delivers its button URL" do
+      assert Worker.perform(job(sealed_at("beginnersWorkshopAction", 23 * 3600))) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.provider_options.template.id == "beginners-workshop-action"
+        assert email.provider_options.template.variables["BUTTON_URL"] == @intake_link
+      end)
+    end
+
+    test "both Kinds expire a seal after 24 hours" do
+      for kind <- ~w(beginnersWorkshopAction beginnersWorkshopNotice) do
+        capture_log(fn ->
+          assert {:cancel, {:sealed_data_variables, :expired}} =
+                   Worker.perform(job(sealed_at(kind, 24 * 3600 + 60)))
+        end)
+      end
+
+      refute_email_sent()
+    end
+
+    test "other Kinds keep the 15-minute seal" do
+      capture_log(fn ->
+        assert {:cancel, {:sealed_data_variables, :expired}} =
+                 Worker.perform(job(sealed_at("magicLink", 16 * 60)))
       end)
 
       refute_email_sent()

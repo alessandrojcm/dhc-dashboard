@@ -94,7 +94,7 @@ Never supply a live-mode key.
 
 ## Email templates (Resend sync)
 
-The five transactional templates are React Email components in
+The transactional templates are React Email components in
 `packages/email-templates`, synced upsert-by-alias to Resend-hosted templates
 (ADR 0022). See that package's README for the drift policy and CI wiring.
 
@@ -109,10 +109,12 @@ mise run email-sync          # render + upsert drafts (what PRs do)
 mise run email-sync-publish  # upsert + publish (what merge-to-main does)
 mise run email-smoke         # fail unless every whitelisted kind has a published template
 mise run email-shells        # generate Phoenix announcement HTML + styles (no Resend key)
+pnpm --filter @dhc/email-templates verify:html-variable
+                             # one real send to delivered@resend.dev: is {{{MESSAGE_HTML}}} inserted unescaped?
 ```
 
-All three need a Full Access key as `RESEND_API_KEY` (`fnox` holds the send-only
-key under that name; use the `RESEND_API_KEY_CI` value for syncs). The GitHub
+The sync, smoke and verify commands need a Full Access key as `RESEND_API_KEY` (`fnox` holds the send-only
+key under that name in the `production` profile, read through the 1Password `op` CLI with the desktop app integration turned on; use the `RESEND_API_KEY_CI` value, a GitHub Actions secret that fnox does not hold, for syncs and the verify send). The GitHub
 Actions workflow `.github/workflows/email-templates.yml` runs the same pipeline:
 drafts on pull requests, publish + smoke on main, gated by change detection on
 `packages/email-templates/**`.
