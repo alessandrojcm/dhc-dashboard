@@ -132,7 +132,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
 
     # ALE-395: an Intake's history also records the workshop's cancellation.
     assert schemas["BeginnersWorkshopIntakeHistoryCommand"]["enum"] ==
-             Enum.map(IntakePolicy.commands(), &Atom.to_string/1) ++ ["cancel_workshop"]
+             Enum.map(IntakePolicy.commands(), &Atom.to_string/1) ++
+               ["cancel_workshop", "check_in", "undo_check_in"]
 
     # ALE-393: the states an attendance correction may name.
     assert schemas["BeginnersWorkshopAttendanceCorrection"]["enum"] ==

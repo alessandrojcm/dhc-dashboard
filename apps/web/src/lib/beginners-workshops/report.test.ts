@@ -67,7 +67,6 @@ describe("report wording", () => {
 				declined: 1,
 				lapsed: 0,
 				returned: 2,
-				withdrawn: 0,
 				total: 3,
 				rate: 0.3,
 			}),

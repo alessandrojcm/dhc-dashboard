@@ -162,6 +162,17 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
 
   def actor(conn), do: {:staff, conn.assigns.current_session.principal.id}
 
+  @doc """
+  Runs one boundary command as the session's staff actor and responds with
+  `respond/4`: the shared body of the Beginners' Workshop command actions.
+  """
+  def command(conn, command, template, status \\ :ok) do
+    conn
+    |> actor()
+    |> Dhc.BeginnersWorkshops.execute(command)
+    |> respond(conn, template, status)
+  end
+
   @doc "Keeps only the public request vocabulary, renamed to internal keys."
   def attrs(params) when is_map(params) do
     for {public, internal} <- @fields,

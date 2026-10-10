@@ -52,7 +52,13 @@ defmodule DhcWeb.BeginnersWorkshopReportJSON do
         batch: row.contacted.batch,
         fastTrack: row.contacted.fast_track
       },
-      exitsBeforePaying: row.exits_before_paying,
+      exitsBeforePaying: %{
+        declined: row.exits_before_paying.declined,
+        lapsed: row.exits_before_paying.lapsed,
+        returned: row.exits_before_paying.returned,
+        total: row.exits_before_paying.total,
+        rate: row.exits_before_paying.rate
+      },
       paid: %{total: row.paid.total, carriedFee: row.paid.carried_fee},
       exitsAfterPaying: %{
         deferred: row.exits_after_paying.deferred,

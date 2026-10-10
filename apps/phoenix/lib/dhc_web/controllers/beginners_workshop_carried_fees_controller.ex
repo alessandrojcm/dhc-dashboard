@@ -73,12 +73,8 @@ defmodule DhcWeb.BeginnersWorkshopCarriedFeesController do
   def forfeit(conn, %{"waitlistId" => waitlist_id, "refundId" => refund_id}),
     do: command(conn, {:forfeit_carried_fee, {:person, waitlist_id}, refund_id}, :forfeited)
 
-  defp command(conn, command, template, status \\ :ok) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute(command)
-    |> BeginnersWorkshopsHTTP.respond(conn, template, status)
-  end
+  defp command(conn, command, template, status \\ :ok),
+    do: BeginnersWorkshopsHTTP.command(conn, command, template, status)
 
   defp waitlist_ids(value) when is_binary(value) do
     ids = value |> String.split(",", trim: true) |> Enum.map(&String.trim/1)

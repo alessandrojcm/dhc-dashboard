@@ -188,7 +188,10 @@ defmodule Dhc.BeginnersWorkshops.AttendanceFinalisationTest do
           workshop_id: ctx.workshop.id,
           intake_id: holding.id,
           amount_cents: 4000,
-          expires_at: DateTime.add(@during, 600, :second)
+          expires_at: DateTime.add(@during, 600, :second),
+          checkout_link_generation: 1,
+          checkout_email: paying.email,
+          checkout_product_name: "Beginners' Workshop – Sat 24 Oct 2026"
         }
         |> IntakePayment.hold_changeset()
         |> Repo.insert!()
@@ -220,6 +223,30 @@ defmodule Dhc.BeginnersWorkshops.AttendanceFinalisationTest do
       assert %{status: "finalised", finalised_by_principal_id: nil} = workshop
 
       assert {:ok, %{outcome: :not_due}} = finalise(ctx, DateTime.add(@day_ended, 300))
+    end
+
+    test "a workshop on the day the clocks go back finalises only at that day's own end, 25 hours long",
+         ctx do
+      # Sunday 25 October 2026 runs from 23:00Z on the 24th (midnight IST) to
+      # 00:00Z on the 26th (midnight GMT): 25 hours. 11:00 Dublin is 11:00Z.
+      workshop =
+        scheduled_fixture(ctx.coordinator, %{"date" => "2026-10-25", "start_time" => "11:00"})
+
+      set_staff!(workshop.id, ctx.coach, [ctx.assistant])
+      checked_in = paid_person_fixture!(workshop.id, first_name: "Ruairí")
+      _absent = paid_person_fixture!(workshop.id, first_name: "Saoirse")
+      check_in!(%{ctx | workshop: workshop}, checked_in, ~U[2026-10-25 11:15:00.000000Z])
+
+      finalise = &finalise(%{ctx | workshop: workshop}, &1)
+
+      # 24 hours after the day began, and the last instant of the day: not yet.
+      assert {:ok, %{outcome: :not_due}} = finalise.(~U[2026-10-25 23:00:00.000000Z])
+      assert {:ok, %{outcome: :not_due}} = finalise.(~U[2026-10-25 23:59:59.999999Z])
+
+      assert {:ok, %{outcome: :finalised, attended: 1, no_show: 1}} =
+               finalise.(~U[2026-10-26 00:00:00.000000Z])
+
+      assert %{status: "finalised"} = Repo.get!(BeginnersWorkshop, workshop.id)
     end
 
     test "the sweep finalises once, then sends the Follow-up once", ctx do

@@ -9,6 +9,10 @@ import { gotoHydrated } from "./hydration";
 // The Beginners' Workshop page mounts every tab panel (inactive ones are only
 // `hidden`), and the Workshops, Invitable and Dashboard tabs have tables of their
 // own, so every table locator is scoped to the Waitlist panel.
+function waitlistRows(page: Page) {
+	return waitlistPanel(page).locator("table tbody tr");
+}
+
 function waitlistPanel(page: Page) {
 	return page.getByRole("tabpanel", { name: "Waitlist", exact: true });
 }
@@ -70,14 +74,12 @@ test.describe("Waitlist table pagination and search", () => {
 		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
-		await waitlistPanel(page).locator("table tbody tr").first().waitFor({
+		await waitlistRows(page).first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
 
-		const initialRowCount = await waitlistPanel(page)
-			.locator("table tbody tr")
-			.count();
+		const initialRowCount = await waitlistRows(page).count();
 		expect(initialRowCount).toBeGreaterThan(0);
 		expect(initialRowCount).toBeLessThanOrEqual(10);
 
@@ -106,7 +108,7 @@ test.describe("Waitlist table pagination and search", () => {
 		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
-		await waitlistPanel(page).locator("table tbody tr").first().waitFor({
+		await waitlistRows(page).first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
@@ -131,9 +133,7 @@ test.describe("Waitlist table pagination and search", () => {
 		expect(page.url()).toContain("pageSize=25");
 
 		// Verify rows are displayed (should be up to 25)
-		const rowCount = await waitlistPanel(page)
-			.locator("table tbody tr")
-			.count();
+		const rowCount = await waitlistRows(page).count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThanOrEqual(25);
 	});
@@ -142,7 +142,7 @@ test.describe("Waitlist table pagination and search", () => {
 		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
-		await waitlistPanel(page).locator("table tbody tr").first().waitFor({
+		await waitlistRows(page).first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
@@ -182,7 +182,7 @@ test.describe("Waitlist table pagination and search", () => {
 		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
-		await waitlistPanel(page).locator("table tbody tr").first().waitFor({
+		await waitlistRows(page).first().waitFor({
 			state: "attached",
 			timeout: 15000,
 		});
@@ -198,9 +198,7 @@ test.describe("Waitlist table pagination and search", () => {
 		);
 		expect(total).toBeGreaterThanOrEqual(waitlistIds.length);
 
-		const rowCount = await waitlistPanel(page)
-			.locator("table tbody tr")
-			.count();
+		const rowCount = await waitlistRows(page).count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThanOrEqual(10);
 	});

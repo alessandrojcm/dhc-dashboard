@@ -10,7 +10,8 @@
 	whichever is pressed. There is no copy-link: a link is only ever resent
 	or rotated. (ALE-387) Withdraw needs the refund-or-forfeit choice, so its
 	button opens `withdraw-dialog.svelte`; a paid Intake shows the
-	refund-timing hint when the workshop is 7 days away or closer.
+	refund-timing hint Phoenix works out (`refundTimingDaysToGo`) when the
+	workshop is 7 days away or closer.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopRosterIntake } from "@dhc/api-client";
@@ -46,17 +47,10 @@ import WithdrawDialog from "./withdraw-dialog.svelte";
 
 let {
 	workshopId,
-	workshopDate,
-	feeCents,
 	intake,
-	now = () => new Date(),
 }: {
 	workshopId: string;
-	workshopDate: string;
-	feeCents: number;
 	intake: BeginnersWorkshopRosterIntake;
-	/** Injectable for tests; the refund-timing hint reads Dublin today from it. */
-	now?: () => Date;
 } = $props();
 
 const form = $derived(runIntakeCommand.for(intake.id));
@@ -81,7 +75,7 @@ const refundHint = $derived(
 		intake.availableCommands.some(
 			(command) => command === "cancel_with_refund" || command === "withdraw",
 		)
-		? refundTimingHint(workshopDate, now())
+		? refundTimingHint(intake.refundTimingDaysToGo)
 		: null,
 );
 </script>
@@ -333,12 +327,5 @@ const refundHint = $derived(
 </div>
 
 {#if canWithdraw}
-	<WithdrawDialog
-		{workshopId}
-		{workshopDate}
-		{feeCents}
-		{intake}
-		{now}
-		bind:open={withdrawOpen}
-	/>
+	<WithdrawDialog {workshopId} {intake} bind:open={withdrawOpen} />
 {/if}

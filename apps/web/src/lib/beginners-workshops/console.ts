@@ -19,6 +19,7 @@ import type {
 	BeginnersWorkshopIntakeRefund,
 	BeginnersWorkshopIntakeState,
 	BeginnersWorkshopNextBatch,
+	BeginnersWorkshopRefundChoice,
 	BeginnersWorkshopRosterIntake,
 	BeginnersWorkshopUnconfirmedCarriedFee,
 	WaitlistStatus,
@@ -437,9 +438,11 @@ export function failedRefundText(
 	refund: BeginnersWorkshopFailedRefund,
 ): string {
 	const reason = REFUND_REASONS.get(refund.reason);
-	const next = refund.carriedFee
+	const next = refund.forfeitable
 		? "Their Carried Fee is held again: retry the refund, record a manual refund if you paid them back another way, or forfeit the fee."
-		: "Retry it, or record a manual refund if you paid them back another way.";
+		: refund.carriedFee
+			? "They have since paid or hold another Carried Fee, so the money is still owed back: retry the refund, or record a manual refund if you paid them back another way."
+			: "Retry it, or record a manual refund if you paid them back another way.";
 	return `Refund of ${formatRefundAmount(refund.amountCents, refund.currency)} to ${personName(refund)} failed${reason ? ` (${reason})` : ""}. ${next}`;
 }
 
@@ -625,42 +628,40 @@ export function isIntakeButtonCommand(
 	return INTAKE_BUTTON_COMMANDS.some((button) => button === command);
 }
 
-/** ALE-387: the refund-timing hint shows this many days before the workshop, or fewer. */
-export const REFUND_HINT_DAYS = 7;
-
-const dublinDate = new Intl.DateTimeFormat("en-CA", {
-	timeZone: "Europe/Dublin",
-	year: "numeric",
-	month: "2-digit",
-	day: "2-digit",
-});
-
-/** Whole calendar days from Dublin today to the workshop's civil `date`. */
-export function daysToGo(date: string, now: Date = new Date()): number {
-	const today = Date.parse(`${dublinDate.format(now)}T00:00:00Z`);
-	return Math.round((Date.parse(`${date}T00:00:00Z`) - today) / 86_400_000);
+/**
+ * ALE-387 (story 77): the "less than N days to go" hint shown when choosing
+ * between keeping the fee and refunding it. Phoenix works out the days left
+ * on its own clock (`refundTimingDaysToGo`, 7 or fewer, `null` otherwise);
+ * this only words them. There is no deadline: the club's policy is
+ * informal, so this only reminds the coordinator how close the workshop is.
+ */
+export function refundTimingHint(
+	daysToGo: number | null | undefined,
+): string | null {
+	if (daysToGo === null || daysToGo === undefined) return null;
+	const when =
+		daysToGo === 0
+			? "The workshop is today"
+			: daysToGo === 1
+				? "The workshop is tomorrow"
+				: `Less than ${daysToGo} days to go`;
+	return `${when} — there's no deadline; whether to refund is your call.`;
 }
 
 /**
- * ALE-387 (story 77): the "less than N days to go" hint shown when choosing
- * between keeping the fee (defer) and refunding — from
- * `REFUND_HINT_DAYS` days before the workshop until its day, `null`
- * otherwise. There is no deadline: the club's policy is informal, so this
- * only reminds the coordinator how close the workshop is.
+ * ALE-387/389: the refund option of the refund-or-forfeit choice — the full
+ * amount the money originally took (`refundChoice`, from Phoenix), which for
+ * a Carried Fee may differ from this workshop's fee.
  */
-export function refundTimingHint(
-	date: string,
-	now: Date = new Date(),
-): string | null {
-	const days = daysToGo(date, now);
-	if (days < 0 || days > REFUND_HINT_DAYS) return null;
-	const when =
-		days === 0
-			? "The workshop is today"
-			: days === 1
-				? "The workshop is tomorrow"
-				: `Less than ${days} days to go`;
-	return `${when} — there's no deadline; whether to refund is your call.`;
+export function refundChoiceLabel(
+	choice: BeginnersWorkshopRefundChoice,
+): string {
+	const what = choice.source === "carried_fee" ? "their Carried Fee" : "";
+	if (choice.amountCents === null || choice.currency === null) {
+		return what ? `Refund ${what} in full` : "Refund in full";
+	}
+	const amount = formatRefundAmount(choice.amountCents, choice.currency);
+	return what ? `Refund ${what}: ${amount}` : `Refund ${amount}`;
 }
 
 /** The button label of an Intake command. */
@@ -680,10 +681,31 @@ export function intakeCommandDone(
 		: INTAKE_COMMAND_COPY[command].done;
 }
 
-/** ALE-395: a history row is a console command or the workshop's cancellation. */
+/**
+ * ALE-395: a history row is a console command, the workshop's cancellation
+ * or (story 97) a door check-in or its undo.
+ */
+const OTHER_HISTORY_LABELS = {
+	cancel_workshop: "Workshop cancelled",
+	check_in: "Checked in at the door",
+	undo_check_in: "Check-in undone",
+} satisfies Record<
+	Exclude<
+		BeginnersWorkshopIntakeHistoryCommand,
+		BeginnersWorkshopIntakeCommand
+	>,
+	string
+>;
+
+function isOtherHistoryCommand(
+	command: BeginnersWorkshopIntakeHistoryCommand,
+): command is keyof typeof OTHER_HISTORY_LABELS {
+	return Object.hasOwn(OTHER_HISTORY_LABELS, command);
+}
+
 function historyLabel(command: BeginnersWorkshopIntakeHistoryCommand): string {
-	return command === "cancel_workshop"
-		? "Workshop cancelled"
+	return isOtherHistoryCommand(command)
+		? OTHER_HISTORY_LABELS[command]
 		: INTAKE_COMMAND_COPY[command].history;
 }
 

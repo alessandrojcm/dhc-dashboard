@@ -1,18 +1,21 @@
 <!--
 	ALE-387: Withdraw from the console's Intake detail — the person leaves the
 	Waitlist (`removed`, restorable for 3 months). Money is never handled
-	implicitly: for a paid Intake the coordinator must choose to refund the
-	full fee or forfeit it (Phoenix answers `refund_choice_required`
-	otherwise), and the refund-timing hint shows when the workshop is close.
-	A contacted Intake just closes as declined, with no email.
+	implicitly: whenever Phoenix's row says there is money to settle
+	(`refundChoice`: a paid Intake, or (ALE-389) a contacted one whose person
+	holds a Carried Fee) the coordinator must choose to refund it in full —
+	the amount it originally took, shown from Phoenix — or forfeit it
+	(Phoenix answers `refund_choice_required` otherwise), and Phoenix's
+	refund-timing hint shows when the workshop is close. Without money a
+	contacted Intake just closes as declined, with no email.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopRosterIntake } from "@dhc/api-client";
 import { toast } from "svelte-sonner";
 import {
-	formatRefundAmount,
 	intakeCommandDone,
 	personName,
+	refundChoiceLabel,
 	refundTimingHint,
 } from "#lib/beginners-workshops/console.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -25,24 +28,20 @@ import { withdrawIntake } from "./console.remote";
 
 let {
 	workshopId,
-	workshopDate,
-	feeCents,
 	intake,
 	open = $bindable(false),
-	now = () => new Date(),
 }: {
 	workshopId: string;
-	workshopDate: string;
-	feeCents: number;
 	intake: BeginnersWorkshopRosterIntake;
 	open?: boolean;
-	/** Injectable for tests; the hint reads Dublin today from it. */
-	now?: () => Date;
 } = $props();
 
 const form = $derived(withdrawIntake.for(intake.id));
-const paid = $derived(intake.state === "paid");
-const hint = $derived(paid ? refundTimingHint(workshopDate, now()) : null);
+// Phoenix says whether the choice is required and for which money.
+const choice = $derived(intake.refundChoice);
+const hint = $derived(
+	choice ? refundTimingHint(intake.refundTimingDaysToGo) : null,
+);
 let refund = $state<"refund" | "forfeit" | undefined>(undefined);
 let formError = $state<string | null>(null);
 </script>
@@ -77,9 +76,13 @@ let formError = $state<string | null>(null);
 			<input {...form.fields.id.as("hidden", workshopId)} />
 			<input {...form.fields.intakeId.as("hidden", intake.id)} />
 
-			{#if paid}
+			{#if choice}
 				<Field.Field>
-					<Field.Label>What happens to their fee?</Field.Label>
+					<Field.Label
+						>{choice.source === "carried_fee"
+							? "What happens to their Carried Fee?"
+							: "What happens to their fee?"}</Field.Label
+					>
 					{#if hint}
 						<p
 							class="rounded-lg border border-amber-500 bg-amber-50 p-2.5 text-sm text-amber-900"
@@ -101,7 +104,9 @@ let formError = $state<string | null>(null);
 						>
 							<RadioGroup.Item value="refund" class="mt-0.5" />
 							<span>
-								<strong>Refund {formatRefundAmount(feeCents, "eur")}</strong>
+								<strong data-testid="refund-amount"
+									>{refundChoiceLabel(choice)}</strong
+								>
 								<span class="block text-muted-foreground"
 									>The full amount, against their original payment. Email:
 									“Withdrawn – refunded”.</span
@@ -129,8 +134,8 @@ let formError = $state<string | null>(null);
 				</Field.Field>
 			{:else}
 				<p class="text-sm">
-					Not paid: their Intake closes as declined and their Seat Hold, if any,
-					is released. No email is sent.
+					No money to settle: their Intake closes as declined and their Seat
+					Hold, if any, is released. No email is sent.
 				</p>
 			{/if}
 
@@ -161,7 +166,7 @@ let formError = $state<string | null>(null);
 				<Button
 					type="submit"
 					variant="destructive"
-					disabled={!!form.pending || (paid && !refund)}>Withdraw</Button
+					disabled={!!form.pending || (!!choice && !refund)}>Withdraw</Button
 				>
 			</Dialog.Footer>
 		</form>

@@ -41,6 +41,9 @@ export const VENUE_MAX = 80;
 /** How many workshops one Schedule submission may carry. */
 export const MAX_SCHEDULED_AT_ONCE = 20;
 
+/** The workshop a command acts on, carried as a hidden field. */
+const workshopId = v.pipe(v.string(), v.uuid("Unknown workshop."));
+
 const settingsEntries = {
 	capacity: wholeNumber("Capacity must be at least 1."),
 	fee: euroAmountInCents("Enter the fee in euro."),
@@ -120,7 +123,7 @@ export const scheduleWorkshopsSchema = v.pipe(
  */
 export const workshopSettingsSchema = v.pipe(
 	v.object({
-		id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+		id: workshopId,
 		...settingsEntries,
 		paymentCutoffDate: civilDate("Pick the cutoff date."),
 		paymentCutoffTime: wallTime("Enter the cutoff time."),
@@ -140,18 +143,18 @@ export const workshopSettingsSchema = v.pipe(
  * workshop; Phoenix records who and when, and is idempotent.
  */
 export const batchesCommandSchema = v.object({
-	id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+	id: workshopId,
 });
 
 /** ALE-390: one person's door check-in (or its undo). */
 export const doorCheckInSchema = v.object({
-	id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+	id: workshopId,
 	intakeId: v.pipe(v.string(), v.uuid("Unknown person.")),
 });
 
 /** ALE-391: Finish workshop (Attendance Finalisation) from the door. */
 export const doorFinishSchema = v.object({
-	id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+	id: workshopId,
 });
 
 export type ScheduleWorkshopsInput = v.InferInput<
@@ -165,7 +168,7 @@ export type WorkshopSettingsInput = v.InferInput<typeof workshopSettingsSchema>;
  */
 export const workshopStaffSchema = v.pipe(
 	v.object({
-		id: v.pipe(v.string(), v.uuid("Unknown workshop.")),
+		id: workshopId,
 		...staffEntries,
 	}),
 	v.transform(({ id, coachPrincipalId, assistantPrincipalIds }) => ({
@@ -178,8 +181,6 @@ export const workshopStaffSchema = v.pipe(
 );
 
 export type WorkshopStaffInput = v.InferInput<typeof workshopStaffSchema>;
-
-const workshopId = v.pipe(v.string(), v.uuid("Unknown workshop."));
 
 /**
  * ALE-384: fast-track one Waitlist person (waiting, or removed within the

@@ -34,7 +34,7 @@ defmodule Dhc.BeginnersWorkshops do
 
   alias Dhc.Repo
   alias Dhc.Waitlist
-  alias Dhc.Waitlist.{Import, WaitlistEntry}
+  alias Dhc.Waitlist.Import
 
   @doc """
   Executes one Beginners' Workshop command as `actor` — the only write path.
@@ -152,7 +152,8 @@ defmodule Dhc.BeginnersWorkshops do
     |> Map.merge(run_retention_passes(opts), sum_failed)
   end
 
-  # How many people one sweep purges; the next sweep takes the rest.
+  # How many people one sweep purges (`opts[:purge_batch]` overrides it);
+  # the next sweep takes the rest.
   @purge_batch 100
 
   # The shortest 3 calendar months (28 February → 28 May) is 89 days, so
@@ -165,11 +166,20 @@ defmodule Dhc.BeginnersWorkshops do
     now = Clock.read(Clock.from_opts(opts)).now
     before = now |> DateTime.add(-@purge_filter_days, :day) |> DateTime.truncate(:second)
 
-    from(w in WaitlistEntry,
+    # Only people the purge can act on now are candidates, so one it must
+    # leave (an open Intake, or someone `Waitlist.hard_delete/1` refuses)
+    # never holds the front of the queue and starves the rest.
+    open_intake =
+      from(i in Intake,
+        where: i.waitlist_id == parent_as(:entry).id and i.state in ^Intake.open_states()
+      )
+
+    from(w in Waitlist.deletable_entries_query(),
       where: w.status == "removed" and w.removed_at < ^before,
+      where: not exists(subquery(open_intake)),
       order_by: [asc: w.removed_at, asc: w.id],
       select: {w.id, w.removed_at},
-      limit: @purge_batch
+      limit: ^Keyword.get(opts, :purge_batch, @purge_batch)
     )
     |> Repo.all()
     |> Enum.reject(fn {_id, removed_at} -> Waitlist.restorable?(removed_at, now) end)

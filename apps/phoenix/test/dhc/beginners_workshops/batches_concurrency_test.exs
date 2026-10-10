@@ -90,6 +90,51 @@ defmodule Dhc.BeginnersWorkshops.BatchesConcurrencyTest do
     end)
   end
 
+  test "someone ahead in the queue who becomes eligible while the proposal waits for a lock is in the Batch" do
+    committed(1, 2, 2, fn %{workshops: [workshop], people: people} ->
+      [first, second] = Enum.sort_by(people, & &1.initial_registration_date, DateTime)
+      parent = self()
+
+      # Holds the second person's entry while registering someone with an
+      # earlier priority date, committed only once the pass waits behind it.
+      holder =
+        Task.async(fn ->
+          outside_sandbox(fn ->
+            Repo.transaction(fn ->
+              Repo.query!("SELECT id FROM waitlist WHERE id = $1 FOR UPDATE", [
+                Ecto.UUID.dump!(second.id)
+              ])
+
+              earlier = waiting_person_fixture(~U[2024-01-01 12:00:00Z])
+              send(parent, {:locked, earlier})
+              receive do: (:release -> earlier)
+            end)
+          end)
+        end)
+
+      assert_receive {:locked, earlier}, 5_000
+      # Runs before the shared cleanup: the workshop's rows go first, then
+      # the extra person (the shared cleanup then finds nothing of theirs).
+      on_exit(fn ->
+        outside_sandbox(fn -> cleanup!(%{workshops: [workshop], people: [earlier]}) end)
+      end)
+
+      pass = Task.async(fn -> outside_sandbox(fn -> send_due(workshop.id) end) end)
+      :ok = wait_for_lock_waiter("%")
+      send(holder.pid, :release)
+      assert {:ok, ^earlier} = Task.await(holder, 5_000)
+
+      assert {:ok, %{outcome: :sent, batch: %{size: 2}}} = Task.await(pass, :infinity)
+
+      # Exactly the live proposal at the moment it went: the first two in
+      # priority order, not the two proposed before the earlier person joined.
+      contacted =
+        Repo.all(from(i in Intake, where: i.workshop_id == ^workshop.id, select: i.waitlist_id))
+
+      assert Enum.sort(contacted) == Enum.sort([earlier.id, first.id])
+    end)
+  end
+
   # Workshops scheduled straight into the table (no staff principal, so no
   # alert recipients) and waiting people, committed outside the sandbox and
   # deleted afterwards.

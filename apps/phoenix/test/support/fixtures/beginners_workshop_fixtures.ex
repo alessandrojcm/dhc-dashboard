@@ -92,22 +92,22 @@ defmodule Dhc.BeginnersWorkshopFixtures do
   end
 
   @doc """
-  A `waiting` Waitlist person with an inactive profile. `registered_at` sets
-  the priority (`initial_registration_date`); options `first_name`,
-  `date_of_birth` and `status`.
+  A Waitlist person with an inactive profile. `registered_at` sets the
+  priority (`initial_registration_date`); options `first_name`,
+  `date_of_birth` and `status` (default `waiting`). Any other standing is
+  reached through `Dhc.Waitlist.change_standing/3` stamped at
+  `registered_at`, never by writing the status.
   """
   def waiting_person_fixture(registered_at, opts \\ []) do
-    status = Keyword.get(opts, :status, "waiting")
     at = DateTime.truncate(registered_at, :second)
 
     entry =
-      Repo.insert!(%WaitlistEntry{
-        email: "#{System.unique_integer([:positive])}@waitlist.example.com",
-        status: status,
-        removed_at: if(status == "removed", do: at),
-        initial_registration_date: at,
-        last_status_change: at
+      %WaitlistEntry{}
+      |> WaitlistEntry.create_changeset(%{
+        email: "#{System.unique_integer([:positive])}@waitlist.example.com"
       })
+      |> Ecto.Changeset.change(initial_registration_date: at, last_status_change: at)
+      |> Repo.insert!()
 
     Repo.insert!(%UserProfile{
       waitlist_id: entry.id,
@@ -121,8 +121,20 @@ defmodule Dhc.BeginnersWorkshopFixtures do
       social_media_consent: "no"
     })
 
+    {:ok, _} =
+      Repo.transaction(fn ->
+        for to <- standing_path(Keyword.get(opts, :status, "waiting")),
+            do: {:ok, _} = Dhc.Waitlist.change_standing(entry.id, to, now: at)
+      end)
+
     Repo.get!(WaitlistEntry, entry.id)
   end
+
+  defp standing_path("waiting"), do: []
+  defp standing_path("removed"), do: ["removed"]
+  defp standing_path("attended"), do: ["attended"]
+  defp standing_path("invited"), do: ["attended", "invited"]
+  defp standing_path("joined"), do: ["attended", "invited", "joined"]
 
   # 10:00 Dublin on 20 October 2026: Batch 1 of a workshop contacted from that day.
   @batch_1_at ~U[2026-10-20 09:00:00.000000Z]

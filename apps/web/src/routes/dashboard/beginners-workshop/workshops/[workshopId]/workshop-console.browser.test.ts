@@ -100,6 +100,8 @@ function view(
 					attendanceCorrections: [],
 					paidVia: null,
 					carriedFee: null,
+					refundChoice: null,
+					refundTimingDaysToGo: null,
 				},
 			],
 			asked: [
@@ -126,6 +128,8 @@ function view(
 					attendanceCorrections: [],
 					paidVia: null,
 					carriedFee: null,
+					refundChoice: null,
+					refundTimingDaysToGo: null,
 				},
 			],
 			attended: [],
@@ -304,6 +308,8 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						attendanceCorrections: [],
 						paidVia: null,
 						carriedFee: null,
+						refundChoice: null,
+						refundTimingDaysToGo: null,
 					},
 				],
 			},
@@ -502,6 +508,7 @@ test("ALE-382: a failed refund needs attention with Retry and Record manual refu
 					reason: "policy_failed",
 					failedAt: "2026-10-22T12:00:00Z",
 					carriedFee: false,
+					forfeitable: false,
 				},
 				{
 					id: "77777777-7777-4777-8777-777777777777",
@@ -513,13 +520,26 @@ test("ALE-382: a failed refund needs attention with Retry and Record manual refu
 					reason: "carried_fee_refunded",
 					failedAt: "2026-10-22T12:00:00Z",
 					carriedFee: true,
+					forfeitable: true,
+				},
+				{
+					id: "88888888-8888-4888-8888-888888888888",
+					intakeId: base.roster.asked[0].id,
+					firstName: "Fionn",
+					lastName: "Walsh",
+					amountCents: 4000,
+					currency: "eur",
+					reason: "carried_fee_refunded",
+					failedAt: "2026-10-22T12:00:00Z",
+					carriedFee: true,
+					forfeitable: false,
 				},
 			],
 		}),
 	});
 
 	const attention = screen.getByRole("region", { name: "Needs attention" });
-	const [payment, carried] = attention.getByTestId("failed-refund").all();
+	const [payment, carried, owed] = attention.getByTestId("failed-refund").all();
 	await expect
 		.element(payment)
 		.toHaveTextContent("Refund of €35.00 to Dara Nolan failed");
@@ -539,6 +559,9 @@ test("ALE-382: a failed refund needs attention with Retry and Record manual refu
 	await expect
 		.element(carried.getByRole("button", { name: "Forfeit" }))
 		.toBeVisible();
+	// A fee still owed back (the person has since paid) is not forfeitable.
+	await expect.element(owed).toHaveTextContent("the money is still owed back");
+	expect(owed.getByRole("button", { name: "Forfeit" }).elements()).toEqual([]);
 
 	await expect
 		.element(
@@ -925,8 +948,15 @@ function refundView(days: number): BeginnersWorkshopConsole {
 						"resend_link",
 						"rotate_link",
 					],
-					paidVia: null,
+					paidVia: "stripe",
 					carriedFee: null,
+					// Phoenix's row: the money Withdraw settles, and the hint's days.
+					refundChoice: {
+						source: "payment",
+						amountCents: 4000,
+						currency: "eur",
+					},
+					refundTimingDaysToGo: days <= 7 ? days : null,
 				},
 			],
 			asked: [
@@ -1017,6 +1047,50 @@ test("ALE-387: withdrawing a contacted person asks no money question", async () 
 	await expect
 		.element(dialog.getByRole("button", { name: "Withdraw", exact: true }))
 		.toBeEnabled();
+	await dialog.getByRole("button", { name: "Keep them" }).click();
+	await closeIntake(screen);
+});
+
+test("ALE-389: withdrawing a contacted Carried Fee holder asks to refund or forfeit what the fee originally took", async () => {
+	const base = refundView(3);
+	const screen = await render(WorkshopConsole, {
+		view: {
+			...base,
+			roster: {
+				...base.roster,
+				asked: [
+					{
+						...base.roster.asked[0]!,
+						carriedFee: "held",
+						refundChoice: {
+							source: "carried_fee",
+							amountCents: 3500,
+							currency: "eur",
+						},
+						refundTimingDaysToGo: 3,
+					},
+				],
+			},
+		},
+	});
+	const detail = await openIntake(screen, /^Dara Nolan/);
+	await detail.getByRole("button", { name: "Withdraw…" }).click();
+
+	const dialog = screen.getByRole("dialog", {
+		name: "Withdraw Dara Nolan from the Waitlist",
+	});
+	await expect
+		.element(
+			dialog.getByRole("radio", { name: /Refund their Carried Fee: €35\.00/ }),
+		)
+		.toBeVisible();
+	await expect
+		.element(dialog.getByTestId("refund-timing-hint"))
+		.toHaveTextContent("Less than 3 days to go");
+	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
+	await expect.element(submit).toBeDisabled();
+	await dialog.getByRole("radio", { name: /Forfeit the fee/ }).click();
+	await expect.element(submit).toBeEnabled();
 	await dialog.getByRole("button", { name: "Keep them" }).click();
 	await closeIntake(screen);
 });

@@ -152,6 +152,31 @@ defmodule Dhc.BeginnersWorkshops.DoorCheckInTest do
   end
 
   describe "check_in / undo_check_in" do
+    test "every check-in and undo is recorded with who and when, and the record outlives an unassignment",
+         ctx do
+      later = DateTime.add(@during, 60, :second)
+      again = DateTime.add(@during, 120, :second)
+
+      assert {:ok, _} = check_in(ctx.assistant, ctx, @during)
+      assert {:ok, _} = undo(ctx.coach, ctx, later)
+      assert {:ok, _} = check_in(ctx.coach, ctx, again)
+      # Repeats find nothing to do and record nothing.
+      assert {:ok, _} = check_in(ctx.assistant, ctx, again)
+
+      set_staff!(ctx.workshop.id, ctx.coach, [], clock: clock(again))
+
+      assert {:ok, console} =
+               BeginnersWorkshops.workshop_console(ctx.workshop.id, clock: clock(again))
+
+      [row] = console.roster.seated
+
+      assert [
+               %{command: "check_in", actor: "Brian Assist", occurred_at: @during},
+               %{command: "undo_check_in", actor: "Aoife Coach", occurred_at: ^later},
+               %{command: "check_in", actor: "Aoife Coach", occurred_at: ^again}
+             ] = row.history
+    end
+
     test "are idempotent and keep the first record", ctx do
       assert {:ok, %{checked_in_at: first}} = check_in(ctx.assistant, ctx, @during)
 

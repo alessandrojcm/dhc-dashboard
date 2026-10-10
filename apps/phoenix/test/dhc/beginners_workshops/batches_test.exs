@@ -510,6 +510,18 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
       assert {:ok, %{fee_cents: 4000}} = update_settings(c, w, %{"fee_cents" => 4000})
     end
 
+    test "an earlier Payment Cutoff clamps the open Batch window to it, as reschedule does",
+         %{workshop: w, coordinator: c} do
+      assert {:ok, %{payment_cutoff: ~U[2026-10-25 12:00:00.000000Z]}} =
+               update_settings(c, w, %{
+                 "payment_cutoff_date" => "2026-10-25",
+                 "payment_cutoff_time" => "12:00"
+               })
+
+      assert [%Batch{window_ends_at: ~U[2026-10-25 12:00:00.000000Z]}] =
+               Repo.all(from(b in Batch, where: b.workshop_id == ^w.id))
+    end
+
     test "refuses a contact-from change once Batch 1 has gone out", %{workshop: w, coordinator: c} do
       assert {:error, :contact_from_locked} =
                update_settings(c, w, %{"contact_from" => "2026-10-25"})

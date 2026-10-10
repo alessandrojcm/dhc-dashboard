@@ -11,7 +11,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
   ALE-380 fills in the Batch facts (`batches_sent`, `latest_window_end`),
   pausing (`batches_paused`, read from the workshop row), Intakes (`intakes`,
   for the fee lock) and paid Intakes (`paid`). ALE-379 adds **Staff**
-  (`staff`, and `coach_assigned` derived from it). ALE-381 adds **Seat
+  (`staff`). ALE-381 adds **Seat
   Holds** (`holds`): payment rows in `open`. Seats taken = `paid` + `holds`;
   `releasing` rows do not count, because their Intake is already closed.
   ALE-391 adds the attendance outcome (`attended`, `no_show`) and reads a
@@ -38,7 +38,6 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
           latest_window_end: DateTime.t() | nil,
           batches_paused: boolean(),
           intakes: non_neg_integer(),
-          coach_assigned: boolean(),
           staff: staff()
         }
 
@@ -53,7 +52,6 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
     latest_window_end: nil,
     batches_paused: false,
     intakes: 0,
-    coach_assigned: false,
     staff: @no_staff
   }
 
@@ -134,7 +132,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
 
   # ── Staff ───────────────────────────────────────────────────────
 
-  defp with_staff(facts, staff), do: %{facts | staff: staff, coach_assigned: staff.coach != nil}
+  defp with_staff(facts, staff), do: %{facts | staff: staff}
 
   # Assistants are listed by name, so the list reads the same everywhere. A
   # Staff member without a profile (never expected) is still listed. A frozen

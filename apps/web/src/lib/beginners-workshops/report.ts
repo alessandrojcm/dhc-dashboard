@@ -59,13 +59,11 @@ export function exitsBeforePayingDetail({
 	declined,
 	lapsed,
 	returned,
-	withdrawn,
 }: BeginnersWorkshopReportExitsBeforePaying): string {
 	return detail([
 		[declined, "declined"],
 		[lapsed, "lapsed"],
 		[returned, "returned"],
-		[withdrawn, "withdrawn"],
 	]);
 }
 

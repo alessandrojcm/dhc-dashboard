@@ -209,7 +209,9 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       assert {:ok, %{state: "declined", outcome: :done}} =
                command(c, :withdraw, workshop, intake, %{"refund" => true})
 
-      assert %WaitlistEntry{status: "removed", removed_at: %DateTime{}} = entry(intake)
+      # Stamped on the boundary clock, which retention is judged on.
+      assert %WaitlistEntry{status: "removed", removed_at: removed_at} = entry(intake)
+      assert DateTime.compare(removed_at, @now) == :eq
 
       assert [%IntakePayment{status: "releasing"}] =
                Repo.all(from(p in IntakePayment, where: p.intake_id == ^intake.id))
@@ -217,6 +219,26 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       assert notices(intake) == []
       assert Repo.all(IntakeRefund) == []
       assert [%IntakeEvent{command: "withdraw"}] = events(intake)
+    end
+
+    test "repeating it on a contacted Intake succeeds and does nothing again; a plain decline is not a withdrawal",
+         %{coordinator: c} do
+      {workshop, [{withdrawn, _}, {declined, _}]} = contacted_fixture(c, 2)
+
+      assert {:ok, %{state: "declined", outcome: :done}} =
+               command(c, :withdraw, workshop, withdrawn)
+
+      assert {:ok, %{state: "declined", outcome: :already_done}} =
+               command(c, :withdraw, workshop, withdrawn)
+
+      assert [%IntakeEvent{command: "withdraw"}] = events(withdrawn)
+      assert %WaitlistEntry{status: "removed"} = entry(withdrawn)
+
+      # Declined by the coordinator, so the person is still waiting: a
+      # withdraw now would be a different thing, refused by name.
+      assert {:ok, %{state: "declined"}} = command(c, :decline, workshop, declined)
+      assert {:error, :intake_closed} = command(c, :withdraw, workshop, declined)
+      assert %WaitlistEntry{status: "waiting"} = entry(declined)
     end
 
     test "a paid Intake needs the refund-or-forfeit choice", %{coordinator: c} do
@@ -321,7 +343,8 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
                withdraw_person(c, person.id, %{"refund" => false})
 
       assert id == person.id
-      assert %WaitlistEntry{status: "removed"} = Repo.reload!(person)
+      assert %WaitlistEntry{status: "removed", removed_at: removed_at} = Repo.reload!(person)
+      assert DateTime.compare(removed_at, @now) == :eq
       assert all_enqueued(worker: Worker) == []
 
       assert {:ok, %{status: "removed", outcome: :already_done}} = withdraw_person(c, person.id)
@@ -415,6 +438,19 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       assert IntakePolicy.check(:withdraw, %{state: "paid", paid_via: "stripe"}) == :ok
       assert IntakePolicy.check(:withdraw, %{state: "withdrawn"}) == :already_done
       assert IntakePolicy.check(:withdraw, %{state: "declined"}) == {:error, :intake_closed}
+
+      assert IntakePolicy.check(:withdraw, %{state: "declined", standing: "waiting"}) ==
+               {:error, :intake_closed}
+
+      assert IntakePolicy.check(:withdraw, %{state: "declined", standing: "removed"}) ==
+               :already_done
+
+      # A held Carried Fee is still money to settle: not where withdraw leads.
+      assert IntakePolicy.check(:withdraw, %{
+               state: "declined",
+               standing: "removed",
+               carried_fee: "held"
+             }) == {:error, :intake_closed}
 
       assert IntakePolicy.available_commands(%{state: "contacted"}) ==
                [:decline, :withdraw, :resend_link, :rotate_link]

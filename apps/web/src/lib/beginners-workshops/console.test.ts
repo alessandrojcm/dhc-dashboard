@@ -24,8 +24,8 @@ import {
 	nextBatchSize,
 	nowCard,
 	refundLabel,
+	refundChoiceLabel,
 	refundTimingHint,
-	daysToGo,
 	isIntakeButtonCommand,
 	rosterGroups,
 	unconfirmedCarriedFeeText,
@@ -281,6 +281,8 @@ describe("nowCard", () => {
 			attendanceCorrections: [],
 			paidVia: null,
 			carriedFee: null,
+			refundChoice: null,
+			refundTimingDaysToGo: null,
 		});
 		const today = (stage: "today_before_check_in" | "check_in_open") =>
 			view({
@@ -326,6 +328,8 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 		attendanceCorrections: [],
 		paidVia: null,
 		carriedFee: null,
+		refundChoice: null,
+		refundTimingDaysToGo: null,
 		firstName: "Aoife",
 		lastName: "Byrne",
 		minor: false,
@@ -405,6 +409,8 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 		attendanceCorrections: [],
 		paidVia: null,
 		carriedFee: null,
+		refundChoice: null,
+		refundTimingDaysToGo: null,
 	});
 
 	function finalised(by: string | null = "Aoife Coach") {
@@ -514,6 +520,7 @@ describe("refundLabel (ALE-382)", () => {
 				reason: "paid_after_close",
 				failedAt: null,
 				carriedFee: false,
+				forfeitable: false,
 			}),
 		).toBe(
 			"Refund of €35.00 to Dara failed (they paid after their Intake closed). Retry it, or record a manual refund if you paid them back another way.",
@@ -532,9 +539,29 @@ describe("refundLabel (ALE-382)", () => {
 				reason: "carried_fee_refunded",
 				failedAt: null,
 				carriedFee: true,
+				forfeitable: true,
 			}),
 		).toBe(
 			"Refund of €40.00 to Dara failed (their Carried Fee). Their Carried Fee is held again: retry the refund, record a manual refund if you paid them back another way, or forfeit the fee.",
+		);
+	});
+
+	it("a Carried Fee still owed back offers no forfeit", () => {
+		expect(
+			failedRefundText({
+				id: "r",
+				intakeId: "i",
+				firstName: "Dara",
+				lastName: null,
+				amountCents: 4000,
+				currency: "eur",
+				reason: "carried_fee_refunded",
+				failedAt: null,
+				carriedFee: true,
+				forfeitable: false,
+			}),
+		).toBe(
+			"Refund of €40.00 to Dara failed (their Carried Fee). They have since paid or hold another Carried Fee, so the money is still owed back: retry the refund, or record a manual refund if you paid them back another way.",
 		);
 	});
 });
@@ -614,6 +641,27 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				correction: "deferred",
 			}),
 		).toBe("No-show corrected to deferred · Clare Coord · Mon 16 Nov, 11:00");
+	});
+
+	it("story 97: words door check-ins and their undos with who and when", () => {
+		expect(
+			historyLine({
+				command: "check_in",
+				actor: "Aoife Coach",
+				occurredAt: "2026-11-14T18:45:00Z",
+				note: null,
+				correction: null,
+			}),
+		).toBe("Checked in at the door · Aoife Coach · Sat 14 Nov, 18:45");
+		expect(
+			historyLine({
+				command: "undo_check_in",
+				actor: null,
+				occurredAt: "2026-11-14T18:46:00Z",
+				note: null,
+				correction: null,
+			}),
+		).toBe("Check-in undone · a former member · Sat 14 Nov, 18:46");
 	});
 
 	it("ALE-388: words Carried Fees, a person's own confirm and a holder who hasn't confirmed", () => {
@@ -716,31 +764,37 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 });
 
 describe("ALE-387: the refund-timing hint", () => {
-	// 20:00 UTC on 6 Nov is 20:00 Dublin (GMT): Dublin today is 6 Nov.
-	const now = new Date("2026-11-06T20:00:00Z");
-
-	it("counts calendar days on the Dublin wall clock", () => {
-		expect(daysToGo("2026-11-14", now)).toBe(8);
-		expect(daysToGo("2026-11-13", now)).toBe(7);
-		expect(daysToGo("2026-11-06", now)).toBe(0);
-		// 23:30 UTC on 31 Oct is 23:30 Dublin (GMT after the clocks change).
-		expect(daysToGo("2026-11-01", new Date("2026-10-31T23:30:00Z"))).toBe(1);
-		// 23:30 UTC on 24 Oct is already 25 Oct in Dublin (IST).
-		expect(daysToGo("2026-10-26", new Date("2026-10-24T23:30:00Z"))).toBe(1);
-	});
-
-	it("shows from 7 days out until the workshop's day, never before or after", () => {
-		expect(refundTimingHint("2026-11-14", now)).toBeNull();
-		expect(refundTimingHint("2026-11-13", now)).toBe(
+	it("words the days Phoenix counted, and nothing without them", () => {
+		expect(refundTimingHint(null)).toBeNull();
+		expect(refundTimingHint(7)).toBe(
 			"Less than 7 days to go — there's no deadline; whether to refund is your call.",
 		);
-		expect(refundTimingHint("2026-11-07", now)).toMatch(
-			/^The workshop is tomorrow/,
-		);
-		expect(refundTimingHint("2026-11-06", now)).toMatch(
-			/^The workshop is today/,
-		);
-		expect(refundTimingHint("2026-11-05", now)).toBeNull();
+		expect(refundTimingHint(1)).toMatch(/^The workshop is tomorrow/);
+		expect(refundTimingHint(0)).toMatch(/^The workshop is today/);
+	});
+
+	it("names the money a refund returns: what it originally took", () => {
+		expect(
+			refundChoiceLabel({
+				source: "payment",
+				amountCents: 4000,
+				currency: "eur",
+			}),
+		).toBe("Refund €40.00");
+		expect(
+			refundChoiceLabel({
+				source: "carried_fee",
+				amountCents: 3500,
+				currency: "eur",
+			}),
+		).toBe("Refund their Carried Fee: €35.00");
+		expect(
+			refundChoiceLabel({
+				source: "carried_fee",
+				amountCents: null,
+				currency: null,
+			}),
+		).toBe("Refund their Carried Fee in full");
 	});
 
 	it("withdraw opens its own dialog; every other command is a button", () => {

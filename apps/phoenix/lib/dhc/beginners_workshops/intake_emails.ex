@@ -22,6 +22,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
     * `sealed_data_variables` — `BUTTON_URL`, the Intake link, which is a
       credential. These Kinds keep their seal for 24 hours.
 
+  A template that passed the save-time measure always queues: should
+  escaping push the filled body over Resend's limit, each value is
+  shortened until its escaped HTML fits its placeholder maximum.
+
   Because the template is read and filled at queue time, a later edit
   affects only emails queued afterwards. Call `queue/4` inside the
   transaction of the transition that causes the email, so a rolled-back
@@ -36,6 +40,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   alias Dhc.BeginnersWorkshops.IntakeEmails.EmailType
   alias Dhc.BeginnersWorkshops.IntakeEmails.Renderer
   alias Dhc.BeginnersWorkshops.IntakeEmails.Template
+  alias Dhc.Email.RichText
   alias Dhc.Email.Worker
   alias Dhc.Repo
   alias Dhc.Waitlist.WaitlistEntry
@@ -118,8 +123,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
 
     with {:ok, button} <- button(email_type, opts),
          {:ok, subject} <- Renderer.render_subject(type, template.subject, values),
-         {:ok, html} <- Renderer.render_body(type, template.body, values),
-         :ok <- within_limit(html) do
+         {:ok, html} <- render_within_limit(type, template.body, values) do
       # String keys, so the returned job's args read like the stored ones.
       %{
         "email" => email,
@@ -145,8 +149,45 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
     end
   end
 
-  # A saved template always fits with values at their maxima; this guards a
-  # value that was not validated to its maximum, which Resend would reject.
+  # A saved template fits Resend's limit with every placeholder filled by
+  # `"x"` at its maximum length (the save-time measure). A real value is
+  # HTML-escaped, so one with `&`, `<`, `>`, `"` or `'` can render longer
+  # than its maximum (`'` → `&#39;`). Only when the filled body is then over
+  # the limit is each value shortened until its *escaped* form fits its
+  # maximum, which keeps the body within the save-time measure: queueing
+  # never refuses a template that passed it. `{:message_too_long, _}` is
+  # left only for a template that never went through the measure.
+  defp render_within_limit(type, body, values) do
+    with {:ok, html} <- Renderer.render_body(type, body, values) do
+      if Renderer.utf16_length(html) <= Renderer.limit(),
+        do: {:ok, html},
+        else: render_fitted(type, body, values)
+    end
+  end
+
+  defp render_fitted(type, body, values) do
+    with {:ok, html} <- Renderer.render_body(type, body, fit_values(values)),
+         :ok <- within_limit(html),
+         do: {:ok, html}
+  end
+
+  defp fit_values(values) do
+    maxima = EmailType.maxima()
+    Map.new(values, fn {name, value} -> {name, fit(value, Map.get(maxima, name))} end)
+  end
+
+  defp fit(value, nil), do: value
+
+  defp fit(value, max) do
+    value
+    |> String.graphemes()
+    |> Enum.reduce_while({"", 0}, fn grapheme, {kept, length} ->
+      length = length + Renderer.utf16_length(RichText.escape(grapheme))
+      if length <= max, do: {:cont, {kept <> grapheme, length}}, else: {:halt, {kept, length}}
+    end)
+    |> elem(0)
+  end
+
   defp within_limit(html) do
     length = Renderer.utf16_length(html)
 

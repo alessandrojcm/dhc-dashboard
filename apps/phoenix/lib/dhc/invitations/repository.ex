@@ -91,6 +91,18 @@ defmodule Dhc.Invitations.Repository do
   end
 
   @doc """
+  Writes one processing-log entry for a refused invite (issue or re-arm),
+  outside the rolled-back transaction so the entry survives.
+  """
+  @spec store_refusal(String.t() | nil, term(), String.t()) :: :ok | {:error, term()}
+  def store_refusal(email, reason, created_by_id) do
+    store_processing_results(
+      [%{email: email || "unknown", success: false, error: inspect(reason)}],
+      created_by_id
+    )
+  end
+
+  @doc """
   Creates the admin Notification summarising a bulk Invitation run.
   """
   @spec create_processing_notification([invite_result()], String.t()) :: :ok | {:error, term()}

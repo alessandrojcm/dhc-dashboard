@@ -238,18 +238,37 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailsTest do
       refute_enqueued(worker: Worker)
     end
 
-    test "refuses a filled body over Resend's limit" do
+    test "queues every template that passed the measure, however its values escape" do
+      # 45 × 40 = 1,800 characters at worst case plus the paragraph: it saves.
       {:ok, _} =
         IntakeEmails.update_template("follow_up", %{
           body: doc([p(List.duplicate(ph("firstName"), 45))])
         })
 
+      # Escaped, this name is 5 × 40 characters per occurrence.
       values = %{@values | "firstName" => String.duplicate("&", 40)}
 
-      assert {:error, {:message_too_long, _length}} =
+      assert {:ok, %{args: %{"data_variables" => %{"MESSAGE_HTML" => html}}}} =
                IntakeEmails.queue("follow_up", @person, values)
 
-      refute_enqueued(worker: Worker)
+      assert Renderer.utf16_length(html) <= Renderer.limit()
+      # Each name was shortened to its maximum as escaped HTML (8 × "&amp;").
+      assert html == "<p>" <> String.duplicate(String.duplicate("&amp;", 8), 45) <> "</p>"
+    end
+
+    test "keeps a value whole while the filled body fits" do
+      {:ok, _} =
+        IntakeEmails.update_template("follow_up", %{
+          body: doc([p(List.duplicate(ph("firstName"), 10))])
+        })
+
+      name = "O'Brien-O'Sullivan-O'Shaughnessy-O'Neill"
+      values = %{@values | "firstName" => name}
+
+      assert {:ok, %{args: %{"data_variables" => %{"MESSAGE_HTML" => html}}}} =
+               IntakeEmails.queue("follow_up", @person, values)
+
+      assert html == "<p>" <> String.duplicate(Dhc.Email.RichText.escape(name), 10) <> "</p>"
     end
 
     test "rolls back with the caller's transaction" do

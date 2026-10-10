@@ -14,7 +14,6 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
 
   action_fallback DhcWeb.BeginnersWorkshopsHTTP
 
-  alias Dhc.BeginnersWorkshops
   alias DhcWeb.BeginnersWorkshopsHTTP
 
   @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/decline"
@@ -42,10 +41,8 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
   `Dhc.Waitlist` never calls it.
   """
   def withdraw_person(conn, %{"waitlistId" => waitlist_id} = params) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute({:withdraw, waitlist_id, command_attrs(params)})
-    |> BeginnersWorkshopsHTTP.respond(conn, :withdraw_person)
+    command = {:withdraw, waitlist_id, command_attrs(params)}
+    BeginnersWorkshopsHTTP.command(conn, command, :withdraw_person)
   end
 
   @doc """
@@ -54,10 +51,8 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
   boundary; `refund` settles a Carried Fee first.
   """
   def delete_person(conn, %{"waitlistId" => waitlist_id} = params) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute({:delete_person, waitlist_id, Map.take(params, ["refund"])})
-    |> BeginnersWorkshopsHTTP.respond(conn, :delete_person)
+    command = {:delete_person, waitlist_id, Map.take(params, ["refund"])}
+    BeginnersWorkshopsHTTP.command(conn, command, :delete_person)
   end
 
   @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/refund-carried-fee (ALE-389)"
@@ -77,10 +72,8 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
   def correct_attendance(conn, params), do: command(conn, :correct_attendance, params)
 
   defp command(conn, name, %{"id" => id, "intakeId" => intake_id} = params) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute({name, id, intake_id, command_attrs(params)})
-    |> BeginnersWorkshopsHTTP.respond(conn, :intake_command)
+    command = {name, id, intake_id, command_attrs(params)}
+    BeginnersWorkshopsHTTP.command(conn, command, :intake_command)
   end
 
   # The note, `withdraw`'s refund-or-forfeit choice and a correction's

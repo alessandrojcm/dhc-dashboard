@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import dayjs, { type Dayjs } from "dayjs";
 import { loginAsUser } from "./auth";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
+import { gotoHydrated } from "./hydration";
 import { createMember } from "./setupFunctions";
 
 const successMessage =
@@ -160,9 +161,11 @@ test.describe("Beginners waitlist view", () => {
 	}) => {
 		await page.setViewportSize({ width: 1280, height: 720 });
 		await loginAsUser(context, coordinator.email);
-		await page.goto(waitlistPath);
+		await gotoHydrated(page, waitlistPath);
 
-		const table = page.getByRole("table");
+		const table = page
+			.getByRole("tabpanel", { name: "Waitlist" })
+			.getByRole("table");
 		await expect(table.getByText(`${waitingName} Queue`)).toBeVisible();
 		await expect(table.getByText(`${removedName} Queue`)).toHaveCount(0);
 		await expect(table.getByText(`${attendedName} Queue`)).toHaveCount(0);
@@ -187,17 +190,19 @@ test.describe("Beginners waitlist view", () => {
 		await loginAsUser(context, coordinator.email);
 		// Workshop managers land on the Workshops tab (ALE-378), so the
 		// Dashboard tab is opened explicitly.
-		await page.goto("/dashboard/beginners-workshop?tab=dashboard");
+		await gotoHydrated(page, "/dashboard/beginners-workshop?tab=dashboard");
 
 		await expect(
-			page.getByLabel("Dashboard").getByText("Waiting", { exact: true }),
+			page
+				.getByRole("tabpanel", { name: "Dashboard" })
+				.getByText("Waiting", { exact: true }),
 		).toBeVisible();
 		await expect(page.getByText("Total waitlist")).toHaveCount(0);
 	});
 
 	test("coaches no longer see the Waitlist", async ({ context, page }) => {
 		await loginAsUser(context, coach.email);
-		await page.goto(waitlistPath);
+		await gotoHydrated(page, waitlistPath);
 
 		await expect(page).not.toHaveURL(/beginners-workshop/);
 		await expect(

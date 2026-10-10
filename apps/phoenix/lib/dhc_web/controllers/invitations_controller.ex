@@ -92,7 +92,8 @@ defmodule DhcWeb.InvitationsController do
   POST /invitations/resend
   """
   def resend(conn, %{"emails" => [_ | _] = emails}) do
-    with {:ok, result} <- Invitations.resend_invitation_emails(emails) do
+    with {:ok, result} <-
+           Invitations.resend_invitation_emails(emails, conn.assigns.current_session.principal.id) do
       conn
       |> put_status(:accepted)
       |> put_view(json: DhcWeb.InvitationsJSON)

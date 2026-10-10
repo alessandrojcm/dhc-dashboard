@@ -17,7 +17,6 @@ const finalised: BeginnersWorkshopReportOutcome = {
 		declined: 1,
 		lapsed: 1,
 		returned: 0,
-		withdrawn: 0,
 		total: 2,
 		rate: 2 / 9,
 	},

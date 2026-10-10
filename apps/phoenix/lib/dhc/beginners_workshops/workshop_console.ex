@@ -43,9 +43,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       Carried Fee holders who have not confirmed yet (ALE-388);
     * `failed_refunds` — the Needs attention list of refunds that failed
       and have not been followed up (Retry or Record manual refund), oldest
-      first (ALE-382); `carried_fee` marks a Carried Fee's refund, which can
-      also be forfeited, and is listed only while the fee is owed back
-      (ALE-389);
+      first (ALE-382); `carried_fee` marks a Carried Fee's refund, listed
+      only while the fee is owed back (ALE-389), and `forfeitable` says it
+      may be forfeited: only while the fee is held again, not while it stays
+      `refunded` because the person has since paid or holds another fee;
     * `finalisation` (ALE-391) — `nil` until Attendance Finalisation, then
       when, who pressed Finish (`nil`: automatically at the end of the day)
       and when the Follow-up goes out (`WorkshopPolicy.follow_up_at/1`),
@@ -146,7 +147,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       facts = Map.fetch!(WorkshopFacts.load([id]), id)
       reading = Clock.read(clock)
       next_batch = next_batch(workshop, facts, reading)
-      roster = roster(workshop)
+      roster = roster(workshop, reading)
 
       {:ok,
        %{
@@ -226,8 +227,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     }
   end
 
-  defp roster(workshop) do
+  defp roster(workshop, reading) do
     refunds = latest_refunds(workshop.id)
+    paying = paying_payments(workshop.id)
+    hint_days = WorkshopPolicy.refund_hint_days(workshop, reading)
     emails = email_logs(workshop.id)
     history = histories(workshop.id)
 
@@ -262,8 +265,11 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           hold_expires_at: h.expires_at,
           checked_in_at: i.checked_in_at,
           standing: e.status,
+          removed_at: e.removed_at,
           link_generation: i.link_generation,
           carried_fee: coalesce(paid_fee.status, live_fee.status),
+          fee_amount_cents: coalesce(paid_fee.amount_cents, live_fee.amount_cents),
+          fee_currency: coalesce(paid_fee.currency, live_fee.currency),
           first_name: p.first_name,
           last_name: p.last_name,
           date_of_birth: p.date_of_birth,
@@ -274,18 +280,39 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       |> Enum.map(fn row ->
         logged = Map.get(emails, row.id, [])
 
+        fee_refundable =
+          IntakePolicy.fee_refundable?(row.standing, row.removed_at, reading.now)
+
         row
-        |> Map.drop([:date_of_birth, :medical_conditions])
+        |> Map.drop([
+          :date_of_birth,
+          :medical_conditions,
+          :removed_at,
+          :fee_amount_cents,
+          :fee_currency
+        ])
         # A fast-track's window is the Payment Cutoff (its Contact email says so).
         |> Map.update!(:window_ends_at, &(&1 || workshop.payment_cutoff))
         |> Map.put(:minor, WorkshopPolicy.minor?(row.date_of_birth, workshop.date))
         |> Map.put(:medical, medical?(row.medical_conditions))
         |> Map.put(:refund, Map.get(refunds, row.id))
+        |> then(fn out ->
+          choice = refund_choice(row, Map.get(paying, row.id))
+
+          out
+          |> Map.put(:refund_choice, choice)
+          |> Map.put(:refund_timing_days_to_go, choice && hint_days)
+        end)
         |> Map.put(:email_log, logged ++ scheduled_emails(row, logged, workshop))
         |> Map.put(:history, Map.get(history, row.id, []))
         |> then(fn row ->
-          # The rule's facts: the row plus the workshop's status (ALE-393).
-          facts = Map.put(row, :workshop_status, workshop.status)
+          # The rule's facts: the row plus the workshop's status (ALE-393)
+          # and whether the person may still have a fee refunded (ALE-389).
+          facts =
+            Map.merge(row, %{
+              workshop_status: workshop.status,
+              fee_refundable: fee_refundable
+            })
 
           row
           |> Map.put(:available_commands, IntakePolicy.available_commands(facts))
@@ -300,6 +327,53 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       no_show: Enum.filter(rows, &(&1.state == "no_show")),
       out: Enum.reject(rows, &(&1.state in @not_out))
     }
+  end
+
+  # ALE-387/389: the money a Withdraw must settle by refund or forfeit, when
+  # `IntakePolicy.refund_choice_required?/1` says it needs the choice — the
+  # payment that paid a Stripe-paid Intake, else the Carried Fee (the one
+  # that paid it, or a contacted holder's), with the full amount it took.
+  defp refund_choice(row, paying) do
+    cond do
+      not IntakePolicy.refund_choice_required?(row) ->
+        nil
+
+      row.state == "paid" and row.paid_via == "stripe" and paying != nil ->
+        Map.put(paying, :source, :payment)
+
+      row.state == "paid" and row.paid_via == "stripe" ->
+        %{source: :payment, amount_cents: nil, currency: nil}
+
+      true ->
+        %{source: :carried_fee, amount_cents: row.fee_amount_cents, currency: row.fee_currency}
+    end
+  end
+
+  # The payment that paid each Stripe-paid Intake (the boundary's
+  # `paying_payment/1` rule: its `paid` row not refunded automatically), with
+  # what it actually took.
+  defp paying_payments(workshop_id) do
+    automatic = IntakeRefund.automatic_reasons()
+
+    from(p in IntakePayment,
+      as: :payment,
+      where: p.workshop_id == ^workshop_id and p.status == "paid",
+      where:
+        not exists(
+          from(r in IntakeRefund,
+            where: r.payment_id == parent_as(:payment).id and r.reason in ^automatic
+          )
+        ),
+      order_by: [desc: p.paid_at, desc: p.id],
+      select:
+        {p.intake_id,
+         %{
+           amount_cents: coalesce(p.amount_received_cents, p.amount_cents),
+           currency: coalesce(p.currency_received, p.currency)
+         }}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
 
   defp medical?(nil), do: false
@@ -475,6 +549,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         id: r.id,
         intake_id: r.intake_id,
         carried_fee: not is_nil(r.carried_fee_id),
+        forfeitable: coalesce(fee.status == "held", false),
         first_name: p.first_name,
         last_name: p.last_name,
         amount_cents: r.amount_cents,

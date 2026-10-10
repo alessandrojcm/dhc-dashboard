@@ -1,4 +1,5 @@
 import type {
+	BeginnersCarriedFeeStatus,
 	InvitationCreateInvite,
 	InvitationStatus,
 	RegistrationStatus,
@@ -395,7 +396,16 @@ type BeginnersWorkshopIntakeLinkSeed = {
 /** Stands in for Stripe's hosted Checkout: completes the live Seat Hold. */
 type BeginnersWorkshopPaymentSeed = {
 	attrs: { waitlistId: string };
-	result: { outcome: string; sessionId: string };
+	/** `complete_payment`'s outcome (`BeginnersWorkshops.Commands`). */
+	result: {
+		outcome:
+			| "paid"
+			| "paid_after_close"
+			| "policy_failed"
+			| "not_paid"
+			| "already_recorded";
+		sessionId: string;
+	};
 };
 
 /** Stands in for the clock reaching the workshop day (check-in opens). */
@@ -407,13 +417,21 @@ type BeginnersWorkshopDoorOpenSeed = {
 /** A `held` Carried Fee, as the Waitlist import records one. */
 type BeginnersWorkshopCarriedFeeSeed = {
 	attrs: { waitlistId: string };
-	result: { carriedFeeId: string; status: string };
+	result: { carriedFeeId: string; status: BeginnersCarriedFeeStatus };
 };
 
 /** The Invitation the handoff issued to a Waitlist person (for cleanup). */
 type BeginnersWorkshopInvitationSeed = {
 	attrs: { waitlistId: string };
-	result: { invitationId: string; status: string; invitationType: string };
+	result: {
+		invitationId: string;
+		status: InvitationStatus;
+		/**
+		 * The latest Invitation naming the person: the handoff's
+		 * `beginners_workshop`, or `admin` (`Invitations.Repository`'s default).
+		 */
+		invitationType: "beginners_workshop" | "admin";
+	};
 };
 
 type E2EScenarios = {
@@ -581,18 +599,45 @@ export async function seedE2EScenario<S extends E2EScenarioName>(
 	return response.data;
 }
 
-export async function deleteE2EFixture(type: E2EFixtureType, id: string) {
+async function requestFixtureDelete(
+	type: E2EFixtureType,
+	id: string,
+	allowed: (status: number) => boolean,
+) {
 	const path = `/fixtures/${type}/${id}`;
 	const response = await fetchE2EHarness(path, {
 		method: "POST",
 		body: JSON.stringify({}),
 	});
 
-	if (!response.ok) {
+	if (!response.ok && !allowed(response.status)) {
 		throw new Error(
 			`E2E harness ${path} failed (${response.status}): ${await response.text()}`,
 		);
 	}
+	return response;
+}
+
+export async function deleteE2EFixture(type: E2EFixtureType, id: string) {
+	await requestFixtureDelete(type, id, () => false);
+}
+
+/**
+ * Best-effort teardown of a fixture the run may have made act: answers
+ * `false` when the harness refuses with 409 `still_referenced` (history
+ * still names it, so it stays in the disposable per-run database) and
+ * throws on any other failure.
+ */
+export async function deleteE2EFixtureUnlessReferenced(
+	type: E2EFixtureType,
+	id: string,
+): Promise<boolean> {
+	const response = await requestFixtureDelete(
+		type,
+		id,
+		(status) => status === 409,
+	);
+	return response.ok;
 }
 
 export async function auditInvitationAcceptance(id: string) {

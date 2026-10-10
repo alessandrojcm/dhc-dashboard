@@ -66,7 +66,7 @@ test("shows Phoenix's stage, seat meter and alerts, upcoming before past", async
 	await expect.element(rows.nth(0)).toHaveTextContent("Next Batch due");
 	await expect
 		.element(rows.nth(0))
-		.toHaveTextContent("Unstaffed: no coach assigned");
+		.toHaveTextContent("Unstaffed: no Staff assigned");
 	await expect
 		.element(rows.nth(0).getByTestId("seat-meter"))
 		.toHaveTextContent("3 paid · 1 paying now · 12 free of 16");

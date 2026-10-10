@@ -11,15 +11,13 @@ defmodule Dhc.Onboarding do
 
   import Ecto.Query
 
-  alias Dhc.Auth.Principal
   alias Dhc.Email.Worker, as: EmailWorker
   alias Dhc.Invitations
   alias Dhc.Invitations.BulkInviteWorker
-  alias Dhc.Invitations.Invitation
+  alias Dhc.Invitations.EmailRefusals
   alias Dhc.Invitations.Repository
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Repo
-  alias Dhc.Waitlist.WaitlistEntry
 
   @invite_email_template "inviteMember"
   @required_invite_fields ~w(firstName lastName email phoneNumber dateOfBirth)
@@ -107,12 +105,9 @@ defmodule Dhc.Onboarding do
   """
   @spec record_refused_invitation(String.t() | nil, term(), Ecto.UUID.t()) ::
           :ok | {:error, term()}
-  def record_refused_invitation(email, reason, created_by_id) do
-    Repository.store_processing_results(
-      [%{email: email || "unknown", success: false, error: inspect(reason)}],
-      created_by_id
-    )
-  end
+  defdelegate record_refused_invitation(email, reason, created_by_id),
+    to: Repository,
+    as: :store_refusal
 
   defp validate_invite(invite) do
     missing = Enum.reject(@required_invite_fields, &present?(&1, invite[&1]))
@@ -133,29 +128,10 @@ defmodule Dhc.Onboarding do
   defp present?(_field, value) when is_binary(value), do: String.trim(value) != ""
   defp present?(_field, _value), do: false
 
-  # The pending check is a friendly sequential refusal; two racing issues
-  # are still arbitrated by `invitations_email_pending_unique`.
-  defp ensure_issuable(email, waitlist_id) do
-    cond do
-      Repo.exists?(from(i in Invitation, where: i.email == ^email and i.status == "pending")) ->
-        {:error, :duplicate_pending_invitation}
-
-      Repo.exists?(from(p in Principal, where: p.email == ^email)) ->
-        {:error, :email_is_principal}
-
-      on_waitlist_elsewhere?(email, waitlist_id) ->
-        {:error, :email_on_waitlist}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp on_waitlist_elsewhere?(email, nil),
-    do: Repo.exists?(from(w in WaitlistEntry, where: w.email == ^email))
-
-  defp on_waitlist_elsewhere?(email, waitlist_id),
-    do: Repo.exists?(from(w in WaitlistEntry, where: w.email == ^email and w.id != ^waitlist_id))
+  # The shared ALE-376 refusal set. The pending check is a friendly
+  # sequential refusal; two racing issues are still arbitrated by
+  # `invitations_email_pending_unique`.
+  defp ensure_issuable(email, waitlist_id), do: EmailRefusals.invitable(email, waitlist_id)
 
   defp normalize_email(email), do: email |> String.trim() |> String.downcase()
 

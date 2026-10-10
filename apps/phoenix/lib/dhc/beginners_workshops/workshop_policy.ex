@@ -104,12 +104,16 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   ALE-394: the contact-from date a rescheduled workshop keeps while Batch 1
   has not gone out — the same number of days before the new date — or Dublin
   today when that would fall after the new cutoff date, so Batch 1 goes out
-  at the next 10:00.
+  at the next 10:00. It is never after the cutoff date (the
+  `:invalid_contact_from` rule): when today already is, it stops there.
   """
   @spec kept_contact_from(BeginnersWorkshop.t(), Date.t(), DateTime.t(), map()) :: Date.t()
   def kept_contact_from(%BeginnersWorkshop{} = workshop, %Date{} = date, cutoff, reading) do
     kept = Date.add(date, -Date.diff(workshop.date, workshop.contact_from))
-    if contact_from_valid?(kept, cutoff), do: kept, else: reading.today
+
+    if contact_from_valid?(kept, cutoff),
+      do: kept,
+      else: Enum.min([reading.today, ClubCalendar.on_date(cutoff)], Date)
   end
 
   @doc "Whether the fee can still change: until the first Intake exists (`:fee_locked`)."
@@ -209,6 +213,23 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
 
     if DateTime.compare(at, workshop.payment_cutoff) == :lt, do: {:at, at}, else: :closed
   end
+
+  @refund_hint_days 7
+
+  @doc """
+  ALE-387 (story 77): the refund-timing hint for choosing between keeping a
+  fee and refunding it — the whole Dublin days left until a scheduled
+  workshop's date while that is #{@refund_hint_days} or fewer (0 on the day),
+  `nil` otherwise. There is no deadline; it only says how close the
+  workshop is, judged on the boundary clock.
+  """
+  @spec refund_hint_days(BeginnersWorkshop.t(), map()) :: non_neg_integer() | nil
+  def refund_hint_days(%BeginnersWorkshop{status: "scheduled", date: date}, reading) do
+    days = Date.diff(date, reading.today)
+    if days in 0..@refund_hint_days//1, do: days
+  end
+
+  def refund_hint_days(%BeginnersWorkshop{}, _reading), do: nil
 
   @doc "Whether a person born on `date_of_birth` is a minor (under 18) on the workshop date."
   @spec minor?(Date.t() | nil, Date.t()) :: boolean()
@@ -333,10 +354,14 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
     end
   end
 
-  @doc "What needs the coordinator's attention on a scheduled workshop."
+  @doc """
+  What needs the coordinator's attention on a scheduled workshop:
+  `:unstaffed` while nobody at all — neither a coach nor an assistant — is
+  on its Staff (story 15).
+  """
   @spec alerts(BeginnersWorkshop.t(), map()) :: [alert()]
-  def alerts(%BeginnersWorkshop{status: "scheduled"}, facts) do
-    if facts.coach_assigned, do: [], else: [:unstaffed]
+  def alerts(%BeginnersWorkshop{status: "scheduled"}, %{staff: staff}) do
+    if staff.coach == nil and staff.assistants == [], do: [:unstaffed], else: []
   end
 
   def alerts(%BeginnersWorkshop{}, _facts), do: []

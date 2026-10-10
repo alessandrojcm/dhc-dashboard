@@ -11,7 +11,6 @@ defmodule DhcWeb.BeginnersWorkshopRefundsController do
 
   action_fallback DhcWeb.BeginnersWorkshopsHTTP
 
-  alias Dhc.BeginnersWorkshops
   alias DhcWeb.BeginnersWorkshopsHTTP
 
   @doc "POST /beginners-workshops/{id}/refunds/{refundId}/retry"
@@ -23,17 +22,9 @@ defmodule DhcWeb.BeginnersWorkshopRefundsController do
     do: command(conn, {:record_manual_refund, id, refund_id, Map.take(params, ["note"])})
 
   @doc "POST /beginners-workshops/{id}/refunds/{refundId}/forfeit"
-  def forfeit(conn, %{"id" => id, "refundId" => refund_id}) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute({:forfeit_carried_fee, id, refund_id})
-    |> BeginnersWorkshopsHTTP.respond(conn, :forfeited)
-  end
+  def forfeit(conn, %{"id" => id, "refundId" => refund_id}),
+    do: BeginnersWorkshopsHTTP.command(conn, {:forfeit_carried_fee, id, refund_id}, :forfeited)
 
-  defp command(conn, command) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute(command)
-    |> BeginnersWorkshopsHTTP.respond(conn, :refund, :created)
-  end
+  defp command(conn, command),
+    do: BeginnersWorkshopsHTTP.command(conn, command, :refund, :created)
 end
