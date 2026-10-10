@@ -46,6 +46,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopFastTrack.waitlistPerson
                 beginnersWorkshopIntakes.decline beginnersWorkshopIntakes.resendLink
                 beginnersWorkshopIntakes.rotateLink
+                beginnersWorkshopInvitations.invitable beginnersWorkshopInvitations.invite
                 beginnersWorkshopRefunds.recordManual beginnersWorkshopRefunds.retry
                 beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.reschedule
                 beginnersWorkshops.schedule
@@ -101,6 +102,9 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     assert schemas["BeginnersWorkshopAlert"]["enum"] ==
              Enum.map(WorkshopPolicy.alerts(), &Atom.to_string/1)
 
+    # The Invitable view's Follow-up status (ALE-392).
+    assert schemas["BeginnersWorkshopFollowUpStatus"]["enum"] == ~w(sent scheduled)
+
     # `WorkshopPolicy.check_in_window/2` (ALE-390).
     assert schemas["BeginnersWorkshopCheckInWindow"]["enum"] == ~w(before open closed)
   end
@@ -127,8 +131,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
       for name <-
             ~w(BeginnersWorkshopConflictError BeginnersWorkshopInvalidError
                BeginnersWorkshopRefundConflictError BeginnersWorkshopCheckInConflictError
-               BeginnersWorkshopFinishConflictError
-               BeginnersWorkshopIntakeCommandConflictError),
+               BeginnersWorkshopFinishConflictError BeginnersWorkshopInviteConflictError
+               BeginnersWorkshopInviteInvalidError BeginnersWorkshopIntakeCommandConflictError),
           code <-
             get_in(schemas, [
               name,

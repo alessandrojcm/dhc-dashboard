@@ -7,7 +7,8 @@ import type { PageServerLoad } from "./$types";
 // ALE-380: one workshop's console — Phoenix's read model, displayed as is.
 export const load: PageServerLoad = async ({ locals, cookies, params }) => {
 	const { session } = await locals.safeGetSession();
-	authorizationFor(session).require("beginners.workshops.manage");
+	const access = authorizationFor(session);
+	access.require("beginners.workshops.manage");
 
 	// The genders feed the Fast-track dialog's "add a new person" form.
 	const [response, options] = await Promise.all([
@@ -27,5 +28,7 @@ export const load: PageServerLoad = async ({ locals, cookies, params }) => {
 	return {
 		console: response.data.data,
 		genders: options.data?.data.genders ?? [],
+		// ALE-392: who may send attended people their Invitation.
+		canInvite: access.can("members.invite"),
 	};
 };

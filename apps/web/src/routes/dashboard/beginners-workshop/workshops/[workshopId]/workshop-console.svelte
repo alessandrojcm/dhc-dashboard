@@ -8,6 +8,10 @@
 	(ALE-384) Fast-track and (ALE-394) Reschedule are its commands; Batches
 	themselves come only from the system sweep. (ALE-382) Failed refunds sit
 	under Needs attention with Retry and Record manual refund, and each roster
+	row shows its refund. (ALE-392) Once attendance is final, each attended
+	person who is still Invitable has an Invite button (for `members.invite`
+	holders), the rest show Invited / Joined, and the Now card reads
+	"N attended · N invited · N joined".
 	row shows its refund. (ALE-386) Each roster row opens its Intake — facts,
 	email log, history and only the commands Phoenix lists in
 	`availableCommands` — and Needs attention lists contacted people still
@@ -35,12 +39,14 @@ import {
 	holdLabel,
 	intakeOrigin,
 	intakeStateLabel,
+	invitationSummary,
 	nextBatchHeadline,
 	nextBatchSize,
 	nowCard,
 	personName,
 	refundLabel,
 	rosterGroups,
+	standingLabel,
 	type TimelineStep,
 	unpaidAfterWindowText,
 } from "#lib/beginners-workshops/console.js";
@@ -57,6 +63,7 @@ import { Button } from "#lib/components/ui/button/index.js";
 import * as Empty from "#lib/components/ui/empty/index.js";
 import * as Sheet from "#lib/components/ui/sheet/index.js";
 import { cn } from "#lib/utils.js";
+import InviteButton from "../../invite-button.svelte";
 import SeatMeter from "../../seat-meter.svelte";
 import { pauseBatches, resumeBatches } from "./console.remote";
 import FailedRefundItem from "./failed-refund-item.svelte";
@@ -67,7 +74,12 @@ import RescheduleDialog from "./reschedule-dialog.svelte";
 let {
 	view,
 	genders = [],
-}: { view: BeginnersWorkshopConsole; genders?: string[] } = $props();
+	canInvite = false,
+}: {
+	view: BeginnersWorkshopConsole;
+	genders?: string[];
+	canInvite?: boolean;
+} = $props();
 
 let fastTrackDialogOpen = $state(false);
 // The Intake open in the side sheet; read from `view`, so it refreshes
@@ -192,6 +204,11 @@ const attention = $derived(
 			</p>
 			<h2 class="font-heading text-2xl leading-tight">{now.title}</h2>
 			<p class="text-sm text-muted-foreground">{now.body}</p>
+			{#if view.finalisation}
+				<p class="text-sm font-semibold" data-testid="invitation-summary">
+					{invitationSummary(view.finalisation.invitations)}
+				</p>
+			{/if}
 			{#if workshop.stage === "today_before_check_in" || workshop.stage === "check_in_open" || workshop.stage === "awaiting_finalisation"}
 				<Button
 					class="w-fit"
@@ -346,10 +363,10 @@ const attention = $derived(
 					<ul class="flex flex-col gap-1.5">
 						{#each group.intakes as intake (intake.id)}
 							{@const refund = refundLabel(intake)}
-							<li>
+							<li class="flex items-center gap-2">
 								<button
 									type="button"
-									class="flex w-full flex-wrap items-center gap-3 rounded-xl border bg-card px-3 py-2 text-left text-sm hover:border-primary focus-visible:border-primary"
+									class="flex min-w-0 flex-1 flex-wrap items-center gap-3 rounded-xl border bg-card px-3 py-2 text-left text-sm hover:border-primary focus-visible:border-primary"
 									aria-label={`${personName(intake)} — ${intakeStateLabel(intake.state)}`}
 									onclick={() => (selectedIntakeId = intake.id)}
 								>
@@ -385,6 +402,22 @@ const attention = $derived(
 										>{intakeStateLabel(intake.state)}</Badge
 									>
 								</button>
+								{#if group.key === "attended"}
+									{#if intake.standing === "attended" && canInvite}
+										<InviteButton
+											workshopId={workshop.id}
+											intakeId={intake.id}
+											name={personName(intake)}
+										/>
+									{:else if standingLabel(intake.standing)}
+										<Badge
+											variant="outline"
+											class="border-emerald-700 text-emerald-900"
+											data-testid="invitation-standing"
+											>{standingLabel(intake.standing)}</Badge
+										>
+									{/if}
+								{/if}
 							</li>
 						{/each}
 					</ul>

@@ -10,6 +10,7 @@ import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import * as Select from "#lib/components/ui/select/index.js";
 import { Content, List, Root, Trigger } from "#lib/components/ui/tabs/index.js";
 import IntakeEmailTemplates from "#lib/components/beginners-workshops/intake-email-templates.svelte";
+import InvitableTab from "./invitable-tab.svelte";
 import WaitlistTable from "./waitlist-table.svelte";
 import Analytics from "./workshop-analytics.svelte";
 import WorkshopsTab from "./workshops-tab.svelte";
@@ -60,6 +61,7 @@ const views = $derived([
 				{ id: "email-templates", label: "Email templates" },
 			]
 		: []),
+	...(data.invitable ? [{ id: "invitable", label: "Invitable" }] : []),
 ]);
 let viewLabel = $derived(
 	views.find((view) => view.id === value)?.label || "Dashboard",
@@ -143,6 +145,9 @@ let viewLabel = $derived(
 					<Trigger value="workshops">Workshops</Trigger>
 					<Trigger value="email-templates">Email templates</Trigger>
 				{/if}
+				{#if data.invitable}
+					<Trigger value="invitable">Invitable</Trigger>
+				{/if}
 			</List>
 		</div>
 
@@ -163,6 +168,11 @@ let viewLabel = $derived(
 		{#if data.canManageWorkshops}
 			<Content value="email-templates">
 				<IntakeEmailTemplates />
+			</Content>
+		{/if}
+		{#if data.invitable}
+			<Content value="invitable">
+				<InvitableTab people={data.invitable} />
 			</Content>
 		{/if}
 	</Root>

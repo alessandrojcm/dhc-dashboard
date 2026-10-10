@@ -1,4 +1,5 @@
 import {
+	beginnersWorkshopInvitationsInvitable,
 	beginnersWorkshopsList,
 	beginnersWorkshopsStaffCandidates,
 	waitlistStatus,
@@ -34,8 +35,19 @@ export const load: PageServerLoad = async ({ locals, cookies, depends }) => {
 			])
 		: [null, []];
 
+	// ALE-392: the Invitable tab is for whoever sends Invitations.
+	const canInvite = access.can("members.invite");
+	const invitable = canInvite
+		? await beginnersWorkshopInvitationsInvitable({
+				...apiClientOptions(cookies),
+				throwOnError: true,
+			}).then((response) => response.data.data)
+		: null;
+
 	return {
 		staffCandidates,
+		canInvite,
+		invitable,
 		canToggleWaitlist: access.can("beginners.waitlist.toggle"),
 		isWaitlistOpen: statusResponse.data.data.isOpen,
 		canManageWorkshops,

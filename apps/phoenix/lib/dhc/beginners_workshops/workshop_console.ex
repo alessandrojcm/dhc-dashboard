@@ -21,9 +21,11 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       Seat Hold carries when its hold runs out (ALE-381), each paid Intake
       its door check-in time (ALE-390), and each Intake with a refund
       carries its latest refund's status, method and whether it was
-      automatic (ALE-382). Every Intake (ALE-386) also carries its medical
-      flag, link generation, Intake Email log (what was queued and when,
-      plus the scheduled email still owed: "Pre-workshop info" to a `paid`
+      automatic (ALE-382), and each its person's Waitlist standing
+      (`nil` once anonymised) — after finalisation the attended people's
+      standing says who is invited or joined (ALE-392). Every Intake
+      (ALE-386) also carries its medical flag, link generation, Intake
+      Email log (what was queued and when, plus the scheduled email still owed: "Pre-workshop info" to a `paid`
       Intake for the current schedule, the Follow-up to an `attended` one),
       its history (command, actor, time, note) and its `available_commands`
       — `IntakePolicy.available_commands/1`, the very rule the boundary
@@ -36,7 +38,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       first (ALE-382);
     * `finalisation` (ALE-391) — `nil` until Attendance Finalisation, then
       when, who pressed Finish (`nil`: automatically at the end of the day)
-      and when the Follow-up goes out (`WorkshopPolicy.follow_up_at/1`);
+      and when the Follow-up goes out (`WorkshopPolicy.follow_up_at/1`),
+      and (ALE-392) `invitations`: how many attended, and how many of
+      them are now `invited` or `joined` — counted from the attended roster
+      rows themselves, so the line and the list cannot disagree;
     * `attention` — `:nobody_waiting` when a Batch is due with free seats
       but nobody eligible is waiting;
     * `fast_track_open` — whether Fast-track is offered now
@@ -68,6 +73,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
 
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist.WaitlistEntry
 
   # Every state with a roster group of its own; the rest are `out`.
   @not_out ~w(contacted paid attended no_show)
@@ -85,7 +91,17 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
             out: [map()]
           },
           finalisation:
-            %{at: DateTime.t(), by: String.t() | nil, follow_up_at: DateTime.t()} | nil,
+            %{
+              at: DateTime.t(),
+              by: String.t() | nil,
+              follow_up_at: DateTime.t(),
+              invitations: %{
+                attended: non_neg_integer(),
+                invited: non_neg_integer(),
+                joined: non_neg_integer()
+              }
+            }
+            | nil,
           failed_refunds: [map()],
           unpaid_after_window: [map()],
           attention: [:nobody_waiting],
@@ -112,7 +128,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
          failed_refunds: failed_refunds(id),
          unpaid_after_window: unpaid_after_window(roster, reading),
          attention: attention(next_batch),
-         finalisation: finalisation(workshop),
+         finalisation: finalisation(workshop, roster.attended),
          fast_track_open: WorkshopPolicy.payment_open?(workshop, reading)
        }}
     else
@@ -187,6 +203,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         on: p.waitlist_id == i.waitlist_id and not is_nil(i.waitlist_id),
         left_join: h in IntakePayment,
         on: h.intake_id == i.id and h.status == "open",
+        left_join: e in WaitlistEntry,
+        on: e.id == i.waitlist_id,
         where: i.workshop_id == ^workshop.id,
         order_by: [asc: i.queue_date, asc: i.id],
         select: %{
@@ -199,6 +217,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           window_ends_at: b.window_ends_at,
           hold_expires_at: h.expires_at,
           checked_in_at: i.checked_in_at,
+          standing: e.status,
           link_generation: i.link_generation,
           first_name: p.first_name,
           last_name: p.last_name,
@@ -308,15 +327,20 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     |> Enum.map(&Map.take(&1, [:id, :first_name, :last_name, :window_ends_at, :batch_number]))
   end
 
-  defp finalisation(%BeginnersWorkshop{status: "finalised"} = workshop) do
+  defp finalisation(%BeginnersWorkshop{status: "finalised"} = workshop, attended) do
     %{
       at: workshop.finalised_at,
       by: DoorView.finaliser_name(workshop.finalised_by_principal_id),
-      follow_up_at: WorkshopPolicy.follow_up_at(workshop)
+      follow_up_at: WorkshopPolicy.follow_up_at(workshop),
+      invitations: %{
+        attended: length(attended),
+        invited: Enum.count(attended, &(&1.standing == "invited")),
+        joined: Enum.count(attended, &(&1.standing == "joined"))
+      }
     }
   end
 
-  defp finalisation(%BeginnersWorkshop{}), do: nil
+  defp finalisation(%BeginnersWorkshop{}, _attended), do: nil
 
   # The latest refund of each Intake, by when it was requested.
   defp latest_refunds(workshop_id) do

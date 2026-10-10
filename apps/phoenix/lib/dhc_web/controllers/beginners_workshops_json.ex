@@ -41,7 +41,12 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
   defp console_finalisation(nil), do: nil
 
   defp console_finalisation(finalisation),
-    do: %{at: finalisation.at, by: finalisation.by, followUpAt: finalisation.follow_up_at}
+    do: %{
+      at: finalisation.at,
+      by: finalisation.by,
+      followUpAt: finalisation.follow_up_at,
+      invitations: finalisation.invitations
+    }
 
   @doc "The seat meter, shared with every workshop row."
   def seats(seats) do
@@ -109,6 +114,7 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       windowEndsAt: row.window_ends_at,
       holdExpiresAt: row.hold_expires_at,
       checkedInAt: row.checked_in_at,
+      standing: row.standing,
       refund: row.refund && intake_refund(row.refund),
       linkGeneration: row.link_generation,
       emailLog:

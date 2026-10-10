@@ -239,6 +239,15 @@ export type FastTrackNewPersonInput = v.InferInput<
 
 const refundId = v.pipe(v.string(), v.uuid("Unknown refund."));
 
+/**
+ * ALE-392: send one attended person their Invitation, from the console's
+ * attended list or the Invitable view.
+ */
+export const inviteAttendeeSchema = v.object({
+	id: workshopId,
+	intakeId: v.pipe(v.string(), v.uuid("Unknown person.")),
+});
+
 /** ALE-382: Retry a failed refund from Needs attention. */
 export const retryRefundSchema = v.object({ id: workshopId, refundId });
 

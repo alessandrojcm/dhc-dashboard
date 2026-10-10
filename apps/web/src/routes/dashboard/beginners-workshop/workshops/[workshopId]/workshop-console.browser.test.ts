@@ -88,6 +88,7 @@ function view(
 					holdExpiresAt: null,
 					checkedInAt: null,
 					refund: null,
+					standing: "waiting",
 					medical: false,
 					windowEndsAt: "2026-10-27T22:59:59.999999Z",
 					linkGeneration: 1,
@@ -110,6 +111,7 @@ function view(
 					holdExpiresAt: null,
 					checkedInAt: null,
 					refund: null,
+					standing: "waiting",
 					medical: false,
 					windowEndsAt: "2026-10-27T22:59:59.999999Z",
 					linkGeneration: 1,
@@ -280,6 +282,7 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						holdExpiresAt: null,
 						checkedInAt: null,
 						refund: null,
+						standing: "waiting",
 						medical: false,
 						windowEndsAt: "2026-10-27T22:59:59.999999Z",
 						linkGeneration: 1,
@@ -321,6 +324,7 @@ test("ALE-391: a finalised workshop reads attended / no-show and is read-only", 
 				at: "2026-11-14T20:05:00Z",
 				by: "Aoife Coach",
 				followUpAt: "2026-11-15T10:00:00Z",
+				invitations: { attended: 2, invited: 1, joined: 0 },
 			},
 		}),
 	});
@@ -339,6 +343,102 @@ test("ALE-391: a finalised workshop reads attended / no-show and is read-only", 
 		.toHaveTextContent("Finalised Sat 14 Nov, 20:05 by Aoife Coach");
 	expect(
 		screen.getByRole("button", { name: /Fast-track|Pause Batches/ }).elements(),
+	).toHaveLength(0);
+});
+
+test("ALE-392: a finalised console offers Invite to each Invitable attendee and counts the handoff", async () => {
+	const base = view();
+	const [seated] = base.roster.seated;
+	const attendee = (
+		id: string,
+		firstName: string,
+		standing: "attended" | "invited" | "joined",
+	) => ({ ...seated, id, firstName, state: "attended" as const, standing });
+	const finalised = view({
+		workshop: {
+			...base.workshop,
+			status: "finalised",
+			stage: "finalised",
+			seats: { ...base.workshop.seats, attended: 3, noShow: 0 },
+		},
+		roster: {
+			seated: [],
+			asked: [],
+			attended: [
+				attendee("0a5d4c9e-1111-4f3a-9b1e-7d2c3b4a5f60", "Aoife", "attended"),
+				attendee("0a5d4c9e-2222-4f3a-9b1e-7d2c3b4a5f60", "Bea", "invited"),
+				attendee("0a5d4c9e-3333-4f3a-9b1e-7d2c3b4a5f60", "Cian", "joined"),
+			],
+			noShow: [],
+			out: [],
+		},
+		fastTrackOpen: false,
+		finalisation: {
+			at: "2026-11-14T20:05:00Z",
+			by: null,
+			followUpAt: "2026-11-15T10:00:00Z",
+			invitations: { attended: 3, invited: 1, joined: 1 },
+		},
+	});
+
+	const screen = await render(WorkshopConsole, {
+		view: finalised,
+		canInvite: true,
+	});
+
+	await expect
+		.element(screen.getByTestId("invitation-summary"))
+		.toHaveTextContent("3 attended · 1 invited · 1 joined");
+	const attended = screen.getByRole("region", { name: "Attended" });
+	expect(
+		attended.getByRole("button", { name: "Invite" }).elements(),
+	).toHaveLength(1);
+	await expect
+		.element(
+			attended
+				.getByRole("listitem")
+				.filter({ hasText: "Aoife" })
+				.getByRole("button", {
+					name: "Invite",
+				}),
+		)
+		.toBeVisible();
+	await expect
+		.element(attended.getByRole("listitem").filter({ hasText: "Bea" }))
+		.toHaveTextContent("Invited");
+	await expect
+		.element(attended.getByRole("listitem").filter({ hasText: "Cian" }))
+		.toHaveTextContent("Joined");
+});
+
+test("ALE-392: without members.invite the attended list offers no Invite", async () => {
+	const base = view();
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			workshop: { ...base.workshop, status: "finalised", stage: "finalised" },
+			roster: {
+				seated: [],
+				asked: [],
+				attended: [
+					{ ...base.roster.seated[0], state: "attended", standing: "attended" },
+				],
+				noShow: [],
+				out: [],
+			},
+			finalisation: {
+				at: "2026-11-14T20:05:00Z",
+				by: null,
+				followUpAt: "2026-11-15T10:00:00Z",
+				invitations: { attended: 1, invited: 0, joined: 0 },
+			},
+		}),
+	});
+
+	await expect
+		.element(screen.getByRole("region", { name: "Attended" }))
+		.toHaveTextContent("Cian Doyle");
+	expect(
+		screen.getByRole("button", { name: "Invite" }).elements(),
 	).toHaveLength(0);
 });
 

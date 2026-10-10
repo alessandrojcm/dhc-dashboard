@@ -254,6 +254,23 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   (`WorkshopPolicy.follow_up_at/1`; log occasion `follow_up`, unique per
   Intake), so re-running it finds nothing owed.
 
+  ## Invitation handoff (ALE-392)
+
+  `invite` (`members.invite`) hands one attended person to Onboarding.
+  Under the Beginners' Workshop lock, then the person's Waitlist entry and
+  their Intake, it refuses unless the workshop is finalised
+  (`:not_finalised`), the Intake is `attended` (`:not_attended`) and the
+  standing is `attended` (`:already_invited`, `:already_joined`,
+  `:not_invitable`; an anonymised person is `:person_not_found`). Then it
+  issues the Invitation through `Dhc.Onboarding.issue_invitation/3` (with
+  `waitlist_id:`, so acceptance claims this Waitlist profile) and moves the
+  standing `attended → invited`, both in this transaction. Onboarding's own
+  refusals come back as `:email_is_principal`,
+  `:email_has_pending_invitation` and `:incomplete_details`, and are written
+  to the Invitation processing log after the rollback. The Follow-up does not
+  gate it. Onboarding never calls back: deleting the Invitation returns the
+  standing to `attended` on the Onboarding side (`Dhc.Invitations`).
+
   A payment-started command peeks the row by session id without a lock,
   then locks Beginners' Workshop → Intake → payment from the top down and
   decides on the re-read row. The row's workshop and Intake never change,
@@ -323,6 +340,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   alias Dhc.BeginnersWorkshops.Workers.RefundWorker
   alias Dhc.ClubCalendar
   alias Dhc.Notifications
+  alias Dhc.Onboarding
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist
@@ -378,6 +396,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:finish_workshop, workshop_id :: binary()}
           | {:finalise_attendance, workshop_id :: binary()}
           | {:send_follow_ups, workshop_id :: binary()}
+          | {:invite, workshop_id :: binary(), intake_id :: binary()}
           | {IntakePolicy.command(), workshop_id :: binary(), intake_id :: binary(), map()}
 
   @typedoc """
@@ -433,6 +452,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :check_in_closed
           | :not_paid
           | :not_due
+          | :not_finalised
+          | :not_attended
+          | :already_invited
+          | :already_joined
+          | :not_invitable
+          | :incomplete_details
           | :intake_not_found
           | :invalid_note
           | Ecto.Changeset.t()
@@ -454,6 +479,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     check_in: :"beginners.workshops.run",
     undo_check_in: :"beginners.workshops.run",
     finish_workshop: :"beginners.workshops.run",
+    # ALE-392: the Invitation handoff is an Invitation, so it needs the
+    # Invitation capability (which the beginners coordinator holds).
+    invite: :"members.invite",
     # Console Intake commands (ALE-386).
     decline: :"beginners.workshops.manage",
     resend_link: :"beginners.workshops.manage",
@@ -882,6 +910,32 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           &follow_ups_locked(&1, clock)
         )
       end)
+    end
+  end
+
+  # Nothing about an Invitation depends on the time, so the clock is unused.
+  defp run({:staff, principal_id}, {:invite, workshop_id, intake_id}, _clock) do
+    with {:ok, workshop_id} <- cast_id(workshop_id),
+         {:ok, intake_id} <- cast_id(intake_id) do
+      intake = from(i in Intake, where: i.id == ^intake_id and i.workshop_id == ^workshop_id)
+
+      fn ->
+        with_locked(
+          %{
+            workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+            # An Intake's person never changes, so the unlocked read of its
+            # `waitlist_id` cannot go stale.
+            waitlist_entry:
+              from(e in WaitlistEntry,
+                where: e.id in subquery(select(intake, [i], i.waitlist_id))
+              ),
+            intake: required(intake)
+          },
+          &invite_locked(&1, principal_id)
+        )
+      end
+      |> transact()
+      |> record_invite_refusal(principal_id)
     end
   end
 
@@ -3081,6 +3135,87 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         &%{"firstName" => &1, "date" => Values.date(workshop.date)},
         reading
       )
+
+  # ── invite ──────────────────────────────────────────────────────
+
+  # The Follow-up does not gate an Invitation (story 107): attendance being
+  # final is enough.
+  defp invite_locked(%{workshop: workshop, waitlist_entry: entry, intake: intake}, actor_id) do
+    with :ok <- invite_finalised(workshop),
+         :ok <- invite_attended(intake),
+         {:ok, entry} <- invitable(entry),
+         {:ok, invite} <- invite_details(entry),
+         {:ok, %{invitation_id: invitation_id}} <- issue_invitation(invite, entry, actor_id),
+         {:ok, entry} <- Waitlist.change_standing(entry.id, "invited") do
+      {:ok,
+       %{
+         intake_id: intake.id,
+         workshop_id: workshop.id,
+         waitlist_id: entry.id,
+         invitation_id: invitation_id,
+         standing: entry.status
+       }}
+    end
+  end
+
+  defp invite_finalised(%BeginnersWorkshop{status: "finalised"}), do: :ok
+  defp invite_finalised(%BeginnersWorkshop{}), do: {:error, :not_finalised}
+
+  defp invite_attended(%Intake{state: "attended"}), do: :ok
+  defp invite_attended(%Intake{}), do: {:error, :not_attended}
+
+  # An anonymised person has no entry, and nobody to invite.
+  defp invitable(nil), do: {:error, :person_not_found}
+  defp invitable(%WaitlistEntry{status: "attended"} = entry), do: {:ok, entry}
+  defp invitable(%WaitlistEntry{status: "invited"}), do: {:error, :already_invited}
+  defp invitable(%WaitlistEntry{status: "joined"}), do: {:error, :already_joined}
+  defp invitable(%WaitlistEntry{}), do: {:error, :not_invitable}
+
+  # The Invitation carries the Waitlist profile's details, read under the
+  # entry lock (the profile is the entry's and changes with it).
+  defp invite_details(%WaitlistEntry{email: nil}), do: {:error, :person_not_found}
+
+  defp invite_details(%WaitlistEntry{id: id, email: email}) do
+    case Repo.one(from(p in UserProfile, where: p.waitlist_id == ^id)) do
+      nil ->
+        {:error, :person_not_found}
+
+      profile ->
+        {:ok,
+         %{
+           "firstName" => profile.first_name,
+           "lastName" => profile.last_name,
+           "email" => email,
+           "phoneNumber" => profile.phone_number,
+           "dateOfBirth" => profile.date_of_birth,
+           "pricingTier" => "standard",
+           "invitationType" => "beginners_workshop"
+         }}
+    end
+  end
+
+  # Onboarding's refusals carry the email out of the rolled-back
+  # transaction, so `record_invite_refusal/2` can log them.
+  defp issue_invitation(invite, entry, actor_id) do
+    case Onboarding.issue_invitation(invite, actor_id, waitlist_id: entry.id) do
+      {:ok, issued} -> {:ok, issued}
+      {:error, reason} -> {:error, {:invitation_refused, invite["email"], reason}}
+    end
+  end
+
+  defp record_invite_refusal({:error, {:invitation_refused, email, reason}}, actor_id) do
+    _ = Onboarding.record_refused_invitation(email, reason, actor_id)
+    {:error, invitation_refusal(reason)}
+  end
+
+  defp record_invite_refusal(result, _actor_id), do: result
+
+  defp invitation_refusal(:duplicate_pending_invitation), do: :email_has_pending_invitation
+  defp invitation_refusal(:email_is_principal), do: :email_is_principal
+  defp invitation_refusal(:email_on_waitlist), do: :email_on_waitlist
+  defp invitation_refusal({:invalid_invite, _fields}), do: :incomplete_details
+  # A racing issue for the same email loses on the pending-email index.
+  defp invitation_refusal(_reason), do: :concurrent_change
 
   # ── set_staff ───────────────────────────────────────────────────
 

@@ -90,6 +90,15 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       # Attendance Finalisation (ALE-391).
       payment_in_progress:
         {409, "Someone is still paying; finish the workshop once their payment ends"},
+      # Invitation handoff (ALE-392).
+      not_finalised: {409, "Invitations go out once the workshop's attendance is final"},
+      not_attended: {409, "Only people who attended can be invited"},
+      already_invited: {409, "This person has already been sent an Invitation"},
+      already_joined: {409, "This person has already joined the club"},
+      not_invitable: {409, "This person is no longer Invitable"},
+      incomplete_details:
+        {422, "This person's Waitlist details are incomplete, so no Invitation can be sent"},
+      concurrent_change: {409, "Something changed at the same time; try again"},
       # Console Intake commands (ALE-386).
       intake_not_found: {404, "Intake not found in this workshop"},
       already_paid:

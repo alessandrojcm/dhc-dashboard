@@ -457,13 +457,20 @@ defmodule Dhc.Invitations do
   Permanently deletes the requested Invitations.
 
   Missing ids are ignored to preserve the previous bulk-delete semantics.
+
+  ALE-392: deleting an Invitation that carries a `waitlist_id` gives the
+  person back their `attended` standing, so a Beginners' Workshop attendee
+  is Invitable again — when their standing is still `invited` and no other
+  pending or expired Invitation for them remains. It runs on this side of
+  the boundary (Onboarding never calls into Beginners' Workshops) through
+  `Dhc.Waitlist.change_standing/2`, in the deletion's transaction. The
+  Waitlist entries are locked before the Invitations are deleted: the same
+  entry → Invitation order the Beginners' Workshop `invite` command takes.
   """
   @spec delete_many([String.t()]) :: :ok | {:error, :invalid_invitation_ids}
   def delete_many(invitation_ids) when is_list(invitation_ids) and invitation_ids != [] do
     if Enum.all?(invitation_ids, &valid_uuid?/1) do
-      from(i in Invitation, where: i.id in ^invitation_ids)
-      |> Repo.delete_all()
-
+      {:ok, :ok} = Repo.transaction(fn -> delete_and_restore_standing(invitation_ids) end)
       :ok
     else
       {:error, :invalid_invitation_ids}
@@ -471,6 +478,44 @@ defmodule Dhc.Invitations do
   end
 
   def delete_many(_invitation_ids), do: {:error, :invalid_invitation_ids}
+
+  defp delete_and_restore_standing(invitation_ids) do
+    waitlist_ids =
+      from(i in Invitation,
+        where: i.id in ^invitation_ids and not is_nil(i.waitlist_id),
+        distinct: true,
+        select: i.waitlist_id
+      )
+      |> Repo.all()
+
+    entries =
+      from(w in WaitlistEntry,
+        where: w.id in ^waitlist_ids,
+        order_by: [asc: w.id],
+        lock: "FOR UPDATE"
+      )
+      |> Repo.all()
+
+    from(i in Invitation, where: i.id in ^invitation_ids) |> Repo.delete_all()
+
+    for %WaitlistEntry{status: "invited", id: id} <- entries, not still_invited?(id) do
+      {:ok, _entry} = Waitlist.change_standing(id, "attended")
+    end
+
+    :ok
+  end
+
+  # A pending Invitation is live and an expired one can be re-armed with a
+  # resend, so either keeps the person `invited`.
+  @live_invitation_statuses ~w(pending expired)
+
+  defp still_invited?(waitlist_id) do
+    Repo.exists?(
+      from(i in Invitation,
+        where: i.waitlist_id == ^waitlist_id and i.status in ^@live_invitation_statuses
+      )
+    )
+  end
 
   defp credentials_match?(invitation_id, email, %Date{} = date_of_birth) do
     normalized_email = normalize_email(email)

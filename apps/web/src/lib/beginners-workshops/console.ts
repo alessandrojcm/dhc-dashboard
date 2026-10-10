@@ -7,6 +7,8 @@
  */
 import type {
 	BeginnersWorkshopConsole,
+	BeginnersWorkshopConsoleInvitations,
+	BeginnersWorkshopFollowUp,
 	BeginnersWorkshopFailedRefund,
 	BeginnersWorkshopIntakeCommand,
 	BeginnersWorkshopIntakeEmailLogEntry,
@@ -15,6 +17,7 @@ import type {
 	BeginnersWorkshopIntakeState,
 	BeginnersWorkshopNextBatch,
 	BeginnersWorkshopRosterIntake,
+	WaitlistStatus,
 	BeginnersWorkshopUnpaidAfterWindow,
 } from "@dhc/api-client";
 import { INTAKE_EMAIL_TYPES } from "#lib/beginners-workshops/intake-emails/presentation.js";
@@ -382,6 +385,43 @@ export function failedRefundText(
 ): string {
 	const reason = REFUND_REASONS.get(refund.reason);
 	return `Refund of ${formatRefundAmount(refund.amountCents, refund.currency)} to ${personName(refund)} failed${reason ? ` (${reason})` : ""}. Retry it, or record a manual refund if you paid them back another way.`;
+}
+
+/** ALE-392: a finalised workshop's handoff line — `3 attended · 2 invited · 1 joined`. */
+export function invitationSummary({
+	attended,
+	invited,
+	joined,
+}: BeginnersWorkshopConsoleInvitations): string {
+	return `${attended} attended · ${invited} invited · ${joined} joined`;
+}
+
+/**
+ * ALE-392: what an attended person's standing says about their Invitation.
+ * `attended` is still Invitable (the row offers Invite instead of a label);
+ * anything else is shown as is.
+ */
+export function standingLabel(standing: WaitlistStatus | null): string | null {
+	switch (standing) {
+		case "invited":
+			return "Invited";
+		case "joined":
+			return "Joined";
+		case "removed":
+			return "Removed";
+		case "waiting":
+			return "Waiting";
+		default:
+			return null;
+	}
+}
+
+/** ALE-392: the Invitable view's Follow-up column — `Sent Sun 25 Oct, 10:00` or `Scheduled …`. */
+export function followUpLabel({
+	status,
+	at,
+}: BeginnersWorkshopFollowUp): string {
+	return `${status === "sent" ? "Sent" : "Scheduled"} ${formatDublinInstant(at)}`;
 }
 
 /**
