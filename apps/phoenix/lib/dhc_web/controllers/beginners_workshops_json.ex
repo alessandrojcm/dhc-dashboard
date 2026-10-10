@@ -11,6 +11,17 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
 
   def show(%{result: workshop}), do: %{data: workshop(workshop)}
 
+  def staff_candidates(%{result: candidates}),
+    do: %{
+      data: Enum.map(candidates, &%{principalId: &1.principal_id, name: &1.name, coach: &1.coach})
+    }
+
+  @doc "The Staff of a workshop, shared with the door view."
+  def staff(%{coach: coach, assistants: assistants}),
+    do: %{coach: coach && staff_member(coach), assistants: Enum.map(assistants, &staff_member/1)}
+
+  defp staff_member(member), do: %{principalId: member.principal_id, name: member.name}
+
   defp workshop(view) do
     %{
       id: view.id,
@@ -28,9 +39,11 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       paymentWindowDays: view.payment_window_days,
       stage: view.stage,
       seats: view.seats,
-      alerts: view.alerts
+      alerts: view.alerts,
+      staff: staff(view.staff)
     }
   end
 
-  defp hh_mm(%Time{} = time), do: Calendar.strftime(time, "%H:%M")
+  @doc false
+  def hh_mm(%Time{} = time), do: Calendar.strftime(time, "%H:%M")
 end

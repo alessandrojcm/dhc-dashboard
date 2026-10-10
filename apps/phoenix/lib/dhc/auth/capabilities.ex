@@ -32,6 +32,17 @@ defmodule Dhc.Auth.Capabilities do
   owner-scoped capability **conceals** the resource (`:not_found`, HTTP 404)
   instead of admitting it exists (`:forbidden`, HTTP 403), matching the
   frontend's `concealed_resource` decision.
+
+  ## Assignment (ALE-379)
+
+  An assignment-scoped capability (`assignment_scoped?/1`, a rule with
+  `assigned: true`) is also granted when the session principal is in the
+  resource's `assigned_principal_ids` — a Beginners' Workshop's Staff. A
+  denial conceals the resource exactly like ownership. Ownership never grants
+  an assignment-scoped capability, nor the reverse.
+
+  Owner- and assignment-scoped capabilities need a resource, so router
+  pipelines cannot use them (`resource_scoped?/1`); controllers check them.
   """
 
   import Ecto.Query
@@ -72,6 +83,10 @@ defmodule Dhc.Auth.Capabilities do
   # are deliberately excluded.
   @beginners_workshop_managers @officers ++ ~w(beginners_coordinator)
 
+  # ALE-379: who may be assigned as a Beginners' Workshop's coach. Checked at
+  # assignment only; losing the role later keeps the assignment.
+  @beginners_workshop_leads ~w(coach)
+
   # ALE-330: no read/manage split — only the committee shapes club
   # communications.
   @training_announcement_managers ~w(sparring_coordinator coach president admin committee_coordinator)
@@ -87,7 +102,15 @@ defmodule Dhc.Auth.Capabilities do
     # list.
     "beginners.waitlist.manage": %{roles: @waitlist_managers},
     "beginners.waitlist.toggle": %{roles: @officers},
+    # ALE-379: every member may read their own Staff assignments ("My
+    # Beginners' Workshops"); an assistant must be able to, so it is also
+    # the "active Member" an assistant must be.
+    "beginners.workshops.assigned.read": %{roles: @members},
+    "beginners.workshops.lead": %{roles: @beginners_workshop_leads},
     "beginners.workshops.manage": %{roles: @beginners_workshop_managers},
+    # Running a workshop (its door view, check-in): the managers by role,
+    # anyone else only while on that workshop's Staff.
+    "beginners.workshops.run": %{roles: @beginners_workshop_managers, assigned: true},
     "discord.assignments.manage": %{roles: @member_administrators},
     "discord.doctor.use": %{roles: @officers},
     "inventory.manage": %{roles: @inventory_operators},
@@ -110,7 +133,10 @@ defmodule Dhc.Auth.Capabilities do
   @capabilities @rules |> Map.keys() |> Enum.sort()
 
   @type capability :: atom()
-  @type resource :: %{optional(:owner_principal_id) => String.t() | nil}
+  @type resource :: %{
+          optional(:owner_principal_id) => String.t() | nil,
+          optional(:assigned_principal_ids) => [String.t()]
+        }
 
   @doc "Every capability in the registry, sorted."
   @spec all() :: [capability()]
@@ -123,6 +149,18 @@ defmodule Dhc.Auth.Capabilities do
   @doc "Whether the capability is also granted to the resource owner."
   @spec owner_scoped?(capability()) :: boolean()
   def owner_scoped?(capability), do: Map.get(rule!(capability), :owner, false)
+
+  @doc "Whether the capability is also granted to the resource's assigned principals."
+  @spec assignment_scoped?(capability()) :: boolean()
+  def assignment_scoped?(capability), do: Map.get(rule!(capability), :assigned, false)
+
+  @doc """
+  Whether deciding the capability needs a resource (owner- or
+  assignment-scoped). A router pipeline cannot check such a capability.
+  """
+  @spec resource_scoped?(capability()) :: boolean()
+  def resource_scoped?(capability),
+    do: owner_scoped?(capability) or assignment_scoped?(capability)
 
   @doc """
   The capability names (wire strings, sorted) the given roles hold without
@@ -148,8 +186,8 @@ defmodule Dhc.Auth.Capabilities do
   active session").
 
   Returns `:ok`, `{:error, :inactive}` (no club access — HTTP 401),
-  `{:error, :not_found}` (owner-scoped capability denied — HTTP 404, the
-  resource is concealed) or `{:error, :forbidden}` (HTTP 403).
+  `{:error, :not_found}` (owner- or assignment-scoped capability denied —
+  HTTP 404, the resource is concealed) or `{:error, :forbidden}` (HTTP 403).
   """
   @spec authorize(map(), capability() | nil, resource()) ::
           :ok | {:error, :inactive | :forbidden | :not_found}
@@ -160,8 +198,9 @@ defmodule Dhc.Auth.Capabilities do
   def authorize(%{is_active: true, roles: roles} = projection, capability, resource) do
     cond do
       granted_by_role?(capability, roles) -> :ok
-      not owner_scoped?(capability) -> {:error, :forbidden}
-      owner?(projection, resource) -> :ok
+      not resource_scoped?(capability) -> {:error, :forbidden}
+      owner_scoped?(capability) and owner?(projection, resource) -> :ok
+      assignment_scoped?(capability) and assigned?(projection, resource) -> :ok
       true -> {:error, :not_found}
     end
   end
@@ -187,7 +226,8 @@ defmodule Dhc.Auth.Capabilities do
   Principal ids that hold `capability` through a role on an **active**
   profile — the same eligibility a session needs to pass `RequireSession`.
   Inactive or profile-less principals are omitted even if a leftover role row
-  remains. `except:` drops one principal id.
+  remains. `except:` drops one principal id; `only:` narrows the answer to
+  the given principal ids.
   """
   @spec principal_ids_with(capability(), keyword()) :: [String.t()]
   def principal_ids_with(capability, opts \\ []) when is_list(opts) do
@@ -202,9 +242,15 @@ defmodule Dhc.Auth.Capabilities do
       select: r.principal_id,
       distinct: true
     )
+    |> only_principals(Keyword.get(opts, :only))
     |> Repo.all()
     |> Enum.reject(&(&1 == except))
   end
+
+  defp only_principals(query, nil), do: query
+
+  defp only_principals(query, ids) when is_list(ids),
+    do: where(query, [r], r.principal_id in ^ids)
 
   defp granted_by_role?(capability, roles) do
     granted = rule!(capability).roles
@@ -213,6 +259,12 @@ defmodule Dhc.Auth.Capabilities do
 
   defp owner?(%{principal: %{id: id}}, %{owner_principal_id: id}) when is_binary(id), do: true
   defp owner?(_projection, _resource), do: false
+
+  defp assigned?(%{principal: %{id: id}}, %{assigned_principal_ids: ids})
+       when is_binary(id) and is_list(ids),
+       do: id in ids
+
+  defp assigned?(_projection, _resource), do: false
 
   defp rule!(capability) do
     case Map.fetch(@rules, capability) do

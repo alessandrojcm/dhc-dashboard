@@ -19,8 +19,9 @@ defmodule DhcWeb.Plugs.RequireSession do
       `%{principal: %Principal{}, roles: [String.t()], capabilities:
       [String.t()], is_active: true}` and the request proceeds.
 
-  Owner-scoped capabilities need a resource, so they are rejected at
-  `init/1`: controllers check those with `Dhc.Auth.Capabilities.authorize/3`.
+  Owner- and assignment-scoped capabilities need a resource, so they are
+  rejected at `init/1`: controllers check those with
+  `Dhc.Auth.Capabilities.authorize/3`.
 
   ## Cookie contract
 
@@ -58,6 +59,11 @@ defmodule DhcWeb.Plugs.RequireSession do
         if Capabilities.owner_scoped?(capability) do
           raise ArgumentError,
                 "#{inspect(capability)} is owner-scoped; authorize it in the controller"
+        end
+
+        if Capabilities.assignment_scoped?(capability) do
+          raise ArgumentError,
+                "#{inspect(capability)} is assignment-scoped; authorize it in the controller"
         end
 
         opts

@@ -44,6 +44,14 @@ function protect(
 }
 
 export const protectedRoutes: ProtectedRoute[] = [
+	protect("/dashboard/beginners-workshop/workshops/[workshopId]/door", {
+		// ALE-379: a workshop's door view. Any member reaches the route;
+		// `beginners.workshops.run` is assignment-scoped, so Phoenix's 404
+		// conceals a workshop the member is not on the Staff of. Listed before
+		// the section prefix so it governs this subtree.
+		requires: "beginners.workshops.assigned.read",
+		onDeny: "redirect-to-own-profile",
+	}),
 	protect("/dashboard/beginners-workshop", {
 		requires: "beginners.waitlist.manage",
 		onDeny: "redirect-to-own-profile",
@@ -76,6 +84,10 @@ export const protectedRoutes: ProtectedRoute[] = [
 	}),
 	protect("/dashboard/workshops", {
 		requires: "workshops.manage",
+		onDeny: "redirect-to-own-profile",
+	}),
+	protect("/dashboard/my-beginners-workshops", {
+		requires: "beginners.workshops.assigned.read",
 		onDeny: "redirect-to-own-profile",
 	}),
 	protect("/dashboard/my-workshops", {

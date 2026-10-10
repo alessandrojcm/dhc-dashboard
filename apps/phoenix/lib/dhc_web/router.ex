@@ -24,6 +24,12 @@ defmodule DhcWeb.Router do
     plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.workshops.manage")
   end
 
+  # ALE-379: every member; `beginners.workshops.run` is assignment-scoped, so
+  # the door controller checks it against the workshop's Staff.
+  pipeline :beginners_workshops_assigned_read do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.workshops.assigned.read")
+  end
+
   pipeline :beginners_waitlist_toggle do
     plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.waitlist.toggle")
   end
@@ -60,11 +66,20 @@ defmodule DhcWeb.Router do
 
     get("/", BeginnersWorkshopsController, :index)
     post("/", BeginnersWorkshopsController, :create)
+    get("/staff-candidates", BeginnersWorkshopsController, :staff_candidates)
     put("/:id/settings", BeginnersWorkshopsController, :update_settings)
+    put("/:id/staff", BeginnersWorkshopsController, :set_staff)
 
     # ALE-383 — Intake Email templates.
     get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)
     put("/email-templates/:emailType", BeginnersWorkshopEmailTemplatesController, :update)
+  end
+
+  scope "/api/beginners-workshops", DhcWeb do
+    pipe_through([:api, :beginners_workshops_assigned_read])
+
+    get("/mine", BeginnersWorkshopAssignmentsController, :list)
+    get("/:id/door", BeginnersWorkshopDoorController, :show)
   end
 
   scope "/api/training-announcements", DhcWeb do

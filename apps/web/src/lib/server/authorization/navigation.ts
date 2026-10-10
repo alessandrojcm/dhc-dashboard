@@ -10,9 +10,20 @@ import { resolve } from "$app/paths";
 import type { NavData, NavigationGroup, NavigationItem } from "#lib/types.js";
 import type { Capability } from "./capabilities";
 
+/**
+ * Facts about the user's own data that an entry may also depend on. Each is
+ * read by the dashboard layout; a missing fact hides the entry.
+ */
+export type NavigationFacts = {
+	/** ALE-379: the user has an upcoming or same-day Beginners' Workshop assignment. */
+	hasBeginnersWorkshopAssignments?: boolean;
+};
+
 type NavigationItemDefinition = NavigationItem & { requires: Capability };
 type NavigationGroupDefinition = Omit<NavigationGroup, "items"> & {
 	requires: Capability;
+	/** Shown only when this fact is also true (the capability still governs the route). */
+	shownWhen?: keyof NavigationFacts;
 	items?: NavigationItemDefinition[];
 };
 type NavigationDefinition = NavigationGroupDefinition[];
@@ -56,6 +67,14 @@ export const navigation: NavigationDefinition = [
 		title: "My Workshops",
 		url: resolve("dashboard/my-workshops"),
 		requires: "workshops.own.read",
+	},
+	{
+		// ALE-379: every member may open the page, but the entry appears only
+		// while the member is on an upcoming or same-day workshop's Staff.
+		title: "My Beginners' Workshops",
+		url: resolve("dashboard/my-beginners-workshops"),
+		requires: "beginners.workshops.assigned.read",
+		shownWhen: "hasBeginnersWorkshopAssignments",
 	},
 	{
 		// Member catalog browse (ALE-288). Member self-service entries sit
@@ -105,10 +124,17 @@ export const navigation: NavigationDefinition = [
  */
 export function navigationFor(
 	can: (capability: Capability) => boolean,
+	facts: NavigationFacts = {},
 ): NavData {
 	const navMain = navigation.flatMap<NavigationGroup>((group) => {
 		if (!can(group.requires)) return [];
-		const { requires: _requires, items, ...visible } = group;
+		if (group.shownWhen && !facts[group.shownWhen]) return [];
+		const {
+			requires: _requires,
+			shownWhen: _shownWhen,
+			items,
+			...visible
+		} = group;
 		if (!items) return [visible];
 
 		const visibleItems = items.flatMap<NavigationItem>((item) => {

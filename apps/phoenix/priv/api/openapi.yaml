@@ -3918,6 +3918,95 @@ paths:
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
         "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
         "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+  /beginners-workshops/{id}/staff:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    put:
+      operationId: beginnersWorkshops.setStaff
+      tags: [BeginnersWorkshops]
+      summary: Replace a workshop's Staff (one coach and any assistants)
+      description: |
+        Replaces the whole Staff list. The coach must hold the coach role at
+        assignment (`not_a_coach`); assistants must be active Members
+        (`not_a_member`); a person picked as coach is removed from the
+        assistants. Someone kept in the same role is not checked again, so a
+        coach whose coach role was removed keeps the assignment. Access
+        follows immediately. The people added and removed get an in-app
+        Notification (also by Web Push); no attendee is emailed. Refused
+        after Attendance Finalisation. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopStaffRequest"}
+      responses:
+        "200":
+          description: The workshop with its new Staff
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
+        "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+  /beginners-workshops/staff-candidates:
+    get:
+      operationId: beginnersWorkshops.staffCandidates
+      tags: [BeginnersWorkshops]
+      summary: Every active Member the Staff dialog may pick, coaches marked
+      description: |
+        Sorted by name. `coach` marks who may be assigned as coach; every
+        candidate may be an assistant. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The Staff candidates
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopStaffCandidatesResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+  /beginners-workshops/mine:
+    get:
+      operationId: beginnersWorkshopAssignments.list
+      tags: [BeginnersWorkshops]
+      summary: My Beginners' Workshops — the caller's upcoming and same-day Staff assignments
+      description: |
+        Upcoming scheduled workshops and any non-cancelled workshop today on
+        whose Staff the caller is, soonest first. Requires
+        `beginners.workshops.assigned.read` (every member).
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The caller's assignments
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopAssignmentListResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
+  /beginners-workshops/{id}/door:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    get:
+      operationId: beginnersWorkshopDoor.show
+      tags: [BeginnersWorkshops]
+      summary: A workshop's door view
+      description: |
+        The door view's own closed shape (never email, payment, refund or
+        Waitlist history). `beginners.workshops.run` is assignment-scoped:
+        the workshop's Staff and the managers see it, and anyone else gets
+        the same 404 as an unknown workshop. Requires
+        `beginners.workshops.assigned.read` to reach.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The door view
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopDoorResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
 
   /settings:
     get:
@@ -6994,6 +7083,11 @@ components:
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
+    BeginnersWorkshopAssignedForbidden:
+      description: The `beginners.workshops.assigned.read` capability is required
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
     BeginnersWorkshopNotFound:
       description: Beginners' Workshop not found
       content:
@@ -7558,7 +7652,7 @@ components:
       enum: [scheduled, finalised, cancelled]
     BeginnersWorkshopAlert:
       type: string
-      description: "`unstaffed`: no coach is assigned yet."
+      description: "`unstaffed`: no coach is assigned yet (assistants alone do not staff it)."
       enum: [unstaffed]
     BeginnersWorkshopSeats:
       type: object
@@ -7592,6 +7686,7 @@ components:
         - stage
         - seats
         - alerts
+        - staff
       properties:
         id: {type: string, format: uuid}
         status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
@@ -7613,6 +7708,97 @@ components:
         alerts:
           type: array
           items: {$ref: "#/components/schemas/BeginnersWorkshopAlert"}
+        staff: {$ref: "#/components/schemas/BeginnersWorkshopStaff"}
+    BeginnersWorkshopStaffMember:
+      type: object
+      required: [principalId, name]
+      properties:
+        principalId: {type: string, format: uuid}
+        name: {type: string}
+    BeginnersWorkshopStaff:
+      type: object
+      description: |
+        One coach (or none: the workshop is Unstaffed) and any assistants,
+        assistants sorted by name.
+      required: [coach, assistants]
+      properties:
+        coach:
+          allOf:
+            - $ref: "#/components/schemas/BeginnersWorkshopStaffMember"
+          nullable: true
+        assistants:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopStaffMember"}
+    BeginnersWorkshopStaffRole:
+      type: string
+      enum: [coach, assistant]
+    BeginnersWorkshopStaffRequest:
+      type: object
+      description: |
+        The whole Staff list. A missing or null `coachPrincipalId` means no
+        coach; a missing `assistantPrincipalIds` means no assistants.
+      properties:
+        coachPrincipalId: {type: string, format: uuid, nullable: true}
+        assistantPrincipalIds:
+          type: array
+          items: {type: string, format: uuid}
+    BeginnersWorkshopStaffCandidate:
+      type: object
+      required: [principalId, name, coach]
+      properties:
+        principalId: {type: string, format: uuid}
+        name: {type: string}
+        coach:
+          type: boolean
+          description: Whether this Member may be assigned as coach (holds the coach role).
+    BeginnersWorkshopStaffCandidatesResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopStaffCandidate"}
+    BeginnersWorkshopAssignment:
+      type: object
+      description: One of the caller's Staff assignments. Civil values are Europe/Dublin.
+      required: [id, status, venue, date, startTime, stage, role]
+      properties:
+        id: {type: string, format: uuid}
+        status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
+        venue: {type: string}
+        date: {type: string, format: date}
+        startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'}
+        stage: {$ref: "#/components/schemas/BeginnersWorkshopStage"}
+        role: {$ref: "#/components/schemas/BeginnersWorkshopStaffRole"}
+    BeginnersWorkshopAssignmentListResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopAssignment"}
+    BeginnersWorkshopDoor:
+      type: object
+      description: |
+        The door view header. Its own shape: it never carries email,
+        payment, refund or Waitlist fields. Civil values are Europe/Dublin.
+      required: [id, status, venue, date, startTime, stage, alerts, staff]
+      properties:
+        id: {type: string, format: uuid}
+        status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
+        venue: {type: string}
+        date: {type: string, format: date}
+        startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'}
+        stage: {$ref: "#/components/schemas/BeginnersWorkshopStage"}
+        alerts:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopAlert"}
+        staff: {$ref: "#/components/schemas/BeginnersWorkshopStaff"}
+    BeginnersWorkshopDoorResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopDoor"}
     BeginnersWorkshopScheduleItem:
       type: object
       description: |
@@ -7632,6 +7818,15 @@ components:
         paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
         contactFromDate: {type: string, format: date}
         paymentWindowDays: {type: integer, minimum: 1}
+        coachPrincipalId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional coach; must hold the coach role.
+        assistantPrincipalIds:
+          type: array
+          description: Optional assistants; each must be an active Member.
+          items: {type: string, format: uuid}
     BeginnersWorkshopScheduleRequest:
       type: object
       required: [workshops]
@@ -7695,7 +7890,7 @@ components:
               properties:
                 code:
                   type: string
-                  enum: [after_finalisation, already_cancelled, contact_from_locked]
+                  enum: [after_finalisation, already_cancelled, contact_from_locked, staff_conflict]
     BeginnersWorkshopInvalidError:
       description: |
         422 refusal on a Beginners' Workshop command. Domain reasons carry a
@@ -7717,6 +7912,9 @@ components:
                     - invalid_contact_from
                     - no_workshops
                     - too_many_workshops
+                    - invalid_staff
+                    - not_a_coach
+                    - not_a_member
     OnboardingStartAcceptanceRequest:
       type: object
       required: [invitationId, email, dateOfBirth]
@@ -11815,7 +12013,10 @@ components:
       enum:
         - beginners.waitlist.manage
         - beginners.waitlist.toggle
+        - beginners.workshops.assigned.read
+        - beginners.workshops.lead
         - beginners.workshops.manage
+        - beginners.workshops.run
         - discord.assignments.manage
         - discord.doctor.use
         - inventory.catalog.read

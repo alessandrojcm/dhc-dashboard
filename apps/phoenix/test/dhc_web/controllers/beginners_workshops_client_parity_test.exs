@@ -38,8 +38,10 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
 
     # ALE-383's Intake Email template slice shares the one tag and URL root.
     assert operations |> Enum.map(&elem(&1, 1)["operationId"]) |> Enum.sort() ==
-             ~w(beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
-                beginnersWorkshops.list beginnersWorkshops.schedule beginnersWorkshops.updateSettings)
+             ~w(beginnersWorkshopAssignments.list beginnersWorkshopDoor.show
+                beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
+                beginnersWorkshops.list beginnersWorkshops.schedule beginnersWorkshops.setStaff
+                beginnersWorkshops.staffCandidates beginnersWorkshops.updateSettings)
 
     for {method, operation} <- operations do
       assert operation["tags"] == ["BeginnersWorkshops"]
