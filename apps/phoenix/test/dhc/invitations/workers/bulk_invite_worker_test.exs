@@ -122,7 +122,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       created_by_id = insert_principal!("admin@example.com")
       insurance_link = "https://insurance.example.com/onboarding.html"
       assert {:ok, _} = Dhc.Settings.update("hema_insurance_form_link", insurance_link)
-      waitlist_entry = insert_waitlist_entry!("ada@example.com")
+      waitlist_entry = insert_waitlist_entry!("ada@example.com", "attended")
 
       insert_waitlist_profile!(waitlist_entry.id,
         first_name: "Ada",
@@ -165,7 +165,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
                  where: up.principal_id == ^invitation.prospective_principal_id
              )
 
-      # The waitlist entry was marked invited.
+      # The attended waitlist entry was marked invited.
       assert %WaitlistEntry{status: "invited"} = Repo.get(WaitlistEntry, waitlist_entry.id)
 
       # The inviteMember email was enqueued.
@@ -190,6 +190,32 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       # Exactly one commit-safe creation signal for the admin's topic.
       assert_received %Phoenix.Socket.Broadcast{event: "notification_created", payload: %{}}
       refute_received %Phoenix.Socket.Broadcast{event: "notification_created"}
+    end
+
+    test "refuses to invite a waiting person directly and issues nothing" do
+      created_by_id = insert_principal!("refusal-admin@example.com")
+      waitlist_entry = insert_waitlist_entry!("waiting@example.com", "waiting")
+
+      insert_waitlist_profile!(waitlist_entry.id,
+        first_name: "Wai",
+        last_name: "Ting",
+        phone_number: "+353810000002",
+        date_of_birth: ~D[1990-01-01]
+      )
+
+      args = %{
+        "invites" => [waitlist_entry.id],
+        "user" => %{"id" => created_by_id, "email" => "refusal-admin@example.com"}
+      }
+
+      assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+
+      refute Repo.get_by(Invitation, email: "waiting@example.com")
+      assert %WaitlistEntry{status: "waiting"} = Repo.get(WaitlistEntry, waitlist_entry.id)
+      assert [] = all_enqueued(worker: Dhc.Email.Worker)
+
+      assert %ProcessingLog{success_count: 0, failure_count: 1} =
+               Repo.get_by(ProcessingLog, principal_id: created_by_id)
     end
 
     test "replaying the same Oban job does not reissue an already completed invitation" do
@@ -332,12 +358,12 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
     id
   end
 
-  defp insert_waitlist_entry!(email) do
+  defp insert_waitlist_entry!(email, status) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     %WaitlistEntry{
       email: email,
-      status: "waiting",
+      status: status,
       initial_registration_date: now,
       last_status_change: now
     }

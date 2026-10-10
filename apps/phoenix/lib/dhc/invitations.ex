@@ -21,6 +21,7 @@ defmodule Dhc.Invitations do
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist
   alias Dhc.Waitlist.WaitlistEntry
 
   @invite_email_template "inviteMember"
@@ -173,9 +174,7 @@ defmodule Dhc.Invitations do
         conflict_target: [:principal_id, :role]
       )
 
-      waitlist_query = waitlist_entry_query(invitation)
-
-      Repo.update_all(waitlist_query, set: [status: "joined", last_status_change: now])
+      join_waitlist!(invitation)
 
       from(a in InvitationAcceptanceAttempt,
         where: a.id == ^attempt_id and a.invitation_id == ^invitation.id
@@ -267,6 +266,18 @@ defmodule Dhc.Invitations do
       metadata: metadata
     })
     |> Repo.insert!()
+  end
+
+  # The Waitlist standing function moves the person's entry, when they have
+  # one, from `invited` to `joined` inside this transaction; any other
+  # standing refuses and rolls the conversion back.
+  defp join_waitlist!(invitation) do
+    waitlist_id = invitation |> waitlist_entry_query() |> select([w], w.id) |> Repo.one()
+
+    with id when is_binary(id) <- waitlist_id,
+         {:error, reason} <- Waitlist.change_standing(id, "joined") do
+      Repo.rollback({:waitlist_standing, reason})
+    end
   end
 
   defp waitlist_entry_query(%Invitation{waitlist_id: waitlist_id}) when not is_nil(waitlist_id),

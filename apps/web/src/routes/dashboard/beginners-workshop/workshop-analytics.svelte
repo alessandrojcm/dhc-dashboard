@@ -25,7 +25,7 @@ onMount(async () => {
 
 // Browser-side Phoenix read (`GET /api/waitlist/analytics`) via the generated
 // TanStack Query options. The Supabase JWT is attached by `configureClient`'s
-// `getAuthToken` hook; authz is enforced by Phoenix's `beginners_workshop_read`
+// `getAuthToken` hook; authz is enforced by Phoenix's `beginners_waitlist_manage`
 // pipeline, so no SvelteKit `authorize()` gate is needed.
 const analyticsQuery = createQuery(() => waitlistAnalyticsOptions());
 
@@ -52,7 +52,7 @@ const ageDistribution = $derived.by(() => {
 <div class="flex flex-wrap justify-center md:justify-start gap-4">
 	<Card.Root class="bg-green-200 w-36 text-center md:text-left">
 		<Card.Header>
-			<Card.Description class="text-black">Total waitlist</Card.Description>
+			<Card.Description class="text-black">Waiting</Card.Description>
 		</Card.Header>
 		<Card.Content>
 			{#if analyticsQuery.isLoading}

@@ -1,14 +1,14 @@
 import type {
-	InvitationsCreateData,
-	InvitationsCreateResponse,
-	InvitationsResendData,
-	InvitationsResendResponse,
 	Options,
+	WaitlistEntriesData,
+	WaitlistEntriesResponse2,
 	WaitlistEntry,
 } from "@dhc/api-client";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import WaitlistTableTestWrapper from "./waitlist-table.test-wrapper.svelte";
+
+const BASE = "https://dhc.test/dashboard/beginners-workshop";
 
 function entry(id: string, overrides: Partial<WaitlistEntry>): WaitlistEntry {
 	return {
@@ -25,83 +25,113 @@ function entry(id: string, overrides: Partial<WaitlistEntry>): WaitlistEntry {
 		insuranceFormSubmitted: false,
 		adminNotes: null,
 		socialMediaConsent: "no",
+		removedAt: null,
 		...overrides,
 	};
 }
 
-test("desktop and mobile invite buttons reach the same action", async () => {
-	const waiting = entry("a", { fullName: "Ada Waiting" });
-	const invited = entry("b", { fullName: "Bea Invited", status: "invited" });
-	const createInvitations = vi.fn(
-		async (
-			_options: Options<InvitationsCreateData>,
-		): Promise<InvitationsCreateResponse> => ({}),
-	);
-	const resendInvitations = vi.fn(
-		async (
-			_options: Options<InvitationsResendData>,
-		): Promise<InvitationsResendResponse> => ({}),
-	);
-	const listEntries = vi.fn(async () => ({
+function page(entries: WaitlistEntry[]): WaitlistEntriesResponse2 {
+	return {
 		data: {
-			entries: [waiting, invited],
-			totalCount: 2,
-			limit: 10 as const,
+			entries,
+			totalCount: entries.length,
+			limit: 10,
 			nextCursor: null,
 			previousCursor: null,
 		},
-	}));
+	};
+}
+
+test("lists the waiting queue by default and removed people behind the filter", async () => {
+	const waiting = entry("a", { fullName: "Ada Waiting" });
+	const removed = entry("b", {
+		fullName: "Bea Removed",
+		status: "removed",
+		removedAt: "2026-03-12T10:00:00Z",
+	});
+	const listEntries = vi.fn(async (options: Options<WaitlistEntriesData>) =>
+		page(options.query?.status === "removed" ? [removed] : [waiting]),
+	);
+	let url = new URL(BASE);
+	const navigate = vi.fn((href: string) => {
+		url = new URL(href, BASE);
+	});
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries,
-			createInvitations,
-			resendInvitations,
 			notify: { success: () => {}, error: () => {} },
-			url: () => new URL("https://dhc.test/dashboard/beginners-workshop"),
-			navigate: () => {},
+			url: () => url,
+			navigate,
 		},
 	});
 
 	// Tailwind is not loaded, so both layouts render side by side.
 	const desktop = screen.getByRole("table");
 	const mobile = screen.getByRole("list", { name: "Waitlist entries" });
-	const desktopRow = (name: string) =>
-		desktop.getByRole("row").filter({ hasText: name });
-	const mobileCard = (name: string) =>
-		mobile.getByRole("listitem").filter({ hasText: name });
 
-	await expect.element(desktopRow("Ada Waiting")).toBeVisible();
-
-	// Each click optimistically marks the entry `invited` until the settled
-	// request refetches the page, so wait for the server status to return.
-	async function clickInvite(
-		target: ReturnType<typeof desktopRow>,
-		request: typeof createInvitations | typeof resendInvitations,
-		status: "waiting" | "invited",
-	) {
-		const calls = request.mock.calls.length;
-		await target.getByRole("button", { name: "Invite Member" }).click();
-		await expect.poll(() => request.mock.calls.length).toBe(calls + 1);
-		await expect
-			.poll(() => listEntries.mock.calls.length)
-			.toBeGreaterThan(fetches);
-		fetches = listEntries.mock.calls.length;
-		await expect
-			.element(target.getByText(status, { exact: true }))
-			.toBeVisible();
-	}
-	let fetches = listEntries.mock.calls.length;
-
-	await clickInvite(desktopRow("Ada Waiting"), createInvitations, "waiting");
-	await clickInvite(mobileCard("Ada Waiting"), createInvitations, "waiting");
-	await clickInvite(desktopRow("Bea Invited"), resendInvitations, "invited");
-	await clickInvite(mobileCard("Bea Invited"), resendInvitations, "invited");
-
-	expect(createInvitations.mock.calls.map(([options]) => options.body)).toEqual(
-		[{ invites: ["a"] }, { invites: ["a"] }],
+	await expect.element(desktop.getByText("Ada Waiting")).toBeVisible();
+	expect(listEntries).toHaveBeenCalledWith(
+		expect.objectContaining({
+			query: expect.objectContaining({ status: "waiting" }),
+		}),
 	);
-	expect(resendInvitations.mock.calls.map(([options]) => options.body)).toEqual(
-		[{ emails: ["b@test.com"] }, { emails: ["b@test.com"] }],
+	await expect
+		.element(screen.getByRole("radio", { name: "Waiting" }))
+		.toHaveAttribute("aria-checked", "true");
+	await expect
+		.element(desktop.getByText("Total 1 people waiting"))
+		.toBeVisible();
+
+	// Status is read-only and nobody is invited from the Waitlist view.
+	expect(screen.getByRole("button", { name: /invite/i }).elements()).toEqual(
+		[],
 	);
+	expect(screen.getByRole("combobox", { name: /status/i }).elements()).toEqual(
+		[],
+	);
+	await expect
+		.element(mobile.getByRole("listitem").getByText("Waiting", { exact: true }))
+		.toBeVisible();
+
+	await screen.getByRole("radio", { name: "Removed" }).click();
+
+	expect(navigate).toHaveBeenCalledWith(
+		expect.stringContaining("status=removed"),
+		{ replace: true },
+	);
+});
+
+test("renders a removed person's removal date from the URL filter", async () => {
+	const removed = entry("b", {
+		fullName: "Bea Removed",
+		status: "removed",
+		removedAt: "2026-03-12T10:00:00Z",
+	});
+	const listEntries = vi.fn(async () => page([removed]));
+
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries,
+			notify: { success: () => {}, error: () => {} },
+			url: () => new URL(`${BASE}?status=removed`),
+			navigate: () => {},
+		},
+	});
+
+	const desktop = screen.getByRole("table");
+
+	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
+	expect(listEntries).toHaveBeenCalledWith(
+		expect.objectContaining({
+			query: expect.objectContaining({ status: "removed" }),
+		}),
+	);
+	await expect
+		.element(screen.getByRole("radio", { name: "Removed" }))
+		.toHaveAttribute("aria-checked", "true");
+	await expect.element(desktop.getByText("Removed 12/03/2026")).toBeVisible();
+	await expect
+		.element(desktop.getByText("Total 1 people removed"))
+		.toBeVisible();
 });

@@ -16,8 +16,8 @@ defmodule DhcWeb.Router do
     plug(DhcWeb.Plugs.RequireSession, capability: :"members.invite")
   end
 
-  pipeline :beginners_workshop_read do
-    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.workshop.read")
+  pipeline :beginners_waitlist_manage do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.waitlist.manage")
   end
 
   pipeline :beginners_waitlist_toggle do
@@ -241,7 +241,7 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :beginners_workshop_read])
+    pipe_through([:api, :beginners_waitlist_manage])
 
     get("/waitlist/analytics", WaitlistController, :analytics)
     get("/waitlist/entries", WaitlistController, :entries)

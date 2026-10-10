@@ -45,7 +45,7 @@ function protect(
 
 export const protectedRoutes: ProtectedRoute[] = [
 	protect("/dashboard/beginners-workshop", {
-		requires: "beginners.workshop.read",
+		requires: "beginners.waitlist.manage",
 		onDeny: "redirect-to-own-profile",
 	}),
 	protect("/dashboard/members/[memberId]", {

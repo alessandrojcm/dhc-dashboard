@@ -1,5 +1,5 @@
 import { faker } from "@faker-js/faker/locale/en_IE";
-import type { WorkshopStatus } from "@dhc/api-client";
+import type { WaitlistStatus, WorkshopStatus } from "@dhc/api-client";
 import { expect, type Page } from "@playwright/test";
 import "dotenv/config";
 import dayjs from "dayjs";
@@ -169,7 +169,7 @@ export async function createStripeCustomerWithSavedSepaMethod(email: string) {
 
 export async function setupWaitlistedUser(
 	params: Partial<{
-		setWaitlistNotCompleted: boolean;
+		status: WaitlistStatus;
 		email: string;
 	}> = {},
 ) {
@@ -184,7 +184,7 @@ export async function setupWaitlistedUser(
 		pronouns: testData.pronouns,
 		gender: testData.gender,
 		medicalConditions: testData.medical_conditions,
-		status: params.setWaitlistNotCompleted ? "cancelled" : "completed",
+		status: params.status ?? "waiting",
 	});
 
 	return {

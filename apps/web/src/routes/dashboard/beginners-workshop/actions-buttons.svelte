@@ -1,14 +1,6 @@
 <script lang="ts">
 import { Button } from "#lib/components/ui/button/index.js";
-import * as Tooltip from "#lib/components/ui/tooltip/index.js";
-import {
-	ChevronUp,
-	ChevronDown,
-	SendIcon,
-	SquarePen,
-	NotebookPen,
-	Trash2,
-} from "@lucide/svelte";
+import { ChevronUp, ChevronDown, SquarePen, NotebookPen } from "@lucide/svelte";
 import * as Popover from "#lib/components/ui/popover/index.js";
 import { Label } from "#lib/components/ui/label/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
@@ -18,7 +10,6 @@ type Props = {
 	onEdit: (newValue: string) => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
-	inviteMember: () => void;
 };
 let isEdit = $state(false);
 let {
@@ -26,7 +17,6 @@ let {
 	onEdit,
 	isExpanded = false,
 	onToggleExpand,
-	inviteMember,
 }: Props = $props();
 let value = $state(adminNotes);
 </script>
@@ -47,24 +37,6 @@ let value = $state(adminNotes);
 			{/if}
 		</Button>
 	{/if}
-	<Tooltip.Root>
-		<Tooltip.Trigger>
-			{#snippet child({ props })}
-				<Button
-					variant="ghost"
-					aria-label="Invite Member"
-					{...props}
-					onclick={() => inviteMember()}
-				>
-					<SendIcon class="h-4 w-4" />
-				</Button>
-			{/snippet}
-		</Tooltip.Trigger>
-		<Tooltip.Content class="flex flex-col gap-y-2">
-			<Label>Invite member</Label>
-		</Tooltip.Content>
-	</Tooltip.Root>
-
 	<!-- Admin Notes -->
 	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
 		<Popover.Trigger>

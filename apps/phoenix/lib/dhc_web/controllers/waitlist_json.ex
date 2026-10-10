@@ -69,7 +69,8 @@ defmodule DhcWeb.WaitlistJSON do
       guardianLastName: entry.guardian_last_name,
       guardianPhoneNumber: entry.guardian_phone_number,
       insuranceFormSubmitted: entry.insurance_form_submitted,
-      lastStatusChange: entry.last_status_change
+      lastStatusChange: entry.last_status_change,
+      removedAt: entry.removed_at
     }
   end
 end

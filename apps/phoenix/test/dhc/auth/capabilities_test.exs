@@ -17,8 +17,8 @@ defmodule Dhc.Auth.CapabilitiesTest do
   # whether the resource owner is also granted it. Changing a role
   # assignment must show up as exactly one intentional diff here.
   @policy %{
-    "beginners.workshop.read":
-      {~w(admin president committee_coordinator coach beginners_coordinator), false},
+    "beginners.waitlist.manage":
+      {~w(admin president committee_coordinator beginners_coordinator), false},
     "beginners.waitlist.toggle": {@officers, false},
     "discord.assignments.manage": {@member_administrators, false},
     "discord.doctor.use": {@officers, false},

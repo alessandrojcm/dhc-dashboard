@@ -8,7 +8,6 @@ defmodule DhcWeb.WaitlistHTTP do
       invalid_query: {400, "Invalid waitlist entries query"},
       waitlist_closed: {403, "Waitlist is closed"},
       invalid_is_open: {422, "isOpen must be a boolean"},
-      invalid_status: {422, "Invalid waitlist status"},
       invalid_payload: {422, "Invalid waitlist entry payload"},
       invalid_update: {422, "Invalid waitlist entry update payload", :invalid_payload}
     },

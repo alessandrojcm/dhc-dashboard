@@ -206,7 +206,7 @@ defmodule Dhc.DevSeeds do
 
   defp create_member(attrs) do
     with {:ok, principal} <- create_principal(attrs.email),
-         {:ok, waitlist} <- insert_waitlist(attrs.email, "completed"),
+         {:ok, waitlist} <- insert_waitlist(attrs.email, "joined"),
          {:ok, profile} <- insert_user_profile(attrs, principal.id, waitlist.id, true),
          :ok <- insert_member_profile(principal.id, profile.id, attrs),
          :ok <- insert_user_roles(principal.id, ["member"]),
@@ -384,7 +384,11 @@ defmodule Dhc.DevSeeds do
     do: raise("inventory seed transition failed: #{inspect(error)}")
 
   defp create_waitlist_entry(attrs) do
-    with {:ok, waitlist} <- insert_waitlist(attrs.email, "waiting"),
+    # Roughly one in eight seeded people has been removed, so the Waitlist
+    # view's `removed` filter has rows to show.
+    standing = if :rand.uniform(8) == 1, do: "removed", else: "waiting"
+
+    with {:ok, waitlist} <- insert_waitlist(attrs.email, standing),
          {:ok, profile} <- insert_user_profile(attrs, nil, waitlist.id, false),
          :ok <- maybe_insert_guardian(profile.id, attrs.date_of_birth) do
       :ok
@@ -731,7 +735,9 @@ defmodule Dhc.DevSeeds do
   #     `text → preferred_weapon` cast (same path the test fixtures use).
 
   defp insert_waitlist(email, status) do
-    %WaitlistEntry{email: String.downcase(email), status: status}
+    removed_at = if status == "removed", do: DateTime.utc_now() |> DateTime.truncate(:second)
+
+    %WaitlistEntry{email: String.downcase(email), status: status, removed_at: removed_at}
     |> Repo.insert()
   rescue
     exception -> {:error, exception}

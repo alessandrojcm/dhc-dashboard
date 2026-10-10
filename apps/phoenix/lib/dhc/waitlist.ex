@@ -6,6 +6,7 @@ defmodule Dhc.Waitlist do
   import Ecto.Query
 
   alias Dhc.CursorPagination
+  alias Dhc.Waitlist.Standing
   alias Dhc.Waitlist.WaitlistGuardian
   alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.UserProfiles.UserProfile
@@ -14,7 +15,10 @@ defmodule Dhc.Waitlist do
   @waitlist_open_key "waitlist_open"
   @age_years_sql "EXTRACT(YEAR FROM AGE(CURRENT_DATE, ?))::int"
   @allowed_limits [10, 25, 50, 100]
-  @allowed_statuses ~w(waiting invited paid deferred cancelled completed no_reply joined)
+  # The Waitlist view lists the queue (`waiting`, the default) or removed
+  # people; attended, invited and joined people have left the Waitlist view.
+  @listable_statuses ~w(waiting removed)
+  @default_listed_status "waiting"
   @social_media_consent_values ~w(no yes_recognizable yes_unrecognizable)
   @allowed_sort_fields ~w(position fullName status age initialRegistrationDate lastContacted lastStatusChange)
   @allowed_directions ~w(asc desc)
@@ -67,7 +71,7 @@ defmodule Dhc.Waitlist do
   end
 
   @doc """
-  Returns domain-shaped waitlist analytics for the dashboard.
+  Returns domain-shaped analytics over the `waiting` queue for the dashboard.
 
   The queries intentionally read the `waitlist` and `user_profiles` storage
   tables directly inside Phoenix, rather than exposing `waitlist_management_view`
@@ -139,10 +143,7 @@ defmodule Dhc.Waitlist do
     with :ok <- ensure_open(),
          {:ok, normalized} <- normalize_create_attrs(attrs) do
       entry_changeset =
-        WaitlistEntry.create_changeset(%WaitlistEntry{}, %{
-          email: normalized.email,
-          status: "waiting"
-        })
+        WaitlistEntry.create_changeset(%WaitlistEntry{}, %{email: normalized.email})
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:waitlist_entry, entry_changeset)
@@ -180,8 +181,9 @@ defmodule Dhc.Waitlist do
   @doc """
   Updates admin-owned waitlist entry fields.
 
-  Status changes refresh `last_status_change`; admin note edits preserve the
-  existing status timestamp.
+  Only admin notes are editable. Waitlist Status changes only through
+  `change_standing/2`, so a payload carrying `status` (or anything other than
+  `adminNotes`) is refused with `{:error, :invalid_payload}`.
   """
   @spec update_entry(Ecto.UUID.t(), map()) ::
           {:ok, map()} | {:error, :not_found} | {:error, atom()} | {:error, Ecto.Changeset.t()}
@@ -210,11 +212,50 @@ defmodule Dhc.Waitlist do
 
       entry ->
         entry
-        |> WaitlistEntry.admin_update_changeset(normalized)
+        |> WaitlistEntry.admin_notes_changeset(normalized)
         |> Repo.update()
         |> case do
           {:ok, _entry} -> get_entry(id)
           {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  @doc """
+  The one Waitlist standing function (ALE-375, ADR 0029).
+
+  Changes the entry's Waitlist Status to `to` when `Dhc.Waitlist.Standing`
+  allows it from the current standing, and refuses every other change with
+  `{:error, :illegal_standing_change}`. Entering `removed` stamps
+  `removed_at` (the retention clock); leaving it clears the stamp. Every
+  change refreshes `last_status_change`.
+
+  It runs **inside the caller's transaction** so the standing change commits
+  or rolls back with the caller's own writes (an Intake change, an
+  Invitation), and raises `ArgumentError` outside one. It takes the Waitlist
+  entry row lock (`FOR UPDATE`), the level after the Beginners' Workshop in
+  the ADR 0029 lock order, and reads the current standing under it.
+  """
+  @spec change_standing(Ecto.UUID.t(), String.t()) ::
+          {:ok, WaitlistEntry.t()}
+          | {:error, :not_found | :illegal_standing_change | Ecto.Changeset.t()}
+  def change_standing(entry_id, to) when is_binary(entry_id) and is_binary(to) do
+    unless Repo.in_transaction?() do
+      raise ArgumentError, "Dhc.Waitlist.change_standing/2 must run inside a transaction"
+    end
+
+    from(w in WaitlistEntry, where: w.id == ^entry_id, lock: "FOR UPDATE")
+    |> Repo.one()
+    |> case do
+      nil ->
+        {:error, :not_found}
+
+      %WaitlistEntry{status: from} = entry ->
+        if Standing.allowed?(from, to) do
+          now = DateTime.utc_now() |> DateTime.truncate(:second)
+          entry |> WaitlistEntry.standing_changeset(to, now) |> Repo.update()
+        else
+          {:error, :illegal_standing_change}
         end
     end
   end
@@ -310,7 +351,7 @@ defmodule Dhc.Waitlist do
       join: p in UserProfile,
       on: p.waitlist_id == w.id,
       where:
-        w.status != "joined" and p.is_active == false and is_nil(p.principal_id) and
+        w.status == "waiting" and p.is_active == false and is_nil(p.principal_id) and
           not is_nil(p.date_of_birth)
   end
 
@@ -318,7 +359,7 @@ defmodule Dhc.Waitlist do
     limit = parse_integer(Map.get(params, "limit", "10"))
     sort = Map.get(params, "sort", "position")
     direction = Map.get(params, "direction", "asc")
-    status = blank_to_nil(Map.get(params, "status"))
+    status = blank_to_nil(Map.get(params, "status")) || @default_listed_status
     q = blank_to_nil(Map.get(params, "q"))
 
     cond do
@@ -331,7 +372,7 @@ defmodule Dhc.Waitlist do
       direction not in @allowed_directions ->
         {:error, :invalid_direction}
 
-      not is_nil(status) and status not in @allowed_statuses ->
+      status not in @listable_statuses ->
         {:error, :invalid_status}
 
       true ->
@@ -463,44 +504,13 @@ defmodule Dhc.Waitlist do
     end)
   end
 
-  defp normalize_update_attrs(attrs) do
-    status = blank_to_nil(Map.get(attrs, "status"))
-    admin_notes = Map.get(attrs, "adminNotes", :missing)
+  # Admin notes are the only editable field; `status` is refused rather than
+  # ignored so a stale client cannot believe it changed a standing.
+  defp normalize_update_attrs(%{"adminNotes" => admin_notes} = attrs)
+       when map_size(attrs) == 1 and (is_binary(admin_notes) or is_nil(admin_notes)),
+       do: {:ok, %{admin_notes: admin_notes}}
 
-    with :ok <- validate_update_status(status, admin_notes),
-         :ok <- validate_admin_notes(admin_notes) do
-      {:ok, build_update_attrs(status, admin_notes)}
-    end
-  end
-
-  defp validate_update_status(nil, :missing), do: {:error, :invalid_payload}
-
-  defp validate_update_status(status, _admin_notes)
-       when not is_nil(status) and status not in @allowed_statuses,
-       do: {:error, :invalid_status}
-
-  defp validate_update_status(_status, _admin_notes), do: :ok
-
-  defp validate_admin_notes(:missing), do: :ok
-
-  defp validate_admin_notes(admin_notes) when is_binary(admin_notes) or is_nil(admin_notes),
-    do: :ok
-
-  defp validate_admin_notes(_admin_notes), do: {:error, :invalid_payload}
-
-  defp build_update_attrs(status, admin_notes) do
-    %{}
-    |> maybe_put_update(:status, status, not is_nil(status))
-    |> maybe_put_update(:admin_notes, admin_notes, admin_notes != :missing)
-    |> maybe_put_update(
-      :last_status_change,
-      DateTime.utc_now() |> DateTime.truncate(:second),
-      not is_nil(status)
-    )
-  end
-
-  defp maybe_put_update(attrs, key, value, true), do: Map.put(attrs, key, value)
-  defp maybe_put_update(attrs, _key, _value, false), do: attrs
+  defp normalize_update_attrs(_attrs), do: {:error, :invalid_payload}
 
   defp parse_integer(value) when is_integer(value), do: value
 
@@ -559,7 +569,6 @@ defmodule Dhc.Waitlist do
     |> filter_entries_search(opts.q)
   end
 
-  defp filter_entries_status(query, nil), do: where(query, [w, _p, _wg], w.status != "joined")
   defp filter_entries_status(query, status), do: where(query, [w, _p, _wg], w.status == ^status)
 
   defp filter_entries_search(query, nil), do: query
@@ -600,7 +609,8 @@ defmodule Dhc.Waitlist do
       guardian_last_name: field(wg, :last_name),
       guardian_phone_number: field(wg, :phone_number),
       insurance_form_submitted: fragment("false"),
-      last_status_change: w.last_status_change
+      last_status_change: w.last_status_change,
+      removed_at: w.removed_at
     })
     |> subquery()
   end
@@ -618,9 +628,12 @@ defmodule Dhc.Waitlist do
       where: p.is_active == false and is_nil(p.principal_id),
       select: %{
         id: w.id,
+        # Numbered within the entry's own standing, so a waiting person's
+        # position matches the default (waiting) listing.
         position:
           fragment(
-            "row_number() OVER (ORDER BY ? ASC, ? ASC)::int",
+            "row_number() OVER (PARTITION BY ? ORDER BY ? ASC, ? ASC)::int",
+            w.status,
             w.initial_registration_date,
             w.id
           ),
@@ -638,7 +651,8 @@ defmodule Dhc.Waitlist do
         guardian_last_name: wg.last_name,
         guardian_phone_number: wg.phone_number,
         insurance_form_submitted: fragment("false"),
-        last_status_change: w.last_status_change
+        last_status_change: w.last_status_change,
+        removed_at: w.removed_at
       }
     )
     |> subquery()

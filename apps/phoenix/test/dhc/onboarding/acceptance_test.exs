@@ -1035,11 +1035,33 @@ defmodule Dhc.Onboarding.AcceptanceTest do
       assert Repo.get!(MemberProfile, invitation.prospective_principal_id).user_profile_id ==
                reused.id
 
+      # The Waitlist standing function moved the entry from invited to joined.
+      assert %{status: "joined"} = Repo.get!(Dhc.Waitlist.WaitlistEntry, invitation.waitlist_id)
+
       assert [["Parent", "Guardian"]] =
                Repo.query!(
                  "SELECT first_name, last_name FROM waitlist_guardians WHERE profile_id = $1",
                  [Ecto.UUID.dump!(profile.id)]
                ).rows
+    end
+  end
+
+  describe "waitlist standing at acceptance" do
+    test "an entry that is not invited refuses the conversion and stays recoverable" do
+      invitation = insert_waitlist_invitation!(status: "waiting")
+      {:ok, handle, _view} = ready(invitation, "standing-subject")
+
+      assert {:error, {:waitlist_standing, :illegal_standing_change}} =
+               Acceptance.submit_payment(handle, @payment)
+
+      flush_stripe_messages()
+
+      refute Repo.get(MemberProfile, invitation.prospective_principal_id)
+      assert Repo.get!(Invitation, invitation.id).status == "pending"
+      assert %{status: "waiting"} = Repo.get!(Dhc.Waitlist.WaitlistEntry, invitation.waitlist_id)
+
+      assert %InvitationAcceptanceAttempt{last_error: "local_finalization_failed"} =
+               Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
     end
   end
 
@@ -1428,7 +1450,7 @@ defmodule Dhc.Onboarding.AcceptanceTest do
     Repo.insert!(%Dhc.Waitlist.WaitlistEntry{
       id: waitlist_id,
       email: "waitlist-acceptance-#{System.unique_integer([:positive])}@example.com",
-      status: "invited",
+      status: Keyword.get(attrs, :status, "invited"),
       initial_registration_date: now,
       last_status_change: now
     })

@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { WaitlistEntry, WaitlistStatus } from "@dhc/api-client";
+import type { WaitlistEntry } from "@dhc/api-client";
 import {
 	getCoreRowModel,
 	getExpandedRowModel,
@@ -8,12 +8,11 @@ import {
 	type TableOptions,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
-import { LoaderCircle, SendIcon } from "@lucide/svelte";
+import { LoaderCircle } from "@lucide/svelte";
 import { createRawSnippet } from "svelte";
 import { Cross2 } from "svelte-radix";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
-import * as Checkbox from "#lib/components/ui/checkbox/index.js";
 import {
 	createSvelteTable,
 	FlexRender,
@@ -24,12 +23,17 @@ import { Input } from "#lib/components/ui/input/index.js";
 import * as Select from "#lib/components/ui/select/index.js";
 import * as Table from "#lib/components/ui/table/index.js";
 import SortHeader from "#lib/components/ui/table/sort-header.svelte";
+import {
+	ToggleGroup,
+	ToggleGroupItem,
+} from "#lib/components/ui/toggle-group/index.js";
 import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
 import ActionButtons from "./actions-buttons.svelte";
 import WaitlistEntryDetails from "./waitlist-entry-details.svelte";
-import WaitlistStatusSelect from "./waitlist-status-select.svelte";
 import {
 	createWaitlistTable,
+	WAITLIST_STANDINGS,
+	type WaitlistStanding,
 	type WaitlistTableDeps,
 } from "./waitlist-table.svelte.js";
 
@@ -42,7 +46,21 @@ const waitlistUrl = waitlist.url;
 
 // State for expanded rows
 let expandedState = $state({});
-const inviteCount = $derived(waitlist.selectedIds.length);
+
+const standingLabel = $derived(
+	waitlist.standing === "removed" ? "removed" : "waiting",
+);
+
+function formatDate(value: string | null | undefined) {
+	return value ? dayjs(value).format("DD/MM/YYYY") : "N/A";
+}
+
+/** The Status cell: the standing, and when a removed person was removed. */
+function statusText(entry: WaitlistEntry) {
+	return entry.status === "removed"
+		? `Removed ${formatDate(entry.removedAt)}`
+		: "Waiting";
+}
 
 const tableOptions = $state<TableOptions<WaitlistEntry>>({
 	autoResetPageIndex: false,
@@ -59,9 +77,6 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 		get sorting() {
 			return waitlistUrl.table.state.sorting;
 		},
-		get rowSelection() {
-			return waitlist.selection;
-		},
 	},
 	onExpandedChange: (updater) => {
 		if (updater instanceof Function) {
@@ -70,20 +85,7 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 			expandedState = updater;
 		}
 	},
-	onRowSelectionChange: (updater) => waitlist.setSelection(updater),
 	columns: [
-		{
-			header: "",
-			id: "selection",
-			cell: ({ row }) => {
-				return renderComponent(Checkbox.Checkbox, {
-					checked: row.getIsSelected(),
-					onCheckedChange: (value: boolean | "indeterminate") =>
-						row.toggleSelected(!!value),
-					disabled: row.original.status === "invited",
-				});
-			},
-		},
 		{
 			header: "Actions",
 			cell: ({ row }) => {
@@ -91,9 +93,8 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 					adminNotes: row.original.adminNotes ?? "N/A",
 					isExpanded: row.getIsExpanded(),
 					onToggleExpand: () => row.toggleExpanded(),
-					inviteMember: () => waitlist.sendInvitation(row.original),
 					onEdit: (adminNotes) =>
-						waitlist.updateEntry(row.original.id, { adminNotes }),
+						waitlist.updateAdminNotes(row.original.id, adminNotes),
 				});
 			},
 		},
@@ -111,7 +112,7 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 			accessorKey: "fullName",
 			header: "Full Name",
 			footer: ({ table }) =>
-				`Total ${table.getRowCount() ?? 0} people on the waitlist`,
+				`Total ${table.getRowCount() ?? 0} people ${standingLabel}`,
 			cell: ({ getValue }) => {
 				return renderSnippet(
 					createRawSnippet((value) => ({
@@ -170,11 +171,12 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 			accessorKey: "status",
 			header: "Status",
 			cell: ({ row }) => {
-				return renderComponent(WaitlistStatusSelect, {
-					status: row.original.status,
-					disabled: waitlist.isUpdating,
-					onChange: (status: WaitlistStatus) =>
-						waitlist.setStatus(row.original, status),
+				return renderComponent(Badge, {
+					variant: row.original.status === "removed" ? "outline" : "secondary",
+					class: "h-8 whitespace-nowrap",
+					children: createRawSnippet(() => ({
+						render: () => `<span>${statusText(row.original)}</span>`,
+					})),
 				});
 			},
 		},
@@ -273,18 +275,24 @@ const table = createSvelteTable(tableOptions);
 		{/if}
 	</span>
 
-	<Button
+	<!-- A single-choice switch; clicking the active item would clear a
+	     single ToggleGroup, so an empty value is ignored. -->
+	<ToggleGroup
+		type="single"
+		variant="outline"
+		value={waitlist.standing}
+		onValueChange={(next) => {
+			if (next) waitlist.setStanding(next as WaitlistStanding);
+		}}
+		aria-label="Waitlist standing"
 		class="md:ml-auto"
-		disabled={inviteCount === 0 || waitlist.isInviting}
-		onclick={() => waitlist.invite(waitlist.selectedIds)}
 	>
-		{#if waitlist.isInviting}
-			<LoaderCircle class="mr-2 h-4 w-4 animate-spin" />
-		{:else}
-			<SendIcon class="mr-2 h-4 w-4" />
-		{/if}
-		Invite {inviteCount} members
-	</Button>
+		{#each WAITLIST_STANDINGS as standing (standing.value)}
+			<ToggleGroupItem value={standing.value} class="px-3">
+				{standing.label}
+			</ToggleGroupItem>
+		{/each}
+	</ToggleGroup>
 </div>
 <!-- Desktop Table View (hidden on mobile) -->
 <div class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]">
@@ -372,23 +380,22 @@ const table = createSvelteTable(tableOptions);
 					<!-- Actions -->
 					<div>
 						<ActionButtons
-							inviteMember={() => waitlist.sendInvitation(row.original)}
 							adminNotes={row.original.adminNotes ?? "N/A"}
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
 							onEdit={(adminNotes) =>
-								waitlist.updateEntry(row.original.id, { adminNotes })}
+								waitlist.updateAdminNotes(row.original.id, adminNotes)}
 						/>
 					</div>
 				</div>
 
 				<!-- Status -->
 				<div class="mb-3">
-					<WaitlistStatusSelect
-						status={row.original.status}
-						disabled={waitlist.isUpdating}
-						onChange={(status) => waitlist.setStatus(row.original, status)}
-					/>
+					<Badge
+						variant={row.original.status === "removed"
+							? "outline"
+							: "secondary"}>{statusText(row.original)}</Badge
+					>
 				</div>
 
 				<!-- Email -->

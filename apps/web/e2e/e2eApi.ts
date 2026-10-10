@@ -29,6 +29,7 @@ const connectionResetErrorSchema = v.object({
 
 export type E2ERole =
 	| "admin"
+	| "beginners_coordinator"
 	| "coach"
 	| "committee_coordinator"
 	| "member"

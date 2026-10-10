@@ -63,7 +63,9 @@ defmodule Dhc.Auth.Capabilities do
   # Equal operator authority over inventory, loans and the loan queue.
   @inventory_operators ~w(quartermaster admin president)
 
-  @beginners_staff @officers ++ ~w(coach beginners_coordinator)
+  # Spec story 23: coaches no longer see the whole Waitlist; only the
+  # committee and the beginners coordinator work the queue.
+  @waitlist_managers @officers ++ ~w(beginners_coordinator)
 
   # ALE-330: no read/manage split — only the committee shapes club
   # communications.
@@ -75,10 +77,10 @@ defmodule Dhc.Auth.Capabilities do
   # ── Registry ──────────────────────────────────────────────────────────
 
   @rules %{
-    "beginners.workshop.read": %{roles: @beginners_staff},
     # Opening or closing the waitlist (`PATCH /waitlist/status`) is an
-    # officer decision; the rest of the beginners staff only read and work
-    # the list.
+    # officer decision; the beginners coordinator only reads and works the
+    # list.
+    "beginners.waitlist.manage": %{roles: @waitlist_managers},
     "beginners.waitlist.toggle": %{roles: @officers},
     "discord.assignments.manage": %{roles: @member_administrators},
     "discord.doctor.use": %{roles: @officers},
