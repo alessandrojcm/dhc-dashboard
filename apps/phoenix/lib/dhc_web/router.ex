@@ -79,6 +79,10 @@ defmodule DhcWeb.Router do
     # ALE-382 — follow-ups to a failed refund.
     post("/:id/refunds/:refundId/retry", BeginnersWorkshopRefundsController, :retry)
     post("/:id/refunds/:refundId/manual", BeginnersWorkshopRefundsController, :record_manual)
+    # ALE-386: console Intake commands.
+    post("/:id/intakes/:intakeId/decline", BeginnersWorkshopIntakesController, :decline)
+    post("/:id/intakes/:intakeId/resend-link", BeginnersWorkshopIntakesController, :resend_link)
+    post("/:id/intakes/:intakeId/rotate-link", BeginnersWorkshopIntakesController, :rotate_link)
 
     # ALE-383 — Intake Email templates.
     get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)

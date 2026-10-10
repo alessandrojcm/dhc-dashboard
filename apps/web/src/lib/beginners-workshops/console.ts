@@ -8,11 +8,16 @@
 import type {
 	BeginnersWorkshopConsole,
 	BeginnersWorkshopFailedRefund,
+	BeginnersWorkshopIntakeCommand,
+	BeginnersWorkshopIntakeEmailLogEntry,
+	BeginnersWorkshopIntakeHistoryEntry,
 	BeginnersWorkshopIntakeRefund,
 	BeginnersWorkshopIntakeState,
 	BeginnersWorkshopNextBatch,
 	BeginnersWorkshopRosterIntake,
+	BeginnersWorkshopUnpaidAfterWindow,
 } from "@dhc/api-client";
+import { INTAKE_EMAIL_TYPES } from "#lib/beginners-workshops/intake-emails/presentation.js";
 import { stageLabel } from "#lib/beginners-workshops/presentation.js";
 
 const dublinParts = new Intl.DateTimeFormat("en-IE", {
@@ -377,4 +382,98 @@ export function failedRefundText(
 ): string {
 	const reason = REFUND_REASONS.get(refund.reason);
 	return `Refund of ${formatRefundAmount(refund.amountCents, refund.currency)} to ${personName(refund)} failed${reason ? ` (${reason})` : ""}. Retry it, or record a manual refund if you paid them back another way.`;
+}
+
+/**
+ * ALE-386: how the console names Phoenix's Intake commands. Which commands an
+ * Intake offers is Phoenix's `availableCommands`; this only words them. The
+ * table is exhaustive over the generated enum, so a new command is a type
+ * error until its copy is decided.
+ */
+const INTAKE_COMMAND_COPY = {
+	decline: {
+		label: "Decline",
+		done: "Declined — they keep their place in the queue",
+		history: "Declined",
+	},
+	resend_link: {
+		label: "Resend link",
+		done: "Link resent",
+		history: "Link resent",
+	},
+	rotate_link: {
+		label: "Rotate link",
+		done: "Link rotated — the old one no longer works",
+		history: "Link rotated",
+	},
+} satisfies Record<
+	BeginnersWorkshopIntakeCommand,
+	{ label: string; done: string; history: string }
+>;
+
+/** Every Intake command, in display order (Phoenix lists them in this order too). */
+export const INTAKE_COMMANDS = [
+	"decline",
+	"resend_link",
+	"rotate_link",
+] as const satisfies readonly BeginnersWorkshopIntakeCommand[];
+
+/** The button label of an Intake command. */
+export function intakeCommandLabel(
+	command: BeginnersWorkshopIntakeCommand,
+): string {
+	return INTAKE_COMMAND_COPY[command].label;
+}
+
+/** The toast after an Intake command; a repeat that changed nothing says so. */
+export function intakeCommandDone(
+	command: BeginnersWorkshopIntakeCommand,
+	outcome: "done" | "already_done",
+): string {
+	return outcome === "already_done"
+		? "Already done — nothing changed"
+		: INTAKE_COMMAND_COPY[command].done;
+}
+
+/** One history line: `Declined · Clare Coord · Thu 22 Oct, 13:00`. */
+export function historyLine(
+	entry: BeginnersWorkshopIntakeHistoryEntry,
+): string {
+	return [
+		INTAKE_COMMAND_COPY[entry.command].history,
+		entry.actor ?? "a former member",
+		formatDublinInstant(entry.occurredAt),
+	].join(" · ");
+}
+
+/** One line of an Intake's email log, as the console shows it. */
+export type EmailLogLine = { label: string; when: string; scheduled: boolean };
+
+/**
+ * One Intake Email log line. A queued email shows when it was queued; a
+ * scheduled one shows when it is due, or that it goes at the next sweep.
+ */
+export function emailLogLine(
+	entry: BeginnersWorkshopIntakeEmailLogEntry,
+	now: Date = new Date(),
+): EmailLogLine {
+	const label = INTAKE_EMAIL_TYPES[entry.emailType].label;
+	if (!entry.scheduled)
+		return { label, when: formatDublinInstant(entry.at), scheduled: false };
+	const due = new Date(entry.at).getTime() <= now.getTime();
+	return {
+		label: `${label} (scheduled)`,
+		when: due ? "at the next sweep" : formatDublinInstant(entry.at),
+		scheduled: true,
+	};
+}
+
+/** The Needs attention line of someone still unpaid after their window. */
+export function unpaidAfterWindowText(
+	person: BeginnersWorkshopUnpaidAfterWindow,
+): string {
+	const window = person.batchNumber
+		? `Batch ${person.batchNumber} window`
+		: "payment window";
+	return `${personName(person)} hasn't paid — their ${window} ended ${formatDublinInstant(person.windowEndsAt)}. They can still pay until the cutoff; resend their link or decline if they've said no.`;
 }

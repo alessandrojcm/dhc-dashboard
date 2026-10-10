@@ -44,7 +44,8 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     not_a_member: "assistantPrincipalIds",
     email_on_waitlist: "email",
     email_is_principal: "email",
-    email_has_pending_invitation: "email"
+    email_has_pending_invitation: "email",
+    invalid_note: "note"
   }
 
   use DhcWeb.Problem,
@@ -88,7 +89,13 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       not_paid: {409, "Only people who have paid can be checked in"},
       # Attendance Finalisation (ALE-391).
       payment_in_progress:
-        {409, "Someone is still paying; finish the workshop once their payment ends"}
+        {409, "Someone is still paying; finish the workshop once their payment ends"},
+      # Console Intake commands (ALE-386).
+      intake_not_found: {404, "Intake not found in this workshop"},
+      already_paid:
+        {409, "This person has paid; defer, cancel with refund or withdraw them instead"},
+      intake_closed: {409, "This Intake is closed, so it no longer has a link"},
+      invalid_note: {422, "Keep the note under 500 characters"}
     },
     fields: @internal_to_public
 

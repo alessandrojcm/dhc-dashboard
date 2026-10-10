@@ -7,7 +7,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
   """
   use ExUnit.Case, async: true
 
-  alias Dhc.BeginnersWorkshops.{Intake, WorkshopPolicy}
+  alias Dhc.BeginnersWorkshops.{Intake, IntakePolicy, WorkshopPolicy}
 
   @repo_root Path.expand("../../../../..", __DIR__)
   @client_root Path.join(@repo_root, "packages/api-client")
@@ -44,6 +44,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
                 beginnersWorkshopFastTrack.candidates beginnersWorkshopFastTrack.newPerson
                 beginnersWorkshopFastTrack.waitlistPerson
+                beginnersWorkshopIntakes.decline beginnersWorkshopIntakes.resendLink
+                beginnersWorkshopIntakes.rotateLink
                 beginnersWorkshopRefunds.recordManual beginnersWorkshopRefunds.retry
                 beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.reschedule
                 beginnersWorkshops.schedule
@@ -109,6 +111,10 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     assert schemas["BeginnersWorkshopIntakeState"]["enum"] == Intake.states()
     assert schemas["BeginnersWorkshopIntakeOrigin"]["enum"] == Intake.origins()
 
+    # ALE-386: the console Intake commands.
+    assert schemas["BeginnersWorkshopIntakeCommand"]["enum"] ==
+             Enum.map(IntakePolicy.commands(), &Atom.to_string/1)
+
     # `WorkshopPolicy.next_batch/3`, with `{:at, _}` rendered as `scheduled`.
     assert schemas["BeginnersWorkshopNextBatchStatus"]["enum"] ==
              ~w(due scheduled paused full closed)
@@ -121,7 +127,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
       for name <-
             ~w(BeginnersWorkshopConflictError BeginnersWorkshopInvalidError
                BeginnersWorkshopRefundConflictError BeginnersWorkshopCheckInConflictError
-               BeginnersWorkshopFinishConflictError),
+               BeginnersWorkshopFinishConflictError
+               BeginnersWorkshopIntakeCommandConflictError),
           code <-
             get_in(schemas, [
               name,

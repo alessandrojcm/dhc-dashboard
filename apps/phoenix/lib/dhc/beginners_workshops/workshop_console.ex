@@ -21,7 +21,16 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       Seat Hold carries when its hold runs out (ALE-381), each paid Intake
       its door check-in time (ALE-390), and each Intake with a refund
       carries its latest refund's status, method and whether it was
-      automatic (ALE-382);
+      automatic (ALE-382). Every Intake (ALE-386) also carries its medical
+      flag, link generation, Intake Email log (what was queued and when,
+      plus the scheduled email still owed: "Pre-workshop info" to a `paid`
+      Intake for the current schedule, the Follow-up to an `attended` one),
+      its history (command, actor, time, note) and its `available_commands`
+      — `IntakePolicy.available_commands/1`, the very rule the boundary
+      applies under the lock;
+    * `unpaid_after_window` — the Needs attention list of `contacted`
+      people whose payment window (their Batch's, or the Payment Cutoff for
+      a fast-track) has ended, oldest window first (ALE-386);
     * `failed_refunds` — the Needs attention list of refunds that failed
       and have not been followed up (Retry or Record manual refund), oldest
       first (ALE-382);
@@ -47,7 +56,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     Clock,
     DoorView,
     Intake,
+    IntakeEmailLog,
+    IntakeEvent,
     IntakePayment,
+    IntakePolicy,
     IntakeRefund,
     WorkshopFacts,
     WorkshopPolicy,
@@ -75,6 +87,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           finalisation:
             %{at: DateTime.t(), by: String.t() | nil, follow_up_at: DateTime.t()} | nil,
           failed_refunds: [map()],
+          unpaid_after_window: [map()],
           attention: [:nobody_waiting],
           fast_track_open: boolean()
         }
@@ -87,6 +100,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       facts = Map.fetch!(WorkshopFacts.load([id]), id)
       reading = Clock.read(clock)
       next_batch = next_batch(workshop, facts, reading)
+      roster = roster(workshop)
 
       {:ok,
        %{
@@ -94,8 +108,9 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
          batches: batches(id),
          pause: pause(workshop),
          next_batch: next_batch,
-         roster: roster(workshop),
+         roster: roster,
          failed_refunds: failed_refunds(id),
+         unpaid_after_window: unpaid_after_window(roster, reading),
          attention: attention(next_batch),
          finalisation: finalisation(workshop),
          fast_track_open: WorkshopPolicy.payment_open?(workshop, reading)
@@ -161,6 +176,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
 
   defp roster(workshop) do
     refunds = latest_refunds(workshop.id)
+    emails = email_logs(workshop.id)
+    history = histories(workshop.id)
 
     rows =
       from(i in Intake,
@@ -179,19 +196,30 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           batch_number: b.number,
           queue_date: i.queue_date,
           contacted_at: i.contacted_at,
+          window_ends_at: b.window_ends_at,
           hold_expires_at: h.expires_at,
           checked_in_at: i.checked_in_at,
+          link_generation: i.link_generation,
           first_name: p.first_name,
           last_name: p.last_name,
-          date_of_birth: p.date_of_birth
+          date_of_birth: p.date_of_birth,
+          medical_conditions: p.medical_conditions
         }
       )
       |> Repo.all()
       |> Enum.map(fn row ->
+        logged = Map.get(emails, row.id, [])
+
         row
-        |> Map.delete(:date_of_birth)
+        |> Map.drop([:date_of_birth, :medical_conditions])
+        # A fast-track's window is the Payment Cutoff (its Contact email says so).
+        |> Map.update!(:window_ends_at, &(&1 || workshop.payment_cutoff))
         |> Map.put(:minor, WorkshopPolicy.minor?(row.date_of_birth, workshop.date))
+        |> Map.put(:medical, medical?(row.medical_conditions))
         |> Map.put(:refund, Map.get(refunds, row.id))
+        |> Map.put(:email_log, logged ++ scheduled_emails(row, logged, workshop))
+        |> Map.put(:history, Map.get(history, row.id, []))
+        |> Map.put(:available_commands, IntakePolicy.available_commands(row))
       end)
 
     %{
@@ -201,6 +229,83 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       no_show: Enum.filter(rows, &(&1.state == "no_show")),
       out: Enum.reject(rows, &(&1.state in @not_out))
     }
+  end
+
+  defp medical?(nil), do: false
+  defp medical?(conditions), do: String.trim(conditions) != ""
+
+  # What was queued for each Intake, oldest first (queued, not delivered).
+  defp email_logs(workshop_id) do
+    from(l in IntakeEmailLog,
+      join: i in Intake,
+      on: i.id == l.intake_id,
+      where: i.workshop_id == ^workshop_id,
+      order_by: [asc: l.queued_at, asc: l.id],
+      select:
+        {l.intake_id,
+         %{email_type: l.email_type, occasion: l.occasion, at: l.queued_at, scheduled: false}}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  # The scheduled email still owed, by the same occasions the passes use:
+  # "Pre-workshop info" for this schedule to a `paid` Intake of a scheduled
+  # workshop, at the Payment Cutoff (`IntakeEmailLog.pre_workshop_occasion/1`),
+  # and the Follow-up to an `attended` Intake (`WorkshopPolicy.follow_up_at/1`).
+  # An `at` in the past means the next sweep.
+  defp scheduled_emails(%{state: "paid"}, logged, %BeginnersWorkshop{status: "scheduled"} = w),
+    do:
+      owed(
+        logged,
+        IntakeEmailLog.pre_workshop_occasion(w.reschedule_count),
+        "pre_workshop",
+        w.payment_cutoff
+      )
+
+  defp scheduled_emails(
+         %{state: "attended"},
+         logged,
+         %BeginnersWorkshop{status: "finalised"} = w
+       ),
+       do: owed(logged, "follow_up", "follow_up", WorkshopPolicy.follow_up_at(w))
+
+  defp scheduled_emails(_row, _logged, _workshop), do: []
+
+  defp owed(logged, occasion, email_type, at) do
+    if Enum.any?(logged, &(&1.occasion == occasion)),
+      do: [],
+      else: [%{email_type: email_type, occasion: nil, at: at, scheduled: true}]
+  end
+
+  # Each Intake's history, oldest first, the actor named by their profile.
+  defp histories(workshop_id) do
+    from(e in IntakeEvent,
+      join: i in Intake,
+      on: i.id == e.intake_id,
+      left_join: p in UserProfile,
+      on: p.principal_id == e.actor_principal_id and not is_nil(e.actor_principal_id),
+      where: i.workshop_id == ^workshop_id,
+      order_by: [asc: e.occurred_at, asc: e.id],
+      select:
+        {e.intake_id,
+         %{
+           command: e.command,
+           actor: fragment("nullif(trim(concat_ws(' ', ?, ?)), '')", p.first_name, p.last_name),
+           occurred_at: e.occurred_at,
+           note: e.note
+         }}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  # Contacted people still unpaid after their window: needs a nudge.
+  defp unpaid_after_window(%{asked: asked}, reading) do
+    asked
+    |> Enum.filter(&(DateTime.compare(&1.window_ends_at, reading.now) != :gt))
+    |> Enum.sort_by(& &1.window_ends_at, DateTime)
+    |> Enum.map(&Map.take(&1, [:id, :first_name, :last_name, :window_ends_at, :batch_number]))
   end
 
   defp finalisation(%BeginnersWorkshop{status: "finalised"} = workshop) do

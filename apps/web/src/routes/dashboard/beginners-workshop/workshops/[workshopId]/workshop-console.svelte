@@ -8,7 +8,10 @@
 	(ALE-384) Fast-track and (ALE-394) Reschedule are its commands; Batches
 	themselves come only from the system sweep. (ALE-382) Failed refunds sit
 	under Needs attention with Retry and Record manual refund, and each roster
-	row shows its refund.
+	row shows its refund. (ALE-386) Each roster row opens its Intake — facts,
+	email log, history and only the commands Phoenix lists in
+	`availableCommands` — and Needs attention lists contacted people still
+	unpaid after their window.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopConsole } from "@dhc/api-client";
@@ -39,6 +42,7 @@ import {
 	refundLabel,
 	rosterGroups,
 	type TimelineStep,
+	unpaidAfterWindowText,
 } from "#lib/beginners-workshops/console.js";
 import { doorTime } from "#lib/beginners-workshops/door.js";
 import {
@@ -51,11 +55,13 @@ import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Empty from "#lib/components/ui/empty/index.js";
+import * as Sheet from "#lib/components/ui/sheet/index.js";
 import { cn } from "#lib/utils.js";
 import SeatMeter from "../../seat-meter.svelte";
 import { pauseBatches, resumeBatches } from "./console.remote";
 import FailedRefundItem from "./failed-refund-item.svelte";
 import FastTrackDialog from "./fast-track-dialog.svelte";
+import IntakeDetail from "./intake-detail.svelte";
 import RescheduleDialog from "./reschedule-dialog.svelte";
 
 let {
@@ -64,6 +70,14 @@ let {
 }: { view: BeginnersWorkshopConsole; genders?: string[] } = $props();
 
 let fastTrackDialogOpen = $state(false);
+// The Intake open in the side sheet; read from `view`, so it refreshes
+// with the console after a command.
+let selectedIntakeId = $state<string | null>(null);
+const selectedIntake = $derived(
+	Object.values(view.roster)
+		.flat()
+		.find((intake) => intake.id === selectedIntakeId),
+);
 let rescheduleOpen = $state(false);
 // Mounted on first open, so the console renders without a search query.
 let fastTrackMounted = $state(false);
@@ -191,7 +205,7 @@ const attention = $derived(
 			{/if}
 		</section>
 
-		{#if attention.length || workshop.alerts.length || view.failedRefunds.length}
+		{#if attention.length || workshop.alerts.length || view.failedRefunds.length || view.unpaidAfterWindow.length}
 			<section class="flex flex-col gap-2" aria-labelledby="bw-attention">
 				<h2
 					id="bw-attention"
@@ -206,6 +220,18 @@ const attention = $derived(
 				{/if}
 				{#each view.failedRefunds as refund (refund.id)}
 					<FailedRefundItem workshopId={workshop.id} {refund} />
+				{/each}
+				{#each view.unpaidAfterWindow as person (person.id)}
+					<button
+						type="button"
+						class="flex items-center gap-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-left text-sm"
+						data-testid="unpaid-after-window"
+						onclick={() => (selectedIntakeId = person.id)}
+					>
+						<AlertTriangle class="size-4 shrink-0" /><span
+							>{unpaidAfterWindowText(person)}</span
+						>
+					</button>
 				{/each}
 				{#each attention as item (item)}
 					<div
@@ -320,40 +346,45 @@ const attention = $derived(
 					<ul class="flex flex-col gap-1.5">
 						{#each group.intakes as intake (intake.id)}
 							{@const refund = refundLabel(intake)}
-							<li
-								class="flex flex-wrap items-center gap-3 rounded-xl border bg-card px-3 py-2 text-sm"
-							>
-								<span class="flex-1 font-medium">{personName(intake)}</span>
-								{#if intake.minor}<Badge variant="outline">Minor</Badge>{/if}
-								<span class="text-xs text-muted-foreground"
-									>{intakeOrigin(intake)}</span
+							<li>
+								<button
+									type="button"
+									class="flex w-full flex-wrap items-center gap-3 rounded-xl border bg-card px-3 py-2 text-left text-sm hover:border-primary focus-visible:border-primary"
+									aria-label={`${personName(intake)} — ${intakeStateLabel(intake.state)}`}
+									onclick={() => (selectedIntakeId = intake.id)}
 								>
-								{#if refund}<Badge
-										variant="outline"
-										class={cn(
-											refund.tone === "failed" &&
-												"border-destructive bg-destructive text-white",
-											refund.tone === "progress" &&
-												"border-amber-500 text-amber-900",
-											refund.tone === "done" &&
-												"border-emerald-700 text-emerald-900",
-										)}
-										data-testid="refund-status">{refund.text}</Badge
-									>{/if}
-								{#if holdLabel(intake)}<Badge
-										variant="outline"
-										class="border-sky-600 text-sky-800"
-										data-testid="hold-expiry">{holdLabel(intake)}</Badge
-									>{/if}
-								{#if intake.checkedInAt}<Badge
-										variant="outline"
-										class="border-emerald-600 text-emerald-800"
-										data-testid="checked-in"
-										>In {doorTime(intake.checkedInAt)}</Badge
-									>{/if}
-								<Badge variant="secondary"
-									>{intakeStateLabel(intake.state)}</Badge
-								>
+									<span class="flex-1 font-medium">{personName(intake)}</span>
+									{#if intake.minor}<Badge variant="outline">Minor</Badge>{/if}
+									<span class="text-xs text-muted-foreground"
+										>{intakeOrigin(intake)}</span
+									>
+									{#if refund}<Badge
+											variant="outline"
+											class={cn(
+												refund.tone === "failed" &&
+													"border-destructive bg-destructive text-white",
+												refund.tone === "progress" &&
+													"border-amber-500 text-amber-900",
+												refund.tone === "done" &&
+													"border-emerald-700 text-emerald-900",
+											)}
+											data-testid="refund-status">{refund.text}</Badge
+										>{/if}
+									{#if holdLabel(intake)}<Badge
+											variant="outline"
+											class="border-sky-600 text-sky-800"
+											data-testid="hold-expiry">{holdLabel(intake)}</Badge
+										>{/if}
+									{#if intake.checkedInAt}<Badge
+											variant="outline"
+											class="border-emerald-600 text-emerald-800"
+											data-testid="checked-in"
+											>In {doorTime(intake.checkedInAt)}</Badge
+										>{/if}
+									<Badge variant="secondary"
+										>{intakeStateLabel(intake.state)}</Badge
+									>
+								</button>
 							</li>
 						{/each}
 					</ul>
@@ -373,6 +404,29 @@ const attention = $derived(
 		{/if}
 	</div>
 </div>
+
+<Sheet.Root
+	open={Boolean(selectedIntake)}
+	onOpenChange={(open) => {
+		if (!open) selectedIntakeId = null;
+	}}
+>
+	<Sheet.Content side="right" class="w-full overflow-y-auto sm:max-w-md">
+		<Sheet.Header class="sr-only">
+			<Sheet.Title>Intake</Sheet.Title>
+			<Sheet.Description
+				>This person's place in the workshop, its emails, history and commands.</Sheet.Description
+			>
+		</Sheet.Header>
+		<div class="p-5">
+			{#if selectedIntake}
+				{#key selectedIntake.id}
+					<IntakeDetail workshopId={workshop.id} intake={selectedIntake} />
+				{/key}
+			{/if}
+		</div>
+	</Sheet.Content>
+</Sheet.Root>
 
 {#if scheduled && fastTrackMounted}
 	<FastTrackDialog

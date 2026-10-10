@@ -36,7 +36,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   change, and `transition/3` is the only writer of a status:
 
       Beginners' Workshop  scheduled → finalised | cancelled
-      Intake               contacted → paid | lapsed | returned
+      Intake               contacted → paid | lapsed | returned | declined
                            paid → attended | no_show
       payment (Seat Hold)  open → paid | releasing | released | policy_failed
                            releasing → released | paid
@@ -46,7 +46,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   The workshop end states are terminal. Intakes are created `contacted`
   (ALE-380); ALE-381 adds `contacted → paid` and the payment rows; ALE-385
   adds the Payment Cutoff's `contacted → lapsed | returned`; ALE-391 adds
-  Attendance Finalisation's `paid → attended | no_show`. A Stripe refund
+  Attendance Finalisation's `paid → attended | no_show`; ALE-386 adds
+  `decline`'s `contacted → declined`. A Stripe refund
   is created `pending`; a manual refund is written `completed` (both by
   `persist/1`, the transition table governs every later change). Later
   Intake moves and Carried Fees join the table with the tickets that
@@ -151,6 +152,33 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   stays when that person is later unassigned. Both are idempotent: checking
   in a checked-in person keeps the first record. Neither is a state change;
   Attendance Finalisation turns the record into `attended` / `no_show`.
+
+  ## Console Intake commands (ALE-386)
+
+  `decline`, `resend_link` and `rotate_link` (`beginners.workshops.manage`)
+  act on one Intake of one workshop and share one plumbing,
+  `intake_command/6`: every one takes an optional note, decides with
+  `IntakePolicy.check/2` under the lock (the same rule the console's
+  `availableCommands` comes from), and, when it acts, writes one Intake
+  history row (`IntakeEvent`: command, actor, time, note) in the same
+  transaction. A command whose Intake is already where it leads returns
+  `ok` (`outcome: :already_done`) and writes nothing. Later Intake commands
+  join `IntakePolicy` and add an `act_on_intake/4` clause.
+
+    * `decline` locks Beginners' Workshop → the person's Waitlist entry →
+      Intake → its live Seat Hold: the `contacted` Intake becomes
+      `declined`, the person stays (or goes back to) `waiting` with their
+      original priority, a live hold becomes `releasing` (Stripe still ends
+      it; a completion that arrives anyway is refunded in full by
+      `complete_payment`'s `paid_after_close` path) and "Declined" is
+      queued.
+    * `resend_link` sends the Intake's own email again — "Contact – pay"
+      through the Batch path's `queue_contact_email/7` while `contacted`,
+      "Place confirmed" while `paid` — with log occasion
+      `resend_link:<event id>`. `rotate_link` first increments the link
+      generation (a new token, so the old link resolves to nothing and the
+      page says "no longer active"), then sends the same email
+      (`rotate_link:<event id>`). Both work on open Intakes only.
 
   No staff command sends email itself; `fast_track`'s Contact email is
   queued by the Intake it creates, exactly as a Batch's is.
@@ -279,8 +307,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     IntakeCheckout,
     IntakeEmailLog,
     IntakeEmails,
+    IntakeEvent,
     IntakeLink,
     IntakePayment,
+    IntakePolicy,
     IntakeRefund,
     IntakeRefunds,
     StaffAssignment,
@@ -348,6 +378,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:finish_workshop, workshop_id :: binary()}
           | {:finalise_attendance, workshop_id :: binary()}
           | {:send_follow_ups, workshop_id :: binary()}
+          | {IntakePolicy.command(), workshop_id :: binary(), intake_id :: binary(), map()}
 
   @typedoc """
   Who `fast_track` places: an existing Waitlist entry by id, or a new
@@ -402,6 +433,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :check_in_closed
           | :not_paid
           | :not_due
+          | :intake_not_found
+          | :invalid_note
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -420,8 +453,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     # Assignment-scoped (ALE-379): authorized against the workshop's Staff.
     check_in: :"beginners.workshops.run",
     undo_check_in: :"beginners.workshops.run",
-    finish_workshop: :"beginners.workshops.run"
+    finish_workshop: :"beginners.workshops.run",
+    # Console Intake commands (ALE-386).
+    decline: :"beginners.workshops.manage",
+    resend_link: :"beginners.workshops.manage",
+    rotate_link: :"beginners.workshops.manage"
   }
+
+  # The console Intake commands: one plumbing, one rule (`IntakePolicy`).
+  @intake_commands IntakePolicy.commands()
 
   # Commands only the `:system` actor (time-driven passes) may run.
   @system_commands [
@@ -462,7 +502,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   @transitions %{
     workshop: %{"scheduled" => ~w(finalised cancelled)},
-    intake: %{"contacted" => ~w(paid lapsed returned), "paid" => ~w(attended no_show)},
+    intake: %{
+      "contacted" => ~w(paid lapsed returned declined),
+      "paid" => ~w(attended no_show)
+    },
     payment: %{
       "open" => ~w(paid releasing released policy_failed),
       "releasing" => ~w(released paid)
@@ -563,6 +606,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:currency, "beginners_workshop_intake_payments_currency_check"}
     ],
     StaffAssignment => [{:role, "beginners_workshop_staff_role_check"}],
+    IntakeEvent => [{:note, "beginners_workshop_intake_events_note_check"}],
     IntakeRefund => [
       {:status, "beginners_workshop_intake_refunds_status_check"},
       {:method, "beginners_workshop_intake_refunds_method_check"},
@@ -840,6 +884,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       end)
     end
   end
+
+  defp run({:staff, principal_id}, {command, workshop_id, intake_id, attrs}, clock)
+       when command in @intake_commands and is_map(attrs),
+       do: intake_command(command, principal_id, workshop_id, intake_id, attrs, clock)
 
   defp run(_actor, _command, _clock), do: {:error, :unknown_command}
 
@@ -1409,7 +1457,27 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            }
            |> Intake.contact_changeset()
            |> persist(),
-         {:ok, _job} <-
+         :ok <-
+           queue_contact_email(
+             intake,
+             entry,
+             first_name,
+             workshop,
+             window_end,
+             "contact",
+             reading
+           ) do
+      {:ok, intake}
+    end
+  end
+
+  # The one "Contact – pay" path: the Batch and Fast-track contact, and a
+  # resent or rotated link (ALE-386), each with its own log occasion. The
+  # button is the Intake's link at its current generation.
+  defp queue_contact_email(intake, entry, first_name, workshop, window_end, occasion, reading) do
+    token = IntakeLink.token(intake.id, intake.link_generation)
+
+    with {:ok, _job} <-
            IntakeEmails.queue(
              "contact_pay",
              entry,
@@ -1420,12 +1488,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            %{
              intake_id: intake.id,
              email_type: "contact_pay",
-             occasion: "contact",
+             occasion: occasion,
              queued_at: reading.now
            }
            |> IntakeEmailLog.changeset()
            |> persist() do
-      {:ok, intake}
+      :ok
     end
   end
 
@@ -1750,17 +1818,34 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp pay_intake(intake, workshop, reading) do
     with {:ok, intake} <-
            transition(:intake, intake, Intake.paid_changeset(intake, "stripe", reading.now)),
-         :ok <- queue_place_confirmed(intake, workshop, reading),
+         :ok <- queue_place_confirmed(intake, workshop, "place_confirmed", reading),
          :ok <- pre_workshop_if_cutoff_passed(intake, workshop, reading) do
       {:ok, %{outcome: :paid}}
     end
   end
 
-  defp queue_place_confirmed(intake, workshop, reading) do
+  # "Place confirmed" for how the Intake was paid; `occasion` is
+  # `place_confirmed` at payment, or a resent/rotated link's (ALE-386).
+  defp queue_place_confirmed(
+         %Intake{paid_via: "carried_fee"} = intake,
+         workshop,
+         occasion,
+         reading
+       ),
+       do:
+         queue_intake_email(
+           intake,
+           "place_confirmed_carried",
+           occasion,
+           &base_values(workshop, &1),
+           reading
+         )
+
+  defp queue_place_confirmed(intake, workshop, occasion, reading) do
     queue_intake_email(
       intake,
       "place_confirmed_paid",
-      "place_confirmed",
+      occasion,
       &Map.put(base_values(workshop, &1), "fee", Values.money(workshop.fee_cents)),
       reading
     )
@@ -2390,6 +2475,201 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       :completed_at,
       :failed_at
     ])
+  end
+
+  # ── Console Intake commands (ALE-386) ───────────────────────────
+
+  # The shared plumbing of every console Intake command: an optional note,
+  # one locked re-read, `IntakePolicy.check/2` deciding, the command's own
+  # act, and one history row when it acted. A repeat that finds the Intake
+  # already where the command leads succeeds and writes nothing.
+  defp intake_command(command, principal_id, workshop_id, intake_id, attrs, clock) do
+    with {:ok, note} <- command_note(attrs),
+         {:ok, workshop_id} <- cast_id(workshop_id),
+         {:ok, peek} <- peek_console_intake(workshop_id, intake_id) do
+      transact(fn ->
+        with_locked(
+          intake_command_spec(command, peek),
+          &intake_command_locked(&1, command, %{actor: principal_id, note: note}, clock)
+        )
+      end)
+    end
+  end
+
+  defp command_note(attrs) do
+    case fetch_attr(attrs, :note) do
+      nil ->
+        {:ok, nil}
+
+      note when is_binary(note) ->
+        note |> String.trim() |> bounded_note()
+
+      _other ->
+        {:error, :invalid_note}
+    end
+  end
+
+  defp bounded_note(""), do: {:ok, nil}
+
+  defp bounded_note(note) do
+    if String.length(note) <= IntakeEvent.note_max(),
+      do: {:ok, note},
+      else: {:error, :invalid_note}
+  end
+
+  # Unlocked: which person the Intake is (to lock their Waitlist entry
+  # before the Intake). An Intake never changes workshop or person; only
+  # anonymisation nulls the person, which the locked re-read sees.
+  defp peek_console_intake(workshop_id, intake_id) do
+    with {:ok, intake_id} <- Ecto.UUID.cast(intake_id),
+         %{} = peek <-
+           Repo.one(
+             from(i in Intake,
+               where: i.id == ^intake_id and i.workshop_id == ^workshop_id,
+               select: %{intake_id: i.id, workshop_id: i.workshop_id, waitlist_id: i.waitlist_id}
+             )
+           ) do
+      {:ok, peek}
+    else
+      _ -> {:error, :intake_not_found}
+    end
+  end
+
+  # `decline` changes the person's standing and may release their hold, so
+  # it locks the Waitlist entry and the live Seat Hold too.
+  defp intake_command_spec(:decline, %{waitlist_id: waitlist_id} = peek) do
+    peek
+    |> intake_spec(open_payment(peek.intake_id))
+    |> Map.put(
+      :waitlist_entry,
+      waitlist_id && from(e in WaitlistEntry, where: e.id == ^waitlist_id)
+    )
+  end
+
+  defp intake_command_spec(_link_command, peek), do: intake_spec(peek, nil)
+
+  defp intake_command_locked(%{intake: intake} = locked, command, context, clock) do
+    reading = Clock.read(clock)
+
+    case IntakePolicy.check(command, intake) do
+      :ok ->
+        event_id = Ecto.UUID.generate()
+
+        with {:ok, intake} <- act_on_intake(command, locked, event_id, reading),
+             {:ok, _event} <- record_intake_event(intake, command, event_id, context, reading) do
+          {:ok, intake_command_view(intake, :done)}
+        end
+
+      :already_done ->
+        {:ok, intake_command_view(intake, :already_done)}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp act_on_intake(:decline, locked, _event_id, reading) do
+    %{workshop: workshop, waitlist_entry: entry, intake: intake, payment: hold} = locked
+
+    with {:ok, intake} <-
+           transition(:intake, intake, Intake.close_changeset(intake, "declined")),
+         :ok <- release_to_stripe(hold),
+         :ok <- back_to_waiting(entry),
+         :ok <-
+           queue_intake_email(
+             intake,
+             "declined",
+             "declined",
+             &%{"firstName" => &1, "date" => Values.date(workshop.date)},
+             reading
+           ) do
+      {:ok, intake}
+    end
+  end
+
+  defp act_on_intake(:resend_link, %{workshop: workshop, intake: intake}, event_id, reading) do
+    with :ok <- queue_link_email(intake, workshop, "resend_link:#{event_id}", reading),
+         do: {:ok, intake}
+  end
+
+  defp act_on_intake(:rotate_link, %{workshop: workshop, intake: intake}, event_id, reading) do
+    token = IntakeLink.token(intake.id, intake.link_generation + 1)
+
+    with {:ok, intake} <-
+           intake |> Intake.rotate_link_changeset(IntakeLink.hash(token)) |> persist(),
+         :ok <- queue_link_email(intake, workshop, "rotate_link:#{event_id}", reading) do
+      {:ok, intake}
+    end
+  end
+
+  # A live Seat Hold of a closing Intake stops counting as a seat at once;
+  # only Stripe ends the session (`release_payment`, `reconcile`), and a
+  # completion that arrives anyway is refunded (`refund_after_close/2`).
+  defp release_to_stripe(nil), do: :ok
+
+  defp release_to_stripe(%IntakePayment{} = hold) do
+    with {:ok, _hold} <-
+           transition(:payment, hold, Ecto.Changeset.change(hold, status: "releasing")),
+         do: :ok
+  end
+
+  # A contacted person is `waiting`, so their original priority stands; one
+  # staff removed while contacted goes back to `waiting` (the Waitlist
+  # keeps their registration date). An anonymised person has no standing.
+  defp back_to_waiting(%WaitlistEntry{status: "removed", id: id}) do
+    with {:ok, _entry} <- Waitlist.change_standing(id, "waiting"), do: :ok
+  end
+
+  defp back_to_waiting(_waiting_or_anonymised), do: :ok
+
+  # The email an open Intake's link travels in: "Contact – pay" while
+  # contacted (its window is its Batch's, or the Payment Cutoff for a
+  # fast-track), "Place confirmed" once paid.
+  defp queue_link_email(%Intake{waitlist_id: nil}, _workshop, _occasion, _reading), do: :ok
+
+  defp queue_link_email(%Intake{state: "contacted"} = intake, workshop, occasion, reading) do
+    case Repo.get(WaitlistEntry, intake.waitlist_id) do
+      %WaitlistEntry{email: email} = entry when is_binary(email) ->
+        queue_contact_email(
+          intake,
+          entry,
+          first_name_of(intake.waitlist_id),
+          workshop,
+          intake_window_end(intake, workshop),
+          occasion,
+          reading
+        )
+
+      _anonymised ->
+        :ok
+    end
+  end
+
+  defp queue_link_email(%Intake{state: "paid"} = intake, workshop, occasion, reading),
+    do: queue_place_confirmed(intake, workshop, occasion, reading)
+
+  defp intake_window_end(%Intake{batch_id: nil}, workshop), do: workshop.payment_cutoff
+
+  defp intake_window_end(%Intake{batch_id: batch_id}, _workshop),
+    do: Repo.one!(from(b in Batch, where: b.id == ^batch_id, select: b.window_ends_at))
+
+  defp record_intake_event(intake, command, event_id, %{actor: actor, note: note}, reading) do
+    %{
+      id: event_id,
+      intake_id: intake.id,
+      command: Atom.to_string(command),
+      actor_principal_id: actor,
+      note: note,
+      occurred_at: reading.now
+    }
+    |> IntakeEvent.changeset()
+    |> persist()
+  end
+
+  defp intake_command_view(%Intake{} = intake, outcome) do
+    intake
+    |> Map.take([:id, :workshop_id, :state, :link_generation])
+    |> Map.put(:outcome, outcome)
   end
 
   # ── check_in / undo_check_in ────────────────────────────────────
