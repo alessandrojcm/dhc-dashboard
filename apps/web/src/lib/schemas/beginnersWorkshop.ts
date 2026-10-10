@@ -7,6 +7,7 @@
  */
 import type {
 	BeginnersWorkshopFastTrackRequest,
+	BeginnersWorkshopManualRefundRequest,
 	BeginnersWorkshopScheduleRequest,
 	BeginnersWorkshopSettingsRequest,
 	BeginnersWorkshopStaffRequest,
@@ -200,3 +201,32 @@ export const fastTrackNewPersonSchema = v.pipe(
 export type FastTrackNewPersonInput = v.InferInput<
 	typeof fastTrackNewPersonSchema
 >;
+
+const refundId = v.pipe(v.string(), v.uuid("Unknown refund."));
+
+/** ALE-382: Retry a failed refund from Needs attention. */
+export const retryRefundSchema = v.object({ id: workshopId, refundId });
+
+/**
+ * ALE-382: Record manual refund — the coordinator paid the person back
+ * outside Stripe. The optional note says how; a blank note is left out.
+ */
+export const recordManualRefundSchema = v.pipe(
+	v.object({
+		id: workshopId,
+		refundId,
+		note: v.optional(
+			v.pipe(
+				v.string(),
+				v.trim(),
+				v.maxLength(500, "Keep the note under 500 characters."),
+			),
+			"",
+		),
+	}),
+	v.transform(({ id, refundId, note }) => ({
+		id,
+		refundId,
+		body: (note ? { note } : {}) satisfies BeginnersWorkshopManualRefundRequest,
+	})),
+);

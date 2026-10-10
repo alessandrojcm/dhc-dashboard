@@ -77,6 +77,11 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       email_is_principal: {409, "This email belongs to a Member or former Member"},
       email_has_pending_invitation: {409, "This email already has a pending Invitation"},
       invalid_payload: {422, "Check the person's details"},
+      # Refund follow-ups (ALE-382).
+      refund_not_found: {404, "Refund not found"},
+      refund_not_failed: {409, "Only a failed refund can be retried or recorded as manual"},
+      refund_followed_up: {409, "This failed refund was already retried or recorded as manual"},
+      already_requested: {409, "This payment already has a refund in progress or completed"},
       # Door check-in (ALE-390).
       check_in_not_open: {409, "Check-in opens an hour before the workshop starts"},
       check_in_closed: {409, "Check-in has closed for this workshop"},

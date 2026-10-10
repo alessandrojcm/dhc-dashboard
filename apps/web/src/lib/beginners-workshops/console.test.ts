@@ -5,11 +5,14 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
 	consoleTimeline,
+	failedRefundText,
 	formatDublinInstant,
+	formatRefundAmount,
 	holdLabel,
 	nextBatchHeadline,
 	nextBatchSize,
 	nowCard,
+	refundLabel,
 } from "#lib/beginners-workshops/console.js";
 
 function next(
@@ -80,6 +83,7 @@ function view(
 		},
 		nextBatch: next(),
 		roster: { seated: [], asked: [], out: [] },
+		failedRefunds: [],
 		attention: [],
 		fastTrackOpen: true,
 		...overrides,
@@ -197,6 +201,7 @@ describe("nowCard", () => {
 			contactedAt: "2026-10-20T09:00:00Z",
 			holdExpiresAt: null,
 			checkedInAt,
+			refund: null,
 		});
 		const today = (stage: "today_before_check_in" | "check_in_open") =>
 			view({
@@ -229,6 +234,7 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 		contactedAt: "2026-10-20T09:00:00Z",
 		holdExpiresAt,
 		checkedInAt: null,
+		refund: null,
 		firstName: "Aoife",
 		lastName: "Byrne",
 		minor: false,
@@ -278,5 +284,48 @@ describe("holdLabel (ALE-381)", () => {
 			"Paying now · hold ending",
 		);
 		expect(holdLabel({ holdExpiresAt: null }, now)).toBeNull();
+	});
+});
+
+describe("refundLabel (ALE-382)", () => {
+	const refund = {
+		status: "completed" as const,
+		method: "stripe" as const,
+		automatic: true,
+		amountCents: 4000,
+		currency: "eur",
+	};
+
+	it("names failed, automatic and manual refunds", () => {
+		expect(refundLabel({ refund: { ...refund, status: "failed" } })).toEqual({
+			text: "Refund failed",
+			tone: "failed",
+		});
+		expect(refundLabel({ refund })?.text).toBe("Refunded automatically");
+		expect(
+			refundLabel({ refund: { ...refund, status: "pending" } })?.text,
+		).toBe("Automatic refund in progress");
+		expect(refundLabel({ refund: { ...refund, method: "manual" } })?.text).toBe(
+			"Refunded manually",
+		);
+		expect(refundLabel({ refund: null })).toBeNull();
+	});
+
+	it("words a failed refund for Needs attention", () => {
+		expect(formatRefundAmount(1250, "gbp")).toBe("12.50 GBP");
+		expect(
+			failedRefundText({
+				id: "r",
+				intakeId: "i",
+				firstName: "Dara",
+				lastName: null,
+				amountCents: 3500,
+				currency: "eur",
+				reason: "paid_after_close",
+				failedAt: null,
+			}),
+		).toBe(
+			"Refund of €35.00 to Dara failed (they paid after their Intake closed). Retry it, or record a manual refund if you paid them back another way.",
+		);
 	});
 });

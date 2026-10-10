@@ -39,12 +39,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       Intake               contacted → paid | lapsed | returned
       payment (Seat Hold)  open → paid | releasing | released | policy_failed
                            releasing → released | paid
+      refund               pending → processing | completed | failed
+                           processing → completed | failed
 
   The workshop end states are terminal. Intakes are created `contacted`
   (ALE-380); ALE-381 adds `contacted → paid` and the payment rows; ALE-385
-  adds the Payment Cutoff's `contacted → lapsed | returned`. Later
-  Intake moves, refunds and Carried Fees join the table with the tickets
-  that create them.
+  adds the Payment Cutoff's `contacted → lapsed | returned`. A Stripe
+  refund is created `pending`; a manual refund is written `completed` (both
+  by `persist/1`, the transition table governs every later change). Later
+  Intake moves and Carried Fees join the table with the tickets that create
+  them.
 
   **Constraints are translated, never raised.** `persist/1` declares every
   unique and check constraint and turns a violation into a domain reason or a
@@ -141,10 +145,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       and from the success return (which passes the session id, so it is
       retrieved server-side). It is idempotent and always finds the row by
       session id. An amount or non-`eur` currency mismatch makes the row
-      `policy_failed` and leaves the Intake `contacted` (the automatic
-      refund arrives with the refunds ticket). Otherwise the row becomes
-      `paid`, an open Intake becomes `paid` (`paid_via: stripe`) and "Place
-      confirmed – paid" is queued with its log row in the same transaction.
+      `policy_failed`, leaves the Intake `contacted` and requests the
+      automatic refund (ALE-382). Otherwise the row becomes `paid`; an open
+      Intake becomes `paid` (`paid_via: stripe`) and "Place confirmed –
+      paid" is queued with its log row in the same transaction, while a
+      completion for an Intake that already closed (or a `releasing` hold)
+      requests the automatic refund instead.
     * `release_payment` (`:stripe`) runs on `checkout.session.expired`.
     * `reap_holds` (`:system`, a sweep pass) asks Stripe to expire every
       session whose hold ran out and settles the row from Stripe's answer
@@ -172,6 +178,39 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   then locks Beginners' Workshop → Intake → payment from the top down and
   decides on the re-read row. The row's workshop and Intake never change,
   so the peek never goes stale.
+
+  ## Refunds (ALE-382)
+
+  A refund is always the full amount the payment row took, against that
+  payment's PaymentIntent, under the idempotency key
+  `beginners-intake-refund:<id>` (`IntakeRefunds`, the only Stripe refund
+  caller). An automatic refund is requested inside the transaction that
+  discovers it is owed — a `policy_failed` payment or a completion after
+  the Intake closed — which also enqueues its submission and queues
+  "Payment refunded (automatic)". A refund that starts a command peeks the
+  row (its payment never changes), then locks payment → refund; refund
+  progression never takes the workshop or Intake lock.
+
+    * `submit_refund` (`:system`, the refund worker) calls Stripe between
+      transactions and writes the answer after a locked re-read. A Stripe
+      outage leaves it `pending` and fails (the job retries); a refusal
+      makes it `failed`.
+    * `apply_refund_event` (`:stripe`, `refund.*`) finds the row by Stripe
+      refund id, or by the refund id in the object's metadata when the event
+      beat the submission's record. Any other refund is acknowledged as not
+      ours (the Workshops target owns it).
+    * `reconcile` (`:system`, the reconcile worker) repairs missed events in
+      one bounded pass: pending refunds are enqueued again, processing ones
+      re-read from Stripe, and live or releasing payment rows settled when
+      their Checkout Session completed or expired.
+    * `retry_refund` and `record_manual_refund` (`beginners.workshops.manage`)
+      follow up a failed refund with a new row (`follows_refund_id`); the
+      failed row stays as history and a refund is followed up once.
+
+  Terminal refunds (`completed`, `failed`) ignore later events. When a refund
+  fails, the coordinator-alert holders get a keyed Notification
+  (`beginners-workshop-refund:<id>:failed`, signalled after commit). Neither
+  a failed refund nor a manual refund record emails the person.
   """
 
   import Ecto.Query
@@ -190,6 +229,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     IntakeEmails,
     IntakeLink,
     IntakePayment,
+    IntakeRefund,
+    IntakeRefunds,
     StaffAssignment,
     WorkshopFacts,
     WorkshopPolicy,
@@ -197,6 +238,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   }
 
   alias Dhc.BeginnersWorkshops.IntakeEmails.Values
+  alias Dhc.BeginnersWorkshops.Workers.RefundWorker
   alias Dhc.ClubCalendar
   alias Dhc.Notifications
   alias Dhc.Repo
@@ -239,6 +281,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :reap_holds
           | {:pass_payment_cutoff, workshop_id :: binary()}
           | {:fast_track, workshop_id :: binary(), fast_track_person()}
+          | {:submit_refund, refund_id :: binary()}
+          | {:apply_refund_event, stripe_refund :: map()}
+          | :reconcile
+          | {:retry_refund, workshop_id :: binary(), refund_id :: binary()}
+          | {:record_manual_refund, workshop_id :: binary(), refund_id :: binary(), map()}
           | {:check_in, workshop_id :: binary(), intake_id :: binary()}
           | {:undo_check_in, workshop_id :: binary(), intake_id :: binary()}
 
@@ -286,6 +333,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :email_is_principal
           | :email_has_pending_invitation
           | :invalid_payload
+          | :refund_not_found
+          | :refund_not_failed
+          | :refund_followed_up
+          | :already_requested
+          | :stripe_unavailable
           | :check_in_not_open
           | :check_in_closed
           | :not_paid
@@ -301,23 +353,37 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     resume_batches: :"beginners.workshops.manage",
     set_staff: :"beginners.workshops.manage",
     fast_track: :"beginners.workshops.manage",
+    retry_refund: :"beginners.workshops.manage",
+    record_manual_refund: :"beginners.workshops.manage",
     # Assignment-scoped (ALE-379): authorized against the workshop's Staff.
     check_in: :"beginners.workshops.run",
     undo_check_in: :"beginners.workshops.run"
   }
 
   # Commands only the `:system` actor (time-driven passes) may run.
-  @system_commands [:send_due_batch, :reap_holds, :pass_payment_cutoff]
+  @system_commands [
+    :send_due_batch,
+    :reap_holds,
+    :pass_payment_cutoff,
+    :submit_refund,
+    :reconcile
+  ]
 
   # The person's Intake-page commands (`{:intake_link, token}`).
   @intake_link_commands [:start_payment]
 
   # Stripe-driven commands (webhooks and the success return).
-  @stripe_commands [:complete_payment, :release_payment]
+  @stripe_commands [:complete_payment, :release_payment, :apply_refund_event]
 
   # How many expired holds one `reap_holds` pass settles; the next sweep
   # takes the rest.
   @reap_batch 100
+
+  @refund_outcomes %{"processing" => :processing, "completed" => :completed, "failed" => :failed}
+
+  # How many refunds and payment rows one `reconcile` pass repairs (each);
+  # the next tick takes the rest.
+  @reconcile_batch 100
 
   # The coordinator-alert recipients (ALE-380).
   @alerts_capability :"beginners.workshops.alerts.receive"
@@ -335,11 +401,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     payment: %{
       "open" => ~w(paid releasing released policy_failed),
       "releasing" => ~w(released paid)
+    },
+    # Stripe may answer the create terminally, so `pending` can go straight
+    # to `completed` or `failed`. A manual refund is inserted `completed`.
+    refund: %{
+      "pending" => ~w(processing completed failed),
+      "processing" => ~w(completed failed)
     }
   }
 
   # The status field of each entity in the transition table.
-  @status_fields %{workshop: :status, intake: :state, payment: :status}
+  @status_fields %{workshop: :status, intake: :state, payment: :status, refund: :status}
 
   # One request plans a season, not a year of weekly sessions.
   @max_scheduled_at_once 20
@@ -382,6 +454,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:intake_id, "beginners_workshop_intake_payments_one_open_index", :concurrent_change},
       {:stripe_checkout_session_id, "beginners_workshop_intake_payments_session_index",
        :concurrent_change}
+    ],
+    # Refunds are written under the payment lock, so these are backstops.
+    IntakeRefund => [
+      {:payment_id, "beginners_workshop_intake_refunds_one_live_index", :already_requested},
+      {:follows_refund_id, "beginners_workshop_intake_refunds_follows_index",
+       :refund_followed_up},
+      {:idempotency_key, "beginners_workshop_intake_refunds_idempotency_key_index",
+       :concurrent_change},
+      {:stripe_refund_id, "beginners_workshop_intake_refunds_stripe_refund_index",
+       :concurrent_change}
     ]
   }
 
@@ -411,7 +493,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:amount_cents, "beginners_workshop_intake_payments_amount_check"},
       {:currency, "beginners_workshop_intake_payments_currency_check"}
     ],
-    StaffAssignment => [{:role, "beginners_workshop_staff_role_check"}]
+    StaffAssignment => [{:role, "beginners_workshop_staff_role_check"}],
+    IntakeRefund => [
+      {:status, "beginners_workshop_intake_refunds_status_check"},
+      {:method, "beginners_workshop_intake_refunds_method_check"},
+      {:amount_cents, "beginners_workshop_intake_refunds_amount_check"}
+    ]
   }
 
   @doc """
@@ -624,6 +711,22 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         )
       end)
     end
+  end
+
+  defp run(:system, {:submit_refund, refund_id}, clock), do: submit_refund(refund_id, clock)
+
+  defp run(:stripe, {:apply_refund_event, object}, clock) when is_map(object),
+    do: apply_refund_event(object, clock)
+
+  defp run(:system, :reconcile, clock), do: reconcile(clock)
+
+  defp run({:staff, principal_id}, {:retry_refund, workshop_id, refund_id}, clock),
+    do: follow_up(workshop_id, refund_id, principal_id, :retry, clock)
+
+  defp run({:staff, principal_id}, {:record_manual_refund, workshop_id, refund_id, attrs}, clock)
+       when is_map(attrs) do
+    with {:ok, note} <- manual_note(attrs),
+         do: follow_up(workshop_id, refund_id, principal_id, {:manual, note}, clock)
   end
 
   defp run({:staff, principal_id}, {:check_in, workshop_id, intake_id}, clock),
@@ -1327,14 +1430,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {_status, {:complete, details}} ->
         if details.amount == payment.amount_cents and details.currency == payment.currency,
           do: record_paid(locked, details, reading),
-          else: record_policy_failure(payment, details, reading)
+          else: record_policy_failure(locked, details, reading)
 
       {_status, _not_paid} ->
         {:ok, %{outcome: :not_paid}}
     end
   end
 
-  defp record_policy_failure(payment, details, reading) do
+  defp record_policy_failure(%{payment: payment} = locked, details, reading) do
     changeset =
       Ecto.Changeset.change(payment,
         status: "policy_failed",
@@ -1344,7 +1447,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         stripe_payment_intent_id: details.payment_intent
       )
 
-    with {:ok, _payment} <- transition(:payment, payment, changeset),
+    with {:ok, payment} <- transition(:payment, payment, changeset),
+         {:ok, _refund} <-
+           request_automatic_refund(%{locked | payment: payment}, "policy_failed", reading),
          do: {:ok, %{outcome: :policy_failed}}
   end
 
@@ -1360,13 +1465,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         stripe_payment_intent_id: details.payment_intent
       )
 
-    with {:ok, _payment} <- transition(:payment, payment, changeset) do
+    with {:ok, payment} <- transition(:payment, payment, changeset) do
       if was_open? and intake.state == "contacted",
         do: pay_intake(intake, workshop, reading),
-        # A completion for a hold whose Intake already closed: the payment is
-        # recorded; the automatic refund arrives with the refunds ticket.
-        else: {:ok, %{outcome: :paid_after_close}}
+        else: refund_after_close(%{payment: payment, intake: intake, workshop: workshop}, reading)
     end
+  end
+
+  # A completion for a hold whose Intake already closed (or that was
+  # releasing): the payment is recorded and refunded in full at once.
+  defp refund_after_close(locked, reading) do
+    with {:ok, _refund} <- request_automatic_refund(locked, "paid_after_close", reading),
+         do: {:ok, %{outcome: :paid_after_close}}
   end
 
   # A person paid after the Payment Cutoff gets Pre-workshop info at once
@@ -1446,15 +1556,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp queue_intake_email(intake, type, occasion, values, reading) do
     entry = Repo.get!(WaitlistEntry, intake.waitlist_id)
-
-    first_name =
-      Repo.one(
-        from(p in UserProfile,
-          where: p.waitlist_id == ^intake.waitlist_id,
-          limit: 1,
-          select: p.first_name
-        )
-      ) || ""
+    first_name = first_name_of(intake.waitlist_id)
 
     with {:ok, _job} <-
            IntakeEmails.queue(
@@ -1552,6 +1654,478 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp released?(%IntakePayment{id: id}),
     do: Repo.exists?(from(p in IntakePayment, where: p.id == ^id and p.status == "released"))
+
+  # ── Refunds ─────────────────────────────────────────────────────
+
+  # Under the payment lock of the command that found the refund owed: the
+  # refund row, its submission job and "Payment refunded (automatic)", all
+  # in that transaction. A payment that took nothing has nothing to refund.
+  defp request_automatic_refund(
+         %{payment: payment, intake: intake, workshop: workshop},
+         reason,
+         reading
+       ) do
+    case payment.amount_received_cents do
+      amount when is_integer(amount) and amount > 0 ->
+        with {:ok, refund} <-
+               %{
+                 workshop_id: payment.workshop_id,
+                 intake_id: payment.intake_id,
+                 payment_id: payment.id,
+                 reason: reason,
+                 amount_cents: amount,
+                 currency: payment.currency_received || payment.currency,
+                 stripe_payment_intent_id: payment.stripe_payment_intent_id,
+                 requested_at: reading.now
+               }
+               |> IntakeRefund.request_changeset()
+               |> persist(),
+             :ok <- enqueue_refund(refund.id),
+             :ok <- queue_payment_refunded(intake, workshop, refund, reading) do
+          {:ok, refund}
+        end
+
+      _nothing_taken ->
+        {:ok, nil}
+    end
+  end
+
+  defp queue_payment_refunded(%Intake{waitlist_id: nil}, _workshop, _refund, _reading), do: :ok
+
+  defp queue_payment_refunded(intake, workshop, refund, reading) do
+    case Repo.get(WaitlistEntry, intake.waitlist_id) do
+      %WaitlistEntry{email: email} = entry when is_binary(email) ->
+        with {:ok, _job} <-
+               IntakeEmails.queue("payment_refunded", entry, %{
+                 "firstName" => first_name_of(intake.waitlist_id),
+                 "date" => Values.date(workshop.date),
+                 "refundAmount" => refund_amount(refund)
+               }),
+             {:ok, _log} <-
+               %{
+                 intake_id: intake.id,
+                 email_type: "payment_refunded",
+                 occasion: "payment_refunded:#{refund.payment_id}",
+                 queued_at: reading.now
+               }
+               |> IntakeEmailLog.changeset()
+               |> persist() do
+          :ok
+        end
+
+      _anonymised ->
+        :ok
+    end
+  end
+
+  defp first_name_of(waitlist_id) do
+    Repo.one(
+      from(p in UserProfile, where: p.waitlist_id == ^waitlist_id, limit: 1, select: p.first_name)
+    ) || ""
+  end
+
+  defp refund_amount(%IntakeRefund{amount_cents: cents, currency: "eur"}), do: Values.money(cents)
+
+  defp refund_amount(%IntakeRefund{amount_cents: cents, currency: currency}),
+    do:
+      "#{div(cents, 100)}.#{cents |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0")} " <>
+        String.upcase(currency)
+
+  defp enqueue_refund(refund_id) do
+    case %{refund_id: refund_id} |> RefundWorker.new() |> Oban.insert() do
+      {:ok, _job} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # A refund row never changes payment, so a peek never goes stale; refund
+  # commands lock payment → refund only.
+  defp peek_refund(query) do
+    case Repo.one(query) do
+      nil -> {:error, :refund_not_found}
+      refund -> {:ok, refund}
+    end
+  end
+
+  defp refund_spec(%IntakeRefund{id: id, payment_id: payment_id}) do
+    %{
+      payment: required(from(p in IntakePayment, where: p.id == ^payment_id)),
+      refund: required(from(r in IntakeRefund, where: r.id == ^id))
+    }
+  end
+
+  defp cast_refund_id(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> {:ok, id}
+      :error -> {:error, :refund_not_found}
+    end
+  end
+
+  # ── submit_refund ───────────────────────────────────────────────
+
+  defp submit_refund(refund_id, clock) do
+    with {:ok, id} <- cast_refund_id(refund_id),
+         {:ok, peek} <- peek_refund(from(r in IntakeRefund, where: r.id == ^id)),
+         {:ok, plan} <- transact(fn -> with_locked(refund_spec(peek), &submission_plan/1) end) do
+      case plan do
+        :settled -> {:ok, %{outcome: :already_submitted}}
+        {:submit, refund, source} -> submit_to_stripe(refund, source, clock)
+      end
+    end
+  end
+
+  # Only a `pending` refund is submitted; one Stripe already answered for
+  # (processing or terminal) is left to its events.
+  defp submission_plan(%{refund: %IntakeRefund{status: "pending"} = refund, payment: payment}),
+    do: {:ok, {:submit, refund, payment_intent_source(refund, payment)}}
+
+  defp submission_plan(_locked), do: {:ok, :settled}
+
+  defp payment_intent_source(%IntakeRefund{stripe_payment_intent_id: id}, _payment)
+       when is_binary(id),
+       do: {:payment_intent, id}
+
+  defp payment_intent_source(_refund, %IntakePayment{stripe_payment_intent_id: id})
+       when is_binary(id),
+       do: {:payment_intent, id}
+
+  defp payment_intent_source(_refund, %IntakePayment{stripe_checkout_session_id: id})
+       when is_binary(id),
+       do: {:checkout_session, id}
+
+  defp payment_intent_source(_refund, _payment), do: :unresolvable
+
+  # Between transactions. A Stripe outage keeps the refund `pending` and
+  # fails, so the worker retries; a refusal makes it `failed`.
+  defp submit_to_stripe(refund, source, clock) do
+    with {:ok, payment_intent} <- resolve_payment_intent(source),
+         {:ok, object} <- IntakeRefunds.create(refund, payment_intent) do
+      record_refund(refund, object, %{stripe_payment_intent_id: payment_intent}, clock)
+    else
+      {:error, :retryable, reason} ->
+        note_retryable(refund, reason)
+        {:error, :stripe_unavailable}
+
+      {:error, :rejected, reason} ->
+        fail_refund(refund, reason, clock)
+    end
+  end
+
+  defp resolve_payment_intent({:payment_intent, id}), do: {:ok, id}
+
+  defp resolve_payment_intent({:checkout_session, session_id}) do
+    case IntakeCheckout.retrieve(session_id) do
+      {:ok, session} ->
+        case IntakeCheckout.outcome(session) do
+          {:complete, %{payment_intent: id}} when is_binary(id) -> {:ok, id}
+          _other -> {:error, :rejected, :payment_intent_not_resolvable}
+        end
+
+      {:error, failure} ->
+        {:error, failure, :checkout_session_unavailable}
+    end
+  end
+
+  defp resolve_payment_intent(:unresolvable),
+    do: {:error, :rejected, :payment_intent_not_resolvable}
+
+  # Writes Stripe's answer (the create's response or an event's object)
+  # after a locked re-read.
+  defp record_refund(refund, object, extra, clock) do
+    fn -> with_locked(refund_spec(refund), &record_refund_locked(&1, object, extra, clock)) end
+    |> transact()
+    |> signal_after_commit()
+  end
+
+  defp record_refund_locked(%{refund: refund}, %{"id" => stripe_id} = object, extra, clock) do
+    cond do
+      refund.status in ~w(completed failed) ->
+        {:ok, {%{outcome: :already_settled}, []}}
+
+      refund.stripe_refund_id not in [nil, stripe_id] ->
+        {:ok, {%{outcome: :not_ours}, []}}
+
+      true ->
+        settle_refund(refund, object, extra, Clock.read(clock))
+    end
+  end
+
+  defp settle_refund(refund, %{"id" => stripe_id} = object, extra, reading) do
+    provider_status = object["status"]
+    status = IntakeRefunds.local_status(provider_status)
+
+    changes =
+      extra
+      |> Map.merge(%{
+        status: status,
+        stripe_refund_id: stripe_id,
+        provider_status: provider_status,
+        processed_at: refund.processed_at || reading.now
+      })
+      |> Map.merge(settled_stamps(status, object, reading))
+
+    changeset = Ecto.Changeset.change(refund, changes)
+
+    write =
+      if status == refund.status,
+        do: persist(changeset),
+        else: transition(:refund, refund, changeset)
+
+    with {:ok, refund} <- write do
+      {:ok, {%{outcome: Map.fetch!(@refund_outcomes, status)}, notify_if_failed(refund)}}
+    end
+  end
+
+  defp settled_stamps("completed", _object, reading), do: %{completed_at: reading.now}
+
+  defp settled_stamps("failed", object, reading),
+    do: %{failed_at: reading.now, last_error: object["failure_reason"] || "Stripe refund failed"}
+
+  defp settled_stamps(_processing, _object, _reading), do: %{}
+
+  defp fail_refund(refund, reason, clock) do
+    fn -> with_locked(refund_spec(refund), &fail_refund_locked(&1, reason, clock)) end
+    |> transact()
+    |> signal_after_commit()
+  end
+
+  defp fail_refund_locked(%{refund: %IntakeRefund{status: "pending"} = refund}, reason, clock) do
+    changeset =
+      Ecto.Changeset.change(refund,
+        status: "failed",
+        failed_at: Clock.read(clock).now,
+        last_error: error_text(reason)
+      )
+
+    with {:ok, refund} <- transition(:refund, refund, changeset),
+         do: {:ok, {%{outcome: :failed}, notify_if_failed(refund)}}
+  end
+
+  defp fail_refund_locked(_settled, _reason, _clock),
+    do: {:ok, {%{outcome: :already_settled}, []}}
+
+  defp note_retryable(refund, reason) do
+    _ =
+      transact(fn ->
+        with_locked(refund_spec(refund), fn
+          %{refund: %IntakeRefund{status: "pending"} = refund} ->
+            refund |> Ecto.Changeset.change(last_error: error_text(reason)) |> persist()
+
+          %{refund: refund} ->
+            {:ok, refund}
+        end)
+      end)
+
+    :ok
+  end
+
+  defp error_text(reason), do: reason |> inspect() |> String.slice(0, 2_000)
+
+  # A failed refund is a coordinator's job (story 84): a keyed Notification
+  # per refund row, so a retried command never notifies twice.
+  defp notify_if_failed(%IntakeRefund{status: "failed"} = refund) do
+    %{first_name: first_name, date: date} =
+      from(i in Intake,
+        join: w in BeginnersWorkshop,
+        on: w.id == i.workshop_id,
+        left_join: p in UserProfile,
+        on: p.waitlist_id == i.waitlist_id and not is_nil(i.waitlist_id),
+        where: i.id == ^refund.intake_id,
+        limit: 1,
+        select: %{first_name: p.first_name, date: w.date}
+      )
+      |> Repo.one!()
+
+    alert(
+      "beginners-workshop-refund:#{refund.id}:failed",
+      "A refund of #{refund_amount(refund)} to #{first_name || "an anonymised person"} for the " <>
+        "Beginners' Workshop on #{Values.date(date)} failed. Retry it or record a manual " <>
+        "refund from the workshop console."
+    )
+  end
+
+  defp notify_if_failed(_refund), do: []
+
+  # ── apply_refund_event ──────────────────────────────────────────
+
+  # Our refund by its Stripe id, or — when the event beat the submission's
+  # record — by the refund id in its metadata. Anything else is a Workshop
+  # refund (or no one's), which the Workshops target owns.
+  defp apply_refund_event(%{"id" => stripe_id} = object, clock) when is_binary(stripe_id) do
+    case peek_refund_for(object) do
+      nil -> {:ok, %{outcome: :not_ours}}
+      refund -> record_refund(refund, object, %{}, clock)
+    end
+  end
+
+  defp apply_refund_event(_object, _clock), do: {:ok, %{outcome: :not_ours}}
+
+  defp peek_refund_for(%{"id" => stripe_id} = object) do
+    Repo.one(from(r in IntakeRefund, where: r.stripe_refund_id == ^stripe_id)) ||
+      with id when is_binary(id) <- IntakeRefunds.refund_id(object),
+           {:ok, id} <- Ecto.UUID.cast(id) do
+        Repo.get(IntakeRefund, id)
+      else
+        _ -> nil
+      end
+  end
+
+  # ── reconcile ───────────────────────────────────────────────────
+
+  # One bounded pass repairing missed events: pending refunds are enqueued
+  # again (the job is unique while incomplete), processing ones re-read from
+  # Stripe, and live or releasing payment rows settled when their Checkout
+  # Session completed or expired. Expired holds stay `reap_holds`'s job.
+  defp reconcile(clock) do
+    now = Clock.read(clock).now
+
+    resubmitted =
+      from(r in IntakeRefund,
+        where: r.status == "pending",
+        order_by: [asc: r.updated_at, asc: r.id],
+        limit: @reconcile_batch,
+        select: r.id
+      )
+      |> Repo.all()
+      |> Enum.count(&(enqueue_refund(&1) == :ok))
+
+    refunds =
+      from(r in IntakeRefund,
+        where: r.status == "processing" and not is_nil(r.stripe_refund_id),
+        order_by: [asc: r.updated_at, asc: r.id],
+        limit: @reconcile_batch
+      )
+      |> Repo.all()
+      |> Enum.map(&reconcile_refund(&1, clock))
+
+    payments =
+      from(p in IntakePayment,
+        where:
+          not is_nil(p.stripe_checkout_session_id) and
+            ((p.status == "open" and p.expires_at > ^now) or p.status == "releasing"),
+        order_by: [asc: p.updated_at, asc: p.id],
+        limit: @reconcile_batch,
+        select: p.stripe_checkout_session_id
+      )
+      |> Repo.all()
+      |> Enum.map(&reconcile_payment(&1, clock))
+
+    {:ok,
+     %{
+       refunds_resubmitted: resubmitted,
+       refunds_settled: Enum.count(refunds, &(&1 == :settled)),
+       refunds_waiting: Enum.count(refunds, &(&1 == :waiting)),
+       payments_settled: Enum.count(payments, &(&1 in [:released, :completed])),
+       payments_waiting: Enum.count(payments, &(&1 == :waiting))
+     }}
+  end
+
+  defp reconcile_refund(refund, clock) do
+    with {:ok, object} <- IntakeRefunds.retrieve(refund.stripe_refund_id),
+         {:ok, %{outcome: outcome}} when outcome in [:completed, :failed] <-
+           record_refund(refund, object, %{}, clock) do
+      :settled
+    else
+      _still_processing_or_unavailable -> :waiting
+    end
+  end
+
+  defp reconcile_payment(session_id, clock) do
+    case IntakeCheckout.retrieve(session_id) do
+      {:ok, session} -> settle(session, clock)
+      {:error, _unavailable} -> :waiting
+    end
+  end
+
+  # ── retry_refund / record_manual_refund ─────────────────────────
+
+  defp manual_note(attrs) do
+    case fetch_attr(attrs, :note) do
+      nil ->
+        {:ok, nil}
+
+      note when is_binary(note) ->
+        {:ok, note |> String.trim() |> then(&if(&1 == "", do: nil, else: &1))}
+
+      _other ->
+        {:error, :invalid_payload}
+    end
+  end
+
+  defp follow_up(workshop_id, refund_id, principal_id, action, clock) do
+    with {:ok, workshop_id} <- cast_id(workshop_id),
+         {:ok, refund_id} <- cast_refund_id(refund_id),
+         {:ok, peek} <-
+           peek_refund(
+             from(r in IntakeRefund, where: r.id == ^refund_id and r.workshop_id == ^workshop_id)
+           ) do
+      transact(fn ->
+        with_locked(refund_spec(peek), &follow_up_locked(&1, action, principal_id, clock))
+      end)
+    end
+  end
+
+  defp follow_up_locked(%{refund: failed, payment: payment}, action, principal_id, clock) do
+    reading = Clock.read(clock)
+
+    with :ok <- followable(failed),
+         {:ok, refund} <- follow_up_row(action, failed, payment, principal_id, reading) do
+      {:ok, refund_view(refund)}
+    end
+  end
+
+  # Every refund writer of a payment holds its lock; the follows index is
+  # the backstop.
+  defp followable(%IntakeRefund{status: "failed", id: id}) do
+    if Repo.exists?(from(r in IntakeRefund, where: r.follows_refund_id == ^id)),
+      do: {:error, :refund_followed_up},
+      else: :ok
+  end
+
+  defp followable(_refund), do: {:error, :refund_not_failed}
+
+  # A new key against the same payment; no email (story 144).
+  defp follow_up_row(:retry, failed, payment, principal_id, reading) do
+    with {:ok, refund} <-
+           %{
+             workshop_id: failed.workshop_id,
+             intake_id: failed.intake_id,
+             payment_id: failed.payment_id,
+             follows_refund_id: failed.id,
+             reason: failed.reason,
+             amount_cents: failed.amount_cents,
+             currency: failed.currency,
+             stripe_payment_intent_id:
+               failed.stripe_payment_intent_id || payment.stripe_payment_intent_id,
+             requested_by_principal_id: principal_id,
+             requested_at: reading.now
+           }
+           |> IntakeRefund.request_changeset()
+           |> persist(),
+         :ok <- enqueue_refund(refund.id) do
+      {:ok, refund}
+    end
+  end
+
+  defp follow_up_row({:manual, note}, failed, _payment, principal_id, reading),
+    do: failed |> IntakeRefund.manual_changeset(principal_id, note, reading.now) |> persist()
+
+  defp refund_view(%IntakeRefund{} = refund) do
+    Map.take(refund, [
+      :id,
+      :intake_id,
+      :payment_id,
+      :follows_refund_id,
+      :status,
+      :method,
+      :reason,
+      :amount_cents,
+      :currency,
+      :requested_at,
+      :completed_at,
+      :failed_at
+    ])
+  end
 
   # ── check_in / undo_check_in ────────────────────────────────────
 
