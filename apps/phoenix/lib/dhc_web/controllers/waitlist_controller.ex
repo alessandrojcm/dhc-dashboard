@@ -5,6 +5,8 @@ defmodule DhcWeb.WaitlistController do
 
   action_fallback DhcWeb.WaitlistHTTP
 
+  @silent_refusals [:email_on_waitlist, :email_is_principal, :email_has_pending_invitation]
+
   @doc """
   GET /waitlist/status
   """
@@ -58,14 +60,26 @@ defmodule DhcWeb.WaitlistController do
   @doc """
   POST /waitlist/entries
 
-  Public, so it must not be an email oracle: an email already on the waitlist
+  Public, so it must not be an email oracle: an email that registration
+  refuses (on the Waitlist, a Principal's, or with a pending Invitation)
   answers exactly like a new entry (same status, same body, no entry data).
   """
   def create(conn, params) do
     case Waitlist.create_entry(params) do
       {:ok, _entry} -> render_received(conn)
-      {:error, :duplicate_email} -> render_received(conn)
+      {:error, reason} when reason in @silent_refusals -> render_received(conn)
       error -> error
+    end
+  end
+
+  @doc """
+  POST /waitlist/entries/:id/restore
+  """
+  def restore(conn, %{"id" => id}) do
+    with {:ok, entry} <- Waitlist.restore(id) do
+      conn
+      |> put_view(json: DhcWeb.WaitlistJSON)
+      |> render(:show, entry: entry)
     end
   end
 

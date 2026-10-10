@@ -13,8 +13,20 @@ import {
 } from "#lib/schemas/fields.js";
 import { SocialMediaConsent } from "#lib/types.js";
 
+/**
+ * Phoenix holds a first name to the Intake Email `firstName` placeholder
+ * maximum (the `WaitlistEntryCreateRequest` contract's `maxLength`).
+ */
+export const FIRST_NAME_MAX_LENGTH = 40;
+
 const entries = {
-	firstName: requiredText("First name is required."),
+	firstName: v.pipe(
+		requiredText("First name is required."),
+		v.maxLength(
+			FIRST_NAME_MAX_LENGTH,
+			`First name must be at most ${FIRST_NAME_MAX_LENGTH} characters.`,
+		),
+	),
 	lastName: requiredText("Last name is required."),
 	email: email(),
 	phoneNumber: phoneNumber(),

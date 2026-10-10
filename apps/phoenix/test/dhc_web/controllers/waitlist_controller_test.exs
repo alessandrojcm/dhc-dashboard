@@ -57,6 +57,25 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert status["schema"]["default"] == "waiting"
     end
 
+    test "the restore operation answers the entry or a coded 409", %{spec: spec} do
+      operation = spec["paths"]["/waitlist/entries/{id}/restore"]["post"]
+
+      assert operation["operationId"] == "waitlist.restoreEntry"
+      assert Map.keys(operation["responses"]) |> Enum.sort() == ~w(200 401 403 404 409)
+
+      assert operation["responses"]["200"]["content"]["application/json"]["schema"] ==
+               %{"$ref" => "#/components/schemas/WaitlistEntryResponse"}
+    end
+
+    test "registration holds the first name to its Intake Email placeholder maximum", %{
+      schemas: schemas
+    } do
+      max = schemas["WaitlistEntryCreateRequest"]["properties"]["firstName"]["maxLength"]
+
+      assert max == Dhc.Waitlist.first_name_max_length()
+      assert max == Dhc.BeginnersWorkshops.IntakeEmails.EmailType.maxima()["firstName"]
+    end
+
     test "an entry renders exactly the WaitlistEntry properties", %{
       conn: conn,
       schemas: schemas
@@ -560,6 +579,77 @@ defmodule DhcWeb.WaitlistControllerTest do
     end
   end
 
+  describe "restore" do
+    test "moves a removed entry back to waiting with its original date", %{conn: conn} do
+      id = insert_waitlist_profile(status: "removed", seconds: -86_400)
+      original = Repo.get!(WaitlistEntry, id)
+
+      entry =
+        conn
+        |> put_req_header("authorization", "Bearer beginners_coordinator-token")
+        |> post("/api/waitlist/entries/#{id}/restore")
+        |> json_response(200)
+        |> Map.fetch!("data")
+
+      assert %{"id" => ^id, "status" => "waiting", "removedAt" => nil} = entry
+
+      restored = Repo.get!(WaitlistEntry, id)
+      assert restored.initial_registration_date == original.initial_registration_date
+    end
+
+    test "refuses an entry removed more than 3 months ago (409)", %{conn: conn} do
+      id = insert_waitlist_profile(status: "removed")
+
+      removed_at =
+        DateTime.utc_now() |> DateTime.shift(month: -3, day: -1) |> DateTime.truncate(:second)
+
+      Repo.update_all(from(w in WaitlistEntry, where: w.id == ^id), set: [removed_at: removed_at])
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/waitlist/entries/#{id}/restore")
+
+      assert %{"errors" => %{"code" => "restore_window_passed"}} = json_response(conn, 409)
+      assert Repo.get!(WaitlistEntry, id).status == "removed"
+    end
+
+    test "refuses an entry that is not removed (409)", %{conn: conn} do
+      id = insert_waitlist_profile(status: "waiting")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/waitlist/entries/#{id}/restore")
+
+      assert %{"errors" => %{"code" => "not_removed"}} = json_response(conn, 409)
+    end
+
+    test "returns 404 for a missing entry", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/waitlist/entries/#{Ecto.UUID.generate()}/restore")
+
+      assert json_response(conn, 404)
+    end
+
+    test "requires beginners.waitlist.manage", %{conn: _conn} do
+      id = insert_waitlist_profile(status: "removed")
+
+      for token <- ~w(coach-token member-token) do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer #{token}")
+          |> post("/api/waitlist/entries/#{id}/restore")
+
+        assert json_response(conn, 403)
+      end
+
+      assert Repo.get!(WaitlistEntry, id).status == "removed"
+    end
+  end
+
   describe "guardian" do
     test "returns guardian details for a waitlist entry", %{conn: conn} do
       id = insert_waitlist_profile()
@@ -719,6 +809,122 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert persistence_counts() == persisted_after_first
       assert Repo.get_by!(UserProfile, first_name: "Ada").is_active == false
       refute Repo.get_by(UserProfile, first_name: "Someone")
+    end
+
+    test "silently refuses an email on the Waitlist in any standing but removed", %{
+      conn: _conn
+    } do
+      set_waitlist_open(true)
+
+      for standing <- ~w(waiting attended invited joined) do
+        id = insert_waitlist_profile(status: standing, first_name: "Kept")
+        email = Repo.get!(WaitlistEntry, id).email
+        before = Repo.get!(WaitlistEntry, id)
+        persisted_before = persistence_counts()
+
+        conn =
+          post(
+            build_conn(),
+            "/api/waitlist/entries",
+            adult_payload(email: String.upcase(email), firstName: "Other")
+          )
+
+        assert json_response(conn, 202) == %{"data" => %{"received" => true}}
+        assert persistence_counts() == persisted_before
+        assert Repo.get!(WaitlistEntry, id) == before, "#{standing} entry changed"
+        assert Repo.get_by!(UserProfile, waitlist_id: id).first_name == "Kept"
+      end
+    end
+
+    test "silently refuses an email that belongs to a Principal", %{conn: conn} do
+      set_waitlist_open(true)
+
+      {:ok, _} =
+        Dhc.Auth.register_principal_with_id(Ecto.UUID.generate(), %{email: "m@example.com"})
+
+      persisted_before = persistence_counts()
+
+      conn = post(conn, "/api/waitlist/entries", adult_payload(email: "M@example.com"))
+
+      assert json_response(conn, 202) == %{"data" => %{"received" => true}}
+      assert persistence_counts() == persisted_before
+    end
+
+    test "silently refuses an email with a pending Invitation", %{conn: conn} do
+      set_waitlist_open(true)
+
+      {:ok, _id} =
+        Dhc.Invitations.Repository.insert_pending_invitation(
+          %{"email" => "invited@example.com", "dateOfBirth" => "1990-01-01"},
+          nil,
+          nil
+        )
+
+      persisted_before = persistence_counts()
+
+      conn = post(conn, "/api/waitlist/entries", adult_payload(email: "invited@example.com"))
+
+      assert json_response(conn, 202) == %{"data" => %{"received" => true}}
+      assert persistence_counts() == persisted_before
+    end
+
+    test "a removed email that registers again reopens at the back of the queue", %{
+      conn: conn
+    } do
+      set_waitlist_open(true)
+      id = insert_waitlist_profile(status: "removed", seconds: -86_400 * 30, first_name: "Old")
+      email = Repo.get!(WaitlistEntry, id).email
+      persisted_before = persistence_counts()
+      before = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      conn =
+        post(
+          conn,
+          "/api/waitlist/entries",
+          adult_payload(email: email, firstName: "New", dateOfBirth: minor_birth_date())
+          |> Map.merge(%{
+            guardianFirstName: "Fresh",
+            guardianLastName: "Guardian",
+            guardianPhoneNumber: "+353 1 222 2222"
+          })
+        )
+
+      assert json_response(conn, 202) == %{"data" => %{"received" => true}}
+      assert persistence_counts() == persisted_before
+
+      entry = Repo.get!(WaitlistEntry, id)
+      assert entry.status == "waiting"
+      assert entry.removed_at == nil
+      assert DateTime.compare(entry.initial_registration_date, before) != :lt
+
+      profile = Repo.get_by!(UserProfile, waitlist_id: id)
+      assert profile.first_name == "New"
+
+      assert [%{first_name: "Fresh"}] =
+               Repo.all(
+                 from(g in Dhc.Waitlist.WaitlistGuardian, where: g.profile_id == ^profile.id)
+               )
+    end
+
+    test "rejects a first name longer than its Intake Email placeholder (40)", %{conn: conn} do
+      set_waitlist_open(true)
+      persisted_before = persistence_counts()
+
+      conn =
+        post(conn, "/api/waitlist/entries", adult_payload(firstName: String.duplicate("a", 41)))
+
+      assert %{"errors" => %{"fields" => %{"firstName" => [message]}}} = json_response(conn, 422)
+      assert message =~ "40"
+      assert persistence_counts() == persisted_before
+
+      ok =
+        post(
+          build_conn(),
+          "/api/waitlist/entries",
+          adult_payload(firstName: String.duplicate("a", 40))
+        )
+
+      assert json_response(ok, 202)
     end
 
     test "enforces waitlist closed server-side", %{conn: conn} do

@@ -401,8 +401,9 @@ defmodule Dhc.DevSeeds do
 
   defp create_invitation(attrs) do
     # Seeded invitations are direct member invites, so they deliberately have
-    # neither a waitlist entry nor an issuing administrator.
-    InvitationRepository.create_invitation_record(%{}, attrs, nil)
+    # neither a waitlist entry nor an issuing administrator, and send no
+    # email: they skip the issue rules in `Dhc.Onboarding.issue_invitation/3`.
+    InvitationRepository.insert_pending_invitation(attrs, nil, nil)
   end
 
   defp create_committee_member(record) do

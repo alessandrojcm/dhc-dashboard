@@ -29,6 +29,13 @@ defmodule Dhc.Waitlist.WaitlistEntry do
   end
 
   @doc false
+  # A reopened registration goes to the back of the queue: its priority
+  # becomes the re-registration date.
+  def requeue_changeset(entry, now) do
+    change(entry, initial_registration_date: now)
+  end
+
+  @doc false
   def admin_notes_changeset(entry, attrs) do
     cast(entry, attrs, [:admin_notes])
   end

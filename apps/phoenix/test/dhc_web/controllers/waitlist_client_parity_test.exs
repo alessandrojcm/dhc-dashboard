@@ -49,6 +49,30 @@ defmodule DhcWeb.WaitlistClientParityTest do
   end
 
   @tag :parity
+  test "ALE-376: the client restores entries, caps firstName and sends invite objects only",
+       context do
+    types = File.read!(Path.join(context.generated, "types.gen.ts"))
+    sdk = File.read!(Path.join(context.generated, "sdk.gen.ts"))
+    valibot = File.read!(Path.join(context.generated, "valibot.gen.ts"))
+    public = File.read!(context.public)
+
+    assert sdk =~
+             ~r/export const waitlistRestoreEntry = .*url: '\/waitlist\/entries\/\{id\}\/restore'/s
+
+    [_, request] = Regex.run(~r/export type InvitationCreateRequest = \{(.*?)\n\};/s, types)
+    assert request =~ "invites: Array<InvitationCreateInvite>;"
+
+    [_, create] =
+      Regex.run(~r/export const vWaitlistEntryCreateRequest = v.object\(\{(.*?)\n\}\);/s, valibot)
+
+    assert create =~ ~r/firstName: v.pipe\(v.string\(\), v.minLength\(1\), v.maxLength\(40\)\)/
+
+    for name <- ~w(waitlistRestoreEntry waitlistRestoreEntryMutation WaitlistRestoreEntryData) do
+      assert public =~ ~r/\n\t#{name},\n/, "#{name} is not re-exported from src/index.ts"
+    end
+  end
+
+  @tag :parity
   test "the generated AuthCapability names beginners.waitlist.manage", context do
     types = File.read!(Path.join(context.generated, "types.gen.ts"))
     public = File.read!(context.public)

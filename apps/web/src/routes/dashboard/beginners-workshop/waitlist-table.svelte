@@ -95,6 +95,10 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 					onToggleExpand: () => row.toggleExpanded(),
 					onEdit: (adminNotes) =>
 						waitlist.updateAdminNotes(row.original.id, adminNotes),
+					onRestore: waitlist.canRestore(row.original)
+						? () => waitlist.restore(row.original.id)
+						: undefined,
+					restoreDisabled: waitlist.isRestoring,
 				});
 			},
 		},
@@ -385,6 +389,10 @@ const table = createSvelteTable(tableOptions);
 							onToggleExpand={() => row.toggleExpanded()}
 							onEdit={(adminNotes) =>
 								waitlist.updateAdminNotes(row.original.id, adminNotes)}
+							onRestore={waitlist.canRestore(row.original)
+								? () => waitlist.restore(row.original.id)
+								: undefined}
+							restoreDisabled={waitlist.isRestoring}
 						/>
 					</div>
 				</div>
