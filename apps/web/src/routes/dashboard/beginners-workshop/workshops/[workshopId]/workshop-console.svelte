@@ -1,7 +1,9 @@
 <!--
 	ALE-380: the coordinator console of one Beginners' Workshop — the
 	lifecycle timeline, the "Now" card, Needs attention, the Next Batch
-	preview with Pause/Resume beside it, and the roster grouped by meaning.
+	preview with Pause/Resume beside it, and the roster grouped by meaning
+	(ALE-391: Attended / No-show / Out once attendance is final, when the
+	workshop is read-only).
 	Everything shown is Phoenix's console read model. Pause/Resume and
 	(ALE-384) Fast-track and (ALE-394) Reschedule are its commands; Batches
 	themselves come only from the system sweep. (ALE-382) Failed refunds sit
@@ -160,6 +162,7 @@ const attention = $derived(
 		</ol>
 		{#if workshop.status !== "cancelled"}<SeatMeter
 				seats={workshop.seats}
+				finalised={workshop.status === "finalised"}
 			/>{/if}
 	</aside>
 
@@ -175,7 +178,7 @@ const attention = $derived(
 			</p>
 			<h2 class="font-heading text-2xl leading-tight">{now.title}</h2>
 			<p class="text-sm text-muted-foreground">{now.body}</p>
-			{#if workshop.stage === "today_before_check_in" || workshop.stage === "check_in_open"}
+			{#if workshop.stage === "today_before_check_in" || workshop.stage === "check_in_open" || workshop.stage === "awaiting_finalisation"}
 				<Button
 					class="w-fit"
 					href={resolve(
@@ -358,7 +361,7 @@ const attention = $derived(
 			{/if}
 		{/each}
 
-		{#if !view.roster.seated.length && !view.roster.asked.length && !view.roster.out.length}
+		{#if groups.every((group) => !group.intakes.length)}
 			<Empty.Root class="border">
 				<Empty.Header>
 					<Empty.Title>Nobody contacted yet</Empty.Title>

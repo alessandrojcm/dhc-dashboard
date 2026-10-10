@@ -26,7 +26,7 @@ const workshop: BeginnersWorkshop = {
 	contactFromEditable: false,
 	paymentWindowDays: 7,
 	stage: "window_open",
-	seats: { capacity: 16, paid: 0, holds: 0, free: 16 },
+	seats: { capacity: 16, paid: 0, holds: 0, free: 16, attended: 0, noShow: 0 },
 	alerts: [],
 	staff: { coach: null, assistants: [] },
 };

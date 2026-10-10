@@ -19,6 +19,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   # the minute, so no Batch can go out between 23:59 and midnight).
   @window_end_time ~T[23:59:59.999999]
   @check_in_lead_minutes 60
+  # The Follow-up goes out at 10:00 Dublin the morning after (ALE-391).
+  @follow_up_time ~T[10:00:00]
   # A Seat Hold keeps a seat for 30 minutes of checkout (ALE-381).
   @hold_minutes 30
 
@@ -274,15 +276,28 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   def capacity_allowed?(capacity, facts) when is_integer(capacity),
     do: capacity >= seats_taken(facts)
 
-  @doc "Seats: capacity, paid, live holds and free (never negative)."
+  @doc """
+  Seats: capacity, paid, live holds and free (never negative), and the
+  attendance outcome — `attended` and `no_show` — which is zero until
+  Attendance Finalisation.
+  """
   @spec seats(BeginnersWorkshop.t(), map()) :: %{
           capacity: pos_integer(),
           paid: non_neg_integer(),
           holds: non_neg_integer(),
-          free: non_neg_integer()
+          free: non_neg_integer(),
+          attended: non_neg_integer(),
+          no_show: non_neg_integer()
         }
-  def seats(%BeginnersWorkshop{capacity: capacity}, %{paid: paid, holds: holds}) do
-    %{capacity: capacity, paid: paid, holds: holds, free: max(capacity - paid - holds, 0)}
+  def seats(%BeginnersWorkshop{capacity: capacity}, %{paid: paid, holds: holds} = facts) do
+    %{
+      capacity: capacity,
+      paid: paid,
+      holds: holds,
+      free: max(capacity - paid - holds, 0),
+      attended: Map.get(facts, :attended, 0),
+      no_show: Map.get(facts, :no_show, 0)
+    }
   end
 
   @doc """
@@ -356,6 +371,46 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   end
 
   def check_in_window(%BeginnersWorkshop{}, _reading), do: :closed
+
+  @doc """
+  Whether Staff may press Finish (`finish_workshop`, story 95) at
+  `reading`: a scheduled workshop whose check-in window has opened — on the
+  day, or after it while the automatic pass has not run yet.
+  """
+  @spec finish_allowed?(BeginnersWorkshop.t(), map()) :: boolean()
+  def finish_allowed?(%BeginnersWorkshop{status: "scheduled"} = workshop, reading),
+    do: check_in_window(workshop, reading) != :before
+
+  def finish_allowed?(%BeginnersWorkshop{}, _reading), do: false
+
+  @doc """
+  Whether the automatic Attendance Finalisation (`finalise_attendance`,
+  story 96) is due at `reading`: a scheduled workshop whose Dublin date has
+  ended. Judged on Dublin dates, so the end of the day is midnight Dublin
+  time whether that is 23:00Z (summer time) or 00:00Z.
+  """
+  @spec finalisation_due?(BeginnersWorkshop.t(), map()) :: boolean()
+  def finalisation_due?(%BeginnersWorkshop{status: "scheduled", date: date}, reading),
+    do: Date.compare(reading.today, date) == :gt
+
+  def finalisation_due?(%BeginnersWorkshop{}, _reading), do: false
+
+  @doc """
+  When attended people get the Follow-up (story 99): 10:00 Dublin time the
+  morning after Attendance Finalisation. Finalisation always belongs to the
+  workshop date — Finish opens with check-in on that day, and the automatic
+  pass finalises at its end (its first sweep after midnight) — so the
+  morning after is the day after the workshop date.
+  """
+  @spec follow_up_at(BeginnersWorkshop.t() | %{date: Date.t()}) :: DateTime.t()
+  def follow_up_at(%{date: date}), do: ClubCalendar.to_utc(Date.add(date, 1), @follow_up_time)
+
+  @doc "Whether the Follow-up is due at `reading`: the workshop is finalised and it is 10:00 the morning after or later."
+  @spec follow_up_due?(BeginnersWorkshop.t(), map()) :: boolean()
+  def follow_up_due?(%BeginnersWorkshop{status: "finalised"} = workshop, reading),
+    do: DateTime.compare(reading.now, follow_up_at(workshop)) != :lt
+
+  def follow_up_due?(%BeginnersWorkshop{}, _reading), do: false
 
   defp window_open?(%{latest_window_end: nil}, _reading), do: false
 

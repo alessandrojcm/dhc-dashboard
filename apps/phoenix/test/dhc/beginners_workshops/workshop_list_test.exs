@@ -112,7 +112,16 @@ defmodule Dhc.BeginnersWorkshops.WorkshopListTest do
 
     test "seats count paid and live holds; staffed workshops have no alert", %{workshop: w} do
       facts = %{WorkshopFacts.empty() | paid: 2, holds: 1, coach_assigned: true}
-      assert WorkshopPolicy.seats(w, facts) == %{capacity: 4, paid: 2, holds: 1, free: 1}
+
+      assert WorkshopPolicy.seats(w, facts) == %{
+               capacity: 4,
+               paid: 2,
+               holds: 1,
+               free: 1,
+               attended: 0,
+               no_show: 0
+             }
+
       assert WorkshopPolicy.alerts(w, facts) == []
       assert WorkshopPolicy.alerts(%{w | status: "cancelled"}, WorkshopFacts.empty()) == []
     end

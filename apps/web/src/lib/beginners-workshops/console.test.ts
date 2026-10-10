@@ -13,6 +13,7 @@ import {
 	nextBatchSize,
 	nowCard,
 	refundLabel,
+	rosterGroups,
 } from "#lib/beginners-workshops/console.js";
 
 function next(
@@ -62,7 +63,14 @@ function view(
 			contactFromEditable: false,
 			paymentWindowDays: 7,
 			stage: "window_open",
-			seats: { capacity: 3, paid: 1, holds: 0, free: 2 },
+			seats: {
+				capacity: 3,
+				paid: 1,
+				holds: 0,
+				free: 2,
+				attended: 0,
+				noShow: 0,
+			},
 			alerts: [],
 			staff: { coach: null, assistants: [] },
 		},
@@ -82,10 +90,11 @@ function view(
 			resumedBy: null,
 		},
 		nextBatch: next(),
-		roster: { seated: [], asked: [], out: [] },
+		roster: { seated: [], asked: [], attended: [], noShow: [], out: [] },
 		failedRefunds: [],
 		attention: [],
 		fastTrackOpen: true,
+		finalisation: null,
 		...overrides,
 	};
 }
@@ -209,6 +218,8 @@ describe("nowCard", () => {
 				roster: {
 					seated: [seated("a", "2026-11-14T18:00:00Z"), seated("b", null)],
 					asked: [],
+					attended: [],
+					noShow: [],
 					out: [],
 				},
 			});
@@ -260,6 +271,8 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 				roster: {
 					seated: [],
 					asked: [intake("2026-11-11T18:50:00Z"), intake(null)],
+					attended: [],
+					noShow: [],
 					out: [],
 				},
 			}),
@@ -284,6 +297,91 @@ describe("holdLabel (ALE-381)", () => {
 			"Paying now · hold ending",
 		);
 		expect(holdLabel({ holdExpiresAt: null }, now)).toBeNull();
+	});
+});
+
+describe("after Attendance Finalisation (ALE-391)", () => {
+	const intake = (id: string, state: "attended" | "no_show") => ({
+		id,
+		state,
+		origin: "batch" as const,
+		batchNumber: 1,
+		queueDate: "2025-01-01T12:00:00Z",
+		contactedAt: "2026-10-20T09:00:00Z",
+		holdExpiresAt: null,
+		checkedInAt: state === "attended" ? "2026-11-14T18:10:00Z" : null,
+		firstName: "Aoife",
+		lastName: "Byrne",
+		minor: false,
+		refund: null,
+	});
+
+	function finalised(by: string | null = "Aoife Coach") {
+		const base = view();
+		return view({
+			workshop: {
+				...base.workshop,
+				status: "finalised",
+				stage: "finalised",
+				seats: { ...base.workshop.seats, attended: 2, noShow: 1 },
+			},
+			nextBatch: next({ status: "closed", people: [] }),
+			roster: {
+				seated: [],
+				asked: [],
+				attended: [intake("a", "attended"), intake("b", "attended")],
+				noShow: [intake("c", "no_show")],
+				out: [],
+			},
+			finalisation: {
+				at: "2026-11-14T20:05:00Z",
+				by,
+				followUpAt: "2026-11-15T10:00:00Z",
+			},
+		});
+	}
+
+	it("groups the roster as Attended / No-show / Out", () => {
+		expect(
+			rosterGroups(finalised()).map((group) => [
+				group.title,
+				group.intakes.length,
+			]),
+		).toEqual([
+			["Attended", 2],
+			["No-show", 1],
+			["Out of this workshop", 0],
+		]);
+		expect(rosterGroups(view()).map((group) => group.title)).toEqual([
+			"Seated (paid)",
+			"Asked, not paid yet",
+			"Out of this workshop",
+		]);
+	});
+
+	it("says who finalised it and the outcome", () => {
+		expect(nowCard(finalised())).toEqual({
+			title: "Finalised Sat 14 Nov, 20:05 by Aoife Coach",
+			body: "2 attended · 1 no-show. Attended people get the follow-up email at 10:00 the next morning. Only corrections and invites remain.",
+		});
+		expect(nowCard(finalised(null)).title).toBe(
+			"Finalised Sat 14 Nov, 20:05 automatically at the end of the day",
+		);
+	});
+
+	it("marks the follow-up done from 10:00 the next morning", () => {
+		const step = (now: string) =>
+			consoleTimeline(finalised(), new Date(now)).slice(-2);
+
+		expect(step("2026-11-15T09:59:00Z")).toEqual([
+			{
+				label: "Attendance Finalisation",
+				when: "Sat 14 Nov, 20:05 · Aoife Coach",
+				state: "done",
+			},
+			{ label: "Follow-up email", when: "Sun 15 Nov, 10:00", state: "next" },
+		]);
+		expect(step("2026-11-15T10:00:00Z")[1]?.state).toBe("done");
 	});
 });
 

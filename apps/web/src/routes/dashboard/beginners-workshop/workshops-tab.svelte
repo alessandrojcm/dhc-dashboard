@@ -102,6 +102,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 		<div class="col-span-2 sm:col-span-1">
 			{#if workshop.status !== "cancelled"}<SeatMeter
 					seats={workshop.seats}
+					finalised={workshop.status === "finalised"}
 				/>{/if}
 		</div>
 		<div class="flex items-center gap-1">

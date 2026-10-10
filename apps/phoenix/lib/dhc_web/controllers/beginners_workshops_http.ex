@@ -85,7 +85,10 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       # Door check-in (ALE-390).
       check_in_not_open: {409, "Check-in opens an hour before the workshop starts"},
       check_in_closed: {409, "Check-in has closed for this workshop"},
-      not_paid: {409, "Only people who have paid can be checked in"}
+      not_paid: {409, "Only people who have paid can be checked in"},
+      # Attendance Finalisation (ALE-391).
+      payment_in_progress:
+        {409, "Someone is still paying; finish the workshop once their payment ends"}
     },
     fields: @internal_to_public
 

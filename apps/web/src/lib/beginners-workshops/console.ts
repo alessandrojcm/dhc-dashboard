@@ -52,6 +52,7 @@ const AFTER_CUTOFF = new Set([
 /** The lifecycle timeline: each step done, now or next; struck through when cancelled. */
 export function consoleTimeline(
 	view: BeginnersWorkshopConsole,
+	now: Date = new Date(),
 ): TimelineStep[] {
 	const { workshop, batches, nextBatch } = view;
 	const stage = workshop.stage;
@@ -101,15 +102,24 @@ export function consoleTimeline(
 			? "done"
 			: pending(stage === "today_before_check_in" || stage === "check_in_open"),
 	});
+	const finalisation = view.finalisation;
 	steps.push({
 		label: "Attendance Finalisation",
-		when: "door “Finish”, or end of day",
+		when: finalisation
+			? `${formatDublinInstant(finalisation.at)} · ${finalisation.by ?? "automatically"}`
+			: "door “Finish”, or end of day",
 		state: finalised ? "done" : pending(stage === "awaiting_finalisation"),
 	});
+	// ALE-391: the follow-up pass runs at the first sweep after its time.
+	const followUpDone =
+		!!finalisation &&
+		new Date(finalisation.followUpAt).getTime() <= now.getTime();
 	steps.push({
 		label: "Follow-up email",
-		when: "10:00 the next morning",
-		state: pending(false),
+		when: finalisation
+			? formatDublinInstant(finalisation.followUpAt)
+			: "10:00 the next morning",
+		state: followUpDone ? "done" : finalised ? "next" : pending(false),
 	});
 	if (cancelled) steps.push({ label: "Cancelled", state: "done" });
 	return steps;
@@ -200,6 +210,22 @@ export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 				body: `${checkedIn} of ${view.roster.seated.length} in. ${seats}.`,
 			};
 		}
+		case "awaiting_finalisation":
+			return {
+				title: stageLabel(workshop.stage),
+				body: `${seats}. Attendance finalises automatically within a few minutes of the end of the workshop day.`,
+			};
+		case "finalised":
+			return {
+				title: view.finalisation
+					? `Finalised ${formatDublinInstant(view.finalisation.at)} ${
+							view.finalisation.by
+								? `by ${view.finalisation.by}`
+								: "automatically at the end of the day"
+						}`
+					: stageLabel(workshop.stage),
+				body: `${workshop.seats.attended} attended · ${workshop.seats.noShow} no-show. Attended people get the follow-up email at 10:00 the next morning. Only corrections and invites remain.`,
+			};
 		default:
 			return { title: stageLabel(workshop.stage), body: seats };
 	}
@@ -227,12 +253,22 @@ function paymentClosedBody(
 	return `${parts.join(". ")}.`;
 }
 
-/** The roster groups before Attendance Finalisation, in display order. */
+/**
+ * The roster groups, in display order: Seated (paid) / Asked, not paid yet /
+ * Out before Attendance Finalisation, and Attended / No-show / Out after it.
+ */
 export function rosterGroups(view: BeginnersWorkshopConsole): {
-	key: "seated" | "asked" | "out";
+	key: "seated" | "asked" | "attended" | "noShow" | "out";
 	title: string;
 	intakes: BeginnersWorkshopRosterIntake[];
 }[] {
+	if (view.workshop.status === "finalised") {
+		return [
+			{ key: "attended", title: "Attended", intakes: view.roster.attended },
+			{ key: "noShow", title: "No-show", intakes: view.roster.noShow },
+			{ key: "out", title: "Out of this workshop", intakes: view.roster.out },
+		];
+	}
 	return [
 		{ key: "seated", title: "Seated (paid)", intakes: view.roster.seated },
 		{

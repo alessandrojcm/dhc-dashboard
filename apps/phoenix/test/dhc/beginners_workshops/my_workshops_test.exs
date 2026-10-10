@@ -80,7 +80,7 @@ defmodule Dhc.BeginnersWorkshops.MyWorkshopsTest do
       assert Enum.sort(assigned) == Enum.sort([ctx.coach, ctx.member])
 
       assert Map.keys(view) |> Enum.sort() ==
-               ~w(alerts check_in date id people staff stage start_time status venue)a
+               ~w(alerts check_in date finalisation id people staff stage start_time status venue)a
 
       assert %{venue: "St. Andrew's Hall", date: ~D[2026-11-14], alerts: []} = view
       assert view.staff.coach.principal_id == ctx.coach

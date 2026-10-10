@@ -114,7 +114,9 @@ defmodule Dhc.BeginnersWorkshops.Intake do
 
   @doc """
   An open Intake closing into a terminal `state` that carries no stamps of
-  its own (ALE-385: `lapsed` and `returned` at the Payment Cutoff).
+  its own (ALE-385: `lapsed` and `returned` at the Payment Cutoff; ALE-391:
+  `attended` and `no_show` at Attendance Finalisation, whose evidence is the
+  check-in record).
   """
   @spec close_changeset(t(), String.t()) :: Ecto.Changeset.t()
   def close_changeset(%__MODULE__{} = intake, state) do

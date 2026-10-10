@@ -1,16 +1,21 @@
 /**
- * ALE-390: door check-in and its undo. Thin adapters — check the member
+ * ALE-390: door check-in and its undo; ALE-391: Finish workshop. Thin adapters — check the member
  * reaches the door route, make one generated Phoenix call, translate the
  * problem. Phoenix decides the assignment-scoped `beginners.workshops.run`
- * against the workshop's Staff (404 for anyone else), the check-in window
- * and the paid-only rule, and answers the refreshed door view.
+ * against the workshop's Staff (404 for anyone else), the check-in window,
+ * the paid-only rule and Attendance Finalisation, and answers the refreshed
+ * door view.
  */
 import { command, getRequestEvent } from "$app/server";
 import {
 	beginnersWorkshopDoorCheckIn,
+	beginnersWorkshopDoorFinish,
 	beginnersWorkshopDoorUndoCheckIn,
 } from "@dhc/api-client";
-import { doorCheckInSchema } from "#lib/schemas/beginnersWorkshop.js";
+import {
+	doorCheckInSchema,
+	doorFinishSchema,
+} from "#lib/schemas/beginnersWorkshop.js";
 import { apiClientOptions } from "#lib/server/api-client.js";
 import { authorize } from "#lib/server/auth.js";
 import { beginnersWorkshopCommand } from "#lib/server/beginners-workshops/command.js";
@@ -41,3 +46,11 @@ export const undoCheckIn = command(
 		);
 	},
 );
+
+export const finishWorkshop = command(doorFinishSchema, async ({ id }) => {
+	const options = await doorOptions();
+	return beginnersWorkshopCommand(
+		beginnersWorkshopDoorFinish({ ...options, path: { id } }),
+		{ fallback: "Could not finish the workshop", formPath: noFormFields },
+	);
+});

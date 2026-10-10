@@ -70,12 +70,16 @@ defmodule Dhc.BeginnersWorkshopFixtures do
   end
 
   @doc """
-  Test-only: forces a workshop's status. No ALE-378 command finalises or
-  cancels; this stands in for the tickets that will.
+  Test-only: forces a workshop's status, for tests that need a finalised or
+  cancelled workshop without running `finish_workshop` (or the cancel
+  ticket's command).
   """
   def force_status!(workshop_id, status) do
+    # A finalised workshop records when (the finalised check).
+    finalised_at = if status == "finalised", do: %{@now | microsecond: {0, 6}}
+
     Repo.get!(BeginnersWorkshop, workshop_id)
-    |> Ecto.Changeset.change(status: status)
+    |> Ecto.Changeset.change(status: status, finalised_at: finalised_at)
     |> Repo.update!()
   end
 

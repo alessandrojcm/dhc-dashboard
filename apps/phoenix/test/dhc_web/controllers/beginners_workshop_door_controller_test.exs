@@ -3,8 +3,8 @@ defmodule DhcWeb.BeginnersWorkshopDoorControllerTest do
   ALE-390 contract tests for the `beginnersWorkshopDoor` slice's door list
   and check-in: `GET /door` carries the door list in its own closed shape,
   `POST`/`DELETE /door/people/{intakeId}/check-in` record and undo a
-  check-in, and anyone not on the Staff gets the same 404 as an unknown
-  workshop.
+  check-in, `POST /door/finish` (ALE-391) finalises attendance, and anyone
+  not on the Staff gets the same 404 as an unknown workshop.
   """
   use DhcWeb.ConnCase, async: false
 
@@ -49,7 +49,8 @@ defmodule DhcWeb.BeginnersWorkshopDoorControllerTest do
       workshop: workshop,
       minor: minor,
       door: "/api/beginners-workshops/#{workshop.id}/door",
-      check_in: "/api/beginners-workshops/#{workshop.id}/door/people/#{minor.id}/check-in"
+      check_in: "/api/beginners-workshops/#{workshop.id}/door/people/#{minor.id}/check-in",
+      finish: "/api/beginners-workshops/#{workshop.id}/door/finish"
     }
   end
 
@@ -60,7 +61,7 @@ defmodule DhcWeb.BeginnersWorkshopDoorControllerTest do
     assert %{"data" => data} = conn |> as("coach") |> get(ctx.door) |> json_response(200)
 
     assert Map.keys(data) |> Enum.sort() ==
-             ~w(alerts checkIn date id people staff stage startTime status venue)
+             ~w(alerts checkIn date finalisation id people staff stage startTime status venue)
 
     assert %{"stage" => "check_in_open", "checkIn" => %{"window" => "open", "opensAt" => _}} =
              data
@@ -108,6 +109,24 @@ defmodule DhcWeb.BeginnersWorkshopDoorControllerTest do
 
     assert %{"errors" => %{"code" => "check_in_closed"}} =
              conn |> as("coach") |> post(ctx.check_in) |> json_response(409)
+  end
+
+  test "POST finish finalises attendance and answers the finalised summary",
+       %{conn: conn} = ctx do
+    assert %{"data" => data} = conn |> as("coach") |> post(ctx.finish) |> json_response(200)
+
+    assert %{
+             "status" => "finalised",
+             "stage" => "finalised",
+             "checkIn" => %{"window" => "closed"},
+             "people" => [%{"state" => "no_show", "checkedIn" => nil}],
+             "finalisation" => %{"by" => "Aoife Coach", "attended" => 0, "noShow" => 1, "at" => _}
+           } = data
+
+    assert %{"errors" => %{"code" => "after_finalisation"}} =
+             conn |> as("coach") |> post(ctx.finish) |> json_response(409)
+
+    assert conn |> as("outsider") |> post(ctx.finish) |> json_response(404)
   end
 
   test "anyone not on the Staff gets the same 404 as an unknown workshop", %{conn: conn} = ctx do

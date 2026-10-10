@@ -1,6 +1,7 @@
 <!--
 	ALE-379: a workshop's door view — what assigned Staff get: the header,
-	then (ALE-390) door check-in.
+	then (ALE-390) door check-in and (ALE-391) Finish. The header follows the
+	latest view a door command answers.
 -->
 <script lang="ts">
 import { ArrowLeft, Users } from "@lucide/svelte";
@@ -12,11 +13,13 @@ import {
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
+import type { BeginnersWorkshopDoor } from "@dhc/api-client";
 import { Button } from "#lib/components/ui/button/index.js";
 import DoorCheckIn from "./door-check-in.svelte";
 
 const { data } = $props();
-const workshop = $derived(data.workshop);
+// The load's view, until a door command answers a fresher one.
+let workshop = $derived<BeginnersWorkshopDoor>(data.workshop);
 </script>
 
 <div class="mx-auto flex max-w-md flex-col gap-4 py-4">
@@ -50,5 +53,5 @@ const workshop = $derived(data.workshop);
 		</p>
 	</header>
 
-	<DoorCheckIn door={workshop} />
+	<DoorCheckIn door={data.workshop} onchange={(next) => (workshop = next)} />
 </div>

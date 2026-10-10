@@ -1,5 +1,6 @@
 /**
- * ALE-390: how the door view words and filters Phoenix's door read model.
+ * ALE-390: how the door view words and filters Phoenix's door read model;
+ * ALE-391: the Finish button and the finalised summary.
  * The check-in window and who has a seat are Phoenix's judgement
  * (`WorkshopPolicy.check_in_window/2`, `DoorView`); this module only names,
  * counts and filters them. Instants are shown on the Europe/Dublin clock.
@@ -79,4 +80,44 @@ export function checkedInLine(
 /** A `tel:` link for a phone number as typed (spaces and punctuation dropped). */
 export function telHref(phone: string): string {
 	return `tel:${phone.replace(/[^\d+]/g, "")}`;
+}
+
+/**
+ * Who becomes a no-show if the workshop finishes now: every paid person not
+ * checked in (Phoenix decides it again under its lock).
+ */
+export function willNoShow(
+	door: BeginnersWorkshopDoor,
+): BeginnersWorkshopDoorPerson[] {
+	return door.people.filter(
+		(person) => person.state === "paid" && !person.checkedIn,
+	);
+}
+
+/** Whether the door offers Finish: scheduled, and check-in has opened. */
+export function canFinish(door: BeginnersWorkshopDoor): boolean {
+	return door.status === "scheduled" && door.checkIn.window !== "before";
+}
+
+/** `Finish workshop (2 will be no-show)`. */
+export function finishLabel(door: BeginnersWorkshopDoor): string {
+	return `Finish workshop (${willNoShow(door).length} will be no-show)`;
+}
+
+/**
+ * The finalised summary: `Finalised Sat 14 Nov, 20:05 by Aoife Coach` (or
+ * `automatically at the end of the day`) and `12 attended · 2 no-show`.
+ */
+export type FinalisedSummary = { title: string; outcome: string };
+
+export function finalisedSummary(
+	finalisation: NonNullable<BeginnersWorkshopDoor["finalisation"]>,
+): FinalisedSummary {
+	const by = finalisation.by
+		? `by ${finalisation.by}`
+		: "automatically at the end of the day";
+	return {
+		title: `Finalised ${formatDublinInstant(finalisation.at)} ${by}`,
+		outcome: `${finalisation.attended} attended · ${finalisation.noShow} no-show`,
+	};
 }

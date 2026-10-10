@@ -18,8 +18,20 @@ defmodule DhcWeb.BeginnersWorkshopDoorJSON do
         alerts: view.alerts,
         staff: BeginnersWorkshopsJSON.staff(view.staff),
         checkIn: %{window: view.check_in.window, opensAt: view.check_in.opens_at},
-        people: Enum.map(view.people, &person/1)
+        people: Enum.map(view.people, &person/1),
+        finalisation: finalisation(view.finalisation)
       }
+    }
+  end
+
+  defp finalisation(nil), do: nil
+
+  defp finalisation(finalisation) do
+    %{
+      at: finalisation.at,
+      by: finalisation.by,
+      attended: finalisation.attended,
+      noShow: finalisation.no_show
     }
   end
 

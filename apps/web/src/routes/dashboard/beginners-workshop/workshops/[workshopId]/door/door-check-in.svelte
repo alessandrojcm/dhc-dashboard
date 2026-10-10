@@ -6,23 +6,39 @@
 	for a minor, the Guardian's name with a tap-to-call phone. Before the
 	window opens it says when it does. Everything shown is Phoenix's door
 	read model; each command answers the refreshed view.
+
+	ALE-391: once check-in has opened, a sticky "Finish workshop (N will be
+	no-show)" button opens a dialog naming who becomes a no-show; Finish is
+	Attendance Finalisation. Afterwards the view shows the finalised summary.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopDoor } from "@dhc/api-client";
-import { Baby, HeartPulse, Phone, Search, Undo2 } from "@lucide/svelte";
+import {
+	Baby,
+	CircleCheck,
+	HeartPulse,
+	Phone,
+	Search,
+	Undo2,
+} from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import {
+	canFinish,
 	checkedInLine,
 	type DoorFilter,
 	doorCount,
 	doorName,
+	finalisedSummary,
+	finishLabel,
 	telHref,
 	visiblePeople,
+	willNoShow,
 	windowNotice,
 } from "#lib/beginners-workshops/door.js";
 import { intakeStateLabel } from "#lib/beginners-workshops/console.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
+import * as Dialog from "#lib/components/ui/dialog/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import { Progress } from "#lib/components/ui/progress/index.js";
 import {
@@ -32,6 +48,7 @@ import {
 import { cn } from "#lib/utils.js";
 import {
 	checkIn as checkInCommand,
+	finishWorkshop as finishWorkshopCommand,
 	undoCheckIn as undoCheckInCommand,
 } from "./door.remote";
 
@@ -42,14 +59,25 @@ type DoorCommand = (input: {
 	{ ok: true; data: BeginnersWorkshopDoor } | { ok: false; error: string }
 >;
 
+type FinishCommand = (input: {
+	id: string;
+}) => Promise<
+	{ ok: true; data: BeginnersWorkshopDoor } | { ok: false; error: string }
+>;
+
 let {
 	door,
 	checkIn = checkInCommand,
 	undoCheckIn = undoCheckInCommand,
+	finishWorkshop = finishWorkshopCommand,
+	onchange,
 }: {
 	door: BeginnersWorkshopDoor;
 	checkIn?: DoorCommand;
 	undoCheckIn?: DoorCommand;
+	finishWorkshop?: FinishCommand;
+	/** Each refreshed view a command answers (the page header follows it). */
+	onchange?: (view: BeginnersWorkshopDoor) => void;
 } = $props();
 
 // The latest view: the load's, until a command answers a fresher one.
@@ -58,11 +86,17 @@ let search = $state("");
 let filter = $state<DoorFilter>("to_arrive");
 let expanded = $state<string | null>(null);
 let pending = $state<string | null>(null);
+let finishOpen = $state(false);
+let finishing = $state(false);
 
 const count = $derived(doorCount(view));
 const notice = $derived(windowNotice(view));
 const open = $derived(view.checkIn.window === "open");
 const shown = $derived(visiblePeople(view.people, filter, search));
+const noShows = $derived(willNoShow(view));
+const summary = $derived(
+	view.finalisation ? finalisedSummary(view.finalisation) : null,
+);
 const filters = $derived([
 	{ value: "to_arrive", label: `To arrive ${count.total - count.checkedIn}` },
 	{ value: "in", label: `In ${count.checkedIn}` },
@@ -73,12 +107,33 @@ async function run(command: DoorCommand, intakeId: string) {
 	pending = intakeId;
 	try {
 		const result = await command({ id: view.id, intakeId });
-		if (result.ok) view = result.data;
+		if (result.ok) refreshed(result.data);
 		else toast.error(result.error);
 	} catch {
 		toast.error("Could not reach the server. Try again.");
 	} finally {
 		pending = null;
+	}
+}
+
+function refreshed(next: BeginnersWorkshopDoor) {
+	view = next;
+	onchange?.(next);
+}
+
+async function finish() {
+	finishing = true;
+	try {
+		const result = await finishWorkshop({ id: view.id });
+		if (result.ok) {
+			refreshed(result.data);
+			finishOpen = false;
+			toast.success("Workshop finished");
+		} else toast.error(result.error);
+	} catch {
+		toast.error("Could not reach the server. Try again.");
+	} finally {
+		finishing = false;
 	}
 }
 </script>
@@ -98,7 +153,18 @@ async function run(command: DoorCommand, intakeId: string) {
 			max={count.total || 1}
 			aria-label={count.label}
 		/>
-		{#if notice}
+		{#if summary}
+			<div
+				class="flex items-start gap-3 rounded-xl border-2 border-emerald-600 bg-emerald-50 p-3 text-sm"
+				data-testid="door-finalised"
+			>
+				<CircleCheck class="mt-0.5 size-5 shrink-0 text-emerald-700" />
+				<div class="flex flex-col gap-0.5">
+					<p class="font-semibold">{summary.title}</p>
+					<p>{summary.outcome}</p>
+				</div>
+			</div>
+		{:else if notice}
 			<p
 				class="rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-sm font-medium"
 				data-testid="door-window"
@@ -252,4 +318,57 @@ async function run(command: DoorCommand, intakeId: string) {
 			</li>
 		{/each}
 	</ul>
+
+	{#if canFinish(view)}
+		<div
+			class="sticky bottom-0 z-10 border-t bg-background/95 pt-3 pb-4 backdrop-blur"
+		>
+			<Button
+				variant="outline"
+				class="h-12 w-full border-2 text-base"
+				onclick={() => (finishOpen = true)}
+			>
+				{finishLabel(view)}
+			</Button>
+		</div>
+	{/if}
 </section>
+
+<Dialog.Root bind:open={finishOpen}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>Finish workshop?</Dialog.Title>
+			<Dialog.Description
+				>Closes check-in and freezes the Staff list. Afterwards only a
+				coordinator can correct attendance, one person at a time.</Dialog.Description
+			>
+		</Dialog.Header>
+		{#if noShows.length}
+			<div class="flex flex-col gap-2 text-sm">
+				<p>
+					<strong>{noShows.length}</strong> not checked in will become
+					<strong>no-show</strong> (fee kept, removed from the Waitlist):
+				</p>
+				<ul class="flex flex-wrap gap-1.5" aria-label="Will be no-show">
+					{#each noShows as person (person.id)}
+						<li>
+							<Badge
+								variant="outline"
+								class="border-destructive text-destructive"
+								>{doorName(person)}</Badge
+							>
+						</li>
+					{/each}
+				</ul>
+			</div>
+		{:else}
+			<p class="text-sm">Everyone is checked in.</p>
+		{/if}
+		<Dialog.Footer>
+			<Button variant="outline" onclick={() => (finishOpen = false)}
+				>Not yet</Button
+			>
+			<Button disabled={finishing} onclick={finish}>Finish workshop</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
