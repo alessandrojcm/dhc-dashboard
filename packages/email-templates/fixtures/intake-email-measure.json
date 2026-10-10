@@ -1,5 +1,5 @@
 {
-  "$comment": "Shared by Phoenix's Intake Email save check (Dhc.BeginnersWorkshops.IntakeEmails) and the dashboard's template counter (ALE-377). The measure is the rendered body HTML (no inline styles) with every placeholder replaced by `filler` repeated to its maximum length, counted in UTF-16 code units (JavaScript String length).",
+  "$comment": "Shared by Phoenix's Intake Email save check (Dhc.BeginnersWorkshops.IntakeEmails) and the dashboard's template counter (ALE-377). The measure is the rendered body HTML (no inline styles) with every placeholder replaced by `filler` repeated to its maximum length, counted in UTF-16 code units (JavaScript String length). `placeholders` is each email type's allowed placeholders (Phoenix's EmailType table; the dashboard reads them from the API at runtime).",
   "limit": 2000,
   "filler": "x",
   "unit": "utf16",
@@ -12,6 +12,92 @@
     "windowEnd": 34,
     "paymentCutoff": 34,
     "refundAmount": 7
+  },
+  "placeholders": {
+    "contact_pay": [
+      "firstName",
+      "date",
+      "startTime",
+      "venue",
+      "fee",
+      "windowEnd",
+      "paymentCutoff"
+    ],
+    "contact_confirm": [
+      "firstName",
+      "date",
+      "startTime",
+      "venue",
+      "windowEnd",
+      "paymentCutoff"
+    ],
+    "place_confirmed_paid": [
+      "firstName",
+      "date",
+      "startTime",
+      "venue",
+      "fee"
+    ],
+    "place_confirmed_carried": [
+      "firstName",
+      "date",
+      "startTime",
+      "venue"
+    ],
+    "pre_workshop": [
+      "firstName",
+      "date",
+      "startTime",
+      "venue"
+    ],
+    "rescheduled": [
+      "firstName",
+      "date",
+      "startTime",
+      "venue",
+      "paymentCutoff"
+    ],
+    "follow_up": [
+      "firstName",
+      "date"
+    ],
+    "declined": [
+      "firstName",
+      "date"
+    ],
+    "deferred": [
+      "firstName",
+      "date"
+    ],
+    "cancelled_with_refund": [
+      "firstName",
+      "date",
+      "refundAmount"
+    ],
+    "withdrawn_refunded": [
+      "firstName",
+      "refundAmount"
+    ],
+    "withdrawn_forfeited": [
+      "firstName"
+    ],
+    "carried_fee_refunded": [
+      "firstName",
+      "refundAmount"
+    ],
+    "payment_refunded": [
+      "firstName",
+      "date",
+      "refundAmount"
+    ],
+    "cancelled_paid": [
+      "firstName",
+      "date"
+    ],
+    "cancelled_unpaid": [
+      "firstName",
+      "date"
+    ]
   },
   "cases": [
     {

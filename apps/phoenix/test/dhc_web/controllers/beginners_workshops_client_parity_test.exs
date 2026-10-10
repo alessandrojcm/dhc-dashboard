@@ -36,8 +36,10 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
           is_binary(operation["operationId"]),
           do: {method, operation}
 
+    # ALE-383's Intake Email template slice shares the one tag and URL root.
     assert operations |> Enum.map(&elem(&1, 1)["operationId"]) |> Enum.sort() ==
-             ~w(beginnersWorkshops.list beginnersWorkshops.schedule beginnersWorkshops.updateSettings)
+             ~w(beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
+                beginnersWorkshops.list beginnersWorkshops.schedule beginnersWorkshops.updateSettings)
 
     for {method, operation} <- operations do
       assert operation["tags"] == ["BeginnersWorkshops"]
@@ -108,6 +110,9 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
           do: code
 
     assert codes != []
+
+    # Load the family before String.to_existing_atom/1: run alone, nothing has loaded it yet.
+    Code.ensure_loaded!(DhcWeb.BeginnersWorkshopsHTTP)
 
     # The HTTP family renders each one with its code, without raising.
     for code <- codes do

@@ -57,14 +57,50 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   def get_template!(type), do: Repo.get!(Template, type)
 
   @doc """
-  Saves a type's subject and body. Refused when either uses a placeholder the
-  type can't fill, or when the body, with every placeholder at its longest,
-  exceeds Resend's 2,000-character variable limit.
+  Saves a type's subject and body (ALE-383). Only emails queued afterwards
+  use the new copy: `queue/4` reads the template when it fills it.
+
+  A refusal names its reason and carries the messages per field:
+
+    * `:placeholder_not_allowed` — the subject or body uses a placeholder the
+      type can't fill (including names outside the vocabulary);
+    * `:template_too_long` — the body, with every placeholder at its longest,
+      exceeds Resend's 2,000-character variable limit;
+    * `:invalid_template` — anything else (a blank or multi-line subject, a
+      body outside the rich-text vocabulary or without text).
+
+  When several apply, the first in that order is the reason; every message
+  is still reported. An id that is not an `EmailType` is
+  `{:error, :unknown_email_type}`.
   """
-  @spec update_template(EmailType.id(), map()) ::
-          {:ok, Template.t()} | {:error, Ecto.Changeset.t()}
-  def update_template(type, attrs) do
-    type |> get_template!() |> Template.changeset(attrs) |> Repo.update()
+  @spec update_template(term(), map()) ::
+          {:ok, Template.t()}
+          | {:error, :unknown_email_type}
+          | {:error, Renderer.refusal(), %{(:subject | :body) => [String.t()]}}
+  def update_template(type, attrs) when is_map(attrs) do
+    case EmailType.fetch(type) do
+      {:ok, _email_type} ->
+        type
+        |> get_template!()
+        |> Template.changeset(attrs)
+        |> Repo.update()
+        |> refusal()
+
+      :error ->
+        {:error, :unknown_email_type}
+    end
+  end
+
+  @refusal_precedence [:placeholder_not_allowed, :template_too_long, :invalid_template]
+
+  defp refusal({:ok, _template} = ok), do: ok
+
+  defp refusal({:error, %Ecto.Changeset{errors: errors} = changeset}) do
+    found = Enum.map(errors, fn {_field, {_message, opts}} -> opts[:refusal] end)
+    reason = Enum.find(@refusal_precedence, :invalid_template, &(&1 in found))
+    messages = Ecto.Changeset.traverse_errors(changeset, fn {message, _opts} -> message end)
+
+    {:error, reason, messages}
   end
 
   @doc """

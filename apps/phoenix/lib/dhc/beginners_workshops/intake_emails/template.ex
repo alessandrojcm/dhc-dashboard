@@ -43,8 +43,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Template do
         changeset
 
       {:error, errors} ->
-        Enum.reduce(errors, changeset, fn {field, message}, acc ->
-          add_error(acc, field, message)
+        Enum.reduce(errors, changeset, fn {field, refusal, message}, acc ->
+          add_error(acc, field, message, refusal: refusal)
         end)
     end
   end
