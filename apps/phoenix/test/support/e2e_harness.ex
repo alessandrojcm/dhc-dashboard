@@ -2370,25 +2370,42 @@ defmodule Dhc.E2EHarness do
     :ok
   end
 
+  # A Principal the run made act (created a container, borrowed or started
+  # maintenance, staffed a workshop…) is still named by history the schema
+  # keeps on purpose (`NO ACTION`/`RESTRICT` foreign keys, several NOT NULL).
+  # Teardown never force-deletes history, so that refuses as
+  # `:still_referenced`, like the inventory teardowns, and rolls the whole
+  # delete back. It must not raise: Bandit closes the keep-alive connection
+  # after a raised request, and the client's next harness call fails on it.
   defp delete_principal(id) do
-    Repo.transaction(fn ->
-      Repo.delete_all(from(t in PrincipalToken, where: t.principal_id == ^id))
-      Repo.delete_all(from(r in UserRole, where: r.principal_id == ^id))
+    {:ok, _} =
+      Repo.transaction(fn ->
+        Repo.delete_all(from(t in PrincipalToken, where: t.principal_id == ^id))
+        Repo.delete_all(from(r in UserRole, where: r.principal_id == ^id))
 
-      Repo.update_all(
-        from(i in Invitation, where: i.created_by_principal_id == ^id),
-        set: [created_by_principal_id: nil]
-      )
+        Repo.update_all(
+          from(i in Invitation, where: i.created_by_principal_id == ^id),
+          set: [created_by_principal_id: nil]
+        )
 
-      profile_ids =
-        Repo.all(from(p in UserProfile, where: p.principal_id == ^id, select: p.id))
+        profile_ids =
+          Repo.all(from(p in UserProfile, where: p.principal_id == ^id, select: p.id))
 
-      Repo.delete_all(from(m in MemberProfile, where: m.user_profile_id in ^profile_ids))
-      Repo.delete_all(from(p in UserProfile, where: p.principal_id == ^id))
-      Repo.delete_all(from(p in Dhc.Auth.Principal, where: p.id == ^id))
-    end)
+        Repo.delete_all(from(m in MemberProfile, where: m.user_profile_id in ^profile_ids))
+        Repo.delete_all(from(p in UserProfile, where: p.principal_id == ^id))
+        Repo.delete_all(from(p in Dhc.Auth.Principal, where: p.id == ^id))
+      end)
 
     :ok
+  rescue
+    error in Postgrex.Error ->
+      case error.postgres do
+        %{code: :foreign_key_violation, constraint: constraint} ->
+          {:error, :still_referenced, %{constraint: constraint}}
+
+        _other ->
+          reraise error, __STACKTRACE__
+      end
   end
 
   defp stripe_progress_count(attempts, key) do

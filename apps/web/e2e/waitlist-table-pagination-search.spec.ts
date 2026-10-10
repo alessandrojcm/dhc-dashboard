@@ -1,10 +1,17 @@
 import { faker } from "@faker-js/faker";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import dayjs from "dayjs";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
 import { gotoHydrated } from "./hydration";
+
+// The Beginners' Workshop page mounts every tab panel (inactive ones are only
+// `hidden`), and the Workshops, Invitable and Dashboard tabs have tables of their
+// own, so every table locator is scoped to the Waitlist panel.
+function waitlistPanel(page: Page) {
+	return page.getByRole("tabpanel", { name: "Waitlist", exact: true });
+}
 
 test.describe("Waitlist table pagination and search", () => {
 	let adminMember: Awaited<ReturnType<typeof createMember>>;
@@ -60,15 +67,17 @@ test.describe("Waitlist table pagination and search", () => {
 	});
 
 	test("should paginate waitlist table correctly", async ({ page }) => {
-		await page.goto(waitlistPath);
+		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
-		await page.locator("table tbody tr").first().waitFor({
+		await waitlistPanel(page).locator("table tbody tr").first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
 
-		const initialRowCount = await page.locator("table tbody tr").count();
+		const initialRowCount = await waitlistPanel(page)
+			.locator("table tbody tr")
+			.count();
 		expect(initialRowCount).toBeGreaterThan(0);
 		expect(initialRowCount).toBeLessThanOrEqual(10);
 
@@ -94,10 +103,10 @@ test.describe("Waitlist table pagination and search", () => {
 	});
 
 	test("should change page size correctly", async ({ page }) => {
-		await page.goto(waitlistPath);
+		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
-		await page.locator("table tbody tr").first().waitFor({
+		await waitlistPanel(page).locator("table tbody tr").first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
@@ -122,16 +131,18 @@ test.describe("Waitlist table pagination and search", () => {
 		expect(page.url()).toContain("pageSize=25");
 
 		// Verify rows are displayed (should be up to 25)
-		const rowCount = await page.locator("table tbody tr").count();
+		const rowCount = await waitlistPanel(page)
+			.locator("table tbody tr")
+			.count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThanOrEqual(25);
 	});
 
 	test("should search waitlist correctly", async ({ page }) => {
-		await page.goto(waitlistPath);
+		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
-		await page.locator("table tbody tr").first().waitFor({
+		await waitlistPanel(page).locator("table tbody tr").first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
@@ -171,14 +182,14 @@ test.describe("Waitlist table pagination and search", () => {
 		await gotoHydrated(page, waitlistPath);
 
 		// Wait for table rows to be attached in DOM
-		await page.locator("table tbody tr").first().waitFor({
+		await waitlistPanel(page).locator("table tbody tr").first().waitFor({
 			state: "attached",
 			timeout: 15000,
 		});
 
 		// The footer counts the whole waitlist, not just the visible page; this
 		// suite seeds 15 entries, so at least that many exist across pages.
-		const footerCell = page.locator("table tfoot tr td", {
+		const footerCell = waitlistPanel(page).locator("table tfoot tr td", {
 			hasText: /Total \d+ people waiting/,
 		});
 		await expect(footerCell).toBeVisible();
@@ -187,7 +198,9 @@ test.describe("Waitlist table pagination and search", () => {
 		);
 		expect(total).toBeGreaterThanOrEqual(waitlistIds.length);
 
-		const rowCount = await page.locator("table tbody tr").count();
+		const rowCount = await waitlistPanel(page)
+			.locator("table tbody tr")
+			.count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThanOrEqual(10);
 	});
