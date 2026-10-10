@@ -19,7 +19,11 @@ import { SocialMediaConsent } from "#lib/types.js";
  */
 export const FIRST_NAME_MAX_LENGTH = 40;
 
-const entries = {
+/**
+ * The registration fields, shared with the staff "add a new person" form of
+ * the Fast-track dialog (ALE-384), which posts the same body.
+ */
+export const waitlistRegistrationEntries = {
 	firstName: v.pipe(
 		requiredText("First name is required."),
 		v.maxLength(
@@ -40,6 +44,8 @@ const entries = {
 	),
 	...guardianEntries,
 };
+
+const entries = waitlistRegistrationEntries;
 
 /**
  * The public Waitlist form, used for both `form(...)` and `.preflight(...)`.

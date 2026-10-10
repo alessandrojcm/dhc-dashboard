@@ -95,6 +95,7 @@ function view(
 			out: [],
 		},
 		attention: [],
+		fastTrackOpen: true,
 		...overrides,
 	};
 }
@@ -175,4 +176,47 @@ test("free seats with nobody waiting need attention", async () => {
 	await expect
 		.element(screen.getByTestId("next-batch-headline"))
 		.toHaveTextContent("Batch 2 is due, but nobody is waiting");
+});
+
+test("offers Fast-track only while Phoenix says it is open", async () => {
+	const open = await render(WorkshopConsole, { view: view() });
+	await expect
+		.element(open.getByRole("button", { name: "Fast-track" }))
+		.toBeEnabled();
+	open.unmount();
+
+	const closed = await render(WorkshopConsole, {
+		view: view({ fastTrackOpen: false }),
+	});
+	await expect
+		.element(closed.getByRole("button", { name: "Fast-track" }))
+		.toBeDisabled();
+});
+
+test("shows a fast-tracked Intake's origin as Fast-track", async () => {
+	const base = view();
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			roster: {
+				...base.roster,
+				asked: [
+					{
+						id: "1b2c3d4e-5f60-4718-8293-a4b5c6d7e8f9",
+						state: "contacted",
+						origin: "fast_track",
+						batchNumber: null,
+						firstName: "Ciara",
+						lastName: "Referral",
+						minor: false,
+						queueDate: "2026-10-20T12:00:00Z",
+						contactedAt: "2026-10-20T12:00:00Z",
+					},
+				],
+			},
+		}),
+	});
+	const row = screen
+		.getByRole("listitem")
+		.filter({ hasText: "Ciara Referral" });
+	await expect.element(row).toHaveTextContent("Fast-track");
 });

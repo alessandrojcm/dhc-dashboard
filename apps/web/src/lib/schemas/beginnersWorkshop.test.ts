@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
 import {
+	fastTrackNewPersonSchema,
+	fastTrackWaitlistPersonSchema,
 	scheduleWorkshopsSchema,
 	workshopSettingsSchema,
 	workshopStaffSchema,
@@ -181,5 +183,60 @@ describe("scheduleWorkshopsSchema Staff", () => {
 				assistantPrincipalIds: [ASSISTANT],
 			});
 		}
+	});
+});
+
+describe("fast-track schemas (ALE-384)", () => {
+	const id = "6d9e6110-fc8c-4dcf-b64f-db21b20d5140";
+
+	it("sends the picked Waitlist person", () => {
+		const waitlistId = "0f3f9d0c-3b52-4a4f-9a51-6a3f1b2a2f10";
+		expect(v.parse(fastTrackWaitlistPersonSchema, { id, waitlistId })).toEqual({
+			id,
+			body: { waitlistId },
+		});
+		expect(
+			v.safeParse(fastTrackWaitlistPersonSchema, { id, waitlistId: "" })
+				.success,
+		).toBe(false);
+	});
+
+	it("sends a new person as the registration body, without the workshop id", () => {
+		const output = v.parse(fastTrackNewPersonSchema, {
+			id,
+			firstName: "Ciara",
+			lastName: "Referral",
+			email: "Ciara@Example.com",
+			phoneNumber: "+353851234567",
+			dateOfBirth: "1990-03-03",
+			medicalConditions: "",
+			pronouns: "",
+			gender: "woman (cis)",
+			guardianFirstName: "ignored",
+		});
+
+		expect(output.id).toBe(id);
+		expect(output.body).not.toHaveProperty("id");
+		expect(output.body).not.toHaveProperty("guardianFirstName");
+		expect(output.body).toMatchObject({
+			firstName: "Ciara",
+			email: "ciara@example.com",
+			socialMediaConsent: "no",
+		});
+	});
+
+	it("requires a Guardian for a minor", () => {
+		const result = v.safeParse(fastTrackNewPersonSchema, {
+			id,
+			firstName: "Young",
+			lastName: "Person",
+			email: "young@example.com",
+			phoneNumber: "+353851234567",
+			dateOfBirth: `${new Date().getFullYear() - 17}-01-01`,
+			medicalConditions: "",
+			pronouns: "",
+			gender: "woman (cis)",
+		});
+		expect(result.success).toBe(false);
 	});
 });

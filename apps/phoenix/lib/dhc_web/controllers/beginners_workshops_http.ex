@@ -40,7 +40,10 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     contact_from_locked: "contactFromDate",
     fee_locked: "feeCents",
     not_a_coach: "coachPrincipalId",
-    not_a_member: "assistantPrincipalIds"
+    not_a_member: "assistantPrincipalIds",
+    email_on_waitlist: "email",
+    email_is_principal: "email",
+    email_has_pending_invitation: "email"
   }
 
   use DhcWeb.Problem,
@@ -60,7 +63,17 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       not_a_coach: {422, "The coach must be a Member with the coach role"},
       not_a_member: {422, "Assistants must be active Members"},
       staff_conflict: {409, "The Staff changed at the same time; try again"},
-      too_many_workshops: {422, "Schedule at most 20 workshops at once"}
+      too_many_workshops: {422, "Schedule at most 20 workshops at once"},
+      # Fast-track (ALE-384).
+      person_not_found: {404, "Waitlist person not found"},
+      open_intake: {409, "This person already has an open Intake"},
+      not_eligible:
+        {409, "Only someone waiting, or removed in the last 3 months, can be fast-tracked"},
+      after_cutoff: {409, "Payment is closed for this workshop, so nobody can be fast-tracked"},
+      email_on_waitlist: {409, "This email is already on the Waitlist; search for them instead"},
+      email_is_principal: {409, "This email belongs to a Member or former Member"},
+      email_has_pending_invitation: {409, "This email already has a pending Invitation"},
+      invalid_payload: {422, "Check the person's details"}
     },
     fields: @internal_to_public
 

@@ -41,6 +41,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
              ~w(beginnersWorkshopAssignments.list beginnersWorkshopBatches.pause
                 beginnersWorkshopBatches.resume beginnersWorkshopDoor.show
                 beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
+                beginnersWorkshopFastTrack.candidates beginnersWorkshopFastTrack.newPerson
+                beginnersWorkshopFastTrack.waitlistPerson
                 beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.schedule
                 beginnersWorkshops.setStaff beginnersWorkshops.staffCandidates
                 beginnersWorkshops.updateSettings)

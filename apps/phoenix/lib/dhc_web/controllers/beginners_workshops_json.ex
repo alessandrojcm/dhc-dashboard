@@ -20,7 +20,8 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
         nextBatch: next_batch(console.next_batch),
         roster:
           Map.new(console.roster, fn {group, rows} -> {group, Enum.map(rows, &intake/1)} end),
-        attention: console.attention
+        attention: console.attention,
+        fastTrackOpen: console.fast_track_open
       }
     }
   end

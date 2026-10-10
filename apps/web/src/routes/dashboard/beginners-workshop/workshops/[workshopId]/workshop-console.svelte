@@ -2,8 +2,9 @@
 	ALE-380: the coordinator console of one Beginners' Workshop — the
 	lifecycle timeline, the "Now" card, Needs attention, the Next Batch
 	preview with Pause/Resume beside it, and the roster grouped by meaning.
-	Everything shown is Phoenix's console read model; Pause/Resume are the
-	only commands, and Batches themselves come only from the system sweep.
+	Everything shown is Phoenix's console read model. Pause/Resume and
+	(ALE-384) Fast-track are its commands; Batches themselves come only from
+	the system sweep.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopConsole } from "@dhc/api-client";
@@ -15,6 +16,7 @@ import {
 	CircleDot,
 	Pause,
 	Play,
+	UserPlus,
 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import {
@@ -41,8 +43,16 @@ import * as Empty from "#lib/components/ui/empty/index.js";
 import { cn } from "#lib/utils.js";
 import SeatMeter from "../../seat-meter.svelte";
 import { pauseBatches, resumeBatches } from "./console.remote";
+import FastTrackDialog from "./fast-track-dialog.svelte";
 
-let { view }: { view: BeginnersWorkshopConsole } = $props();
+let {
+	view,
+	genders = [],
+}: { view: BeginnersWorkshopConsole; genders?: string[] } = $props();
+
+let fastTrackDialogOpen = $state(false);
+// Mounted on first open, so the console renders without a search query.
+let fastTrackMounted = $state(false);
 
 const workshop = $derived(view.workshop);
 const next = $derived(view.nextBatch);
@@ -201,27 +211,40 @@ const attention = $derived(
 							</p>
 						{/if}
 					</div>
-					<form
-						{...command.enhance(async (instance) => {
-							if (!(await instance.submit())) return;
-							const result = instance.result;
-							if (result?.ok)
-								toast.success(
-									view.pause.paused ? "Batches resumed" : "Batches paused",
-								);
-							else if (result) toast.error(result.error);
-						})}
-					>
-						<input {...command.fields.id.as("hidden", workshop.id)} />
+					<div class="flex flex-wrap gap-2">
 						<Button
-							type="submit"
+							type="button"
 							variant="outline"
-							disabled={!!command.pending}
+							disabled={!view.fastTrackOpen}
+							onclick={() => {
+								fastTrackMounted = true;
+								fastTrackDialogOpen = true;
+							}}
 						>
-							{#if view.pause.paused}<Play /> Resume Batches{:else}<Pause /> Pause
-								Batches{/if}
+							<UserPlus /> Fast-track
 						</Button>
-					</form>
+						<form
+							{...command.enhance(async (instance) => {
+								if (!(await instance.submit())) return;
+								const result = instance.result;
+								if (result?.ok)
+									toast.success(
+										view.pause.paused ? "Batches resumed" : "Batches paused",
+									);
+								else if (result) toast.error(result.error);
+							})}
+						>
+							<input {...command.fields.id.as("hidden", workshop.id)} />
+							<Button
+								type="submit"
+								variant="outline"
+								disabled={!!command.pending}
+							>
+								{#if view.pause.paused}<Play /> Resume Batches{:else}<Pause /> Pause
+									Batches{/if}
+							</Button>
+						</form>
+					</div>
 				</div>
 
 				{#if next.people.length}
@@ -280,10 +303,19 @@ const attention = $derived(
 				<Empty.Header>
 					<Empty.Title>Nobody contacted yet</Empty.Title>
 					<Empty.Description
-						>People appear here once a Batch contacts them.</Empty.Description
+						>People appear here once a Batch or a Fast-track contacts them.</Empty.Description
 					>
 				</Empty.Header>
 			</Empty.Root>
 		{/if}
 	</div>
 </div>
+
+{#if scheduled && fastTrackMounted}
+	<FastTrackDialog
+		{workshop}
+		fastTrackOpen={view.fastTrackOpen}
+		{genders}
+		bind:open={fastTrackDialogOpen}
+	/>
+{/if}

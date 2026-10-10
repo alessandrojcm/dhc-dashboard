@@ -18,7 +18,9 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     * `roster` — Intakes grouped by meaning before finalisation: `seated`
       (paid), `asked` (contacted, not paid yet) and `out`;
     * `attention` — `:nobody_waiting` when a Batch is due with free seats
-      but nobody eligible is waiting.
+      but nobody eligible is waiting;
+    * `fast_track_open` — whether Fast-track is offered now
+      (`WorkshopPolicy.payment_open?/2`, the rule `fast_track` applies).
 
   Because the preview and the pass share `WorkshopPolicy` and
   `BatchProposal`, a stale console can be out of date but never disagree
@@ -47,7 +49,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           pause: map(),
           next_batch: map(),
           roster: %{seated: [map()], asked: [map()], out: [map()]},
-          attention: [:nobody_waiting]
+          attention: [:nobody_waiting],
+          fast_track_open: boolean()
         }
 
   @doc "The console of `workshop_id` at the clock's current reading."
@@ -66,7 +69,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
          pause: pause(workshop),
          next_batch: next_batch,
          roster: roster(workshop),
-         attention: attention(next_batch)
+         attention: attention(next_batch),
+         fast_track_open: WorkshopPolicy.payment_open?(workshop, reading)
        }}
     else
       _ -> {:error, :not_found}

@@ -4015,6 +4015,111 @@ paths:
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
         "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
         "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+  /beginners-workshops/{id}/fast-track/candidates:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    get:
+      operationId: beginnersWorkshopFastTrack.candidates
+      tags: [BeginnersWorkshops]
+      summary: Search the people Fast-track may place
+      description: |
+        Waiting people and people removed within the 3-month retention
+        window, without an open Intake, matching `q` against first name,
+        last name and email; oldest priority first, at most 20. Lock-free;
+        `fast_track` decides again under the lock. Requires
+        `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: {type: string}
+      responses:
+        "200":
+          description: The candidates
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopFastTrackCandidatesResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+  /beginners-workshops/{id}/fast-track:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    post:
+      operationId: beginnersWorkshopFastTrack.waitlistPerson
+      tags: [BeginnersWorkshops]
+      summary: Fast-track a Waitlist person into a workshop
+      description: |
+        Places a `waiting` person, or a `removed` person within retention
+        (restored to `waiting` with their original priority), outside Batch
+        order: a `contacted` Intake with origin `fast_track` and the Contact
+        email, whose `{{windowEnd}}` is the Payment Cutoff. They pay the fee
+        like everyone else. Refused with `open_intake`, `not_eligible`
+        (attended, invited, joined, or removed too long ago) and
+        `after_cutoff`. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopFastTrackRequest"}
+      responses:
+        "201":
+          description: The fast-tracked Intake
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopFastTrackResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Beginners' Workshop or Waitlist person not found
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: The person or the workshop cannot take a Fast-track
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopFastTrackConflictError"}
+  /beginners-workshops/{id}/fast-track/new-person:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    post:
+      operationId: beginnersWorkshopFastTrack.newPerson
+      tags: [BeginnersWorkshops]
+      summary: Add a new person to the Waitlist and fast-track them
+      description: |
+        The staff "add a new person" path (works while public registration
+        is closed; priority = now), then the same Fast-track, in one
+        transaction. The body is the public registration body. Refused with
+        a visible reason when the email is on the Waitlist
+        (`email_on_waitlist`), belongs to a Member or former Member
+        (`email_is_principal`) or has a pending Invitation
+        (`email_has_pending_invitation`), and with `after_cutoff`. Requires
+        `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/WaitlistEntryCreateRequest"}
+      responses:
+        "201":
+          description: The fast-tracked Intake
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopFastTrackResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409":
+          description: The email or the workshop cannot take a Fast-track
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopFastTrackConflictError"}
+        "422":
+          description: Invalid registration details
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopFastTrackInvalidError"}
   /beginners-workshops/staff-candidates:
     get:
       operationId: beginnersWorkshops.staffCandidates
@@ -8051,7 +8156,7 @@ components:
       enum: [nobody_waiting]
     BeginnersWorkshopConsole:
       type: object
-      required: [workshop, batches, pause, nextBatch, roster, attention]
+      required: [workshop, batches, pause, nextBatch, roster, attention, fastTrackOpen]
       properties:
         workshop: {$ref: "#/components/schemas/BeginnersWorkshop"}
         batches:
@@ -8064,11 +8169,106 @@ components:
         attention:
           type: array
           items: {$ref: "#/components/schemas/BeginnersWorkshopAttention"}
+        fastTrackOpen:
+          type: boolean
+          description: |
+            Whether Fast-track is offered now: the workshop is scheduled and
+            before its Payment Cutoff (the rule `fast_track` applies).
     BeginnersWorkshopConsoleResponse:
       type: object
       required: [data]
       properties:
         data: {$ref: "#/components/schemas/BeginnersWorkshopConsole"}
+    BeginnersWorkshopFastTrackCandidate:
+      type: object
+      description: |
+        A person the Fast-track dialog may place: `waiting`, or `removed`
+        within the 3-month retention window (placing them restores them).
+        Nobody with an open Intake is listed.
+      required: [waitlistId, firstName, lastName, email, status, removedAt, minor]
+      properties:
+        waitlistId: {type: string, format: uuid}
+        firstName: {type: string, nullable: true}
+        lastName: {type: string, nullable: true}
+        email: {type: string, format: email}
+        status: {type: string, enum: [waiting, removed]}
+        removedAt: {type: string, nullable: true, format: date-time}
+        minor:
+          type: boolean
+          description: Under 18 on the workshop date.
+    BeginnersWorkshopFastTrackCandidatesResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopFastTrackCandidate"}
+    BeginnersWorkshopFastTrackRequest:
+      type: object
+      required: [waitlistId]
+      properties:
+        waitlistId: {type: string, format: uuid}
+    BeginnersWorkshopFastTrack:
+      type: object
+      description: |
+        The fast-tracked Intake. `placed` says how the person got there:
+        `waiting` (already waiting), `restored` (removed within retention,
+        now waiting again) or `added` (new to the Waitlist).
+      required: [intakeId, workshopId, waitlistId, state, origin, contactedAt, placed]
+      properties:
+        intakeId: {type: string, format: uuid}
+        workshopId: {type: string, format: uuid}
+        waitlistId: {type: string, format: uuid}
+        state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
+        origin: {$ref: "#/components/schemas/BeginnersWorkshopIntakeOrigin"}
+        contactedAt: {type: string, format: date-time}
+        placed: {type: string, enum: [waiting, restored, added]}
+    BeginnersWorkshopFastTrackResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopFastTrack"}
+    BeginnersWorkshopFastTrackConflictError:
+      description: |
+        409 refusal of a Fast-track. The three `email_*` codes come from the
+        staff "add a new person" path and carry `fields.email`.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - after_finalisation
+                    - already_cancelled
+                    - after_cutoff
+                    - open_intake
+                    - not_eligible
+                    - email_on_waitlist
+                    - email_is_principal
+                    - email_has_pending_invitation
+                    - concurrent_change
+    BeginnersWorkshopFastTrackInvalidError:
+      description: |
+        422 refusal of a new person's details: `invalid_payload` (a missing
+        or malformed field, an age under 16, a minor without a Guardian), or
+        field messages only for a value the Waitlist refuses.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              properties:
+                code:
+                  type: string
+                  enum: [invalid_payload]
     BeginnersWorkshopConflictError:
       description: 409 lifecycle conflict on a Beginners' Workshop command.
       allOf:

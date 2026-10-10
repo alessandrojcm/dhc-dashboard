@@ -80,6 +80,7 @@ function view(
 		nextBatch: next(),
 		roster: { seated: [], asked: [], out: [] },
 		attention: [],
+		fastTrackOpen: true,
 		...overrides,
 	};
 }
