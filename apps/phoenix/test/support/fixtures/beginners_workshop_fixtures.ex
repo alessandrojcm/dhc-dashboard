@@ -76,10 +76,18 @@ defmodule Dhc.BeginnersWorkshopFixtures do
   """
   def force_status!(workshop_id, status) do
     # A finalised workshop records when (the finalised check).
-    finalised_at = if status == "finalised", do: %{@now | microsecond: {0, 6}}
+    # A finalised or cancelled workshop records when (the finalised and
+    # cancelled checks).
+    at = %{@now | microsecond: {0, 6}}
+    finalised_at = if status == "finalised", do: at
+    cancelled_at = if status == "cancelled", do: at
 
     Repo.get!(BeginnersWorkshop, workshop_id)
-    |> Ecto.Changeset.change(status: status, finalised_at: finalised_at)
+    |> Ecto.Changeset.change(
+      status: status,
+      finalised_at: finalised_at,
+      cancelled_at: cancelled_at
+    )
     |> Repo.update!()
   end
 

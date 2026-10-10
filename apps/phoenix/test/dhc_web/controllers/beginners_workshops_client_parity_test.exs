@@ -53,7 +53,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopIntakes.withdrawPerson
                 beginnersWorkshopInvitations.invitable beginnersWorkshopInvitations.invite
                 beginnersWorkshopRefunds.recordManual beginnersWorkshopRefunds.retry
-                beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.reschedule
+                beginnersWorkshops.cancel beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.reschedule
                 beginnersWorkshops.schedule
                 beginnersWorkshops.setStaff beginnersWorkshops.staffCandidates
                 beginnersWorkshops.updateSettings)
@@ -123,6 +123,10 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     # ALE-386: the console Intake commands.
     assert schemas["BeginnersWorkshopIntakeCommand"]["enum"] ==
              Enum.map(IntakePolicy.commands(), &Atom.to_string/1)
+
+    # ALE-395: an Intake's history also records the workshop's cancellation.
+    assert schemas["BeginnersWorkshopIntakeHistoryCommand"]["enum"] ==
+             Enum.map(IntakePolicy.commands(), &Atom.to_string/1) ++ ["cancel_workshop"]
 
     # ALE-393: the states an attendance correction may name.
     assert schemas["BeginnersWorkshopAttendanceCorrection"]["enum"] ==

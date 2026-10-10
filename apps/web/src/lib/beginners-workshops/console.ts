@@ -14,6 +14,7 @@ import type {
 	BeginnersWorkshopFailedRefund,
 	BeginnersWorkshopIntakeCommand,
 	BeginnersWorkshopIntakeEmailLogEntry,
+	BeginnersWorkshopIntakeHistoryCommand,
 	BeginnersWorkshopIntakeHistoryEntry,
 	BeginnersWorkshopIntakeRefund,
 	BeginnersWorkshopIntakeState,
@@ -237,9 +238,55 @@ export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 					: stageLabel(workshop.stage),
 				body: `${workshop.seats.attended} attended · ${workshop.seats.noShow} no-show. Attended people get the follow-up email at 10:00 the next morning. Only corrections and invites remain.`,
 			};
+		case "cancelled":
+			return {
+				title: view.cancellation
+					? `Cancelled ${formatDublinInstant(view.cancellation.at)}${
+							view.cancellation.by ? ` by ${view.cancellation.by}` : ""
+						}`
+					: stageLabel(workshop.stage),
+				body: cancelledBody(view),
+			};
 		default:
 			return { title: stageLabel(workshop.stage), body: seats };
 	}
+}
+
+/**
+ * ALE-395: what the cancellation left behind. Paid people were deferred
+ * (their fee is a Carried Fee, refundable through Refund Carried Fee);
+ * everyone else went back to the Waitlist with their original priority.
+ */
+export function cancelledBody(view: BeginnersWorkshopConsole): string {
+	const out = view.roster.out;
+	const deferred = out.filter((intake) => intake.state === "deferred").length;
+	const returned = out.filter((intake) => intake.state === "returned").length;
+	return [
+		`${plural(deferred, "paid person", "paid people")} deferred with a Carried Fee · ${returned} back on the Waitlist.`,
+		"Read-only. To repay someone who asks, use Refund Carried Fee; to move people on, fast-track the Carried Fee holders into another workshop and they confirm.",
+	].join(" ");
+}
+
+function plural(count: number, one: string, many: string): string {
+	return `${count} ${count === 1 ? one : many}`;
+}
+
+/** ALE-395: the Cancel dialog's lines, from Phoenix's `cancelPreview`. */
+export function cancelPreviewLines(preview: {
+	deferred: number;
+	returned: number;
+	released: number;
+}): string[] {
+	const lines = [
+		`${plural(preview.deferred, "paid person", "paid people")} deferred: their fee becomes a Carried Fee. Email: “Workshop cancelled – paid” (refund, or keep the fee for a later workshop).`,
+		`${plural(preview.returned, "contacted person", "contacted people")} back on the Waitlist with their original priority. Email: “Workshop cancelled – unpaid”.`,
+	];
+	if (preview.released)
+		lines.push(
+			`${plural(preview.released, "live Seat Hold", "live Seat Holds")} released; a payment that lands anyway is refunded automatically.`,
+		);
+	lines.push("Assigned Staff get a Notification.");
+	return lines;
 }
 
 /**
@@ -622,6 +669,13 @@ export function intakeCommandDone(
 		: INTAKE_COMMAND_COPY[command].done;
 }
 
+/** ALE-395: a history row is a console command or the workshop's cancellation. */
+function historyLabel(command: BeginnersWorkshopIntakeHistoryCommand): string {
+	return command === "cancel_workshop"
+		? "Workshop cancelled"
+		: INTAKE_COMMAND_COPY[command].history;
+}
+
 /** One history line: `Declined · Clare Coord · Thu 22 Oct, 13:00`. */
 export function historyLine(
 	entry: BeginnersWorkshopIntakeHistoryEntry,
@@ -633,7 +687,7 @@ export function historyLine(
 	return [
 		entry.correction
 			? ATTENDANCE_CORRECTION_COPY[entry.correction].history
-			: INTAKE_COMMAND_COPY[entry.command].history,
+			: historyLabel(entry.command),
 		actor,
 		formatDublinInstant(entry.occurredAt),
 	].join(" · ");

@@ -133,6 +133,33 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   Nothing is scheduled per workshop, so no job needs rewriting.
 
+  ## Cancel (ALE-395)
+
+  `cancel_workshop` (`beginners.workshops.manage`, optional `reason` ≤ 500)
+  cancels a scheduled workshop at any time before Attendance Finalisation
+  (`:after_finalisation` / `:already_cancelled` otherwise). Under the
+  Beginners' Workshop lock, then the open Intakes' Waitlist entries, the
+  open Intakes, those people's live Carried Fees and the workshop's live
+  Seat Holds and paying payments:
+
+    * every `paid` Intake is deferred exactly as `defer` does it (a
+      Stripe-paid one creates a `held` Carried Fee, a Carried-Fee-paid
+      one's fee goes back to `held`), its door check-in is discarded, and
+      "Workshop cancelled – paid" is queued instead of "Deferred";
+    * every `contacted` Intake becomes `returned` (the person `waiting`
+      with their original priority; a holder keeps their `held` fee), its
+      live Seat Hold `releasing`, and "Workshop cancelled – unpaid" is
+      queued — both with log occasion `cancelled`;
+    * each Intake gets a `cancel_workshop` history row carrying the reason;
+    * every Staff member except the actor gets the keyed Notification
+      `beginners-workshop:<id>:cancelled`, signalled after commit.
+
+  Every time-driven pass, the Intake page's commands and the door judge
+  `status = scheduled`, so nothing happens to the workshop afterwards. A
+  completion that arrives for a `releasing` hold is refunded in full by
+  `complete_payment`'s `paid_after_close`. People move to another workshop
+  by being fast-tracked there as Carried Fee holders, who then confirm.
+
   ## Fast-track (ALE-384)
 
   `fast_track` places one person straight into a workshop outside Batch
@@ -459,6 +486,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           {:schedule_workshop, [map()]}
           | {:update_workshop, workshop_id :: binary(), map()}
           | {:reschedule_workshop, workshop_id :: binary(), map()}
+          | {:cancel_workshop, workshop_id :: binary(), map()}
           | {:pause_batches, workshop_id :: binary()}
           | {:resume_batches, workshop_id :: binary()}
           | {:send_due_batch, workshop_id :: binary()}
@@ -554,6 +582,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :no_carried_fee
           | :confirm_instead
           | :payment_not_found
+          | :invalid_reason
           | :before_finalisation
           | :not_correctable
           | :invalid_correction
@@ -566,6 +595,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     schedule_workshop: :"beginners.workshops.manage",
     update_workshop: :"beginners.workshops.manage",
     reschedule_workshop: :"beginners.workshops.manage",
+    cancel_workshop: :"beginners.workshops.manage",
     pause_batches: :"beginners.workshops.manage",
     resume_batches: :"beginners.workshops.manage",
     set_staff: :"beginners.workshops.manage",
@@ -743,7 +773,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:capacity, "beginners_workshops_capacity_check"},
       {:fee_cents, "beginners_workshops_fee_check"},
       {:payment_window_days, "beginners_workshops_payment_window_check"},
-      {:reschedule_count, "beginners_workshops_reschedule_count_check"}
+      {:reschedule_count, "beginners_workshops_reschedule_count_check"},
+      {:status, "beginners_workshops_cancelled_check"},
+      {:cancel_reason, "beginners_workshops_cancel_reason_check"}
     ],
     Batch => [
       {:number, "beginners_workshop_batches_number_check"},
@@ -947,6 +979,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       |> signal_after_commit()
     end
   end
+
+  defp run({:staff, principal_id}, {:cancel_workshop, workshop_id, attrs}, clock)
+       when is_map(attrs),
+       do: cancel_workshop(principal_id, workshop_id, attrs, clock)
 
   defp run({:staff, principal_id}, {:pause_batches, workshop_id}, clock),
     do: set_batches_paused(workshop_id, principal_id, true, clock)
@@ -1387,6 +1423,235 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp notify_rescheduled(workshop, actor_id) do
     key = "beginners-workshop:#{workshop.id}:rescheduled:#{workshop.reschedule_count}"
     body = "The Beginners' Workshop you're on has moved to #{when_where(workshop)}."
+
+    workshop
+    |> current_staff()
+    |> Enum.map(& &1.principal_id)
+    |> Enum.uniq()
+    |> List.delete(actor_id)
+    |> Enum.map(&{&1, key, body})
+    |> create_keyed()
+  end
+
+  # ── cancel_workshop (ALE-395) ───────────────────────────────────
+
+  defp cancel_workshop(principal_id, workshop_id, attrs, clock) do
+    with {:ok, reason} <- cancel_reason(attrs),
+         {:ok, workshop_id} <- cast_id(workshop_id) do
+      fn ->
+        with_locked(
+          %{
+            workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+            waitlist_entry: &cancel_entries/1,
+            intake: &cancel_intakes/1,
+            carried_fee: &cancel_fees/1,
+            payment: &cancel_payments/1
+          },
+          &cancel_locked(&1, principal_id, reason, clock)
+        )
+      end
+      |> transact()
+      |> signal_after_commit()
+    end
+  end
+
+  # Optional, at most a history note's length; blank is no reason.
+  defp cancel_reason(attrs) do
+    case fetch_attr(attrs, :reason) do
+      nil ->
+        {:ok, nil}
+
+      reason when is_binary(reason) ->
+        case reason |> String.trim() |> bounded_note() do
+          {:ok, reason} -> {:ok, reason}
+          {:error, :invalid_note} -> {:error, :invalid_reason}
+        end
+
+      _other ->
+        {:error, :invalid_reason}
+    end
+  end
+
+  # Every Intake is created and closed under the workshop lock, so its open
+  # Intakes cannot change once it is held. Nothing more is locked when the
+  # workshop is no longer scheduled.
+  defp cancel_open_intakes(workshop),
+    do:
+      from(i in Intake,
+        where: i.workshop_id == ^workshop.id and i.state in ^Intake.open_states()
+      )
+
+  defp cancel_entries(%{workshop: %BeginnersWorkshop{status: "scheduled"} = workshop}) do
+    people = workshop |> cancel_open_intakes() |> select([i], i.waitlist_id)
+    {:all, from(e in WaitlistEntry, where: e.id in subquery(people))}
+  end
+
+  defp cancel_entries(_locked), do: nil
+
+  defp cancel_intakes(%{workshop: workshop, waitlist_entry: entries}) when is_list(entries),
+    do: {:all, cancel_open_intakes(workshop)}
+
+  defp cancel_intakes(_locked), do: nil
+
+  # The live Carried Fees of the people with an open Intake: a
+  # Carried-Fee-paid Intake's fee goes back to `held`, and a contacted
+  # holder keeps theirs.
+  defp cancel_fees(%{workshop: workshop, intake: intakes}) when is_list(intakes) do
+    people = workshop |> cancel_open_intakes() |> select([i], i.waitlist_id)
+
+    {:all,
+     from(f in CarriedFee,
+       where: f.waitlist_id in subquery(people) and f.status in ^CarriedFee.live_statuses()
+     )}
+  end
+
+  defp cancel_fees(_locked), do: nil
+
+  # The live Seat Holds (released) and the payments that paid the paid
+  # Intakes (`paying_payment/1`'s rule: a deferral's Carried Fee points at
+  # one).
+  defp cancel_payments(%{workshop: workshop, intake: intakes}) when is_list(intakes) do
+    paid = from(i in Intake, where: i.workshop_id == ^workshop.id and i.state == "paid")
+    automatic = IntakeRefund.automatic_reasons()
+
+    {:all,
+     from(p in IntakePayment,
+       as: :payment,
+       where: p.workshop_id == ^workshop.id,
+       where:
+         p.status == "open" or
+           (p.status == "paid" and p.intake_id in subquery(select(paid, [i], i.id)) and
+              not exists(
+                from(r in IntakeRefund,
+                  where: r.payment_id == parent_as(:payment).id and r.reason in ^automatic
+                )
+              ))
+     )}
+  end
+
+  defp cancel_payments(_locked), do: nil
+
+  defp cancel_locked(%{workshop: workshop} = locked, actor_id, reason, clock) do
+    reading = Clock.read(clock)
+
+    with :ok <- still_scheduled(workshop),
+         context = %{actor: actor_id, note: reason, options: %{}},
+         {:ok, tally} <- cancel_all(locked, context, reading),
+         {:ok, workshop} <-
+           transition(
+             :workshop,
+             workshop,
+             BeginnersWorkshop.cancel_changeset(workshop, actor_id, reason, reading.now)
+           ),
+         {:ok, created} <- notify_cancelled(workshop, actor_id) do
+      view = WorkshopProjection.view(workshop, facts_for(workshop), reading)
+      {:ok, {Map.merge(tally, %{workshop: view}), created}}
+    end
+  end
+
+  defp cancel_all(locked, context, reading) do
+    entries = Map.new(locked.waitlist_entry, &{&1.id, &1})
+    fees = Map.new(locked.carried_fee, &{&1.waitlist_id, &1})
+    payments = Enum.group_by(locked.payment, & &1.intake_id)
+
+    Enum.reduce_while(
+      locked.intake,
+      {:ok, %{deferred: 0, returned: 0, released: 0}},
+      fn intake, {:ok, tally} ->
+        one = %{
+          workshop: locked.workshop,
+          waitlist_entry: Map.get(entries, intake.waitlist_id),
+          intake: intake,
+          carried_fee: Map.get(fees, intake.waitlist_id),
+          payments: Map.get(payments, intake.id, [])
+        }
+
+        case cancel_intake(one, context, reading) do
+          {:ok, counted} -> {:cont, {:ok, Map.merge(tally, counted, fn _k, a, b -> a + b end)}}
+          {:error, reason} -> {:halt, {:error, reason}}
+        end
+      end
+    )
+  end
+
+  # A paid person is deferred (story 129): their fee is carried, any door
+  # check-in is discarded, and "Workshop cancelled – paid" replaces the
+  # Deferred notice. A person whose Waitlist entry was deleted has nobody
+  # to carry a fee to (and no address): their Intake just closes, and the
+  # payment stays on record for a manual refund.
+  defp cancel_intake(
+         %{intake: %Intake{state: "paid", waitlist_id: nil} = intake},
+         context,
+         reading
+       ) do
+    with {:ok, intake} <- discard_check_in(intake),
+         {:ok, intake} <-
+           transition(:intake, intake, Intake.close_changeset(intake, "deferred")),
+         {:ok, _event} <-
+           record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
+         do: {:ok, %{deferred: 1}}
+  end
+
+  defp cancel_intake(%{intake: %Intake{state: "paid"} = intake} = one, context, reading) do
+    payment =
+      one.payments
+      |> Enum.filter(&(&1.status == "paid"))
+      |> Enum.min_by(&{DateTime.to_unix(&1.paid_at, :microsecond), &1.id}, fn -> nil end)
+
+    with {:ok, intake} <- discard_check_in(intake),
+         {:ok, intake} <-
+           defer_paid(%{one | intake: intake} |> Map.put(:payment, payment), reading),
+         :ok <- queue_cancelled(intake, one.workshop, "cancelled_paid", reading),
+         {:ok, _event} <-
+           record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
+         do: {:ok, %{deferred: 1}}
+  end
+
+  # An unpaid person never had a seat to lose: the Intake is `returned`,
+  # the person `waiting` with their original priority, and a live Seat
+  # Hold is `releasing` (Stripe still ends it; a completion that lands
+  # anyway is refunded by `complete_payment`'s `paid_after_close`). A
+  # Carried Fee holder keeps their `held` fee.
+  defp cancel_intake(%{intake: %Intake{state: "contacted"} = intake} = one, context, reading) do
+    holds = Enum.filter(one.payments, &(&1.status == "open"))
+
+    with {:ok, intake} <-
+           transition(:intake, intake, Intake.close_changeset(intake, "returned")),
+         :ok <- Enum.reduce_while(holds, :ok, &release_each/2),
+         :ok <- back_to_waiting(one.waitlist_entry),
+         :ok <- queue_cancelled(intake, one.workshop, "cancelled_unpaid", reading),
+         {:ok, _event} <-
+           record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
+         do: {:ok, %{returned: 1, released: length(holds)}}
+  end
+
+  defp release_each(hold, :ok) do
+    case release_to_stripe(hold) do
+      :ok -> {:cont, :ok}
+      error -> {:halt, error}
+    end
+  end
+
+  defp discard_check_in(%Intake{checked_in_at: nil} = intake), do: {:ok, intake}
+
+  defp discard_check_in(%Intake{} = intake),
+    do: intake |> Intake.undo_check_in_changeset() |> persist()
+
+  defp queue_cancelled(intake, workshop, type, reading),
+    do:
+      queue_intake_email(
+        intake,
+        type,
+        "cancelled",
+        &%{"firstName" => &1, "date" => Values.date(workshop.date)},
+        reading
+      )
+
+  # Assigned Staff stay on the (read-only) record; each but the actor hears
+  # that it is off, once.
+  defp notify_cancelled(workshop, actor_id) do
+    key = "beginners-workshop:#{workshop.id}:cancelled"
+    body = "The Beginners' Workshop on #{when_where(workshop)} has been cancelled."
 
     workshop
     |> current_staff()
@@ -2957,13 +3222,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # A deferral keeps the person's money as a Carried Fee and their place in
   # the queue (story 69): a Stripe-paid Intake creates a `held` fee pointing
   # at its payment, a Carried-Fee-paid one returns its fee to `held`.
-  defp act_on_intake(:defer, locked, _event_id, reading) do
-    %{workshop: workshop, waitlist_entry: entry, intake: intake} = locked
-
-    with {:ok, _fee} <- carry_fee(intake, locked, reading),
-         {:ok, intake} <-
-           transition(:intake, intake, Intake.close_changeset(intake, "deferred")),
-         :ok <- back_to_waiting(entry),
+  defp act_on_intake(:defer, %{workshop: workshop} = locked, _event_id, reading) do
+    with {:ok, intake} <- defer_paid(locked, reading),
          :ok <-
            queue_intake_email(
              intake,
@@ -3098,6 +3358,19 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # The deferral itself, shared by `defer` and `cancel_workshop` (which
+  # sends its own notice instead of "Deferred"): the fee is carried, the
+  # Intake closes as `deferred` and the person is `waiting` again with
+  # their original priority. `locked` holds this Intake's person's entry,
+  # live Carried Fee and paying payment.
+  defp defer_paid(%{waitlist_entry: entry, intake: intake} = locked, reading) do
+    with {:ok, _fee} <- carry_fee(intake, locked, reading),
+         {:ok, intake} <-
+           transition(:intake, intake, Intake.close_changeset(intake, "deferred")),
+         :ok <- back_to_waiting(entry),
+         do: {:ok, intake}
   end
 
   defp refund_choice(%{refund: refund}) when is_boolean(refund), do: {:ok, refund}

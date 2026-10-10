@@ -139,6 +139,8 @@ function view(
 		fastTrackOpen: true,
 		fastTrackHoldersOnly: false,
 		finalisation: null,
+		cancelPreview: null,
+		cancellation: null,
 		...overrides,
 	};
 }
@@ -551,6 +553,84 @@ test("ALE-394: a cancelled workshop offers no Reschedule", async () => {
 	await expect
 		.element(screen.getByRole("button", { name: "Reschedule" }))
 		.not.toBeInTheDocument();
+});
+
+test("ALE-395: Cancel opens a dialog with Phoenix's deferred, returned and released counts", async () => {
+	const screen = await render(WorkshopConsole, {
+		view: view({ cancelPreview: { deferred: 1, returned: 1, released: 0 } }),
+	});
+
+	await userEvent.click(
+		screen.getByRole("button", { name: "Cancel workshop" }),
+	);
+	const preview = screen.getByTestId("cancel-preview");
+	await expect.element(preview).toHaveTextContent("1 paid person deferred");
+	await expect
+		.element(preview)
+		.toHaveTextContent("1 contacted person back on the Waitlist");
+	await expect.element(preview).not.toHaveTextContent("Seat Hold");
+	await expect
+		.element(screen.getByRole("button", { name: "Cancel and email 2" }))
+		.toBeVisible();
+});
+
+test("ALE-395: a cancelled workshop is read-only, says who and why, and points to Refund Carried Fee", async () => {
+	const base = view();
+	const deferred = {
+		...base.roster.seated[0],
+		state: "deferred" as const,
+		carriedFee: "held" as const,
+		availableCommands: [],
+	};
+	const returned = {
+		...base.roster.asked[0],
+		state: "returned" as const,
+		availableCommands: [],
+	};
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			workshop: { ...base.workshop, status: "cancelled", stage: "cancelled" },
+			roster: {
+				seated: [],
+				asked: [],
+				attended: [],
+				noShow: [],
+				out: [deferred, returned],
+			},
+			cancellation: {
+				at: "2026-10-22T12:00:00Z",
+				by: "Clare Coord",
+				reason: "Hall flooded",
+			},
+			fastTrackOpen: false,
+		}),
+	});
+
+	const now = screen.getByRole("region", { name: "Now" });
+	await expect
+		.element(now)
+		.toHaveTextContent("Cancelled Thu 22 Oct, 13:00 by Clare Coord");
+	await expect
+		.element(now)
+		.toHaveTextContent(
+			"1 paid person deferred with a Carried Fee · 1 back on the Waitlist.",
+		);
+	await expect.element(now).toHaveTextContent("Refund Carried Fee");
+	await expect
+		.element(screen.getByTestId("cancel-reason"))
+		.toHaveTextContent("Hall flooded");
+	await expect
+		.element(screen.getByRole("button", { name: "Cancel workshop" }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(screen.getByRole("button", { name: /Fast-track/ }))
+		.not.toBeInTheDocument();
+	await expect
+		.element(screen.getByRole("region", { name: "Out of this workshop" }))
+		.toHaveTextContent("Deferred");
+	await expect
+		.element(screen.getByRole("listitem").filter({ hasText: "Cancelled" }))
+		.toHaveAttribute("data-state", "done");
 });
 
 /** ALE-386: the roster with each Intake's own `availableCommands`. */

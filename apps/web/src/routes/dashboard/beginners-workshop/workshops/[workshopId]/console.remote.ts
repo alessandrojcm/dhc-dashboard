@@ -9,7 +9,8 @@
  * link, Rotate link — with its optional note; the console offers only
  * Phoenix's `availableCommands`. (ALE-387) `withdrawIntake` runs Withdraw
  * with its refund-or-forfeit choice. (ALE-393) `correctAttendance` corrects a
- * finalised Intake to Phoenix's `attendanceCorrections` target.
+ * finalised Intake to Phoenix's `attendanceCorrections` target. (ALE-395)
+ * `cancelWorkshop` cancels the workshop with an optional reason.
  */
 import { form } from "$app/server";
 import {
@@ -27,10 +28,12 @@ import {
 	beginnersWorkshopIntakesWithdraw,
 	beginnersWorkshopRefundsRecordManual,
 	beginnersWorkshopRefundsRetry,
+	beginnersWorkshopsCancel,
 	beginnersWorkshopsReschedule,
 } from "@dhc/api-client";
 import {
 	batchesCommandSchema,
+	cancelWorkshopSchema,
 	correctAttendanceSchema,
 	fastTrackNewPersonSchema,
 	fastTrackWaitlistPersonSchema,
@@ -133,6 +136,21 @@ export const rescheduleWorkshop = form(
 			{
 				fallback: "Could not reschedule the workshop",
 				formPath: rescheduleFormPath,
+			},
+		);
+	},
+);
+
+/** ALE-395: cancel the workshop (it stays visible, read-only). */
+export const cancelWorkshop = form(
+	cancelWorkshopSchema,
+	async ({ id, body }) => {
+		const options = await beginnersWorkshopsManageOptions();
+		return beginnersWorkshopCommand(
+			beginnersWorkshopsCancel({ ...options, path: { id }, body }),
+			{
+				fallback: "Could not cancel the workshop",
+				formPath: (field) => (field === "reason" ? ["reason"] : undefined),
 			},
 		);
 	},

@@ -26,7 +26,21 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
         attention: console.attention,
         fastTrackOpen: console.fast_track_open,
         fastTrackHoldersOnly: console.fast_track_holders_only,
-        finalisation: console_finalisation(console.finalisation)
+        finalisation: console_finalisation(console.finalisation),
+        cancelPreview: console.cancel_preview,
+        cancellation: console.cancellation
+      }
+    }
+  end
+
+  @doc "A cancelled workshop and what the cancellation did (ALE-395)."
+  def cancel(%{result: result}) do
+    %{
+      data: %{
+        workshop: workshop(result.workshop),
+        deferred: result.deferred,
+        returned: result.returned,
+        released: result.released
       }
     }
   end

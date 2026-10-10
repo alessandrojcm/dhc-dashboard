@@ -15,13 +15,16 @@
 	row shows its refund. (ALE-386) Each roster row opens its Intake — facts,
 	email log, history and only the commands Phoenix lists in
 	`availableCommands` — and Needs attention lists contacted people still
-	unpaid after their window.
+	unpaid after their window. (ALE-395) Cancel opens a dialog with what it
+	would do; a cancelled workshop stays read-only, its timeline struck
+	through, with who cancelled it, the reason and where to go next.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopConsole } from "@dhc/api-client";
 import {
 	AlertTriangle,
 	ArrowLeft,
+	Ban,
 	CalendarClock,
 	Check,
 	Circle,
@@ -72,6 +75,7 @@ import FailedRefundItem from "./failed-refund-item.svelte";
 import FastTrackDialog from "./fast-track-dialog.svelte";
 import IntakeDetail from "./intake-detail.svelte";
 import RescheduleDialog from "./reschedule-dialog.svelte";
+import CancelWorkshopDialog from "./cancel-workshop-dialog.svelte";
 
 let {
 	view,
@@ -93,6 +97,7 @@ const selectedIntake = $derived(
 		.find((intake) => intake.id === selectedIntakeId),
 );
 let rescheduleOpen = $state(false);
+let cancelOpen = $state(false);
 // Mounted on first open, so the console renders without a search query.
 let fastTrackMounted = $state(false);
 
@@ -157,6 +162,22 @@ const attention = $derived(
 			>
 				<CalendarClock /> Reschedule
 			</Button>
+			{#if view.cancelPreview}
+				<Button
+					type="button"
+					variant="outline"
+					class="w-fit border-destructive text-destructive"
+					onclick={() => (cancelOpen = true)}
+				>
+					<Ban /> Cancel workshop
+				</Button>
+			{/if}
+		{/if}
+		{#if view.cancellation?.reason}
+			<p class="text-sm" data-testid="cancel-reason">
+				<span class="font-semibold">Reason:</span>
+				{view.cancellation.reason}
+			</p>
 		{/if}
 		<ol
 			class="relative flex flex-col gap-3 border-l-2 border-border pl-4"
@@ -497,6 +518,14 @@ const attention = $derived(
 		holdersOnly={view.fastTrackHoldersOnly}
 		{genders}
 		bind:open={fastTrackDialogOpen}
+	/>
+{/if}
+
+{#if scheduled && view.cancelPreview}
+	<CancelWorkshopDialog
+		{workshop}
+		preview={view.cancelPreview}
+		bind:open={cancelOpen}
 	/>
 {/if}
 
