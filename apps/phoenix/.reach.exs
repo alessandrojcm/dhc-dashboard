@@ -35,6 +35,31 @@
       {"Dhc.TrainingAnnouncements.*",
        ["Dhc.Workshops.*", "Dhc.WorkshopAnnouncements.*", "Dhc.Discord.Worker"]},
       {"Dhc.Workshops.*", ["Dhc.TrainingAnnouncements.*"]},
+      # ADR 0029: Beginners' Workshops and Workshops share no code, in either
+      # direction and in neither the domain nor the web/API slices, and
+      # Beginners' Workshops are never announced. Waitlist and Onboarding sit
+      # below Beginners' Workshops and never call up into them.
+      {["Dhc.BeginnersWorkshops", "Dhc.BeginnersWorkshops.*", "DhcWeb.BeginnersWorkshop*"],
+       [
+         "Dhc.Workshops",
+         "Dhc.Workshops.*",
+         "Dhc.WorkshopAnnouncements",
+         "Dhc.WorkshopAnnouncements.*",
+         "DhcWeb.Workshop*"
+       ]},
+      {[
+         "Dhc.Workshops",
+         "Dhc.Workshops.*",
+         "Dhc.WorkshopAnnouncements",
+         "Dhc.WorkshopAnnouncements.*",
+         "DhcWeb.Workshop*",
+         "Dhc.Waitlist",
+         "Dhc.Waitlist.*",
+         "Dhc.Onboarding",
+         "Dhc.Onboarding.*",
+         "DhcWeb.Waitlist*",
+         "DhcWeb.Onboarding*"
+       ], ["Dhc.BeginnersWorkshops", "Dhc.BeginnersWorkshops.*", "DhcWeb.BeginnersWorkshop*"]},
       # Training Announcements jobs are written in one place (ALE-311):
       # only Scheduling may insert Oban jobs.
       {"Dhc.TrainingAnnouncements.*", ["Oban.insert", "Oban.insert!", "Oban.insert_all"],

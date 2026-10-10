@@ -67,6 +67,11 @@ defmodule Dhc.Auth.Capabilities do
   # committee and the beginners coordinator work the queue.
   @waitlist_managers @officers ++ ~w(beginners_coordinator)
 
+  # ALE-378: scheduling and running intake is the beginners coordinator's
+  # job, with the officers as cover; workshop coordinators and the treasurer
+  # are deliberately excluded.
+  @beginners_workshop_managers @officers ++ ~w(beginners_coordinator)
+
   # ALE-330: no read/manage split — only the committee shapes club
   # communications.
   @training_announcement_managers ~w(sparring_coordinator coach president admin committee_coordinator)
@@ -82,6 +87,7 @@ defmodule Dhc.Auth.Capabilities do
     # list.
     "beginners.waitlist.manage": %{roles: @waitlist_managers},
     "beginners.waitlist.toggle": %{roles: @officers},
+    "beginners.workshops.manage": %{roles: @beginners_workshop_managers},
     "discord.assignments.manage": %{roles: @member_administrators},
     "discord.doctor.use": %{roles: @officers},
     "inventory.manage": %{roles: @inventory_operators},

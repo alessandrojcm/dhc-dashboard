@@ -195,3 +195,54 @@ export const guardianRules = <TInput extends GuardianInput>() =>
 			};
 		}),
 	] as const;
+
+/**
+ * A required civil `YYYY-MM-DD` date (a date picker's value). One check, so
+ * a blank picker reports one issue.
+ */
+export const civilDate = (message: string) =>
+	v.pipe(v.string(), v.isoDate(message));
+
+/**
+ * An optional civil `YYYY-MM-DD` date: a blank picker means "use Phoenix's
+ * default", so it leaves the output without the key.
+ */
+export const optionalCivilDate = (message: string) =>
+	v.pipe(
+		v.optional(v.string(), ""),
+		v.transform((input) => input || undefined),
+		v.optional(v.pipe(v.string(), v.isoDate(message))),
+	);
+
+/** A required `HH:MM` wall-clock time (a `type="time"` input). */
+export const wallTime = (message: string) =>
+	v.pipe(v.string(), v.regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, message));
+
+/** An optional `HH:MM` wall-clock time; blank leaves the output without it. */
+export const optionalWallTime = (message: string) =>
+	v.pipe(
+		v.optional(v.string(), ""),
+		v.transform((input) => input || undefined),
+		v.optional(
+			v.pipe(v.string(), v.regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, message)),
+		),
+	);
+
+/**
+ * A required whole number of at least `min` (a number input). One check, so
+ * a bad value reports one issue (remote-form issue lists key on the message).
+ */
+export const wholeNumber = (message: string, min = 1) =>
+	v.pipe(
+		v.number(message),
+		v.check((input) => Number.isInteger(input) && input >= min, message),
+	);
+
+/** A required euro amount up to €999.99, as whole cents. */
+export const euroAmountInCents = (message: string) =>
+	v.pipe(
+		v.number(message),
+		v.minValue(0.01, message),
+		v.maxValue(999.99, "The fee can be at most €999.99."),
+		v.transform((euros) => Math.round(euros * 100)),
+	);

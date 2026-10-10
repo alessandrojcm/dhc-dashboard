@@ -249,6 +249,15 @@ arg "[count]" help="Number of workshops to seed" default="5"
 '''
 run = 'mix seed.workshops "${usage_count?}"'
 
+[tasks."seed-beginners-workshops"]
+depends = ["email-shells"]
+description = "Schedule Beginners' Workshops through the Dhc.BeginnersWorkshops boundary"
+dir = "apps/phoenix"
+usage = '''
+arg "[count]" help="Number of Beginners' Workshops to schedule" default="3"
+'''
+run = 'mix seed.beginners_workshops "${usage_count?}"'
+
 [tasks."seed-inventory"]
 depends = ["email-shells"]
 description = "Seed inventory structure, items, loans, and maintenance"

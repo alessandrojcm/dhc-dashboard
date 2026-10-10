@@ -11,12 +11,17 @@ import * as Select from "#lib/components/ui/select/index.js";
 import { Content, List, Root, Trigger } from "#lib/components/ui/tabs/index.js";
 import WaitlistTable from "./waitlist-table.svelte";
 import Analytics from "./workshop-analytics.svelte";
+import WorkshopsTab from "./workshops-tab.svelte";
 import { waitlistUpdateStatusMutation } from "@dhc/api-client";
 import { SvelteURLSearchParams } from "svelte/reactivity";
 
 const { data } = $props();
 let dialogOpen = $state(false);
-let value = $derived(page.url.searchParams.get("tab") || "dashboard");
+// ALE-378: the section opens on Workshops for those who manage them.
+const defaultTab = $derived(
+	data.canManageWorkshops ? "workshops" : "dashboard",
+);
+let value = $derived(page.url.searchParams.get("tab") || defaultTab);
 
 const toggleWaitlistMutation = createMutation(() => ({
 	...waitlistUpdateStatusMutation(),
@@ -39,7 +44,7 @@ function onTabChange(value: string) {
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
 	goto(url);
 }
-let views = [
+let views = $derived([
 	{
 		id: "dashboard",
 		label: "Dashboard",
@@ -48,7 +53,8 @@ let views = [
 		id: "waitlist",
 		label: "Waitlist",
 	},
-];
+	...(data.canManageWorkshops ? [{ id: "workshops", label: "Workshops" }] : []),
+]);
 let viewLabel = $derived(
 	views.find((view) => view.id === value)?.label || "Dashboard",
 );
@@ -127,6 +133,9 @@ let viewLabel = $derived(
 			<List class="md:flex hidden">
 				<Trigger value="dashboard">Dashboard</Trigger>
 				<Trigger value="waitlist">Waitlist</Trigger>
+				{#if data.canManageWorkshops}
+					<Trigger value="workshops">Workshops</Trigger>
+				{/if}
 			</List>
 		</div>
 
@@ -136,5 +145,10 @@ let viewLabel = $derived(
 		<Content value="waitlist">
 			<WaitlistTable />
 		</Content>
+		{#if data.workshops}
+			<Content value="workshops">
+				<WorkshopsTab workshops={data.workshops} />
+			</Content>
+		{/if}
 	</Root>
 </div>

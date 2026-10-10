@@ -48,6 +48,7 @@ type CapabilityRule = {
 const RULES = {
 	"beginners.waitlist.manage": {},
 	"beginners.waitlist.toggle": {},
+	"beginners.workshops.manage": {},
 	"discord.assignments.manage": {},
 	"discord.doctor.use": {},
 	"inventory.manage": {},
