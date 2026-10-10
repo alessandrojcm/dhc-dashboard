@@ -11,13 +11,14 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
   ALE-380 fills in the Batch facts (`batches_sent`, `latest_window_end`),
   pausing (`batches_paused`, read from the workshop row), Intakes (`intakes`,
   for the fee lock) and paid Intakes (`paid`). ALE-379 adds **Staff**
-  (`staff`, and `coach_assigned` derived from it). Seat Holds (ALE-381) fill
-  in theirs here.
+  (`staff`, and `coach_assigned` derived from it). ALE-381 adds **Seat
+  Holds** (`holds`): payment rows in `open`. Seats taken = `paid` + `holds`;
+  `releasing` rows do not count, because their Intake is already closed.
   """
 
   import Ecto.Query
 
-  alias Dhc.BeginnersWorkshops.{Batch, BeginnersWorkshop, Intake, StaffAssignment}
+  alias Dhc.BeginnersWorkshops.{Batch, BeginnersWorkshop, Intake, IntakePayment, StaffAssignment}
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
 
@@ -80,6 +81,15 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
       |> Repo.all()
       |> Map.new()
 
+    holds =
+      from(p in IntakePayment,
+        where: p.workshop_id in ^workshop_ids and p.status == "open",
+        group_by: p.workshop_id,
+        select: {p.workshop_id, count(p.id)}
+      )
+      |> Repo.all()
+      |> Map.new()
+
     Map.new(workshop_ids, fn id ->
       batch = Map.get(batches, id, %{sent: 0, latest_window_end: nil})
       intake = Map.get(intakes, id, %{all: 0, paid: 0})
@@ -87,6 +97,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
       facts = %{
         @empty
         | paid: intake.paid,
+          holds: Map.get(holds, id, 0),
           intakes: intake.all,
           batches_sent: batch.sent,
           latest_window_end: batch.latest_window_end,

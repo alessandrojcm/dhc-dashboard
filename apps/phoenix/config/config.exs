@@ -206,6 +206,8 @@ config :logger, :default_formatter,
 # The SDK is enabled only when SENTRY_DSN is present.
 config :sentry,
   dsn: System.get_env("SENTRY_DSN"),
+  # Redacts Intake link tokens from every event and transaction (ALE-381).
+  before_send: {DhcWeb.IntakeLinkPrivacy, :before_send},
   environment_name: config_env(),
   enable_source_code_context: true,
   root_source_code_paths: [File.cwd!()],

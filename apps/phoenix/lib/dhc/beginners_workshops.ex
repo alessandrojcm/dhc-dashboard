@@ -19,6 +19,7 @@ defmodule Dhc.BeginnersWorkshops do
     Commands,
     DoorView,
     FastTrackCandidates,
+    IntakePage,
     MyWorkshops,
     StaffCandidates,
     WorkshopConsole,
@@ -53,6 +54,16 @@ defmodule Dhc.BeginnersWorkshops do
     do: WorkshopConsole.show(workshop_id, Clock.from_opts(opts))
 
   @doc """
+  The person's Intake page behind an Intake link (ALE-381), or
+  `{:error, :not_found}`. Options `clock:` and `returned_session:` (the
+  Checkout Session id of a success return). See
+  `Dhc.BeginnersWorkshops.IntakePage`.
+  """
+  @spec intake_page(String.t(), keyword()) :: {:ok, IntakePage.t()} | {:error, :not_found}
+  def intake_page(token, opts \\ []) when is_binary(token),
+    do: IntakePage.show(token, Clock.from_opts(opts), opts)
+
+  @doc """
   The Fast-track dialog's search for `workshop_id` (ALE-384): waiting people
   and people removed within retention, without an open Intake, matching
   `search`. Option `clock:` fixes the time retention is judged at.
@@ -64,22 +75,43 @@ defmodule Dhc.BeginnersWorkshops do
 
   @doc """
   The periodic sweep (ALE-380): runs every time-driven pass through
-  `execute/3` as `:system` for each scheduled workshop still before its
-  Payment Cutoff. Today that is `send_due_batch`; the cutoff, finalisation
-  and follow-up passes join it with their tickets. A pass that is not due
-  does nothing, so running the sweep again is safe — there are no
-  per-workshop scheduled jobs.
+  `execute/3` as `:system`. `send_due_batch` runs for each scheduled
+  workshop still before its Payment Cutoff; `reap_holds` (ALE-381) runs once
+  across every workshop, because a Seat Hold may outlive the cutoff. The
+  cutoff, finalisation and follow-up passes join it with their tickets. A
+  pass that is not due does nothing, so running the sweep again is safe —
+  there are no per-workshop scheduled jobs.
 
-  Returns how many passes sent a Batch, found nobody waiting, were not due,
-  or failed.
+  Returns how many Batch passes sent a Batch, found nobody waiting, were
+  not due, or failed, and how many expired holds Stripe released, completed
+  or has not ended yet (`holds_waiting`, retried by the next sweep).
   """
   @spec run_due_passes(keyword()) :: %{
           sent: non_neg_integer(),
           nobody_waiting: non_neg_integer(),
           not_due: non_neg_integer(),
-          failed: non_neg_integer()
+          failed: non_neg_integer(),
+          holds_released: non_neg_integer(),
+          holds_completed: non_neg_integer(),
+          holds_waiting: non_neg_integer()
         }
   def run_due_passes(opts \\ []) do
+    opts
+    |> run_batch_passes()
+    |> Map.merge(run_reap_pass(opts), fn :failed, a, b -> a + b end)
+  end
+
+  defp run_reap_pass(opts) do
+    case execute(:system, :reap_holds, opts) do
+      {:ok, %{released: released, completed: completed, waiting: waiting}} ->
+        %{holds_released: released, holds_completed: completed, holds_waiting: waiting, failed: 0}
+
+      {:error, _reason} ->
+        %{holds_released: 0, holds_completed: 0, holds_waiting: 0, failed: 1}
+    end
+  end
+
+  defp run_batch_passes(opts) do
     now = Clock.read(Clock.from_opts(opts)).now
 
     from(w in BeginnersWorkshop,

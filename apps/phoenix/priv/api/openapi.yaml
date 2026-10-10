@@ -4178,6 +4178,85 @@ paths:
         "403": {$ref: "#/components/responses/BeginnersWorkshopAssignedForbidden"}
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
 
+  /beginners/intake/{token}:
+    parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
+    get:
+      operationId: beginnersWorkshopIntake.show
+      tags: [BeginnersWorkshops]
+      summary: The person's Intake page behind an Intake link
+      description: |
+        Public: the token in the path is the capability (no login, no
+        verification). Answers a closed safe view whose `state` is the
+        discriminator: `pay | payment_in_progress | full | paid | closed`.
+        It carries the first name, the workshop date, start time and venue,
+        the fee and one action, never an id or a Stripe object; an inactive
+        Intake's page carries none of them. An unknown link is 404, which
+        the page shows like a closed Intake. Every response sends
+        `Referrer-Policy: no-referrer`, and logs and Sentry redact the token.
+      security: []
+      responses:
+        "200":
+          description: The Intake page
+          headers:
+            Referrer-Policy: {$ref: "#/components/headers/NoReferrer"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersIntakePageResponse"}
+        "404": {$ref: "#/components/responses/BeginnersIntakeNotFound"}
+  /beginners/intake/{token}/payment:
+    parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
+    post:
+      operationId: beginnersWorkshopIntake.startPayment
+      tags: [BeginnersWorkshops]
+      summary: Take a Seat Hold and get the Stripe Checkout URL
+      description: |
+        Takes a 30-minute Seat Hold under the workshop lock (an open payment
+        row with the fee frozen) and creates the hosted Checkout Session;
+        while the person's hold is live it answers the same session again.
+        Refused with `full` when every seat is paid or held, `after_cutoff`
+        after the Payment Cutoff, `already_paid`, `intake_closed`, or
+        `payment_in_progress` when the hold ran out and Stripe has not ended
+        it yet. `success_url` and `cancel_url` return to the same Intake
+        link. 503 when Stripe is unavailable (try again).
+      security: []
+      responses:
+        "200":
+          description: Where to send the person (Stripe Checkout)
+          headers:
+            Referrer-Policy: {$ref: "#/components/headers/NoReferrer"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersIntakeCheckoutResponse"}
+        "404": {$ref: "#/components/responses/BeginnersIntakeNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersIntakeConflict"}
+        "503": {$ref: "#/components/responses/BeginnersIntakeUnavailable"}
+  /beginners/intake/{token}/return:
+    parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
+    post:
+      operationId: beginnersWorkshopIntake.returnFromCheckout
+      tags: [BeginnersWorkshops]
+      summary: The Checkout success return — complete the payment, then show the page
+      description: |
+        Retrieves the Checkout Session server-side and completes the payment
+        (idempotent; the webhook may have done it already), then answers the
+        Intake page. While that session's hold is still open the page is
+        `payment_in_progress`; call again until it is `paid`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersIntakeReturnRequest"}
+      responses:
+        "200":
+          description: The Intake page
+          headers:
+            Referrer-Policy: {$ref: "#/components/headers/NoReferrer"}
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersIntakePageResponse"}
+        "404": {$ref: "#/components/responses/BeginnersIntakeNotFound"}
+
   /settings:
     get:
       operationId: settings.index
@@ -7242,7 +7321,32 @@ paths:
                 $ref: "#/components/schemas/Error"
 
 components:
+  headers:
+    NoReferrer:
+      description: Always `no-referrer`, so the Intake link never leaks through a referrer.
+      schema: {type: string, enum: [no-referrer]}
   responses:
+    BeginnersIntakeNotFound:
+      description: Unknown Intake link
+      headers:
+        Referrer-Policy: {$ref: "#/components/headers/NoReferrer"}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    BeginnersIntakeConflict:
+      description: The Intake cannot start a payment now
+      headers:
+        Referrer-Policy: {$ref: "#/components/headers/NoReferrer"}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/BeginnersIntakeConflictError"}
+    BeginnersIntakeUnavailable:
+      description: Stripe is unavailable; try again shortly
+      headers:
+        Referrer-Policy: {$ref: "#/components/headers/NoReferrer"}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
     BeginnersWorkshopUnauthorized:
       description: Authentication required
       content:
@@ -7322,6 +7426,12 @@ components:
         Short-lived signed HttpOnly browser proof for one Invitation Acceptance.
         It is transport state only and is never a DHC authenticated Session.
   parameters:
+    BeginnersIntakeToken:
+      name: token
+      in: path
+      required: true
+      description: The Intake link token (a capability; redacted from logs).
+      schema: {type: string, minLength: 1, maxLength: 128}
     BeginnersWorkshopId:
       name: id
       in: path
@@ -8125,7 +8235,7 @@ components:
       description: |
         One Intake on the console roster. Names are null once the person is
         anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, queueDate, contactedAt]
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, queueDate, contactedAt, holdExpiresAt]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -8136,6 +8246,89 @@ components:
         minor: {type: boolean}
         queueDate: {type: string, format: date-time}
         contactedAt: {type: string, format: date-time}
+        holdExpiresAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the person's live Seat Hold runs out (null without one).
+    BeginnersIntakeState:
+      type: string
+      description: |
+        `pay`: a seat is free (or the person's own hold is live).
+        `payment_in_progress`: back from checkout, or the hold ran out and
+        Stripe has not ended it yet — refresh until `paid`. `full`: every seat
+        is paid or held; seats may free up before the cutoff. `paid`.
+        `closed`: see `closedReason`.
+      enum: [pay, payment_in_progress, full, paid, closed]
+    BeginnersIntakeAction:
+      type: string
+      description: |
+        The one action: `pay` (start checkout), `continue_payment` (back to the
+        live hold's checkout), `check_again` (reload), `none`.
+      enum: [pay, continue_payment, check_again, none]
+    BeginnersIntakeClosedReason:
+      type: string
+      description: "`inactive`: the Intake is no longer open. `payment_closed`: the Payment Cutoff has passed."
+      enum: [inactive, payment_closed]
+    BeginnersIntakeWorkshop:
+      type: object
+      required: [date, startTime, venue]
+      properties:
+        date: {type: string, format: date, description: Europe/Dublin civil date}
+        startTime: {type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$", description: "Europe/Dublin HH:MM"}
+        venue: {type: string}
+    BeginnersIntakePage:
+      type: object
+      description: |
+        The person's Intake page (`Dhc.BeginnersWorkshops.IntakePage`): a
+        closed safe view; `state` is the discriminator. The person and
+        workshop details are null only on an `inactive` closed page.
+      required: [state, action, closedReason, firstName, workshop, feeCents]
+      properties:
+        state: {$ref: "#/components/schemas/BeginnersIntakeState"}
+        action: {$ref: "#/components/schemas/BeginnersIntakeAction"}
+        closedReason:
+          allOf: [{$ref: "#/components/schemas/BeginnersIntakeClosedReason"}]
+          nullable: true
+        firstName: {type: string, nullable: true}
+        workshop:
+          allOf: [{$ref: "#/components/schemas/BeginnersIntakeWorkshop"}]
+          nullable: true
+        feeCents: {type: integer, nullable: true, minimum: 1}
+    BeginnersIntakePageResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersIntakePage"}
+    BeginnersIntakeCheckoutResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [checkoutUrl]
+          properties:
+            checkoutUrl: {type: string, format: uri, description: The hosted Stripe Checkout page}
+    BeginnersIntakeReturnRequest:
+      type: object
+      properties:
+        sessionId:
+          type: string
+          description: The Checkout Session id Stripe put in the success URL.
+    BeginnersIntakeConflictError:
+      description: 409 refusal of `startPayment`.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum: [after_cutoff, full, already_paid, intake_closed, payment_in_progress]
     BeginnersWorkshopRoster:
       type: object
       description: "`seated`: paid. `asked`: contacted, not paid yet. `out`: every closed Intake."
@@ -8282,7 +8475,7 @@ components:
               properties:
                 code:
                   type: string
-                  enum: [after_finalisation, already_cancelled, contact_from_locked, fee_locked, staff_conflict]
+                  enum: [after_finalisation, already_cancelled, contact_from_locked, fee_locked, staff_conflict, capacity_below_taken]
     BeginnersWorkshopInvalidError:
       description: |
         422 refusal on a Beginners' Workshop command. Domain reasons carry a

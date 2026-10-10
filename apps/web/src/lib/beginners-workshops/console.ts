@@ -223,6 +223,29 @@ export function intakeStateLabel(state: BeginnersWorkshopIntakeState): string {
 	return INTAKE_STATE_LABELS[state];
 }
 
+const dublinTime = new Intl.DateTimeFormat("en-IE", {
+	timeZone: "Europe/Dublin",
+	hour: "2-digit",
+	minute: "2-digit",
+	hourCycle: "h23",
+});
+
+/**
+ * ALE-381: a live Seat Hold on a roster row — `Paying now · hold until 12:30`
+ * (Dublin) — or `null` without one. The seat stays taken until Stripe ends
+ * the session, so a hold past its time still shows, as "ending".
+ */
+export function holdLabel(
+	intake: Pick<BeginnersWorkshopRosterIntake, "holdExpiresAt">,
+	now: Date = new Date(),
+): string | null {
+	if (!intake.holdExpiresAt) return null;
+	const until = new Date(intake.holdExpiresAt);
+	return until.getTime() > now.getTime()
+		? `Paying now · hold until ${dublinTime.format(until)}`
+		: "Paying now · hold ending";
+}
+
 /** `Batch 2` or `Fast-track`. */
 export function intakeOrigin(intake: BeginnersWorkshopRosterIntake): string {
 	return intake.origin === "batch" && intake.batchNumber

@@ -16,7 +16,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       capacity − paid, and the live `BatchProposal` — exactly the people
       `send_due_batch` would contact now — with minors badged;
     * `roster` — Intakes grouped by meaning before finalisation: `seated`
-      (paid), `asked` (contacted, not paid yet) and `out`;
+      (paid), `asked` (contacted, not paid yet) and `out`; each Intake with
+      a live Seat Hold carries when its hold runs out (ALE-381);
     * `attention` — `:nobody_waiting` when a Batch is due with free seats
       but nobody eligible is waiting;
     * `fast_track_open` — whether Fast-track is offered now
@@ -35,6 +36,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     BeginnersWorkshop,
     Clock,
     Intake,
+    IntakePayment,
     WorkshopFacts,
     WorkshopPolicy,
     WorkshopProjection
@@ -138,6 +140,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         on: b.id == i.batch_id,
         left_join: p in UserProfile,
         on: p.waitlist_id == i.waitlist_id and not is_nil(i.waitlist_id),
+        left_join: h in IntakePayment,
+        on: h.intake_id == i.id and h.status == "open",
         where: i.workshop_id == ^workshop.id,
         order_by: [asc: i.queue_date, asc: i.id],
         select: %{
@@ -147,6 +151,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           batch_number: b.number,
           queue_date: i.queue_date,
           contacted_at: i.contacted_at,
+          hold_expires_at: h.expires_at,
           first_name: p.first_name,
           last_name: p.last_name,
           date_of_birth: p.date_of_birth

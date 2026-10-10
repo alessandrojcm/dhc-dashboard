@@ -1,6 +1,8 @@
 defmodule Dhc.BeginnersWorkshopFixtures do
   @moduledoc "Beginners' Workshop fixtures: staff principals, a fixed clock and scheduled workshops."
 
+  import Ecto.Query
+
   alias Dhc.Auth.UserRole
   alias Dhc.BeginnersWorkshops
   alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Clock, Intake}
@@ -110,16 +112,89 @@ defmodule Dhc.BeginnersWorkshopFixtures do
     Repo.get!(WaitlistEntry, entry.id)
   end
 
+  # 10:00 Dublin on 20 October 2026: Batch 1 of a workshop contacted from that day.
+  @batch_1_at ~U[2026-10-20 09:00:00.000000Z]
+
+  @doc "When `contacted_fixture/3`'s Batch 1 goes out."
+  def batch_1_at, do: @batch_1_at
+
+  @doc """
+  A workshop (contact from 20 October, cutoff 11 November 18:30 UTC) whose
+  Batch 1 contacted `count` people (capacity `count` unless overridden).
+  Returns `{workshop_view, intakes}`, intakes in priority order with their
+  link tokens as `{intake, token}`.
+  """
+  def contacted_fixture(staff_id, count, overrides \\ %{}) do
+    workshop =
+      scheduled_fixture(
+        staff_id,
+        Map.merge(%{"contact_from" => "2026-10-20", "capacity" => count}, overrides)
+      )
+
+    waiting_people_fixture(count)
+
+    {:ok, %{outcome: :sent}} =
+      BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: Clock.fixed(@batch_1_at)
+      )
+
+    intakes =
+      Repo.all(
+        from(i in Intake, where: i.workshop_id == ^workshop.id, order_by: [i.queue_date, i.id])
+      )
+
+    {workshop, Enum.map(intakes, &{&1, Dhc.BeginnersWorkshops.IntakeLink.token(&1.id, 1)})}
+  end
+
+  @doc """
+  Test-only: a `contacted` fast-track Intake for `person` inserted straight
+  into the table (no fast-track command exists yet); returns
+  `{intake, link_token}`.
+  """
+  def intake_fixture!(workshop_id, %WaitlistEntry{} = person, contacted_at \\ @now) do
+    id = Ecto.UUID.generate()
+    token = Dhc.BeginnersWorkshops.IntakeLink.token(id, 1)
+
+    intake =
+      %{
+        id: id,
+        workshop_id: workshop_id,
+        waitlist_id: person.id,
+        origin: "fast_track",
+        queue_date: person.initial_registration_date,
+        link_token_hash: Dhc.BeginnersWorkshops.IntakeLink.hash(token),
+        contacted_at: contacted_at
+      }
+      |> Intake.contact_changeset()
+      |> Repo.insert!()
+
+    {intake, token}
+  end
+
   @doc "`count` waiting people registered a day apart, oldest first."
   def waiting_people_fixture(count, from \\ ~U[2025-01-01 12:00:00Z]) do
     for index <- 0..(count - 1)//1,
         do: waiting_person_fixture(DateTime.add(from, index * 86_400, :second))
   end
 
-  @doc "Test-only: forces an Intake's state (no ALE-380 command pays an Intake)."
+  @doc """
+  Test-only: forces an Intake's state. A forced `paid` is paid via Stripe
+  (the `paid` check needs `paid_via`/`paid_at`); pay through
+  `complete_payment` when the payment row matters.
+  """
   def force_intake_state!(intake_id, state) do
-    Repo.get!(Intake, intake_id)
-    |> Ecto.Changeset.change(state: state)
+    intake = Repo.get!(Intake, intake_id)
+
+    paid =
+      if state == "paid",
+        do: [
+          paid_via: intake.paid_via || "stripe",
+          paid_at: intake.paid_at || %{@now | microsecond: {0, 6}}
+        ],
+        else: []
+
+    intake
+    |> Ecto.Changeset.change([state: state] ++ paid)
     |> Repo.update!()
   end
 end

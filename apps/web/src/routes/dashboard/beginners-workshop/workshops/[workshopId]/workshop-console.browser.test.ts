@@ -77,6 +77,7 @@ function view(
 					minor: false,
 					queueDate: "2024-12-01T12:00:00Z",
 					contactedAt: "2026-10-20T09:00:00Z",
+					holdExpiresAt: null,
 				},
 			],
 			asked: [
@@ -90,6 +91,7 @@ function view(
 					minor: true,
 					queueDate: "2024-12-02T12:00:00Z",
 					contactedAt: "2026-10-20T09:00:00Z",
+					holdExpiresAt: null,
 				},
 			],
 			out: [],
@@ -132,6 +134,35 @@ test("groups the roster: seated, then asked, not paid yet", async () => {
 	await expect
 		.element(screen.getByRole("region", { name: "Now" }))
 		.toHaveTextContent("Batch 1 window open — ends Tue 27 Oct, 23:59");
+});
+
+test("ALE-381: the seat meter counts live holds and each Intake shows when its hold runs out", async () => {
+	const base = view();
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			workshop: {
+				...base.workshop,
+				stage: "full",
+				seats: { capacity: 2, paid: 1, holds: 1, free: 0 },
+			},
+			roster: {
+				...base.roster,
+				asked: [
+					{ ...base.roster.asked[0], holdExpiresAt: "2099-10-22T11:30:00Z" },
+				],
+			},
+		}),
+	});
+
+	await expect
+		.element(screen.getByTestId("seat-meter"))
+		.toHaveTextContent("1 paid · 1 paying now · 0 free of 2");
+	await expect
+		.element(screen.getByTestId("hold-expiry"))
+		.toHaveTextContent("Paying now · hold until 12:30");
+	await expect
+		.element(screen.getByRole("region", { name: "Seated (paid)" }))
+		.toHaveTextContent("Cian Doyle");
 });
 
 test("paused Batches offer Resume and say who paused them", async () => {
@@ -210,6 +241,7 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						minor: false,
 						queueDate: "2026-10-20T12:00:00Z",
 						contactedAt: "2026-10-20T12:00:00Z",
+						holdExpiresAt: null,
 					},
 				],
 			},

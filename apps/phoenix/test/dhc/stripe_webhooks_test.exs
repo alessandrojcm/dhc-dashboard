@@ -7,6 +7,8 @@ defmodule Dhc.StripeWebhooksTest do
   @membership_required {:stripe_sync, :customer_required}
   @membership_optional {:stripe_sync, :customer_optional}
   @workshop_refund :workshop_refund
+  @intake_complete {:beginners_intake, :complete_payment}
+  @intake_release {:beginners_intake, :release_payment}
 
   @expected_routes %{
     "customer.subscription.created" => [@acceptance, @membership_required],
@@ -28,7 +30,9 @@ defmodule Dhc.StripeWebhooksTest do
     "payment_intent.canceled" => [@acceptance, @membership_optional],
     "refund.created" => [@workshop_refund],
     "refund.updated" => [@workshop_refund],
-    "refund.failed" => [@workshop_refund]
+    "refund.failed" => [@workshop_refund],
+    "checkout.session.completed" => [@intake_complete],
+    "checkout.session.expired" => [@intake_release]
   }
 
   describe "routing table" do

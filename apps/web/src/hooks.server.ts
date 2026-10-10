@@ -8,6 +8,12 @@ import {
 import { dev } from "$app/env";
 import { guardRoute } from "#lib/server/authorization/index.js";
 import { getPhoenixSession } from "#lib/server/auth.js";
+import {
+	redactIntakeLinks,
+	redactPayload,
+	redactSentryEvent,
+	redactSentrySpan,
+} from "#lib/intake-link-redaction.js";
 
 /**
  * ALE-164: the dashboard authenticates through the Phoenix Session cookie
@@ -82,7 +88,7 @@ const logUnhandledServerError: HandleServerError = (input) => {
 	if (input.kind !== "unknown") return;
 	const { error, event } = input;
 	console.error(
-		`[server-error] 500 ${event.request.method} ${event.url.pathname} (route: ${event.route.id ?? "unknown"})`,
+		`[server-error] 500 ${event.request.method} ${redactIntakeLinks(event.url.pathname)} (route: ${event.route.id ?? "unknown"})`,
 		error,
 	);
 };
@@ -96,6 +102,10 @@ export const handle: Handle = sequence(
 		// behavior: every other dataCollection category already defaults to
 		// enabled, so user info is the only one to opt into explicitly.
 		dataCollection: { userInfo: true },
+		// ALE-381: Intake link tokens never reach Sentry.
+		beforeSend: (sentryEvent) => redactSentryEvent(sentryEvent),
+		beforeSendSpan: (span) => redactSentrySpan(span),
+		beforeBreadcrumb: (breadcrumb) => redactPayload(breadcrumb),
 	}),
 	Sentry.sentryHandle({
 		injectFetchProxyScript: true,
