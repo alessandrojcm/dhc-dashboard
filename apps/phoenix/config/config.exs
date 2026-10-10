@@ -99,6 +99,9 @@ config :dhc, Oban,
        # ALE-287: hourly rather than daily so a missed window is repaired
        # within the hour. A pass in an unchanged state delivers nothing.
        {"0 * * * *", Dhc.Inventory.Workers.LoanReminderWorker},
+       # ALE-380: the one Beginners' Workshop sweep. Batches go out at 10:00
+       # Dublin time, so a 5-minute tick sends them by 10:05.
+       {"*/5 * * * *", Dhc.BeginnersWorkshops.Workers.SweepWorker},
        # ALE-319: daily refresh of the Irish bank-holiday cache (current +
        # next Dublin year; upserts by date, deletes dates the source no
        # longer returns). Failures keep cached rows and are repaired by the

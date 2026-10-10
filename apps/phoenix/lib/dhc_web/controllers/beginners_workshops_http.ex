@@ -38,6 +38,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     invalid_payment_cutoff: "paymentCutoffDate",
     invalid_contact_from: "contactFromDate",
     contact_from_locked: "contactFromDate",
+    fee_locked: "feeCents",
     not_a_coach: "coachPrincipalId",
     not_a_member: "assistantPrincipalIds"
   }
@@ -49,6 +50,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       already_cancelled: {409, "This workshop is cancelled"},
       contact_from_locked:
         {409, "Batch 1 has gone out, so the contact-from date can no longer change"},
+      fee_locked: {409, "People have been contacted at this fee, so it can no longer change"},
       invalid_workshop: {422, "Check the workshop details"},
       start_in_past: {422, "The workshop must start in the future"},
       invalid_payment_cutoff: {422, "The Payment Cutoff must be before the workshop starts"},

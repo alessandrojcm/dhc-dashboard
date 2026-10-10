@@ -8,14 +8,16 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
   meter can be stale but never computed differently from the rule the
   boundary applies.
 
-  ALE-378 created the workshop only. ALE-379 adds **Staff** (`staff`, and
-  `coach_assigned` derived from it). The tickets that add Intakes (ALE-381)
-  and Batches and pausing (ALE-380) fill in the rest here.
+  ALE-380 fills in the Batch facts (`batches_sent`, `latest_window_end`),
+  pausing (`batches_paused`, read from the workshop row), Intakes (`intakes`,
+  for the fee lock) and paid Intakes (`paid`). ALE-379 adds **Staff**
+  (`staff`, and `coach_assigned` derived from it). Seat Holds (ALE-381) fill
+  in theirs here.
   """
 
   import Ecto.Query
 
-  alias Dhc.BeginnersWorkshops.StaffAssignment
+  alias Dhc.BeginnersWorkshops.{Batch, BeginnersWorkshop, Intake, StaffAssignment}
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
 
@@ -30,6 +32,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
           batches_sent: non_neg_integer(),
           latest_window_end: DateTime.t() | nil,
           batches_paused: boolean(),
+          intakes: non_neg_integer(),
           coach_assigned: boolean(),
           staff: staff()
         }
@@ -42,17 +45,55 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
     batches_sent: 0,
     latest_window_end: nil,
     batches_paused: false,
+    intakes: 0,
     coach_assigned: false,
     staff: @no_staff
   }
 
   @doc "The facts for each workshop id."
   @spec load([binary()]) :: %{binary() => t()}
+  def load([]), do: %{}
+
   def load(workshop_ids) when is_list(workshop_ids) do
     staff = load_staff(workshop_ids)
 
+    paused =
+      from(w in BeginnersWorkshop, where: w.id in ^workshop_ids, select: {w.id, w.batches_paused})
+      |> Repo.all()
+      |> Map.new()
+
+    batches =
+      from(b in Batch,
+        where: b.workshop_id in ^workshop_ids,
+        group_by: b.workshop_id,
+        select: {b.workshop_id, %{sent: count(b.id), latest_window_end: max(b.window_ends_at)}}
+      )
+      |> Repo.all()
+      |> Map.new()
+
+    intakes =
+      from(i in Intake,
+        where: i.workshop_id in ^workshop_ids,
+        group_by: i.workshop_id,
+        select: {i.workshop_id, %{all: count(i.id), paid: filter(count(i.id), i.state == "paid")}}
+      )
+      |> Repo.all()
+      |> Map.new()
+
     Map.new(workshop_ids, fn id ->
-      {id, with_staff(@empty, Map.get(staff, id, @no_staff))}
+      batch = Map.get(batches, id, %{sent: 0, latest_window_end: nil})
+      intake = Map.get(intakes, id, %{all: 0, paid: 0})
+
+      facts = %{
+        @empty
+        | paid: intake.paid,
+          intakes: intake.all,
+          batches_sent: batch.sent,
+          latest_window_end: batch.latest_window_end,
+          batches_paused: Map.get(paused, id, false)
+      }
+
+      {id, with_staff(facts, Map.get(staff, id, @no_staff))}
     end)
   end
 
@@ -71,8 +112,6 @@ defmodule Dhc.BeginnersWorkshops.WorkshopFacts do
 
   # Assistants are listed by name, so the list reads the same everywhere. A
   # Staff member without a profile (never expected) is still listed.
-  defp load_staff([]), do: %{}
-
   defp load_staff(workshop_ids) do
     from(s in StaffAssignment,
       left_join: p in UserProfile,

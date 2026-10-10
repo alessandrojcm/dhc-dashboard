@@ -25,6 +25,7 @@ defmodule Dhc.Auth.CapabilitiesTest do
     "beginners.workshops.lead": {~w(coach), false},
     "beginners.workshops.manage":
       {~w(admin president committee_coordinator beginners_coordinator), false},
+    "beginners.workshops.alerts.receive": {~w(beginners_coordinator), false},
     "beginners.workshops.run":
       {~w(admin president committee_coordinator beginners_coordinator), :assigned},
     "discord.assignments.manage": {@member_administrators, false},

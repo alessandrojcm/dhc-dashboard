@@ -2,7 +2,7 @@
 	ALE-378: the Workshops tab — Phoenix's list read model, upcoming first,
 	then past and cancelled. Stage, seats and alerts are Phoenix's; this
 	component names and lays them out. ALE-379: each row names its Staff and
-	opens the Staff dialog and the door view.
+	opens the Staff dialog and the door view; ALE-380: and the workshop console.
 -->
 <script lang="ts">
 import type {
@@ -10,7 +10,13 @@ import type {
 	BeginnersWorkshopListResponse,
 	BeginnersWorkshopStaffCandidate,
 } from "@dhc/api-client";
-import { CalendarPlus, DoorOpen, Settings2, Users } from "@lucide/svelte";
+import {
+	CalendarPlus,
+	DoorOpen,
+	PanelsTopLeft,
+	Settings2,
+	Users,
+} from "@lucide/svelte";
 import { resolve } from "$app/paths";
 import {
 	dateTile,
@@ -99,6 +105,16 @@ function editStaff(workshop: BeginnersWorkshop) {
 				/>{/if}
 		</div>
 		<div class="flex items-center gap-1">
+			<Button
+				variant="outline"
+				size="sm"
+				href={resolve("/dashboard/beginners-workshop/workshops/[workshopId]", {
+					workshopId: workshop.id,
+				})}
+				aria-label={`Open the console for ${workshop.date}`}
+			>
+				<PanelsTopLeft /> Console
+			</Button>
 			<Button
 				variant="ghost"
 				size="icon"

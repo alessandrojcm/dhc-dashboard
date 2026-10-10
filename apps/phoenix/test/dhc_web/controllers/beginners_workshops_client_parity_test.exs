@@ -7,7 +7,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
   """
   use ExUnit.Case, async: true
 
-  alias Dhc.BeginnersWorkshops.WorkshopPolicy
+  alias Dhc.BeginnersWorkshops.{Intake, WorkshopPolicy}
 
   @repo_root Path.expand("../../../../..", __DIR__)
   @client_root Path.join(@repo_root, "packages/api-client")
@@ -38,10 +38,12 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
 
     # ALE-383's Intake Email template slice shares the one tag and URL root.
     assert operations |> Enum.map(&elem(&1, 1)["operationId"]) |> Enum.sort() ==
-             ~w(beginnersWorkshopAssignments.list beginnersWorkshopDoor.show
+             ~w(beginnersWorkshopAssignments.list beginnersWorkshopBatches.pause
+                beginnersWorkshopBatches.resume beginnersWorkshopDoor.show
                 beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
-                beginnersWorkshops.list beginnersWorkshops.schedule beginnersWorkshops.setStaff
-                beginnersWorkshops.staffCandidates beginnersWorkshops.updateSettings)
+                beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.schedule
+                beginnersWorkshops.setStaff beginnersWorkshops.staffCandidates
+                beginnersWorkshops.updateSettings)
 
     for {method, operation} <- operations do
       assert operation["tags"] == ["BeginnersWorkshops"]
@@ -91,6 +93,17 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
 
     assert schemas["BeginnersWorkshopAlert"]["enum"] ==
              Enum.map(WorkshopPolicy.alerts(), &Atom.to_string/1)
+  end
+
+  test "the Intake and Next Batch vocabularies are Phoenix's" do
+    schemas = spec()["components"]["schemas"]
+
+    assert schemas["BeginnersWorkshopIntakeState"]["enum"] == Intake.states()
+    assert schemas["BeginnersWorkshopIntakeOrigin"]["enum"] == Intake.origins()
+
+    # `WorkshopPolicy.next_batch/3`, with `{:at, _}` rendered as `scheduled`.
+    assert schemas["BeginnersWorkshopNextBatchStatus"]["enum"] ==
+             ~w(due scheduled paused full closed)
   end
 
   test "every refusal code in the contract is a declared problem reason" do

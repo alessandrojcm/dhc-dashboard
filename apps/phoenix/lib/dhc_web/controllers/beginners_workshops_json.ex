@@ -11,6 +11,73 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
 
   def show(%{result: workshop}), do: %{data: workshop(workshop)}
 
+  def console(%{result: console}) do
+    %{
+      data: %{
+        workshop: workshop(console.workshop),
+        batches: Enum.map(console.batches, &batch/1),
+        pause: pause(console.pause),
+        nextBatch: next_batch(console.next_batch),
+        roster:
+          Map.new(console.roster, fn {group, rows} -> {group, Enum.map(rows, &intake/1)} end),
+        attention: console.attention
+      }
+    }
+  end
+
+  defp batch(batch) do
+    %{
+      number: batch.number,
+      size: batch.size,
+      sentAt: batch.sent_at,
+      windowEndsAt: batch.window_ends_at
+    }
+  end
+
+  defp pause(pause) do
+    %{
+      paused: pause.paused,
+      pausedAt: pause.paused_at,
+      pausedBy: pause.paused_by,
+      resumedAt: pause.resumed_at,
+      resumedBy: pause.resumed_by
+    }
+  end
+
+  defp next_batch(next) do
+    %{
+      status: next.status,
+      goesOutAt: next.goes_out_at,
+      number: next.number,
+      size: next.size,
+      capacity: next.capacity,
+      paid: next.paid,
+      people:
+        Enum.map(next.people, fn person ->
+          %{
+            firstName: person.first_name,
+            lastName: person.last_name,
+            minor: person.minor,
+            queueDate: person.queue_date
+          }
+        end)
+    }
+  end
+
+  defp intake(row) do
+    %{
+      id: row.id,
+      state: row.state,
+      origin: row.origin,
+      batchNumber: row.batch_number,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      minor: row.minor,
+      queueDate: row.queue_date,
+      contactedAt: row.contacted_at
+    }
+  end
+
   def staff_candidates(%{result: candidates}),
     do: %{
       data: Enum.map(candidates, &%{principalId: &1.principal_id, name: &1.name, coach: &1.coach})

@@ -36,8 +36,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
       Beginners' Workshop  scheduled → finalised | cancelled
 
-  Both end states are terminal. Intake, payment, refund and Carried Fee
-  rows join the table with the tickets that create them.
+  Both end states are terminal. Intakes are created `contacted` (ALE-380)
+  and join the table with the commands that move them; payment, refund and
+  Carried Fee rows join it with the tickets that create them.
 
   **Constraints are translated, never raised.** `persist/1` declares every
   unique and check constraint and turns a violation into a domain reason or a
@@ -57,8 +58,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   clock). It is read inside the lock, so a decision never uses an instant
   taken before the rows were held. Tests pass `Clock.fixed/1`.
 
-  No command here sends email.
-
   ## Staff (ALE-379)
 
   `beginners_workshop_staff` rows are written only under the Beginners'
@@ -67,6 +66,25 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   the people added and removed with keyed Notifications created inside the
   transaction (`Dhc.Notifications.create_keyed_in_transaction/3`) and
   signalled only after it commits.
+
+  ## Automatic Batches (ALE-380)
+
+  `send_due_batch` (`:system`, run by the periodic sweep) sends a workshop's
+  next Batch only when `WorkshopPolicy.batch_due?/3` holds under the
+  Beginners' Workshop lock and someone eligible is waiting. The Batch is the
+  live `BatchProposal` of `WorkshopPolicy.batch_size/2` people; their
+  Waitlist entries are locked and re-checked, and a person taken by a
+  concurrent command makes the pass retry from a fresh proposal. Each new
+  Intake queues "Contact – pay" through `IntakeEmails.queue/4` and writes an
+  Intake Email log row in the same transaction, and the coordinator-alert
+  holders get a keyed "Batch sent" Notification (signalled after commit).
+  With free seats but nobody eligible waiting it sends one keyed
+  Notification per workshop and nothing else. The Batch number's unique
+  index and the Intake states keep a pass exactly-once.
+
+  `pause_batches` / `resume_batches` stop and restart new Batches only.
+
+  No staff command sends email.
   """
 
   import Ecto.Query
@@ -75,17 +93,26 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   alias Dhc.Auth.{Capabilities, Principal}
 
   alias Dhc.BeginnersWorkshops.{
+    Batch,
+    BatchProposal,
     BeginnersWorkshop,
     Clock,
+    Intake,
+    IntakeEmailLog,
+    IntakeEmails,
+    IntakeLink,
     StaffAssignment,
     WorkshopFacts,
     WorkshopPolicy,
     WorkshopProjection
   }
 
+  alias Dhc.BeginnersWorkshops.IntakeEmails.Values
   alias Dhc.ClubCalendar
   alias Dhc.Notifications
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist.WaitlistEntry
 
   @type principal_id :: binary()
 
@@ -112,6 +139,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   @type command ::
           {:schedule_workshop, [map()]}
           | {:update_workshop, workshop_id :: binary(), map()}
+          | {:pause_batches, workshop_id :: binary()}
+          | {:resume_batches, workshop_id :: binary()}
+          | {:send_due_batch, workshop_id :: binary()}
           | {:set_staff, workshop_id :: binary(), map()}
 
   @typedoc """
@@ -128,6 +158,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :invalid_payment_cutoff
           | :invalid_contact_from
           | :contact_from_locked
+          | :fee_locked
+          | :concurrent_change
           | :after_finalisation
           | :already_cancelled
           | :invalid_staff
@@ -142,8 +174,21 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   @staff_capabilities %{
     schedule_workshop: :"beginners.workshops.manage",
     update_workshop: :"beginners.workshops.manage",
+    pause_batches: :"beginners.workshops.manage",
+    resume_batches: :"beginners.workshops.manage",
     set_staff: :"beginners.workshops.manage"
   }
+
+  # Commands only the `:system` actor (time-driven passes) may run.
+  @system_commands [:send_due_batch]
+
+  # The coordinator-alert recipients (ALE-380).
+  @alerts_capability :"beginners.workshops.alerts.receive"
+
+  # A Batch pass that loses a proposed person to a concurrent command retries
+  # from a fresh proposal this many times before giving up until the next
+  # sweep.
+  @batch_attempts 3
 
   @lock_levels [:workshop, :waitlist_entry, :intake, :carried_fee, :payment, :refund]
 
@@ -174,6 +219,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # same shape, so these are the backstop for writers outside the seam).
   @unique_constraints %{
     BeginnersWorkshop => [],
+    Batch => [{:number, "beginners_workshop_batches_number_index", :concurrent_change}],
+    Intake => [
+      {:waitlist_id, "beginners_workshop_intakes_one_open_per_person_index", :concurrent_change},
+      {:link_token_hash, "beginners_workshop_intakes_link_token_hash_index", :concurrent_change}
+    ],
+    IntakeEmailLog => [
+      {:occasion, "beginners_workshop_intake_emails_occasion_index", :concurrent_change}
+    ],
     # Staff rows are written under the workshop lock, so these are backstops.
     StaffAssignment => [
       {:principal_id, "beginners_workshop_staff_workshop_principal_unique", :staff_conflict},
@@ -188,6 +241,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:capacity, "beginners_workshops_capacity_check"},
       {:fee_cents, "beginners_workshops_fee_check"},
       {:payment_window_days, "beginners_workshops_payment_window_check"}
+    ],
+    Batch => [
+      {:number, "beginners_workshop_batches_number_check"},
+      {:size, "beginners_workshop_batches_size_check"},
+      {:window_ends_at, "beginners_workshop_batches_window_check"}
+    ],
+    Intake => [
+      {:state, "beginners_workshop_intakes_state_check"},
+      {:origin, "beginners_workshop_intakes_origin_check"},
+      {:link_generation, "beginners_workshop_intakes_link_generation_check"}
     ],
     StaffAssignment => [{:role, "beginners_workshop_staff_role_check"}]
   }
@@ -230,11 +293,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # ── Authorization ───────────────────────────────────────────────
 
   defp authorize(actor, command) do
-    case Map.fetch(@staff_capabilities, command_name(command)) do
+    name = command_name(command)
+
+    case Map.fetch(@staff_capabilities, name) do
       {:ok, capability} -> authorize_staff(actor, capability)
+      :error when name in @system_commands -> authorize_system(actor)
       :error -> {:error, :unknown_command}
     end
   end
+
+  defp authorize_system(:system), do: :ok
+  defp authorize_system(_actor), do: {:error, :forbidden}
 
   defp authorize_staff({:staff, principal_id}, capability) when is_binary(principal_id) do
     with {:ok, id} <- Ecto.UUID.cast(principal_id),
@@ -281,6 +350,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         )
       end)
     end
+  end
+
+  defp run({:staff, principal_id}, {:pause_batches, workshop_id}, clock),
+    do: set_batches_paused(workshop_id, principal_id, true, clock)
+
+  defp run({:staff, principal_id}, {:resume_batches, workshop_id}, clock),
+    do: set_batches_paused(workshop_id, principal_id, false, clock)
+
+  defp run(:system, {:send_due_batch, workshop_id}, clock) do
+    with {:ok, workshop_id} <- cast_id(workshop_id),
+         do: send_due_batch(workshop_id, clock, @batch_attempts)
   end
 
   defp run({:staff, principal_id}, {:set_staff, workshop_id, attrs}, clock) when is_map(attrs) do
@@ -378,14 +458,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       |> Ecto.Changeset.cast(attrs, @update_fields)
 
     with {:ok, next} <- Ecto.Changeset.apply_action(input, :update),
+         :ok <- fee_change_allowed(input, facts),
          :ok <- contact_from_change_allowed(input, facts),
          cutoff = resolve_cutoff(next, workshop),
          :ok <- cutoff_before_start(cutoff, WorkshopPolicy.starts_at(workshop)),
          :ok <- contact_from_still_valid(next.contact_from, cutoff, facts),
          # Capacity may rise at any time before finalisation. Lowering it
-         # below the seats taken is refused once Seat Holds exist (ALE-381);
-         # the fee locks once an Intake exists (ALE-380). A new window
-         # length applies to Batches sent after it (ALE-380).
+         # below the seats taken is refused once Seat Holds exist (ALE-381).
+         # A new window length applies to Batches sent after it: a sent
+         # Batch keeps its stored window end.
          {:ok, workshop} <-
            workshop
            |> BeginnersWorkshop.settings_changeset(%{
@@ -398,6 +479,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            |> persist() do
       {:ok, WorkshopProjection.view(workshop, facts, reading)}
     end
+  end
+
+  # People contacted at one price are never charged another.
+  defp fee_change_allowed(input, facts) do
+    if Ecto.Changeset.changed?(input, :fee_cents) and not WorkshopPolicy.fee_editable?(facts),
+      do: {:error, :fee_locked},
+      else: :ok
   end
 
   defp contact_from_change_allowed(input, facts) do
@@ -415,20 +503,252 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       else: :ok
   end
 
+  # ── pause_batches / resume_batches ──────────────────────────────
+
+  # Idempotent: pausing a paused workshop (or resuming a running one)
+  # changes nothing and records nothing again.
+  defp set_batches_paused(workshop_id, principal_id, paused?, clock) do
+    with {:ok, workshop_id} <- cast_id(workshop_id) do
+      transact(fn ->
+        with_locked(
+          %{workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id))},
+          &pause_locked(&1, principal_id, paused?, clock)
+        )
+      end)
+    end
+  end
+
+  defp pause_locked(%{workshop: workshop}, principal_id, paused?, clock) do
+    reading = Clock.read(clock)
+
+    with :ok <- still_scheduled(workshop),
+         {:ok, workshop} <- toggle_pause(workshop, principal_id, paused?, reading) do
+      {:ok, WorkshopProjection.view(workshop, facts_for(workshop), reading)}
+    end
+  end
+
+  defp toggle_pause(%BeginnersWorkshop{batches_paused: paused?} = workshop, _id, paused?, _r),
+    do: {:ok, workshop}
+
+  defp toggle_pause(workshop, principal_id, true, reading),
+    do: workshop |> BeginnersWorkshop.pause_changeset(principal_id, reading.now) |> persist()
+
+  defp toggle_pause(workshop, principal_id, false, reading),
+    do: workshop |> BeginnersWorkshop.resume_changeset(principal_id, reading.now) |> persist()
+
+  defp still_scheduled(%BeginnersWorkshop{status: "scheduled"}), do: :ok
+  defp still_scheduled(%BeginnersWorkshop{status: "finalised"}), do: {:error, :after_finalisation}
+  defp still_scheduled(%BeginnersWorkshop{status: "cancelled"}), do: {:error, :already_cancelled}
+
+  # ── send_due_batch ──────────────────────────────────────────────
+
+  defp send_due_batch(workshop_id, clock, attempts_left) do
+    transact(fn ->
+      with_locked(
+        %{
+          workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+          waitlist_entry: &lock_proposal(&1, clock)
+        },
+        &send_batch_locked(&1, clock)
+      )
+    end)
+    |> case do
+      {:ok, {outcome, notifications}} ->
+        Enum.each(notifications, &Notifications.signal_created/1)
+        {:ok, outcome}
+
+      {:error, :concurrent_change} when attempts_left > 1 ->
+        send_due_batch(workshop_id, clock, attempts_left - 1)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Under the workshop lock: when a Batch is due, lock the proposed people's
+  # Waitlist entries (in id order). Nothing is locked when it is not due.
+  defp lock_proposal(%{workshop: workshop}, clock) do
+    facts = facts_for(workshop)
+
+    if WorkshopPolicy.batch_due?(workshop, facts, Clock.read(clock)) do
+      ids =
+        workshop
+        |> WorkshopPolicy.batch_size(facts)
+        |> BatchProposal.people()
+        |> Enum.map(& &1.waitlist_id)
+
+      {:all, from(e in WaitlistEntry, where: e.id in ^ids)}
+    end
+  end
+
+  # The "no open window" rule and the rest of `batch_due?/3` are judged
+  # again here, with the time read under the lock.
+  defp send_batch_locked(%{workshop: workshop, waitlist_entry: entries}, clock) do
+    reading = Clock.read(clock)
+    facts = facts_for(workshop)
+
+    cond do
+      is_nil(entries) or not WorkshopPolicy.batch_due?(workshop, facts, reading) ->
+        {:ok, {%{outcome: :not_due}, []}}
+
+      entries == [] ->
+        {:ok, {%{outcome: :nobody_waiting}, notify_nobody_waiting(workshop)}}
+
+      true ->
+        with {:ok, people} <- still_eligible(entries) do
+          create_batch(workshop, facts, people, reading)
+        end
+    end
+  end
+
+  # A proposed person taken by a concurrent command (another workshop's
+  # Batch, a fast-track) or no longer waiting: retry from a fresh proposal.
+  defp still_eligible(entries) do
+    ids = Enum.map(entries, & &1.id)
+
+    if MapSet.new(BatchProposal.still_eligible(ids)) == MapSet.new(ids) do
+      first_names =
+        from(p in UserProfile,
+          where: p.waitlist_id in ^ids,
+          select: {p.waitlist_id, p.first_name}
+        )
+        |> Repo.all()
+        |> Map.new()
+
+      people =
+        entries
+        |> Enum.sort_by(&{DateTime.to_unix(&1.initial_registration_date, :microsecond), &1.id})
+        |> Enum.map(&%{entry: &1, first_name: Map.get(first_names, &1.id) || ""})
+
+      {:ok, people}
+    else
+      {:error, :concurrent_change}
+    end
+  end
+
+  defp create_batch(workshop, facts, people, reading) do
+    number = facts.batches_sent + 1
+    window_end = WorkshopPolicy.window_end(workshop, reading)
+
+    with {:ok, batch} <-
+           %{
+             workshop_id: workshop.id,
+             number: number,
+             size: length(people),
+             sent_at: reading.now,
+             window_ends_at: window_end
+           }
+           |> Batch.changeset()
+           |> persist(),
+         :ok <- contact_all(workshop, batch, people, reading) do
+      {:ok, {%{outcome: :sent, batch: batch_view(batch)}, notify_batch_sent(workshop, batch)}}
+    end
+  end
+
+  defp contact_all(workshop, batch, people, reading) do
+    Enum.reduce_while(people, :ok, fn person, :ok ->
+      case contact(workshop, batch, person, reading) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # One new `contacted` Intake, its "Contact – pay" email with the person's
+  # own link, and the Intake Email log row — all in this transaction.
+  defp contact(workshop, batch, %{entry: entry, first_name: first_name}, reading) do
+    intake_id = Ecto.UUID.generate()
+    token = IntakeLink.token(intake_id, 1)
+
+    with {:ok, intake} <-
+           %{
+             id: intake_id,
+             workshop_id: workshop.id,
+             waitlist_id: entry.id,
+             origin: "batch",
+             batch_id: batch.id,
+             queue_date: entry.initial_registration_date,
+             link_token_hash: IntakeLink.hash(token),
+             contacted_at: reading.now
+           }
+           |> Intake.contact_changeset()
+           |> persist(),
+         {:ok, _job} <-
+           IntakeEmails.queue(
+             "contact_pay",
+             entry,
+             contact_values(workshop, batch, first_name),
+             button_url: IntakeLink.url(token)
+           ),
+         {:ok, _log} <-
+           %{
+             intake_id: intake.id,
+             email_type: "contact_pay",
+             occasion: "contact",
+             queued_at: reading.now
+           }
+           |> IntakeEmailLog.changeset()
+           |> persist() do
+      :ok
+    end
+  end
+
+  defp contact_values(workshop, batch, first_name) do
+    %{
+      "firstName" => first_name,
+      "date" => Values.date(workshop.date),
+      "startTime" => Values.start_time(workshop.start_time),
+      "venue" => workshop.venue,
+      "fee" => Values.money(workshop.fee_cents),
+      "windowEnd" => Values.deadline(batch.window_ends_at),
+      "paymentCutoff" => Values.deadline(workshop.payment_cutoff)
+    }
+  end
+
+  defp batch_view(%Batch{} = batch) do
+    Map.take(batch, [:id, :workshop_id, :number, :size, :sent_at, :window_ends_at])
+  end
+
+  # Keyed Notifications to the coordinator-alert holders, inserted in this
+  # transaction; the caller signals the created rows after commit.
+  defp notify_batch_sent(workshop, batch) do
+    alert(
+      "beginners-workshop:#{workshop.id}:batch:#{batch.number}",
+      "Batch #{batch.number} sent for the Beginners' Workshop on #{Values.date(workshop.date)}: " <>
+        "#{batch.size} #{if batch.size == 1, do: "person", else: "people"} contacted."
+    )
+  end
+
+  defp notify_nobody_waiting(workshop) do
+    alert(
+      "beginners-workshop:#{workshop.id}:nobody-waiting",
+      "The Beginners' Workshop on #{Values.date(workshop.date)} has free seats, " <>
+        "but nobody is left waiting on the Waitlist."
+    )
+  end
+
+  defp alert(key, body) do
+    @alerts_capability
+    |> Capabilities.principal_ids_with()
+    |> Enum.flat_map(fn principal_id ->
+      case Notifications.create_keyed_in_transaction(principal_id, key, body) do
+        {:ok, :created, notification} -> [notification]
+        {:ok, :already_created} -> []
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
   # ── set_staff ───────────────────────────────────────────────────
 
   defp set_staff_locked(%{workshop: workshop}, staff, actor_id, clock) do
-    with :ok <- staff_editable(workshop),
+    # Staff can change at any time before Attendance Finalisation (story 17);
+    # the Staff list of a finalised workshop is its permanent record.
+    with :ok <- still_scheduled(workshop),
          {:ok, created} <- apply_staff(workshop, current_staff(workshop), staff, actor_id) do
       {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), Clock.read(clock)), created}}
     end
   end
-
-  # Staff can change at any time before Attendance Finalisation (story 17);
-  # the Staff list of a finalised workshop is its permanent record.
-  defp staff_editable(%BeginnersWorkshop{status: "scheduled"}), do: :ok
-  defp staff_editable(%BeginnersWorkshop{status: "finalised"}), do: {:error, :after_finalisation}
-  defp staff_editable(%BeginnersWorkshop{status: "cancelled"}), do: {:error, :already_cancelled}
 
   # Read under the workshop lock: no other writer can touch these rows.
   defp current_staff(%BeginnersWorkshop{id: id}),

@@ -59,6 +59,8 @@ const RULES = {
 	"beginners.workshops.assigned.read": {},
 	"beginners.workshops.lead": {},
 	"beginners.workshops.manage": {},
+	// ALE-380: recipients-only (coordinator alerts); no route is gated on it.
+	"beginners.workshops.alerts.receive": {},
 	"beginners.workshops.run": { assignedMayAccess: true },
 	"discord.assignments.manage": {},
 	"discord.doctor.use": {},
