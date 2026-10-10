@@ -156,6 +156,8 @@ defmodule DhcWeb.Router do
     pipe_through([:api, :beginners_waitlist_manage])
 
     post("/people/:waitlistId/withdraw", BeginnersWorkshopIntakesController, :withdraw_person)
+    # ALE-396: the Waitlist tab's Delete (a hard delete in the boundary).
+    post("/people/:waitlistId/delete", BeginnersWorkshopIntakesController, :delete_person)
     post("/:id/intakes/:intakeId/withdraw", BeginnersWorkshopIntakesController, :withdraw)
 
     # ALE-388: the Waitlist view's Carried Fee column (the Waitlist cannot

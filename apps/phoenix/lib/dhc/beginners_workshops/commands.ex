@@ -400,6 +400,31 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   (the same `queue_follow_up/3`); before then the sweep sends it. Other
   corrections email nobody.
 
+  ## Hard delete: retention purge and manual delete (ALE-396)
+
+  `delete_person` (`beginners.waitlist.manage`, the Waitlist tab's Delete)
+  and `purge_retention` (`:system`, a sweep pass, one person per command)
+  are the one hard delete. Under the person's Waitlist entry lock, then
+  every Intake they ever had, then their live Carried Fee:
+
+    * `delete_person` is refused with `:open_intake` and with
+      `:not_deletable` (standing `invited` or `joined`, a claimed profile, or
+      an Invitation that still names them); a Carried Fee needs the
+      refund-or-forfeit choice first (`:refund_choice_required`), refunded in
+      full against its original payment (reason `deleted`) or forfeited.
+      It emails nobody.
+    * `purge_retention` acts only on someone `removed` for more than the
+      3-month retention window (`Waitlist.restorable?/2` on the boundary
+      clock, under the lock) with no open Intake, and forfeits any `held`
+      Carried Fee; anything else is `:not_due`.
+    * Both anonymise the person's Intakes (`waitlist_id` null,
+      `anonymised_at`), each keeping its queue date; an `attended` one first
+      records `invitation_outcome` (`not_invited`, `invited`, `joined`).
+      Every Carried Fee row of the person is kept with no link to them, and
+      refund rows (which never named the person) stay. Then
+      `Dhc.Waitlist.hard_delete/1` deletes the Guardian, the unclaimed
+      UserProfile and the Waitlist entry.
+
   ## Invitation handoff (ALE-392)
 
   `invite` (`members.invite`) hands one attended person to Onboarding.
@@ -550,6 +575,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:finalise_attendance, workshop_id :: binary()}
           | {:send_follow_ups, workshop_id :: binary()}
           | {:invite, workshop_id :: binary(), intake_id :: binary()}
+          | {:delete_person, waitlist_id :: binary(), map()}
+          | {:purge_retention, waitlist_id :: binary()}
           | {IntakePolicy.command(), workshop_id :: binary(), intake_id :: binary(), map()}
 
   @typedoc """
@@ -645,6 +672,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :before_finalisation
           | :not_correctable
           | :invalid_correction
+          | :not_deletable
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -684,7 +712,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     link_carried_fee_payment: :"beginners.workshops.manage",
     forfeit_carried_fee: :"beginners.workshops.manage",
     # ALE-393.
-    correct_attendance: :"beginners.workshops.manage"
+    correct_attendance: :"beginners.workshops.manage",
+    # ALE-396: deleting a person is a Waitlist decision (the money choice is
+    # the one `withdraw` already asks).
+    delete_person: :"beginners.waitlist.manage"
   }
 
   # The console Intake commands: one plumbing, one rule (`IntakePolicy`).
@@ -699,7 +730,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     :reconcile,
     :finalise_attendance,
     :send_follow_ups,
-    :import_carried_fee
+    :import_carried_fee,
+    :purge_retention
   ]
 
   # The person's Intake-page commands (`{:intake_link, token}`).
@@ -859,7 +891,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:paid_via, "beginners_workshop_intakes_paid_via_check"},
       {:state, "beginners_workshop_intakes_paid_check"},
       {:checked_in_at, "beginners_workshop_intakes_check_in_check"},
-      {:carried_fee_id, "beginners_workshop_intakes_carried_fee_check"}
+      {:carried_fee_id, "beginners_workshop_intakes_carried_fee_check"},
+      {:anonymised_at, "beginners_workshop_intakes_anonymised_check"},
+      {:invitation_outcome, "beginners_workshop_intakes_invitation_outcome_check"}
     ],
     CarriedFee => [
       {:status, "beginners_workshop_carried_fees_status_check"},
@@ -1214,6 +1248,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       |> record_invite_refusal(principal_id)
     end
   end
+
+  # ALE-396: the Waitlist tab's Delete, and the sweep's retention purge.
+  defp run({:staff, principal_id}, {:delete_person, waitlist_id, attrs}, clock)
+       when is_map(attrs),
+       do: delete_person(principal_id, waitlist_id, attrs, clock)
+
+  defp run(:system, {:purge_retention, waitlist_id}, clock),
+    do: purge_retention(waitlist_id, clock)
 
   # ALE-387: the Waitlist tab's withdraw names the person, not an Intake.
   defp run({:staff, principal_id}, {:withdraw, waitlist_id, attrs}, clock) when is_map(attrs),
@@ -3307,7 +3349,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # `withdraw` (ALE-387) takes the refund-or-forfeit choice: absent, or a
   # boolean. Whether it is *required* depends on the locked Intake.
-  defp command_options(:withdraw, attrs) do
+  # `delete_person` (ALE-396) takes the same choice for a Carried Fee.
+  defp command_options(command, attrs) when command in [:withdraw, :delete_person] do
     case fetch_attr(attrs, :refund) do
       refund when is_nil(refund) or is_boolean(refund) -> {:ok, %{refund: refund}}
       _other -> {:error, :invalid_refund_choice}
@@ -3829,8 +3872,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       workshop_status: locked.workshop.status,
       standing:
         case Map.get(locked, :waitlist_entry) do
-          %WaitlistEntry{status: status} -> status
-          _none -> nil
+          %WaitlistEntry{status: status} ->
+            status
+
+          # ALE-396: an anonymised attendee keeps what became of them.
+          _anonymised when intake.invitation_outcome in ~w(invited joined) ->
+            intake.invitation_outcome
+
+          _none ->
+            nil
         end,
       correction: Map.get(context.options, :to)
     }
@@ -4081,6 +4131,147 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:ok, id} -> {:ok, id}
       :error -> {:error, :person_not_found}
     end
+  end
+
+  # ── Hard delete: delete_person and purge_retention (ALE-396) ───
+
+  # The person's rows a hard delete changes: their entry, every Intake they
+  # ever had (anonymised), and their live Carried Fee (refunded or
+  # forfeited first). Every Intake is created under the person's entry lock,
+  # so no new one can appear while it is held.
+  defp person_delete_spec(waitlist_id) do
+    %{
+      waitlist_entry: from(e in WaitlistEntry, where: e.id == ^waitlist_id),
+      intake: {:all, from(i in Intake, where: i.waitlist_id == ^waitlist_id)},
+      carried_fee: live_fee_query(waitlist_id)
+    }
+  end
+
+  # The coordinator's delete, at any time on request: refused with an open
+  # Intake or once the Invitation handoff is under way; a Carried Fee needs
+  # the refund-or-forfeit choice first. Deletion emails nobody.
+  defp delete_person(principal_id, waitlist_id, attrs, clock) do
+    with {:ok, %{refund: refund}} <- command_options(:delete_person, attrs),
+         {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
+      transact(fn ->
+        with_locked(
+          person_delete_spec(waitlist_id),
+          &delete_person_locked(&1, principal_id, refund, clock)
+        )
+      end)
+    end
+  end
+
+  defp delete_person_locked(%{waitlist_entry: nil}, _principal_id, _refund, _clock),
+    do: {:error, :person_not_found}
+
+  defp delete_person_locked(locked, principal_id, refund, clock) do
+    %{waitlist_entry: entry, intake: intakes, carried_fee: fee} = locked
+    reading = Clock.read(clock)
+
+    with :ok <- none_open(intakes),
+         :ok <- deletable_standing(entry),
+         {:ok, refund?} <- money_choice(fee, %{refund: refund}),
+         {:ok, fee} <- settle_deleted_fee(refund?, fee, principal_id, reading),
+         {:ok, anonymised} <- hard_delete(entry, intakes, reading) do
+      {:ok, deleted_view(entry, anonymised, fee, :deleted)}
+    end
+  end
+
+  defp none_open(intakes) do
+    if Enum.any?(intakes, &(&1.state in Intake.open_states())),
+      do: {:error, :open_intake},
+      else: :ok
+  end
+
+  # An Invitation already under way, or a Member, belongs to Onboarding.
+  defp deletable_standing(%WaitlistEntry{status: status}) when status in ~w(invited joined),
+    do: {:error, :not_deletable}
+
+  defp deletable_standing(%WaitlistEntry{}), do: :ok
+
+  # The Carried Fee, settled by the coordinator's choice: refunded in full
+  # against its original payment (the refund row outlives the person) or
+  # forfeited. `nil`: there was no money.
+  defp settle_deleted_fee(nil, _fee, _actor, _reading), do: {:ok, nil}
+
+  defp settle_deleted_fee(true, fee, actor, reading) do
+    with {:ok, _refund} <- refund_fee(fee, nil, actor, "deleted", reading),
+         do: {:ok, Repo.reload!(fee)}
+  end
+
+  defp settle_deleted_fee(false, fee, _actor, reading), do: forfeit_fee(fee, reading)
+
+  # The time-driven purge (`:system`, a sweep pass): someone `removed` for
+  # more than the 3-month retention window — judged with the boundary
+  # clock under the entry lock — is hard-deleted and any `held` Carried Fee
+  # forfeited. A removed person whose Intake is still open (staff removed
+  # them while contacted) waits until it closes.
+  defp purge_retention(waitlist_id, clock) do
+    with {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
+      transact(fn -> with_locked(person_delete_spec(waitlist_id), &purge_locked(&1, clock)) end)
+    end
+  end
+
+  defp purge_locked(%{waitlist_entry: nil}, _clock), do: {:ok, %{outcome: :not_due}}
+
+  defp purge_locked(%{waitlist_entry: entry, intake: intakes, carried_fee: fee}, clock) do
+    reading = Clock.read(clock)
+
+    if retention_ended?(entry, reading) and none_open(intakes) == :ok do
+      with {:ok, fee} <- forfeit_fee(fee, reading),
+           {:ok, anonymised} <- hard_delete(entry, intakes, reading),
+           do: {:ok, deleted_view(entry, anonymised, fee, :purged)}
+    else
+      {:ok, %{waitlist_id: entry.id, outcome: :not_due}}
+    end
+  end
+
+  defp retention_ended?(%WaitlistEntry{status: "removed", removed_at: %DateTime{} = at}, reading),
+    do: not Waitlist.restorable?(at, reading.now)
+
+  defp retention_ended?(%WaitlistEntry{}, _reading), do: false
+
+  # The one hard delete: the person's Intakes are anonymised (each keeps its
+  # queue date; an attended one first records whether the person had been
+  # invited or had joined), every Carried Fee row of theirs is kept with no
+  # link to them, and the Waitlist deletes the entry, the unclaimed
+  # UserProfile and the Guardian.
+  defp hard_delete(%WaitlistEntry{} = entry, intakes, reading) do
+    outcome = invitation_outcome(entry)
+
+    with {:ok, anonymised} <- anonymise_intakes(intakes, outcome, reading),
+         {_count, _rows} <-
+           Repo.update_all(from(f in CarriedFee, where: f.waitlist_id == ^entry.id),
+             set: [waitlist_id: nil, updated_at: reading.now]
+           ),
+         :ok <- Waitlist.hard_delete(entry.id) do
+      {:ok, anonymised}
+    end
+  end
+
+  defp invitation_outcome(%WaitlistEntry{status: "invited"}), do: "invited"
+  defp invitation_outcome(%WaitlistEntry{status: "joined"}), do: "joined"
+  defp invitation_outcome(%WaitlistEntry{}), do: "not_invited"
+
+  defp anonymise_intakes(intakes, outcome, reading) do
+    Enum.reduce_while(intakes, {:ok, 0}, fn intake, {:ok, count} ->
+      recorded = if intake.state == "attended", do: outcome
+
+      case intake |> Intake.anonymise_changeset(recorded, reading.now) |> persist() do
+        {:ok, _intake} -> {:cont, {:ok, count + 1}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp deleted_view(entry, anonymised, fee, outcome) do
+    %{
+      waitlist_id: entry.id,
+      anonymised_intakes: anonymised,
+      carried_fee: fee && Map.take(fee, [:id, :status]),
+      outcome: outcome
+    }
   end
 
   # ── Carried Fees (ALE-388) ──────────────────────────────────────

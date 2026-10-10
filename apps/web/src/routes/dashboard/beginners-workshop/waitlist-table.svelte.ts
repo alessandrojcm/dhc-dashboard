@@ -9,7 +9,9 @@
  * removed person to the queue with their original date. Withdraw (ALE-387)
  * is the Beginners' Workshop boundary's command, not the Waitlist's — it may
  * close the person's open Intake — so it calls Phoenix's
- * `beginnersWorkshopIntakes.withdrawPerson`.
+ * `beginnersWorkshopIntakes.withdrawPerson`. Delete (ALE-396) is the
+ * boundary's hard delete too (`beginnersWorkshopIntakes.deletePerson`): it
+ * anonymises the person's Intakes and settles their Carried Fee.
  * Each listed person's Carried Fee status (ALE-388) comes from Beginners'
  * Workshops — the Waitlist API cannot know it — through one extra query
  * over the page's ids. The controller owns
@@ -20,6 +22,10 @@ import {
 	beginnersWorkshopCarriedFeesIndexOptions,
 	type BeginnersCarriedFeeStatus,
 	type BeginnersWorkshopCarriedFees,
+	type BeginnersWorkshopDeletePersonRequest,
+	beginnersWorkshopIntakesDeletePersonMutation,
+	type BeginnersWorkshopIntakesDeletePersonData,
+	type BeginnersWorkshopIntakesDeletePersonResponse,
 	beginnersWorkshopIntakesWithdrawPersonMutation,
 	type BeginnersWorkshopIntakesWithdrawPersonData,
 	type BeginnersWorkshopIntakesWithdrawPersonResponse,
@@ -94,6 +100,9 @@ export type WaitlistTableDeps = {
 	withdrawEntry?: (
 		options: Options<BeginnersWorkshopIntakesWithdrawPersonData>,
 	) => Promise<BeginnersWorkshopIntakesWithdrawPersonResponse>;
+	deleteEntry?: (
+		options: Options<BeginnersWorkshopIntakesDeletePersonData>,
+	) => Promise<BeginnersWorkshopIntakesDeletePersonResponse>;
 	/** ALE-389: the Carried Fee panel's requests, when a person's fee is managed. */
 	carriedFee?: CarriedFeePanelDeps;
 	/** Defaults to the current time; decides which removed people are offered restore. */
@@ -128,7 +137,16 @@ export function canWithdraw(entry: WaitlistEntry): boolean {
 	return entry.status === "waiting" || entry.status === "attended";
 }
 
-/** The outcome of a Withdraw: done, or Phoenix's reason and its code. */
+/**
+ * Whether Delete is offered for `entry` (ALE-396): anyone the Invitation
+ * handoff has not reached. Advisory only — Phoenix decides (`open_intake`,
+ * `not_deletable`).
+ */
+export function canDelete(entry: WaitlistEntry): boolean {
+	return entry.status !== "invited" && entry.status !== "joined";
+}
+
+/** The outcome of a Withdraw or Delete: done, or Phoenix's reason and its code. */
 export type WithdrawOutcome =
 	| { ok: true }
 	| { ok: false; error: string; code: string | null };
@@ -260,6 +278,25 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		() => queryClient,
 	);
 
+	const deleteWaitlistEntry = createMutation(
+		() => {
+			const options = beginnersWorkshopIntakesDeletePersonMutation();
+			const request = deps.deleteEntry;
+			if (request) options.mutationFn = (vars) => request(vars);
+			return {
+				...options,
+				onSuccess: () => {
+					notify.success(
+						"Deleted. Their Intakes stay in the reports, anonymised.",
+					);
+				},
+				onSettled: () =>
+					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+			};
+		},
+		() => queryClient,
+	);
+
 	const now = deps.now ?? (() => new Date());
 
 	return {
@@ -340,6 +377,36 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		},
 		get isWithdrawing() {
 			return withdrawWaitlistEntry.isPending;
+		},
+		/** Whether Delete is offered for this entry. */
+		canDelete(entry: WaitlistEntry) {
+			return canDelete(entry);
+		},
+		/**
+		 * Deletes the person (ALE-396). Like Withdraw, the dialog shows a
+		 * refusal itself (`refund_choice_required` under the refund choice).
+		 */
+		async deletePerson(
+			id: string,
+			body: BeginnersWorkshopDeletePersonRequest,
+		): Promise<WithdrawOutcome> {
+			try {
+				await deleteWaitlistEntry.mutateAsync({
+					path: { waitlistId: id },
+					body,
+				});
+				return { ok: true };
+			} catch (error) {
+				const problem = apiProblem(error);
+				return {
+					ok: false,
+					error: problem?.detail ?? "Could not delete this person.",
+					code: problem?.code ?? null,
+				};
+			}
+		},
+		get isDeleting() {
+			return deleteWaitlistEntry.isPending;
 		},
 	};
 }

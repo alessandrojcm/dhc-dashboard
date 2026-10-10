@@ -32,7 +32,8 @@ defmodule Dhc.BeginnersWorkshops do
   }
 
   alias Dhc.Repo
-  alias Dhc.Waitlist.Import
+  alias Dhc.Waitlist
+  alias Dhc.Waitlist.{Import, WaitlistEntry}
 
   @doc """
   Executes one Beginners' Workshop command as `actor` — the only write path.
@@ -109,7 +110,9 @@ defmodule Dhc.BeginnersWorkshops do
   Intakes returned, and Intakes left for Stripe to end their hold
   (`cutoff_awaiting_hold`); how many workshops were finalised
   (`finalised`, and `finalise_awaiting_hold` when one waits for a live
-  Seat Hold) and how many Follow-ups were queued (`follow_ups`).
+  Seat Hold) and how many Follow-ups were queued (`follow_ups`). Last,
+  `purge_retention` (ALE-396) hard-deletes each person `removed` for more
+  than the 3-month retention window (`purged`).
   """
   @spec run_due_passes(keyword()) :: %{
           sent: non_neg_integer(),
@@ -125,7 +128,8 @@ defmodule Dhc.BeginnersWorkshops do
           cutoff_awaiting_hold: non_neg_integer(),
           finalised: non_neg_integer(),
           finalise_awaiting_hold: non_neg_integer(),
-          follow_ups: non_neg_integer()
+          follow_ups: non_neg_integer(),
+          purged: non_neg_integer()
         }
   def run_due_passes(opts \\ []) do
     sum_failed = fn :failed, a, b -> a + b end
@@ -136,6 +140,37 @@ defmodule Dhc.BeginnersWorkshops do
     |> Map.merge(run_cutoff_passes(opts), sum_failed)
     |> Map.merge(run_finalise_passes(opts), sum_failed)
     |> Map.merge(run_follow_up_passes(opts), sum_failed)
+    |> Map.merge(run_retention_passes(opts), sum_failed)
+  end
+
+  # How many people one sweep purges; the next sweep takes the rest.
+  @purge_batch 100
+
+  # The shortest 3 calendar months (28 February → 28 May) is 89 days, so
+  # this unlocked filter finds everyone past retention and a few who are not
+  # yet; `Waitlist.restorable?/2` narrows it, and the pass decides again
+  # under the lock (ALE-396).
+  @purge_filter_days 89
+
+  defp run_retention_passes(opts) do
+    now = Clock.read(Clock.from_opts(opts)).now
+    before = now |> DateTime.add(-@purge_filter_days, :day) |> DateTime.truncate(:second)
+
+    from(w in WaitlistEntry,
+      where: w.status == "removed" and w.removed_at < ^before,
+      order_by: [asc: w.removed_at, asc: w.id],
+      select: {w.id, w.removed_at},
+      limit: @purge_batch
+    )
+    |> Repo.all()
+    |> Enum.reject(fn {_id, removed_at} -> Waitlist.restorable?(removed_at, now) end)
+    |> Enum.reduce(%{purged: 0, failed: 0}, fn {id, _removed_at}, tally ->
+      case execute(:system, {:purge_retention, id}, opts) do
+        {:ok, %{outcome: :purged}} -> Map.update!(tally, :purged, &(&1 + 1))
+        {:ok, %{outcome: :not_due}} -> tally
+        {:error, _reason} -> Map.update!(tally, :failed, &(&1 + 1))
+      end
+    end)
   end
 
   defp run_finalise_passes(opts) do

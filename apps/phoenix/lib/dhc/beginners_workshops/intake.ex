@@ -27,6 +27,7 @@ defmodule Dhc.BeginnersWorkshops.Intake do
   @open_states ~w(contacted paid)
   @origins ~w(batch fast_track)
   @paid_via ~w(stripe carried_fee)
+  @invitation_outcomes ~w(not_invited invited joined)
 
   schema "beginners_workshop_intakes" do
     field :workshop_id, :binary_id
@@ -47,6 +48,10 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     # Principal, so it outlives that person's Staff assignment.
     field :checked_in_at, :utc_datetime_usec
     field :checked_in_by_principal_id, :binary_id
+    # Hard delete (ALE-396): the person reference is gone; an attended
+    # Intake records what became of the person (`invitation_outcome`).
+    field :anonymised_at, :utc_datetime_usec
+    field :invitation_outcome, :string
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end
@@ -142,5 +147,22 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     intake
     |> change(state: state)
     |> validate_inclusion(:state, @states -- @open_states)
+  end
+
+  @doc "What an anonymised attended Intake may record of the person's Invitation."
+  @spec invitation_outcomes() :: [String.t()]
+  def invitation_outcomes, do: @invitation_outcomes
+
+  @doc """
+  The person's hard delete (ALE-396): the Intake loses its person and keeps
+  everything else, its queue date included. An `attended` Intake records
+  `invitation_outcome` (`not_invited`, `invited` or `joined`); any other
+  Intake records none.
+  """
+  @spec anonymise_changeset(t(), String.t() | nil, DateTime.t()) :: Ecto.Changeset.t()
+  def anonymise_changeset(%__MODULE__{} = intake, invitation_outcome, at) do
+    intake
+    |> change(waitlist_id: nil, anonymised_at: at, invitation_outcome: invitation_outcome)
+    |> validate_inclusion(:invitation_outcome, @invitation_outcomes)
   end
 end

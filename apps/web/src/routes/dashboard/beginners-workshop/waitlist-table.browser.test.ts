@@ -300,3 +300,86 @@ test("shows a Carried Fee holder's fee on their entry", async () => {
 		)
 		.toBeVisible();
 });
+
+test("ALE-396: Delete removes a removed person, asking refund or forfeit first for a Carried Fee holder", async () => {
+	const removed = entry("b", {
+		fullName: "Bea Removed",
+		status: "removed",
+		removedAt: "2026-09-01T10:00:00Z",
+	});
+	const deleteEntry = vi.fn(async () => ({
+		data: {
+			waitlistId: "b",
+			anonymisedIntakes: 1,
+			carriedFee: { id: "fee", status: "forfeited" as const },
+		},
+	}));
+	const success = vi.fn();
+
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries: vi.fn(async () => page([removed])),
+			listCarriedFees: vi.fn(async () => ({ b: "held" as const })),
+			deleteEntry,
+			now: () => new Date("2026-10-09T12:00:00Z"),
+			notify: { success, error: () => {} },
+			url: () => new URL(`${BASE}?status=removed`),
+			navigate: () => {},
+		},
+	});
+
+	const desktop = screen.getByRole("table");
+	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
+	await expect.element(desktop.getByText(/Carried Fee/).first()).toBeVisible();
+	await desktop.getByRole("button", { name: "Delete this person" }).click();
+
+	const dialog = screen.getByRole("dialog", { name: "Delete Bea Removed" });
+	await expect.element(dialog).toBeVisible();
+	const submit = dialog.getByRole("button", { name: "Delete", exact: true });
+	await expect.element(submit).toBeDisabled();
+
+	await dialog.getByRole("radio", { name: /Forfeit the fee/ }).click();
+	await submit.click();
+
+	await expect.poll(() => success.mock.calls.length).toBe(1);
+	expect(deleteEntry).toHaveBeenCalledWith(
+		expect.objectContaining({
+			path: { waitlistId: "b" },
+			body: { refund: false },
+		}),
+	);
+});
+
+test("ALE-396: Delete shows Phoenix's refusal", async () => {
+	const ada = entry("a", { fullName: "Ada Contacted" });
+	const deleteEntry = vi.fn().mockRejectedValueOnce({
+		errors: {
+			detail: "This person already has an open Intake",
+			code: "open_intake",
+		},
+	});
+
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries: vi.fn(async () => page([ada])),
+			deleteEntry,
+			notify: { success: () => {}, error: () => {} },
+			url: () => new URL(BASE),
+			navigate: () => {},
+		},
+	});
+
+	const desktop = screen.getByRole("table");
+	await expect.element(desktop.getByText("Ada Contacted")).toBeVisible();
+	await desktop.getByRole("button", { name: "Delete this person" }).click();
+
+	const dialog = screen.getByRole("dialog", { name: "Delete Ada Contacted" });
+	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
+	await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+	await expect
+		.element(dialog.getByRole("alert"))
+		.toHaveTextContent("This person already has an open Intake");
+	expect(deleteEntry).toHaveBeenCalledWith(
+		expect.objectContaining({ path: { waitlistId: "a" }, body: {} }),
+	);
+});

@@ -48,6 +48,18 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
     |> BeginnersWorkshopsHTTP.respond(conn, :withdraw_person)
   end
 
+  @doc """
+  POST /beginners-workshops/people/{waitlistId}/delete (ALE-396): the
+  Waitlist tab's Delete, a hard delete run by the Beginners' Workshop
+  boundary; `refund` settles a Carried Fee first.
+  """
+  def delete_person(conn, %{"waitlistId" => waitlist_id} = params) do
+    conn
+    |> BeginnersWorkshopsHTTP.actor()
+    |> BeginnersWorkshops.execute({:delete_person, waitlist_id, Map.take(params, ["refund"])})
+    |> BeginnersWorkshopsHTTP.respond(conn, :delete_person)
+  end
+
   @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/refund-carried-fee (ALE-389)"
   def refund_carried_fee(conn, params), do: command(conn, :refund_carried_fee, params)
 
