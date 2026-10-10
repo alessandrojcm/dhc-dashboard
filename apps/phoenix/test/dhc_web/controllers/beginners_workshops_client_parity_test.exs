@@ -58,6 +58,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopInvitations.invitable beginnersWorkshopInvitations.invite
                 beginnersWorkshopRefunds.forfeit beginnersWorkshopRefunds.recordManual
                 beginnersWorkshopRefunds.retry
+                beginnersWorkshopReport.show
                 beginnersWorkshops.cancel beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.reschedule
                 beginnersWorkshops.schedule
                 beginnersWorkshops.setStaff beginnersWorkshops.staffCandidates

@@ -67,6 +67,8 @@ defmodule DhcWeb.Router do
     get("/", BeginnersWorkshopsController, :index)
     post("/", BeginnersWorkshopsController, :create)
     get("/staff-candidates", BeginnersWorkshopsController, :staff_candidates)
+    # ALE-397: the Dashboard tab's report (read only).
+    get("/report", BeginnersWorkshopReportController, :show)
     put("/:id/settings", BeginnersWorkshopsController, :update_settings)
     post("/:id/reschedule", BeginnersWorkshopsController, :reschedule)
     post("/:id/cancel", BeginnersWorkshopsController, :cancel)
