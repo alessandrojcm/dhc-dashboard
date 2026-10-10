@@ -185,7 +185,9 @@ test.describe("Beginners waitlist view", () => {
 
 	test("reports the waiting queue as Waiting", async ({ context, page }) => {
 		await loginAsUser(context, coordinator.email);
-		await page.goto("/dashboard/beginners-workshop");
+		// Workshop managers land on the Workshops tab (ALE-378), so the
+		// Dashboard tab is opened explicitly.
+		await page.goto("/dashboard/beginners-workshop?tab=dashboard");
 
 		await expect(
 			page.getByLabel("Dashboard").getByText("Waiting", { exact: true }),

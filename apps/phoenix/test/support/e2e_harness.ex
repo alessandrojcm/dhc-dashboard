@@ -43,6 +43,12 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Workshops.Registration
   alias Dhc.UserProfiles.UserProfile
 
+  # Kept by `reset!/0`: the migration history, and reference rows only a
+  # migration seeds (ALE-398: without the Intake Email templates no Batch
+  # can queue its Contact email). The database is fresh per run, so these
+  # still hold exactly what the migrations wrote.
+  @kept_tables ~w(schema_migrations beginners_workshop_email_templates)
+
   def reset! do
     Dhc.Onboarding.Finalizer.E2E.reset!()
     _ = Dhc.Onboarding.StripeAdapter.E2E.finish_probe()
@@ -50,7 +56,7 @@ defmodule Dhc.E2EHarness do
     %{rows: [[tables]]} =
       Ecto.Adapters.SQL.query!(
         Repo,
-        "SELECT string_agg(quote_ident(tablename), ', ') FROM pg_tables WHERE schemaname = 'public' AND tablename != 'schema_migrations'",
+        "SELECT string_agg(quote_ident(tablename), ', ') FROM pg_tables WHERE schemaname = 'public' AND tablename NOT IN (#{Enum.map_join(@kept_tables, ", ", &"'#{&1}'")})",
         []
       )
 
@@ -221,6 +227,10 @@ defmodule Dhc.E2EHarness do
     }
   end
 
+  # ALE-398: the Beginners' Workshop journey's scenarios.
+  def seed("beginnersWorkshop" <> _ = scenario, attrs),
+    do: Dhc.E2EHarness.BeginnersWorkshops.seed(scenario, attrs)
+
   def seed("waitlist", attrs) do
     email = Map.fetch!(attrs, "email")
 
@@ -254,8 +264,20 @@ defmodule Dhc.E2EHarness do
       status = Map.get(attrs, "status", "waiting")
       removed_at = if status == "removed", do: DateTime.utc_now() |> DateTime.truncate(:second)
 
+      # `initialRegistrationDate` sets the priority (ALE-398: a Batch takes
+      # the oldest waiting people first, whatever else the run seeded).
+      priority =
+        case Map.get(attrs, "initialRegistrationDate") do
+          nil ->
+            []
+
+          iso ->
+            {:ok, at, _offset} = DateTime.from_iso8601(iso)
+            [initial_registration_date: DateTime.truncate(at, :second)]
+        end
+
       from(w in WaitlistEntry, where: w.id == ^result.id)
-      |> Repo.update_all(set: [status: status, removed_at: removed_at])
+      |> Repo.update_all(set: [status: status, removed_at: removed_at] ++ priority)
 
       Map.merge(result, %{email: email, waitlistId: result.id, profileId: result.profile_id})
     end
