@@ -6,7 +6,10 @@ defmodule Dhc.E2EHarnessControllerTest do
 
   use DhcWeb.ConnCase, async: false
 
+  import Ecto.Query
+
   alias Dhc.Auth.Principal
+  alias Dhc.Auth.UserRole
   alias Dhc.E2EHarness
   alias Dhc.Repo
   alias DhcWeb.E2EHarnessController
@@ -33,6 +36,41 @@ defmodule Dhc.E2EHarnessControllerTest do
       })
 
     assert %{"errors" => %{"detail" => "still_referenced"}} = json_response(conn, 409)
+  end
+
+  test "deleting a member who is still named by history returns 409 and keeps the member" do
+    uniq = System.unique_integer([:positive])
+
+    member =
+      E2EHarness.seed("member", %{
+        "email" => "ctrl-member-409-#{uniq}@example.com",
+        "roles" => ["quartermaster"]
+      })
+
+    # The containers name the member as their creator (NOT NULL), as an
+    # inventory spec's operator does once its items have history.
+    E2EHarness.seed("inventoryStructure", %{
+      "categoryName" => "E2E Ctrl Member Cat #{uniq}",
+      "definitions" => [],
+      "containerPath" => ["E2E Ctrl Member Cage #{uniq}"],
+      "actorId" => member.userId
+    })
+
+    conn =
+      harness_conn()
+      |> E2EHarnessController.delete_fixture(%{"type" => "member", "id" => member.userId})
+
+    assert %{
+             "errors" => %{
+               "detail" => "still_referenced",
+               "constraint" => "containers_created_by_fkey"
+             }
+           } =
+             json_response(conn, 409)
+
+    # Rolled back as a whole: the member keeps its Principal and roles.
+    assert Repo.get(Principal, member.userId)
+    assert [_role | _] = Repo.all(from r in UserRole, where: r.principal_id == ^member.userId)
   end
 
   test "status JSON keeps schemaVersion as a number" do

@@ -130,8 +130,14 @@ export async function createMember({
 		...testData,
 		...seeded,
 		async cleanUp() {
-			await deleteE2EFixture("member", seeded.userId);
-			await stripeCleanup?.();
+			// A member who acted (created containers, borrowed, staffed…) stays:
+			// the harness refuses with 409 `still_referenced` rather than delete
+			// history. Its Stripe test resources go either way.
+			try {
+				await deleteE2EFixture("member", seeded.userId);
+			} finally {
+				await stripeCleanup?.();
+			}
 		},
 	};
 }

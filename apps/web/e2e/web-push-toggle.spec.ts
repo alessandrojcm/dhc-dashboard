@@ -37,7 +37,10 @@ test.describe("ALE-299 notification centre Web Push toggle", () => {
 
 		const toggle = page.getByTestId("web-push-toggle");
 		await expect(toggle).toBeVisible();
-		await expect(toggle.getByText("Push notifications")).toBeVisible();
+		// Exact: the blocked explanation also says "...turn push notifications back on".
+		await expect(
+			toggle.getByText("Push notifications", { exact: true }),
+		).toBeVisible();
 		await expect(
 			toggle.getByText(/Notifications are blocked for this site/),
 		).toBeVisible({ timeout: 10_000 });
