@@ -30,6 +30,7 @@ import {
 import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
 import ActionButtons from "./actions-buttons.svelte";
 import WaitlistEntryDetails from "./waitlist-entry-details.svelte";
+import WaitlistWithdrawDialog from "./waitlist-withdraw-dialog.svelte";
 import {
 	createWaitlistTable,
 	WAITLIST_STANDINGS,
@@ -46,6 +47,15 @@ const waitlistUrl = waitlist.url;
 
 // State for expanded rows
 let expandedState = $state({});
+
+// ALE-387: the person the Withdraw dialog is for.
+let withdrawing = $state<WaitlistEntry | null>(null);
+let withdrawOpen = $state(false);
+
+function openWithdraw(entry: WaitlistEntry) {
+	withdrawing = entry;
+	withdrawOpen = true;
+}
 
 const standingLabel = $derived(
 	waitlist.standing === "removed" ? "removed" : "waiting",
@@ -99,6 +109,9 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 						? () => waitlist.restore(row.original.id)
 						: undefined,
 					restoreDisabled: waitlist.isRestoring,
+					onWithdraw: waitlist.canWithdraw(row.original)
+						? () => openWithdraw(row.original)
+						: undefined,
 				});
 			},
 		},
@@ -393,6 +406,9 @@ const table = createSvelteTable(tableOptions);
 								? () => waitlist.restore(row.original.id)
 								: undefined}
 							restoreDisabled={waitlist.isRestoring}
+							onWithdraw={waitlist.canWithdraw(row.original)
+								? () => openWithdraw(row.original)
+								: undefined}
 						/>
 					</div>
 				</div>
@@ -514,3 +530,15 @@ const table = createSvelteTable(tableOptions);
 		</Button>
 	</div>
 </div>
+
+{#if withdrawing}
+	{@const person = withdrawing}
+	{#key person.id}
+		<WaitlistWithdrawDialog
+			entry={person}
+			bind:open={withdrawOpen}
+			pending={waitlist.isWithdrawing}
+			onWithdraw={(body) => waitlist.withdraw(person.id, body)}
+		/>
+	{/key}
+{/if}

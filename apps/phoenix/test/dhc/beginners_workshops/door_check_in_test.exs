@@ -221,7 +221,15 @@ defmodule Dhc.BeginnersWorkshops.DoorCheckInTest do
       assert %{minor: false, guardian: nil} = dara
       assert %{checked_in: %{by: "Aoife Coach", at: @during}} = niamh
 
-      text = inspect(view)
+      # UUIDs are random hex and can spell "fee"; mask them so only field names and values count.
+      text =
+        view
+        |> inspect()
+        |> String.replace(
+          ~r/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/,
+          "<uuid>"
+        )
+
       refute text =~ "@waitlist.example.com"
       refute text =~ ~r/email|payment|refund|fee|waitlist|queue_date|date_of_birth/i
     end

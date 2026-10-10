@@ -77,6 +77,21 @@ defmodule Dhc.BeginnersWorkshops.IntakeCommandsTest do
     |> Enum.find(&(&1.id == intake.id))
   end
 
+  defp paying_payment!(workshop, intake) do
+    Repo.insert!(%IntakePayment{
+      workshop_id: workshop.id,
+      intake_id: intake.id,
+      status: "paid",
+      amount_cents: 4000,
+      expires_at: @now,
+      stripe_checkout_session_id: "cs_#{intake.id}",
+      stripe_payment_intent_id: "pi_#{intake.id}",
+      amount_received_cents: 4000,
+      currency_received: "eur",
+      paid_at: @now
+    })
+  end
+
   defp pay!(token, intake) do
     Stripe.stub_create()
     assert {:ok, _} = execute({:intake_link, token}, :start_payment)
@@ -333,6 +348,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeCommandsTest do
             {name, j} <- Enum.with_index(commands) do
           {intake, _token} = Enum.at(intakes, i * length(commands) + j)
           force_intake_state!(intake.id, state)
+          # ALE-387: a paid Intake's money is a real payment row.
+          if state == "paid", do: paying_payment!(workshop, intake)
           {state, name, intake}
         end
 
@@ -340,7 +357,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeCommandsTest do
         offered = console_row(workshop, intake).available_commands
         assert offered == IntakePolicy.available_commands(%{state: state})
 
-        case command(c, name, workshop, intake) do
+        # `withdraw`'s refund-or-forfeit choice is input, not state: give it.
+        case command(c, name, workshop, intake, %{"refund" => false}) do
           {:ok, %{outcome: :done}} ->
             assert name in offered, "#{name} ran on #{state} but was not offered"
 

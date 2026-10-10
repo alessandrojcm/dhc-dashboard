@@ -14,6 +14,16 @@ export async function beginnersWorkshopsManageOptions() {
 }
 
 /**
+ * ALE-387: generated-client options for `withdraw`, the Waitlist's own exit,
+ * after checking `beginners.waitlist.manage`. Phoenix checks it again.
+ */
+export async function beginnersWaitlistManageOptions() {
+	const event = getRequestEvent();
+	await authorize(event.locals, "beginners.waitlist.manage");
+	return apiClientOptions(event.cookies);
+}
+
+/**
  * ALE-392: generated-client options for the Invitation handoff, after
  * checking `members.invite` (Phoenix checks it again).
  */

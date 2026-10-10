@@ -155,8 +155,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   ## Console Intake commands (ALE-386)
 
-  `decline`, `resend_link` and `rotate_link` (`beginners.workshops.manage`)
-  act on one Intake of one workshop and share one plumbing,
+  `decline`, `cancel_with_refund`, `withdraw`, `resend_link` and
+  `rotate_link` (`beginners.workshops.manage`; `withdraw`
+  `beginners.waitlist.manage`) act on one Intake of one workshop and share one plumbing,
   `intake_command/6`: every one takes an optional note, decides with
   `IntakePolicy.check/2` under the lock (the same rule the console's
   `availableCommands` comes from), and, when it acts, writes one Intake
@@ -179,6 +180,29 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       generation (a new token, so the old link resolves to nothing and the
       page says "no longer active"), then sends the same email
       (`rotate_link:<event id>`). Both work on open Intakes only.
+
+    * `cancel_with_refund` (ALE-387) locks Beginners' Workshop → Waitlist
+      entry → Intake → the payment that paid it: the Stripe-paid `paid`
+      Intake becomes `cancelled_refunded` (its seat is free at once, since
+      only `paid` Intakes and open holds count), a full refund of what that
+      payment took is requested (`insert_refund/4`, the one refund-row
+      writer, reason `cancelled_with_refund`, `requested_by` the actor), the
+      person stays (or goes back to) `waiting` with their original priority,
+      and "Cancelled with refund" is queued (occasion
+      `cancelled_with_refund`).
+    * `withdraw` (ALE-387, `beginners.waitlist.manage`) takes the same locks
+      (the payment level is the live hold of a contacted Intake, the paying
+      payment of a paid one). Contacted → `declined` (the hold becomes
+      `releasing`), no email. Paid → `withdrawn`; `refund: true | false` is
+      required (`:refund_choice_required`): a refund (reason `withdrawn`)
+      with "Withdrawn – refunded", or a forfeit with "Withdrawn –
+      forfeited" (occasion `withdrawn`). Either way the standing becomes
+      `removed` through `Waitlist.change_standing/2`; `invited`/`joined`
+      is `:already_invited`. The Waitlist tab's `{:withdraw, waitlist_id,
+      attrs}` peeks the person's open Intake and runs exactly this under
+      the lock (retrying if a Batch or Fast-track contacted them meanwhile),
+      or, with none, only removes the standing. A Carried-Fee-paid Intake is
+      `:carried_fee_paid` for both until Carried Fee refunds exist.
 
   No staff command sends email itself; `fast_track`'s Contact email is
   queued by the Intake it creates, exactly as a Batch's is.
@@ -460,6 +484,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :incomplete_details
           | :intake_not_found
           | :invalid_note
+          | :intake_not_paid
+          | :carried_fee_paid
+          | :refund_choice_required
+          | :invalid_refund_choice
+          | :nothing_to_refund
+          | :person_not_found
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -485,7 +515,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     # Console Intake commands (ALE-386).
     decline: :"beginners.workshops.manage",
     resend_link: :"beginners.workshops.manage",
-    rotate_link: :"beginners.workshops.manage"
+    rotate_link: :"beginners.workshops.manage",
+    # ALE-387. `withdraw` is the Waitlist's own exit, offered on the Waitlist
+    # tab and the console, so it needs the Waitlist capability.
+    cancel_with_refund: :"beginners.workshops.manage",
+    withdraw: :"beginners.waitlist.manage"
   }
 
   # The console Intake commands: one plumbing, one rule (`IntakePolicy`).
@@ -532,7 +566,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     workshop: %{"scheduled" => ~w(finalised cancelled)},
     intake: %{
       "contacted" => ~w(paid lapsed returned declined),
-      "paid" => ~w(attended no_show)
+      "paid" => ~w(attended no_show cancelled_refunded withdrawn)
     },
     payment: %{
       "open" => ~w(paid releasing released policy_failed),
@@ -938,6 +972,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       |> record_invite_refusal(principal_id)
     end
   end
+
+  # ALE-387: the Waitlist tab's withdraw names the person, not an Intake.
+  defp run({:staff, principal_id}, {:withdraw, waitlist_id, attrs}, clock) when is_map(attrs),
+    do: withdraw_person(principal_id, waitlist_id, attrs, clock)
 
   defp run({:staff, principal_id}, {command, workshop_id, intake_id, attrs}, clock)
        when command in @intake_commands and is_map(attrs),
@@ -2069,6 +2107,33 @@ defmodule Dhc.BeginnersWorkshops.Commands do
          reason,
          reading
        ) do
+    case insert_refund(payment, reason, nil, reading) do
+      {:ok, nil} ->
+        {:ok, nil}
+
+      {:ok, refund} ->
+        with :ok <- queue_payment_refunded(intake, workshop, refund, reading), do: {:ok, refund}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # ALE-387: a refund a coordinator chose (`cancel_with_refund`, `withdraw`
+  # with refund), under the lock of the payment that paid the Intake. The
+  # command's own notice names the amount, so nothing else is emailed.
+  # A paid Intake with no payment that took money has nothing to refund.
+  defp request_staff_refund(%{payment: payment}, reason, %{actor: actor}, reading) do
+    case payment && insert_refund(payment, reason, actor, reading) do
+      {:ok, %IntakeRefund{} = refund} -> {:ok, refund}
+      {:error, reason} -> {:error, reason}
+      _nothing_taken -> {:error, :nothing_to_refund}
+    end
+  end
+
+  # The full amount the payment row took, against its PaymentIntent, and
+  # its submission job — the one way a refund row is requested.
+  defp insert_refund(payment, reason, requested_by, reading) do
     case payment.amount_received_cents do
       amount when is_integer(amount) and amount > 0 ->
         with {:ok, refund} <-
@@ -2080,12 +2145,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
                  amount_cents: amount,
                  currency: payment.currency_received || payment.currency,
                  stripe_payment_intent_id: payment.stripe_payment_intent_id,
+                 requested_by_principal_id: requested_by,
                  requested_at: reading.now
                }
                |> IntakeRefund.request_changeset()
                |> persist(),
-             :ok <- enqueue_refund(refund.id),
-             :ok <- queue_payment_refunded(intake, workshop, refund, reading) do
+             :ok <- enqueue_refund(refund.id) do
           {:ok, refund}
         end
 
@@ -2538,17 +2603,37 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # act, and one history row when it acted. A repeat that finds the Intake
   # already where the command leads succeeds and writes nothing.
   defp intake_command(command, principal_id, workshop_id, intake_id, attrs, clock) do
-    with {:ok, note} <- command_note(attrs),
+    with {:ok, context} <- intake_command_context(command, principal_id, attrs),
          {:ok, workshop_id} <- cast_id(workshop_id),
          {:ok, peek} <- peek_console_intake(workshop_id, intake_id) do
       transact(fn ->
         with_locked(
           intake_command_spec(command, peek),
-          &intake_command_locked(&1, command, %{actor: principal_id, note: note}, clock)
+          &intake_command_locked(&1, command, context, clock)
         )
       end)
     end
   end
+
+  # Who runs the command, their optional note, and the command's own
+  # options, all checked before any lock.
+  defp intake_command_context(command, principal_id, attrs) do
+    with {:ok, note} <- command_note(attrs),
+         {:ok, options} <- command_options(command, attrs) do
+      {:ok, %{actor: principal_id, note: note, options: options}}
+    end
+  end
+
+  # `withdraw` (ALE-387) takes the refund-or-forfeit choice: absent, or a
+  # boolean. Whether it is *required* depends on the locked Intake.
+  defp command_options(:withdraw, attrs) do
+    case fetch_attr(attrs, :refund) do
+      refund when is_nil(refund) or is_boolean(refund) -> {:ok, %{refund: refund}}
+      _other -> {:error, :invalid_refund_choice}
+    end
+  end
+
+  defp command_options(_command, _attrs), do: {:ok, %{}}
 
   defp command_note(attrs) do
     case fetch_attr(attrs, :note) do
@@ -2600,7 +2685,50 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     )
   end
 
+  # `cancel_with_refund` refunds the payment that paid the Intake and puts
+  # the person back to `waiting`, so it locks their entry and that payment.
+  defp intake_command_spec(:cancel_with_refund, peek) do
+    peek
+    |> intake_spec(paying_payment(peek.intake_id))
+    |> Map.put(:waitlist_entry, entry_query(peek))
+  end
+
+  # `withdraw` removes the person; which payment it locks depends on the
+  # locked Intake: a contacted one's live hold, a paid one's payment.
+  defp intake_command_spec(:withdraw, peek) do
+    peek
+    |> intake_spec(fn
+      %{intake: %Intake{state: "contacted"}} -> open_payment(peek.intake_id)
+      %{intake: %Intake{state: "paid"}} -> paying_payment(peek.intake_id)
+      _closed -> nil
+    end)
+    |> Map.put(:waitlist_entry, entry_query(peek))
+  end
+
   defp intake_command_spec(_link_command, peek), do: intake_spec(peek, nil)
+
+  defp entry_query(%{waitlist_id: nil}), do: nil
+  defp entry_query(%{waitlist_id: id}), do: from(e in WaitlistEntry, where: e.id == ^id)
+
+  # The payment that paid an Intake: its `paid` row that was not refunded
+  # automatically (a completion after the Intake had closed, or one that
+  # failed the amount check, is refunded on its own and never paid it).
+  defp paying_payment(intake_id) do
+    automatic = IntakeRefund.automatic_reasons()
+
+    from(p in IntakePayment,
+      as: :payment,
+      where: p.intake_id == ^intake_id and p.status == "paid",
+      where:
+        not exists(
+          from(r in IntakeRefund,
+            where: r.payment_id == parent_as(:payment).id and r.reason in ^automatic
+          )
+        ),
+      order_by: [asc: p.paid_at, asc: p.id],
+      limit: 1
+    )
+  end
 
   defp intake_command_locked(%{intake: intake} = locked, command, context, clock) do
     reading = Clock.read(clock)
@@ -2609,7 +2737,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       :ok ->
         event_id = Ecto.UUID.generate()
 
-        with {:ok, intake} <- act_on_intake(command, locked, event_id, reading),
+        with {:ok, intake} <-
+               act_on_intake(command, Map.put(locked, :context, context), event_id, reading),
              {:ok, _event} <- record_intake_event(intake, command, event_id, context, reading) do
           {:ok, intake_command_view(intake, :done)}
         end
@@ -2641,6 +2770,56 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
+  # ALE-387: a Stripe-paid person wants their money back. The seat is free
+  # at once (it counted only while `paid`); the person keeps their priority.
+  defp act_on_intake(:cancel_with_refund, locked, _event_id, reading) do
+    %{workshop: workshop, waitlist_entry: entry, intake: intake, context: context} = locked
+
+    with {:ok, intake} <-
+           transition(:intake, intake, Intake.close_changeset(intake, "cancelled_refunded")),
+         {:ok, refund} <- request_staff_refund(locked, "cancelled_with_refund", context, reading),
+         :ok <- back_to_waiting(entry),
+         :ok <-
+           queue_intake_email(
+             intake,
+             "cancelled_with_refund",
+             "cancelled_with_refund",
+             &%{
+               "firstName" => &1,
+               "date" => Values.date(workshop.date),
+               "refundAmount" => refund_amount(refund)
+             },
+             reading
+           ) do
+      {:ok, intake}
+    end
+  end
+
+  # ALE-387: the person leaves the Waitlist. A contacted Intake closes as
+  # `declined` (its live hold stops counting) and emails nobody; a paid one
+  # closes as `withdrawn` — freeing the seat at once — with the money
+  # refunded or forfeited as the coordinator chose, and says which.
+  defp act_on_intake(:withdraw, %{intake: %Intake{state: "contacted"}} = locked, _id, _reading) do
+    %{waitlist_entry: entry, intake: intake, payment: hold} = locked
+
+    with {:ok, intake} <-
+           transition(:intake, intake, Intake.close_changeset(intake, "declined")),
+         :ok <- release_to_stripe(hold),
+         :ok <- remove_from_waitlist(entry),
+         do: {:ok, intake}
+  end
+
+  defp act_on_intake(:withdraw, %{intake: %Intake{state: "paid"}} = locked, _id, reading) do
+    %{waitlist_entry: entry, intake: intake, context: context} = locked
+
+    with {:ok, refund?} <- refund_choice(context.options),
+         {:ok, intake} <- transition(:intake, intake, Intake.close_changeset(intake, "withdrawn")),
+         :ok <- remove_from_waitlist(entry),
+         :ok <- settle_withdrawn_fee(refund?, locked, intake, reading) do
+      {:ok, intake}
+    end
+  end
+
   defp act_on_intake(:resend_link, %{workshop: workshop, intake: intake}, event_id, reading) do
     with :ok <- queue_link_email(intake, workshop, "resend_link:#{event_id}", reading),
          do: {:ok, intake}
@@ -2654,6 +2833,45 @@ defmodule Dhc.BeginnersWorkshops.Commands do
          :ok <- queue_link_email(intake, workshop, "rotate_link:#{event_id}", reading) do
       {:ok, intake}
     end
+  end
+
+  defp refund_choice(%{refund: refund}) when is_boolean(refund), do: {:ok, refund}
+  defp refund_choice(_options), do: {:error, :refund_choice_required}
+
+  defp settle_withdrawn_fee(true, %{context: context} = locked, intake, reading) do
+    with {:ok, refund} <- request_staff_refund(locked, "withdrawn", context, reading) do
+      queue_intake_email(
+        intake,
+        "withdrawn_refunded",
+        "withdrawn",
+        &%{"firstName" => &1, "refundAmount" => refund_amount(refund)},
+        reading
+      )
+    end
+  end
+
+  defp settle_withdrawn_fee(false, _locked, intake, reading),
+    do:
+      queue_intake_email(
+        intake,
+        "withdrawn_forfeited",
+        "withdrawn",
+        &%{"firstName" => &1},
+        reading
+      )
+
+  # A withdrawn person's standing becomes `removed` (which starts the
+  # retention clock); one already removed stays so. An Invitation already
+  # under way belongs to Onboarding, so withdraw refuses it. An anonymised
+  # person has no standing.
+  defp remove_from_waitlist(nil), do: :ok
+  defp remove_from_waitlist(%WaitlistEntry{status: "removed"}), do: :ok
+
+  defp remove_from_waitlist(%WaitlistEntry{status: status}) when status in ~w(invited joined),
+    do: {:error, :already_invited}
+
+  defp remove_from_waitlist(%WaitlistEntry{id: id}) do
+    with {:ok, _entry} <- Waitlist.change_standing(id, "removed"), do: :ok
   end
 
   # A live Seat Hold of a closing Intake stops counting as a seat at once;
@@ -2724,6 +2942,99 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     intake
     |> Map.take([:id, :workshop_id, :state, :link_generation])
     |> Map.put(:outcome, outcome)
+  end
+
+  # ── withdraw from the Waitlist tab (ALE-387) ───────────────────
+
+  # The Waitlist tab names the person. With an open Intake this is exactly
+  # the console's `withdraw` on it (same lock order, rule and history row);
+  # without one only the standing changes. The open Intake is peeked
+  # unlocked, so a Batch or Fast-track that contacts the person meanwhile
+  # is caught under the lock and the attempt retries from a fresh peek.
+  defp withdraw_person(principal_id, waitlist_id, attrs, clock) do
+    with {:ok, context} <- intake_command_context(:withdraw, principal_id, attrs),
+         {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
+      withdraw_person_attempt(waitlist_id, context, clock, @batch_attempts)
+    end
+  end
+
+  defp withdraw_person_attempt(waitlist_id, context, clock, attempts) do
+    case transact(fn -> withdraw_person_locked(waitlist_id, context, clock) end) do
+      {:error, :concurrent_change} when attempts > 1 ->
+        withdraw_person_attempt(waitlist_id, context, clock, attempts - 1)
+
+      result ->
+        result
+    end
+  end
+
+  defp withdraw_person_locked(waitlist_id, context, clock) do
+    case peek_open_intake(waitlist_id) do
+      nil ->
+        with_locked(
+          %{waitlist_entry: from(e in WaitlistEntry, where: e.id == ^waitlist_id)},
+          &withdraw_standing(&1, waitlist_id)
+        )
+
+      peek ->
+        with_locked(
+          intake_command_spec(:withdraw, peek),
+          &withdraw_open_intake(&1, waitlist_id, context, clock)
+        )
+    end
+  end
+
+  defp peek_open_intake(waitlist_id) do
+    Repo.one(
+      from(i in Intake,
+        where: i.waitlist_id == ^waitlist_id and i.state in ^Intake.open_states(),
+        select: %{intake_id: i.id, workshop_id: i.workshop_id, waitlist_id: i.waitlist_id}
+      )
+    )
+  end
+
+  defp open_intake_of?(%{waitlist_entry: %WaitlistEntry{}, intake: %Intake{} = intake}, id),
+    do: intake.waitlist_id == id and intake.state in Intake.open_states()
+
+  defp open_intake_of?(_locked, _id), do: false
+
+  # The peeked Intake must still be this person's open one under the lock.
+  defp withdraw_open_intake(locked, waitlist_id, context, clock) do
+    with true <- open_intake_of?(locked, waitlist_id) || {:error, :concurrent_change},
+         {:ok, view} <- intake_command_locked(locked, :withdraw, context, clock) do
+      {:ok, withdraw_person_view(Repo.reload!(locked.waitlist_entry), view)}
+    end
+  end
+
+  # No open Intake: the standing alone, under the entry lock. An Intake
+  # created since the peek (it takes this lock too) is found here.
+  defp withdraw_standing(%{waitlist_entry: nil}, _waitlist_id), do: {:error, :person_not_found}
+
+  defp withdraw_standing(%{waitlist_entry: entry}, waitlist_id) do
+    cond do
+      peek_open_intake(waitlist_id) != nil ->
+        {:error, :concurrent_change}
+
+      entry.status == "removed" ->
+        {:ok, withdraw_person_view(entry, nil, :already_done)}
+
+      true ->
+        with :ok <- remove_from_waitlist(entry),
+             do: {:ok, withdraw_person_view(Repo.reload!(entry), nil, :done)}
+    end
+  end
+
+  defp withdraw_person_view(entry, intake_view),
+    do: withdraw_person_view(entry, intake_view, intake_view.outcome)
+
+  defp withdraw_person_view(%WaitlistEntry{} = entry, intake_view, outcome),
+    do: %{waitlist_id: entry.id, status: entry.status, intake: intake_view, outcome: outcome}
+
+  defp cast_person_id(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> {:ok, id}
+      :error -> {:error, :person_not_found}
+    end
   end
 
   # ── check_in / undo_check_in ────────────────────────────────────

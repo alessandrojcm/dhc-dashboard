@@ -20,6 +20,9 @@ import {
 	nextBatchSize,
 	nowCard,
 	refundLabel,
+	refundTimingHint,
+	daysToGo,
+	isIntakeButtonCommand,
 	rosterGroups,
 	standingLabel,
 	unpaidAfterWindowText,
@@ -487,9 +490,17 @@ describe("Invitation handoff (ALE-392)", () => {
 
 describe("ALE-386: console Intake commands, email log and history", () => {
 	it("names every command and words a repeat that changed nothing", () => {
-		expect(INTAKE_COMMANDS).toEqual(["decline", "resend_link", "rotate_link"]);
+		expect(INTAKE_COMMANDS).toEqual([
+			"decline",
+			"cancel_with_refund",
+			"withdraw",
+			"resend_link",
+			"rotate_link",
+		]);
 		expect(INTAKE_COMMANDS.map(intakeCommandLabel)).toEqual([
 			"Decline",
+			"Cancel with refund",
+			"Withdraw…",
 			"Resend link",
 			"Rotate link",
 		]);
@@ -562,5 +573,39 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 		).toMatch(
 			/^Anonymised hasn't paid — their payment window ended Wed 11 Nov, 18:30\./,
 		);
+	});
+});
+
+describe("ALE-387: the refund-timing hint", () => {
+	// 20:00 UTC on 6 Nov is 20:00 Dublin (GMT): Dublin today is 6 Nov.
+	const now = new Date("2026-11-06T20:00:00Z");
+
+	it("counts calendar days on the Dublin wall clock", () => {
+		expect(daysToGo("2026-11-14", now)).toBe(8);
+		expect(daysToGo("2026-11-13", now)).toBe(7);
+		expect(daysToGo("2026-11-06", now)).toBe(0);
+		// 23:30 UTC on 31 Oct is 23:30 Dublin (GMT after the clocks change).
+		expect(daysToGo("2026-11-01", new Date("2026-10-31T23:30:00Z"))).toBe(1);
+		// 23:30 UTC on 24 Oct is already 25 Oct in Dublin (IST).
+		expect(daysToGo("2026-10-26", new Date("2026-10-24T23:30:00Z"))).toBe(1);
+	});
+
+	it("shows from 7 days out until the workshop's day, never before or after", () => {
+		expect(refundTimingHint("2026-11-14", now)).toBeNull();
+		expect(refundTimingHint("2026-11-13", now)).toBe(
+			"Less than 7 days to go — there's no deadline; whether to refund is your call.",
+		);
+		expect(refundTimingHint("2026-11-07", now)).toMatch(
+			/^The workshop is tomorrow/,
+		);
+		expect(refundTimingHint("2026-11-06", now)).toMatch(
+			/^The workshop is today/,
+		);
+		expect(refundTimingHint("2026-11-05", now)).toBeNull();
+	});
+
+	it("withdraw opens its own dialog; every other command is a button", () => {
+		expect(isIntakeButtonCommand("withdraw")).toBe(false);
+		expect(isIntakeButtonCommand("cancel_with_refund")).toBe(true);
 	});
 });

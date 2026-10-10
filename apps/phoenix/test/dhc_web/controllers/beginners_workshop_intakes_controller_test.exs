@@ -13,8 +13,9 @@ defmodule DhcWeb.BeginnersWorkshopIntakesControllerTest do
 
   alias Dhc.Auth.UserRole
   alias Dhc.BeginnersWorkshopFixtures
-  alias Dhc.BeginnersWorkshops.Intake
+  alias Dhc.BeginnersWorkshops.{Intake, IntakePayment, IntakeRefund}
   alias Dhc.Repo
+  alias Dhc.Waitlist.WaitlistEntry
   alias DhcWeb.OpenApiVerifier
 
   @roles ~w(beginners_coordinator coach member)
@@ -79,14 +80,16 @@ defmodule DhcWeb.BeginnersWorkshopIntakesControllerTest do
              console(coordinator, w)
 
     assert asked["id"] == contacted.id
-    assert asked["availableCommands"] == ~w(decline resend_link rotate_link)
+    assert asked["availableCommands"] == ~w(decline withdraw resend_link rotate_link)
     assert asked["linkGeneration"] == 1
     assert asked["medical"] == false
     assert [%{"emailType" => "contact_pay", "scheduled" => false}] = asked["emailLog"]
     assert asked["history"] == []
 
     assert seated["id"] == paid.id
-    assert seated["availableCommands"] == ~w(resend_link rotate_link)
+
+    assert seated["availableCommands"] ==
+             ~w(cancel_with_refund withdraw resend_link rotate_link)
 
     assert [_contact, %{"emailType" => "pre_workshop", "scheduled" => true}] =
              seated["emailLog"]
@@ -171,5 +174,154 @@ defmodule DhcWeb.BeginnersWorkshopIntakesControllerTest do
     assert %{"data" => %{"unpaidAfterWindow" => [unpaid]}} = console(coordinator, w)
     assert %{"id" => id, "batchNumber" => 1, "windowEndsAt" => _} = unpaid
     assert id == contacted.id
+  end
+
+  # ALE-387: the payment that paid the fixture's forced-`paid` Intake.
+  defp paying_payment!(workshop, intake) do
+    Repo.insert!(%IntakePayment{
+      workshop_id: workshop.id,
+      intake_id: intake.id,
+      status: "paid",
+      amount_cents: 4000,
+      expires_at: DateTime.utc_now(),
+      stripe_checkout_session_id: "cs_#{intake.id}",
+      stripe_payment_intent_id: "pi_#{intake.id}",
+      amount_received_cents: 4000,
+      currency_received: "eur",
+      paid_at: DateTime.utc_now()
+    })
+  end
+
+  describe "cancel with refund and withdraw (ALE-387)" do
+    test "cancel-with-refund needs beginners.workshops.manage; withdraw beginners.waitlist.manage",
+         %{conn: conn, workshop: w, paid: paid} do
+      for action <- ~w(cancel-with-refund withdraw) do
+        assert conn |> post(intake_path(w, paid.id, action), %{}) |> json_response(401)
+
+        for role <- ~w(coach member),
+            do:
+              assert(
+                conn
+                |> as_role(role)
+                |> post(intake_path(w, paid.id, action), %{"refund" => true})
+                |> json_response(403)
+              )
+      end
+
+      assert conn
+             |> as_role("coach")
+             |> post("/api/beginners-workshops/people/#{paid.waitlist_id}/withdraw", %{})
+             |> json_response(403)
+
+      assert %Intake{state: "paid"} = Repo.reload!(paid)
+    end
+
+    test "cancel-with-refund answers the refunded Intake, then already_done",
+         %{conn: conn, workshop: w, paid: paid} do
+      paying_payment!(w, paid)
+      coordinator = as_role(conn, "beginners_coordinator")
+
+      assert %{"data" => %{"state" => "cancelled_refunded", "outcome" => "done"}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "cancel-with-refund"), %{"note" => "Asked"})
+               |> json_response(200)
+
+      assert [%IntakeRefund{reason: "cancelled_with_refund", amount_cents: 4000}] =
+               Repo.all(IntakeRefund)
+
+      assert %{"data" => %{"outcome" => "already_done"}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "cancel-with-refund"), %{})
+               |> json_response(200)
+
+      assert %{"data" => %{"roster" => %{"seated" => [], "out" => [out]}}} =
+               console(coordinator, w)
+
+      assert out["state"] == "cancelled_refunded"
+      assert out["refund"]["automatic"] == false
+      assert [%{"command" => "cancel_with_refund", "note" => "Asked"}] = out["history"]
+    end
+
+    test "refusals carry their codes", %{conn: conn, workshop: w, contacted: c, paid: paid} do
+      coordinator = as_role(conn, "beginners_coordinator")
+
+      assert %{"errors" => %{"code" => "intake_not_paid"}} =
+               coordinator
+               |> post(intake_path(w, c.id, "cancel-with-refund"), %{})
+               |> json_response(409)
+
+      assert %{"errors" => %{"code" => "nothing_to_refund"}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "cancel-with-refund"), %{})
+               |> json_response(409)
+
+      assert %{"errors" => %{"code" => "refund_choice_required", "fields" => %{"refund" => [_]}}} =
+               coordinator |> post(intake_path(w, paid.id, "withdraw"), %{}) |> json_response(422)
+
+      assert %{"errors" => %{"code" => "invalid_refund_choice", "fields" => %{"refund" => [_]}}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "withdraw"), %{"refund" => "maybe"})
+               |> json_response(422)
+
+      assert coordinator
+             |> post("/api/beginners-workshops/people/#{Ecto.UUID.generate()}/withdraw", %{})
+             |> json_response(404)
+    end
+
+    test "withdraw by Intake forfeits or refunds as chosen",
+         %{conn: conn, workshop: w, contacted: c, paid: paid} do
+      coordinator = as_role(conn, "beginners_coordinator")
+
+      assert %{"data" => %{"state" => "withdrawn", "outcome" => "done"}} =
+               coordinator
+               |> post(intake_path(w, paid.id, "withdraw"), %{"refund" => false})
+               |> json_response(200)
+
+      assert %{"data" => %{"state" => "declined"}} =
+               coordinator |> post(intake_path(w, c.id, "withdraw"), %{}) |> json_response(200)
+
+      for intake <- [paid, c],
+          do:
+            assert(
+              %WaitlistEntry{status: "removed"} = Repo.get!(WaitlistEntry, intake.waitlist_id)
+            )
+
+      assert Repo.all(IntakeRefund) == []
+    end
+
+    test "the Waitlist tab withdraws a person, with or without an Intake",
+         %{conn: conn, workshop: w, paid: paid} do
+      paying_payment!(w, paid)
+      coordinator = as_role(conn, "beginners_coordinator")
+      person = BeginnersWorkshopFixtures.waiting_person_fixture(~U[2025-05-01 12:00:00Z])
+
+      assert %{
+               "data" => %{
+                 "status" => "removed",
+                 "intake" => nil,
+                 "outcome" => "done",
+                 "waitlistId" => waitlist_id
+               }
+             } =
+               coordinator
+               |> post("/api/beginners-workshops/people/#{person.id}/withdraw", %{})
+               |> json_response(200)
+
+      assert waitlist_id == person.id
+
+      assert %{
+               "data" => %{
+                 "status" => "removed",
+                 "intake" => %{"state" => "withdrawn", "outcome" => "done"}
+               }
+             } =
+               coordinator
+               |> post("/api/beginners-workshops/people/#{paid.waitlist_id}/withdraw", %{
+                 "refund" => true
+               })
+               |> json_response(200)
+
+      assert [%IntakeRefund{reason: "withdrawn"}] = Repo.all(IntakeRefund)
+    end
   end
 end

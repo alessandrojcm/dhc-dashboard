@@ -7,7 +7,9 @@
 	under the lock, answering a stale command with its named reason. All
 	commands are submit buttons of one form, so the optional note goes with
 	whichever is pressed. There is no copy-link: a link is only ever resent
-	or rotated.
+	or rotated. (ALE-387) Withdraw needs the refund-or-forfeit choice, so its
+	button opens `withdraw-dialog.svelte`; a paid Intake shows the
+	refund-timing hint when the workshop is 7 days away or closer.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopRosterIntake } from "@dhc/api-client";
@@ -22,8 +24,10 @@ import {
 	intakeCommandLabel,
 	intakeOrigin,
 	intakeStateLabel,
+	isIntakeButtonCommand,
 	personName,
 	refundLabel,
+	refundTimingHint,
 } from "#lib/beginners-workshops/console.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -31,14 +35,40 @@ import * as Field from "#lib/components/ui/field/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
 import { intakeCommandSchema } from "#lib/schemas/beginnersWorkshop.js";
 import { runIntakeCommand } from "./console.remote";
+import WithdrawDialog from "./withdraw-dialog.svelte";
 
 let {
 	workshopId,
+	workshopDate,
+	feeCents,
 	intake,
-}: { workshopId: string; intake: BeginnersWorkshopRosterIntake } = $props();
+	now = () => new Date(),
+}: {
+	workshopId: string;
+	workshopDate: string;
+	feeCents: number;
+	intake: BeginnersWorkshopRosterIntake;
+	/** Injectable for tests; the refund-timing hint reads Dublin today from it. */
+	now?: () => Date;
+} = $props();
 
 const form = $derived(runIntakeCommand.for(intake.id));
 let formError = $state<string | null>(null);
+let withdrawOpen = $state(false);
+
+const buttonCommands = $derived(
+	intake.availableCommands.filter(isIntakeButtonCommand),
+);
+const canWithdraw = $derived(intake.availableCommands.includes("withdraw"));
+// Story 77: the hint for the defer-or-refund choice on a paid Intake.
+const refundHint = $derived(
+	intake.state === "paid" &&
+		intake.availableCommands.some(
+			(command) => command === "cancel_with_refund" || command === "withdraw",
+		)
+		? refundTimingHint(workshopDate, now())
+		: null,
+);
 </script>
 
 <div class="flex flex-col gap-5 text-sm" data-testid="intake-detail">
@@ -95,6 +125,14 @@ let formError = $state<string | null>(null);
 		>
 			Commands
 		</h4>
+		{#if refundHint}
+			<p
+				class="rounded-lg border border-amber-500 bg-amber-50 p-2.5 text-amber-900"
+				data-testid="refund-timing-hint"
+			>
+				{refundHint}
+			</p>
+		{/if}
 		{#if intake.availableCommands.length}
 			<form
 				{...form.preflight(intakeCommandSchema).enhance(async (instance) => {
@@ -132,14 +170,26 @@ let formError = $state<string | null>(null);
 					{/each}
 				</Field.Field>
 				<div class="flex flex-wrap gap-2" data-testid="intake-commands">
-					{#each intake.availableCommands as command (command)}
+					{#each buttonCommands as command (command)}
 						<Button
 							{...form.fields.command.as("submit", command)}
 							size="sm"
-							variant={command === "decline" ? "outline" : "secondary"}
+							variant={command === "decline" || command === "cancel_with_refund"
+								? "outline"
+								: "secondary"}
 							disabled={!!form.pending}>{intakeCommandLabel(command)}</Button
 						>
 					{/each}
+					{#if canWithdraw}
+						<Button
+							type="button"
+							size="sm"
+							variant="outline"
+							class="text-destructive"
+							onclick={() => (withdrawOpen = true)}
+							>{intakeCommandLabel("withdraw")}</Button
+						>
+					{/if}
 				</div>
 				{#if formError}
 					<p class="text-sm text-destructive" role="alert">{formError}</p>
@@ -202,3 +252,14 @@ let formError = $state<string | null>(null);
 		</ol>
 	</section>
 </div>
+
+{#if canWithdraw}
+	<WithdrawDialog
+		{workshopId}
+		{workshopDate}
+		{feeCents}
+		{intake}
+		{now}
+		bind:open={withdrawOpen}
+	/>
+{/if}

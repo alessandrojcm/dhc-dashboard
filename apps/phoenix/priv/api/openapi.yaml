@@ -4544,6 +4544,137 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
 
+  /beginners-workshops/{id}/intakes/{intakeId}/cancel-with-refund:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.cancelWithRefund
+      tags: [BeginnersWorkshops]
+      summary: Cancel a paid Intake with a full refund
+      description: |
+        The person wants their money back: the Stripe-paid `paid` Intake
+        becomes `cancelled_refunded`, its seat is free at once, a full
+        refund of what the payment took is requested, the person goes back
+        to `waiting` with their original priority, and "Cancelled with
+        refund" is queued. Repeating it answers `already_done`.
+        Refused: `intake_not_paid` (contacted), `carried_fee_paid` (paid
+        with a Carried Fee), `intake_closed`, `nothing_to_refund`,
+        `already_requested`.
+        The optional note is recorded in the Intake's history with who ran
+        the command and when. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandRequest"}
+      responses:
+        "200":
+          description: The Intake after the command
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/{id}/intakes/{intakeId}/withdraw:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.withdraw
+      tags: [BeginnersWorkshops]
+      summary: Withdraw an Intake's person from the Waitlist
+      description: |
+        The person asks to leave: their standing becomes `removed`. A
+        `contacted` Intake becomes `declined` (a live Seat Hold stops
+        counting) and nobody is emailed. A Stripe-paid `paid` Intake becomes
+        `withdrawn` and its seat is free at once; `refund` is then required
+        (`refund_choice_required`): `true` requests a full refund and
+        queues "Withdrawn – refunded", `false` forfeits the fee and queues
+        "Withdrawn – forfeited". Repeating it on a `withdrawn` Intake
+        answers `already_done`. Refused: `carried_fee_paid`,
+        `intake_closed`, `already_invited`, `nothing_to_refund`.
+        The optional note is recorded in the Intake's history with who ran
+        the command and when. Requires `beginners.waitlist.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopWithdrawRequest"}
+      responses:
+        "200":
+          description: The Intake after the command
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note, or the refund-or-forfeit choice missing or invalid
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/people/{waitlistId}/withdraw:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopWaitlistId"
+    post:
+      operationId: beginnersWorkshopIntakes.withdrawPerson
+      tags: [BeginnersWorkshops]
+      summary: Withdraw a person from the Waitlist (Waitlist tab)
+      description: |
+        The Waitlist tab's Withdraw. With an open Intake it is exactly
+        `beginnersWorkshopIntakes.withdraw` on that Intake (same rule,
+        history and refund choice); without one only the standing becomes
+        `removed` and nobody is emailed. Repeating it on a removed person
+        answers `already_done`. `refund` is ignored when no paid Intake
+        exists. Refused: `person_not_found`, `already_invited`,
+        `carried_fee_paid`, `nothing_to_refund`.
+        Requires `beginners.waitlist.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopWithdrawRequest"}
+      responses:
+        "200":
+          description: The person after the withdraw
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopWithdrawPersonResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Waitlist person not found
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note, or the refund-or-forfeit choice missing or invalid
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+
   /beginners/intake/{token}:
     parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
     get:
@@ -7828,6 +7959,12 @@ components:
       in: path
       required: true
       schema: {type: string, format: uuid}
+    BeginnersWorkshopWaitlistId:
+      name: waitlistId
+      in: path
+      required: true
+      description: The Waitlist entry (person) id.
+      schema: {type: string, format: uuid}
     TrainingAnnouncementId:
       name: id
       in: path
@@ -8779,7 +8916,7 @@ components:
           items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommand"}
     BeginnersWorkshopIntakeCommand:
       type: string
-      enum: [decline, resend_link, rotate_link]
+      enum: [decline, cancel_with_refund, withdraw, resend_link, rotate_link]
     BeginnersWorkshopIntakeEmailLogEntry:
       type: object
       description: |
@@ -8807,6 +8944,35 @@ components:
           type: string
           maxLength: 500
           description: Why (optional), recorded in the Intake's history.
+    BeginnersWorkshopWithdrawRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          maxLength: 500
+          description: Why (optional), recorded in the Intake's history when there is one.
+        refund:
+          type: boolean
+          description: |
+            Required whenever the person has a paid Intake: `true` refunds
+            the full amount, `false` forfeits it.
+    BeginnersWorkshopWithdrawPersonResult:
+      type: object
+      required: [waitlistId, status, intake, outcome]
+      properties:
+        waitlistId: {type: string, format: uuid}
+        status: {$ref: "#/components/schemas/WaitlistStatus"}
+        intake:
+          description: The open Intake the withdraw closed, or null without one.
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResult"
+        outcome: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandOutcome"}
+    BeginnersWorkshopWithdrawPersonResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopWithdrawPersonResult"}
     BeginnersWorkshopIntakeCommandOutcome:
       type: string
       description: "`done`: the command acted. `already_done`: the Intake was already where it leads; nothing happened again."
@@ -9310,6 +9476,8 @@ components:
                     - not_a_coach
                     - not_a_member
                     - invalid_note
+                    - refund_choice_required
+                    - invalid_refund_choice
     BeginnersWorkshopIntakeCommandConflictError:
       description: 409 refusal of a console Intake command.
       allOf:
@@ -9323,7 +9491,14 @@ components:
               properties:
                 code:
                   type: string
-                  enum: [already_paid, intake_closed]
+                  enum:
+                    - already_paid
+                    - intake_closed
+                    - intake_not_paid
+                    - carried_fee_paid
+                    - nothing_to_refund
+                    - already_requested
+                    - already_invited
     OnboardingStartAcceptanceRequest:
       type: object
       required: [invitationId, email, dateOfBirth]

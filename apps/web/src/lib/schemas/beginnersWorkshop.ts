@@ -13,10 +13,11 @@ import type {
 	BeginnersWorkshopScheduleRequest,
 	BeginnersWorkshopSettingsRequest,
 	BeginnersWorkshopStaffRequest,
+	BeginnersWorkshopWithdrawRequest,
 	WaitlistEntryCreateRequest,
 } from "@dhc/api-client";
 import * as v from "valibot";
-import { INTAKE_COMMANDS } from "#lib/beginners-workshops/console.js";
+import { INTAKE_BUTTON_COMMANDS } from "#lib/beginners-workshops/console.js";
 import { waitlistRegistrationEntries } from "#lib/schemas/beginnersWaitlist.js";
 import {
 	civilDate,
@@ -286,7 +287,7 @@ export const intakeCommandSchema = v.pipe(
 	v.object({
 		id: workshopId,
 		intakeId,
-		command: v.picklist(INTAKE_COMMANDS, "Unknown command."),
+		command: v.picklist(INTAKE_BUTTON_COMMANDS, "Unknown command."),
 		note: v.optional(
 			v.pipe(
 				v.string(),
@@ -303,5 +304,61 @@ export const intakeCommandSchema = v.pipe(
 		body: (note
 			? { note }
 			: {}) satisfies BeginnersWorkshopIntakeCommandRequest,
+	})),
+);
+
+/**
+ * ALE-387: the refund-or-forfeit choice. Phoenix requires it whenever the
+ * person has a paid Intake (`refund_choice_required`) and ignores it
+ * otherwise, so it is optional here.
+ */
+const refundChoice = v.optional(
+	v.picklist(["refund", "forfeit"], "Choose refund or forfeit."),
+);
+
+const withdrawNote = v.optional(
+	v.pipe(
+		v.string(),
+		v.trim(),
+		v.maxLength(500, "Keep the note under 500 characters."),
+	),
+	"",
+);
+
+function withdrawBody(
+	refund: "refund" | "forfeit" | undefined,
+	note: string,
+): BeginnersWorkshopWithdrawRequest {
+	const body: BeginnersWorkshopWithdrawRequest = {};
+	if (refund) body.refund = refund === "refund";
+	if (note) body.note = note;
+	return body;
+}
+
+/** ALE-387: Withdraw from the console's Intake detail. */
+export const withdrawIntakeSchema = v.pipe(
+	v.object({
+		id: workshopId,
+		intakeId,
+		refund: refundChoice,
+		note: withdrawNote,
+	}),
+	v.transform(({ id, intakeId, refund, note }) => ({
+		id,
+		intakeId,
+		body: withdrawBody(refund, note),
+	})),
+);
+
+/** ALE-387: Withdraw from the Waitlist tab, which names the person. */
+export const withdrawPersonSchema = v.pipe(
+	v.object({
+		waitlistId: v.pipe(v.string(), v.uuid("Unknown person.")),
+		refund: refundChoice,
+		note: withdrawNote,
+	}),
+	v.transform(({ waitlistId, refund, note }) => ({
+		waitlistId,
+		body: withdrawBody(refund, note),
 	})),
 );

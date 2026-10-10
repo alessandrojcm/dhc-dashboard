@@ -6,11 +6,18 @@
  * `removed` people behind the standing filter (ALE-375). Waitlist Status is
  * not editable here — it changes only through named commands — so the
  * writes are the entry's admin notes and `restore` (ALE-376), which returns a
- * removed person to the queue with their original date. The controller owns
+ * removed person to the queue with their original date. Withdraw (ALE-387)
+ * is the Beginners' Workshop boundary's command, not the Waitlist's — it may
+ * close the person's open Intake — so it calls Phoenix's
+ * `beginnersWorkshopIntakes.withdrawPerson`. The controller owns
  * the URL-backed list request, cache invalidation and the toasts; markup only
  * renders and calls these actions.
  */
 import {
+	beginnersWorkshopIntakesWithdrawPersonMutation,
+	type BeginnersWorkshopIntakesWithdrawPersonData,
+	type BeginnersWorkshopIntakesWithdrawPersonResponse,
+	type BeginnersWorkshopWithdrawRequest,
 	waitlistEntriesOptions,
 	waitlistEntriesQueryKey,
 	waitlistRestoreEntryMutation,
@@ -73,6 +80,9 @@ export type WaitlistTableDeps = {
 	restoreEntry?: (
 		options: Options<WaitlistRestoreEntryData>,
 	) => Promise<WaitlistRestoreEntryResponse>;
+	withdrawEntry?: (
+		options: Options<BeginnersWorkshopIntakesWithdrawPersonData>,
+	) => Promise<BeginnersWorkshopIntakesWithdrawPersonResponse>;
 	/** Defaults to the current time; decides which removed people are offered restore. */
 	now?: () => Date;
 	/** Defaults to svelte-sonner's `toast`. */
@@ -95,6 +105,20 @@ export function canRestore(entry: WaitlistEntry, now: Date): boolean {
 		dayjs(entry.removedAt).add(RESTORE_WINDOW_MONTHS, "month"),
 	);
 }
+
+/**
+ * Whether Withdraw is offered for `entry` (ALE-387): someone still on the
+ * Waitlist — waiting (with or without an open Intake) or attended and not
+ * yet invited. Advisory only — Phoenix decides (`already_invited`).
+ */
+export function canWithdraw(entry: WaitlistEntry): boolean {
+	return entry.status === "waiting" || entry.status === "attended";
+}
+
+/** The outcome of a Withdraw: done, or Phoenix's reason and its code. */
+export type WithdrawOutcome =
+	| { ok: true }
+	| { ok: false; error: string; code: string | null };
 
 /** Prefix shared by every Waitlist page's query key. */
 const allWaitlistPages = () => waitlistEntriesQueryKey();
@@ -181,6 +205,23 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		() => queryClient,
 	);
 
+	const withdrawWaitlistEntry = createMutation(
+		() => {
+			const options = beginnersWorkshopIntakesWithdrawPersonMutation();
+			const request = deps.withdrawEntry;
+			if (request) options.mutationFn = (vars) => request(vars);
+			return {
+				...options,
+				onSuccess: () => {
+					notify.success("Withdrawn from the Waitlist.");
+				},
+				onSettled: () =>
+					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+			};
+		},
+		() => queryClient,
+	);
+
 	const now = deps.now ?? (() => new Date());
 
 	return {
@@ -226,6 +267,37 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		},
 		get isRestoring() {
 			return restoreWaitlistEntry.isPending;
+		},
+		/** Whether Withdraw is offered for this entry. */
+		canWithdraw(entry: WaitlistEntry) {
+			return canWithdraw(entry);
+		},
+		/**
+		 * Withdraws the person from the Waitlist (ALE-387). The dialog shows a
+		 * refusal itself — `refund_choice_required` under the refund choice —
+		 * so the outcome is returned rather than toasted.
+		 */
+		async withdraw(
+			id: string,
+			body: BeginnersWorkshopWithdrawRequest,
+		): Promise<WithdrawOutcome> {
+			try {
+				await withdrawWaitlistEntry.mutateAsync({
+					path: { waitlistId: id },
+					body,
+				});
+				return { ok: true };
+			} catch (error) {
+				const problem = apiProblem(error);
+				return {
+					ok: false,
+					error: problem?.detail ?? "Could not withdraw this person.",
+					code: problem?.code ?? null,
+				};
+			}
+		},
+		get isWithdrawing() {
+			return withdrawWaitlistEntry.isPending;
 		},
 	};
 }
