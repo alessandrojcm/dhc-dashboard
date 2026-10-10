@@ -42,6 +42,14 @@ defmodule Dhc.BeginnersWorkshops.IntakePayment do
     field :paid_at, :utc_datetime_usec
     field :released_at, :utc_datetime_usec
     field :policy_failed_at, :utc_datetime_usec
+    # The Checkout Session parameters frozen with the hold (with the amount,
+    # currency and expiry above), so every create of its session sends the
+    # same request under its idempotency key. The link token is rebuilt from
+    # the Intake id and `checkout_link_generation`, never stored; the email
+    # is cleared once the session is recorded or the hold released.
+    field :checkout_link_generation, :integer
+    field :checkout_email, :string, redact: true
+    field :checkout_product_name, :string
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end
@@ -50,22 +58,39 @@ defmodule Dhc.BeginnersWorkshops.IntakePayment do
   @spec statuses() :: [String.t()]
   def statuses, do: @statuses
 
-  @doc "A new Seat Hold: an `open` row with the fee frozen and its expiry."
+  @doc """
+  A new Seat Hold: an `open` row with the fee, its expiry and the rest of
+  the Checkout Session parameters frozen (link generation, email, product
+  name).
+  """
   @spec hold_changeset(map()) :: Ecto.Changeset.t()
   def hold_changeset(attrs) do
+    required = [
+      :workshop_id,
+      :intake_id,
+      :amount_cents,
+      :expires_at,
+      :checkout_link_generation,
+      :checkout_email,
+      :checkout_product_name
+    ]
+
     %__MODULE__{}
-    |> cast(attrs, [:workshop_id, :intake_id, :amount_cents, :expires_at])
+    |> cast(attrs, required)
     |> put_change(:status, "open")
     |> put_change(:currency, "eur")
-    |> validate_required([:workshop_id, :intake_id, :amount_cents, :expires_at])
+    |> validate_required(required)
     |> validate_number(:amount_cents, greater_than: 0)
   end
 
-  @doc "Records the Checkout Session Stripe created for an open row."
+  @doc """
+  Records the Checkout Session Stripe created for the row. Its session will
+  never be created again, so the frozen email copy is dropped.
+  """
   @spec session_changeset(t(), String.t(), String.t() | nil) :: Ecto.Changeset.t()
   def session_changeset(%__MODULE__{} = row, session_id, url) do
     row
-    |> change(stripe_checkout_session_id: session_id, checkout_url: url)
+    |> change(stripe_checkout_session_id: session_id, checkout_url: url, checkout_email: nil)
     |> validate_required([:stripe_checkout_session_id])
   end
 end

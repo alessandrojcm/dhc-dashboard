@@ -99,9 +99,9 @@ defmodule Dhc.BeginnersWorkshops.StaffTest do
       assert rows(ctx.workshop.id) == []
     end
 
-    test "assistants without a coach still leave the workshop Unstaffed", ctx do
+    test "only a workshop with no Staff at all is Unstaffed: assistants alone staff it", ctx do
       assert {:ok, view} = set_staff(ctx.coordinator, ctx.workshop.id, nil, [member_fixture()])
-      assert view.alerts == [:unstaffed]
+      assert view.alerts == []
     end
 
     test "the coach must hold the coach role at assignment", ctx do
@@ -196,7 +196,7 @@ defmodule Dhc.BeginnersWorkshops.StaffTest do
   end
 
   describe "Staff Notifications" do
-    test "the people added and removed are notified once each, never the person making the change",
+    test "the people added and removed are notified once each, the person making the change included",
          ctx do
       coach = coach_fixture()
       assistant = member_fixture()
@@ -231,7 +231,10 @@ defmodule Dhc.BeginnersWorkshops.StaffTest do
 
       Repo.insert!(%UserRole{principal_id: ctx.coordinator, role: "coach"})
       {:ok, _} = set_staff(ctx.coordinator, ctx.workshop.id, ctx.coordinator)
-      assert notifications(ctx.coordinator) == []
+
+      assert ["You're the coach for the Beginners' Workshop on " <> _] =
+               bodies(ctx.coordinator)
+
       assert [_, _] = notifications(coach)
     end
 

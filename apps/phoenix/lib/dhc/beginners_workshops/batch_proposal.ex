@@ -5,8 +5,9 @@ defmodule Dhc.BeginnersWorkshops.BatchProposal do
 
   The console's Next Batch preview (lock-free) and the boundary's
   `send_due_batch` (under the Beginners' Workshop lock, then locking the
-  proposed Waitlist entries and checking them again) read it through this
-  one module, so the preview is exactly what would be sent at that moment.
+  proposed Waitlist entries and reading the proposal again, which must be
+  exactly those people) read it through this one module, so the preview is
+  exactly what would be sent at that moment.
 
   Only people with a Waitlist profile are proposed: the contact email is
   addressed by first name. Each person says whether they hold a `held`
@@ -50,17 +51,6 @@ defmodule Dhc.BeginnersWorkshops.BatchProposal do
           )
         )
     })
-    |> Repo.all()
-  end
-
-  @doc "The ids among `waitlist_ids` that are still eligible (re-checked under the lock)."
-  @spec still_eligible([binary()]) :: [binary()]
-  def still_eligible([]), do: []
-
-  def still_eligible(waitlist_ids) do
-    eligible()
-    |> where([e], e.id in ^waitlist_ids)
-    |> select([e], e.id)
     |> Repo.all()
   end
 

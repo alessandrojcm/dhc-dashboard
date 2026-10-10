@@ -19,10 +19,6 @@ defmodule DhcWeb.BeginnersWorkshopInvitationsController do
   end
 
   @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/invite"
-  def invite(conn, %{"id" => id, "intakeId" => intake_id}) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute({:invite, id, intake_id})
-    |> BeginnersWorkshopsHTTP.respond(conn, :invite, :created)
-  end
+  def invite(conn, %{"id" => id, "intakeId" => intake_id}),
+    do: BeginnersWorkshopsHTTP.command(conn, {:invite, id, intake_id}, :invite, :created)
 end

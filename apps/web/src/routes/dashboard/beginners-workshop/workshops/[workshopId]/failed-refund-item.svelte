@@ -48,7 +48,7 @@ let manualOpen = $state(false);
 		variant="outline"
 		onclick={() => (manualOpen = true)}>Record manual refund</Button
 	>
-	{#if refund.carriedFee}
+	{#if refund.forfeitable}
 		<form
 			{...forfeit.enhance(async (instance) => {
 				if (!(await instance.submit())) return;

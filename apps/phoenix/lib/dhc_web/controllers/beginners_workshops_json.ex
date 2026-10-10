@@ -152,8 +152,14 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       availableCommands: row.available_commands,
       attendanceCorrections: row.attendance_corrections,
       paidVia: row.paid_via,
-      carriedFee: row.carried_fee
+      carriedFee: row.carried_fee,
+      refundChoice: row.refund_choice && refund_choice(row.refund_choice),
+      refundTimingDaysToGo: row.refund_timing_days_to_go
     }
+  end
+
+  defp refund_choice(choice) do
+    %{source: choice.source, amountCents: choice.amount_cents, currency: choice.currency}
   end
 
   defp unconfirmed_carried_fee(row) do
@@ -208,7 +214,8 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       currency: refund.currency,
       reason: refund.reason,
       failedAt: refund.failed_at,
-      carriedFee: refund.carried_fee
+      carriedFee: refund.carried_fee,
+      forfeitable: refund.forfeitable
     }
   end
 

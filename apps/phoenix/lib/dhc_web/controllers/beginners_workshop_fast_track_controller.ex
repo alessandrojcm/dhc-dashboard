@@ -30,10 +30,6 @@ defmodule DhcWeb.BeginnersWorkshopFastTrackController do
     command(conn, id, {:new_person, Map.delete(params, "id")})
   end
 
-  defp command(conn, id, person) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute({:fast_track, id, person})
-    |> BeginnersWorkshopsHTTP.respond(conn, :show, :created)
-  end
+  defp command(conn, id, person),
+    do: BeginnersWorkshopsHTTP.command(conn, {:fast_track, id, person}, :show, :created)
 end

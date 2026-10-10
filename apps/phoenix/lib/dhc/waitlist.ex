@@ -5,8 +5,8 @@ defmodule Dhc.Waitlist do
 
   import Ecto.Query
 
-  alias Dhc.Auth.Principal
   alias Dhc.CursorPagination
+  alias Dhc.Invitations.EmailRefusals
   alias Dhc.Invitations.Invitation
   alias Dhc.Waitlist.Standing
   alias Dhc.Waitlist.WaitlistGuardian
@@ -118,8 +118,7 @@ defmodule Dhc.Waitlist do
   def queue_report(%DateTime{} = now) do
     waiting_since =
       Repo.all(
-        from(w in WaitlistEntry,
-          where: w.status == "waiting",
+        from(w in waiting_query(),
           order_by: [asc: w.initial_registration_date, asc: w.id],
           select: w.initial_registration_date
         )
@@ -253,7 +252,7 @@ defmodule Dhc.Waitlist do
     Repo.transaction(fn ->
       with {:ok, entry} <- lock_entry(entry_id),
            :ok <- ensure_restorable(entry, now),
-           {:ok, _entry} <- change_standing(entry.id, "waiting") do
+           {:ok, _entry} <- change_standing(entry.id, "waiting", now: now) do
         entry.id
       else
         {:error, reason} -> Repo.rollback(reason)
@@ -334,11 +333,17 @@ defmodule Dhc.Waitlist do
   Invitation), and raises `ArgumentError` outside one. It takes the Waitlist
   entry row lock (`FOR UPDATE`), the level after the Beginners' Workshop in
   the ADR 0029 lock order, and reads the current standing under it.
+
+  `now:` is the caller's instant for the `removed_at` and
+  `last_status_change` stamps (default: the wall clock). A caller that judges
+  retention on its own clock passes that clock's reading, so the stamp and
+  the judgement share one clock: the Beginners' Workshop boundary passes
+  `now: Clock.read(clock).now`, read inside its lock.
   """
-  @spec change_standing(Ecto.UUID.t(), String.t()) ::
+  @spec change_standing(Ecto.UUID.t(), String.t(), keyword()) ::
           {:ok, WaitlistEntry.t()}
           | {:error, :not_found | :illegal_standing_change | Ecto.Changeset.t()}
-  def change_standing(entry_id, to) when is_binary(entry_id) and is_binary(to) do
+  def change_standing(entry_id, to, opts \\ []) when is_binary(entry_id) and is_binary(to) do
     unless Repo.in_transaction?() do
       raise ArgumentError, "Dhc.Waitlist.change_standing/2 must run inside a transaction"
     end
@@ -351,8 +356,7 @@ defmodule Dhc.Waitlist do
 
       %WaitlistEntry{status: from} = entry ->
         if Standing.allowed?(from, to) do
-          now = DateTime.utc_now() |> DateTime.truncate(:second)
-          entry |> WaitlistEntry.standing_changeset(to, now) |> Repo.update()
+          entry |> WaitlistEntry.standing_changeset(to, now(opts)) |> Repo.update()
         else
           {:error, :illegal_standing_change}
         end
@@ -387,6 +391,28 @@ defmodule Dhc.Waitlist do
       Repo.delete_all(from(w in WaitlistEntry, where: w.id == ^entry.id))
       :ok
     end
+  end
+
+  @doc """
+  The Waitlist entries `hard_delete/1` would not refuse as `:not_deletable`
+  (no `invited`/`joined` standing, no claimed profile, no Invitation that
+  names them), as a lock-free query to filter sweep candidates by. The
+  decision is still `hard_delete/1`'s, under the lock.
+  """
+  @spec deletable_entries_query() :: Ecto.Query.t()
+  def deletable_entries_query do
+    claimed =
+      from(p in UserProfile,
+        where: p.waitlist_id == parent_as(:entry).id and not is_nil(p.principal_id)
+      )
+
+    named = from(i in Invitation, where: i.waitlist_id == parent_as(:entry).id)
+
+    from(w in WaitlistEntry,
+      as: :entry,
+      where: w.status not in ~w(invited joined),
+      where: not exists(subquery(claimed)) and not exists(subquery(named))
+    )
   end
 
   defp deletable_profiles(%WaitlistEntry{status: status}) when status in ~w(invited joined),
@@ -439,11 +465,14 @@ defmodule Dhc.Waitlist do
     end
   end
 
+  # The Waiting count is every `waiting` entry, the same definition the
+  # Beginners' Workshop report reads through `queue_report/1`; only the age
+  # and gender figures are limited to people who have that data.
   defp total_count do
-    base_analytics_query()
-    |> select([w, _p], count(w.id, :distinct))
-    |> Repo.one()
+    Repo.aggregate(waiting_query(), :count)
   end
+
+  defp waiting_query, do: from(w in WaitlistEntry, where: w.status == "waiting")
 
   defp average_age do
     base_analytics_query()
@@ -637,14 +666,14 @@ defmodule Dhc.Waitlist do
   # same email serialize; the unique index on `waitlist.email` remains the
   # backstop for two first-time registrations racing.
 
+  # Every detail is validated before any duplicate check, so an invalid
+  # registration is refused the same way whether or not the email is known
+  # (the public edge must not be an email oracle).
   defp register(normalized, now, mode) do
-    existing =
-      from(w in WaitlistEntry, where: w.email == ^normalized.email, lock: "FOR UPDATE")
-      |> Repo.one()
-
-    with :ok <- ensure_registrable(existing, mode),
-         :ok <- ensure_not_principal(normalized.email),
-         :ok <- ensure_no_pending_invitation(normalized.email) do
+    with :ok <- validate_person(normalized),
+         existing = lock_entry_by_email(normalized.email),
+         :ok <- ensure_registrable(existing, mode),
+         :ok <- EmailRefusals.principal_or_pending_invitation(normalized.email) do
       case existing do
         nil -> insert_person(normalized, now)
         %WaitlistEntry{} = removed -> reopen(removed, normalized, now)
@@ -652,23 +681,21 @@ defmodule Dhc.Waitlist do
     end
   end
 
+  defp lock_entry_by_email(email),
+    do: Repo.one(from(w in WaitlistEntry, where: w.email == ^email, lock: "FOR UPDATE"))
+
+  defp validate_person(normalized) do
+    entry = WaitlistEntry.create_changeset(%WaitlistEntry{}, %{email: normalized.email})
+    profile_id = Ecto.UUID.generate()
+    profile = intake_changeset(%UserProfile{id: profile_id}, normalized, Ecto.UUID.generate())
+    valid([entry, profile | List.wrap(guardian_changeset(normalized, profile_id))])
+  end
+
   # Public registration reopens a removed entry; the staff path restores
   # such an entry instead of re-registering it.
   defp ensure_registrable(nil, _mode), do: :ok
   defp ensure_registrable(%WaitlistEntry{status: "removed"}, :public), do: :ok
   defp ensure_registrable(%WaitlistEntry{}, _mode), do: {:error, :email_on_waitlist}
-
-  defp ensure_not_principal(email) do
-    if Repo.exists?(from(p in Principal, where: p.email == ^email)),
-      do: {:error, :email_is_principal},
-      else: :ok
-  end
-
-  defp ensure_no_pending_invitation(email) do
-    if Repo.exists?(from(i in Invitation, where: i.email == ^email and i.status == "pending")),
-      do: {:error, :email_has_pending_invitation},
-      else: :ok
-  end
 
   # Every changeset is validated before the first insert, so a refusal
   # inside a caller's transaction never leaves a partial person behind.
@@ -704,7 +731,7 @@ defmodule Dhc.Waitlist do
     guardian = guardian_changeset(normalized, profile_id)
 
     with :ok <- valid([profile_changeset | List.wrap(guardian)]),
-         {:ok, waiting} <- change_standing(entry.id, "waiting"),
+         {:ok, waiting} <- change_standing(entry.id, "waiting", now: now),
          {:ok, waiting} <-
            waiting |> WaitlistEntry.requeue_changeset(now) |> Repo.update(),
          {:ok, profile} <- Repo.insert_or_update(profile_changeset),

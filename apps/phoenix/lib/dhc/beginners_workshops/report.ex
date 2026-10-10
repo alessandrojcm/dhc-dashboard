@@ -12,8 +12,8 @@ defmodule Dhc.BeginnersWorkshops.Report do
 
   ## Rules
 
-    * **Outcomes** list past workshops (finalised or cancelled), newest
-      first. Paid means the Intake was ever paid (`paid_at`), whatever
+    * **Outcomes** list past workshops (finalised or cancelled, dated
+      today or earlier), newest first. Paid means the Intake was ever paid (`paid_at`), whatever
       happened next.
     * **Rates** are out of the Intakes that could take the step: exits
       before paying out of contacted; exits after paying out of paid;
@@ -89,8 +89,14 @@ defmodule Dhc.BeginnersWorkshops.Report do
           outcomes: [outcome()]
         }
 
-  @exits_before ~w(declined lapsed returned withdrawn)
+  # A `withdrawn` Intake was always paid (withdrawing a contacted one
+  # declines it), so it is only ever an exit after paying.
+  @exits_before ~w(declined lapsed returned)
   @exits_after ~w(deferred cancelled_refunded withdrawn)
+
+  # A Carried Fee is outstanding until it is spent, refunded or forfeited:
+  # `held`, or `applied` to an upcoming seat.
+  @outstanding_fee_statuses ~w(held applied)
 
   @doc "The report at the clock's current reading."
   @spec load(Clock.t()) :: t()
@@ -101,7 +107,7 @@ defmodule Dhc.BeginnersWorkshops.Report do
     workshops =
       Repo.all(
         from(w in BeginnersWorkshop,
-          where: w.status in ["finalised", "cancelled"],
+          where: w.status in ["finalised", "cancelled"] and w.date <= ^reading.today,
           order_by: [desc: w.date, desc: w.start_time, desc: w.id]
         )
       )
@@ -209,7 +215,7 @@ defmodule Dhc.BeginnersWorkshops.Report do
   defp carried_fees do
     Repo.one(
       from(f in CarriedFee,
-        where: f.status == "held",
+        where: f.status in ^@outstanding_fee_statuses,
         select: %{
           count: count(f.id),
           total_paid_cents: coalesce(sum(f.amount_cents), 0),

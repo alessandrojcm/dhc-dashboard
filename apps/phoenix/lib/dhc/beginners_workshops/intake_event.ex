@@ -4,7 +4,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeEvent do
   history. One row per console Intake command that did something — which
   command, which Principal ran it, when, and the optional note the
   coordinator gave, and (ALE-393) for an attendance correction the state it
-  corrected the Intake to. A repeated command that found nothing to do writes no
+  corrected the Intake to — plus (ALE-395) the workshop's cancellation and
+  (ALE-390, story 97) every door `check_in` and `undo_check_in`, so the
+  attendance record keeps who did what and when after an undo or an
+  unassignment. A repeated command that found nothing to do writes no
   row. Rows are only ever inserted, by the boundary, in the command's own
   transaction.
   """

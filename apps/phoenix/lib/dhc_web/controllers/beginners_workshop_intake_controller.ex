@@ -22,11 +22,8 @@ defmodule DhcWeb.BeginnersWorkshopIntakeController do
 
   @doc "POST /beginners/intake/{token}/payment — takes the Seat Hold; answers the Checkout URL."
   def start_payment(conn, %{"token" => token}) do
-    case BeginnersWorkshops.execute({:intake_link, token}, :start_payment) do
+    case link_command(token, :start_payment) do
       {:ok, %{checkout_url: url}} -> render(conn, :checkout, checkout_url: url)
-      # A malformed token is refused before any read; it is still just an
-      # unknown link.
-      {:error, :forbidden} -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -36,17 +33,9 @@ defmodule DhcWeb.BeginnersWorkshopIntakeController do
   their place (ALE-388); answers the page.
   """
   def confirm(conn, %{"token" => token}) do
-    case BeginnersWorkshops.execute({:intake_link, token}, :confirm) do
-      {:ok, _outcome} ->
-        with {:ok, page} <- BeginnersWorkshops.intake_page(token),
-             do: render(conn, :show, page: page)
-
-      {:error, :forbidden} ->
-        {:error, :not_found}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    with {:ok, _outcome} <- link_command(token, :confirm),
+         {:ok, page} <- BeginnersWorkshops.intake_page(token),
+         do: render(conn, :show, page: page)
   end
 
   @doc """
@@ -64,6 +53,15 @@ defmodule DhcWeb.BeginnersWorkshopIntakeController do
       with {:ok, page} <- BeginnersWorkshops.intake_page(token, returned_session: session_id) do
         render(conn, :show, page: page)
       end
+    end
+  end
+
+  # A malformed token is refused before any read; it is still just an
+  # unknown link.
+  defp link_command(token, command) do
+    case BeginnersWorkshops.execute({:intake_link, token}, command) do
+      {:error, :forbidden} -> {:error, :not_found}
+      result -> result
     end
   end
 

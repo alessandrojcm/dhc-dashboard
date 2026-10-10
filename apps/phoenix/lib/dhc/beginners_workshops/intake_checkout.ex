@@ -13,9 +13,15 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
   Intake link. Metadata carries the payment row id, but the row is always
   found by session id.
 
-  Every parameter is derived from the payment row, so a retried create with
-  the idempotency key `beginners-intake-payment:<row id>` replays the session
-  Stripe already created instead of failing on changed parameters.
+  Every parameter is frozen on the payment row when the Seat Hold is taken
+  (`hold_params/4`, from the rows the boundary holds locked) and `create/1`
+  reads nothing else, so a retried create with the idempotency key
+  `beginners-intake-payment:<row id>` sends the very same request — after a
+  link rotation, an email edit or a reschedule too — and replays the session
+  Stripe already created. Should Stripe still answer that the key was used
+  with other parameters (an `idempotency_error`), a session may exist, so
+  that answer is `:retryable`, never `:rejected`: the hold is kept rather
+  than freed while a payable session is out there.
 
   Stripe requires a session's `expires_at` to be at least 30 minutes after
   it creates the session. The Seat Hold runs 30 minutes from the moment it
@@ -25,7 +31,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
   out, so the grace never extends a hold.
   """
 
-  alias Dhc.BeginnersWorkshops.{IntakeLink, IntakePayment}
+  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Intake, IntakeLink, IntakePayment}
+  alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.BeginnersWorkshops.IntakeEmails.Values
   alias Dhc.Stripe.{Failure, Operations}
 
@@ -56,23 +63,41 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
   def idempotency_key(%IntakePayment{id: id}), do: "beginners-intake-payment:#{id}"
 
   @doc """
-  Creates (or, for a retried key, replays) the Checkout Session of an open
-  payment row. `person` carries the Intake link `token`, the person's
-  `email` and the workshop `date`.
+  The attributes of a new Seat Hold (`IntakePayment.hold_changeset/1`) with
+  every Checkout Session parameter frozen: the fee, the expiry, the Intake's
+  current link generation, the person's email and the product name (which
+  names the workshop date).
   """
-  @spec create(IntakePayment.t(), %{token: String.t(), email: String.t(), date: Date.t()}) ::
+  @spec hold_params(BeginnersWorkshop.t(), Intake.t(), WaitlistEntry.t() | nil, DateTime.t()) ::
+          map()
+  def hold_params(%BeginnersWorkshop{} = workshop, %Intake{} = intake, entry, expires_at) do
+    %{
+      workshop_id: workshop.id,
+      intake_id: intake.id,
+      amount_cents: workshop.fee_cents,
+      expires_at: expires_at,
+      checkout_link_generation: intake.link_generation,
+      checkout_email: entry && entry.email,
+      checkout_product_name: "Beginners' Workshop – #{Values.date(workshop.date)}"
+    }
+  end
+
+  @doc """
+  Creates (or, for a retried key, replays) the Checkout Session of a payment
+  row, from the parameters frozen on it alone.
+  """
+  @spec create(IntakePayment.t()) ::
           {:ok, %{id: String.t(), url: String.t() | nil}} | {:error, failure()}
-  def create(%IntakePayment{} = row, %{token: token, email: email, date: date}) do
-    link = IntakeLink.url(token)
+  def create(%IntakePayment{} = row) do
+    link = IntakeLink.url(IntakeLink.token(row.intake_id, row.checkout_link_generation))
 
     body = %{
       "mode" => "payment",
       "line_items[0][quantity]" => 1,
       "line_items[0][price_data][currency]" => row.currency,
       "line_items[0][price_data][unit_amount]" => row.amount_cents,
-      "line_items[0][price_data][product_data][name]" =>
-        "Beginners' Workshop – #{Values.date(date)}",
-      "customer_email" => email,
+      "line_items[0][price_data][product_data][name]" => row.checkout_product_name,
+      "customer_email" => row.checkout_email,
       "expires_at" =>
         row.expires_at |> DateTime.add(@expiry_grace_seconds, :second) |> DateTime.to_unix(),
       "success_url" => link <> "?session_id={CHECKOUT_SESSION_ID}",
@@ -142,6 +167,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
   defp payment_intent_id(id) when is_binary(id), do: id
   defp payment_intent_id(%{"id" => id}) when is_binary(id), do: id
   defp payment_intent_id(_other), do: nil
+
+  # Stripe's answer for a reused key with other parameters proves nothing
+  # about whether the first request made a session.
+  defp failure({:stripe_api, _status, %{"error" => %{"type" => "idempotency_error"}}}),
+    do: :retryable
 
   defp failure(reason), do: if(Failure.retryable?(reason), do: :retryable, else: :rejected)
 end

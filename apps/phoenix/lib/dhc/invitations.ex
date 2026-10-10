@@ -13,6 +13,7 @@ defmodule Dhc.Invitations do
   alias Dhc.CursorPagination
   alias Dhc.Discord.JoinGrant
   alias Dhc.Discord.Workers.GuildJoinWorker
+  alias Dhc.Invitations.EmailRefusals
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.Repository
   alias Dhc.MemberProfiles.MemberProfile
@@ -268,23 +269,20 @@ defmodule Dhc.Invitations do
     |> Repo.insert!()
   end
 
-  # The Waitlist standing function moves the person's entry, when they have
-  # one, from `invited` to `joined` inside this transaction; any other
-  # standing refuses and rolls the conversion back.
-  defp join_waitlist!(invitation) do
-    waitlist_id = invitation |> waitlist_entry_query() |> select([w], w.id) |> Repo.one()
+  # Acceptance claims the Waitlist entry only through the Invitation's
+  # `waitlist_id` (never by email): the Waitlist standing function moves it
+  # from `invited` to `joined` inside this transaction. A direct Invitation
+  # touches no entry; its email cannot be on the Waitlist because issue and
+  # re-arm both refuse `:email_on_waitlist`.
+  defp join_waitlist!(%Invitation{waitlist_id: nil}), do: :ok
 
-    with id when is_binary(id) <- waitlist_id,
-         {:error, reason} <- Waitlist.change_standing(id, "joined") do
-      Repo.rollback({:waitlist_standing, reason})
+  defp join_waitlist!(%Invitation{waitlist_id: waitlist_id}) do
+    case Waitlist.change_standing(waitlist_id, "joined") do
+      {:ok, _entry} -> :ok
+      {:error, :not_found} -> :ok
+      {:error, reason} -> Repo.rollback({:waitlist_standing, reason})
     end
   end
-
-  defp waitlist_entry_query(%Invitation{waitlist_id: waitlist_id}) when not is_nil(waitlist_id),
-    do: from(w in WaitlistEntry, where: w.id == ^waitlist_id)
-
-  defp waitlist_entry_query(%Invitation{email: email}),
-    do: from(w in WaitlistEntry, where: w.email == ^email)
 
   defp maybe_consume_discord(nil, _now), do: :ok
 
@@ -429,29 +427,57 @@ defmodule Dhc.Invitations do
   Accepted and revoked invitations are never resurrected, and sibling rows
   for the same email keep their status, so a resend can never create a
   second pending invitation for an email.
+
+  Re-arming is refused, with the same refusals as issuing
+  (`Dhc.Invitations.EmailRefusals.invitable/3`), when the email now belongs
+  to a Principal, has another pending Invitation or is on the Waitlist in
+  any standing (other than the Invitation's own `waitlist_id` entry), so an
+  acceptance can never fail after payment. Each refusal is recorded in the
+  processing log under `created_by_id` and counts as failed.
   """
-  @spec resend_invitation_emails([String.t()]) ::
+  @spec resend_invitation_emails([String.t()], Ecto.UUID.t()) ::
           {:ok, %{succeeded: non_neg_integer(), failed: non_neg_integer()}}
-  def resend_invitation_emails([_ | _] = raw_emails) do
+  def resend_invitation_emails([_ | _] = raw_emails, created_by_id) do
     emails = Enum.uniq(raw_emails)
-    invite_data = list_invitation_resend_data(emails)
 
     succeeded =
-      invite_data
-      |> Enum.map(fn invitation ->
-        with :ok <- enqueue_invitation_email(invitation),
-             :ok <- refresh_for_resend(invitation.id) do
-          :ok
-        else
-          {:error, _reason} -> {:error, invitation.email}
-        end
-      end)
-      |> Enum.count(&match?(:ok, &1))
+      emails
+      |> list_invitation_resend_data()
+      |> Enum.map(&rearm(&1, created_by_id))
+      |> Enum.count(&(&1 == :ok))
 
     {:ok, %{succeeded: succeeded, failed: length(emails) - succeeded}}
   end
 
-  def resend_invitation_emails(_emails), do: {:ok, %{succeeded: 0, failed: 0}}
+  def resend_invitation_emails(_emails, _created_by_id), do: {:ok, %{succeeded: 0, failed: 0}}
+
+  defp rearm(invitation, created_by_id) do
+    Repo.transaction(fn ->
+      with :ok <-
+             EmailRefusals.invitable(invitation.email, invitation.waitlist_id, invitation.id)
+             |> refused(),
+           :ok <- refresh_for_resend(invitation.id),
+           :ok <- enqueue_invitation_email(invitation) do
+        :ok
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+    |> case do
+      {:ok, :ok} ->
+        :ok
+
+      {:error, {:refused, reason}} ->
+        _ = Repository.store_refusal(invitation.email, reason, created_by_id)
+        :error
+
+      {:error, _reason} ->
+        :error
+    end
+  end
+
+  defp refused(:ok), do: :ok
+  defp refused({:error, reason}), do: {:error, {:refused, reason}}
 
   @doc """
   Permanently deletes the requested Invitations.
@@ -576,6 +602,7 @@ defmodule Dhc.Invitations do
       select: %{
         id: i.id,
         email: i.email,
+        waitlist_id: i.waitlist_id,
         first_name: i.first_name,
         last_name: i.last_name,
         date_of_birth: i.date_of_birth

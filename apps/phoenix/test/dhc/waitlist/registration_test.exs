@@ -123,6 +123,20 @@ defmodule Dhc.Waitlist.RegistrationTest do
       assert entry.removed_at == nil
     end
 
+    test "validates every detail before the duplicate checks, so a known email is no oracle" do
+      insert_entry!("known@example.com", "waiting")
+      long_name = String.duplicate("a", 41)
+
+      for email <- ["known@example.com", "unknown@example.com"] do
+        assert {:error, %Ecto.Changeset{} = changeset} =
+                 Waitlist.create_entry(%{payload(email) | "firstName" => long_name})
+
+        assert {"should be at most %{count} character(s)", _} = changeset.errors[:first_name]
+      end
+
+      assert Repo.aggregate(WaitlistEntry, :count) == 1
+    end
+
     test "a removed email that is now a Principal's stays refused" do
       insert_entry!("joined-elsewhere@example.com", "removed")
 

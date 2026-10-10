@@ -129,7 +129,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       info is owed once per schedule (occasion
       `IntakeEmailLog.pre_workshop_occasion/1`), so anyone who had it gets it
       again at the new cutoff through the same Payment Cutoff pass;
-    * every Staff member except the actor gets a keyed Notification
+    * every Staff member (the actor included) gets a keyed Notification
       (`beginners-workshop:<id>:rescheduled:<n>`), signalled after commit.
 
   Nothing is scheduled per workshop, so no job needs rewriting.
@@ -152,7 +152,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       live Seat Hold `releasing`, and "Workshop cancelled – unpaid" is
       queued — both with log occasion `cancelled`;
     * each Intake gets a `cancel_workshop` history row carrying the reason;
-    * every Staff member except the actor gets the keyed Notification
+    * every Staff member (the actor included) gets the keyed Notification
       `beginners-workshop:<id>:cancelled`, signalled after commit.
 
   Every time-driven pass, the Intake page's commands and the door judge
@@ -743,6 +743,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # How many expired holds one `reap_holds` pass settles; the next sweep
   # takes the rest.
   @reap_batch 100
+  # A payment row whose Checkout Session may still need recording: a live
+  # hold, or one releasing because its Intake closed meanwhile.
+  @unsessioned_statuses ~w(open releasing)
 
   @refund_outcomes %{"processing" => :processing, "completed" => :completed, "failed" => :failed}
 
@@ -1069,7 +1072,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp run({:staff, principal_id}, {:reschedule_workshop, workshop_id, attrs}, clock)
+  defp run({:staff, _principal_id}, {:reschedule_workshop, workshop_id, attrs}, clock)
        when is_map(attrs) do
     with {:ok, workshop_id} <- cast_id(workshop_id) do
       fn ->
@@ -1078,7 +1081,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
             workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
             intake: &open_intakes/1
           },
-          &reschedule_locked(&1, attrs, principal_id, clock)
+          &reschedule_locked(&1, attrs, clock)
         )
       end
       |> transact()
@@ -1223,8 +1226,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  # Nothing about an Invitation depends on the time, so the clock is unused.
-  defp run({:staff, principal_id}, {:invite, workshop_id, intake_id}, _clock) do
+  # The clock only stamps the standing change, read inside the lock.
+  defp run({:staff, principal_id}, {:invite, workshop_id, intake_id}, clock) do
     with {:ok, workshop_id} <- cast_id(workshop_id),
          {:ok, intake_id} <- cast_id(intake_id) do
       intake = from(i in Intake, where: i.id == ^intake_id and i.workshop_id == ^workshop_id)
@@ -1241,7 +1244,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
               ),
             intake: required(intake)
           },
-          &invite_locked(&1, principal_id)
+          &invite_locked(&1, principal_id, Clock.read(clock).now)
         )
       end
       |> transact()
@@ -1364,8 +1367,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
              contact_from: next.contact_from,
              payment_window_days: next.payment_window_days
            })
-           |> persist() do
-      {:ok, WorkshopProjection.view(workshop, facts, reading)}
+           |> persist(),
+         # An earlier cutoff ends an open Batch window with it, as a
+         # reschedule's does.
+         :ok <- clamp_open_windows(workshop, reading) do
+      {:ok, WorkshopProjection.view(workshop, facts_for(workshop), reading)}
     end
   end
 
@@ -1407,7 +1413,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     {:all, from(i in Intake, where: i.workshop_id == ^workshop.id and i.state in ^open)}
   end
 
-  defp reschedule_locked(%{workshop: workshop, intake: intakes}, attrs, actor_id, clock) do
+  defp reschedule_locked(%{workshop: workshop, intake: intakes}, attrs, clock) do
     reading = Clock.read(clock)
 
     with :ok <- still_scheduled(workshop),
@@ -1430,7 +1436,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            |> persist(),
          :ok <- clamp_open_windows(workshop, reading),
          :ok <- tell_open_intakes(intakes, workshop, reading),
-         {:ok, created} <- notify_rescheduled(workshop, actor_id) do
+         {:ok, created} <- notify_rescheduled(workshop) do
       {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), reading), created}}
     end
   end
@@ -1506,7 +1512,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  # Written under the workshop lock, which every Batch writer holds.
+  # Every open Batch window ending after the (new) Payment Cutoff ends at it:
+  # the one clamp of `update_workshop` and `reschedule_workshop`. Written
+  # under the workshop lock, which every Batch writer holds.
   defp clamp_open_windows(workshop, reading) do
     # A window can't end before it was sent: one past the new cutoff closes now.
     clamp_to = Enum.max([workshop.payment_cutoff, reading.now], DateTime)
@@ -1544,19 +1552,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end)
   end
 
-  # Assigned Staff stay assigned; each (bar the actor) hears about the move,
-  # keyed by this reschedule so the next one notifies again.
-  defp notify_rescheduled(workshop, actor_id) do
+  # Assigned Staff stay assigned; each one (the actor included) hears about
+  # the move, keyed by this reschedule so the next one notifies again.
+  defp notify_rescheduled(workshop) do
     key = "beginners-workshop:#{workshop.id}:rescheduled:#{workshop.reschedule_count}"
-    body = "The Beginners' Workshop you're on has moved to #{when_where(workshop)}."
 
-    workshop
-    |> current_staff()
-    |> Enum.map(& &1.principal_id)
-    |> Enum.uniq()
-    |> List.delete(actor_id)
-    |> Enum.map(&{&1, key, body})
-    |> create_keyed()
+    notify_each_staff(
+      workshop,
+      key,
+      "The Beginners' Workshop you're on has moved to #{when_where(workshop)}."
+    )
   end
 
   # ── cancel_workshop (ALE-395) ───────────────────────────────────
@@ -1669,7 +1674,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
              workshop,
              BeginnersWorkshop.cancel_changeset(workshop, actor_id, reason, reading.now)
            ),
-         {:ok, created} <- notify_cancelled(workshop, actor_id) do
+         {:ok, created} <- notify_cancelled(workshop) do
       view = WorkshopProjection.view(workshop, facts_for(workshop), reading)
       {:ok, {Map.merge(tally, %{workshop: view}), created}}
     end
@@ -1744,7 +1749,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     with {:ok, intake} <-
            transition(:intake, intake, Intake.close_changeset(intake, "returned")),
          :ok <- Enum.reduce_while(holds, :ok, &release_each/2),
-         :ok <- back_to_waiting(one.waitlist_entry),
+         :ok <- back_to_waiting(one.waitlist_entry, reading.now),
          :ok <- queue_cancelled(intake, one.workshop, "cancelled_unpaid", reading),
          {:ok, _event} <-
            record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
@@ -1773,17 +1778,22 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         reading
       )
 
-  # Assigned Staff stay on the (read-only) record; each but the actor hears
-  # that it is off, once.
-  defp notify_cancelled(workshop, actor_id) do
-    key = "beginners-workshop:#{workshop.id}:cancelled"
-    body = "The Beginners' Workshop on #{when_where(workshop)} has been cancelled."
+  # Assigned Staff stay on the (read-only) record; each one (the actor
+  # included) hears that it is off, once.
+  defp notify_cancelled(workshop) do
+    notify_each_staff(
+      workshop,
+      "beginners-workshop:#{workshop.id}:cancelled",
+      "The Beginners' Workshop on #{when_where(workshop)} has been cancelled."
+    )
+  end
 
+  # One keyed Notification to each person on the workshop's Staff.
+  defp notify_each_staff(workshop, key, body) do
     workshop
     |> current_staff()
     |> Enum.map(& &1.principal_id)
     |> Enum.uniq()
-    |> List.delete(actor_id)
     |> Enum.map(&{&1, key, body})
     |> create_keyed()
   end
@@ -1837,16 +1847,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         &send_batch_locked(&1, clock)
       )
     end)
+    |> signal_after_commit()
     |> case do
-      {:ok, {outcome, notifications}} ->
-        Enum.each(notifications, &Notifications.signal_created/1)
-        {:ok, outcome}
-
       {:error, :concurrent_change} when attempts_left > 1 ->
         send_due_batch(workshop_id, clock, attempts_left - 1)
 
-      {:error, reason} ->
-        {:error, reason}
+      result ->
+        result
     end
   end
 
@@ -1877,35 +1884,31 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         {:ok, {%{outcome: :not_due}, []}}
 
       entries == [] ->
-        {:ok, {%{outcome: :nobody_waiting}, notify_nobody_waiting(workshop)}}
+        with {:ok, created} <- notify_nobody_waiting(workshop),
+             do: {:ok, {%{outcome: :nobody_waiting}, created}}
 
       true ->
-        with {:ok, people} <- still_eligible(entries) do
+        with {:ok, people} <- still_the_proposal(entries, workshop, facts) do
           create_batch(workshop, facts, people, reading)
         end
     end
   end
 
-  # A proposed person taken by a concurrent command (another workshop's
-  # Batch, a fast-track) or no longer waiting: retry from a fresh proposal.
-  defp still_eligible(entries) do
-    ids = Enum.map(entries, & &1.id)
+  # The Batch is exactly the live proposal at this moment (the one the
+  # console previews): read again with the proposed entries locked, it must
+  # be those very people. Someone taken by a concurrent command (another
+  # workshop's Batch, a fast-track), no longer waiting, or overtaken by an
+  # earlier priority makes the pass retry from a fresh proposal.
+  defp still_the_proposal(entries, workshop, facts) do
+    live = workshop |> WorkshopPolicy.batch_size(facts) |> BatchProposal.people()
+    locked = Map.new(entries, &{&1.id, &1})
 
-    if MapSet.new(BatchProposal.still_eligible(ids)) == MapSet.new(ids) do
-      first_names =
-        from(p in UserProfile,
-          where: p.waitlist_id in ^ids,
-          select: {p.waitlist_id, p.first_name}
-        )
-        |> Repo.all()
-        |> Map.new()
-
-      people =
-        entries
-        |> Enum.sort_by(&{DateTime.to_unix(&1.initial_registration_date, :microsecond), &1.id})
-        |> Enum.map(&%{entry: &1, first_name: Map.get(first_names, &1.id) || ""})
-
-      {:ok, people}
+    if MapSet.new(live, & &1.waitlist_id) == MapSet.new(Map.keys(locked)) do
+      {:ok,
+       Enum.map(
+         live,
+         &%{entry: Map.fetch!(locked, &1.waitlist_id), first_name: &1.first_name || ""}
+       )}
     else
       {:error, :concurrent_change}
     end
@@ -2037,8 +2040,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            }
            |> Batch.changeset()
            |> persist(),
-         :ok <- contact_all(workshop, batch, people, reading) do
-      {:ok, {%{outcome: :sent, batch: batch_view(batch)}, notify_batch_sent(workshop, batch)}}
+         :ok <- contact_all(workshop, batch, people, reading),
+         {:ok, created} <- notify_batch_sent(workshop, batch) do
+      {:ok, {%{outcome: :sent, batch: batch_view(batch)}, created}}
     end
   end
 
@@ -2159,13 +2163,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp alert(key, body) do
     @alerts_capability
     |> Capabilities.principal_ids_with()
-    |> Enum.flat_map(fn principal_id ->
-      case Notifications.create_keyed_in_transaction(principal_id, key, body) do
-        {:ok, :created, notification} -> [notification]
-        {:ok, :already_created} -> []
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
+    |> Enum.map(&{&1, key, body})
+    |> create_keyed()
   end
 
   # ── start_payment ───────────────────────────────────────────────
@@ -2173,13 +2172,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp start_payment(token, clock) do
     with {:ok, peek} <- peek_intake(token),
          {:ok, row} <- transact(fn -> hold_locked(peek, clock) end) do
-      checkout(row, token, clock)
+      checkout(row, clock)
     end
   end
 
+  # The person's entry is locked too: the hold freezes their email for the
+  # Checkout Session, read from the locked row.
   defp hold_locked(peek, clock) do
     peek
     |> intake_spec(fn _locked -> open_payment(peek.intake_id) end)
+    |> Map.put(:waitlist_entry, entry_query(peek))
     |> Map.put(:carried_fee, &locked_intake_fee/1)
     |> with_locked(&take_hold(&1, clock))
   end
@@ -2190,7 +2192,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     from(i in Intake,
       where: i.link_token_hash == ^hash,
-      select: %{intake_id: i.id, workshop_id: i.workshop_id}
+      select: %{intake_id: i.id, workshop_id: i.workshop_id, waitlist_id: i.waitlist_id}
     )
     |> Repo.one()
     |> case do
@@ -2221,7 +2223,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       # A Carried Fee holder is never asked for money twice (ALE-388).
       held?(locked.carried_fee) -> {:error, :confirm_instead}
       open != nil -> live_hold(open, reading)
-      true -> new_hold(workshop, intake, reading)
+      true -> new_hold(workshop, intake, Map.get(locked, :waitlist_entry), reading)
     end
   end
 
@@ -2233,7 +2235,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       else: {:error, :payment_in_progress}
   end
 
-  defp new_hold(workshop, intake, reading) do
+  # The hold freezes every Checkout Session parameter from the locked rows
+  # (`IntakeCheckout.hold_params/4`), so a later rotation, email edit or
+  # reschedule can never change what a replayed create sends.
+  defp new_hold(workshop, intake, entry, reading) do
     cond do
       not WorkshopPolicy.payment_open?(workshop, reading) ->
         {:error, :after_cutoff}
@@ -2242,33 +2247,32 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         {:error, :full}
 
       true ->
-        %{
-          workshop_id: workshop.id,
-          intake_id: intake.id,
-          amount_cents: workshop.fee_cents,
-          expires_at: WorkshopPolicy.hold_expires_at(reading)
-        }
+        workshop
+        |> IntakeCheckout.hold_params(intake, entry, WorkshopPolicy.hold_expires_at(reading))
         |> IntakePayment.hold_changeset()
         |> persist()
     end
   end
 
   # Between transactions: reuse the live hold's session, or create it.
-  defp checkout(%IntakePayment{checkout_url: url}, _token, _clock) when is_binary(url),
+  defp checkout(%IntakePayment{checkout_url: url}, _clock) when is_binary(url),
     do: {:ok, %{checkout_url: url}}
 
-  defp checkout(%IntakePayment{} = row, token, clock) do
-    case create_session(row, token, clock) do
+  defp checkout(%IntakePayment{} = row, clock) do
+    case create_session(row, clock) do
       {:ok, %{url: url}} when is_binary(url) -> {:ok, %{checkout_url: url}}
       {:ok, _no_url} -> {:error, :payment_unavailable}
       {:error, _reason} -> {:error, :payment_unavailable}
     end
   end
 
-  # Creates (or replays) the row's Checkout Session and records it. A
-  # session Stripe refused to create cannot exist, so its hold is freed.
-  defp create_session(%IntakePayment{} = row, token, clock) do
-    case IntakeCheckout.create(row, checkout_person(row, token)) do
+  # Creates (or replays) the row's Checkout Session, with exactly the
+  # parameters the hold froze, and records it. A session Stripe refused to
+  # create cannot exist, so its hold is freed; a refusal that does not prove
+  # that (`IntakeCheckout` classes an idempotency conflict as retryable)
+  # keeps the hold.
+  defp create_session(%IntakePayment{} = row, clock) do
+    case IntakeCheckout.create(row) do
       {:ok, session} ->
         record_session(row, session)
 
@@ -2279,27 +2283,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:error, :retryable} ->
         {:error, :payment_unavailable}
     end
-  end
-
-  defp checkout_person(%IntakePayment{intake_id: intake_id, workshop_id: workshop_id}, token) do
-    email =
-      from(i in Intake,
-        join: e in WaitlistEntry,
-        on: e.id == i.waitlist_id,
-        where: i.id == ^intake_id,
-        select: e.email
-      )
-      |> Repo.one()
-
-    date = Repo.one!(from(w in BeginnersWorkshop, where: w.id == ^workshop_id, select: w.date))
-    %{token: token || intake_token(intake_id), email: email, date: date}
-  end
-
-  defp intake_token(intake_id) do
-    generation =
-      Repo.one!(from(i in Intake, where: i.id == ^intake_id, select: i.link_generation))
-
-    IntakeLink.token(intake_id, generation)
   end
 
   # After an authoritative re-read: the session is recorded once; a
@@ -2313,7 +2296,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       payment.stripe_checkout_session_id == session_id ->
         {:ok, %{id: session_id, url: payment.checkout_url}}
 
-      payment.status == "open" and is_nil(payment.stripe_checkout_session_id) ->
+      payment.status in @unsessioned_statuses and is_nil(payment.stripe_checkout_session_id) ->
         with {:ok, payment} <-
                payment |> IntakePayment.session_changeset(session_id, url) |> persist(),
              do: {:ok, %{id: session_id, url: payment.checkout_url}}
@@ -2327,7 +2310,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     do: transact(fn -> with_locked(payment_spec(row), &release_unsessioned_locked(&1, clock)) end)
 
   defp release_unsessioned_locked(%{payment: payment}, clock) do
-    if payment.status == "open" and is_nil(payment.stripe_checkout_session_id),
+    if payment.status in @unsessioned_statuses and is_nil(payment.stripe_checkout_session_id),
       do: release(payment, Clock.read(clock).now),
       else: {:ok, payment}
   end
@@ -2344,7 +2327,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       transition(
         :payment,
         payment,
-        Ecto.Changeset.change(payment, status: "released", released_at: at)
+        Ecto.Changeset.change(payment, status: "released", released_at: at, checkout_email: nil)
       )
 
   # ── complete_payment / release_payment ──────────────────────────
@@ -2578,12 +2561,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # Holds whose 30 minutes ran out. Each is settled from Stripe's answer
   # through the same locked paths as the webhooks; a hold Stripe has not
-  # ended stays open (and its seat taken) until the next pass.
+  # ended stays open (and its seat taken) until the next pass. A releasing
+  # hold whose session was never recorded is settled the same way, or a
+  # payment made through its session could never be matched and refunded.
   defp reap_holds(clock) do
     now = Clock.read(clock).now
 
     from(p in IntakePayment,
-      where: p.status == "open" and p.expires_at <= ^now,
+      where: p.expires_at <= ^now,
+      where:
+        p.status == "open" or
+          (p.status == "releasing" and is_nil(p.stripe_checkout_session_id)),
       order_by: [asc: p.expires_at, asc: p.id],
       limit: @reap_batch
     )
@@ -2597,7 +2585,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp reap(%IntakePayment{stripe_checkout_session_id: nil} = row, clock) do
     # The session was never recorded: replaying the create either returns
     # the session Stripe made (then settle it) or proves none exists.
-    case create_session(row, nil, clock) do
+    case create_session(row, clock) do
       {:ok, %{id: session_id}} -> reap_session(session_id, clock)
       {:error, _reason} -> if released?(row), do: :released, else: :waiting
     end
@@ -2938,8 +2926,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         else: transition(:refund, refund, changeset)
 
     with {:ok, refund} <- write,
-         {:ok, _fee} <- hold_fee_again(locked, refund, reading) do
-      {:ok, {%{outcome: Map.fetch!(@refund_outcomes, status)}, notify_if_failed(refund)}}
+         {:ok, fee} <- hold_fee_again(locked, refund, reading),
+         {:ok, created} <- notify_if_failed(refund, fee) do
+      {:ok, {%{outcome: Map.fetch!(@refund_outcomes, status)}, created}}
     end
   end
 
@@ -2971,8 +2960,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       )
 
     with {:ok, refund} <- transition(:refund, refund, changeset),
-         {:ok, _fee} <- hold_fee_again(locked, refund, reading),
-         do: {:ok, {%{outcome: :failed}, notify_if_failed(refund)}}
+         {:ok, fee} <- hold_fee_again(locked, refund, reading),
+         {:ok, created} <- notify_if_failed(refund, fee),
+         do: {:ok, {%{outcome: :failed}, created}}
   end
 
   defp fail_refund_locked(_settled, _reason, _clock),
@@ -2999,14 +2989,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # person keeps their seat entitlement until a coordinator retries, records
   # a manual refund or forfeits it. A fee is `refunded` only by its one live
   # refund, so a `refunded` fee here is this refund's. If the person has
-  # since come to hold another live fee (one per person), this one stays
-  # `refunded` and the failed refund is still followed up.
+  # since come to hold another live fee (one per person), or has paid an
+  # open Intake through Stripe (a held fee beside a paid seat would be two
+  # entitlements), this one stays `refunded`: the money is still owed back,
+  # and the failed refund is followed up by Retry or Record manual refund.
   defp hold_fee_again(
          %{carried_fee: %CarriedFee{id: id, status: "refunded"} = fee},
          %IntakeRefund{status: "failed", carried_fee_id: id},
          reading
        ) do
-    if other_live_fee?(fee),
+    if other_live_fee?(fee) or paid_by_stripe_since?(fee),
       do: {:ok, fee},
       else:
         transition(:carried_fee, fee, CarriedFee.status_changeset(fee, "held", nil, reading.now))
@@ -3019,18 +3011,42 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp other_live_fee?(%CarriedFee{id: id, waitlist_id: waitlist_id}),
     do: Repo.exists?(from(f in live_fee_query(waitlist_id), where: f.id != ^id))
 
+  defp paid_by_stripe_since?(%CarriedFee{waitlist_id: nil}), do: false
+
+  defp paid_by_stripe_since?(%CarriedFee{waitlist_id: waitlist_id}),
+    do:
+      Repo.exists?(
+        from(i in Intake,
+          where: i.waitlist_id == ^waitlist_id and i.state == "paid" and i.paid_via == "stripe"
+        )
+      )
+
   # A failed refund is a coordinator's job (story 84): a keyed Notification
   # per refund row, so a retried command never notifies twice.
-  defp notify_if_failed(%IntakeRefund{status: "failed"} = refund) do
+  # `fee` is what `hold_fee_again/3` left: held again, or still `refunded`
+  # (the money is still owed back, so there is nothing to forfeit).
+  defp notify_if_failed(%IntakeRefund{status: "failed"} = refund, fee) do
     %{first_name: first_name, date: date} = refund_person(refund)
     workshop = if date, do: " for the Beginners' Workshop on #{Values.date(date)}", else: ""
 
     follow_up =
-      if refund.carried_fee_id,
-        do:
+      case {refund.carried_fee_id, fee} do
+        {nil, _fee} ->
+          "Retry it or record a manual refund from the workshop console."
+
+        {_fee_id, %CarriedFee{status: "held"}} ->
           "It was a Carried Fee refund, so the fee is held again: retry it, record a manual " <>
-            "refund or forfeit the fee from the workshop console or the Waitlist.",
-        else: "Retry it or record a manual refund from the workshop console."
+            "refund or forfeit the fee from the workshop console or the Waitlist."
+
+        {_fee_id, %CarriedFee{status: "refunded"}} ->
+          "It was a Carried Fee refund and the person has since paid or holds another fee, so " <>
+            "the money is still owed back: retry it or record a manual refund from the " <>
+            "workshop console or the Waitlist."
+
+        {_fee_id, _fee} ->
+          "It was a Carried Fee refund: retry it or record a manual refund from the workshop " <>
+            "console or the Waitlist."
+      end
 
     alert(
       "beginners-workshop-refund:#{refund.id}:failed",
@@ -3039,7 +3055,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     )
   end
 
-  defp notify_if_failed(_refund), do: []
+  defp notify_if_failed(_refund, _fee), do: {:ok, []}
 
   # Who a refund pays back: the person of its Intake, or of its Carried Fee
   # when it has none (an imported fee's refund, ALE-389).
@@ -3511,7 +3527,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp intake_command_locked(%{intake: intake} = locked, command, context, clock) do
     reading = Clock.read(clock)
 
-    case IntakePolicy.check(command, policy_facts(locked, context)) do
+    case IntakePolicy.check(command, policy_facts(locked, context, reading)) do
       :ok ->
         event_id = Ecto.UUID.generate()
 
@@ -3535,7 +3551,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     with {:ok, intake} <-
            transition(:intake, intake, Intake.close_changeset(intake, "declined")),
          :ok <- release_to_stripe(hold),
-         :ok <- back_to_waiting(entry),
+         :ok <- back_to_waiting(entry, reading.now),
          :ok <-
            queue_intake_email(
              intake,
@@ -3575,7 +3591,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     with {:ok, intake} <-
            transition(:intake, intake, Intake.close_changeset(intake, "cancelled_refunded")),
          {:ok, refund} <- refund_paid(intake, locked, "cancelled_with_refund", context, reading),
-         :ok <- back_to_waiting(entry),
+         :ok <- back_to_waiting(entry, reading.now),
          :ok <-
            queue_intake_email(
              intake,
@@ -3633,23 +3649,23 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # holds, needs the refund-or-forfeit choice, and the person is told which.
   # A contacted Intake of someone without a Carried Fee emails nobody.
   defp act_on_intake(:withdraw, %{intake: %Intake{state: "contacted"}} = locked, _id, reading) do
-    %{waitlist_entry: entry, intake: intake, payment: hold, carried_fee: fee} = locked
+    %{waitlist_entry: entry, intake: intake, payment: hold} = locked
 
-    with {:ok, refund?} <- money_choice(fee, locked.context.options),
+    with {:ok, refund?} <- withdraw_choice(locked),
          {:ok, intake} <-
            transition(:intake, intake, Intake.close_changeset(intake, "declined")),
          :ok <- release_to_stripe(hold),
-         :ok <- remove_from_waitlist(entry),
+         :ok <- remove_from_waitlist(entry, reading.now),
          :ok <- settle_withdrawn(refund?, locked, intake, reading),
          do: {:ok, intake}
   end
 
   defp act_on_intake(:withdraw, %{intake: %Intake{state: "paid"}} = locked, _id, reading) do
-    %{waitlist_entry: entry, intake: intake, context: context} = locked
+    %{waitlist_entry: entry, intake: intake} = locked
 
-    with {:ok, refund?} <- refund_choice(context.options),
+    with {:ok, refund?} <- withdraw_choice(locked),
          {:ok, intake} <- transition(:intake, intake, Intake.close_changeset(intake, "withdrawn")),
-         :ok <- remove_from_waitlist(entry),
+         :ok <- remove_from_waitlist(entry, reading.now),
          :ok <- settle_withdrawn(refund?, locked, intake, reading) do
       {:ok, intake}
     end
@@ -3700,7 +3716,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     with :ok <- no_other_open_intake(entry, intake, to),
          {:ok, intake} <- transition(:intake, intake, Intake.close_changeset(intake, to)),
-         :ok <- correct_standing(entry, to),
+         :ok <- correct_standing(entry, to, reading.now),
          {:ok, _fee} <- correct_fee(intake, locked, to, reading),
          :ok <- after_correction(intake, workshop, to, reading) do
       {:ok, intake}
@@ -3725,8 +3741,19 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     with {:ok, _fee} <- carry_fee(intake, locked, reading),
          {:ok, intake} <-
            transition(:intake, intake, Intake.close_changeset(intake, "deferred")),
-         :ok <- back_to_waiting(entry),
+         :ok <- back_to_waiting(entry, reading.now),
          do: {:ok, intake}
+  end
+
+  # Withdraw's refund-or-forfeit choice, asked exactly when
+  # `IntakePolicy.refund_choice_required?/1` says there is money to settle
+  # (the console row's `refund_choice` reads the same rule); `nil`: none.
+  defp withdraw_choice(%{intake: intake, context: context} = locked) do
+    facts = %{state: intake.state, carried_fee: locked.carried_fee && locked.carried_fee.status}
+
+    if IntakePolicy.refund_choice_required?(facts),
+      do: refund_choice(context.options),
+      else: {:ok, nil}
   end
 
   defp refund_choice(%{refund: refund}) when is_boolean(refund), do: {:ok, refund}
@@ -3796,14 +3823,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # retention clock); one already removed stays so. An Invitation already
   # under way belongs to Onboarding, so withdraw refuses it. An anonymised
   # person has no standing.
-  defp remove_from_waitlist(nil), do: :ok
-  defp remove_from_waitlist(%WaitlistEntry{status: "removed"}), do: :ok
+  defp remove_from_waitlist(nil, _now), do: :ok
+  defp remove_from_waitlist(%WaitlistEntry{status: "removed"}, _now), do: :ok
 
-  defp remove_from_waitlist(%WaitlistEntry{status: status}) when status in ~w(invited joined),
-    do: {:error, :already_invited}
+  defp remove_from_waitlist(%WaitlistEntry{status: status}, _now)
+       when status in ~w(invited joined),
+       do: {:error, :already_invited}
 
-  defp remove_from_waitlist(%WaitlistEntry{id: id}) do
-    with {:ok, _entry} <- Waitlist.change_standing(id, "removed"), do: :ok
+  defp remove_from_waitlist(%WaitlistEntry{id: id}, now) do
+    with {:ok, _entry} <- Waitlist.change_standing(id, "removed", now: now), do: :ok
   end
 
   # A live Seat Hold of a closing Intake stops counting as a seat at once;
@@ -3820,11 +3848,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # A contacted person is `waiting`, so their original priority stands; one
   # staff removed while contacted goes back to `waiting` (the Waitlist
   # keeps their registration date). An anonymised person has no standing.
-  defp back_to_waiting(%WaitlistEntry{status: "removed", id: id}) do
-    with {:ok, _entry} <- Waitlist.change_standing(id, "waiting"), do: :ok
+  defp back_to_waiting(%WaitlistEntry{status: "removed", id: id}, now) do
+    with {:ok, _entry} <- Waitlist.change_standing(id, "waiting", now: now), do: :ok
   end
 
-  defp back_to_waiting(_waiting_or_anonymised), do: :ok
+  defp back_to_waiting(_waiting_or_anonymised, _now), do: :ok
 
   # The email an open Intake's link travels in: "Contact – pay" while
   # contacted (its window is its Batch's, or the Payment Cutoff for a
@@ -3858,20 +3886,27 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     do: Repo.one!(from(b in Batch, where: b.id == ^batch_id, select: b.window_ends_at))
 
   # What `IntakePolicy.check/2` reads: the locked Intake and, for the
-  # commands that lock them, the person's live Carried Fee and standing,
+  # commands that lock them, the person's live Carried Fee and standing
+  # (and whether that standing still allows a fee refund at `reading`),
   # the workshop's status, and a correction's target (ALE-393).
-  defp policy_facts(%{intake: intake} = locked, context) do
+  defp policy_facts(%{intake: intake} = locked, context, reading) do
+    entry = Map.get(locked, :waitlist_entry)
+    fee = Map.get(locked, :carried_fee)
+
     %{
       state: intake.state,
       paid_via: intake.paid_via,
       carried_fee:
-        case Map.get(locked, :carried_fee) do
+        case fee do
           %CarriedFee{status: status} -> status
           nil -> nil
         end,
+      fee_refundable: fee_refundable?(entry, reading),
+      carried_fee_refunded:
+        fee == nil and is_binary(intake.waitlist_id) and fee_refunded?(intake.waitlist_id),
       workshop_status: locked.workshop.status,
       standing:
-        case Map.get(locked, :waitlist_entry) do
+        case entry do
           %WaitlistEntry{status: status} ->
             status
 
@@ -3942,12 +3977,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # The standing follows the lifecycle; one already there is left alone. An
   # anonymised person has no standing.
-  defp correct_standing(nil, _to), do: :ok
+  defp correct_standing(nil, _to, _now), do: :ok
 
-  defp correct_standing(%WaitlistEntry{status: status, id: id}, to) do
+  defp correct_standing(%WaitlistEntry{status: status, id: id}, to, now) do
     case Map.fetch!(@correction_standings, to) do
       ^status -> :ok
-      standing -> with {:ok, _entry} <- Waitlist.change_standing(id, standing), do: :ok
+      standing -> with {:ok, _entry} <- Waitlist.change_standing(id, standing, now: now), do: :ok
     end
   end
 
@@ -4084,7 +4119,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
       true ->
         with {:ok, refund?} <- money_choice(fee, context.options),
-             :ok <- remove_from_waitlist(entry),
+             :ok <- remove_from_waitlist(entry, Clock.read(clock).now),
              :ok <- settle_withdrawn_fee(refund?, entry, fee, context, Clock.read(clock)),
              do: {:ok, withdraw_person_view(Repo.reload!(entry), nil, :done)}
     end
@@ -4448,12 +4483,29 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp may_refund_fee(nil, _reading), do: {:error, :person_not_found}
-  defp may_refund_fee(%WaitlistEntry{status: "waiting"}, _reading), do: :ok
 
-  defp may_refund_fee(%WaitlistEntry{status: "removed", removed_at: %DateTime{} = at}, reading),
-    do: if(Waitlist.restorable?(at, reading.now), do: :ok, else: {:error, :fee_not_refundable})
+  defp may_refund_fee(%WaitlistEntry{} = entry, reading),
+    do: if(fee_refundable?(entry, reading), do: :ok, else: {:error, :fee_not_refundable})
 
-  defp may_refund_fee(%WaitlistEntry{}, _reading), do: {:error, :fee_not_refundable}
+  # `IntakePolicy.fee_refundable?/3` for a locked entry (none: anonymised).
+  defp fee_refundable?(%WaitlistEntry{status: status, removed_at: removed_at}, reading),
+    do: IntakePolicy.fee_refundable?(status, removed_at, reading.now)
+
+  defp fee_refundable?(_anonymised, _reading), do: false
+
+  # With no live fee: whether the person's latest Carried Fee was refunded,
+  # so a repeated `refund_carried_fee` is already done. Every fee writer
+  # holds the person's entry lock, which the refund commands hold too.
+  defp fee_refunded?(waitlist_id) do
+    from(f in CarriedFee,
+      where: f.waitlist_id == ^waitlist_id,
+      order_by: [desc: f.status_changed_at, desc: f.created_at],
+      limit: 1,
+      select: f.status
+    )
+    |> Repo.one()
+    |> Kernel.==("refunded")
+  end
 
   # The Waitlist tab names the person. With an open Intake this is exactly
   # the console's `refund_carried_fee` on it (same locks, rule and history
@@ -4501,8 +4553,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp refund_open_intake_fee(locked, waitlist_id, context, clock) do
     with true <- open_intake_of?(locked, waitlist_id) || {:error, :concurrent_change},
          {:ok, view} <- intake_command_locked(locked, :refund_carried_fee, context, clock) do
-      {:ok, fee_command_view(waitlist_id, view)}
+      {:ok, fee_command_view(waitlist_id, view, view.outcome)}
     end
+  end
+
+  defp refund_fee_alone(%{waitlist_entry: entry, carried_fee: nil}, waitlist_id, _context, _clock)
+       when entry != nil do
+    if fee_refunded?(waitlist_id),
+      do: {:ok, fee_command_view(waitlist_id, nil, :already_done)},
+      else: {:error, :no_carried_fee}
   end
 
   defp refund_fee_alone(%{waitlist_entry: entry, carried_fee: fee}, waitlist_id, context, clock) do
@@ -4522,11 +4581,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
              },
              reading
            ) do
-      {:ok, fee_command_view(waitlist_id, nil)}
+      {:ok, fee_command_view(waitlist_id, nil, :done)}
     end
   end
 
-  defp fee_command_view(waitlist_id, intake_view) do
+  defp fee_command_view(waitlist_id, intake_view, outcome) do
     fee =
       Repo.one(
         from(f in CarriedFee,
@@ -4540,7 +4599,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       waitlist_id: waitlist_id,
       carried_fee: fee && Map.take(fee, [:id, :status]),
       intake: intake_view,
-      outcome: :done
+      outcome: outcome
     }
   end
 
@@ -4709,17 +4768,34 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp check_in_paid(%Intake{state: "paid"}), do: :ok
   defp check_in_paid(%Intake{}), do: {:error, :not_paid}
 
+  # The Intake carries the current check-in (who, when); every check-in and
+  # undo that changed it is also an Intake history row naming the Principal
+  # and the time (story 97), so the record survives an undo and the Staff
+  # member's unassignment. A repeat changes nothing and records nothing.
   defp record_check_in(%Intake{checked_in_at: %DateTime{}} = intake, _id, :check_in, _reading),
     do: {:ok, intake}
 
-  defp record_check_in(%Intake{} = intake, principal_id, :check_in, reading),
-    do: intake |> Intake.check_in_changeset(principal_id, reading.now) |> persist()
+  defp record_check_in(%Intake{} = intake, principal_id, :check_in, reading) do
+    with {:ok, intake} <-
+           intake |> Intake.check_in_changeset(principal_id, reading.now) |> persist(),
+         do: record_door_event(intake, :check_in, principal_id, reading)
+  end
 
   defp record_check_in(%Intake{checked_in_at: nil} = intake, _id, :undo, _reading),
     do: {:ok, intake}
 
-  defp record_check_in(%Intake{} = intake, _id, :undo, _reading),
-    do: intake |> Intake.undo_check_in_changeset() |> persist()
+  defp record_check_in(%Intake{} = intake, principal_id, :undo, reading) do
+    with {:ok, intake} <- intake |> Intake.undo_check_in_changeset() |> persist(),
+         do: record_door_event(intake, :undo_check_in, principal_id, reading)
+  end
+
+  defp record_door_event(intake, command, principal_id, reading) do
+    context = %{actor: principal_id, note: nil, options: %{}}
+
+    with {:ok, _event} <-
+           record_intake_event(intake, command, Ecto.UUID.generate(), context, reading),
+         do: {:ok, intake}
+  end
 
   defp check_in_view(%Intake{} = intake),
     do: Map.take(intake, [:id, :workshop_id, :checked_in_at, :checked_in_by_principal_id])
@@ -4831,7 +4907,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       # A person contacted after this pass peeked the entries: the next sweep.
       {:not_locked, _settlement} -> {:ok, nil}
       {_entry, :await_hold} -> {:ok, :awaiting_hold}
-      {entry, :lapse} -> lapse(intake, entry)
+      {entry, :lapse} -> lapse(intake, entry, pass.reading.now)
       {_entry, :return} -> close(intake, "returned", :returned)
     end
   end
@@ -4841,13 +4917,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # A lapse removes a waiting person (story 86). A person staff already
   # removed stays removed; an anonymised one has no standing.
-  defp lapse(intake, %WaitlistEntry{status: "waiting", id: id}) do
+  defp lapse(intake, %WaitlistEntry{status: "waiting", id: id}, now) do
     with {:ok, counted} <- close(intake, "lapsed", :lapsed),
-         {:ok, _entry} <- Waitlist.change_standing(id, "removed"),
+         {:ok, _entry} <- Waitlist.change_standing(id, "removed", now: now),
          do: {:ok, counted}
   end
 
-  defp lapse(intake, _entry), do: close(intake, "lapsed", :lapsed)
+  defp lapse(intake, _entry, _now), do: close(intake, "lapsed", :lapsed)
 
   # A return leaves the standing alone: a contacted person is still
   # `waiting`, and their priority date was never touched (story 87).
@@ -5018,7 +5094,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
             else: {"no_show", :no_show, "removed"}
 
         with {:ok, counted} <- close(intake, state, counted),
-             {:ok, _entry} <- follow_standing(entry, standing),
+             {:ok, _entry} <- follow_standing(entry, standing, pass.reading.now),
              {:ok, _fee} <- end_fee(Map.get(pass.fees, intake.id), state, pass.reading),
              do: {:ok, counted}
     end
@@ -5030,7 +5106,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     case {entry_of(intake, pass.entries),
           WorkshopPolicy.cutoff_settlement(false, pass.workshop, pass.facts)} do
       {:not_locked, _settlement} -> {:error, :concurrent_change}
-      {entry, :lapse} -> lapse(intake, entry)
+      {entry, :lapse} -> lapse(intake, entry, pass.reading.now)
       {_entry, :return} -> close(intake, "returned", :returned)
     end
   end
@@ -5050,11 +5126,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # An anonymised person has no standing; one whose standing already moved
   # (a coordinator removed them, say) keeps it unless the table allows the
   # change.
-  defp follow_standing(nil, _to), do: {:ok, nil}
+  defp follow_standing(nil, _to, _now), do: {:ok, nil}
 
-  defp follow_standing(%WaitlistEntry{status: from} = entry, to) do
+  defp follow_standing(%WaitlistEntry{status: from} = entry, to, now) do
     if Standing.allowed?(from, to),
-      do: Waitlist.change_standing(entry.id, to),
+      do: Waitlist.change_standing(entry.id, to, now: now),
       else: {:ok, entry}
   end
 
@@ -5130,13 +5206,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # The Follow-up does not gate an Invitation (story 107): attendance being
   # final is enough.
-  defp invite_locked(%{workshop: workshop, waitlist_entry: entry, intake: intake}, actor_id) do
+  defp invite_locked(%{workshop: workshop, waitlist_entry: entry, intake: intake}, actor_id, now) do
     with :ok <- invite_finalised(workshop),
          :ok <- invite_attended(intake),
          {:ok, entry} <- invitable(entry),
          {:ok, invite} <- invite_details(entry),
          {:ok, %{invitation_id: invitation_id}} <- issue_invitation(invite, entry, actor_id),
-         {:ok, entry} <- Waitlist.change_standing(entry.id, "invited") do
+         {:ok, entry} <- Waitlist.change_standing(entry.id, "invited", now: now) do
       {:ok,
        %{
          intake_id: intake.id,
@@ -5280,8 +5356,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
       notify_staff(
         workshop,
-        Enum.map(inserted, &{:assigned, &1}) ++ Enum.map(removed, &{:unassigned, &1}),
-        actor_id
+        Enum.map(inserted, &{:assigned, &1}) ++ Enum.map(removed, &{:unassigned, &1})
       )
     end
   end
@@ -5326,10 +5401,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # One keyed Notification per assignment row and event, so assigning,
   # removing and assigning the same person again notifies each time, and a
-  # retried command never twice. The person making the change already knows.
-  defp notify_staff(workshop, events, actor_id) do
+  # retried command never twice. Everyone added or removed is told, the
+  # person making the change included (spec: "to that staff member").
+  defp notify_staff(workshop, events) do
     events
-    |> Enum.reject(fn {_event, row} -> row.principal_id == actor_id end)
     |> Enum.map(fn {event, row} ->
       {row.principal_id, "beginners-workshop-staff:#{row.id}:#{event}",
        staff_message(event, row.role, workshop)}
@@ -5337,8 +5412,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     |> create_keyed()
   end
 
-  # Keyed Notifications inside this transaction; returns the rows created,
-  # for the caller to signal after commit.
+  # The one writer of the boundary's keyed Notifications: each
+  # `{principal_id, key, body}` inside this transaction. Returns the rows
+  # created, for `signal_after_commit/1` once the transaction commits; a
+  # failure rolls the command back.
   defp create_keyed(notifications) do
     Enum.reduce_while(notifications, {:ok, []}, fn {principal_id, key, body}, {:ok, acc} ->
       case Notifications.create_keyed_in_transaction(principal_id, key, body) do

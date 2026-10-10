@@ -1,6 +1,7 @@
 <!--
 	The Email templates tab of Beginners' Workshops (ALE-383): every Intake
-	Email type grouped by kind, and the selected type's editor. Templates are
+	Email type grouped by kind, with when it is sent and who receives it, and
+	the selected type's editor. Templates are
 	read and saved through the generated Phoenix client.
 -->
 <script lang="ts">
@@ -79,6 +80,12 @@ function onsave(draft: IntakeEmailTemplateUpdate) {
 	save.mutate({ path: { emailType: selected.emailType }, body: draft });
 }
 
+const detailClass = (current: boolean) =>
+	cn(
+		"text-xs font-normal",
+		current ? "text-primary-foreground/80" : "text-muted-foreground",
+	);
+
 const savedFormat = new Intl.DateTimeFormat("en-IE", {
 	dateStyle: "medium",
 	timeZone: "Europe/Dublin",
@@ -128,17 +135,13 @@ const savedFormat = new Intl.DateTimeFormat("en-IE", {
 								onclick={() => pick(row.emailType)}
 							>
 								<span class="font-medium">{copy.label}</span>
-								<span
-									class={cn(
-										"text-xs font-normal",
-										current
-											? "text-primary-foreground/80"
-											: "text-muted-foreground",
-									)}
-								>
+								<span class={detailClass(current)}>
 									{copy.sentWhen} Saved {savedFormat.format(
 										new Date(row.updatedAt),
 									)}.
+								</span>
+								<span class={detailClass(current)}>
+									To: {copy.recipients}
 								</span>
 							</Button>
 						{/each}

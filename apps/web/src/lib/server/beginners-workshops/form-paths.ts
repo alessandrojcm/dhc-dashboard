@@ -30,6 +30,12 @@ const SETTINGS_FIELDS = new Set([
 	"paymentWindowDays",
 ]);
 
+/** A form whose controls carry Phoenix's field names unchanged. */
+function sameNameFormPath(fields: ReadonlySet<string>) {
+	return (field: string): FormPath | undefined =>
+		fields.has(field) ? [field] : undefined;
+}
+
 /** Public Phoenix field name → the form's own name. */
 function formField(field: string): string {
 	return field === "feeCents" ? "fee" : field;
@@ -46,9 +52,9 @@ export function scheduleFormPath(field: string): FormPath | undefined {
 }
 
 /** A settings field → its control in the Capacity / fee / cutoff dialog. */
+const settingsField = sameNameFormPath(SETTINGS_FIELDS);
 export function settingsFormPath(field: string): FormPath | undefined {
-	const key = formField(field);
-	return SETTINGS_FIELDS.has(key) ? [key] : undefined;
+	return settingsField(formField(field));
 }
 
 // ALE-394: the Reschedule dialog's controls.
@@ -62,14 +68,10 @@ const RESCHEDULE_FIELDS = new Set([
 ]);
 
 /** A reschedule field → its control in the Reschedule dialog. */
-export function rescheduleFormPath(field: string): FormPath | undefined {
-	return RESCHEDULE_FIELDS.has(field) ? [field] : undefined;
-}
+export const rescheduleFormPath = sameNameFormPath(RESCHEDULE_FIELDS);
 
 /** A Staff field → its picker in the Staff dialog. */
-export function staffFormPath(field: string): FormPath | undefined {
-	return STAFF_FIELDS.has(field) ? [field] : undefined;
-}
+export const staffFormPath = sameNameFormPath(STAFF_FIELDS);
 
 // ALE-384: the registration fields of the Fast-track "add a new person" form.
 const NEW_PERSON_FIELDS = new Set([
@@ -88,6 +90,4 @@ const NEW_PERSON_FIELDS = new Set([
 ]);
 
 /** A registration field → its control in the Fast-track "add a new person" form. */
-export function newPersonFormPath(field: string): FormPath | undefined {
-	return NEW_PERSON_FIELDS.has(field) ? [field] : undefined;
-}
+export const newPersonFormPath = sameNameFormPath(NEW_PERSON_FIELDS);

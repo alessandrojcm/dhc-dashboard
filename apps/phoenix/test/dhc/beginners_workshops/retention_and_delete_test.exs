@@ -168,6 +168,34 @@ defmodule Dhc.BeginnersWorkshops.RetentionAndDeleteTest do
       assert id == person.id
     end
 
+    test "people it cannot purge yet never hold up the rest of the sweep", %{coordinator: c} do
+      # The two oldest removals wait: one on an open Intake, one on an
+      # Invitation that still names them.
+      waiting_on_intake = removed_person!(~U[2026-07-01 12:00:00Z])
+      {_intake, _token} = intake_fixture!(scheduled_fixture(c).id, waiting_on_intake)
+      named_by_invitation = removed_person!(~U[2026-07-02 12:00:00Z])
+
+      {:ok, _} =
+        Dhc.Invitations.Repository.insert_pending_invitation(
+          %{"email" => named_by_invitation.email, "dateOfBirth" => "1990-01-01"},
+          named_by_invitation.id,
+          nil
+        )
+
+      purgeable = removed_person!()
+      profile = profile_of(purgeable)
+
+      assert %{purged: 1, failed: 0} =
+               BeginnersWorkshops.run_due_passes(
+                 clock: Clock.fixed(~U[2026-10-23 12:00:00.000000Z]),
+                 purge_batch: 2
+               )
+
+      assert gone?(purgeable, profile)
+      assert Repo.get(WaitlistEntry, waiting_on_intake.id)
+      assert Repo.get(WaitlistEntry, named_by_invitation.id)
+    end
+
     test "is the system's alone", %{coordinator: c} do
       person = removed_person!()
       assert {:error, :forbidden} = execute({:staff, c}, {:purge_retention, person.id})

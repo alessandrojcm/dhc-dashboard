@@ -570,6 +570,84 @@ defmodule DhcWeb.InvitationsControllerTest do
     end
   end
 
+  describe "POST /api/invitations/resend re-arming refusals" do
+    setup do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      waitlist_entry = fn email, status ->
+        Repo.insert!(%Dhc.Waitlist.WaitlistEntry{
+          email: email,
+          status: status,
+          removed_at: if(status == "removed", do: now),
+          initial_registration_date: now,
+          last_status_change: now
+        })
+      end
+
+      # Refusals are recorded in the processing log under the resending
+      # Principal, so that Principal must exist.
+      admin_id = Ecto.UUID.generate()
+      {:ok, _} = Dhc.Auth.register_principal_with_id(admin_id, %{email: "resender@example.com"})
+
+      OpenApiVerifier.install(
+        tokens: %{
+          "resender-token" => %{sub: admin_id, email: "resender@example.com", roles: ["admin"]}
+        }
+      )
+
+      %{waitlist_entry: waitlist_entry}
+    end
+
+    defp resend(conn, email) do
+      conn
+      |> put_req_header("authorization", "Bearer resender-token")
+      |> post("/api/invitations/resend", %{"emails" => [email]})
+      |> json_response(202)
+    end
+
+    defp refusal_errors(email) do
+      for log <- Repo.all(Dhc.Invitations.ProcessingLog),
+          %{"email" => ^email, "success" => false, "error" => error} <- log.results["items"],
+          do: error
+    end
+
+    for standing <- Dhc.Waitlist.Standing.statuses() do
+      @standing standing
+      test "refuses an expired direct Invitation whose email is now on the Waitlist as #{standing}",
+           %{conn: conn, waitlist_entry: waitlist_entry} do
+        email = "rejoined-#{@standing}@example.com"
+        id = insert_invitation(email: email, status: "expired")
+        waitlist_entry.(email, @standing)
+
+        assert %{"data" => %{"succeeded" => 0, "failed" => 1}} = resend(conn, email)
+        assert Repo.get!(Invitation, id).status == "expired"
+        refute_enqueued(worker: Dhc.Email.Worker)
+        assert refusal_errors(email) == [":email_on_waitlist"]
+      end
+    end
+
+    test "refuses an Invitation whose email now belongs to a Principal", %{conn: conn} do
+      email = "now-member@example.com"
+      id = insert_invitation(email: email, status: "expired")
+      {:ok, _} = Dhc.Auth.register_principal_with_id(Ecto.UUID.generate(), %{email: email})
+
+      assert %{"data" => %{"succeeded" => 0, "failed" => 1}} = resend(conn, email)
+      assert Repo.get!(Invitation, id).status == "expired"
+      assert refusal_errors(email) == [":email_is_principal"]
+    end
+
+    test "re-arms a Beginners' Workshop Invitation for its own Waitlist entry",
+         %{conn: conn, waitlist_entry: waitlist_entry} do
+      email = "attendee@example.com"
+      entry = waitlist_entry.(email, "invited")
+      id = insert_invitation(email: email, status: "expired", waitlist_id: entry.id)
+
+      assert %{"data" => %{"succeeded" => 1, "failed" => 0}} = resend(conn, email)
+      assert Repo.get!(Invitation, id).status == "pending"
+      assert [_job] = all_enqueued(worker: Dhc.Email.Worker)
+    end
+  end
+
   # Inserts an invitation directly into the `invitations` table.
   #
   # ALE-162 (ADR 0010): issue time is side-effect free — the helper only

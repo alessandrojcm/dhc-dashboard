@@ -1047,6 +1047,24 @@ defmodule Dhc.Onboarding.AcceptanceTest do
   end
 
   describe "waitlist standing at acceptance" do
+    test "a direct Invitation claims no Waitlist entry by email" do
+      invitation = insert_invitation!()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      entry =
+        Repo.insert!(%Dhc.Waitlist.WaitlistEntry{
+          email: invitation.email,
+          status: "waiting",
+          initial_registration_date: now,
+          last_status_change: now
+        })
+
+      {:ok, handle, _view} = ready(invitation, "direct-subject")
+
+      assert {:ok, %{state: "accepted"}} = Acceptance.submit_payment(handle, @payment)
+      assert %{status: "waiting"} = Repo.reload!(entry)
+    end
+
     test "an entry that is not invited refuses the conversion and stays recoverable" do
       invitation = insert_waitlist_invitation!(status: "waiting")
       {:ok, handle, _view} = ready(invitation, "standing-subject")

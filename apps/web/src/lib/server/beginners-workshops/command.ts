@@ -10,18 +10,17 @@
  * problem `detail`, or the command's fallback.
  *
  * Request-free: the `.remote.ts` file authorizes and makes the generated call.
+ * The success / `invalid` plumbing is `commandResult`, shared with
+ * `inventoryCommand`.
  */
-import { invalid } from "@sveltejs/kit";
-import { apiProblem } from "#lib/api-error.js";
+import {
+	type CommandResponse,
+	type CommandResult,
+	commandResult,
+} from "#lib/server/api/command-result.js";
 
-export interface BeginnersWorkshopCommandResponse<Data> {
-	data?: { data: Data };
-	error?: unknown;
-}
-
-export type BeginnersWorkshopCommandResult<Data> =
-	| { ok: true; data: Data }
-	| { ok: false; error: string };
+export type BeginnersWorkshopCommandResponse<Data> = CommandResponse<Data>;
+export type BeginnersWorkshopCommandResult<Data> = CommandResult<Data>;
 
 /** A form field path: object keys and array indexes. */
 export type FormPath = readonly (string | number)[];
@@ -37,20 +36,14 @@ export async function beginnersWorkshopCommand<Data>(
 	request: Promise<BeginnersWorkshopCommandResponse<Data>>,
 	translation: BeginnersWorkshopCommandTranslation,
 ): Promise<BeginnersWorkshopCommandResult<Data>> {
-	const response = await request;
-	if (!response.error && response.data) {
-		return { ok: true, data: response.data.data };
-	}
-
-	const problem = apiProblem(response.error);
-	const detail = problem?.detail ?? translation.fallback;
-	const issues = (problem?.fields ?? []).flatMap(({ field, messages }) => {
-		const path = translation.formPath(field);
-		return path ? messages.map((message) => ({ message, path })) : [];
-	});
-
-	if (issues.length === 0) return { ok: false, error: detail };
-	invalid(...issues);
+	// A field no control shows is dropped; the mapped ones carry the refusal.
+	return commandResult(request, translation.fallback, (fields) => ({
+		issues: fields.flatMap(({ field, messages }) => {
+			const path = translation.formPath(field);
+			return path ? messages.map((message) => ({ message, path })) : [];
+		}),
+		unattributed: false,
+	}));
 }
 
 /** Splits a dotted Phoenix field into a form path (`workshops.1.date` → `["workshops", 1, "date"]`). */

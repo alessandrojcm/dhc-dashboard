@@ -226,7 +226,9 @@ defmodule Dhc.BeginnersWorkshops.CancelWorkshopTest do
       refute Repo.exists?(CarriedFee)
     end
 
-    test "assigned Staff get a keyed Notification, the actor none", %{coordinator: c} do
+    test "every assigned Staff member gets a keyed Notification, the actor included", %{
+      coordinator: c
+    } do
       coach = staff_fixture("coach")
       assistant = staff_fixture("member")
       workshop = scheduled_fixture(c)
@@ -244,7 +246,7 @@ defmodule Dhc.BeginnersWorkshops.CancelWorkshopTest do
           )
         )
 
-      assert Enum.sort(Enum.map(notified, &elem(&1, 0))) == Enum.sort([coach, assistant])
+      assert Enum.sort(Enum.map(notified, &elem(&1, 0))) == Enum.sort([coach, assistant, c])
 
       assert Enum.all?(
                notified,

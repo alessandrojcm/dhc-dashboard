@@ -239,6 +239,25 @@ defmodule Dhc.BeginnersWorkshops.RescheduleTest do
                BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id}, clock: clock())
     end
 
+    test "a contact-from date is never stored after the new cutoff, even when today is", %{
+      coordinator: coordinator
+    } do
+      workshop = scheduled_fixture(coordinator, %{"contact_from" => "2026-11-10"})
+
+      # Today is 9 October; the new cutoff is 8 October, already past, so
+      # today would land after it: the date stops at the cutoff date.
+      assert {:ok, view} =
+               reschedule(
+                 coordinator,
+                 workshop,
+                 %{"date" => "2026-11-12", "payment_cutoff_date" => "2026-10-08"},
+                 now()
+               )
+
+      assert view.contact_from == ~D[2026-10-08]
+      assert %{contact_from: ~D[2026-10-08]} = Repo.get!(BeginnersWorkshop, workshop.id)
+    end
+
     test "a supplied contact-from date is judged by update_workshop's rule", %{
       coordinator: coordinator
     } do
@@ -326,16 +345,14 @@ defmodule Dhc.BeginnersWorkshops.RescheduleTest do
 
       assert {:ok, _} = reschedule(coordinator, workshop, %{"start_time" => "19:00"}, now())
 
-      for principal_id <- [coach, assistant] do
+      # Every Staff member hears, the person making the change included.
+      for principal_id <- [coach, assistant, coordinator] do
         assert [{key_1, body_1}, {key_2, body_2}] = notifications.(principal_id)
         assert key_1 == "beginners-workshop:#{workshop.id}:rescheduled:1"
         assert key_2 == "beginners-workshop:#{workshop.id}:rescheduled:2"
         assert body_1 =~ "Sat 21 Nov 2026 at 18:30"
         assert body_2 =~ "Sat 21 Nov 2026 at 19:00"
       end
-
-      # The person making the change already knows.
-      assert notifications.(coordinator) == []
     end
   end
 

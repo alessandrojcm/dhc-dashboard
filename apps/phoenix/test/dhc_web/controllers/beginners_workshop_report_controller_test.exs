@@ -35,6 +35,8 @@ defmodule DhcWeb.BeginnersWorkshopReportControllerTest do
     force_intake_state!(intake.id, "paid")
     force_intake_state!(intake.id, "attended")
     force_status!(workshop.id, "finalised")
+    # The report lists only workshops whose date has come (on the wall clock).
+    force_today!(workshop.id)
 
     %{workshop: workshop}
   end
@@ -88,7 +90,7 @@ defmodule DhcWeb.BeginnersWorkshopReportControllerTest do
 
     assert %{
              "workshopId" => workshop_id,
-             "date" => "2026-11-14",
+             "date" => date,
              "status" => "finalised",
              "batchesSent" => 1,
              "contacted" => %{"total" => 2, "batch" => 2, "fastTrack" => 0},
@@ -98,6 +100,7 @@ defmodule DhcWeb.BeginnersWorkshopReportControllerTest do
            } = row
 
     assert workshop_id == ctx.workshop.id
+    assert date == Date.to_iso8601(Dhc.ClubCalendar.on_date(DateTime.utc_now()))
     assert %{"kind" => "batch", "number" => 1, "contacted" => 2, "paidInWindow" => 1} = group
   end
 end

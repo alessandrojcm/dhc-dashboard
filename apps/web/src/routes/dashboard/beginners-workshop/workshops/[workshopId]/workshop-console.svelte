@@ -63,6 +63,7 @@ import {
 } from "#lib/beginners-workshops/presentation.js";
 import { rescheduleRecipients } from "#lib/beginners-workshops/reschedule.js";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Empty from "#lib/components/ui/empty/index.js";
@@ -118,7 +119,24 @@ const attention = $derived(
 			"Free seats, but nobody is left waiting on the Waitlist. No Batch can go out until someone joins.",
 	),
 );
+// One amber look for every Needs attention item, button or callout.
+const attentionClass =
+	"rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-foreground";
 </script>
+
+{#snippet attentionPerson(intakeId: string, text: string, testId: string)}
+	<Button
+		variant="outline"
+		class={cn(
+			attentionClass,
+			"h-auto justify-start gap-3 text-left font-normal whitespace-normal shadow-none hover:border-amber-600 hover:bg-amber-100",
+		)}
+		data-testid={testId}
+		onclick={() => (selectedIntakeId = intakeId)}
+	>
+		<AlertTriangle /><span>{text}</span>
+	</Button>
+{/snippet}
 
 {#snippet stepIcon(state: TimelineStep["state"])}
 	{#if state === "done"}<Check class="size-4 text-emerald-700" />
@@ -262,35 +280,25 @@ const attention = $derived(
 					<FailedRefundItem workshopId={workshop.id} {refund} />
 				{/each}
 				{#each view.unpaidAfterWindow as person (person.id)}
-					<button
-						type="button"
-						class="flex items-center gap-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-left text-sm"
-						data-testid="unpaid-after-window"
-						onclick={() => (selectedIntakeId = person.id)}
-					>
-						<AlertTriangle class="size-4 shrink-0" /><span
-							>{unpaidAfterWindowText(person)}</span
-						>
-					</button>
+					{@render attentionPerson(
+						person.id,
+						unpaidAfterWindowText(person),
+						"unpaid-after-window",
+					)}
 				{/each}
 				{#each view.unconfirmedCarriedFees as person (person.id)}
-					<button
-						type="button"
-						class="flex items-center gap-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-left text-sm"
-						data-testid="unconfirmed-carried-fee"
-						onclick={() => (selectedIntakeId = person.id)}
-					>
-						<AlertTriangle class="size-4 shrink-0" /><span
-							>{unconfirmedCarriedFeeText(person)}</span
-						>
-					</button>
+					{@render attentionPerson(
+						person.id,
+						unconfirmedCarriedFeeText(person),
+						"unconfirmed-carried-fee",
+					)}
 				{/each}
 				{#each attention as item (item)}
-					<div
-						class="flex items-center gap-3 rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-sm"
-					>
-						<AlertTriangle class="size-4 shrink-0" /><span>{item}</span>
-					</div>
+					<Alert.Root class={attentionClass}>
+						<AlertTriangle />
+						<Alert.Description class="text-foreground">{item}</Alert.Description
+						>
+					</Alert.Root>
 				{/each}
 			</section>
 		{/if}
@@ -404,9 +412,9 @@ const attention = $derived(
 						{#each group.intakes as intake (intake.id)}
 							{@const refund = refundLabel(intake)}
 							<li class="flex items-center gap-2">
-								<button
-									type="button"
-									class="flex min-w-0 flex-1 flex-wrap items-center gap-3 rounded-xl border bg-card px-3 py-2 text-left text-sm hover:border-primary focus-visible:border-primary"
+								<Button
+									variant="outline"
+									class="h-auto min-w-0 flex-1 flex-wrap justify-start gap-3 rounded-xl bg-card px-3 py-2 text-left font-normal whitespace-normal shadow-none focus-visible:border-primary"
 									aria-label={`${personName(intake)} — ${intakeStateLabel(intake.state)}`}
 									onclick={() => (selectedIntakeId = intake.id)}
 								>
@@ -446,7 +454,7 @@ const attention = $derived(
 									<Badge variant="secondary"
 										>{intakeStateLabel(intake.state)}</Badge
 									>
-								</button>
+								</Button>
 								{#if group.key === "attended"}
 									{#if intake.standing === "attended" && canInvite}
 										<InviteButton
@@ -499,12 +507,7 @@ const attention = $derived(
 		<div class="p-5">
 			{#if selectedIntake}
 				{#key selectedIntake.id}
-					<IntakeDetail
-						workshopId={workshop.id}
-						workshopDate={workshop.date}
-						feeCents={workshop.feeCents}
-						intake={selectedIntake}
-					/>
+					<IntakeDetail workshopId={workshop.id} intake={selectedIntake} />
 				{/key}
 			{/if}
 		</div>

@@ -9069,7 +9069,7 @@ components:
       enum: [scheduled, finalised, cancelled]
     BeginnersWorkshopAlert:
       type: string
-      description: "`unstaffed`: no coach is assigned yet (assistants alone do not staff it)."
+      description: "`unstaffed`: nobody is on the Staff yet (neither a coach nor an assistant)."
       enum: [unstaffed]
     BeginnersWorkshopSeats:
       type: object
@@ -9486,7 +9486,7 @@ components:
       description: |
         One Intake on the console roster. Names are null once the person is
         anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands, attendanceCorrections, paidVia, carriedFee, standing]
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands, attendanceCorrections, paidVia, carriedFee, standing, refundChoice, refundTimingDaysToGo]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -9537,7 +9537,7 @@ components:
           items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeEmailLogEntry"}
         history:
           type: array
-          description: The console commands run on the Intake, oldest first.
+          description: The console commands, cancellation and door check-ins and undos on the Intake, oldest first.
           items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeHistoryEntry"}
         availableCommands:
           type: array
@@ -9564,6 +9564,38 @@ components:
           description: |
             The Carried Fee that paid this Intake, else the person's live one
             (null without one).
+        refundChoice:
+          allOf: [{$ref: "#/components/schemas/BeginnersWorkshopRefundChoice"}]
+          nullable: true
+          description: |
+            Whether Withdraw needs the refund-or-forfeit choice — a paid
+            Intake, or a contacted one whose person holds a Carried Fee — and
+            which money it settles (null: no money, no choice). The boundary
+            requires the choice by the same rule (`refund_choice_required`).
+        refundTimingDaysToGo:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 7
+          description: |
+            The refund-timing hint (story 77): the whole Dublin days left
+            until the workshop when that is 7 or fewer, for an Intake with a
+            `refundChoice`; null otherwise. Judged on Phoenix's clock.
+    BeginnersWorkshopRefundChoice:
+      type: object
+      description: |
+        The money a refund-or-forfeit choice settles. A refund is always the
+        full amount that money originally took: what the Stripe payment
+        received, or what the Carried Fee was originally paid (possibly in
+        another workshop, at another fee). `amountCents` is null for an
+        imported Carried Fee whose Stripe payment is not linked yet.
+      required: [source, amountCents, currency]
+      properties:
+        source:
+          type: string
+          enum: [payment, carried_fee]
+        amountCents: {type: integer, nullable: true, minimum: 0}
+        currency: {type: string, nullable: true}
     BeginnersCarriedFeeStatus:
       type: string
       description: |
@@ -9612,9 +9644,11 @@ components:
     BeginnersWorkshopIntakeHistoryCommand:
       type: string
       description: |
-        What an Intake history row records: a console Intake command, or
-        (ALE-395) `cancel_workshop`, the workshop's cancellation.
-      enum: [decline, defer, confirm, cancel_with_refund, withdraw, refund_carried_fee, resend_link, rotate_link, correct_attendance, cancel_workshop]
+        What an Intake history row records: a console Intake command,
+        (ALE-395) `cancel_workshop`, the workshop's cancellation, or a door
+        `check_in` / `undo_check_in` (who did it and when, kept after an
+        undo or an unassignment).
+      enum: [decline, defer, confirm, cancel_with_refund, withdraw, refund_carried_fee, resend_link, rotate_link, correct_attendance, cancel_workshop, check_in, undo_check_in]
     BeginnersWorkshopIntakeHistoryEntry:
       type: object
       description: |
@@ -9649,8 +9683,9 @@ components:
         refund:
           type: boolean
           description: |
-            Required whenever the person has a paid Intake: `true` refunds
-            the full amount, `false` forfeits it.
+            Required whenever there is money to settle — a paid Intake, or a
+            Carried Fee the person holds (the console row's `refundChoice`):
+            `true` refunds the full amount, `false` forfeits it.
     BeginnersWorkshopWithdrawPersonResult:
       type: object
       required: [waitlistId, status, intake, outcome]
@@ -9762,9 +9797,11 @@ components:
       type: object
       description: |
         A refund that failed and has not been retried or recorded as manual.
-        `carriedFee`: it refunds a Carried Fee (now held again), which can
-        also be forfeited.
-      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt, carriedFee]
+        `carriedFee`: it refunds a Carried Fee. `forfeitable`: that fee is
+        held again and may be forfeited instead; false while the fee stays
+        `refunded` because the person has since paid an open Intake through
+        Stripe or holds another fee (the money is still owed back).
+      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt, carriedFee, forfeitable]
       properties:
         id: {type: string, format: uuid}
         intakeId: {type: string, format: uuid}
@@ -9775,6 +9812,7 @@ components:
         reason: {type: string, description: "Why the refund was owed, e.g. `policy_failed`, `paid_after_close`."}
         failedAt: {type: string, format: date-time, nullable: true}
         carriedFee: {type: boolean}
+        forfeitable: {type: boolean}
     BeginnersWorkshopRefund:
       type: object
       required: [id, intakeId, followsRefundId, status, method, reason, amountCents, currency, requestedAt, completedAt]
@@ -10256,12 +10294,11 @@ components:
     BeginnersWorkshopReportExitsBeforePaying:
       type: object
       description: Unpaid Intakes that closed before paying; the rate is out of contacted.
-      required: [declined, lapsed, returned, withdrawn, total, rate]
+      required: [declined, lapsed, returned, total, rate]
       properties:
         declined: {type: integer, minimum: 0}
         lapsed: {type: integer, minimum: 0}
         returned: {type: integer, minimum: 0}
-        withdrawn: {type: integer, minimum: 0}
         total: {type: integer, minimum: 0}
         rate: {$ref: "#/components/schemas/BeginnersWorkshopReportRate"}
     BeginnersWorkshopReportPaid:

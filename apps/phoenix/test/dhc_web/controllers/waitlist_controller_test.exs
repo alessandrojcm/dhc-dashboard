@@ -221,6 +221,30 @@ defmodule DhcWeb.WaitlistControllerTest do
              ]
     end
 
+    test "counts every waiting person, even one left out of the age figures",
+         %{conn: conn} do
+      insert_waitlist_profile(status: "waiting", gender: "man (cis)", age: 20)
+      insert_waitlist_profile(status: "waiting", gender: "woman (cis)", age: 30)
+
+      # Their profile is claimed, so it has no say in the age figures.
+      Repo.update_all(
+        from(p in UserProfile, where: p.gender == "woman (cis)"),
+        set: [is_active: true]
+      )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/analytics")
+
+      assert %{"data" => %{"totalCount" => 2, "averageAge" => average_age}} =
+               json_response(conn, 200)
+
+      assert_in_delta average_age, 20.0, 0.01
+      # The report's queue reads the same Waiting count.
+      assert [_, _] = Dhc.Waitlist.queue_report(DateTime.utc_now()).waiting_since
+    end
+
     test "allows every Waitlist manager and refuses coaches", %{conn: _conn} do
       for role <- @waitlist_managers do
         conn =

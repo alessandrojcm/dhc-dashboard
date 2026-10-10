@@ -31,6 +31,7 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
     IntakeEvent,
     IntakePage,
     IntakePayment,
+    IntakePolicy,
     IntakeRefund,
     WorkshopConsole
   }
@@ -275,6 +276,54 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
       assert email_types(intake_of(later, person)) == ["contact_pay"]
     end
 
+    test "repeating it once the fee is refunded succeeds and does nothing again", %{
+      coordinator: c
+    } do
+      person = linked_holder!(c)
+      {workshop, [intake]} = contacted!(c, [person], 2)
+
+      assert {:ok, %{outcome: :done}} = command(c, :refund_carried_fee, workshop, intake)
+
+      assert {:ok, %{state: "contacted", outcome: :already_done}} =
+               command(c, :refund_carried_fee, workshop, intake)
+
+      assert [_one_refund] = fee_refunds(fee!(person))
+
+      assert [%IntakeEvent{command: "refund_carried_fee"}] =
+               Repo.all(from(e in IntakeEvent, where: e.intake_id == ^intake.id))
+
+      # From the Waitlist tab too, and a person who never held a fee is still refused.
+      assert {:ok, %{outcome: :already_done}} = refund_person(c, person)
+      assert [_one_refund] = fee_refunds(fee!(person))
+
+      assert {:error, :no_carried_fee} =
+               refund_person(c, waiting_person_fixture(~U[2025-02-01 12:00:00Z]))
+    end
+
+    test "the console offers it only when the boundary would refund: not to someone removed past retention",
+         %{coordinator: c} do
+      person = linked_holder!(c)
+      {workshop, [intake]} = contacted!(c, [person], 2)
+      assert :refund_carried_fee in console_row(workshop, intake).available_commands
+
+      Repo.update!(
+        Ecto.Changeset.change(person, status: "removed", removed_at: ~U[2026-06-01 00:00:00Z])
+      )
+
+      refute :refund_carried_fee in console_row(workshop, intake).available_commands
+
+      assert {:error, :fee_not_refundable} =
+               command(c, :refund_carried_fee, workshop, intake)
+
+      assert %CarriedFee{status: "held"} = fee!(person)
+
+      assert IntakePolicy.check(:refund_carried_fee, %{
+               state: "contacted",
+               carried_fee: "held",
+               fee_refundable: false
+             }) == {:error, :fee_not_refundable}
+    end
+
     test "a holder removed within retention may be refunded; one removed longer ago, or who attended, may not",
          %{coordinator: c} do
       recent = linked_holder!(c, "pi_recent")
@@ -334,7 +383,7 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
 
       # Needs attention on the original workshop's console offers Forfeit too.
       workshop = %{id: deferred.workshop_id}
-      assert [%{id: id, carried_fee: true}] = console(workshop).failed_refunds
+      assert [%{id: id, carried_fee: true, forfeitable: true}] = console(workshop).failed_refunds
       assert id == refund.id
 
       assert {:ok, %{status: "pending", follows_refund_id: follows}} =
@@ -343,6 +392,50 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
       assert follows == refund.id
       assert %CarriedFee{status: "refunded"} = fee!(person)
       assert console(workshop).failed_refunds == []
+    end
+
+    test "stays refunded, still owed back, when the person has since paid an Intake through Stripe",
+         %{coordinator: c} do
+      {person, deferred, _payment} = deferred_holder!(c)
+      assert {:ok, _} = refund_person(c, person)
+      [refund] = fee_refunds(fee!(person))
+
+      # Their next contact asks them to pay, and they do, through Stripe.
+      {workshop, [intake]} = contacted!(c, [person], 1)
+      pay!(intake)
+      assert %Intake{state: "paid", paid_via: "stripe"} = Repo.reload!(intake)
+
+      fail!(refund)
+
+      # A held fee beside a paid seat would be two entitlements: the fee
+      # stays refunded and the money is still owed back.
+      assert %CarriedFee{status: "refunded"} = fee!(person)
+      assert [alert] = alerts(c)
+      assert alert.body =~ "still owed back"
+      refute alert.body =~ "forfeit"
+
+      original = %{id: deferred.workshop_id}
+
+      assert [%{id: id, carried_fee: true, forfeitable: false}] =
+               console(original).failed_refunds
+
+      assert id == refund.id
+
+      assert {:error, :carried_fee_not_held} =
+               execute({:staff, c}, {:forfeit_carried_fee, original.id, refund.id})
+
+      # Deferring the Stripe-paid seat still works: it carries a new held fee.
+      assert {:ok, %{state: "deferred"}} = command(c, :defer, workshop, intake)
+
+      assert ["held", "refunded"] =
+               person |> fees() |> Enum.map(& &1.status) |> Enum.sort()
+
+      # Retry follows the failed refund up; the refunded fee stays refunded.
+      assert {:ok, %{status: "pending", follows_refund_id: follows}} =
+               execute({:staff, c}, {:retry_refund, original.id, refund.id})
+
+      assert follows == refund.id
+      assert console(original).failed_refunds == []
     end
 
     test "a refund.failed event holds the fee again too", %{coordinator: c} do
@@ -519,6 +612,52 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
       assert [%IntakeRefund{reason: "withdrawn", amount_cents: 3500}] = fee_refunds(fee)
       assert "withdrawn_refunded" in email_types(intake)
       assert List.last(notices(person))["data_variables"]["MESSAGE_HTML"] =~ "€35.00"
+    end
+
+    test "the console row says when Withdraw needs the choice, for which money and how much, with the refund-timing hint",
+         %{coordinator: c} do
+      holder = linked_holder!(c)
+      payer = waiting_person_fixture(~U[2025-01-01 12:00:00Z])
+      plain = waiting_person_fixture(~U[2025-02-01 12:00:00Z])
+      {workshop, [holding, paying, contacted]} = contacted!(c, [holder, payer, plain], 3)
+
+      row = fn intake, at ->
+        workshop
+        |> console(at)
+        |> Map.fetch!(:roster)
+        |> Map.values()
+        |> List.flatten()
+        |> Enum.find(&(&1.id == intake.id))
+      end
+
+      # A contacted holder: their Carried Fee, whatever it originally took.
+      assert %{
+               refund_choice: %{source: :carried_fee, amount_cents: 3500, currency: "eur"},
+               refund_timing_days_to_go: nil
+             } = row.(holding, @now)
+
+      assert %{refund_choice: nil, refund_timing_days_to_go: nil} = row.(contacted, @now)
+
+      assert {:ok, _} = execute({:intake_link, token(holding)}, :confirm)
+      pay!(paying)
+
+      # Paid by the fee, or by Stripe: the full amount that payment took.
+      assert %{refund_choice: %{source: :carried_fee, amount_cents: 3500}} =
+               row.(holding, @now)
+
+      assert %{refund_choice: %{source: :payment, amount_cents: 4000, currency: "eur"}} =
+               row.(paying, @now)
+
+      # Seven days or fewer to go, on the boundary clock (Dublin dates).
+      for {at, days} <- [
+            {~U[2026-11-07 00:30:00Z], 7},
+            {~U[2026-11-06 23:30:00Z], nil},
+            {~U[2026-11-13 12:00:00Z], 1}
+          ] do
+        assert %{refund_timing_days_to_go: ^days} = row.(paying, at)
+      end
+
+      assert %{refund_timing_days_to_go: nil} = row.(contacted, ~U[2026-11-13 12:00:00Z])
     end
 
     test "a contacted holder needs the choice too", %{coordinator: c} do

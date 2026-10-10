@@ -181,6 +181,14 @@ defmodule Dhc.BeginnersWorkshops.ReportTest do
              ]
     end
 
+    test "leaves out a cancelled workshop whose date has not come", ctx do
+      coordinator = staff_fixture()
+      future = scheduled_fixture(coordinator, %{"date" => "2026-12-12"})
+      force_status!(future.id, "cancelled")
+
+      assert Enum.map(report().outcomes, & &1.workshop_id) == [ctx.b.id, ctx.a.id, ctx.c.id]
+    end
+
     test "counts every stage, anonymised Intakes included, with rates out of who could take it",
          ctx do
       row = row(report(), ctx.a)
@@ -192,7 +200,6 @@ defmodule Dhc.BeginnersWorkshops.ReportTest do
                declined: 1,
                lapsed: 1,
                returned: 0,
-               withdrawn: 0,
                total: 2,
                rate: 2 / 9
              }
@@ -331,6 +338,42 @@ defmodule Dhc.BeginnersWorkshops.ReportTest do
       assert queue.removed_in_retention == 1
       assert queue.invitable == 1
       assert queue.carried_fees == %{count: 2, total_paid_cents: 3500, unlinked: 1}
+    end
+
+    test "outstanding Carried Fees include one applied to an upcoming seat" do
+      upcoming = scheduled_fixture(staff_fixture(), %{"date" => "2026-12-12"})
+      intake = intake!(upcoming, "paid", paid_at: @in_window, standing: "waiting")
+
+      Repo.insert!(%CarriedFee{
+        waitlist_id: intake.waitlist_id,
+        status: "applied",
+        origin: "import",
+        imported_paid_text: "Yes",
+        amount_cents: 4000,
+        stripe_payment_intent_id: "pi_applied",
+        applied_intake_id: intake.id,
+        status_changed_at: @sent_at
+      })
+
+      Repo.insert!(%CarriedFee{
+        waitlist_id: nil,
+        status: "held",
+        origin: "import",
+        imported_paid_text: "paid",
+        status_changed_at: @sent_at
+      })
+
+      Repo.insert!(%CarriedFee{
+        waitlist_id: nil,
+        status: "spent",
+        origin: "import",
+        imported_paid_text: "paid",
+        amount_cents: 4000,
+        applied_intake_id: intake.id,
+        status_changed_at: @sent_at
+      })
+
+      assert report().queue.carried_fees == %{count: 2, total_paid_cents: 4000, unlinked: 1}
     end
 
     test "is empty without Intakes or people" do

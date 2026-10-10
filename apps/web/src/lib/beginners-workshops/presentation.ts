@@ -44,7 +44,7 @@ const STAGE_TONES = {
 >;
 
 const ALERT_LABELS = {
-	unstaffed: "Unstaffed: no coach assigned",
+	unstaffed: "Unstaffed: no Staff assigned",
 } satisfies Record<BeginnersWorkshopAlert, string>;
 
 const STAFF_ROLE_LABELS = {

@@ -5,6 +5,7 @@ import { loginAsUser } from "./auth";
 import {
 	addClubDays,
 	deleteE2EFixture,
+	deleteE2EFixtureUnlessReferenced,
 	fetchE2EStatus,
 	seedE2EScenario,
 } from "./e2eApi";
@@ -26,26 +27,46 @@ const INVITABLE_PATH = "/dashboard/beginners-workshop?tab=invitable";
 
 const tag = `${Date.now()}-${faker.string.alphanumeric(6).toLowerCase()}`;
 
-function seedMember(
+// Fixtures the run seeded, torn down in `afterAll` whatever the tests did.
+// The harness has no Beginners' Workshop teardown, so workshops (and the
+// Carried Fee row, which outlives its person) stay in the disposable
+// per-run database.
+const memberIds: string[] = [];
+const waitlistIds: string[] = [];
+
+async function seedMember(
 	role: "beginners_coordinator" | "member",
 	firstName: string,
 	lastName: string,
 ) {
-	return seedE2EScenario("member", {
+	const member = await seedE2EScenario("member", {
 		email: `bw-${lastName.toLowerCase()}-${tag}@test.com`,
 		roles: role === "member" ? ["member"] : [role, "member"],
 		firstName,
 		lastName,
 	});
+	memberIds.push(member.userId);
+	return member;
 }
 
-function seedPerson(firstName: string, initialRegistrationDate: string) {
-	return seedE2EScenario("waitlist", {
+async function seedPerson(firstName: string, initialRegistrationDate: string) {
+	const person = await seedE2EScenario("waitlist", {
 		email: `bw-${firstName.toLowerCase()}-${tag}@example.com`,
 		firstName,
 		lastName: "Beginner",
 		initialRegistrationDate,
 	});
+	waitlistIds.push(person.waitlistId);
+	return person;
+}
+
+// An Invitation the handoff issued still names the Waitlist entry, so it
+// goes first. None is the usual case: the journey deletes its own.
+async function deleteInvitationOf(waitlistId: string) {
+	const invitation = await seedE2EScenario("beginnersWorkshopInvitation", {
+		waitlistId,
+	}).catch(() => null);
+	if (invitation) await deleteE2EFixture("invitation", invitation.invitationId);
 }
 
 async function pickDate(page: Page, label: string, isoDate: string) {
@@ -71,6 +92,17 @@ test.describe("Beginners' Workshop journey", () => {
 		);
 		coordinatorEmail = coordinator.email;
 		coordinatorId = coordinator.memberId;
+	});
+
+	test.afterAll(async () => {
+		for (const waitlistId of waitlistIds) {
+			await deleteInvitationOf(waitlistId);
+			await deleteE2EFixture("waitlist", waitlistId);
+		}
+		// The coordinator scheduled workshops and the assistant is Staff, so
+		// both usually stay (409 `still_referenced`).
+		for (const memberId of memberIds)
+			await deleteE2EFixtureUnlessReferenced("member", memberId);
 	});
 
 	test("schedules, contacts, takes payment, checks in and invites", async ({
@@ -130,7 +162,10 @@ test.describe("Beginners' Workshop journey", () => {
 			workshopId,
 		});
 		expect(batch.contactedWaitlistIds).toEqual([person.waitlistId]);
-		await page.reload();
+		await gotoHydrated(
+			page,
+			`/dashboard/beginners-workshop/workshops/${workshopId}`,
+		);
 		await expect(
 			page.getByRole("button", { name: `${personName} — Contacted` }),
 		).toBeVisible();
@@ -142,70 +177,76 @@ test.describe("Beginners' Workshop journey", () => {
 			waitlistId: person.waitlistId,
 		});
 		const personContext = await browser.newContext();
-		const personPage = await personContext.newPage();
-		await personPage.route("https://checkout.stripe.com/**", (route) =>
-			route.fulfill({
-				contentType: "text/html",
-				body: "<title>Stripe Checkout</title>",
-			}),
-		);
-		await gotoHydrated(personPage, link.path);
-		await expect(
-			personPage.getByRole("heading", {
-				name: "Your place at the Beginners' Workshop",
-			}),
-		).toBeVisible();
-		await expect(personPage.getByText(`Hi ${personFirst},`)).toBeVisible();
-		await personPage
-			.getByRole("button", { name: "Pay for your place" })
-			.click();
-		await personPage.waitForURL(CHECKOUT_URL);
+		try {
+			const personPage = await personContext.newPage();
+			await personPage.route("https://checkout.stripe.com/**", (route) =>
+				route.fulfill({
+					contentType: "text/html",
+					body: "<title>Stripe Checkout</title>",
+				}),
+			);
+			await gotoHydrated(personPage, link.path);
+			await expect(
+				personPage.getByRole("heading", {
+					name: "Your place at the Beginners' Workshop",
+				}),
+			).toBeVisible();
+			await expect(personPage.getByText(`Hi ${personFirst},`)).toBeVisible();
+			await personPage
+				.getByRole("button", { name: "Pay for your place" })
+				.click();
+			await personPage.waitForURL(CHECKOUT_URL);
 
-		// Stripe completes the payment; the page shows paid.
-		const payment = await seedE2EScenario("beginnersWorkshopPayment", {
-			waitlistId: person.waitlistId,
-		});
-		expect(payment.outcome).toBe("paid");
-		expect(personPage.url()).toContain(payment.sessionId);
-		await gotoHydrated(personPage, link.path);
-		await expect(
-			personPage.getByRole("heading", { name: "Your place is confirmed" }),
-		).toBeVisible();
-		await expect(personPage.getByText("€40.00 · paid")).toBeVisible();
-		await personContext.close();
+			// Stripe completes the payment; the page shows paid.
+			const payment = await seedE2EScenario("beginnersWorkshopPayment", {
+				waitlistId: person.waitlistId,
+			});
+			expect(payment.outcome).toBe("paid");
+			expect(personPage.url()).toContain(payment.sessionId);
+			await gotoHydrated(personPage, link.path);
+			await expect(
+				personPage.getByRole("heading", { name: "Your place is confirmed" }),
+			).toBeVisible();
+			await expect(personPage.getByText("€40.00 · paid")).toBeVisible();
+		} finally {
+			await personContext.close();
+		}
 
 		// The workshop day: the assistant checks the person in and finishes
 		// the workshop at the door.
 		await seedE2EScenario("beginnersWorkshopDoorOpen", { workshopId });
 		const assistantContext = await browser.newContext();
-		const assistantPage = await assistantContext.newPage();
-		await loginAsUser(assistantContext, assistant.email);
-		await gotoHydrated(assistantPage, "/dashboard/my-beginners-workshops");
-		await assistantPage
-			.getByRole("listitem")
-			.filter({ hasText: venue })
-			.getByRole("link", { name: "Door view" })
-			.click();
-		await expect(
-			assistantPage.getByRole("heading", { level: 1 }),
-		).toBeVisible();
-		await assistantPage
-			.getByRole("button", { name: `Check in ${personName}` })
-			.click();
-		await expect(
-			assistantPage.getByRole("progressbar", { name: "1 of 1 in" }),
-		).toBeVisible();
-		await expect(assistantPage.getByText("Everyone's in.")).toBeVisible();
-		await assistantPage
-			.getByRole("button", { name: "Finish workshop (0 will be no-show)" })
-			.click();
-		const finish = assistantPage.getByRole("dialog", {
-			name: "Finish workshop?",
-		});
-		await expect(finish.getByText("Everyone is checked in.")).toBeVisible();
-		await finish.getByRole("button", { name: "Finish workshop" }).click();
-		await expect(assistantPage.getByText("Workshop finished")).toBeVisible();
-		await assistantContext.close();
+		try {
+			const assistantPage = await assistantContext.newPage();
+			await loginAsUser(assistantContext, assistant.email);
+			await gotoHydrated(assistantPage, "/dashboard/my-beginners-workshops");
+			await assistantPage
+				.getByRole("listitem")
+				.filter({ hasText: venue })
+				.getByRole("link", { name: "Door view" })
+				.click();
+			await expect(
+				assistantPage.getByRole("heading", { level: 1 }),
+			).toBeVisible();
+			await assistantPage
+				.getByRole("button", { name: `Check in ${personName}` })
+				.click();
+			await expect(
+				assistantPage.getByRole("progressbar", { name: "1 of 1 in" }),
+			).toBeVisible();
+			await expect(assistantPage.getByText("Everyone's in.")).toBeVisible();
+			await assistantPage
+				.getByRole("button", { name: "Finish workshop (0 will be no-show)" })
+				.click();
+			const finish = assistantPage.getByRole("dialog", {
+				name: "Finish workshop?",
+			});
+			await expect(finish.getByText("Everyone is checked in.")).toBeVisible();
+			await finish.getByRole("button", { name: "Finish workshop" }).click();
+			await expect(assistantPage.getByText("Workshop finished")).toBeVisible();
+		} finally {
+			await assistantContext.close();
+		}
 
 		// The coordinator sees the person as Invitable, invites them from
 		// the console's attended list, and they leave Invitable.
@@ -279,24 +320,29 @@ test.describe("Beginners' Workshop journey", () => {
 		});
 
 		const holderContext = await browser.newContext();
-		const holderPage = await holderContext.newPage();
-		await gotoHydrated(holderPage, link.path);
-		await expect(
-			holderPage.getByRole("heading", {
-				name: "Confirm your place at the Beginners' Workshop",
-			}),
-		).toBeVisible();
-		await expect(
-			holderPage.getByRole("button", { name: "Pay for your place" }),
-		).toHaveCount(0);
-		await holderPage.getByRole("button", { name: "Confirm my place" }).click();
-		await expect(
-			holderPage.getByRole("heading", { name: "Your place is confirmed" }),
-		).toBeVisible();
-		await expect(
-			holderPage.getByText(/Your Carried Fee covers your place/),
-		).toBeVisible();
-		await holderContext.close();
+		try {
+			const holderPage = await holderContext.newPage();
+			await gotoHydrated(holderPage, link.path);
+			await expect(
+				holderPage.getByRole("heading", {
+					name: "Confirm your place at the Beginners' Workshop",
+				}),
+			).toBeVisible();
+			await expect(
+				holderPage.getByRole("button", { name: "Pay for your place" }),
+			).toHaveCount(0);
+			await holderPage
+				.getByRole("button", { name: "Confirm my place" })
+				.click();
+			await expect(
+				holderPage.getByRole("heading", { name: "Your place is confirmed" }),
+			).toBeVisible();
+			await expect(
+				holderPage.getByText(/Your Carried Fee covers your place/),
+			).toBeVisible();
+		} finally {
+			await holderContext.close();
+		}
 
 		await loginAsUser(context, coordinatorEmail);
 		await gotoHydrated(

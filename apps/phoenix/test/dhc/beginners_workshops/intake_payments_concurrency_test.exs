@@ -134,7 +134,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsConcurrencyTest do
       end
 
       assert LockTrace.transactions(start_events) == [
-               ~w(beginners_workshops beginners_workshop_intakes beginners_workshop_carried_fees beginners_workshop_intake_payments),
+               ~w(beginners_workshops waitlist beginners_workshop_intakes beginners_workshop_carried_fees beginners_workshop_intake_payments),
                ~w(beginners_workshops beginners_workshop_intakes beginners_workshop_intake_payments)
              ]
 

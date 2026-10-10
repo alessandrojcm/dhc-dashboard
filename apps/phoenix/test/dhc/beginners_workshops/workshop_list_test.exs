@@ -110,8 +110,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopListTest do
                :next_batch_due
     end
 
-    test "seats count paid and live holds; staffed workshops have no alert", %{workshop: w} do
-      facts = %{WorkshopFacts.empty() | paid: 2, holds: 1, coach_assigned: true}
+    test "seats count paid and live holds; a workshop with any Staff (even no coach) has no alert",
+         %{workshop: w} do
+      staff = %{coach: nil, assistants: [%{principal_id: Ecto.UUID.generate(), name: "Asha"}]}
+      facts = %{WorkshopFacts.empty() | paid: 2, holds: 1, staff: staff}
 
       assert WorkshopPolicy.seats(w, facts) == %{
                capacity: 4,

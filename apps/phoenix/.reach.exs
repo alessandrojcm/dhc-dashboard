@@ -37,8 +37,9 @@
       {"Dhc.Workshops.*", ["Dhc.TrainingAnnouncements.*"]},
       # ADR 0029: Beginners' Workshops and Workshops share no code, in either
       # direction and in neither the domain nor the web/API slices, and
-      # Beginners' Workshops are never announced. Waitlist and Onboarding sit
-      # below Beginners' Workshops and never call up into them.
+      # Beginners' Workshops are never announced. Waitlist and Onboarding
+      # (including Invitations, which own acceptance and deletion) sit below
+      # Beginners' Workshops and never call up into them.
       {["Dhc.BeginnersWorkshops", "Dhc.BeginnersWorkshops.*", "DhcWeb.BeginnersWorkshop*"],
        [
          "Dhc.Workshops",
@@ -57,8 +58,11 @@
          "Dhc.Waitlist.*",
          "Dhc.Onboarding",
          "Dhc.Onboarding.*",
+         "Dhc.Invitations",
+         "Dhc.Invitations.*",
          "DhcWeb.Waitlist*",
-         "DhcWeb.Onboarding*"
+         "DhcWeb.Onboarding*",
+         "DhcWeb.Invitation*"
        ], ["Dhc.BeginnersWorkshops", "Dhc.BeginnersWorkshops.*", "DhcWeb.BeginnersWorkshop*"]},
       # Training Announcements jobs are written in one place (ALE-311):
       # only Scheduling may insert Oban jobs.

@@ -54,9 +54,13 @@
 		{
 			"files": [
 				"src/routes/dashboard/beginners-workshop/**",
+				"src/routes/dashboard/my-beginners-workshops/**",
+				"src/routes/(public)/beginners/**",
 				"src/lib/beginners-workshops/**",
+				"src/lib/components/beginners-workshops/**",
 				"src/lib/server/beginners-workshops/**",
-				"src/lib/schemas/beginnersWorkshop*"
+				"src/lib/schemas/beginnersWorkshop*",
+				"src/lib/schemas/beginnersIntake*"
 			],
 			"rules": {
 				"no-restricted-imports": [
@@ -66,20 +70,22 @@
 							{
 								"group": [
 									"**/components/workshops",
-									"**/components/workshops/*",
-									"**/routes/dashboard/workshops",
-									"**/routes/dashboard/workshops/*",
-									"**/routes/dashboard/my-workshops",
-									"**/routes/dashboard/my-workshops/*",
-									"**/routes/(public)/workshops",
-									"**/routes/(public)/workshops/*",
+									"**/components/workshops/**",
+									"**/components/workshop-form*",
+									"**/dashboard/workshops",
+									"**/dashboard/workshops/**",
+									"**/dashboard/my-workshops",
+									"**/dashboard/my-workshops/**",
+									"**/(public)/workshops",
+									"**/(public)/workshops/**",
 									"../workshops",
-									"../workshops/*",
+									"../workshops/**",
 									"../my-workshops",
-									"../my-workshops/*",
+									"../my-workshops/**",
 									"**/schemas/workshop*",
 									"**/server/api/workshop-*",
-									"**/server/api/external-workshop-*"
+									"**/server/api/external-workshop-*",
+									"**/server/workshop-generator*"
 								],
 								"message": "A Beginners' Workshop is not a Workshop. ADR 0029 keeps the two apart; build it under the beginners-workshop route or $lib/beginners-workshops instead."
 							}
@@ -91,12 +97,14 @@
 		{
 			"files": [
 				"src/lib/components/workshops/**",
+				"src/lib/components/workshop-form*",
 				"src/routes/dashboard/workshops/**",
 				"src/routes/dashboard/my-workshops/**",
 				"src/routes/(public)/workshops/**",
 				"src/lib/schemas/workshop*",
 				"src/lib/server/api/workshop-*",
-				"src/lib/server/api/external-workshop-*"
+				"src/lib/server/api/external-workshop-*",
+				"src/lib/server/workshop-generator*"
 			],
 			"rules": {
 				"no-restricted-imports": [
@@ -106,10 +114,15 @@
 							{
 								"group": [
 									"**/beginners-workshop",
-									"**/beginners-workshop/*",
+									"**/beginners-workshop/**",
 									"**/beginners-workshops",
-									"**/beginners-workshops/*",
-									"**/schemas/beginnersWorkshop*"
+									"**/beginners-workshops/**",
+									"**/my-beginners-workshops",
+									"**/my-beginners-workshops/**",
+									"**/(public)/beginners",
+									"**/(public)/beginners/**",
+									"**/schemas/beginnersWorkshop*",
+									"**/schemas/beginnersIntake*"
 								],
 								"message": "A Workshop is not a Beginners' Workshop. ADR 0029 keeps the two apart."
 							}

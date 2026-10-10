@@ -235,6 +235,113 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
     end
   end
 
+  describe "a replayed Checkout Session create" do
+    # The first create never answers (so the session may or may not exist);
+    # its form is sent to the test as `{:first_form, form}`.
+    defp first_create_lost do
+      test_pid = self()
+
+      Dhc.StripeHTTPStub.stub("POST", "/v1/checkout/sessions", fn conn ->
+        send(test_pid, {:first_form, Dhc.StripeHTTPStub.form(conn)})
+        Dhc.StripeHTTPStub.stripe_error(conn, 500, %{"message" => "lost"})
+      end)
+    end
+
+    test "sends exactly the parameters the hold froze, after a link rotation, an email edit and a reschedule",
+         %{coordinator: coordinator} do
+      {workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
+      first_create_lost()
+      assert {:error, :payment_unavailable} = pay(token)
+      assert_received {:first_form, first}
+
+      at = DateTime.add(@now, 60)
+
+      assert {:ok, %{link_generation: 2}} =
+               BeginnersWorkshops.execute(
+                 {:staff, coordinator},
+                 {:rotate_link, workshop.id, intake.id, %{}},
+                 clock: at(at)
+               )
+
+      entry = Repo.get!(Dhc.Waitlist.WaitlistEntry, intake.waitlist_id)
+      Repo.update!(Ecto.Changeset.change(entry, email: "changed@waitlist.example.com"))
+
+      assert {:ok, _} =
+               BeginnersWorkshops.execute(
+                 {:staff, coordinator},
+                 {:reschedule_workshop, workshop.id, %{"date" => "2026-11-21"}},
+                 clock: at(at)
+               )
+
+      Stripe.stub_create()
+      new_token = Dhc.BeginnersWorkshops.IntakeLink.token(intake.id, 2)
+      assert {:ok, %{checkout_url: _}} = pay(new_token, at)
+      assert_received {:checkout_created, replayed, _key}
+
+      assert replayed == first
+      assert first["customer_email"] =~ "@waitlist.example.com"
+      refute first["customer_email"] == "changed@waitlist.example.com"
+
+      # The email copy is not kept once the session is recorded.
+      assert %IntakePayment{checkout_email: nil, stripe_checkout_session_id: "cs_" <> _} =
+               payment!(intake)
+    end
+
+    test "Stripe refusing a replay for changed parameters keeps the hold: the session may exist",
+         %{coordinator: coordinator} do
+      {workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
+      first_create_lost()
+      assert {:error, :payment_unavailable} = pay(token)
+
+      Dhc.StripeHTTPStub.stub("POST", "/v1/checkout/sessions", fn conn ->
+        Dhc.StripeHTTPStub.stripe_error(conn, 400, %{
+          "type" => "idempotency_error",
+          "message" => "Keys for idempotent requests can only be used with the same parameters"
+        })
+      end)
+
+      assert {:error, :payment_unavailable} = pay(token, DateTime.add(@now, 60))
+      assert {:ok, %{waiting: 1, released: 0}} = reap(@hold_ends)
+
+      assert %IntakePayment{status: "open", stripe_checkout_session_id: nil} = payment!(intake)
+      assert %{holds: 1} = seats(workshop)
+    end
+
+    test "a hold that closed while its session was unrecorded is still settled: a payment that went through is refunded",
+         %{coordinator: coordinator} do
+      {workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
+      first_create_lost()
+      assert {:error, :payment_unavailable} = pay(token)
+
+      # The coordinator declines the person meanwhile: the hold is releasing.
+      assert {:ok, _} =
+               BeginnersWorkshops.execute(
+                 {:staff, coordinator},
+                 {:decline, workshop.id, intake.id, %{}},
+                 clock: at()
+               )
+
+      row = payment!(intake)
+      assert %IntakePayment{status: "releasing", stripe_checkout_session_id: nil} = row
+
+      # The lost create had made a session, and the person paid it.
+      Stripe.stub_create()
+      Stripe.refuse_expire(Stripe.session_id(row))
+      Stripe.stub_retrieve(Stripe.session(row))
+      Stripe.stub_refund_create()
+
+      assert {:ok, %{completed: 1}} = reap(@hold_ends)
+
+      assert %IntakePayment{status: "paid", stripe_checkout_session_id: "cs_" <> _} =
+               Repo.reload!(row)
+
+      assert [%Dhc.BeginnersWorkshops.IntakeRefund{reason: "paid_after_close"}] =
+               Repo.all(
+                 from(r in Dhc.BeginnersWorkshops.IntakeRefund, where: r.payment_id == ^row.id)
+               )
+    end
+  end
+
   describe "complete_payment" do
     test "pays the Intake through Stripe, queues Place confirmed – paid once, and is idempotent",
          %{coordinator: coordinator} do

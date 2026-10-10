@@ -10,19 +10,13 @@ defmodule DhcWeb.BeginnersWorkshopBatchesController do
 
   action_fallback DhcWeb.BeginnersWorkshopsHTTP
 
-  alias Dhc.BeginnersWorkshops
   alias DhcWeb.BeginnersWorkshopsHTTP
 
   @doc "POST /beginners-workshops/{id}/batches/pause"
-  def pause(conn, %{"id" => id}), do: command(conn, {:pause_batches, id})
+  def pause(conn, %{"id" => id}),
+    do: BeginnersWorkshopsHTTP.command(conn, {:pause_batches, id}, :show)
 
   @doc "POST /beginners-workshops/{id}/batches/resume"
-  def resume(conn, %{"id" => id}), do: command(conn, {:resume_batches, id})
-
-  defp command(conn, command) do
-    conn
-    |> BeginnersWorkshopsHTTP.actor()
-    |> BeginnersWorkshops.execute(command)
-    |> BeginnersWorkshopsHTTP.respond(conn, :show)
-  end
+  def resume(conn, %{"id" => id}),
+    do: BeginnersWorkshopsHTTP.command(conn, {:resume_batches, id}, :show)
 end
