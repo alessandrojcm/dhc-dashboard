@@ -1,6 +1,6 @@
 <!--
-	ALE-379: a workshop's door view — what assigned Staff get. The header
-	only for now; the roster and check-in arrive with door check-in.
+	ALE-379: a workshop's door view — what assigned Staff get: the header,
+	then (ALE-390) door check-in.
 -->
 <script lang="ts">
 import { ArrowLeft, Users } from "@lucide/svelte";
@@ -13,13 +13,13 @@ import {
 } from "#lib/beginners-workshops/presentation.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
-import * as Empty from "#lib/components/ui/empty/index.js";
+import DoorCheckIn from "./door-check-in.svelte";
 
 const { data } = $props();
 const workshop = $derived(data.workshop);
 </script>
 
-<div class="mx-auto flex max-w-2xl flex-col gap-6 py-4">
+<div class="mx-auto flex max-w-md flex-col gap-4 py-4">
 	<Button
 		variant="ghost"
 		size="sm"
@@ -50,12 +50,5 @@ const workshop = $derived(data.workshop);
 		</p>
 	</header>
 
-	<Empty.Root class="border">
-		<Empty.Header>
-			<Empty.Title>No door list yet</Empty.Title>
-			<Empty.Description>
-				The people coming to this workshop will be listed here for check-in.
-			</Empty.Description>
-		</Empty.Header>
-	</Empty.Root>
+	<DoorCheckIn door={workshop} />
 </div>

@@ -197,4 +197,60 @@ defmodule Dhc.BeginnersWorkshopFixtures do
     |> Ecto.Changeset.change([state: state] ++ paid)
     |> Repo.update!()
   end
+
+  @doc """
+  Test-only (ALE-390): a `paid` Intake for a new person in `workshop_id`;
+  returns the Intake. Options `first_name`, `date_of_birth`,
+  `medical_conditions` and `guardian` (`{first, last, phone}`, attached to
+  the person's profile).
+  """
+  def paid_person_fixture!(workshop_id, opts \\ []) do
+    person =
+      waiting_person_fixture(
+        ~U[2025-01-01 12:00:00Z],
+        Keyword.take(opts, [:first_name, :date_of_birth])
+      )
+
+    profile = Repo.one!(from(p in UserProfile, where: p.waitlist_id == ^person.id))
+
+    profile
+    |> Ecto.Changeset.change(medical_conditions: Keyword.get(opts, :medical_conditions))
+    |> Repo.update!()
+
+    case Keyword.get(opts, :guardian) do
+      {first, last, phone} ->
+        Repo.insert!(%Dhc.Waitlist.WaitlistGuardian{
+          profile_id: profile.id,
+          first_name: first,
+          last_name: last,
+          phone_number: phone
+        })
+
+      nil ->
+        :ok
+    end
+
+    {intake, _token} = intake_fixture!(workshop_id, person)
+    force_intake_state!(intake.id, "paid")
+  end
+
+  @doc """
+  Test-only (ALE-390): moves a scheduled workshop to Dublin today, starting
+  at the current Dublin minute (so door check-in is open on the wall clock
+  the HTTP path uses), with its cutoff a day earlier.
+  """
+  def force_today!(workshop_id) do
+    now = DateTime.utc_now()
+    today = Dhc.ClubCalendar.on_date(now)
+    start = now |> Dhc.ClubCalendar.time_on() |> Time.truncate(:second) |> Map.put(:second, 0)
+
+    Repo.get!(BeginnersWorkshop, workshop_id)
+    |> Ecto.Changeset.change(
+      date: today,
+      start_time: start,
+      contact_from: Date.add(today, -2),
+      payment_cutoff: %{Dhc.ClubCalendar.to_utc(Date.add(today, -1), start) | microsecond: {0, 6}}
+    )
+    |> Repo.update!()
+  end
 end

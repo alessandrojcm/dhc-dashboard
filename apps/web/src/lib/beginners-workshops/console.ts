@@ -184,6 +184,20 @@ export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 				title: stageLabel(workshop.stage),
 				body: paymentClosedBody(view, seats),
 			};
+		case "today_before_check_in":
+			return {
+				title: stageLabel(workshop.stage),
+				body: `${seats}. Door check-in opens an hour before the ${workshop.startTime} start.`,
+			};
+		case "check_in_open": {
+			const checkedIn = view.roster.seated.filter(
+				(intake) => intake.checkedInAt,
+			).length;
+			return {
+				title: stageLabel(workshop.stage),
+				body: `${checkedIn} of ${view.roster.seated.length} in. ${seats}.`,
+			};
+		}
 		default:
 			return { title: stageLabel(workshop.stage), body: seats };
 	}

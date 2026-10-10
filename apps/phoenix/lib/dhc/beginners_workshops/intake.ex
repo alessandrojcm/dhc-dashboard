@@ -42,6 +42,10 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     # with the Carried Fee) and when.
     field :paid_via, :string
     field :paid_at, :utc_datetime_usec
+    # Door check-in (ALE-390): who checked the person in and when. Names a
+    # Principal, so it outlives that person's Staff assignment.
+    field :checked_in_at, :utc_datetime_usec
+    field :checked_in_by_principal_id, :binary_id
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end
@@ -97,6 +101,16 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     |> change(state: "paid", paid_via: paid_via, paid_at: at)
     |> validate_inclusion(:paid_via, @paid_via)
   end
+
+  @doc "A `paid` Intake checked in at the door by `principal_id` at `at`."
+  @spec check_in_changeset(t(), binary(), DateTime.t()) :: Ecto.Changeset.t()
+  def check_in_changeset(%__MODULE__{} = intake, principal_id, at),
+    do: change(intake, checked_in_at: at, checked_in_by_principal_id: principal_id)
+
+  @doc "An Intake's door check-in undone."
+  @spec undo_check_in_changeset(t()) :: Ecto.Changeset.t()
+  def undo_check_in_changeset(%__MODULE__{} = intake),
+    do: change(intake, checked_in_at: nil, checked_in_by_principal_id: nil)
 
   @doc """
   An open Intake closing into a terminal `state` that carries no stamps of

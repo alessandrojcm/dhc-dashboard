@@ -14,11 +14,13 @@ import {
 	Check,
 	Circle,
 	CircleDot,
+	DoorOpen,
 	Pause,
 	Play,
 	UserPlus,
 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
+import { resolve } from "$app/paths";
 import {
 	consoleTimeline,
 	formatDublinInstant,
@@ -32,6 +34,7 @@ import {
 	rosterGroups,
 	type TimelineStep,
 } from "#lib/beginners-workshops/console.js";
+import { doorTime } from "#lib/beginners-workshops/door.js";
 import {
 	formatCivilDate,
 	formatFee,
@@ -154,6 +157,17 @@ const attention = $derived(
 			</p>
 			<h2 class="font-heading text-2xl leading-tight">{now.title}</h2>
 			<p class="text-sm text-muted-foreground">{now.body}</p>
+			{#if workshop.stage === "today_before_check_in" || workshop.stage === "check_in_open"}
+				<Button
+					class="w-fit"
+					href={resolve(
+						"/dashboard/beginners-workshop/workshops/[workshopId]/door",
+						{ workshopId: workshop.id },
+					)}
+				>
+					<DoorOpen /> Open the door view
+				</Button>
+			{/if}
 		</section>
 
 		{#if attention.length || workshop.alerts.length}
@@ -293,6 +307,12 @@ const attention = $derived(
 										variant="outline"
 										class="border-sky-600 text-sky-800"
 										data-testid="hold-expiry">{holdLabel(intake)}</Badge
+									>{/if}
+								{#if intake.checkedInAt}<Badge
+										variant="outline"
+										class="border-emerald-600 text-emerald-800"
+										data-testid="checked-in"
+										>In {doorTime(intake.checkedInAt)}</Badge
 									>{/if}
 								<Badge variant="secondary"
 									>{intakeStateLabel(intake.state)}</Badge

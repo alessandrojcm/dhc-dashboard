@@ -78,6 +78,7 @@ function view(
 					queueDate: "2024-12-01T12:00:00Z",
 					contactedAt: "2026-10-20T09:00:00Z",
 					holdExpiresAt: null,
+					checkedInAt: null,
 				},
 			],
 			asked: [
@@ -92,6 +93,7 @@ function view(
 					queueDate: "2024-12-02T12:00:00Z",
 					contactedAt: "2026-10-20T09:00:00Z",
 					holdExpiresAt: null,
+					checkedInAt: null,
 				},
 			],
 			out: [],
@@ -242,6 +244,7 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						queueDate: "2026-10-20T12:00:00Z",
 						contactedAt: "2026-10-20T12:00:00Z",
 						holdExpiresAt: null,
+						checkedInAt: null,
 					},
 				],
 			},
