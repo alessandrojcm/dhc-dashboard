@@ -47,7 +47,12 @@ defmodule DhcWeb.BeginnersWorkshopIntakeClientParityTest do
           do: {path, method, operation}
 
     assert operations |> Enum.map(&elem(&1, 2)["operationId"]) |> Enum.sort() ==
-             ["#{@slice}.returnFromCheckout", "#{@slice}.show", "#{@slice}.startPayment"]
+             [
+               "#{@slice}.confirm",
+               "#{@slice}.returnFromCheckout",
+               "#{@slice}.show",
+               "#{@slice}.startPayment"
+             ]
 
     for {path, method, operation} <- operations do
       assert String.starts_with?(path, "/beginners/intake/{token}")

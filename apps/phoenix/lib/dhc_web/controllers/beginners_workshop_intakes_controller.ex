@@ -1,12 +1,13 @@
 defmodule DhcWeb.BeginnersWorkshopIntakesController do
   @moduledoc """
   The `beginnersWorkshopIntakes` slice (ALE-386): the console's Intake
-  commands — Decline, Cancel with refund (ALE-387), Withdraw (ALE-387),
-  Resend link and Rotate link — each with an optional note recorded in the
-  Intake's history, plus the Waitlist tab's Withdraw of a person. The
-  router gates them on their capability (`beginners.workshops.manage`;
-  withdraw `beginners.waitlist.manage`); the boundary authorizes the actor
-  again before any read and decides with `IntakePolicy` under the lock.
+  commands — Decline, Defer and Confirm (ALE-388), Cancel with refund and
+  Withdraw (ALE-387), Resend link and Rotate link — each with an optional
+  note recorded in the Intake's history, plus the Waitlist tab's Withdraw of
+  a person. The router gates them on their capability
+  (`beginners.workshops.manage`; withdraw `beginners.waitlist.manage`); the
+  boundary authorizes the actor again before any read and decides with
+  `IntakePolicy` under the lock.
   """
   use DhcWeb, :controller
 
@@ -17,6 +18,12 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
 
   @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/decline"
   def decline(conn, params), do: command(conn, :decline, params)
+
+  @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/defer"
+  def defer(conn, params), do: command(conn, :defer, params)
+
+  @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/confirm"
+  def confirm(conn, params), do: command(conn, :confirm, params)
 
   @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/cancel-with-refund"
   def cancel_with_refund(conn, params), do: command(conn, :cancel_with_refund, params)

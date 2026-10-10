@@ -19,11 +19,13 @@ defmodule Dhc.Waitlist.Import do
 
   A Paid cell marks someone who already paid and holds a Carried Fee. Each
   row carries it as `paid: %{raw, carried_fee?}`: any non-blank text is a
-  Carried Fee, and the raw text is reported for matching to Stripe. Carried Fees
-  do not exist yet (ALE-388 creates them), so `create_carried_fee/2` is the
-  one extension point: it runs inside the row's own transaction, right after
-  the person is inserted, and is a no-op until ALE-388 makes it create the
-  `held` Carried Fee. The import must not run in production before then.
+  Carried Fee, and the raw text is reported for matching to Stripe. The
+  `:carried_fee` option is the one extension point: it runs inside the
+  row's own transaction, right after the person is inserted. Run the import
+  through `Dhc.BeginnersWorkshops.import_waitlist/2` (as the mix task and
+  `Dhc.Release.import_waitlist/2` do), which injects the step that creates
+  the `held` Carried Fee (ALE-388); called directly, this module creates
+  none (`create_carried_fee/2` is a no-op).
 
   `dry_run: true` validates every row against the database and returns the
   same report, but rolls each row back, so nothing is written.
@@ -84,14 +86,13 @@ defmodule Dhc.Waitlist.Import do
   end
 
   @doc """
-  The ALE-388 extension point: creates the person's `held` Carried Fee when
-  their Paid cell says they hold one. It runs inside the row's transaction,
-  after the Waitlist entry is inserted, so a failure here rolls the row back
-  and refuses it.
-
-  Carried Fees do not exist yet, so this is a no-op; ALE-388 replaces the
-  body (through the Beginners' Workshop boundary, which may depend on the
-  Waitlist, never the reverse) before the import runs in production.
+  The default Carried Fee step: a no-op. The real one is injected as the
+  `:carried_fee` option (`fn waitlist_entry_id, paid -> :ok | {:error, term} end`)
+  by `Dhc.BeginnersWorkshops.import_waitlist/2` (ALE-388), which the mix task
+  and `Dhc.Release.import_waitlist/2` use: the Waitlist never calls up into
+  Beginners' Workshops. The step runs inside the row's transaction, after
+  the Waitlist entry is inserted, so a failure there rolls the row back and
+  refuses it.
   """
   @spec create_carried_fee(Ecto.UUID.t(), Sheet.paid()) :: :ok | {:error, term()}
   def create_carried_fee(_waitlist_entry_id, %{carried_fee?: _carried_fee?}), do: :ok

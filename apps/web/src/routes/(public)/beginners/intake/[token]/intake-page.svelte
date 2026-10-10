@@ -2,7 +2,8 @@
 	ALE-381: the person's Intake page. Everything shown is Phoenix's safe
 	view; the one action is Phoenix's too. Pay goes through the remote form,
 	which redirects to Stripe Checkout; "Check again" and the
-	payment-in-progress refresh reload Phoenix's view. No self-service
+	payment-in-progress refresh reload Phoenix's view. A Carried Fee holder
+	(ALE-388) gets "Confirm my place" instead of Pay. No self-service
 	decline or withdraw: replies to the email go through a coordinator.
 -->
 <script lang="ts">
@@ -10,6 +11,7 @@ import type { BeginnersIntakePage } from "@dhc/api-client";
 import { CalendarDays, Clock, MapPin, RefreshCw } from "@lucide/svelte";
 import { invalidateAll } from "$app/navigation";
 import {
+	confirmsWithCarriedFee,
 	intakeActionLabel,
 	intakeCopy,
 	intakeDetails,
@@ -20,7 +22,7 @@ import * as Alert from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Card from "#lib/components/ui/card/index.js";
-import { startIntakePayment } from "./intake.remote";
+import { confirmIntakePlace, startIntakePayment } from "./intake.remote";
 
 let {
 	page,
@@ -38,11 +40,13 @@ const copy = $derived(intakeCopy(page));
 const details = $derived(intakeDetails(page));
 const actionLabel = $derived(intakeActionLabel(page));
 const checkout = $derived(startsCheckout(page));
-const refusal = $derived(
-	startIntakePayment.result && !startIntakePayment.result.ok
-		? startIntakePayment.result.error
-		: null,
-);
+const confirms = $derived(confirmsWithCarriedFee(page));
+const refusal = $derived.by(() => {
+	const result = confirms
+		? confirmIntakePlace.result
+		: startIntakePayment.result;
+	return result && !result.ok ? result.error : null;
+});
 
 // `payment_in_progress` asks Phoenix again until it reports `paid`.
 $effect(() => {
@@ -100,6 +104,17 @@ $effect(() => {
 						type="submit"
 						class="w-full"
 						disabled={!!startIntakePayment.pending}
+					>
+						{actionLabel}
+					</Button>
+				</form>
+			{:else if confirms}
+				<form {...confirmIntakePlace} class="w-full">
+					<input {...confirmIntakePlace.fields.token.as("hidden", token)} />
+					<Button
+						type="submit"
+						class="w-full"
+						disabled={!!confirmIntakePlace.pending}
 					>
 						{actionLabel}
 					</Button>

@@ -473,6 +473,12 @@ defmodule Dhc.DevSeeds do
   `finalise_attendance` at the end of that Dublin day (two attended, one
   no-show, and its Staff list frozen) and `send_follow_ups` the next morning
   at 10:00.
+
+  ALE-388: one more workshop, contacted yesterday, has a **deferred** Intake:
+  its first person pays (as above) and is then deferred through the
+  boundary's `defer`, so they are back on the Waitlist holding a `held`
+  Carried Fee. The next Batch of any upcoming workshop marks them
+  "confirms" and asks them to confirm instead of paying.
   """
   @spec seed_beginners_workshops(pos_integer()) :: :ok
   def seed_beginners_workshops(count) do
@@ -509,6 +515,60 @@ defmodule Dhc.DevSeeds do
     seed_paid_and_in_checkout(coordinator_id)
     seed_past_cutoff(coordinator_id)
     seed_finalised(coordinator_id)
+    seed_carried_fee(coordinator_id)
+  end
+
+  defp seed_carried_fee(coordinator_id) do
+    capacity = 2
+    yesterday = Date.add(ClubCalendar.today(), -1)
+    batch_at = %{ClubCalendar.to_utc(yesterday, ~T[10:00:00]) | microsecond: {0, 6}}
+
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "Ringsend Community Hall",
+             date: Date.add(yesterday, 30),
+             start_time: ~T[18:30:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: yesterday
+           }
+         ]}
+      )
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(batch_at)
+      )
+
+    intake =
+      Repo.one!(
+        from(i in Intake,
+          where: i.workshop_id == ^workshop.id,
+          order_by: [i.queue_date, i.id],
+          limit: 1
+        )
+      )
+
+    seed_pay!(intake, workshop, DateTime.add(batch_at, 3600, :second))
+
+    {:ok, %{state: "deferred"}} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:defer, workshop.id, intake.id, %{"note" => "Can't make the date (seeded)"}}
+      )
+
+    Mix.shell().info(
+      "Seeded the workshop on #{workshop.date} with a deferred Intake: its person holds a Carried Fee"
+    )
   end
 
   defp seed_open_batch_window(coordinator_id) do

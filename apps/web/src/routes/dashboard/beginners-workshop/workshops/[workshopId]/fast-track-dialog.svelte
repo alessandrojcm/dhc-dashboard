@@ -5,6 +5,8 @@
 	place), and offers "Not on the Waitlist? Add them". Placing someone
 	contacts them at once with the Contact email; they pay like everyone else.
 	Phoenix decides again under the lock, so a refusal is shown as is.
+	ALE-388: after the Payment Cutoff only Carried Fee holders can be placed
+	(`holdersOnly`): Phoenix lists only them, and there is no "Add them".
 -->
 <script lang="ts">
 import {
@@ -30,6 +32,7 @@ import FastTrackNewPerson from "./fast-track-new-person.svelte";
 let {
 	workshop,
 	fastTrackOpen,
+	holdersOnly = false,
 	genders,
 	open = $bindable(false),
 	searchCandidates,
@@ -37,6 +40,8 @@ let {
 	workshop: BeginnersWorkshop;
 	/** Phoenix's console `fastTrackOpen`: before the Payment Cutoff. */
 	fastTrackOpen: boolean;
+	/** Phoenix's console `fastTrackHoldersOnly`: after the cutoff, Carried Fee holders only. */
+	holdersOnly?: boolean;
 	genders: string[];
 	open?: boolean;
 	/** Test seam: replaces the generated query function when given. */
@@ -45,6 +50,7 @@ let {
 	) => Promise<BeginnersWorkshopFastTrackCandidate[]>;
 } = $props();
 
+const searchable = $derived(fastTrackOpen || holdersOnly);
 let draft = $state("");
 let search = $state("");
 let addingNew = $state(false);
@@ -70,7 +76,7 @@ const candidates = createQuery(() => {
 		}),
 		select: (response: { data: BeginnersWorkshopFastTrackCandidate[] }) =>
 			response.data,
-		enabled: open && fastTrackOpen && !addingNew,
+		enabled: open && searchable && !addingNew,
 	};
 });
 
@@ -93,11 +99,13 @@ function placed(firstName: string | null) {
 			<Dialog.Description>
 				{fastTrackOpen
 					? "Outside Batch order. They're contacted now and pay the fee like anyone else; seats go to whoever pays first."
-					: "Payment is closed for this workshop, so nobody can be fast-tracked."}
+					: holdersOnly
+						? "Payment is closed for this workshop, so only Carried Fee holders can be fast-tracked. They're contacted now and confirm their place without paying."
+						: "Payment is closed for this workshop, so nobody can be fast-tracked."}
 			</Dialog.Description>
 		</Dialog.Header>
 
-		{#if !fastTrackOpen}
+		{#if !searchable}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}
 					>Close</Button
@@ -152,6 +160,11 @@ function placed(firstName: string | null) {
 									>
 								</span>
 								{#if person.minor}<Badge variant="outline">Minor</Badge>{/if}
+								{#if person.carriedFee}<Badge
+										variant="outline"
+										class="border-emerald-700 text-emerald-900"
+										>Carried Fee · confirms</Badge
+									>{/if}
 								{#if person.status === "removed"}<Badge variant="outline"
 										>Removed · restores</Badge
 									>{/if}
@@ -198,16 +211,18 @@ function placed(firstName: string | null) {
 					<p class="text-sm text-destructive" role="alert">{formError}</p>
 				{/if}
 			</div>
-			<Dialog.Footer>
-				<Button
-					type="button"
-					variant="ghost"
-					onclick={() => {
-						formError = null;
-						addingNew = true;
-					}}>Not on the Waitlist? Add them</Button
-				>
-			</Dialog.Footer>
+			{#if fastTrackOpen}
+				<Dialog.Footer>
+					<Button
+						type="button"
+						variant="ghost"
+						onclick={() => {
+							formError = null;
+							addingNew = true;
+						}}>Not on the Waitlist? Add them</Button
+					>
+				</Dialog.Footer>
+			{/if}
 		{/if}
 	</Dialog.Content>
 </Dialog.Root>

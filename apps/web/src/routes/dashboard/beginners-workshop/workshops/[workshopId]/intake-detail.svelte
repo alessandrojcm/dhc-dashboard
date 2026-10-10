@@ -1,6 +1,6 @@
 <!--
 	ALE-386: one Intake on the workshop console — its state, minor badge,
-	medical flag, origin, live hold, refund, the Intake Email log (scheduled
+	medical flag, origin, live hold, refund, Carried Fee (ALE-388), the Intake Email log (scheduled
 	emails marked), its history and link generation — and the commands
 	Phoenix says are valid now (`availableCommands`). The UI never works out
 	Intake rules: it shows Phoenix's list, and the boundary decides again
@@ -16,6 +16,7 @@ import type { BeginnersWorkshopRosterIntake } from "@dhc/api-client";
 import { HeartPulse, Link2 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import {
+	carriedFeeLabel,
 	emailLogLine,
 	formatDublinInstant,
 	historyLine,
@@ -85,6 +86,10 @@ const refundHint = $derived(
 					data-testid="medical-flag"><HeartPulse /> Medical</Badge
 				>{/if}
 			<Badge variant="outline">{intakeOrigin(intake)}</Badge>
+			{#if carriedFeeLabel(intake.carriedFee)}<Badge
+					variant="outline"
+					data-testid="carried-fee">{carriedFeeLabel(intake.carriedFee)}</Badge
+				>{/if}
 			{#if refundLabel(intake)}<Badge
 					variant="outline"
 					data-testid="refund-status">{refundLabel(intake)?.text}</Badge
@@ -174,7 +179,9 @@ const refundHint = $derived(
 						<Button
 							{...form.fields.command.as("submit", command)}
 							size="sm"
-							variant={command === "decline" || command === "cancel_with_refund"
+							variant={command === "decline" ||
+							command === "defer" ||
+							command === "cancel_with_refund"
 								? "outline"
 								: "secondary"}
 							disabled={!!form.pending}>{intakeCommandLabel(command)}</Button

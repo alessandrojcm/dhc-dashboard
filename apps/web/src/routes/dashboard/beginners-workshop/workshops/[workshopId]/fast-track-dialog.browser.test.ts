@@ -40,6 +40,7 @@ const people: BeginnersWorkshopFastTrackCandidate[] = [
 		status: "waiting",
 		removedAt: null,
 		minor: false,
+		carriedFee: false,
 	},
 	{
 		waitlistId: BRIAN,
@@ -49,6 +50,7 @@ const people: BeginnersWorkshopFastTrackCandidate[] = [
 		status: "removed",
 		removedAt: "2026-08-01T12:00:00Z",
 		minor: true,
+		carriedFee: false,
 	},
 ];
 
@@ -168,6 +170,36 @@ test("“Not on the Waitlist? Add them” opens the registration form, and Back 
 	await expect
 		.element(screen.getByRole("list", { name: "Fast-track candidates" }))
 		.toBeVisible();
+});
+
+test("after the Payment Cutoff only Carried Fee holders are offered, with no Add them", async () => {
+	const holder: BeginnersWorkshopFastTrackCandidate = {
+		...people[0]!,
+		carriedFee: true,
+	};
+	const queries: string[] = [];
+	const screen = await render(FastTrackDialog, {
+		workshop,
+		fastTrackOpen: false,
+		holdersOnly: true,
+		searchCandidates: async (query: string) => {
+			queries.push(query);
+			return [holder];
+		},
+	});
+
+	await expect
+		.element(screen.getByText(/only Carried Fee holders can be fast-tracked/))
+		.toBeVisible();
+	await expect
+		.element(screen.getByRole("list", { name: "Fast-track candidates" }))
+		.toHaveTextContent("Carried Fee · confirms");
+	expect(
+		screen
+			.getByRole("button", { name: "Not on the Waitlist? Add them" })
+			.elements(),
+	).toHaveLength(0);
+	expect(queries).toEqual([""]);
 });
 
 test("after the Payment Cutoff it explains that nobody can be fast-tracked", async () => {

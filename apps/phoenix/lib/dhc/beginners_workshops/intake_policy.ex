@@ -19,13 +19,45 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
   `check/2` clause here.
   """
 
-  @type command :: :decline | :resend_link | :rotate_link | :cancel_with_refund | :withdraw
+  @type command ::
+          :decline
+          | :defer
+          | :confirm
+          | :cancel_with_refund
+          | :withdraw
+          | :resend_link
+          | :rotate_link
   @type decision ::
           :ok
           | :already_done
-          | {:error, :already_paid | :intake_closed | :intake_not_paid | :carried_fee_paid}
+          | {:error,
+             :already_paid
+             | :intake_closed
+             | :intake_not_paid
+             | :carried_fee_paid
+             | :no_carried_fee}
 
-  @commands [:decline, :cancel_with_refund, :withdraw, :resend_link, :rotate_link]
+  @typedoc """
+  What the rule reads: the Intake's `state` (and `paid_via` once paid), and
+  `carried_fee` — the status of the person's live Carried Fee, or `nil`
+  (ALE-388; only `confirm` reads it).
+  """
+  @type facts :: %{
+          required(:state) => String.t(),
+          optional(:paid_via) => String.t() | nil,
+          optional(:carried_fee) => String.t() | nil,
+          optional(atom()) => term()
+        }
+
+  @commands [
+    :decline,
+    :defer,
+    :confirm,
+    :cancel_with_refund,
+    :withdraw,
+    :resend_link,
+    :rotate_link
+  ]
   @open_states ~w(contacted paid)
 
   @doc "Every console Intake command, in display order."
@@ -38,6 +70,14 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
     * `decline` — a `contacted` Intake becomes `declined`; a `declined` one
       is already there; a `paid` one is `:already_paid` (defer, cancel with
       refund or withdraw instead); every other state is `:intake_closed`;
+    * `defer` (ALE-388) — a `paid` Intake becomes `deferred`; a `deferred`
+      one is already there; a `contacted` one is `:intake_not_paid` (decline
+      instead); every other state is `:intake_closed`;
+    * `confirm` (ALE-388) — a `contacted` Intake whose person holds a `held`
+      Carried Fee becomes `paid`; without one it is `:no_carried_fee`; an
+      Intake already paid by confirmation is already there, one paid through
+      Stripe is `:already_paid`; every other state is `:intake_closed`.
+      Seats (`:full`) are judged by the boundary under the lock;
     * `cancel_with_refund` (ALE-387) — a Stripe-paid `paid` Intake becomes
       `cancelled_refunded`; a `cancelled_refunded` one is already there; a
       `contacted` one is `:intake_not_paid` (decline or withdraw instead); a
@@ -52,12 +92,28 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
     * `resend_link` / `rotate_link` — open Intakes only (`:intake_closed`).
       They have no target state, so each run sends again.
   """
-  @spec check(command(), %{required(:state) => String.t(), optional(atom()) => term()}) ::
-          decision()
+  @spec check(command(), facts()) :: decision()
   def check(:decline, %{state: "contacted"}), do: :ok
   def check(:decline, %{state: "declined"}), do: :already_done
   def check(:decline, %{state: "paid"}), do: {:error, :already_paid}
   def check(:decline, %{state: _closed}), do: {:error, :intake_closed}
+
+  def check(:defer, %{state: "paid"}), do: :ok
+  def check(:defer, %{state: "deferred"}), do: :already_done
+  def check(:defer, %{state: "contacted"}), do: {:error, :intake_not_paid}
+  def check(:defer, %{state: _closed}), do: {:error, :intake_closed}
+
+  def check(:confirm, %{state: "contacted"} = facts),
+    do: if(Map.get(facts, :carried_fee) == "held", do: :ok, else: {:error, :no_carried_fee})
+
+  def check(:confirm, %{state: "paid"} = facts),
+    do:
+      if(Map.get(facts, :paid_via) == "carried_fee",
+        do: :already_done,
+        else: {:error, :already_paid}
+      )
+
+  def check(:confirm, %{state: _closed}), do: {:error, :intake_closed}
 
   def check(:cancel_with_refund, %{state: "paid"} = intake), do: stripe_paid(intake)
   def check(:cancel_with_refund, %{state: "cancelled_refunded"}), do: :already_done
@@ -78,6 +134,6 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
   defp stripe_paid(_stripe_paid), do: :ok
 
   @doc "The commands the console offers for an Intake: those `check/2` allows now."
-  @spec available_commands(%{state: String.t()}) :: [command()]
+  @spec available_commands(facts()) :: [command()]
   def available_commands(intake), do: Enum.filter(@commands, &(check(&1, intake) == :ok))
 end

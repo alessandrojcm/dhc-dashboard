@@ -159,10 +159,7 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       {workshop, [{contacted, _}, {lapsed, _}, {carried, _}]} = contacted_fixture(c, 3)
       force_intake_state!(lapsed.id, "lapsed")
 
-      carried
-      |> Repo.reload!()
-      |> Ecto.Changeset.change(state: "paid", paid_via: "carried_fee", paid_at: @now)
-      |> Repo.update!()
+      force_carried_fee_paid!(carried)
 
       assert {:error, :intake_not_paid} = command(c, :cancel_with_refund, workshop, contacted)
       assert {:error, :intake_closed} = command(c, :cancel_with_refund, workshop, lapsed)
@@ -280,10 +277,7 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       {workshop, [{lapsed, _}, {carried, _}]} = contacted_fixture(c, 2)
       force_intake_state!(lapsed.id, "lapsed")
 
-      carried
-      |> Repo.reload!()
-      |> Ecto.Changeset.change(state: "paid", paid_via: "carried_fee", paid_at: @now)
-      |> Repo.update!()
+      force_carried_fee_paid!(carried)
 
       assert {:error, :intake_closed} = command(c, :withdraw, workshop, lapsed)
 
@@ -408,7 +402,7 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       {workshop, intake, _payment} = paid_fixture(c)
 
       assert console_row(workshop, intake).available_commands ==
-               [:cancel_with_refund, :withdraw, :resend_link, :rotate_link]
+               [:defer, :cancel_with_refund, :withdraw, :resend_link, :rotate_link]
 
       {:ok, _} = command(c, :cancel_with_refund, workshop, intake)
       assert console_row(workshop, intake).available_commands == []

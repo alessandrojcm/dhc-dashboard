@@ -9,12 +9,13 @@ defmodule Dhc.BeginnersWorkshops.BatchProposal do
   one module, so the preview is exactly what would be sent at that moment.
 
   Only people with a Waitlist profile are proposed: the contact email is
-  addressed by first name.
+  addressed by first name. Each person says whether they hold a `held`
+  Carried Fee (`confirms`, ALE-388): they will be asked to confirm, not pay.
   """
 
   import Ecto.Query
 
-  alias Dhc.BeginnersWorkshops.Intake
+  alias Dhc.BeginnersWorkshops.{CarriedFee, Intake}
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
@@ -24,7 +25,8 @@ defmodule Dhc.BeginnersWorkshops.BatchProposal do
           first_name: String.t() | nil,
           last_name: String.t() | nil,
           date_of_birth: Date.t() | nil,
-          queue_date: DateTime.t()
+          queue_date: DateTime.t(),
+          confirms: boolean()
         }
 
   @doc "The first `size` eligible people, in priority order."
@@ -39,7 +41,14 @@ defmodule Dhc.BeginnersWorkshops.BatchProposal do
       first_name: p.first_name,
       last_name: p.last_name,
       date_of_birth: p.date_of_birth,
-      queue_date: e.initial_registration_date
+      queue_date: e.initial_registration_date,
+      confirms:
+        exists(
+          from(f in CarriedFee,
+            where: f.waitlist_id == parent_as(:entry).id and f.status == "held",
+            select: 1
+          )
+        )
     })
     |> Repo.all()
   end

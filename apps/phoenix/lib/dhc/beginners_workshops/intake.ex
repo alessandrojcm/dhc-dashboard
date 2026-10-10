@@ -38,10 +38,11 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     field :link_generation, :integer, default: 1
     field :link_token_hash, :binary, redact: true
     field :contacted_at, :utc_datetime_usec
-    # How a `paid` Intake was paid (ALE-381: `stripe`; `carried_fee` arrives
-    # with the Carried Fee) and when.
+    # How a `paid` Intake was paid (ALE-381: `stripe`; ALE-388:
+    # `carried_fee`, naming the Carried Fee) and when.
     field :paid_via, :string
     field :paid_at, :utc_datetime_usec
+    field :carried_fee_id, :binary_id
     # Door check-in (ALE-390): who checked the person in and when. Names a
     # Principal, so it outlives that person's Staff assignment.
     field :checked_in_at, :utc_datetime_usec
@@ -94,12 +95,22 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     |> validate_inclusion(:origin, @origins)
   end
 
-  @doc "A `contacted` Intake becoming `paid` (`paid_via` is how)."
-  @spec paid_changeset(t(), String.t(), DateTime.t()) :: Ecto.Changeset.t()
+  @doc """
+  A `contacted` Intake becoming `paid`: `"stripe"`, or `{"carried_fee", id}`
+  for a confirmation with the person's Carried Fee (ALE-388).
+  """
+  @spec paid_changeset(t(), String.t() | {String.t(), binary()}, DateTime.t()) ::
+          Ecto.Changeset.t()
+  def paid_changeset(%__MODULE__{} = intake, {"carried_fee", carried_fee_id}, at) do
+    intake
+    |> change(state: "paid", paid_via: "carried_fee", carried_fee_id: carried_fee_id, paid_at: at)
+    |> validate_required([:carried_fee_id])
+  end
+
   def paid_changeset(%__MODULE__{} = intake, paid_via, at) do
     intake
     |> change(state: "paid", paid_via: paid_via, paid_at: at)
-    |> validate_inclusion(:paid_via, @paid_via)
+    |> validate_inclusion(:paid_via, @paid_via -- ["carried_fee"])
   end
 
   @doc "A `paid` Intake checked in at the door by `principal_id` at `at`."
@@ -124,7 +135,7 @@ defmodule Dhc.BeginnersWorkshops.Intake do
   An open Intake closing into a terminal `state` that carries no stamps of
   its own (ALE-385: `lapsed` and `returned` at the Payment Cutoff; ALE-391:
   `attended` and `no_show` at Attendance Finalisation, whose evidence is the
-  check-in record; ALE-386: `declined`).
+  check-in record; ALE-386: `declined`; ALE-388: `deferred`).
   """
   @spec close_changeset(t(), String.t()) :: Ecto.Changeset.t()
   def close_changeset(%__MODULE__{} = intake, state) do

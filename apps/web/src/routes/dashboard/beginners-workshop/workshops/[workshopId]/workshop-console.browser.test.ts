@@ -64,12 +64,14 @@ function view(
 					lastName: "Byrne",
 					minor: false,
 					queueDate: "2025-01-01T12:00:00Z",
+					confirms: false,
 				},
 				{
 					firstName: "Bea",
 					lastName: "Kelly",
 					minor: true,
 					queueDate: "2025-02-01T12:00:00Z",
+					confirms: false,
 				},
 			],
 		},
@@ -95,6 +97,8 @@ function view(
 					emailLog: [],
 					history: [],
 					availableCommands: [],
+					paidVia: null,
+					carriedFee: null,
 				},
 			],
 			asked: [
@@ -118,6 +122,8 @@ function view(
 					emailLog: [],
 					history: [],
 					availableCommands: [],
+					paidVia: null,
+					carriedFee: null,
 				},
 			],
 			attended: [],
@@ -126,8 +132,10 @@ function view(
 		},
 		failedRefunds: [],
 		unpaidAfterWindow: [],
+		unconfirmedCarriedFees: [],
 		attention: [],
 		fastTrackOpen: true,
+		fastTrackHoldersOnly: false,
 		finalisation: null,
 		...overrides,
 	};
@@ -289,6 +297,8 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						emailLog: [],
 						history: [],
 						availableCommands: [],
+						paidVia: null,
+						carriedFee: null,
 					},
 				],
 			},
@@ -320,6 +330,7 @@ test("ALE-391: a finalised workshop reads attended / no-show and is read-only", 
 				out: [],
 			},
 			fastTrackOpen: false,
+			fastTrackHoldersOnly: false,
 			finalisation: {
 				at: "2026-11-14T20:05:00Z",
 				by: "Aoife Coach",
@@ -373,6 +384,7 @@ test("ALE-392: a finalised console offers Invite to each Invitable attendee and 
 			out: [],
 		},
 		fastTrackOpen: false,
+		fastTrackHoldersOnly: false,
 		finalisation: {
 			at: "2026-11-14T20:05:00Z",
 			by: null,
@@ -549,6 +561,8 @@ function commandsView(): BeginnersWorkshopConsole {
 					medical: true,
 					linkGeneration: 2,
 					availableCommands: ["resend_link", "rotate_link"],
+					paidVia: null,
+					carriedFee: null,
 					emailLog: [
 						{
 							emailType: "contact_pay",
@@ -580,6 +594,8 @@ function commandsView(): BeginnersWorkshopConsole {
 				{
 					...base.roster.asked[0],
 					availableCommands: ["decline", "resend_link", "rotate_link"],
+					paidVia: null,
+					carriedFee: null,
 				},
 			],
 			out: [
@@ -590,6 +606,8 @@ function commandsView(): BeginnersWorkshopConsole {
 					firstName: "Eimear",
 					lastName: "Ryan",
 					availableCommands: [],
+					paidVia: null,
+					carriedFee: null,
 				},
 			],
 			attended: [],
@@ -723,6 +741,8 @@ function refundView(days: number): BeginnersWorkshopConsole {
 						"resend_link",
 						"rotate_link",
 					],
+					paidVia: null,
+					carriedFee: null,
 				},
 			],
 			asked: [
@@ -734,6 +754,8 @@ function refundView(days: number): BeginnersWorkshopConsole {
 						"resend_link",
 						"rotate_link",
 					],
+					paidVia: null,
+					carriedFee: null,
 				},
 			],
 		},
@@ -812,5 +834,100 @@ test("ALE-387: withdrawing a contacted person asks no money question", async () 
 		.element(dialog.getByRole("button", { name: "Withdraw", exact: true }))
 		.toBeEnabled();
 	await dialog.getByRole("button", { name: "Keep them" }).click();
+	await closeIntake(screen);
+});
+
+test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need attention until they confirm", async () => {
+	const base = view();
+	const holder = {
+		...base.roster.asked[0]!,
+		carriedFee: "held" as const,
+		availableCommands: [
+			"decline",
+			"confirm",
+			"resend_link",
+			"rotate_link",
+		] as const satisfies BeginnersWorkshopConsole["roster"]["asked"][number]["availableCommands"],
+		history: [
+			{
+				command: "confirm" as const,
+				actor: null,
+				occurredAt: "2026-10-22T11:00:00Z",
+				note: null,
+			},
+		],
+	};
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			nextBatch: {
+				...base.nextBatch,
+				people: [
+					{ ...base.nextBatch.people[0]!, confirms: true },
+					base.nextBatch.people[1]!,
+				],
+			},
+			roster: {
+				...base.roster,
+				seated: [
+					{
+						...base.roster.seated[0]!,
+						paidVia: "carried_fee",
+						carriedFee: "applied",
+						availableCommands: ["defer", "resend_link", "rotate_link"],
+					},
+				],
+				asked: [
+					{ ...holder, availableCommands: [...holder.availableCommands] },
+				],
+			},
+			unconfirmedCarriedFees: [
+				{
+					id: holder.id,
+					firstName: "Dara",
+					lastName: "Nolan",
+					batchNumber: 1,
+					contactedAt: "2026-10-20T09:00:00Z",
+				},
+			],
+		}),
+	});
+
+	const proposed = screen.getByRole("list", { name: "Proposed people" });
+	expect(proposed.getByTestId("confirms").elements()).toHaveLength(1);
+	await expect
+		.element(proposed.getByRole("listitem").nth(0))
+		.toHaveTextContent("confirms");
+
+	await expect
+		.element(
+			screen
+				.getByRole("region", { name: "Needs attention" })
+				.getByTestId("unconfirmed-carried-fee"),
+		)
+		.toHaveTextContent("Dara Nolan holds a Carried Fee and hasn't confirmed");
+
+	await expect
+		.element(screen.getByRole("button", { name: /^Cian Doyle/ }))
+		.toHaveTextContent("Carried Fee · applied");
+
+	const detail = await openIntake(screen, /^Dara Nolan — Contacted/);
+	await expect
+		.element(detail.getByTestId("carried-fee"))
+		.toHaveTextContent("Carried Fee · held");
+	expect(
+		detail
+			.getByTestId("intake-commands")
+			.getByRole("button")
+			.elements()
+			.map((button) => button.textContent?.trim()),
+	).toEqual([
+		"Decline",
+		"Confirm with Carried Fee",
+		"Resend link",
+		"Rotate link",
+	]);
+	await expect
+		.element(detail.getByTestId("intake-history"))
+		.toHaveTextContent("Confirmed with Carried Fee · by the person");
 	await closeIntake(screen);
 });

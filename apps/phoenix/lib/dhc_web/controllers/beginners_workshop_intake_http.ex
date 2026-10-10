@@ -13,6 +13,9 @@ defmodule DhcWeb.BeginnersWorkshopIntakeHTTP do
       already_paid: {409, "Your place is already paid"},
       intake_closed: {409, "This link is no longer active"},
       payment_in_progress: {409, "Your payment is still being confirmed"},
+      # Carried Fees (ALE-388).
+      confirm_instead: {409, "You have a Carried Fee: confirm your place instead of paying"},
+      no_carried_fee: {409, "There is no Carried Fee to confirm this place with"},
       payment_unavailable: {503, "Payment is unavailable right now; please try again shortly"}
     }
 end

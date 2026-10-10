@@ -12,14 +12,19 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
     * `payment_in_progress` — the person came back from a checkout whose
       session is still open on our side, or their hold ran out and Stripe has
       not ended it yet; the page refreshes until Phoenix reports `paid`;
+    * `confirm` (ALE-388) — a `contacted` Intake whose person holds a `held`
+      Carried Fee, with a free seat: the action confirms the place with the
+      fee instead of paying. The Payment Cutoff does not close it (only
+      Attendance Finalisation does), and it carries no fee;
     * `full` — every seat is paid or held; seats may free up before the
-      cutoff, so the action checks again;
+      cutoff, so the action checks again (a Carried Fee holder keeps their
+      fee and may check again until finalisation);
     * `paid`;
     * `closed` — `inactive` for an Intake that is no longer open (or whose
       workshop is no longer scheduled), `payment_closed` for a contacted
       Intake after the Payment Cutoff.
 
-  (`confirm` arrives with the Carried Fee.) It carries the first name, the
+  It carries the first name, the
   workshop date, start time and venue, the fee and one action — never ids or
   Stripe objects; an `inactive` page carries none of them. Seats come from
   the same `WorkshopFacts` and `WorkshopPolicy` the boundary decides with, so
@@ -30,6 +35,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
 
   alias Dhc.BeginnersWorkshops.{
     BeginnersWorkshop,
+    CarriedFee,
     Clock,
     Intake,
     IntakeLink,
@@ -41,8 +47,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
 
-  @type state :: :pay | :payment_in_progress | :full | :paid | :closed
-  @type action :: :pay | :continue_payment | :check_again | :none
+  @type state :: :pay | :confirm | :payment_in_progress | :full | :paid | :closed
+  @type action :: :pay | :confirm | :continue_payment | :check_again | :none
 
   @type t :: %{
           state: state(),
@@ -55,7 +61,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
 
   @doc "Every state, in display order."
   @spec states() :: [state()]
-  def states, do: [:pay, :payment_in_progress, :full, :paid, :closed]
+  def states, do: [:pay, :confirm, :payment_in_progress, :full, :paid, :closed]
 
   @doc """
   The page behind `token` at the clock's reading. Option `returned_session:`
@@ -82,8 +88,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
 
   defp view(intake, workshop, reading, opts) do
     hold = open_hold(intake)
+    holder? = holder?(intake)
+    context = %{hold: hold, holder?: holder?, returned: Keyword.get(opts, :returned_session)}
 
-    case decide(intake, workshop, hold, reading, Keyword.get(opts, :returned_session)) do
+    case decide(intake, workshop, context, reading) do
       {:closed, :inactive} ->
         %{
           state: :closed,
@@ -101,20 +109,25 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
           closed_reason: closed_reason,
           first_name: first_name(intake),
           workshop: %{date: workshop.date, start_time: workshop.start_time, venue: workshop.venue},
-          fee_cents: if(hold, do: hold.amount_cents, else: workshop.fee_cents)
+          fee_cents: fee_cents(intake, workshop, hold, holder?)
         }
     end
   end
 
-  defp decide(%Intake{state: "paid"}, _workshop, _hold, _reading, _returned),
+  # A prepaid seat has no fee to show (ALE-388).
+  defp fee_cents(_intake, _workshop, %IntakePayment{amount_cents: cents}, _holder?), do: cents
+  defp fee_cents(%Intake{paid_via: "carried_fee"}, _workshop, nil, _holder?), do: nil
+  defp fee_cents(%Intake{state: "contacted"}, _workshop, nil, true), do: nil
+  defp fee_cents(_intake, workshop, nil, _holder?), do: workshop.fee_cents
+
+  defp decide(%Intake{state: "paid"}, _workshop, _context, _reading),
     do: {:paid, :none, nil}
 
   defp decide(
          %Intake{state: "contacted"},
          %BeginnersWorkshop{status: "scheduled"} = w,
-         hold,
-         r,
-         ret
+         %{hold: hold, returned: ret} = context,
+         r
        ) do
     cond do
       hold && (expired?(hold, r) or returned_to?(hold, ret)) ->
@@ -122,6 +135,9 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
 
       hold ->
         {:pay, :continue_payment, nil}
+
+      context.holder? ->
+        holder_page(w)
 
       not WorkshopPolicy.payment_open?(w, r) ->
         {:closed, :none, :payment_closed}
@@ -134,7 +150,15 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
     end
   end
 
-  defp decide(_intake, _workshop, _hold, _reading, _returned), do: {:closed, :inactive}
+  defp decide(_intake, _workshop, _context, _reading), do: {:closed, :inactive}
+
+  # A Carried Fee holder: the same seat rule as `confirm`, and never closed
+  # by the cutoff.
+  defp holder_page(workshop) do
+    if WorkshopPolicy.seat_free?(workshop, facts(workshop)),
+      do: {:confirm, :confirm, nil},
+      else: {:full, :check_again, nil}
+  end
 
   defp expired?(hold, reading), do: DateTime.compare(hold.expires_at, reading.now) != :gt
 
@@ -143,6 +167,14 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
        do: id == returned
 
   defp returned_to?(_hold, _returned), do: false
+
+  defp holder?(%Intake{waitlist_id: nil}), do: false
+
+  defp holder?(%Intake{waitlist_id: waitlist_id}),
+    do:
+      Repo.exists?(
+        from(f in CarriedFee, where: f.waitlist_id == ^waitlist_id and f.status == "held")
+      )
 
   defp open_hold(%Intake{id: id}),
     do: Repo.one(from(p in IntakePayment, where: p.intake_id == ^id and p.status == "open"))

@@ -81,6 +81,9 @@ defmodule DhcWeb.Router do
     post("/:id/refunds/:refundId/manual", BeginnersWorkshopRefundsController, :record_manual)
     # ALE-386: console Intake commands.
     post("/:id/intakes/:intakeId/decline", BeginnersWorkshopIntakesController, :decline)
+    # ALE-388: defer and confirm with a Carried Fee.
+    post("/:id/intakes/:intakeId/defer", BeginnersWorkshopIntakesController, :defer)
+    post("/:id/intakes/:intakeId/confirm", BeginnersWorkshopIntakesController, :confirm)
     post("/:id/intakes/:intakeId/resend-link", BeginnersWorkshopIntakesController, :resend_link)
     post("/:id/intakes/:intakeId/rotate-link", BeginnersWorkshopIntakesController, :rotate_link)
     # ALE-387.
@@ -103,6 +106,10 @@ defmodule DhcWeb.Router do
 
     post("/people/:waitlistId/withdraw", BeginnersWorkshopIntakesController, :withdraw_person)
     post("/:id/intakes/:intakeId/withdraw", BeginnersWorkshopIntakesController, :withdraw)
+
+    # ALE-388: the Waitlist view's Carried Fee column (the Waitlist cannot
+    # read Beginners' Workshops, so the dashboard asks here).
+    get("/carried-fees", BeginnersWorkshopCarriedFeesController, :index)
   end
 
   scope "/api/beginners-workshops", DhcWeb do
@@ -135,6 +142,7 @@ defmodule DhcWeb.Router do
 
     get("/:token", BeginnersWorkshopIntakeController, :show)
     post("/:token/payment", BeginnersWorkshopIntakeController, :start_payment)
+    post("/:token/confirm", BeginnersWorkshopIntakeController, :confirm)
     post("/:token/return", BeginnersWorkshopIntakeController, :return_from_checkout)
   end
 

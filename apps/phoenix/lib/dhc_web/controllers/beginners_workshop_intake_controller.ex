@@ -32,6 +32,24 @@ defmodule DhcWeb.BeginnersWorkshopIntakeController do
   end
 
   @doc """
+  POST /beginners/intake/{token}/confirm — a Carried Fee holder confirms
+  their place (ALE-388); answers the page.
+  """
+  def confirm(conn, %{"token" => token}) do
+    case BeginnersWorkshops.execute({:intake_link, token}, :confirm) do
+      {:ok, _outcome} ->
+        with {:ok, page} <- BeginnersWorkshops.intake_page(token),
+             do: render(conn, :show, page: page)
+
+      {:error, :forbidden} ->
+        {:error, :not_found}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
   POST /beginners/intake/{token}/return — the Checkout success return:
   completes the payment from the session retrieved server-side, then
   answers the page. A completion that cannot finish yet (Stripe unreachable,

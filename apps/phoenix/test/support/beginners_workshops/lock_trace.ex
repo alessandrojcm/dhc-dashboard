@@ -15,6 +15,7 @@ defmodule Dhc.BeginnersWorkshops.LockTrace do
     "beginners_workshops" => 0,
     "waitlist" => 1,
     "beginners_workshop_intakes" => 2,
+    "beginners_workshop_carried_fees" => 3,
     "beginners_workshop_intake_payments" => 4
   }
 

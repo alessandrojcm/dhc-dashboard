@@ -27,7 +27,9 @@ defmodule Dhc.Release do
       bin/dhc eval 'Dhc.Release.import_waitlist("/tmp/waitlist.tsv", dry_run: true)'
 
   Returns `{:ok, report}` or `{:error, reason}` when the sheet as a whole is
-  refused (nothing written). See `Dhc.Waitlist.Import`.
+  refused (nothing written). Rows whose Paid cell is set get a `held`
+  Carried Fee (`Dhc.BeginnersWorkshops.import_waitlist/2`). See
+  `Dhc.Waitlist.Import`.
   """
   @spec import_waitlist(Path.t(), keyword()) :: {:ok, map()} | {:error, String.t()}
   def import_waitlist(path, opts \\ []) do
@@ -36,7 +38,7 @@ defmodule Dhc.Release do
 
     {:ok, result, _apps} =
       Ecto.Migrator.with_repo(Dhc.Repo, fn _repo ->
-        Dhc.Waitlist.Import.import_sheet(contents, Keyword.take(opts, [:dry_run]))
+        Dhc.BeginnersWorkshops.import_waitlist(contents, Keyword.take(opts, [:dry_run]))
       end)
 
     case result do

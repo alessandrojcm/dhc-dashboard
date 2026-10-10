@@ -21,8 +21,11 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
         roster: roster(console.roster),
         failedRefunds: Enum.map(console.failed_refunds, &failed_refund/1),
         unpaidAfterWindow: Enum.map(console.unpaid_after_window, &unpaid_after_window/1),
+        unconfirmedCarriedFees:
+          Enum.map(console.unconfirmed_carried_fees, &unconfirmed_carried_fee/1),
         attention: console.attention,
         fastTrackOpen: console.fast_track_open,
+        fastTrackHoldersOnly: console.fast_track_holders_only,
         finalisation: console_finalisation(console.finalisation)
       }
     }
@@ -93,7 +96,8 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
             firstName: person.first_name,
             lastName: person.last_name,
             minor: person.minor,
-            queueDate: person.queue_date
+            queueDate: person.queue_date,
+            confirms: person.confirms
           }
         end)
     }
@@ -130,7 +134,19 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
             note: entry.note
           }
         end),
-      availableCommands: row.available_commands
+      availableCommands: row.available_commands,
+      paidVia: row.paid_via,
+      carriedFee: row.carried_fee
+    }
+  end
+
+  defp unconfirmed_carried_fee(row) do
+    %{
+      id: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      batchNumber: row.batch_number,
+      contactedAt: row.contacted_at
     }
   end
 

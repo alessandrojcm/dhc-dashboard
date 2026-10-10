@@ -6,7 +6,9 @@ defmodule Mix.Tasks.Dhc.Waitlist.Import do
       mix dhc.waitlist.import PATH             # import
 
   Prints every imported row (with its Carried Fee from the Paid cell, raw),
-  every refused row with its reason, and rows to review. A sheet with month-first dates or missing
+  every refused row with its reason, and rows to review. A row whose Paid
+  cell is set gets a `held` Carried Fee in the same transaction (through
+  `Dhc.BeginnersWorkshops.import_waitlist/2`). A sheet with month-first dates or missing
   columns is refused as a whole and nothing is written. See
   `Dhc.Waitlist.Import`; in a release use `Dhc.Release.import_waitlist/2`.
   """
@@ -28,7 +30,7 @@ defmodule Mix.Tasks.Dhc.Waitlist.Import do
   defp import!(path, dry_run?) do
     Mix.Task.run("app.start")
 
-    case Import.import_sheet(File.read!(path), dry_run: dry_run?) do
+    case Dhc.BeginnersWorkshops.import_waitlist(File.read!(path), dry_run: dry_run?) do
       {:ok, report} -> print(report)
       {:error, reason} -> Mix.raise("Waitlist import refused: #{reason}")
     end

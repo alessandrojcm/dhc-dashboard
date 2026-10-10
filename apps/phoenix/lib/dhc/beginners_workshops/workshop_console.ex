@@ -14,7 +14,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     * `next_batch` — the **Next Batch** preview: `WorkshopPolicy.next_batch/3`
       (when it goes out, or that it is paused, full or closed), its size as
       capacity − paid, and the live `BatchProposal` — exactly the people
-      `send_due_batch` would contact now — with minors badged;
+      `send_due_batch` would contact now — with minors badged and Carried
+      Fee holders marked `confirms` (ALE-388);
     * `roster` — Intakes grouped by meaning: before finalisation `seated`
       (paid), `asked` (contacted, not paid yet) and `out`; after it
       (ALE-391) `attended`, `no_show` and `out`. Each Intake with a live
@@ -29,10 +30,13 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       Intake for the current schedule, the Follow-up to an `attended` one),
       its history (command, actor, time, note) and its `available_commands`
       — `IntakePolicy.available_commands/1`, the very rule the boundary
-      applies under the lock;
+      applies under the lock — and (ALE-388) `carried_fee`: the status of
+      the Carried Fee that paid it, else of the person's live one, or `nil`;
     * `unpaid_after_window` — the Needs attention list of `contacted`
       people whose payment window (their Batch's, or the Payment Cutoff for
       a fast-track) has ended, oldest window first (ALE-386);
+    * `unconfirmed_carried_fees` — the Needs attention list of `contacted`
+      Carried Fee holders who have not confirmed yet (ALE-388);
     * `failed_refunds` — the Needs attention list of refunds that failed
       and have not been followed up (Retry or Record manual refund), oldest
       first (ALE-382);
@@ -44,8 +48,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       rows themselves, so the line and the list cannot disagree;
     * `attention` — `:nobody_waiting` when a Batch is due with free seats
       but nobody eligible is waiting;
-    * `fast_track_open` — whether Fast-track is offered now
-      (`WorkshopPolicy.payment_open?/2`, the rule `fast_track` applies).
+    * `fast_track_open` — whether Fast-track is offered now for anyone
+      (`WorkshopPolicy.payment_open?/2`, the rule `fast_track` applies), and
+      `fast_track_holders_only` — after the cutoff of a scheduled workshop,
+      when only Carried Fee holders may still be fast-tracked (ALE-388).
 
   Because the preview and the pass share `WorkshopPolicy` and
   `BatchProposal`, a stale console can be out of date but never disagree
@@ -58,6 +64,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     Batch,
     BatchProposal,
     BeginnersWorkshop,
+    CarriedFee,
     Clock,
     DoorView,
     Intake,
@@ -104,8 +111,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
             | nil,
           failed_refunds: [map()],
           unpaid_after_window: [map()],
+          unconfirmed_carried_fees: [map()],
           attention: [:nobody_waiting],
-          fast_track_open: boolean()
+          fast_track_open: boolean(),
+          fast_track_holders_only: boolean()
         }
 
   @doc "The console of `workshop_id` at the clock's current reading."
@@ -127,9 +136,12 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
          roster: roster,
          failed_refunds: failed_refunds(id),
          unpaid_after_window: unpaid_after_window(roster, reading),
+         unconfirmed_carried_fees: unconfirmed_carried_fees(roster),
          attention: attention(next_batch),
          finalisation: finalisation(workshop, roster.attended),
-         fast_track_open: WorkshopPolicy.payment_open?(workshop, reading)
+         fast_track_open: WorkshopPolicy.payment_open?(workshop, reading),
+         fast_track_holders_only:
+           workshop.status == "scheduled" and not WorkshopPolicy.payment_open?(workshop, reading)
        }}
     else
       _ -> {:error, :not_found}
@@ -186,7 +198,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       first_name: row.first_name,
       last_name: row.last_name,
       minor: WorkshopPolicy.minor?(row.date_of_birth, workshop.date),
-      queue_date: row.queue_date
+      queue_date: row.queue_date,
+      confirms: row.confirms
     }
   end
 
@@ -203,6 +216,13 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         on: p.waitlist_id == i.waitlist_id and not is_nil(i.waitlist_id),
         left_join: h in IntakePayment,
         on: h.intake_id == i.id and h.status == "open",
+        # The fee that paid this Intake, else the person's live one.
+        left_join: paid_fee in CarriedFee,
+        on: paid_fee.id == i.carried_fee_id,
+        left_join: live_fee in CarriedFee,
+        on:
+          live_fee.waitlist_id == i.waitlist_id and not is_nil(i.waitlist_id) and
+            live_fee.status in ^CarriedFee.live_statuses(),
         left_join: e in WaitlistEntry,
         on: e.id == i.waitlist_id,
         where: i.workshop_id == ^workshop.id,
@@ -220,6 +240,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           checked_in_at: i.checked_in_at,
           standing: e.status,
           link_generation: i.link_generation,
+          carried_fee: coalesce(paid_fee.status, live_fee.status),
           first_name: p.first_name,
           last_name: p.last_name,
           date_of_birth: p.date_of_birth,
@@ -321,11 +342,22 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
   end
 
   # Contacted people still unpaid after their window: needs a nudge.
+  # Carried Fee holders are listed apart (`unconfirmed_carried_fees`): they
+  # confirm rather than pay, until finalisation.
   defp unpaid_after_window(%{asked: asked}, reading) do
     asked
+    |> Enum.reject(&(&1.carried_fee == "held"))
     |> Enum.filter(&(DateTime.compare(&1.window_ends_at, reading.now) != :gt))
     |> Enum.sort_by(& &1.window_ends_at, DateTime)
     |> Enum.map(&Map.take(&1, [:id, :first_name, :last_name, :window_ends_at, :batch_number]))
+  end
+
+  # Contacted Carried Fee holders who have not confirmed: they may confirm
+  # until finalisation, so the coordinator may chase them (story 66).
+  defp unconfirmed_carried_fees(%{asked: asked}) do
+    asked
+    |> Enum.filter(&(&1.carried_fee == "held"))
+    |> Enum.map(&Map.take(&1, [:id, :first_name, :last_name, :contacted_at, :batch_number]))
   end
 
   defp finalisation(%BeginnersWorkshop{status: "finalised"} = workshop, attended) do

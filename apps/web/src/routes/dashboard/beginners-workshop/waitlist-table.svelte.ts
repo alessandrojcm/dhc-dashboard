@@ -9,11 +9,17 @@
  * removed person to the queue with their original date. Withdraw (ALE-387)
  * is the Beginners' Workshop boundary's command, not the Waitlist's — it may
  * close the person's open Intake — so it calls Phoenix's
- * `beginnersWorkshopIntakes.withdrawPerson`. The controller owns
+ * `beginnersWorkshopIntakes.withdrawPerson`.
+ * Each listed person's Carried Fee status (ALE-388) comes from Beginners'
+ * Workshops — the Waitlist API cannot know it — through one extra query
+ * over the page's ids. The controller owns
  * the URL-backed list request, cache invalidation and the toasts; markup only
  * renders and calls these actions.
  */
 import {
+	beginnersWorkshopCarriedFeesIndexOptions,
+	type BeginnersCarriedFeeStatus,
+	type BeginnersWorkshopCarriedFees,
 	beginnersWorkshopIntakesWithdrawPersonMutation,
 	type BeginnersWorkshopIntakesWithdrawPersonData,
 	type BeginnersWorkshopIntakesWithdrawPersonResponse,
@@ -80,6 +86,10 @@ export type WaitlistTableDeps = {
 	restoreEntry?: (
 		options: Options<WaitlistRestoreEntryData>,
 	) => Promise<WaitlistRestoreEntryResponse>;
+	/** The page's Carried Fee statuses by entry id (ALE-388). */
+	listCarriedFees?: (
+		waitlistIds: string[],
+	) => Promise<BeginnersWorkshopCarriedFees>;
 	withdrawEntry?: (
 		options: Options<BeginnersWorkshopIntakesWithdrawPersonData>,
 	) => Promise<BeginnersWorkshopIntakesWithdrawPersonResponse>;
@@ -159,6 +169,31 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 			const listEntries = deps.listEntries;
 			if (listEntries) options.queryFn = () => listEntries(requestOptions);
 			return { ...options, placeholderData: keepPreviousData };
+		},
+		() => queryClient,
+	);
+
+	const pageIds = $derived(
+		(query.data?.data.entries ?? []).map((entry) => entry.id),
+	);
+
+	const carriedFees = createQuery(
+		() => {
+			const waitlistIds = pageIds.join(",");
+			const options = beginnersWorkshopCarriedFeesIndexOptions({
+				query: { waitlistIds },
+			});
+			const listCarriedFees = deps.listCarriedFees;
+			const ids = pageIds;
+			return {
+				...options,
+				...(listCarriedFees && {
+					queryFn: async () => ({ data: await listCarriedFees(ids) }),
+				}),
+				select: (response: { data: BeginnersWorkshopCarriedFees }) =>
+					response.data,
+				enabled: ids.length > 0,
+			};
 		},
 		() => queryClient,
 	);
@@ -249,6 +284,10 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		},
 		get isFetching() {
 			return query.isFetching;
+		},
+		/** The person's live Carried Fee status, or `null` without one (or until known). */
+		carriedFee(id: string): BeginnersCarriedFeeStatus | null {
+			return carriedFees.data?.[id] ?? null;
 		},
 		/** Saves the entry's admin notes, the only editable Waitlist field. */
 		updateAdminNotes(id: string, adminNotes: string | null) {
