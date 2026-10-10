@@ -44,7 +44,7 @@ defmodule Dhc.Waitlist.ImportTest do
       "lastName" => "Person",
       "email" => "young@example.com",
       "phoneNumber" => "+353 87 000 0001",
-      "dateOfBirth" => "2009-12-01",
+      "dateOfBirth" => Date.utc_today() |> Date.shift(year: -17) |> Date.to_iso8601(),
       "gender" => "other",
       "medicalConditions" => "",
       "registeredAt" => "2024-04-01T10:30:00Z"
@@ -92,7 +92,7 @@ defmodule Dhc.Waitlist.ImportTest do
     assert [
              %{row: 3, reason: "email_on_waitlist"},
              %{row: 4, reason: "first_name: should be at most 40 character(s)"},
-             %{row: 5, reason: "invalid_payload"},
+             %{row: 5, reason: "under 18 with no Guardian details"},
              %{row: 7, reason: "email_is_principal"}
            ] = result.refused
 

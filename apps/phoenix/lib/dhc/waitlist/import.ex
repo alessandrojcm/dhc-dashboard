@@ -2,62 +2,260 @@ defmodule Dhc.Waitlist.Import do
   @moduledoc """
   The one-time import of the club's Waitlist spreadsheet (spec story 123).
 
-  This module is the column-agnostic half: it takes rows already mapped to
-  the public registration shape (`firstName`, `lastName`, `email`,
-  `phoneNumber`, `dateOfBirth`, `gender`, `medicalConditions`, optional
-  `pronouns`, `socialMediaConsent` and guardian fields) plus an optional
-  `registeredAt`, the person's original spreadsheet registration time, which
-  becomes their priority.
+  `import_sheet/2` reads a CSV/TSV export through `Dhc.Waitlist.Import.Sheet`
+  and imports every readable row through `Dhc.Waitlist.add_person/2`, so a row
+  is validated exactly like registration (first name included) and refused
+  with the same reasons, each in its own transaction. Two exceptions, decided
+  for the sheet: social media consent is `no` and gender is stored as none
+  (`gender: :optional`), because the sheet has neither.
 
-  Every row goes through `Dhc.Waitlist.add_person/2`, so it is validated
-  exactly like registration (first name included) and refused with the same
-  reasons, in its own transaction. Rows are never dropped silently: the
-  result lists every imported row and every refused row with its reason.
-  A repeated email in the file is refused as `:email_on_waitlist`, so
-  re-running the import is safe.
+  Every imported person becomes `waiting` with the sheet's Timestamp as their
+  priority. Rows are never dropped silently: the report lists every imported
+  row with its Paid value, every refused row with its reason, and review
+  notes (Guardian details given for an adult). Re-running is safe: an email
+  already on the Waitlist is refused as `email_on_waitlist`.
+
+  ## Paid and Carried Fees
+
+  A Paid cell marks someone who already paid and holds a Carried Fee. Each
+  row carries it as `paid: %{raw, carried_fee?}`: any non-blank text is a
+  Carried Fee, and the raw text is reported for matching to Stripe. Carried Fees
+  do not exist yet (ALE-388 creates them), so `create_carried_fee/2` is the
+  one extension point: it runs inside the row's own transaction, right after
+  the person is inserted, and is a no-op until ALE-388 makes it create the
+  `held` Carried Fee. The import must not run in production before then.
+
+  `dry_run: true` validates every row against the database and returns the
+  same report, but rolls each row back, so nothing is written.
+
+  Running it in production is a human step: `mix dhc.waitlist.import` or
+  `Dhc.Release.import_waitlist/2`.
   """
 
+  alias Dhc.ClubCalendar
+  alias Dhc.Repo
   alias Dhc.Waitlist
+  alias Dhc.Waitlist.Import.Sheet
 
-  @type row_number :: pos_integer()
-  @type result :: %{
-          imported: [%{row: row_number(), id: Ecto.UUID.t(), email: String.t()}],
-          refused: [%{row: row_number(), email: String.t() | nil, reason: String.t()}]
+  @minimum_age 16
+  @adult_age 18
+
+  @type report :: %{
+          dry_run: boolean(),
+          imported: [
+            %{
+              row: pos_integer(),
+              email: String.t() | nil,
+              id: Ecto.UUID.t() | nil,
+              paid: Sheet.paid()
+            }
+          ],
+          refused: [%{row: pos_integer(), email: String.t() | nil, reason: String.t()}],
+          notes: [%{row: pos_integer(), email: String.t() | nil, note: String.t()}]
         }
 
   @doc """
-  Imports `rows` in order. Row numbers start at `opts[:first_row]` (default
-  1), so a caller can report spreadsheet line numbers.
+  Imports a sheet export. `{:error, reason}` means the sheet as a whole was
+  refused (missing columns, month-first dates) and nothing was written.
   """
-  @spec run([map()], keyword()) :: result()
-  def run(rows, opts \\ []) when is_list(rows) do
-    first_row = Keyword.get(opts, :first_row, 1)
-
-    rows
-    |> Enum.with_index(first_row)
-    |> Enum.reduce(%{imported: [], refused: []}, fn {row, number}, acc ->
-      case import_row(row, opts) do
-        {:ok, id} ->
-          %{acc | imported: [%{row: number, id: id, email: email(row)} | acc.imported]}
-
-        {:error, reason} ->
-          %{acc | refused: [%{row: number, email: email(row), reason: reason} | acc.refused]}
-      end
-    end)
-    |> then(&%{imported: Enum.reverse(&1.imported), refused: Enum.reverse(&1.refused)})
+  @spec import_sheet(String.t(), keyword()) :: {:ok, report()} | {:error, String.t()}
+  def import_sheet(contents, opts \\ []) when is_binary(contents) do
+    with {:ok, entries} <- Sheet.parse(contents) do
+      {:ok, import_entries(entries, opts)}
+    end
   end
 
-  defp import_row(row, opts) when is_map(row) do
-    with {:ok, registered_at} <- registered_at(row, opts),
-         {:ok, %{id: id}} <-
-           Waitlist.add_person(Map.delete(row, "registeredAt"), now: registered_at) do
-      {:ok, id}
+  @doc """
+  Imports rows already mapped to the registration shape plus an optional
+  `registeredAt` (the priority; defaults to `opts[:now]` or now). Row numbers
+  start at `opts[:first_row]` (default 1).
+  """
+  @spec run([map()], keyword()) :: report()
+  def run(rows, opts \\ []) when is_list(rows) do
+    rows
+    |> Enum.with_index(Keyword.get(opts, :first_row, 1))
+    |> Enum.map(fn {row, number} -> run_entry(row, number) end)
+    |> import_entries(opts)
+  end
+
+  defp run_entry(row, number) do
+    {raw, attrs} = Map.pop(row, "paid", "")
+    %{row: number, email: email(row), attrs: attrs, paid: Sheet.paid(raw), notes: []}
+  end
+
+  @doc """
+  The ALE-388 extension point: creates the person's `held` Carried Fee when
+  their Paid cell says they hold one. It runs inside the row's transaction,
+  after the Waitlist entry is inserted, so a failure here rolls the row back
+  and refuses it.
+
+  Carried Fees do not exist yet, so this is a no-op; ALE-388 replaces the
+  body (through the Beginners' Workshop boundary, which may depend on the
+  Waitlist, never the reverse) before the import runs in production.
+  """
+  @spec create_carried_fee(Ecto.UUID.t(), Sheet.paid()) :: :ok | {:error, term()}
+  def create_carried_fee(_waitlist_entry_id, %{carried_fee?: _carried_fee?}), do: :ok
+
+  @doc "Formats a report as printable lines."
+  @spec format_report(report()) :: [String.t()]
+  def format_report(report) do
+    mode = if report.dry_run, do: "DRY RUN (nothing written)", else: "IMPORTED"
+    verb = if report.dry_run, do: "would import", else: "imported"
+
+    [
+      "Waitlist import: #{mode}. #{length(report.imported)} #{verb}, " <>
+        "#{length(report.refused)} refused, #{length(report.notes)} to review."
+    ] ++
+      section("Imported", report.imported, &paid_text/1) ++
+      section("Refused", report.refused, & &1.reason) ++
+      section("Review", report.notes, & &1.note)
+  end
+
+  defp paid_text(%{paid: %{carried_fee?: true, raw: raw}}),
+    do: "carried fee: yes (raw: #{inspect(raw)})"
+
+  defp paid_text(_imported), do: ""
+
+  defp section(_title, [], _detail), do: []
+
+  defp section(title, items, detail) do
+    ["", "#{title}:"] ++
+      Enum.map(items, fn item ->
+        line = "  row #{item.row} #{item.email || "(no email)"}"
+
+        case detail.(item) do
+          "" -> line
+          text -> "#{line}: #{text}"
+        end
+      end)
+  end
+
+  defp import_entries(entries, opts) do
+    dry_run? = Keyword.get(opts, :dry_run, false)
+    today = Keyword.get_lazy(opts, :today, &ClubCalendar.today/0)
+
+    report =
+      Enum.reduce(entries, %{dry_run: dry_run?, imported: [], refused: [], notes: []}, fn entry,
+                                                                                          acc ->
+        acc = add_notes(acc, entry, today)
+
+        case import_entry(entry, today, dry_run?, opts) do
+          {:ok, id} ->
+            imported = %{row: entry.row, email: entry.email, id: id, paid: entry.paid}
+            %{acc | imported: [imported | acc.imported]}
+
+          {:error, reason} ->
+            %{
+              acc
+              | refused: [%{row: entry.row, email: entry.email, reason: reason} | acc.refused]
+            }
+        end
+      end)
+
+    %{
+      report
+      | imported: Enum.reverse(report.imported),
+        refused: Enum.reverse(report.refused),
+        notes: Enum.reverse(report.notes)
+    }
+  end
+
+  defp add_notes(acc, %{notes: notes} = entry, today) do
+    notes =
+      if adult_with_guardian?(entry, today),
+        do: notes ++ ["review: Guardian details given for an adult were not imported"],
+        else: notes
+
+    Enum.reduce(notes, acc, fn note, acc ->
+      %{acc | notes: [%{row: entry.row, email: entry.email, note: note} | acc.notes]}
+    end)
+  end
+
+  defp import_entry(%{error: reason}, _today, _dry_run?, _opts), do: {:error, reason}
+
+  defp import_entry(%{attrs: attrs, paid: paid}, today, dry_run?, opts) when is_map(attrs) do
+    carried_fee = Keyword.get(opts, :carried_fee, &create_carried_fee/2)
+
+    with {:ok, registered_at} <- registered_at(attrs, opts),
+         :ok <- precheck_age(attrs, today) do
+      attrs
+      |> Map.delete("registeredAt")
+      |> add(registered_at, paid, carried_fee, dry_run?)
+      |> case do
+        {:ok, %{id: id}} -> {:ok, if(dry_run?, do: nil, else: id)}
+        {:error, reason} -> {:error, describe(reason)}
+      end
     else
       {:error, reason} -> {:error, describe(reason)}
     end
   end
 
-  defp import_row(_row, _opts), do: {:error, "not a row"}
+  defp import_entry(_entry, _today, _dry_run?, _opts), do: {:error, "not a row"}
+
+  # The person and their Carried Fee commit together in the row's own
+  # transaction. A dry run always rolls that transaction back, so it checks
+  # the database exactly as the import would.
+  defp add(attrs, registered_at, paid, carried_fee, dry_run?) do
+    Repo.transaction(fn ->
+      result =
+        with {:ok, person} <- Waitlist.add_person(attrs, now: registered_at, gender: :optional),
+             :ok <- carried_fee.(person.id, paid) do
+          {:ok, person}
+        end
+
+      case result do
+        {:ok, _person} when dry_run? -> Repo.rollback({:dry_run, result})
+        {:ok, person} -> person
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+    |> case do
+      {:error, {:dry_run, result}} -> result
+      other -> other
+    end
+  end
+
+  # Clearer reasons than registration's `invalid_payload` for the two age
+  # rules; `add_person/2` still enforces both.
+  defp precheck_age(%{"dateOfBirth" => dob} = attrs, today) when is_binary(dob) do
+    case Date.from_iso8601(dob) do
+      {:ok, date} ->
+        age = age(date, today)
+
+        cond do
+          age < @minimum_age ->
+            {:error, "under #{@minimum_age} (born #{dob})"}
+
+          age < @adult_age and blank?(attrs["guardianFirstName"]) ->
+            {:error, "under #{@adult_age} with no Guardian details"}
+
+          true ->
+            :ok
+        end
+
+      {:error, _} ->
+        :ok
+    end
+  end
+
+  defp precheck_age(_attrs, _today), do: :ok
+
+  defp adult_with_guardian?(%{attrs: %{"dateOfBirth" => dob, "guardianFirstName" => _}}, today) do
+    case Date.from_iso8601(dob) do
+      {:ok, date} -> age(date, today) >= @adult_age
+      _ -> false
+    end
+  end
+
+  defp adult_with_guardian?(_entry, _today), do: false
+
+  defp age(date_of_birth, today) do
+    years = today.year - date_of_birth.year
+
+    if {today.month, today.day} < {date_of_birth.month, date_of_birth.day},
+      do: years - 1,
+      else: years
+  end
 
   defp registered_at(%{"registeredAt" => %DateTime{} = at}, _opts), do: {:ok, at}
 
@@ -89,8 +287,11 @@ defmodule Dhc.Waitlist.Import do
     |> Enum.map_join("; ", fn {field, messages} -> "#{field}: #{Enum.join(messages, ", ")}" end)
   end
 
+  defp describe(reason) when is_binary(reason), do: reason
   defp describe(reason) when is_atom(reason), do: Atom.to_string(reason)
   defp describe(reason), do: inspect(reason)
+
+  defp blank?(value), do: value in [nil, ""]
 
   defp email(%{"email" => email}) when is_binary(email), do: email
   defp email(_row), do: nil
