@@ -8,6 +8,7 @@
 import type {
 	BeginnersWorkshopFastTrackRequest,
 	BeginnersWorkshopManualRefundRequest,
+	BeginnersWorkshopRescheduleRequest,
 	BeginnersWorkshopScheduleRequest,
 	BeginnersWorkshopSettingsRequest,
 	BeginnersWorkshopStaffRequest,
@@ -44,13 +45,15 @@ const staffEntries = {
 	assistantPrincipalIds: principalIds("Pick assistants from the list."),
 };
 
+const venue = v.pipe(
+	v.string(),
+	v.trim(),
+	v.nonEmpty("Enter the venue."),
+	v.maxLength(VENUE_MAX, `The venue can be at most ${VENUE_MAX} characters.`),
+);
+
 const scheduleEntries = {
-	venue: v.pipe(
-		v.string(),
-		v.trim(),
-		v.nonEmpty("Enter the venue."),
-		v.maxLength(VENUE_MAX, `The venue can be at most ${VENUE_MAX} characters.`),
-	),
+	venue,
 	startTime: wallTime("Enter the start time."),
 	...settingsEntries,
 	workshops: v.pipe(
@@ -179,6 +182,31 @@ export const fastTrackWaitlistPersonSchema = v.pipe(
 		body: { waitlistId } satisfies BeginnersWorkshopFastTrackRequest,
 	})),
 );
+
+/**
+ * ALE-394: the Reschedule dialog. The dialog prefills the cutoff and (while
+ * Batch 1 hasn't gone out) the contact-from date with the offsets Phoenix
+ * keeps; Phoenix judges every cross-field rule.
+ */
+export const rescheduleWorkshopSchema = v.pipe(
+	v.object({
+		id: workshopId,
+		date: civilDate("Pick the new date."),
+		startTime: wallTime("Enter the start time."),
+		venue,
+		paymentCutoffDate: civilDate("Pick the cutoff date."),
+		paymentCutoffTime: wallTime("Enter the cutoff time."),
+		contactFromDate: optionalCivilDate("Pick a valid contact-from date."),
+	}),
+	v.transform(({ id, ...body }) => ({
+		id,
+		body: body satisfies BeginnersWorkshopRescheduleRequest,
+	})),
+);
+
+export type RescheduleWorkshopInput = v.InferInput<
+	typeof rescheduleWorkshopSchema
+>;
 
 const newPersonEntries = { id: workshopId, ...waitlistRegistrationEntries };
 

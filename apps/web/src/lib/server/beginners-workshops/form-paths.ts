@@ -51,6 +51,21 @@ export function settingsFormPath(field: string): FormPath | undefined {
 	return SETTINGS_FIELDS.has(key) ? [key] : undefined;
 }
 
+// ALE-394: the Reschedule dialog's controls.
+const RESCHEDULE_FIELDS = new Set([
+	"date",
+	"startTime",
+	"venue",
+	"paymentCutoffDate",
+	"paymentCutoffTime",
+	"contactFromDate",
+]);
+
+/** A reschedule field → its control in the Reschedule dialog. */
+export function rescheduleFormPath(field: string): FormPath | undefined {
+	return RESCHEDULE_FIELDS.has(field) ? [field] : undefined;
+}
+
 /** A Staff field → its picker in the Staff dialog. */
 export function staffFormPath(field: string): FormPath | undefined {
 	return STAFF_FIELDS.has(field) ? [field] : undefined;

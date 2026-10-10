@@ -151,12 +151,22 @@ defmodule Dhc.BeginnersWorkshops do
   end
 
   # Only a filter, so a quiet workshop is not locked every sweep: the pass
-  # itself decides what is owed under the lock.
+  # itself decides what is owed under the lock. Pre-workshop info is owed
+  # once per schedule (`IntakeEmailLog.pre_workshop_occasion/1`, ALE-394).
   defp cutoff_owed_ids(now) do
     owed =
       from(i in Intake,
+        join: w in BeginnersWorkshop,
+        on: w.id == i.workshop_id,
         left_join: l in IntakeEmailLog,
-        on: l.intake_id == i.id and l.occasion == "pre_workshop",
+        on:
+          l.intake_id == i.id and
+            l.occasion ==
+              fragment(
+                "CASE WHEN ? = 0 THEN 'pre_workshop' ELSE 'pre_workshop:' || ? END",
+                w.reschedule_count,
+                w.reschedule_count
+              ),
         where:
           i.state == "contacted" or
             (i.state == "paid" and not is_nil(i.waitlist_id) and is_nil(l.id)),

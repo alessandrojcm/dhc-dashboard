@@ -94,6 +94,33 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   `pause_batches` / `resume_batches` stop and restart new Batches only.
 
+  ## Reschedule (ALE-394)
+
+  `reschedule_workshop` moves a scheduled workshop's date, start time
+  and/or venue at any time before Attendance Finalisation; it is refused
+  only with `:after_finalisation` or `:already_cancelled` (and a pending
+  Batch never blocks it). Under the Beginners' Workshop lock, then the open
+  Intakes:
+
+    * the Payment Cutoff keeps its (Dublin civil) offset before the start
+      unless a new date or time is supplied, and every open Batch window
+      ending after the new cutoff is brought forward to it;
+    * while Batch 1 has not gone out, the contact-from date keeps its offset
+      before the workshop date unless one is supplied (`update_workshop`'s
+      rules judge a supplied one); a kept date that would fall after the new
+      cutoff date is brought forward to Dublin today, so Batch 1 goes out at
+      the next 10:00;
+    * "Workshop rescheduled" is queued to every open Intake (log occasion
+      `rescheduled:<n>`); seats, holds and windows' people are untouched;
+    * the workshop's `reschedule_count` names the reschedule: Pre-workshop
+      info is owed once per schedule (occasion
+      `IntakeEmailLog.pre_workshop_occasion/1`), so anyone who had it gets it
+      again at the new cutoff through the same Payment Cutoff pass;
+    * every Staff member except the actor gets a keyed Notification
+      (`beginners-workshop:<id>:rescheduled:<n>`), signalled after commit.
+
+  Nothing is scheduled per workshop, so no job needs rewriting.
+
   ## Fast-track (ALE-384)
 
   `fast_track` places one person straight into a workshop outside Batch
@@ -264,6 +291,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   `payment_cutoff_date`, `payment_cutoff_time`, `contact_from`,
   `payment_window_days`.
 
+  Reschedule attributes are any of `venue`, `date`, `start_time`,
+  `payment_cutoff_date`, `payment_cutoff_time` and `contact_from`; at least
+  one of the date, start time and venue must change.
+
   Staff attributes (`set_staff`, and optional on a schedule) are
   `coach_principal_id` (`nil` for no coach) and `assistant_principal_ids`
   (a list). `set_staff` replaces the whole Staff list.
@@ -271,6 +302,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   @type command ::
           {:schedule_workshop, [map()]}
           | {:update_workshop, workshop_id :: binary(), map()}
+          | {:reschedule_workshop, workshop_id :: binary(), map()}
           | {:pause_batches, workshop_id :: binary()}
           | {:resume_batches, workshop_id :: binary()}
           | {:send_due_batch, workshop_id :: binary()}
@@ -349,6 +381,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   @staff_capabilities %{
     schedule_workshop: :"beginners.workshops.manage",
     update_workshop: :"beginners.workshops.manage",
+    reschedule_workshop: :"beginners.workshops.manage",
     pause_batches: :"beginners.workshops.manage",
     resume_batches: :"beginners.workshops.manage",
     set_staff: :"beginners.workshops.manage",
@@ -430,6 +463,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   @update_fields ~w(capacity fee_cents payment_cutoff_date payment_cutoff_time contact_from payment_window_days)a
 
+  @reschedule_fields ~w(venue date start_time payment_cutoff_date payment_cutoff_time contact_from)a
+
   # Unique and check constraints, as the migrations named them, and what each
   # becomes. Unique constraints become a domain reason; check constraints
   # become a field error on the changeset (the changesets already enforce the
@@ -473,7 +508,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:venue, "beginners_workshops_venue_check"},
       {:capacity, "beginners_workshops_capacity_check"},
       {:fee_cents, "beginners_workshops_fee_check"},
-      {:payment_window_days, "beginners_workshops_payment_window_check"}
+      {:payment_window_days, "beginners_workshops_payment_window_check"},
+      {:reschedule_count, "beginners_workshops_reschedule_count_check"}
     ],
     Batch => [
       {:number, "beginners_workshop_batches_number_check"},
@@ -642,6 +678,23 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           &update_locked(&1, attrs, clock)
         )
       end)
+    end
+  end
+
+  defp run({:staff, principal_id}, {:reschedule_workshop, workshop_id, attrs}, clock)
+       when is_map(attrs) do
+    with {:ok, workshop_id} <- cast_id(workshop_id) do
+      fn ->
+        with_locked(
+          %{
+            workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+            intake: &open_intakes/1
+          },
+          &reschedule_locked(&1, attrs, principal_id, clock)
+        )
+      end
+      |> transact()
+      |> signal_after_commit()
     end
   end
 
@@ -867,6 +920,166 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     if WorkshopPolicy.contact_from_editable?(facts),
       do: contact_from_on_or_before(contact_from, cutoff),
       else: :ok
+  end
+
+  # ── reschedule_workshop ─────────────────────────────────────────
+
+  # Every open Intake of the workshop: each is told about the move.
+  defp open_intakes(%{workshop: workshop}) do
+    open = Intake.open_states()
+    {:all, from(i in Intake, where: i.workshop_id == ^workshop.id and i.state in ^open)}
+  end
+
+  defp reschedule_locked(%{workshop: workshop, intake: intakes}, attrs, actor_id, clock) do
+    reading = Clock.read(clock)
+
+    with :ok <- still_scheduled(workshop),
+         facts = facts_for(workshop),
+         {:ok, input, next} <- reschedule_input(workshop, attrs),
+         :ok <- moved_start_in_future(input, next, reading),
+         cutoff = rescheduled_cutoff(workshop, next),
+         :ok <- cutoff_before_start(cutoff, WorkshopPolicy.starts_at(next)),
+         {:ok, contact_from} <-
+           rescheduled_contact_from(workshop, input, next, cutoff, facts, reading),
+         {:ok, workshop} <-
+           workshop
+           |> BeginnersWorkshop.reschedule_changeset(%{
+             venue: next.venue,
+             date: next.date,
+             start_time: next.start_time,
+             payment_cutoff: cutoff,
+             contact_from: contact_from
+           })
+           |> persist(),
+         :ok <- clamp_open_windows(workshop, reading),
+         :ok <- tell_open_intakes(intakes, workshop, reading),
+         {:ok, created} <- notify_rescheduled(workshop, actor_id) do
+      {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), reading), created}}
+    end
+  end
+
+  # The new values over the current ones; at least one of the date, start
+  # time and venue must change (otherwise there is nothing to tell anyone).
+  defp reschedule_input(workshop, attrs) do
+    current = %{
+      venue: workshop.venue,
+      date: workshop.date,
+      start_time: workshop.start_time,
+      payment_cutoff_date: nil,
+      payment_cutoff_time: nil,
+      contact_from: workshop.contact_from
+    }
+
+    input =
+      {current, Map.take(@schedule_types, @reschedule_fields)}
+      |> Ecto.Changeset.cast(attrs, @reschedule_fields)
+      |> Ecto.Changeset.update_change(:venue, &String.trim/1)
+      |> Ecto.Changeset.validate_required([:venue, :date, :start_time, :contact_from])
+      |> Ecto.Changeset.validate_length(:venue, min: 1, max: BeginnersWorkshop.venue_max())
+      |> require_a_move(workshop)
+
+    with {:ok, next} <- Ecto.Changeset.apply_action(input, :update), do: {:ok, input, next}
+  end
+
+  defp require_a_move(input, workshop) do
+    moved? =
+      Enum.any?([:date, :start_time, :venue], fn field ->
+        Ecto.Changeset.get_field(input, field) != Map.fetch!(workshop, field)
+      end)
+
+    if moved?,
+      do: input,
+      else: Ecto.Changeset.add_error(input, :date, "change the date, start time or venue")
+  end
+
+  # Only a new start is judged against the clock: a venue correction on the
+  # day (or after it, before finalisation) still goes through.
+  defp moved_start_in_future(input, next, reading) do
+    if Ecto.Changeset.changed?(input, :date) or Ecto.Changeset.changed?(input, :start_time),
+      do: in_future(WorkshopPolicy.starts_at(next), reading),
+      else: :ok
+  end
+
+  # The cutoff keeps its Dublin civil offset before the start; a supplied
+  # date or time replaces that half of the kept cutoff.
+  defp rescheduled_cutoff(workshop, next) do
+    kept = WorkshopPolicy.kept_offset_cutoff(workshop, next)
+
+    ClubCalendar.to_utc(
+      next.payment_cutoff_date || ClubCalendar.on_date(kept),
+      next.payment_cutoff_time || kept |> ClubCalendar.time_on() |> Time.truncate(:second)
+    )
+  end
+
+  # `update_workshop`'s rules judge a supplied contact-from date; a kept one
+  # follows the workshop date, or comes forward to today when it would land
+  # after the new cutoff date. Once Batch 1 has gone out it no longer
+  # matters and stays as it was.
+  defp rescheduled_contact_from(workshop, input, next, cutoff, facts, reading) do
+    cond do
+      not WorkshopPolicy.contact_from_editable?(facts) ->
+        with :ok <- contact_from_change_allowed(input, facts), do: {:ok, workshop.contact_from}
+
+      Ecto.Changeset.changed?(input, :contact_from) ->
+        with :ok <- contact_from_still_valid(next.contact_from, cutoff, facts),
+             do: {:ok, next.contact_from}
+
+      true ->
+        {:ok, WorkshopPolicy.kept_contact_from(workshop, next.date, cutoff, reading)}
+    end
+  end
+
+  # Written under the workshop lock, which every Batch writer holds.
+  defp clamp_open_windows(workshop, reading) do
+    # A window can't end before it was sent: one past the new cutoff closes now.
+    clamp_to = Enum.max([workshop.payment_cutoff, reading.now], DateTime)
+
+    from(b in Batch,
+      where:
+        b.workshop_id == ^workshop.id and b.window_ends_at > ^reading.now and
+          b.window_ends_at > ^clamp_to
+    )
+    |> Repo.all()
+    |> Enum.reduce_while(:ok, fn batch, :ok ->
+      case batch |> Batch.clamp_window_changeset(clamp_to) |> persist() do
+        {:ok, _batch} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp tell_open_intakes(intakes, workshop, reading) do
+    occasion = IntakeEmailLog.rescheduled_occasion(workshop.reschedule_count)
+
+    values = fn first_name ->
+      Map.put(
+        base_values(workshop, first_name),
+        "paymentCutoff",
+        Values.deadline(workshop.payment_cutoff)
+      )
+    end
+
+    Enum.reduce_while(intakes, :ok, fn intake, :ok ->
+      case queue_intake_email(intake, "rescheduled", occasion, values, reading) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  # Assigned Staff stay assigned; each (bar the actor) hears about the move,
+  # keyed by this reschedule so the next one notifies again.
+  defp notify_rescheduled(workshop, actor_id) do
+    key = "beginners-workshop:#{workshop.id}:rescheduled:#{workshop.reschedule_count}"
+    body = "The Beginners' Workshop you're on has moved to #{when_where(workshop)}."
+
+    workshop
+    |> current_staff()
+    |> Enum.map(& &1.principal_id)
+    |> Enum.uniq()
+    |> List.delete(actor_id)
+    |> Enum.map(&{&1, key, body})
+    |> create_keyed()
   end
 
   # ── pause_batches / resume_batches ──────────────────────────────
@@ -1510,17 +1723,20 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  # "Pre-workshop info", once per Intake (per schedule; a reschedule's
-  # resend arrives with that ticket). Every writer of it holds the workshop
-  # lock, so the log row read here cannot appear concurrently; the unique
-  # `occasion` index is the backstop. An anonymised person is owed nothing.
+  # "Pre-workshop info", once per Intake per schedule: a reschedule
+  # (ALE-394) moves the workshop to a new occasion, so it is owed again.
+  # Every writer of it holds the workshop lock, so the log row read here
+  # cannot appear concurrently; the unique `occasion` index is the backstop.
+  # An anonymised person is owed nothing.
   defp queue_pre_workshop(%Intake{waitlist_id: nil}, _workshop, _reading), do: {:ok, :not_owed}
 
   defp queue_pre_workshop(intake, workshop, reading) do
+    occasion = IntakeEmailLog.pre_workshop_occasion(workshop.reschedule_count)
+
     sent? =
       Repo.exists?(
         from(l in IntakeEmailLog,
-          where: l.intake_id == ^intake.id and l.occasion == "pre_workshop"
+          where: l.intake_id == ^intake.id and l.occasion == ^occasion
         )
       )
 
@@ -1531,7 +1747,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
              queue_intake_email(
                intake,
                "pre_workshop",
-               "pre_workshop",
+               occasion,
                &base_values(workshop, &1),
                reading
              ),
@@ -2420,12 +2636,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp notify_staff(workshop, events, actor_id) do
     events
     |> Enum.reject(fn {_event, row} -> row.principal_id == actor_id end)
-    |> Enum.reduce_while({:ok, []}, fn {event, row}, {:ok, acc} ->
-      case Notifications.create_keyed_in_transaction(
-             row.principal_id,
-             "beginners-workshop-staff:#{row.id}:#{event}",
-             staff_message(event, row.role, workshop)
-           ) do
+    |> Enum.map(fn {event, row} ->
+      {row.principal_id, "beginners-workshop-staff:#{row.id}:#{event}",
+       staff_message(event, row.role, workshop)}
+    end)
+    |> create_keyed()
+  end
+
+  # Keyed Notifications inside this transaction; returns the rows created,
+  # for the caller to signal after commit.
+  defp create_keyed(notifications) do
+    Enum.reduce_while(notifications, {:ok, []}, fn {principal_id, key, body}, {:ok, acc} ->
+      case Notifications.create_keyed_in_transaction(principal_id, key, body) do
         {:ok, :created, notification} -> {:cont, {:ok, [notification | acc]}}
         {:ok, :already_created} -> {:cont, {:ok, acc}}
         {:error, reason} -> {:halt, {:error, reason}}

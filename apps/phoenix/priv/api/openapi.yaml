@@ -3918,6 +3918,42 @@ paths:
         "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
         "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
         "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+  /beginners-workshops/{id}/reschedule:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    post:
+      operationId: beginnersWorkshops.reschedule
+      tags: [BeginnersWorkshops]
+      summary: Move a workshop's date, start time or venue
+      description: |
+        Any time before Attendance Finalisation; a pending Batch never
+        blocks it. Omitted fields keep their value, and at least one of
+        `date`, `startTime` and `venue` must change. The Payment Cutoff keeps
+        its offset before the start unless `paymentCutoffDate` or
+        `paymentCutoffTime` is given, and an open Batch window is brought
+        forward to the new cutoff. While Batch 1 has not gone out, the
+        contact-from date keeps its offset before the date unless
+        `contactFromDate` is given (moved to today when the kept date would
+        fall after the new cutoff date); afterwards it can't change.
+        "Workshop rescheduled" is emailed to every open Intake, Pre-workshop
+        info is sent again at the new cutoff, and the Staff are notified.
+        Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopRescheduleRequest"}
+      responses:
+        "200":
+          description: The rescheduled workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
+        "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
   /beginners-workshops/{id}/console:
     parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
     get:
@@ -8319,6 +8355,20 @@ components:
         paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
         contactFromDate: {type: string, format: date}
         paymentWindowDays: {type: integer, minimum: 1}
+    BeginnersWorkshopRescheduleRequest:
+      type: object
+      description: |
+        The new date, start time and/or venue (Europe/Dublin civil values),
+        optionally with a new Payment Cutoff date or time and, while Batch 1
+        has not gone out, a new contact-from date. Omitted fields keep their
+        value or their offset before the start.
+      properties:
+        venue: {type: string, minLength: 1, maxLength: 80}
+        date: {type: string, format: date}
+        startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
+        paymentCutoffDate: {type: string, format: date}
+        paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
+        contactFromDate: {type: string, format: date}
     BeginnersWorkshopResponse:
       type: object
       required: [data]

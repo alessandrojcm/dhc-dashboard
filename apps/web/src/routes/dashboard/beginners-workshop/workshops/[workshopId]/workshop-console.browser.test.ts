@@ -1,5 +1,6 @@
 import type { BeginnersWorkshopConsole } from "@dhc/api-client";
 import { expect, test } from "vitest";
+import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import WorkshopConsole from "./workshop-console.svelte";
 
@@ -332,4 +333,26 @@ test("ALE-382: a failed refund needs attention with Retry and Record manual refu
 				.getByTestId("refund-status"),
 		)
 		.toHaveTextContent("Refunded manually");
+});
+
+test("ALE-394: Reschedule opens a dialog that says who it emails", async () => {
+	const screen = await render(WorkshopConsole, { view: view() });
+
+	await userEvent.click(screen.getByRole("button", { name: "Reschedule" }));
+	// One seated and one asked: both open, both emailed.
+	await expect
+		.element(screen.getByTestId("reschedule-warning"))
+		.toHaveTextContent("This emails 2 people “Workshop rescheduled”.");
+});
+
+test("ALE-394: a cancelled workshop offers no Reschedule", async () => {
+	const base = view();
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			workshop: { ...base.workshop, status: "cancelled", stage: "cancelled" },
+		}),
+	});
+	await expect
+		.element(screen.getByRole("button", { name: "Reschedule" }))
+		.not.toBeInTheDocument();
 });

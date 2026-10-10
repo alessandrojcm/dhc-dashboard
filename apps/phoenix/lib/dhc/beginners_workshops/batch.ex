@@ -34,4 +34,12 @@ defmodule Dhc.BeginnersWorkshops.Batch do
     |> validate_number(:number, greater_than_or_equal_to: 1)
     |> validate_number(:size, greater_than_or_equal_to: 1)
   end
+
+  @doc """
+  ALE-394: a reschedule brings an open window's end forward to the new
+  Payment Cutoff (never later).
+  """
+  @spec clamp_window_changeset(t(), DateTime.t()) :: Ecto.Changeset.t()
+  def clamp_window_changeset(%__MODULE__{} = batch, %DateTime{} = cutoff),
+    do: change(batch, window_ends_at: cutoff)
 end

@@ -45,7 +45,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopFastTrack.candidates beginnersWorkshopFastTrack.newPerson
                 beginnersWorkshopFastTrack.waitlistPerson
                 beginnersWorkshopRefunds.recordManual beginnersWorkshopRefunds.retry
-                beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.schedule
+                beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.reschedule
+                beginnersWorkshops.schedule
                 beginnersWorkshops.setStaff beginnersWorkshops.staffCandidates
                 beginnersWorkshops.updateSettings)
 
