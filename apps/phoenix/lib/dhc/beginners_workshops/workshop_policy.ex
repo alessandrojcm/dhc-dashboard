@@ -187,6 +187,39 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
     Date.compare(workshop_date, eighteenth) == :lt
   end
 
+  @typedoc """
+  What the Payment Cutoff pass does with one `contacted` Intake:
+  `:await_hold` (leave it until Stripe ends its live Seat Hold), `:lapse`
+  (seats were free: the person is removed) or `:return` (the workshop was
+  full: back to the Waitlist with the original priority).
+  """
+  @type cutoff_settlement :: :await_hold | :lapse | :return
+
+  @doc """
+  The Payment Cutoff rule for one `contacted` Intake (ALE-385, stories
+  86–87), judged under the workshop lock after the cutoff.
+
+  The cutoff stops only *new* Seat Holds, so an Intake whose own hold is
+  still live (an `open` payment row, even one past its 30 minutes that
+  Stripe has not ended) is left alone: if Stripe completes it the Intake
+  becomes `paid`, otherwise a later sweep settles it by this same rule. An
+  Intake without a live hold lapses when a seat is free (`seat_free?/2`:
+  capacity − paid − live holds > 0) and returns when the workshop is full —
+  a person who could only ever see "full" is never removed.
+
+  Seats are judged when the pass runs (the first sweep after the cutoff,
+  within minutes), not replayed as at the cutoff instant.
+
+  This is the assembly-time reading of the spec; it is the one place to
+  change if the club reads a hold live at the cutoff differently.
+  """
+  @spec cutoff_settlement(hold_live? :: boolean(), BeginnersWorkshop.t(), map()) ::
+          cutoff_settlement()
+  def cutoff_settlement(true, _workshop, _facts), do: :await_hold
+
+  def cutoff_settlement(false, %BeginnersWorkshop{} = workshop, facts),
+    do: if(seat_free?(workshop, facts), do: :lapse, else: :return)
+
   @doc "When a Seat Hold taken at `reading` runs out (the reaper then asks Stripe to expire it)."
   @spec hold_expires_at(map()) :: DateTime.t()
   def hold_expires_at(%{now: now}), do: DateTime.add(now, @hold_minutes * 60, :second)

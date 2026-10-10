@@ -19,6 +19,8 @@ defmodule Dhc.BeginnersWorkshops do
     Commands,
     DoorView,
     FastTrackCandidates,
+    Intake,
+    IntakeEmailLog,
     IntakePage,
     MyWorkshops,
     StaffCandidates,
@@ -77,14 +79,21 @@ defmodule Dhc.BeginnersWorkshops do
   The periodic sweep (ALE-380): runs every time-driven pass through
   `execute/3` as `:system`. `send_due_batch` runs for each scheduled
   workshop still before its Payment Cutoff; `reap_holds` (ALE-381) runs once
-  across every workshop, because a Seat Hold may outlive the cutoff. The
-  cutoff, finalisation and follow-up passes join it with their tickets. A
-  pass that is not due does nothing, so running the sweep again is safe —
-  there are no per-workshop scheduled jobs.
+  across every workshop, because a Seat Hold may outlive the cutoff; then
+  `pass_payment_cutoff` (ALE-385) runs for each scheduled workshop past its
+  cutoff that still owes something (a `contacted` Intake, or a `paid` one
+  without Pre-workshop info), after the reaper so a hold Stripe ended in
+  this sweep is settled in it too. The finalisation and follow-up passes
+  join it with their tickets. A pass that is not due does nothing, so
+  running the sweep again is safe — there are no per-workshop scheduled
+  jobs.
 
   Returns how many Batch passes sent a Batch, found nobody waiting, were
-  not due, or failed, and how many expired holds Stripe released, completed
-  or has not ended yet (`holds_waiting`, retried by the next sweep).
+  not due, or failed; how many expired holds Stripe released, completed
+  or has not ended yet (`holds_waiting`, retried by the next sweep); and
+  what the cutoff passes did: Pre-workshop info queued, Intakes lapsed,
+  Intakes returned, and Intakes left for Stripe to end their hold
+  (`cutoff_awaiting_hold`).
   """
   @spec run_due_passes(keyword()) :: %{
           sent: non_neg_integer(),
@@ -93,12 +102,73 @@ defmodule Dhc.BeginnersWorkshops do
           failed: non_neg_integer(),
           holds_released: non_neg_integer(),
           holds_completed: non_neg_integer(),
-          holds_waiting: non_neg_integer()
+          holds_waiting: non_neg_integer(),
+          cutoff_pre_workshop: non_neg_integer(),
+          cutoff_lapsed: non_neg_integer(),
+          cutoff_returned: non_neg_integer(),
+          cutoff_awaiting_hold: non_neg_integer()
         }
   def run_due_passes(opts \\ []) do
+    sum_failed = fn :failed, a, b -> a + b end
+
     opts
     |> run_batch_passes()
-    |> Map.merge(run_reap_pass(opts), fn :failed, a, b -> a + b end)
+    |> Map.merge(run_reap_pass(opts), sum_failed)
+    |> Map.merge(run_cutoff_passes(opts), sum_failed)
+  end
+
+  @cutoff_tally %{
+    cutoff_pre_workshop: 0,
+    cutoff_lapsed: 0,
+    cutoff_returned: 0,
+    cutoff_awaiting_hold: 0,
+    failed: 0
+  }
+
+  defp run_cutoff_passes(opts) do
+    now = Clock.read(Clock.from_opts(opts)).now
+
+    now
+    |> cutoff_owed_ids()
+    |> Enum.reduce(@cutoff_tally, fn id, tally ->
+      case execute(:system, {:pass_payment_cutoff, id}, opts) do
+        {:ok, %{outcome: :passed} = done} ->
+          %{
+            tally
+            | cutoff_pre_workshop: tally.cutoff_pre_workshop + done.pre_workshop,
+              cutoff_lapsed: tally.cutoff_lapsed + done.lapsed,
+              cutoff_returned: tally.cutoff_returned + done.returned,
+              cutoff_awaiting_hold: tally.cutoff_awaiting_hold + done.awaiting_hold
+          }
+
+        {:ok, %{outcome: :not_due}} ->
+          tally
+
+        {:error, _reason} ->
+          Map.update!(tally, :failed, &(&1 + 1))
+      end
+    end)
+  end
+
+  # Only a filter, so a quiet workshop is not locked every sweep: the pass
+  # itself decides what is owed under the lock.
+  defp cutoff_owed_ids(now) do
+    owed =
+      from(i in Intake,
+        left_join: l in IntakeEmailLog,
+        on: l.intake_id == i.id and l.occasion == "pre_workshop",
+        where:
+          i.state == "contacted" or
+            (i.state == "paid" and not is_nil(i.waitlist_id) and is_nil(l.id)),
+        select: i.workshop_id
+      )
+
+    from(w in BeginnersWorkshop,
+      where: w.status == "scheduled" and w.payment_cutoff <= ^now and w.id in subquery(owed),
+      order_by: [asc: w.date, asc: w.id],
+      select: w.id
+    )
+    |> Repo.all()
   end
 
   defp run_reap_pass(opts) do

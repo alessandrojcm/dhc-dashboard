@@ -97,4 +97,15 @@ defmodule Dhc.BeginnersWorkshops.Intake do
     |> change(state: "paid", paid_via: paid_via, paid_at: at)
     |> validate_inclusion(:paid_via, @paid_via)
   end
+
+  @doc """
+  An open Intake closing into a terminal `state` that carries no stamps of
+  its own (ALE-385: `lapsed` and `returned` at the Payment Cutoff).
+  """
+  @spec close_changeset(t(), String.t()) :: Ecto.Changeset.t()
+  def close_changeset(%__MODULE__{} = intake, state) do
+    intake
+    |> change(state: state)
+    |> validate_inclusion(:state, @states -- @open_states)
+  end
 end

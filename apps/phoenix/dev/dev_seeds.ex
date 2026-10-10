@@ -458,6 +458,13 @@ defmodule Dhc.DevSeeds do
   holds have no Checkout Session, so the sweep's `reap_holds` settles them
   30 minutes later (it replays the create, which Stripe refuses without a
   secret key, and frees the seat).
+
+  ALE-385: one more workshop, two days out, is **past its Payment Cutoff**
+  (yesterday at 18:30 Dublin). It is scheduled and its Batch 1 sent at a
+  fixed clock ten days ago, two of its four Intakes are paid before the
+  cutoff, and the boundary's `pass_payment_cutoff` then runs on the wall
+  clock: the paid two get Pre-workshop info and the other two lapse (seats
+  were free), which removes them from the Waitlist.
   """
   @spec seed_beginners_workshops(pos_integer()) :: :ok
   def seed_beginners_workshops(count) do
@@ -492,6 +499,7 @@ defmodule Dhc.DevSeeds do
 
     seed_open_batch_window(coordinator_id)
     seed_paid_and_in_checkout(coordinator_id)
+    seed_past_cutoff(coordinator_id)
   end
 
   defp seed_open_batch_window(coordinator_id) do
@@ -597,6 +605,81 @@ defmodule Dhc.DevSeeds do
 
     Mix.shell().info(
       "Seeded the workshop on #{workshop.date}: #{length(paid)} paid, #{length(holding)} in checkout"
+    )
+  end
+
+  defp seed_past_cutoff(coordinator_id) do
+    capacity = 4
+    today = ClubCalendar.today()
+    contact_from = Date.add(today, -10)
+    # Microsecond precision, as the wall clock reads.
+    batch_at = %{ClubCalendar.to_utc(contact_from, ~T[10:00:00]) | microsecond: {0, 6}}
+    paid_at = DateTime.add(batch_at, 3600, :second)
+
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "DCU Sports Hall",
+             date: Date.add(today, 2),
+             start_time: ~T[18:30:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             payment_cutoff_date: Date.add(today, -1),
+             payment_cutoff_time: ~T[18:30:00],
+             contact_from: contact_from
+           }
+         ]},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(DateTime.add(batch_at, -3600, :second))
+      )
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(batch_at)
+      )
+
+    paid =
+      Repo.all(
+        from(i in Intake,
+          where: i.workshop_id == ^workshop.id,
+          order_by: [i.queue_date, i.id],
+          limit: 2
+        )
+      )
+
+    for intake <- paid do
+      row = insert_seed_hold!(intake, workshop, paid_at, "cs_seed_#{intake.id}")
+
+      {:ok, %{outcome: :paid}} =
+        Dhc.BeginnersWorkshops.execute(
+          :stripe,
+          {:complete_payment,
+           %{
+             "id" => row.stripe_checkout_session_id,
+             "status" => "complete",
+             "payment_status" => "paid",
+             "amount_total" => row.amount_cents,
+             "currency" => "eur",
+             "payment_intent" => "pi_seed_#{intake.id}",
+             "metadata" => %{"type" => "beginners_intake_payment", "payment_id" => row.id}
+           }},
+          clock: Dhc.BeginnersWorkshops.Clock.fixed(paid_at)
+        )
+    end
+
+    {:ok, %{outcome: :passed} = pass} =
+      Dhc.BeginnersWorkshops.execute(:system, {:pass_payment_cutoff, workshop.id})
+
+    Mix.shell().info(
+      "Seeded the workshop on #{workshop.date} past its cutoff: " <>
+        "#{pass.pre_workshop} sent Pre-workshop info, #{pass.lapsed} lapsed"
     )
   end
 
