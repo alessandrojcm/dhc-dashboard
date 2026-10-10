@@ -38,19 +38,25 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       Beginners' Workshop  scheduled → finalised | cancelled
       Intake               contacted → paid | lapsed | returned | declined
                            paid → attended | no_show | deferred
+                           attended → no_show
+                           no_show → attended | deferred
       payment (Seat Hold)  open → paid | releasing | released | policy_failed
                            releasing → released | paid
       refund               pending → processing | completed | failed
                            processing → completed | failed
       Carried Fee          held → applied | refunded | forfeited
                            applied → held | spent | refunded | forfeited
+                           spent → forfeited
+                           forfeited → spent | held
 
   The workshop end states are terminal. Intakes are created `contacted`
   (ALE-380); ALE-381 adds `contacted → paid` and the payment rows; ALE-385
   adds the Payment Cutoff's `contacted → lapsed | returned`; ALE-391 adds
   Attendance Finalisation's `paid → attended | no_show`; ALE-386 adds
   `decline`'s `contacted → declined`; ALE-388 adds `defer`'s
-  `paid → deferred` and the Carried Fee. A Stripe refund
+  `paid → deferred` and the Carried Fee; ALE-393 adds the attendance
+  corrections (`attended ↔ no_show`, `no_show → deferred`, and the Carried
+  Fee's `spent ↔ forfeited`, `forfeited → held`). A Stripe refund
   is created `pending`; a manual refund is written `completed` (both by
   `persist/1`, the transition table governs every later change). Later
   Intake moves and Carried Fees join the table with the tickets that
@@ -311,6 +317,25 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   (`WorkshopPolicy.follow_up_at/1`; log occasion `follow_up`, unique per
   Intake), so re-running it finds nothing owed.
 
+  ## Attendance corrections (ALE-393)
+
+  `correct_attendance` (`beginners.workshops.manage`, a console Intake
+  command with `to`) fixes one Intake after Attendance Finalisation —
+  `attended → no_show`, `no_show → attended`, or `no_show → deferred` for
+  someone who told the club in time. It locks Beginners' Workshop → Waitlist
+  entry → Intake → Carried Fee → the paying payment, and is refused with
+  `:before_finalisation` (`:already_cancelled`), with `:already_invited`
+  once the standing is `invited` or `joined`, and `:not_correctable`
+  otherwise. The standing follows the lifecycle (attended → `attended`,
+  no-show → `removed`, deferred → `waiting` with the original priority)
+  through `Waitlist.change_standing/2`, and the Carried Fee that paid the
+  Intake follows too (`spent`, `forfeited`, or `held` again on a deferral);
+  a Stripe-paid no-show corrected to deferred gets a `held` Carried Fee on
+  its payment, exactly as `defer` makes one, and "Deferred" is queued. A
+  person corrected to attended once the Follow-up is due gets it at once
+  (the same `queue_follow_up/3`); before then the sweep sends it. Other
+  corrections email nobody.
+
   ## Invitation handoff (ALE-392)
 
   `invite` (`members.invite`) hands one attended person to Onboarding.
@@ -529,6 +554,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :no_carried_fee
           | :confirm_instead
           | :payment_not_found
+          | :before_finalisation
+          | :not_correctable
+          | :invalid_correction
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -561,7 +589,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     # ALE-387. `withdraw` is the Waitlist's own exit, offered on the Waitlist
     # tab and the console, so it needs the Waitlist capability.
     cancel_with_refund: :"beginners.workshops.manage",
-    withdraw: :"beginners.waitlist.manage"
+    withdraw: :"beginners.waitlist.manage",
+    # ALE-393.
+    correct_attendance: :"beginners.workshops.manage"
   }
 
   # The console Intake commands: one plumbing, one rule (`IntakePolicy`).
@@ -609,7 +639,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     workshop: %{"scheduled" => ~w(finalised cancelled)},
     intake: %{
       "contacted" => ~w(paid lapsed returned declined),
-      "paid" => ~w(attended no_show deferred cancelled_refunded withdrawn)
+      "paid" => ~w(attended no_show deferred cancelled_refunded withdrawn),
+      # Attendance corrections after finalisation (ALE-393).
+      "attended" => ~w(no_show),
+      "no_show" => ~w(attended deferred)
     },
     payment: %{
       "open" => ~w(paid releasing released policy_failed),
@@ -623,7 +656,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     },
     carried_fee: %{
       "held" => ~w(applied refunded forfeited),
-      "applied" => ~w(held spent refunded forfeited)
+      "applied" => ~w(held spent refunded forfeited),
+      # Attendance corrections (ALE-393) move a used fee to match.
+      "spent" => ~w(forfeited),
+      "forfeited" => ~w(spent held)
     }
   }
 
@@ -735,7 +771,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:currency, "beginners_workshop_intake_payments_currency_check"}
     ],
     StaffAssignment => [{:role, "beginners_workshop_staff_role_check"}],
-    IntakeEvent => [{:note, "beginners_workshop_intake_events_note_check"}],
+    IntakeEvent => [
+      {:note, "beginners_workshop_intake_events_note_check"},
+      {:correction, "beginners_workshop_intake_events_correction_check"}
+    ],
     IntakeRefund => [
       {:status, "beginners_workshop_intake_refunds_status_check"},
       {:method, "beginners_workshop_intake_refunds_method_check"},
@@ -2739,6 +2778,19 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
+  # `correct_attendance` (ALE-393) names the state the Intake becomes.
+  defp command_options(:correct_attendance, attrs) do
+    case fetch_attr(attrs, :to) do
+      to when is_binary(to) ->
+        if to in IntakePolicy.correction_states(),
+          do: {:ok, %{to: to}},
+          else: {:error, :invalid_correction}
+
+      _other ->
+        {:error, :invalid_correction}
+    end
+  end
+
   defp command_options(_command, _attrs), do: {:ok, %{}}
 
   defp command_note(attrs) do
@@ -2824,6 +2876,19 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     |> Map.put(:waitlist_entry, entry_query(peek))
   end
 
+  # `correct_attendance` (ALE-393) moves the standing and the Carried Fee
+  # that paid the Intake (or, for a Stripe payer's deferral, makes one on the
+  # paying payment, so it locks the person's live fee and that payment).
+  defp intake_command_spec(:correct_attendance, peek) do
+    peek
+    |> intake_spec(fn
+      %{intake: %Intake{paid_via: "stripe"}} -> paying_payment(peek.intake_id)
+      _carried_fee_paid -> nil
+    end)
+    |> Map.put(:waitlist_entry, entry_query(peek))
+    |> Map.put(:carried_fee, &correction_fee/1)
+  end
+
   defp intake_command_spec(_link_command, peek), do: intake_spec(peek, nil)
 
   defp entry_query(%{waitlist_id: nil}), do: nil
@@ -2852,7 +2917,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp intake_command_locked(%{intake: intake} = locked, command, context, clock) do
     reading = Clock.read(clock)
 
-    case IntakePolicy.check(command, policy_facts(locked)) do
+    case IntakePolicy.check(command, policy_facts(locked, context)) do
       :ok ->
         event_id = Ecto.UUID.generate()
 
@@ -3010,6 +3075,31 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
+  # ALE-393: fix a door mistake, or turn a no-show into a Deferral. The
+  # standing and the Carried Fee follow the new state; only a deferral is
+  # emailed, and an attendee owed the Follow-up gets it now.
+  defp act_on_intake(:correct_attendance, locked, _event_id, reading) do
+    %{workshop: workshop, waitlist_entry: entry, intake: intake, context: context} = locked
+    to = context.options.to
+
+    with :ok <- no_other_open_intake(entry, intake, to),
+         {:ok, intake} <- transition(:intake, intake, Intake.close_changeset(intake, to)),
+         :ok <- correct_standing(entry, to),
+         {:ok, _fee} <- correct_fee(intake, locked, to, reading),
+         :ok <- after_correction(intake, workshop, to, reading) do
+      {:ok, intake}
+    else
+      # The person's record moved on since finalisation (a refunded fee,
+      # another live fee, a standing the table cannot reach from here): the
+      # correction no longer fits, so it is refused by name.
+      {:error, reason} when reason in [:illegal_transition, :illegal_standing_change] ->
+        {:error, :not_correctable}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp refund_choice(%{refund: refund}) when is_boolean(refund), do: {:ok, refund}
   defp refund_choice(_options), do: {:error, :refund_choice_required}
 
@@ -3101,8 +3191,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     do: Repo.one!(from(b in Batch, where: b.id == ^batch_id, select: b.window_ends_at))
 
   # What `IntakePolicy.check/2` reads: the locked Intake and, for the
-  # commands that lock it, the person's live Carried Fee.
-  defp policy_facts(%{intake: intake} = locked) do
+  # commands that lock them, the person's live Carried Fee and standing,
+  # the workshop's status, and a correction's target (ALE-393).
+  defp policy_facts(%{intake: intake} = locked, context) do
     %{
       state: intake.state,
       paid_via: intake.paid_via,
@@ -3110,17 +3201,27 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         case Map.get(locked, :carried_fee) do
           %CarriedFee{status: status} -> status
           nil -> nil
-        end
+        end,
+      workshop_status: locked.workshop.status,
+      standing:
+        case Map.get(locked, :waitlist_entry) do
+          %WaitlistEntry{status: status} -> status
+          _none -> nil
+        end,
+      correction: Map.get(context.options, :to)
     }
   end
 
-  defp record_intake_event(intake, command, event_id, %{actor: actor, note: note}, reading) do
+  defp record_intake_event(intake, command, event_id, context, reading) do
+    %{actor: actor, note: note, options: options} = context
+
     %{
       id: event_id,
       intake_id: intake.id,
       command: Atom.to_string(command),
       actor_principal_id: actor,
       note: note,
+      correction: Map.get(options, :to),
       occurred_at: reading.now
     }
     |> IntakeEvent.changeset()
@@ -3132,6 +3233,100 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     |> Map.take([:id, :workshop_id, :state, :link_generation])
     |> Map.put(:outcome, outcome)
   end
+
+  # ── correct_attendance (ALE-393) ────────────────────────────────
+
+  @correction_standings %{
+    "attended" => "attended",
+    "no_show" => "removed",
+    "deferred" => "waiting"
+  }
+
+  # The Carried Fee that paid the Intake; a Stripe payer's live one (which a
+  # deferral would have to be the only one of).
+  defp correction_fee(%{intake: %Intake{carried_fee_id: id}}) when is_binary(id),
+    do: from(f in CarriedFee, where: f.id == ^id)
+
+  defp correction_fee(locked), do: locked_intake_fee(locked)
+
+  # An attendee is no longer on the Waitlist, so someone who has since been
+  # placed in another workshop cannot become one here. Every Intake is
+  # created under the person's entry lock, which this command holds.
+  defp no_other_open_intake(%WaitlistEntry{id: waitlist_id}, %Intake{id: intake_id}, "attended") do
+    if Repo.exists?(
+         from(i in Intake,
+           where:
+             i.waitlist_id == ^waitlist_id and i.id != ^intake_id and
+               i.state in ^Intake.open_states()
+         )
+       ),
+       do: {:error, :open_intake},
+       else: :ok
+  end
+
+  defp no_other_open_intake(_entry, _intake, _to), do: :ok
+
+  # The standing follows the lifecycle; one already there is left alone. An
+  # anonymised person has no standing.
+  defp correct_standing(nil, _to), do: :ok
+
+  defp correct_standing(%WaitlistEntry{status: status, id: id}, to) do
+    case Map.fetch!(@correction_standings, to) do
+      ^status -> :ok
+      standing -> with {:ok, _entry} <- Waitlist.change_standing(id, standing), do: :ok
+    end
+  end
+
+  # A Carried Fee that paid the Intake is spent on attendance, forfeited on
+  # a no-show and held again on a deferral; a Stripe payer's deferral makes
+  # a held fee on the paying payment, as `defer` does.
+  defp correct_fee(
+         %Intake{paid_via: "carried_fee", carried_fee_id: id} = intake,
+         %{carried_fee: %CarriedFee{id: id} = fee},
+         to,
+         reading
+       ) do
+    {status, applied_intake_id} =
+      case to do
+        "attended" -> {"spent", intake.id}
+        "no_show" -> {"forfeited", intake.id}
+        "deferred" -> {"held", nil}
+      end
+
+    transition(
+      :carried_fee,
+      fee,
+      CarriedFee.status_changeset(fee, status, applied_intake_id, reading.now)
+    )
+  end
+
+  defp correct_fee(%Intake{paid_via: "carried_fee"}, _locked, _to, _reading),
+    do: {:error, :illegal_transition}
+
+  defp correct_fee(%Intake{} = intake, locked, "deferred", reading),
+    do: carry_fee(intake, locked, reading)
+
+  defp correct_fee(_stripe_paid, _locked, _to, _reading), do: {:ok, nil}
+
+  defp after_correction(intake, workshop, "attended", reading) do
+    if WorkshopPolicy.follow_up_due?(workshop, reading) do
+      with {:ok, _queued_or_not_owed} <- queue_follow_up(intake, workshop, reading), do: :ok
+    else
+      :ok
+    end
+  end
+
+  defp after_correction(intake, workshop, "deferred", reading),
+    do:
+      queue_intake_email(
+        intake,
+        "deferred",
+        "deferred",
+        &%{"firstName" => &1, "date" => Values.date(workshop.date)},
+        reading
+      )
+
+  defp after_correction(_intake, _workshop, "no_show", _reading), do: :ok
 
   # ── withdraw from the Waitlist tab (ALE-387) ───────────────────
 

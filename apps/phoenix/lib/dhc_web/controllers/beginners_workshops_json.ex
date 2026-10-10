@@ -131,10 +131,12 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
             command: entry.command,
             actor: entry.actor,
             occurredAt: entry.occurred_at,
-            note: entry.note
+            note: entry.note,
+            correction: entry.correction
           }
         end),
       availableCommands: row.available_commands,
+      attendanceCorrections: row.attendance_corrections,
       paidVia: row.paid_via,
       carriedFee: row.carried_fee
     }

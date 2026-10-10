@@ -357,8 +357,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeCommandsTest do
         offered = console_row(workshop, intake).available_commands
         assert offered == IntakePolicy.available_commands(%{state: state})
 
-        # `withdraw`'s refund-or-forfeit choice is input, not state: give it.
-        case command(c, name, workshop, intake, %{"refund" => false}) do
+        # `withdraw`'s refund-or-forfeit choice and a correction's target
+        # (ALE-393) are input, not state: give them.
+        case command(c, name, workshop, intake, %{"refund" => false, "to" => "no_show"}) do
           {:ok, %{outcome: :done}} ->
             assert name in offered, "#{name} ran on #{state} but was not offered"
 

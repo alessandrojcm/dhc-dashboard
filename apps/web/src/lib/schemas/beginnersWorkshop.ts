@@ -6,6 +6,7 @@
  * rule; these schemas only check what one field can know on its own.
  */
 import type {
+	BeginnersWorkshopCorrectAttendanceRequest,
 	BeginnersWorkshopFastTrackRequest,
 	BeginnersWorkshopIntakeCommandRequest,
 	BeginnersWorkshopManualRefundRequest,
@@ -17,7 +18,10 @@ import type {
 	WaitlistEntryCreateRequest,
 } from "@dhc/api-client";
 import * as v from "valibot";
-import { INTAKE_BUTTON_COMMANDS } from "#lib/beginners-workshops/console.js";
+import {
+	ATTENDANCE_CORRECTIONS,
+	INTAKE_BUTTON_COMMANDS,
+} from "#lib/beginners-workshops/console.js";
 import { waitlistRegistrationEntries } from "#lib/schemas/beginnersWaitlist.js";
 import {
 	civilDate,
@@ -304,6 +308,33 @@ export const intakeCommandSchema = v.pipe(
 		body: (note
 			? { note }
 			: {}) satisfies BeginnersWorkshopIntakeCommandRequest,
+	})),
+);
+
+/**
+ * ALE-393: correct an Intake's attendance after finalisation. The pressed
+ * button is the target (`to`), so the note goes with whichever is pressed.
+ */
+export const correctAttendanceSchema = v.pipe(
+	v.object({
+		id: workshopId,
+		intakeId,
+		to: v.picklist(ATTENDANCE_CORRECTIONS, "Unknown correction."),
+		note: v.optional(
+			v.pipe(
+				v.string(),
+				v.trim(),
+				v.maxLength(500, "Keep the note under 500 characters."),
+			),
+			"",
+		),
+	}),
+	v.transform(({ id, intakeId, to, note }) => ({
+		id,
+		intakeId,
+		body: (note
+			? { to, note }
+			: { to }) satisfies BeginnersWorkshopCorrectAttendanceRequest,
 	})),
 );
 

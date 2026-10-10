@@ -8,7 +8,8 @@
  * Confirm with Carried Fee (ALE-388), Cancel with refund (ALE-387), Resend
  * link, Rotate link — with its optional note; the console offers only
  * Phoenix's `availableCommands`. (ALE-387) `withdrawIntake` runs Withdraw
- * with its refund-or-forfeit choice.
+ * with its refund-or-forfeit choice. (ALE-393) `correctAttendance` corrects a
+ * finalised Intake to Phoenix's `attendanceCorrections` target.
  */
 import { form } from "$app/server";
 import {
@@ -17,6 +18,7 @@ import {
 	beginnersWorkshopFastTrackNewPerson,
 	beginnersWorkshopFastTrackWaitlistPerson,
 	beginnersWorkshopIntakesConfirm,
+	beginnersWorkshopIntakesCorrectAttendance,
 	beginnersWorkshopIntakesCancelWithRefund,
 	beginnersWorkshopIntakesDecline,
 	beginnersWorkshopIntakesDefer,
@@ -29,6 +31,7 @@ import {
 } from "@dhc/api-client";
 import {
 	batchesCommandSchema,
+	correctAttendanceSchema,
 	fastTrackNewPersonSchema,
 	fastTrackWaitlistPersonSchema,
 	intakeCommandSchema,
@@ -175,5 +178,26 @@ export const withdrawIntake = form(
 					field === "note" || field === "refund" ? [field] : undefined,
 			},
 		);
+	},
+);
+
+/** ALE-393: correct one Intake's attendance after finalisation. */
+export const correctAttendance = form(
+	correctAttendanceSchema,
+	async ({ id, intakeId, body }) => {
+		const options = await beginnersWorkshopsManageOptions();
+		const result = await beginnersWorkshopCommand(
+			beginnersWorkshopIntakesCorrectAttendance({
+				...options,
+				path: { id, intakeId },
+				body,
+			}),
+			{
+				fallback: "Could not correct attendance",
+				formPath: (field) => (field === "note" ? ["note"] : undefined),
+			},
+		);
+		// Which correction was pressed, so the console can word the outcome.
+		return result.ok ? { ...result, to: body.to } : result;
 	},
 );

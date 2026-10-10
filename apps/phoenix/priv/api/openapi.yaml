@@ -4708,6 +4708,54 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/{id}/intakes/{intakeId}/correct-attendance:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.correctAttendance
+      tags: [BeginnersWorkshops]
+      summary: Correct an Intake's attendance after finalisation
+      description: |
+        ALE-393. After Attendance Finalisation a coordinator fixes a door
+        mistake (`attended` ↔ `no_show`) or turns a no-show into a Deferral
+        (`no_show` → `deferred`) for someone who told the club in time.
+        The standing follows (attended → `attended`, no-show → `removed`,
+        deferred → `waiting` with the original priority) and so does the
+        Carried Fee that paid the Intake (`spent`, `forfeited`, or `held`
+        again); a Stripe-paid no-show corrected to deferred gets a `held`
+        Carried Fee and "Deferred" is queued. Someone corrected to attended
+        after the Follow-up time gets the Follow-up then. Repeating it
+        answers `already_done`. Refused: `before_finalisation`,
+        `already_cancelled`, `already_invited` (the standing is `invited` or
+        `joined`), `not_correctable`, `open_intake` (to attended, while the
+        person has an open Intake elsewhere). The optional note is recorded
+        in the Intake's history. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopCorrectAttendanceRequest"}
+      responses:
+        "200":
+          description: The Intake after the correction
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note, or `to` is not a correction state
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
   /beginners-workshops/{id}/intakes/{intakeId}/withdraw:
     parameters:
       - $ref: "#/components/parameters/BeginnersWorkshopId"
@@ -9002,7 +9050,7 @@ components:
       description: |
         One Intake on the console roster. Names are null once the person is
         anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands, paidVia, carriedFee, standing]
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands, attendanceCorrections, paidVia, carriedFee, standing]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -9062,6 +9110,13 @@ components:
             rule the boundary applies under the lock. Advisory: a stale list
             is refused with a named reason.
           items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommand"}
+        attendanceCorrections:
+          type: array
+          description: |
+            ALE-393: the states `correct_attendance` would move this Intake to
+            now (empty unless `availableCommands` offers it), from the same
+            rule the boundary applies.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopAttendanceCorrection"}
         paidVia:
           type: string
           nullable: true
@@ -9082,7 +9137,22 @@ components:
       enum: [held, applied, spent, refunded, forfeited]
     BeginnersWorkshopIntakeCommand:
       type: string
-      enum: [decline, defer, confirm, cancel_with_refund, withdraw, resend_link, rotate_link]
+      enum: [decline, defer, confirm, cancel_with_refund, withdraw, resend_link, rotate_link, correct_attendance]
+    BeginnersWorkshopAttendanceCorrection:
+      type: string
+      description: |
+        The state an attendance correction moves an Intake to (ALE-393):
+        `attended ↔ no_show`, or a `no_show` to `deferred`.
+      enum: [attended, no_show, deferred]
+    BeginnersWorkshopCorrectAttendanceRequest:
+      type: object
+      required: [to]
+      properties:
+        to: {$ref: "#/components/schemas/BeginnersWorkshopAttendanceCorrection"}
+        note:
+          type: string
+          maxLength: 500
+          description: Why (optional), recorded in the Intake's history.
     BeginnersWorkshopIntakeEmailLogEntry:
       type: object
       description: |
@@ -9100,12 +9170,16 @@ components:
         One console command run on an Intake. `actor` is null once the person
         who ran it is gone, and for a `confirm` the person made themselves
         on their Intake page.
-      required: [command, actor, occurredAt, note]
+      required: [command, actor, occurredAt, note, correction]
       properties:
         command: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommand"}
         actor: {type: string, nullable: true}
         occurredAt: {type: string, format: date-time}
         note: {type: string, nullable: true}
+        correction:
+          allOf: [{$ref: "#/components/schemas/BeginnersWorkshopAttendanceCorrection"}]
+          nullable: true
+          description: The state a `correct_attendance` corrected the Intake to (null for every other command).
     BeginnersWorkshopIntakeCommandRequest:
       type: object
       properties:
@@ -9698,6 +9772,10 @@ components:
                     - no_carried_fee
                     - full
                     - payment_not_found
+                    - before_finalisation
+                    - already_cancelled
+                    - not_correctable
+                    - open_intake
     BeginnersWorkshopCarriedFees:
       type: object
       description: |

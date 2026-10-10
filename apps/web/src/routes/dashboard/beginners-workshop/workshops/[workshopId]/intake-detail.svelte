@@ -2,7 +2,8 @@
 	ALE-386: one Intake on the workshop console — its state, minor badge,
 	medical flag, origin, live hold, refund, Carried Fee (ALE-388), the Intake Email log (scheduled
 	emails marked), its history and link generation — and the commands
-	Phoenix says are valid now (`availableCommands`). The UI never works out
+	Phoenix says are valid now (`availableCommands`; after finalisation,
+	ALE-393's corrections from `attendanceCorrections`). The UI never works out
 	Intake rules: it shows Phoenix's list, and the boundary decides again
 	under the lock, answering a stale command with its named reason. All
 	commands are submit buttons of one form, so the optional note goes with
@@ -29,13 +30,18 @@ import {
 	personName,
 	refundLabel,
 	refundTimingHint,
+	attendanceCorrectionDone,
+	attendanceCorrectionLabel,
 } from "#lib/beginners-workshops/console.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Field from "#lib/components/ui/field/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
-import { intakeCommandSchema } from "#lib/schemas/beginnersWorkshop.js";
-import { runIntakeCommand } from "./console.remote";
+import {
+	correctAttendanceSchema,
+	intakeCommandSchema,
+} from "#lib/schemas/beginnersWorkshop.js";
+import { correctAttendance, runIntakeCommand } from "./console.remote";
 import WithdrawDialog from "./withdraw-dialog.svelte";
 
 let {
@@ -55,6 +61,14 @@ let {
 
 const form = $derived(runIntakeCommand.for(intake.id));
 let formError = $state<string | null>(null);
+// ALE-393: corrections after finalisation are their own form, one button per
+// target Phoenix allows (`attendanceCorrections`).
+const correction = $derived(correctAttendance.for(intake.id));
+let correctionError = $state<string | null>(null);
+const canCorrect = $derived(
+	intake.availableCommands.includes("correct_attendance") &&
+		intake.attendanceCorrections.length > 0,
+);
 let withdrawOpen = $state(false);
 
 const buttonCommands = $derived(
@@ -138,7 +152,7 @@ const refundHint = $derived(
 				{refundHint}
 			</p>
 		{/if}
-		{#if intake.availableCommands.length}
+		{#if buttonCommands.length || canWithdraw}
 			<form
 				{...form.preflight(intakeCommandSchema).enhance(async (instance) => {
 					formError = null;
@@ -202,10 +216,68 @@ const refundHint = $derived(
 					<p class="text-sm text-destructive" role="alert">{formError}</p>
 				{/if}
 			</form>
-		{:else}
+		{:else if !canCorrect}
 			<p class="text-muted-foreground">
 				No commands for a {intakeStateLabel(intake.state).toLowerCase()} Intake.
 			</p>
+		{/if}
+		{#if canCorrect}
+			<form
+				{...correction
+					.preflight(correctAttendanceSchema)
+					.enhance(async (instance) => {
+						correctionError = null;
+						if (!(await instance.submit())) return;
+						const result = instance.result;
+						if (result?.ok) {
+							toast.success(
+								attendanceCorrectionDone(result.to, result.data.outcome),
+							);
+							instance.element.reset();
+						} else if (result) {
+							correctionError = result.error;
+						}
+					})}
+				class="flex flex-col gap-3 rounded-lg border border-dashed p-3"
+				aria-label="Correct attendance"
+			>
+				<p class="text-muted-foreground">
+					Attendance is final. Fix a door mistake, or defer a no-show who told
+					the club in time.
+				</p>
+				<input {...correction.fields.id.as("hidden", workshopId)} />
+				<input {...correction.fields.intakeId.as("hidden", intake.id)} />
+				<Field.Field>
+					{@const props = correction.fields.note.as("text")}
+					<Field.Label for={`${intake.id}-correction-note`}
+						>Note (optional, recorded with the correction)</Field.Label
+					>
+					<Textarea
+						{...props}
+						id={`${intake.id}-correction-note`}
+						rows={2}
+						maxlength={500}
+						placeholder="e.g. “Emailed 13 Nov to say they couldn't come”"
+					/>
+					{#each correction.fields.note.issues() as issue (issue.message)}
+						<Field.Error>{issue.message}</Field.Error>
+					{/each}
+				</Field.Field>
+				<div class="flex flex-wrap gap-2" data-testid="attendance-corrections">
+					{#each intake.attendanceCorrections as to (to)}
+						<Button
+							{...correction.fields.to.as("submit", to)}
+							size="sm"
+							variant="outline"
+							disabled={!!correction.pending}
+							>{attendanceCorrectionLabel(to)}</Button
+						>
+					{/each}
+				</div>
+				{#if correctionError}
+					<p class="text-sm text-destructive" role="alert">{correctionError}</p>
+				{/if}
+			</form>
 		{/if}
 	</section>
 

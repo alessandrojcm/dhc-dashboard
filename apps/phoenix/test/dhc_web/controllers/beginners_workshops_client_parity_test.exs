@@ -46,6 +46,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopFastTrack.candidates beginnersWorkshopFastTrack.newPerson
                 beginnersWorkshopFastTrack.waitlistPerson
                 beginnersWorkshopIntakes.cancelWithRefund beginnersWorkshopIntakes.confirm
+                beginnersWorkshopIntakes.correctAttendance
                 beginnersWorkshopIntakes.decline beginnersWorkshopIntakes.defer
                 beginnersWorkshopIntakes.resendLink
                 beginnersWorkshopIntakes.rotateLink beginnersWorkshopIntakes.withdraw
@@ -122,6 +123,10 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     # ALE-386: the console Intake commands.
     assert schemas["BeginnersWorkshopIntakeCommand"]["enum"] ==
              Enum.map(IntakePolicy.commands(), &Atom.to_string/1)
+
+    # ALE-393: the states an attendance correction may name.
+    assert schemas["BeginnersWorkshopAttendanceCorrection"]["enum"] ==
+             IntakePolicy.correction_states()
 
     # `WorkshopPolicy.next_batch/3`, with `{:at, _}` rendered as `scheduled`.
     assert schemas["BeginnersWorkshopNextBatchStatus"]["enum"] ==
