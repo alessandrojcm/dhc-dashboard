@@ -19,6 +19,13 @@ defmodule Dhc.BeginnersWorkshops.CarriedFee do
 
       held → applied | refunded | forfeited
       applied → held | spent | refunded | forfeited
+      refunded → held          (its Stripe refund failed, ALE-389)
+
+  It becomes `refunded` when the refund obligation is recorded (a refund
+  row of the original payment, `IntakeRefund.carried_fee_id`), and goes
+  back to `held` if Stripe refuses that refund. An imported fee is refunded
+  through Stripe only once it is linked (`link_changeset/4`): until then it
+  has no payment to refund against.
 
   `applied_intake_id` is the Intake it paid by confirmation. A person holds
   at most one live (`held` or `applied`) Carried Fee (partial unique index).
@@ -77,6 +84,30 @@ defmodule Dhc.BeginnersWorkshops.CarriedFee do
     |> put_change(:origin, "import")
     |> validate_required([:waitlist_id, :imported_paid_text, :status_changed_at])
   end
+
+  @doc """
+  Links an imported fee to the Stripe payment it was originally paid by
+  (ALE-389): the PaymentIntent and what Stripe says it took. Not a status
+  change.
+  """
+  @spec link_changeset(t(), String.t(), pos_integer(), String.t()) :: Ecto.Changeset.t()
+  def link_changeset(%__MODULE__{origin: "import"} = fee, payment_intent_id, amount, currency) do
+    fee
+    |> change(
+      stripe_payment_intent_id: payment_intent_id,
+      amount_cents: amount,
+      currency: currency
+    )
+    |> validate_number(:amount_cents, greater_than: 0)
+  end
+
+  @doc "Whether a fee has a payment a Stripe refund can be made against."
+  @spec refundable_through_stripe?(t()) :: boolean()
+  def refundable_through_stripe?(%__MODULE__{origin: "deferral", payment_id: id}),
+    do: is_binary(id)
+
+  def refundable_through_stripe?(%__MODULE__{stripe_payment_intent_id: id, amount_cents: cents}),
+    do: is_binary(id) and is_integer(cents) and cents > 0
 
   @doc "Applied to (or, with `nil`, taken back from) the Intake it pays."
   @spec status_changeset(t(), String.t(), binary() | nil, DateTime.t()) :: Ecto.Changeset.t()

@@ -167,7 +167,8 @@ defmodule Dhc.BeginnersWorkshops.AttendanceCorrectionsTest do
       assert Commands.transition_allowed?(:carried_fee, "forfeited", "spent")
       assert Commands.transition_allowed?(:carried_fee, "forfeited", "held")
       refute Commands.transition_allowed?(:carried_fee, "spent", "held")
-      refute Commands.transition_allowed?(:carried_fee, "refunded", "held")
+      # ALE-389: a refunded fee goes back to held only when its refund fails.
+      refute Commands.transition_allowed?(:carried_fee, "refunded", "spent")
     end
   end
 

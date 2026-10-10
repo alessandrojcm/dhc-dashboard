@@ -1,7 +1,7 @@
 <!--
-	ALE-382: one failed refund under Needs attention, with its two follow-ups:
-	Retry (a new Stripe refund) and Record manual refund. Neither emails the
-	person.
+	ALE-382: one failed refund under Needs attention, with its follow-ups:
+	Retry (a new Stripe refund), Record manual refund and, for a Carried Fee's
+	refund (ALE-389), Forfeit. None emails the person.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopFailedRefund } from "@dhc/api-client";
@@ -9,7 +9,7 @@ import { AlertTriangle } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { failedRefundText } from "#lib/beginners-workshops/console.js";
 import { Button } from "#lib/components/ui/button/index.js";
-import { retryRefund } from "./console.remote";
+import { forfeitCarriedFee, retryRefund } from "./console.remote";
 import ManualRefundDialog from "./manual-refund-dialog.svelte";
 
 let {
@@ -18,6 +18,7 @@ let {
 }: { workshopId: string; refund: BeginnersWorkshopFailedRefund } = $props();
 
 const retry = $derived(retryRefund.for(refund.id));
+const forfeit = $derived(forfeitCarriedFee.for(refund.id));
 let manualOpen = $state(false);
 </script>
 
@@ -47,6 +48,26 @@ let manualOpen = $state(false);
 		variant="outline"
 		onclick={() => (manualOpen = true)}>Record manual refund</Button
 	>
+	{#if refund.carriedFee}
+		<form
+			{...forfeit.enhance(async (instance) => {
+				if (!(await instance.submit())) return;
+				const result = instance.result;
+				if (result?.ok) toast.success("Carried Fee forfeited");
+				else if (result) toast.error(result.error);
+			})}
+		>
+			<input {...forfeit.fields.id.as("hidden", workshopId)} />
+			<input {...forfeit.fields.refundId.as("hidden", refund.id)} />
+			<Button
+				type="submit"
+				size="sm"
+				variant="outline"
+				class="text-destructive"
+				disabled={!!forfeit.pending}>Forfeit</Button
+			>
+		</form>
+	{/if}
 </div>
 
 <ManualRefundDialog {workshopId} {refund} bind:open={manualOpen} />

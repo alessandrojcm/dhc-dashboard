@@ -80,6 +80,8 @@ defmodule DhcWeb.Router do
     # ALE-382 — follow-ups to a failed refund.
     post("/:id/refunds/:refundId/retry", BeginnersWorkshopRefundsController, :retry)
     post("/:id/refunds/:refundId/manual", BeginnersWorkshopRefundsController, :record_manual)
+    # ALE-389 — a Carried Fee's failed refund can also be forfeited.
+    post("/:id/refunds/:refundId/forfeit", BeginnersWorkshopRefundsController, :forfeit)
     # ALE-386: console Intake commands.
     post("/:id/intakes/:intakeId/decline", BeginnersWorkshopIntakesController, :decline)
     # ALE-388: defer and confirm with a Carried Fee.
@@ -87,6 +89,47 @@ defmodule DhcWeb.Router do
     post("/:id/intakes/:intakeId/confirm", BeginnersWorkshopIntakesController, :confirm)
     post("/:id/intakes/:intakeId/resend-link", BeginnersWorkshopIntakesController, :resend_link)
     post("/:id/intakes/:intakeId/rotate-link", BeginnersWorkshopIntakesController, :rotate_link)
+    # ALE-389.
+    post(
+      "/:id/intakes/:intakeId/refund-carried-fee",
+      BeginnersWorkshopIntakesController,
+      :refund_carried_fee
+    )
+
+    # ALE-389 — one person's Carried Fee, from the Waitlist tab (money, so
+    # `beginners.workshops.manage`).
+    get("/people/:waitlistId/carried-fee", BeginnersWorkshopCarriedFeesController, :show)
+
+    post(
+      "/people/:waitlistId/carried-fee/refund",
+      BeginnersWorkshopCarriedFeesController,
+      :refund
+    )
+
+    post(
+      "/people/:waitlistId/carried-fee/link-payment",
+      BeginnersWorkshopCarriedFeesController,
+      :link_payment
+    )
+
+    post(
+      "/people/:waitlistId/carried-fee/refunds/:refundId/retry",
+      BeginnersWorkshopCarriedFeesController,
+      :retry_refund
+    )
+
+    post(
+      "/people/:waitlistId/carried-fee/refunds/:refundId/manual",
+      BeginnersWorkshopCarriedFeesController,
+      :record_manual_refund
+    )
+
+    post(
+      "/people/:waitlistId/carried-fee/refunds/:refundId/forfeit",
+      BeginnersWorkshopCarriedFeesController,
+      :forfeit
+    )
+
     # ALE-387.
     post(
       "/:id/intakes/:intakeId/cancel-with-refund",

@@ -4185,6 +4185,37 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/{id}/refunds/{refundId}/forfeit:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopRefundId"
+    post:
+      operationId: beginnersWorkshopRefunds.forfeit
+      tags: [BeginnersWorkshops]
+      summary: Forfeit a Carried Fee whose refund failed
+      description: |
+        Needs attention's Forfeit (ALE-389), only for a Carried Fee's failed
+        refund while the fee is held again: the fee becomes `forfeited`.
+        No email. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The forfeited Carried Fee
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopForfeitedCarriedFeeResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Refund not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Not a Carried Fee's failed refund, or the fee is no longer held
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundConflictError"}
   /beginners-workshops/{id}/fast-track:
     parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
     post:
@@ -4664,6 +4695,50 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
 
+  /beginners-workshops/{id}/intakes/{intakeId}/refund-carried-fee:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.refundCarriedFee
+      tags: [BeginnersWorkshops]
+      summary: Refund the Intake's person's Carried Fee
+      description: |
+        `refund_carried_fee` from the console: the person's `held` Carried
+        Fee is refunded in full against its original payment and becomes
+        `refunded`; "Carried Fee refunded" is queued and logged on this
+        Intake. The Intake does not move: a `contacted` one stays contacted
+        and its page asks for payment. Standing and priority don't change.
+        Refused: `already_paid` (cancel with refund or withdraw instead),
+        `no_carried_fee`, `fee_not_refundable`, `payment_not_linked`,
+        `already_requested`. The optional note is recorded in the Intake's
+        history. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandRequest"}
+      responses:
+        "200":
+          description: The Intake after the command
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+
   /beginners-workshops/carried-fees:
     get:
       operationId: beginnersWorkshopCarriedFees.index
@@ -4707,14 +4782,16 @@ paths:
       tags: [BeginnersWorkshops]
       summary: Cancel a paid Intake with a full refund
       description: |
-        The person wants their money back: the Stripe-paid `paid` Intake
-        becomes `cancelled_refunded`, its seat is free at once, a full
-        refund of what the payment took is requested, the person goes back
-        to `waiting` with their original priority, and "Cancelled with
-        refund" is queued. Repeating it answers `already_done`.
-        Refused: `intake_not_paid` (contacted), `carried_fee_paid` (paid
-        with a Carried Fee), `intake_closed`, `nothing_to_refund`,
-        `already_requested`.
+        The person wants their money back: the `paid` Intake becomes
+        `cancelled_refunded`, its seat is free at once, a full refund of
+        what the payment took is requested (for an Intake paid with a
+        Carried Fee, the Carried Fee is refunded against its original
+        payment and becomes `refunded`), the person goes back to `waiting`
+        with their original priority, and "Cancelled with refund" is
+        queued. Repeating it answers `already_done`.
+        Refused: `intake_not_paid` (contacted), `intake_closed`,
+        `nothing_to_refund`, `already_requested`, `payment_not_linked` (an
+        imported Carried Fee not yet linked to its Stripe payment).
         The optional note is recorded in the Intake's history with who ran
         the command and when. Requires `beginners.workshops.manage`.
       security: [{cookieSession: []}]
@@ -4801,13 +4878,16 @@ paths:
       description: |
         The person asks to leave: their standing becomes `removed`. A
         `contacted` Intake becomes `declined` (a live Seat Hold stops
-        counting) and nobody is emailed. A Stripe-paid `paid` Intake becomes
-        `withdrawn` and its seat is free at once; `refund` is then required
-        (`refund_choice_required`): `true` requests a full refund and
-        queues "Withdrawn – refunded", `false` forfeits the fee and queues
-        "Withdrawn – forfeited". Repeating it on a `withdrawn` Intake
-        answers `already_done`. Refused: `carried_fee_paid`,
-        `intake_closed`, `already_invited`, `nothing_to_refund`.
+        counting) and nobody is emailed. A `paid` Intake becomes
+        `withdrawn` and its seat is free at once. Whenever money exists — a
+        paid Intake or a Carried Fee the person holds — `refund` is
+        required (`refund_choice_required`): `true` requests a full refund
+        (of the payment, and the Carried Fee becomes `refunded`) and queues
+        "Withdrawn – refunded", `false` forfeits it (the Carried Fee becomes
+        `forfeited`) and queues "Withdrawn – forfeited". Repeating it on a
+        `withdrawn` Intake answers `already_done`. Refused:
+        `intake_closed`, `already_invited`, `nothing_to_refund`,
+        `payment_not_linked`.
         The optional note is recorded in the Intake's history with who ran
         the command and when. Requires `beginners.waitlist.manage`.
       security: [{cookieSession: []}]
@@ -4845,11 +4925,13 @@ paths:
       description: |
         The Waitlist tab's Withdraw. With an open Intake it is exactly
         `beginnersWorkshopIntakes.withdraw` on that Intake (same rule,
-        history and refund choice); without one only the standing becomes
-        `removed` and nobody is emailed. Repeating it on a removed person
-        answers `already_done`. `refund` is ignored when no paid Intake
-        exists. Refused: `person_not_found`, `already_invited`,
-        `carried_fee_paid`, `nothing_to_refund`.
+        history and refund choice); without one the standing becomes
+        `removed` and, when the person holds a Carried Fee, `refund` is
+        required and settles it (with its notice) — even for someone already
+        removed. Repeating it on a removed person without a Carried Fee
+        answers `already_done`. `refund` is ignored when there is no money.
+        Refused: `person_not_found`, `already_invited`, `nothing_to_refund`,
+        `payment_not_linked`.
         Requires `beginners.waitlist.manage`.
       security: [{cookieSession: []}]
       requestBody:
@@ -4876,6 +4958,233 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+
+  /beginners-workshops/people/{waitlistId}/carried-fee:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopWaitlistId"
+    get:
+      operationId: beginnersWorkshopCarriedFees.show
+      tags: [BeginnersWorkshops]
+      summary: A person's Carried Fee
+      description: |
+        For the Waitlist tab (ALE-389): the person's live Carried Fee, else
+        their latest, with its original payment, a failed refund still to
+        follow up, and the commands that may apply (advisory). 404
+        `no_carried_fee` when they never held one. Requires
+        `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The Carried Fee
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeeResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Waitlist person not found, or no Carried Fee
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  /beginners-workshops/people/{waitlistId}/carried-fee/refund:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopWaitlistId"
+    post:
+      operationId: beginnersWorkshopCarriedFees.refund
+      tags: [BeginnersWorkshops]
+      summary: Refund a person's Carried Fee
+      description: |
+        `refund_carried_fee` from the Waitlist tab: the person's `held`
+        Carried Fee is refunded in full against its original payment and
+        becomes `refunded`; "Carried Fee refunded" is queued. Standing and
+        priority don't change; an open `contacted` Intake stays contacted
+        and its page asks for payment (with an open Intake this is exactly
+        `beginnersWorkshopIntakes.refundCarriedFee` on it). If Stripe
+        refuses the refund the fee is held again and the refund needs a
+        follow-up. Refused: `no_carried_fee`, `already_paid` (it paid an
+        Intake — cancel with refund or withdraw instead),
+        `fee_not_refundable` (attended, or removed more than 3 months ago),
+        `payment_not_linked` (an imported fee not linked to its Stripe
+        payment yet), `already_requested`. Requires
+        `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundCarriedFeeRequest"}
+      responses:
+        "200":
+          description: The person's Carried Fee after the refund was requested
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundCarriedFeeResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Waitlist person not found
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Refused by the Carried Fee rules
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeeConflictError"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/people/{waitlistId}/carried-fee/link-payment:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopWaitlistId"
+    post:
+      operationId: beginnersWorkshopCarriedFees.linkPayment
+      tags: [BeginnersWorkshops]
+      summary: Link an imported Carried Fee to its Stripe payment
+      description: |
+        An imported Carried Fee has no payment this system made. Phoenix
+        reads the PaymentIntent from Stripe and records it with the amount
+        Stripe says it took; from then on the fee refunds through Stripe.
+        Linking the same id again answers `already_done`. Refused:
+        `invalid_payment_reference` (422), `no_carried_fee`, `not_imported`,
+        `already_linked`, `payment_already_linked`,
+        `stripe_payment_not_found`, `payment_not_succeeded`,
+        `payment_already_refunded`; 503 when Stripe can't be reached.
+        Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopLinkCarriedFeePaymentRequest"}
+      responses:
+        "200":
+          description: The linked Carried Fee
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopLinkCarriedFeePaymentResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Waitlist person not found
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Refused by the Carried Fee rules
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeeConflictError"}
+        "422":
+          description: Not a PaymentIntent id
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+        "503":
+          description: Stripe couldn't be reached
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+  /beginners-workshops/people/{waitlistId}/carried-fee/refunds/{refundId}/retry:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopWaitlistId"
+      - $ref: "#/components/parameters/BeginnersWorkshopRefundId"
+    post:
+      operationId: beginnersWorkshopCarriedFees.retryRefund
+      tags: [BeginnersWorkshops]
+      summary: Retry a person's failed Carried Fee refund
+      description: |
+        The Waitlist tab's Retry: a new Stripe refund of the same amount
+        against the same payment under a new key; the Carried Fee becomes
+        `refunded` again. No email. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "201":
+          description: The result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Refund not found among the person's Carried Fee refunds
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Refused by the Carried Fee rules
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeeConflictError"}
+  /beginners-workshops/people/{waitlistId}/carried-fee/refunds/{refundId}/manual:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopWaitlistId"
+      - $ref: "#/components/parameters/BeginnersWorkshopRefundId"
+    post:
+      operationId: beginnersWorkshopCarriedFees.recordManualRefund
+      tags: [BeginnersWorkshops]
+      summary: Record a manual refund of a person's Carried Fee
+      description: |
+        The coordinator paid the person back outside Stripe: a `completed`
+        manual refund follows the failed one and the Carried Fee becomes
+        `refunded`. No email. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopManualRefundRequest"}
+      responses:
+        "201":
+          description: The result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopRefundResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Refund not found among the person's Carried Fee refunds
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Refused by the Carried Fee rules
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeeConflictError"}
+  /beginners-workshops/people/{waitlistId}/carried-fee/refunds/{refundId}/forfeit:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopWaitlistId"
+      - $ref: "#/components/parameters/BeginnersWorkshopRefundId"
+    post:
+      operationId: beginnersWorkshopCarriedFees.forfeit
+      tags: [BeginnersWorkshops]
+      summary: Forfeit a Carried Fee whose refund failed
+      description: |
+        Only for a Carried Fee whose refund failed and that is held again:
+        the fee becomes `forfeited` and the failed refund needs no more
+        attention. No email. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      responses:
+        "200":
+          description: The result
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopForfeitedCarriedFeeResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Refund not found among the person's Carried Fee refunds
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: Refused by the Carried Fee rules
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeeConflictError"}
 
   /beginners/intake/{token}:
     parameters: [{$ref: "#/components/parameters/BeginnersIntakeToken"}]
@@ -9191,7 +9500,16 @@ components:
       enum: [held, applied, spent, refunded, forfeited]
     BeginnersWorkshopIntakeCommand:
       type: string
-      enum: [decline, defer, confirm, cancel_with_refund, withdraw, resend_link, rotate_link, correct_attendance]
+      enum:
+        - decline
+        - defer
+        - confirm
+        - cancel_with_refund
+        - withdraw
+        - refund_carried_fee
+        - resend_link
+        - rotate_link
+        - correct_attendance
     BeginnersWorkshopAttendanceCorrection:
       type: string
       description: |
@@ -9223,7 +9541,7 @@ components:
       description: |
         What an Intake history row records: a console Intake command, or
         (ALE-395) `cancel_workshop`, the workshop's cancellation.
-      enum: [decline, defer, confirm, cancel_with_refund, withdraw, resend_link, rotate_link, correct_attendance, cancel_workshop]
+      enum: [decline, defer, confirm, cancel_with_refund, withdraw, refund_carried_fee, resend_link, rotate_link, correct_attendance, cancel_workshop]
     BeginnersWorkshopIntakeHistoryEntry:
       type: object
       description: |
@@ -9339,8 +9657,11 @@ components:
         currency: {type: string}
     BeginnersWorkshopFailedRefund:
       type: object
-      description: A refund that failed and has not been retried or recorded as manual.
-      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt]
+      description: |
+        A refund that failed and has not been retried or recorded as manual.
+        `carriedFee`: it refunds a Carried Fee (now held again), which can
+        also be forfeited.
+      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt, carriedFee]
       properties:
         id: {type: string, format: uuid}
         intakeId: {type: string, format: uuid}
@@ -9350,12 +9671,17 @@ components:
         currency: {type: string}
         reason: {type: string, description: "Why the refund was owed, e.g. `policy_failed`, `paid_after_close`."}
         failedAt: {type: string, format: date-time, nullable: true}
+        carriedFee: {type: boolean}
     BeginnersWorkshopRefund:
       type: object
       required: [id, intakeId, followsRefundId, status, method, reason, amountCents, currency, requestedAt, completedAt]
       properties:
         id: {type: string, format: uuid}
-        intakeId: {type: string, format: uuid}
+        intakeId:
+          type: string
+          format: uuid
+          nullable: true
+          description: The Intake it is about; none for an imported Carried Fee's refund made outside any Intake.
         followsRefundId: {type: string, format: uuid, nullable: true}
         status: {$ref: "#/components/schemas/BeginnersWorkshopRefundStatus"}
         method: {$ref: "#/components/schemas/BeginnersWorkshopRefundMethod"}
@@ -9389,7 +9715,13 @@ components:
               properties:
                 code:
                   type: string
-                  enum: [refund_not_failed, refund_followed_up, already_requested]
+                  enum:
+                    - refund_not_failed
+                    - refund_followed_up
+                    - already_requested
+                    - not_a_carried_fee_refund
+                    - carried_fee_applied
+                    - carried_fee_not_held
     BeginnersIntakeState:
       type: string
       description: |
@@ -9855,13 +10187,15 @@ components:
                     - already_paid
                     - intake_closed
                     - intake_not_paid
-                    - carried_fee_paid
                     - nothing_to_refund
                     - already_requested
                     - already_invited
                     - no_carried_fee
                     - full
                     - payment_not_found
+                    - carried_fee_applied
+                    - payment_not_linked
+                    - fee_not_refundable
                     - before_finalisation
                     - already_cancelled
                     - not_correctable
@@ -9877,6 +10211,156 @@ components:
       required: [data]
       properties:
         data: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFees"}
+    BeginnersWorkshopCarriedFeeCommand:
+      type: string
+      description: |
+        What the Waitlist tab may offer for a person's Carried Fee (advisory;
+        Phoenix decides again). `refund` — a held fee with a payment to
+        refund against, of someone waiting or removed within retention;
+        `link_payment` — a live imported fee not linked to its Stripe payment
+        yet; `retry`, `manual`, `forfeit` — the follow-ups to its failed
+        refund (`forfeit` while the fee is held).
+      enum: [refund, link_payment, retry, manual, forfeit]
+    BeginnersWorkshopCarriedFeeFailedRefund:
+      type: object
+      required: [id, workshopId, amountCents, currency, reason, lastError, failedAt]
+      properties:
+        id: {type: string, format: uuid}
+        workshopId: {type: string, format: uuid, nullable: true}
+        amountCents: {type: integer, minimum: 1}
+        currency: {type: string}
+        reason: {type: string}
+        lastError: {type: string, nullable: true}
+        failedAt: {type: string, format: date-time, nullable: true}
+    BeginnersWorkshopCarriedFee:
+      type: object
+      description: |
+        One person's Carried Fee: their live one, else their latest. `origin`
+        `deferral` points at the deferred Intake's payment; `import` at the
+        Waitlist spreadsheet's Paid cell (`importedPaidText`) and, once staff
+        link it, the Stripe PaymentIntent and the amount Stripe says it took.
+        `linked`: it has a payment a Stripe refund can be made against.
+      required:
+        - id
+        - status
+        - origin
+        - amountCents
+        - currency
+        - importedPaidText
+        - stripePaymentIntentId
+        - linked
+        - failedRefund
+        - availableCommands
+      properties:
+        id: {type: string, format: uuid}
+        status: {$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}
+        origin: {type: string, enum: [deferral, import]}
+        amountCents: {type: integer, minimum: 1, nullable: true}
+        currency: {type: string}
+        importedPaidText: {type: string, nullable: true}
+        stripePaymentIntentId: {type: string, nullable: true}
+        linked: {type: boolean}
+        failedRefund:
+          allOf: [{$ref: "#/components/schemas/BeginnersWorkshopCarriedFeeFailedRefund"}]
+          nullable: true
+        availableCommands:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeeCommand"}
+    BeginnersWorkshopCarriedFeeResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFee"}
+    BeginnersWorkshopRefundCarriedFeeRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          maxLength: 500
+          description: Recorded in the Intake's history when the person has an open Intake.
+    BeginnersWorkshopRefundCarriedFeeResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [waitlistId, carriedFee, intake, outcome]
+          properties:
+            waitlistId: {type: string, format: uuid}
+            carriedFee:
+              type: object
+              nullable: true
+              required: [id, status]
+              properties:
+                id: {type: string, format: uuid}
+                status: {$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}
+            intake:
+              allOf: [{$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResult"}]
+              nullable: true
+            outcome: {type: string, enum: [done, already_done]}
+    BeginnersWorkshopLinkCarriedFeePaymentRequest:
+      type: object
+      required: [paymentIntentId]
+      properties:
+        paymentIntentId:
+          type: string
+          description: The Stripe PaymentIntent id (`pi_…`) the person originally paid with.
+    BeginnersWorkshopLinkCarriedFeePaymentResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, status, amountCents, currency, stripePaymentIntentId, outcome]
+          properties:
+            id: {type: string, format: uuid}
+            status: {$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}
+            amountCents: {type: integer, minimum: 1}
+            currency: {type: string}
+            stripePaymentIntentId: {type: string}
+            outcome: {type: string, enum: [done, already_done]}
+    BeginnersWorkshopForfeitedCarriedFeeResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [id, status, refundId]
+          properties:
+            id: {type: string, format: uuid}
+            status: {$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}
+            refundId: {type: string, format: uuid}
+    BeginnersWorkshopCarriedFeeConflictError:
+      description: 409 refusal of a Carried Fee command.
+      allOf:
+        - $ref: "#/components/schemas/Error"
+        - type: object
+          required: [errors]
+          properties:
+            errors:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  enum:
+                    - no_carried_fee
+                    - already_paid
+                    - carried_fee_applied
+                    - carried_fee_not_held
+                    - fee_not_refundable
+                    - payment_not_linked
+                    - already_requested
+                    - concurrent_change
+                    - not_imported
+                    - already_linked
+                    - payment_already_linked
+                    - stripe_payment_not_found
+                    - payment_not_succeeded
+                    - payment_already_refunded
+                    - refund_not_failed
+                    - refund_followed_up
+                    - not_a_carried_fee_refund
     OnboardingStartAcceptanceRequest:
       type: object
       required: [invitationId, email, dateOfBirth]

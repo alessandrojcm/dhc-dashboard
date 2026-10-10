@@ -39,7 +39,10 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     # ALE-383's Intake Email template slice shares the one tag and URL root.
     assert operations |> Enum.map(&elem(&1, 1)["operationId"]) |> Enum.sort() ==
              ~w(beginnersWorkshopAssignments.list beginnersWorkshopBatches.pause
-                beginnersWorkshopBatches.resume beginnersWorkshopCarriedFees.index
+                beginnersWorkshopBatches.resume beginnersWorkshopCarriedFees.forfeit
+                beginnersWorkshopCarriedFees.index beginnersWorkshopCarriedFees.linkPayment
+                beginnersWorkshopCarriedFees.recordManualRefund beginnersWorkshopCarriedFees.refund
+                beginnersWorkshopCarriedFees.retryRefund beginnersWorkshopCarriedFees.show
                 beginnersWorkshopDoor.checkIn
                 beginnersWorkshopDoor.finish beginnersWorkshopDoor.show beginnersWorkshopDoor.undoCheckIn
                 beginnersWorkshopEmailTemplates.list beginnersWorkshopEmailTemplates.update
@@ -48,11 +51,12 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopIntakes.cancelWithRefund beginnersWorkshopIntakes.confirm
                 beginnersWorkshopIntakes.correctAttendance
                 beginnersWorkshopIntakes.decline beginnersWorkshopIntakes.defer
-                beginnersWorkshopIntakes.resendLink
+                beginnersWorkshopIntakes.refundCarriedFee beginnersWorkshopIntakes.resendLink
                 beginnersWorkshopIntakes.rotateLink beginnersWorkshopIntakes.withdraw
                 beginnersWorkshopIntakes.withdrawPerson
                 beginnersWorkshopInvitations.invitable beginnersWorkshopInvitations.invite
-                beginnersWorkshopRefunds.recordManual beginnersWorkshopRefunds.retry
+                beginnersWorkshopRefunds.forfeit beginnersWorkshopRefunds.recordManual
+                beginnersWorkshopRefunds.retry
                 beginnersWorkshops.cancel beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.reschedule
                 beginnersWorkshops.schedule
                 beginnersWorkshops.setStaff beginnersWorkshops.staffCandidates
@@ -145,7 +149,8 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
             ~w(BeginnersWorkshopConflictError BeginnersWorkshopInvalidError
                BeginnersWorkshopRefundConflictError BeginnersWorkshopCheckInConflictError
                BeginnersWorkshopFinishConflictError BeginnersWorkshopInviteConflictError
-               BeginnersWorkshopInviteInvalidError BeginnersWorkshopIntakeCommandConflictError),
+               BeginnersWorkshopInviteInvalidError BeginnersWorkshopIntakeCommandConflictError
+               BeginnersWorkshopCarriedFeeConflictError),
           code <-
             get_in(schemas, [
               name,

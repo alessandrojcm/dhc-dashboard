@@ -48,6 +48,9 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
     |> BeginnersWorkshopsHTTP.respond(conn, :withdraw_person)
   end
 
+  @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/refund-carried-fee (ALE-389)"
+  def refund_carried_fee(conn, params), do: command(conn, :refund_carried_fee, params)
+
   @doc "POST /beginners-workshops/{id}/intakes/{intakeId}/resend-link"
   def resend_link(conn, params), do: command(conn, :resend_link, params)
 

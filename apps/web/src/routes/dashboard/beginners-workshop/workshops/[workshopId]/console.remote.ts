@@ -5,7 +5,8 @@
  * sweep does. (ALE-382) Retry and Record manual refund follow up a failed
  * refund from Needs attention. (ALE-394) Reschedule. (ALE-386)
  * `runIntakeCommand` runs one console Intake command — Decline, Defer and
- * Confirm with Carried Fee (ALE-388), Cancel with refund (ALE-387), Resend
+ * Confirm with Carried Fee (ALE-388), Cancel with refund (ALE-387), Refund
+ * Carried Fee and (from Needs attention) Forfeit (ALE-389), Resend
  * link, Rotate link — with its optional note; the console offers only
  * Phoenix's `availableCommands`. (ALE-387) `withdrawIntake` runs Withdraw
  * with its refund-or-forfeit choice. (ALE-393) `correctAttendance` corrects a
@@ -23,9 +24,11 @@ import {
 	beginnersWorkshopIntakesCancelWithRefund,
 	beginnersWorkshopIntakesDecline,
 	beginnersWorkshopIntakesDefer,
+	beginnersWorkshopIntakesRefundCarriedFee,
 	beginnersWorkshopIntakesResendLink,
 	beginnersWorkshopIntakesRotateLink,
 	beginnersWorkshopIntakesWithdraw,
+	beginnersWorkshopRefundsForfeit,
 	beginnersWorkshopRefundsRecordManual,
 	beginnersWorkshopRefundsRetry,
 	beginnersWorkshopsCancel,
@@ -126,6 +129,18 @@ export const recordManualRefund = form(
 	},
 );
 
+/** ALE-389: forfeit a Carried Fee whose refund failed (no email). */
+export const forfeitCarriedFee = form(
+	retryRefundSchema,
+	async ({ id, refundId }) => {
+		const options = await beginnersWorkshopsManageOptions();
+		return beginnersWorkshopCommand(
+			beginnersWorkshopRefundsForfeit({ ...options, path: { id, refundId } }),
+			{ fallback: "Could not forfeit the Carried Fee", formPath: noFormFields },
+		);
+	},
+);
+
 /** ALE-394: move the workshop's date, start time or venue. */
 export const rescheduleWorkshop = form(
 	rescheduleWorkshopSchema,
@@ -166,6 +181,7 @@ export const runIntakeCommand = form(
 			defer: beginnersWorkshopIntakesDefer,
 			confirm: beginnersWorkshopIntakesConfirm,
 			cancel_with_refund: beginnersWorkshopIntakesCancelWithRefund,
+			refund_carried_fee: beginnersWorkshopIntakesRefundCarriedFee,
 			resend_link: beginnersWorkshopIntakesResendLink,
 			rotate_link: beginnersWorkshopIntakesRotateLink,
 		} satisfies Record<typeof command, typeof beginnersWorkshopIntakesDecline>;

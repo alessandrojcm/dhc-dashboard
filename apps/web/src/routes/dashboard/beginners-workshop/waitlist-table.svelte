@@ -357,6 +357,8 @@ const table = createSvelteTable(tableOptions);
 								entry={row.original}
 								layout="table"
 								carriedFee={waitlist.carriedFee(row.original.id)}
+								waitlistId={row.original.id}
+								carriedFeeDeps={deps?.carriedFee}
 							/>
 						</Table.Cell>
 					</Table.Row>
@@ -490,6 +492,8 @@ const table = createSvelteTable(tableOptions);
 							entry={row.original}
 							layout="card"
 							carriedFee={waitlist.carriedFee(row.original.id)}
+							waitlistId={row.original.id}
+							carriedFeeDeps={deps?.carriedFee}
 						/>
 					</div>
 				{/if}

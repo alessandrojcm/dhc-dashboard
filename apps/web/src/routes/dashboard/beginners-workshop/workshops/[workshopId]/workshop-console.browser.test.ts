@@ -501,20 +501,43 @@ test("ALE-382: a failed refund needs attention with Retry and Record manual refu
 					currency: "eur",
 					reason: "policy_failed",
 					failedAt: "2026-10-22T12:00:00Z",
+					carriedFee: false,
+				},
+				{
+					id: "77777777-7777-4777-8777-777777777777",
+					intakeId: base.roster.asked[0].id,
+					firstName: "Eve",
+					lastName: "Byrne",
+					amountCents: 4000,
+					currency: "eur",
+					reason: "carried_fee_refunded",
+					failedAt: "2026-10-22T12:00:00Z",
+					carriedFee: true,
 				},
 			],
 		}),
 	});
 
 	const attention = screen.getByRole("region", { name: "Needs attention" });
+	const [payment, carried] = attention.getByTestId("failed-refund").all();
 	await expect
-		.element(attention.getByTestId("failed-refund"))
+		.element(payment)
 		.toHaveTextContent("Refund of €35.00 to Dara Nolan failed");
 	await expect
-		.element(attention.getByRole("button", { name: "Retry" }))
+		.element(payment.getByRole("button", { name: "Retry" }))
 		.toBeVisible();
 	await expect
-		.element(attention.getByRole("button", { name: "Record manual refund" }))
+		.element(payment.getByRole("button", { name: "Record manual refund" }))
+		.toBeVisible();
+	// Only a Carried Fee's failed refund can be forfeited (ALE-389).
+	expect(payment.getByRole("button", { name: "Forfeit" }).elements()).toEqual(
+		[],
+	);
+	await expect
+		.element(carried)
+		.toHaveTextContent("Their Carried Fee is held again");
+	await expect
+		.element(carried.getByRole("button", { name: "Forfeit" }))
 		.toBeVisible();
 
 	await expect

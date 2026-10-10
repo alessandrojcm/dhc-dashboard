@@ -154,16 +154,12 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       assert [_one] = events(intake)
     end
 
-    test "refuses unpaid, closed and Carried-Fee-paid Intakes with named reasons",
-         %{coordinator: c} do
-      {workshop, [{contacted, _}, {lapsed, _}, {carried, _}]} = contacted_fixture(c, 3)
+    test "refuses unpaid and closed Intakes with named reasons", %{coordinator: c} do
+      {workshop, [{contacted, _}, {lapsed, _}]} = contacted_fixture(c, 2)
       force_intake_state!(lapsed.id, "lapsed")
-
-      force_carried_fee_paid!(carried)
 
       assert {:error, :intake_not_paid} = command(c, :cancel_with_refund, workshop, contacted)
       assert {:error, :intake_closed} = command(c, :cancel_with_refund, workshop, lapsed)
-      assert {:error, :carried_fee_paid} = command(c, :cancel_with_refund, workshop, carried)
       assert Repo.all(IntakeRefund) == []
     end
 
@@ -273,16 +269,11 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       assert refunds(intake) == []
     end
 
-    test "refuses closed and Carried-Fee-paid Intakes", %{coordinator: c} do
-      {workshop, [{lapsed, _}, {carried, _}]} = contacted_fixture(c, 2)
+    test "refuses closed Intakes", %{coordinator: c} do
+      {workshop, [{lapsed, _}]} = contacted_fixture(c, 1)
       force_intake_state!(lapsed.id, "lapsed")
 
-      force_carried_fee_paid!(carried)
-
       assert {:error, :intake_closed} = command(c, :withdraw, workshop, lapsed)
-
-      assert {:error, :carried_fee_paid} =
-               command(c, :withdraw, workshop, carried, %{"refund" => false})
     end
 
     test "needs beginners.waitlist.manage", %{coordinator: c} do
@@ -412,7 +403,7 @@ defmodule Dhc.BeginnersWorkshops.CancelAndWithdrawTest do
       assert IntakePolicy.check(:cancel_with_refund, %{state: "paid", paid_via: "stripe"}) == :ok
 
       assert IntakePolicy.check(:cancel_with_refund, %{state: "paid", paid_via: "carried_fee"}) ==
-               {:error, :carried_fee_paid}
+               :ok
 
       assert IntakePolicy.check(:cancel_with_refund, %{state: "cancelled_refunded"}) ==
                :already_done

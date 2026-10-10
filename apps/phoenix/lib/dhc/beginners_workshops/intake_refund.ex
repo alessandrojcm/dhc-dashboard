@@ -15,7 +15,14 @@ defmodule Dhc.BeginnersWorkshops.IntakeRefund do
   A manual refund (`method: "manual"`, `record_manual_refund`) is written
   `completed` from the start. A failed refund stays as history: Retry and
   Record manual refund each insert a new row whose `follows_refund_id` is
-  the failed one. `requested_by_principal_id` is nil for an automatic
+  the failed one.
+
+  ALE-389: a refund may refund a Carried Fee (`carried_fee_id`). It is
+  still the full amount originally paid, against the original payment: a
+  deferral's fee keeps `payment_id` (its Intake payment row); an imported
+  fee linked to its Stripe PaymentIntent has no payment row, and no
+  workshop or Intake when the person had none to attach it to. Otherwise
+  `workshop_id` / `intake_id` name the Intake the refund is about. `requested_by_principal_id` is nil for an automatic
   refund (one the system requested). Status changes only through the
   boundary's transition table.
   """
@@ -38,6 +45,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeRefund do
     field :workshop_id, :binary_id
     field :intake_id, :binary_id
     field :payment_id, :binary_id
+    field :carried_fee_id, :binary_id
     field :follows_refund_id, :binary_id
     field :status, :string, default: "pending"
     field :method, :string, default: "stripe"
@@ -89,6 +97,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeRefund do
       :workshop_id,
       :intake_id,
       :payment_id,
+      :carried_fee_id,
       :follows_refund_id,
       :reason,
       :amount_cents,
@@ -100,16 +109,24 @@ defmodule Dhc.BeginnersWorkshops.IntakeRefund do
     |> put_change(:status, "pending")
     |> put_change(:method, "stripe")
     |> put_change(:idempotency_key, idempotency_key(id))
-    |> validate_required([
-      :workshop_id,
-      :intake_id,
-      :payment_id,
-      :reason,
-      :amount_cents,
-      :currency,
-      :requested_at
-    ])
+    |> validate_required([:reason, :amount_cents, :currency, :requested_at])
+    |> validate_source()
     |> validate_number(:amount_cents, greater_than: 0)
+  end
+
+  # A payment's refund names its workshop, Intake and payment; a Carried
+  # Fee's names the fee, and a workshop and Intake only together.
+  defp validate_source(changeset) do
+    cond do
+      is_nil(get_field(changeset, :carried_fee_id)) ->
+        validate_required(changeset, [:workshop_id, :intake_id, :payment_id])
+
+      is_nil(get_field(changeset, :intake_id)) != is_nil(get_field(changeset, :workshop_id)) ->
+        add_error(changeset, :intake_id, "must name its workshop")
+
+      true ->
+        changeset
+    end
   end
 
   @doc "A manual refund recorded after `failed` refund: written `completed`."
@@ -122,6 +139,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeRefund do
       workshop_id: failed.workshop_id,
       intake_id: failed.intake_id,
       payment_id: failed.payment_id,
+      carried_fee_id: failed.carried_fee_id,
       follows_refund_id: failed.id,
       status: "completed",
       method: "manual",
