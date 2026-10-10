@@ -61,6 +61,29 @@ describe("renderTemplateHtml", () => {
     expect(html).toContain("{{{MESSAGE}}}");
   });
 
+  it("renders the Beginners' Workshop action email with its message, link and label", async () => {
+    const html = await renderTemplateHtml("beginnersWorkshopAction", SITE);
+
+    expect(html).toContain("{{{MESSAGE_HTML}}}");
+    expect(html).toContain('href="{{{BUTTON_URL}}}"');
+    expect(html).toContain("{{{BUTTON_LABEL}}}");
+  });
+
+  it("renders the Beginners' Workshop notice email with its message and no button", async () => {
+    const html = await renderTemplateHtml("beginnersWorkshopNotice", SITE);
+
+    expect(html).toContain("{{{MESSAGE_HTML}}}");
+    expect(html).not.toContain("BUTTON_URL");
+  });
+
+  it("styles the unstyled Beginners' Workshop body from a scoped stylesheet", async () => {
+    const html = await renderTemplateHtml("beginnersWorkshopNotice", SITE);
+
+    expect(html).toMatch(/<style>[^<]*\.dhc-message p\{[^}]*margin:0 0 20px/);
+    expect(html).toContain('"Calistoga"');
+    expect(html).toContain('class="dhc-message"');
+  });
+
   it("rewrites the crest to its hosted absolute URL", async () => {
     const html = await renderTemplateHtml("inviteMember", SITE);
 

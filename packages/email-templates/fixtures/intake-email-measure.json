@@ -1,0 +1,668 @@
+{
+  "$comment": "Shared by Phoenix's Intake Email save check (Dhc.BeginnersWorkshops.IntakeEmails) and the dashboard's template counter (ALE-377). The measure is the rendered body HTML (no inline styles) with every placeholder replaced by `filler` repeated to its maximum length, counted in UTF-16 code units (JavaScript String length).",
+  "limit": 2000,
+  "filler": "x",
+  "unit": "utf16",
+  "maxima": {
+    "firstName": 40,
+    "date": 27,
+    "startTime": 5,
+    "venue": 80,
+    "fee": 7,
+    "windowEnd": 34,
+    "paymentCutoff": 34,
+    "refundAmount": 7
+  },
+  "cases": [
+    {
+      "name": "a greeting with the first name at its longest",
+      "emailType": "follow_up",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Hi "
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "firstName"
+                }
+              },
+              {
+                "type": "text",
+                "text": ","
+              }
+            ]
+          }
+        ]
+      },
+      "expectedHtml": "<p>Hi xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,</p>",
+      "expectedLength": 51,
+      "fits": true
+    },
+    {
+      "name": "marks wrap placeholders and text nodes are escaped",
+      "emailType": "contact_pay",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Hi "
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "firstName"
+                },
+                "marks": [
+                  {
+                    "type": "bold"
+                  }
+                ]
+              },
+              {
+                "type": "text",
+                "text": ", Tom & Jerry's <club> \"pay\" by "
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "windowEnd"
+                },
+                "marks": [
+                  {
+                    "type": "bold"
+                  },
+                  {
+                    "type": "italic"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "expectedHtml": "<p>Hi <strong>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</strong>, Tom &amp; Jerry&#39;s &lt;club&gt; &quot;pay&quot; by <em><strong>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</strong></em></p>",
+      "expectedLength": 183,
+      "fits": true
+    },
+    {
+      "name": "every element of the vocabulary renders without inline styles",
+      "emailType": "place_confirmed_paid",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "heading",
+            "attrs": {
+              "level": 2
+            },
+            "content": [
+              {
+                "type": "text",
+                "text": "Before you come"
+              }
+            ]
+          },
+          {
+            "type": "bulletList",
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Bring water"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "orderedList",
+            "attrs": {
+              "start": 3
+            },
+            "content": [
+              {
+                "type": "listItem",
+                "content": [
+                  {
+                    "type": "paragraph",
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "Arrive at "
+                      },
+                      {
+                        "type": "placeholder",
+                        "attrs": {
+                          "name": "startTime"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "blockquote",
+            "content": [
+              {
+                "type": "paragraph",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "Fee: "
+                  },
+                  {
+                    "type": "placeholder",
+                    "attrs": {
+                      "name": "fee"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "type": "horizontalRule"
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Questions? "
+              },
+              {
+                "type": "text",
+                "text": "Email us",
+                "marks": [
+                  {
+                    "type": "link",
+                    "attrs": {
+                      "href": "mailto:contact@dublinhemaclub.com"
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "hardBreak"
+              },
+              {
+                "type": "text",
+                "text": "Thanks"
+              }
+            ]
+          }
+        ]
+      },
+      "expectedHtml": "<h2>Before you come</h2><ul><li><p>Bring water</p></li></ul><ol start=\"3\"><li><p>Arrive at xxxxx</p></li></ol><blockquote><p>Fee: xxxxxxx</p></blockquote><hr><p>Questions? <a href=\"mailto:contact@dublinhemaclub.com\" target=\"_blank\" rel=\"noopener noreferrer\">Email us</a><br>Thanks</p>",
+      "expectedLength": 284,
+      "fits": true
+    },
+    {
+      "name": "characters outside the Basic Multilingual Plane count as two",
+      "emailType": "declined",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "See you soon 🤺 – "
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "date"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "expectedHtml": "<p>See you soon 🤺 – xxxxxxxxxxxxxxxxxxxxxxxxxxx</p>",
+      "expectedLength": 52,
+      "fits": true
+    },
+    {
+      "name": "an empty paragraph renders a line break",
+      "emailType": "deferred",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "firstName"
+                }
+              }
+            ]
+          },
+          {
+            "type": "paragraph",
+            "content": []
+          },
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "Dublin HEMA Club"
+              }
+            ]
+          }
+        ]
+      },
+      "expectedHtml": "<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</p><p><br></p><p>Dublin HEMA Club</p>",
+      "expectedLength": 81,
+      "fits": true
+    },
+    {
+      "name": "exactly at the limit fits",
+      "emailType": "contact_pay",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "text",
+                "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          }
+        ]
+      },
+      "expectedHtml": "<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</p>",
+      "expectedLength": 2000,
+      "fits": true
+    },
+    {
+      "name": "one character over the limit does not fit",
+      "emailType": "contact_pay",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              },
+              {
+                "type": "text",
+                "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ]
+          }
+        ]
+      },
+      "expectedHtml": "<p>xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</p>",
+      "expectedLength": 2001,
+      "fits": false
+    }
+  ],
+  "refusals": [
+    {
+      "name": "a placeholder the email type cannot fill",
+      "emailType": "follow_up",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "text",
+                "text": "At "
+              },
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "venue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "reason": "placeholder_not_allowed",
+      "placeholders": [
+        "venue"
+      ]
+    },
+    {
+      "name": "a placeholder outside the vocabulary",
+      "emailType": "contact_pay",
+      "body": {
+        "type": "doc",
+        "content": [
+          {
+            "type": "paragraph",
+            "content": [
+              {
+                "type": "placeholder",
+                "attrs": {
+                  "name": "coachName"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "reason": "placeholder_not_allowed",
+      "placeholders": [
+        "coachName"
+      ]
+    }
+  ]
+}
