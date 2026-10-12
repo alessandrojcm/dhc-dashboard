@@ -20,6 +20,8 @@ const report = {
 					membershipStatus: "active",
 					protected: true,
 					kickable: false,
+					kick: "none",
+					kickRefusal: "Protected member",
 				},
 			],
 			linkedInactive: [
@@ -37,6 +39,8 @@ const report = {
 					membershipStatus: "inactive",
 					protected: false,
 					kickable: true,
+					kick: "bulk",
+					kickRefusal: null,
 				},
 				{
 					discordUserId: "discord-protected-inactive",
@@ -52,6 +56,8 @@ const report = {
 					membershipStatus: "inactive",
 					protected: true,
 					kickable: false,
+					kick: "none",
+					kickRefusal: "Protected member",
 				},
 			],
 			pendingLink: [
@@ -66,9 +72,11 @@ const report = {
 						firstName: "Fionnuala",
 						lastName: "Kelly",
 					},
-					membershipStatus: "paused",
+					membershipStatus: "inactive",
 					protected: false,
 					kickable: true,
+					kick: "single",
+					kickRefusal: null,
 				},
 			],
 			unrecognized: [
@@ -82,6 +90,8 @@ const report = {
 					membershipStatus: null,
 					protected: false,
 					kickable: true,
+					kick: "bulk",
+					kickRefusal: null,
 				},
 				{
 					discordUserId: "discord-left",
@@ -93,6 +103,8 @@ const report = {
 					membershipStatus: null,
 					protected: false,
 					kickable: true,
+					kick: "bulk",
+					kickRefusal: null,
 				},
 				{
 					discordUserId: "discord-refused",
@@ -104,6 +116,8 @@ const report = {
 					membershipStatus: null,
 					protected: false,
 					kickable: true,
+					kick: "bulk",
+					kickRefusal: null,
 				},
 				{
 					discordUserId: "discord-failed",
@@ -115,6 +129,8 @@ const report = {
 					membershipStatus: null,
 					protected: false,
 					kickable: true,
+					kick: "bulk",
+					kickRefusal: null,
 				},
 			],
 		},
@@ -148,6 +164,11 @@ const report = {
 			fetchedAt: new Date().toISOString(),
 			ttlSeconds: 60,
 		},
+		kickReasons: {
+			linkedInactive: "DHC Doctor — Aoife Byrne: Linked – inactive",
+			pendingLink: "DHC Doctor — Aoife Byrne: Pending link",
+			unrecognized: "DHC Doctor — Aoife Byrne: Unrecognized",
+		},
 	},
 };
 
@@ -161,6 +182,7 @@ type KickResult = {
 	outcome: "kicked" | "already_left" | "refused" | "failed";
 	reason: string | null;
 	error: string | null;
+	auditReason: string | null;
 };
 
 async function stubDoctorReport(page: Page, requests: URL[] = []) {
@@ -382,6 +404,8 @@ test.describe("Discord Doctor report", () => {
 					outcome: "kicked",
 					reason: null,
 					error: null,
+					auditReason:
+						"DHC Doctor — Aoife Byrne: Linked – inactive — Reviewed with the committee",
 				},
 			],
 			kickRequests,
@@ -407,14 +431,14 @@ test.describe("Discord Doctor report", () => {
 		).toBeVisible();
 		await expect(dialog.getByText("Ciarán", { exact: true })).toBeVisible();
 		await expect(dialog).toContainText(
-			`DHC Doctor — ${admin.first_name} ${admin.last_name}: linked_inactive`,
+			"DHC Doctor — Aoife Byrne: Linked – inactive",
 		);
 
 		await dialog
 			.getByLabel("Audit note (optional)")
 			.fill("Reviewed with the committee");
 		await expect(dialog).toContainText(
-			`DHC Doctor — ${admin.first_name} ${admin.last_name}: linked_inactive — Reviewed with the committee`,
+			"DHC Doctor — Aoife Byrne: Linked – inactive — Reviewed with the committee",
 		);
 		await dialog
 			.getByRole("button", { name: "Kick 1 account", exact: true })
@@ -436,6 +460,11 @@ test.describe("Discord Doctor report", () => {
 				.getByRole("region", { name: "Latest kick results", exact: true })
 				.getByText("Kicked", { exact: true }),
 		).toBeVisible();
+		await expect(
+			page.getByRole("region", { name: "Latest kick results", exact: true }),
+		).toContainText(
+			"Audit reason: DHC Doctor — Aoife Byrne: Linked – inactive — Reviewed with the committee",
+		);
 		await expect
 			.poll(() => reportRequests.length)
 			.toBeGreaterThan(initialReportRequests);
@@ -455,24 +484,28 @@ test.describe("Discord Doctor report", () => {
 					outcome: "kicked",
 					reason: null,
 					error: null,
+					auditReason: "DHC Doctor — Aoife Byrne: Unrecognized",
 				},
 				{
 					discordUserId: "discord-left",
 					outcome: "already_left",
 					reason: null,
 					error: null,
+					auditReason: null,
 				},
 				{
 					discordUserId: "discord-refused",
 					outcome: "refused",
-					reason: "protected member",
+					reason: "Protected member",
 					error: null,
+					auditReason: null,
 				},
 				{
 					discordUserId: "discord-failed",
 					outcome: "failed",
 					reason: null,
 					error: "Missing Permissions",
+					auditReason: null,
 				},
 			],
 			kickRequests,
