@@ -101,12 +101,16 @@ defmodule Dhc.BeginnersWorkshops.CarriedFee do
     |> validate_number(:amount_cents, greater_than: 0)
   end
 
-  @doc "Whether a fee has a payment a Stripe refund can be made against."
-  @spec refundable_through_stripe?(t()) :: boolean()
-  def refundable_through_stripe?(%__MODULE__{origin: "deferral", payment_id: id}),
+  @doc """
+  Whether a fee has a payment a Stripe refund can be made against. Takes the
+  fee or any map of its `origin`, `payment_id`, `stripe_payment_intent_id`
+  and `amount_cents` (a read model's row).
+  """
+  @spec refundable_through_stripe?(t() | map()) :: boolean()
+  def refundable_through_stripe?(%{origin: "deferral", payment_id: id}),
     do: is_binary(id)
 
-  def refundable_through_stripe?(%__MODULE__{stripe_payment_intent_id: id, amount_cents: cents}),
+  def refundable_through_stripe?(%{stripe_payment_intent_id: id, amount_cents: cents}),
     do: is_binary(id) and is_integer(cents) and cents > 0
 
   @doc "Applied to (or, with `nil`, taken back from) the Intake it pays."

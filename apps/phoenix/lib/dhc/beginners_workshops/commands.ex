@@ -495,6 +495,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     BatchProposal,
     BeginnersWorkshop,
     CarriedFee,
+    CarriedFeePolicy,
     Clock,
     Intake,
     IntakeCheckout,
@@ -3083,11 +3084,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
          do: {:ok, from(r in IntakeRefund, where: r.workshop_id == ^workshop_id)}
   end
 
-  defp follow_up_locked(%{refund: failed} = locked, :forfeit, _principal_id, clock) do
+  defp follow_up_locked(
+         %{refund: failed, carried_fee: fee} = locked,
+         :forfeit,
+         _principal_id,
+         clock
+       ) do
     reading = Clock.read(clock)
 
-    with :ok <- followable(failed),
-         {:ok, fee} <- fee_to_follow_up(locked, :forfeit),
+    with :ok <- CarriedFeePolicy.check(:forfeit, follow_up_facts(locked, reading)),
          {:ok, fee} <-
            transition(
              :carried_fee,
@@ -3098,33 +3103,41 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp follow_up_locked(%{refund: failed} = locked, action, principal_id, clock) do
+  defp follow_up_locked(%{refund: failed, carried_fee: fee} = locked, action, principal_id, clock) do
     reading = Clock.read(clock)
 
-    with :ok <- followable(failed),
-         {:ok, fee} <- fee_to_follow_up(locked, action),
+    with :ok <-
+           CarriedFeePolicy.check(follow_up_command(action), follow_up_facts(locked, reading)),
          {:ok, refund} <- follow_up_row(action, failed, locked.payment, principal_id, reading),
          {:ok, _fee} <- refund_fee_again(fee, reading) do
       {:ok, refund_view(refund)}
     end
   end
 
-  # ALE-389: a Carried Fee's failed refund is followed up only while it is
-  # the fee's latest and the fee is still owed back — held again (or, when
-  # the person came to hold another fee, still `refunded`). Forfeit is only
-  # for a Carried Fee's refund, and only while the fee is held.
-  defp fee_to_follow_up(%{carried_fee: nil}, :forfeit), do: {:error, :not_a_carried_fee_refund}
-  defp fee_to_follow_up(%{carried_fee: nil}, _action), do: {:ok, nil}
+  defp follow_up_command({:manual, _note}), do: :manual
+  defp follow_up_command(:retry), do: :retry
 
-  defp fee_to_follow_up(%{carried_fee: fee, refund: failed}, action) do
-    cond do
-      superseded?(failed) -> {:error, :refund_followed_up}
-      fee.status == "held" -> {:ok, fee}
-      fee.status == "refunded" and action != :forfeit -> {:ok, fee}
-      fee.status == "applied" -> {:error, :carried_fee_applied}
-      true -> {:error, :carried_fee_not_held}
-    end
+  # ALE-389: `CarriedFeePolicy` decides a follow-up from the refund
+  # followed up — failed, with no follow-up row and (for a Carried Fee's)
+  # still the fee's latest — and the fee it refunds, which must still be
+  # owed back.
+  defp follow_up_facts(%{refund: refund, carried_fee: fee} = locked, reading) do
+    CarriedFeePolicy.facts(
+      fee: fee,
+      refund: refund && %{status: refund.status, followed_up: followed_up?(refund, fee)},
+      entry: Map.get(locked, :waitlist_entry),
+      now: reading.now
+    )
   end
+
+  # Every refund writer of a payment holds its lock; the follows index is
+  # the backstop.
+  defp followed_up?(%IntakeRefund{status: "failed", id: id} = refund, fee) do
+    Repo.exists?(from(r in IntakeRefund, where: r.follows_refund_id == ^id)) or
+      (fee != nil and superseded?(refund))
+  end
+
+  defp followed_up?(_not_failed, _fee), do: false
 
   # A later refund of the same Carried Fee (a new Refund Carried Fee or
   # Cancel with refund after this one failed) is the one to follow up.
@@ -3145,16 +3158,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       )
 
   defp refund_fee_again(fee, _reading), do: {:ok, fee}
-
-  # Every refund writer of a payment holds its lock; the follows index is
-  # the backstop.
-  defp followable(%IntakeRefund{status: "failed", id: id}) do
-    if Repo.exists?(from(r in IntakeRefund, where: r.follows_refund_id == ^id)),
-      do: {:error, :refund_followed_up},
-      else: :ok
-  end
-
-  defp followable(_refund), do: {:error, :refund_not_failed}
 
   # A new key against the same payment; no email (story 144).
   defp follow_up_row(:retry, failed, payment, principal_id, reading) do
@@ -3392,13 +3395,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp intake_command_locked(%{intake: intake} = locked, command, context, clock) do
     reading = Clock.read(clock)
+    facts = policy_facts(locked, context, reading)
 
-    case IntakePolicy.check(command, policy_facts(locked, context, reading)) do
+    case IntakePolicy.check(command, facts) do
       :ok ->
         event_id = Ecto.UUID.generate()
+        locked = Map.merge(locked, %{context: context, facts: facts})
 
-        with {:ok, intake} <-
-               act_on_intake(command, Map.put(locked, :context, context), event_id, reading),
+        with {:ok, intake} <- act_on_intake(command, locked, event_id, reading),
              {:ok, _event} <- record_intake_event(intake, command, event_id, context, reading) do
           {:ok, intake_command_view(intake, :done)}
         end
@@ -3542,9 +3546,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # its person holds no fee — and the standing and priority are untouched.
   # "Carried Fee refunded" is queued.
   defp act_on_intake(:refund_carried_fee, locked, _event_id, reading) do
-    %{waitlist_entry: entry, intake: intake, carried_fee: fee, context: context} = locked
+    %{intake: intake, carried_fee: fee, context: context} = locked
 
-    with {:ok, refund} <- refund_held_fee(entry, fee, intake, context.actor, reading),
+    with {:ok, refund} <- refund_fee(fee, intake, context.actor, "carried_fee_refunded", reading),
          :ok <-
            emailed(
              IntakeEmails.deliver(
@@ -3631,9 +3635,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # Withdraw's refund-or-forfeit choice, asked exactly when
   # `IntakePolicy.refund_choice_required?/1` says there is money to settle
   # (the console row's `refund_choice` reads the same rule); `nil`: none.
-  defp withdraw_choice(%{intake: intake, context: context} = locked) do
-    facts = %{state: intake.state, carried_fee: locked.carried_fee && locked.carried_fee.status}
-
+  defp withdraw_choice(%{facts: facts, context: context}) do
     if IntakePolicy.refund_choice_required?(facts),
       do: refund_choice(context.options),
       else: {:ok, nil}
@@ -3732,40 +3734,97 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp back_to_waiting(_waiting_or_anonymised, _now), do: :ok
 
-  # What `IntakePolicy.check/2` reads: the locked Intake and, for the
-  # commands that lock them, the person's live Carried Fee and standing
-  # (and whether that standing still allows a fee refund at `reading`),
-  # the workshop's status, and a correction's target (ALE-393).
+  # What `IntakePolicy.check/2` reads (`IntakePolicy.facts/1`): the locked
+  # Intake and workshop and, for the commands that lock them, the person's
+  # standing and live Carried Fee (with its latest refund), whether their
+  # latest fee was refunded, and a correction's target (ALE-393).
   defp policy_facts(%{intake: intake} = locked, context, reading) do
-    entry = Map.get(locked, :waitlist_entry)
-    fee = Map.get(locked, :carried_fee)
+    fee = live_fee(Map.get(locked, :carried_fee))
 
-    %{
-      state: intake.state,
-      paid_via: intake.paid_via,
-      carried_fee:
-        case fee do
-          %CarriedFee{status: status} -> status
-          nil -> nil
-        end,
-      fee_refundable: fee_refundable?(entry, reading),
-      carried_fee_refunded:
+    IntakePolicy.facts(
+      intake: intake,
+      entry: Map.get(locked, :waitlist_entry),
+      carried_fee: fee,
+      carried_fee_refund: fee_refund(fee),
+      latest_fee_refunded:
         fee == nil and is_binary(intake.waitlist_id) and fee_refunded?(intake.waitlist_id),
       workshop_status: locked.workshop.status,
-      standing:
-        case entry do
-          %WaitlistEntry{status: status} ->
-            status
+      correction: Map.get(context.options, :to),
+      now: reading.now
+    )
+  end
 
-          # ALE-396: an anonymised attendee keeps what became of them.
-          _anonymised when intake.invitation_outcome in ~w(invited joined) ->
-            intake.invitation_outcome
+  # `correct_attendance` locks the fee that paid the Intake, which is no
+  # longer live once it is spent or forfeited.
+  defp live_fee(%CarriedFee{status: status} = fee) do
+    if status in CarriedFee.live_statuses(), do: fee
+  end
 
-          _none ->
-            nil
-        end,
-      correction: Map.get(context.options, :to)
-    }
+  defp live_fee(nil), do: nil
+
+  # A fee's latest refund (`IntakeRefund.latest_of_fees_query/1`); every
+  # refund writer of a fee holds its lock, which the caller holds.
+  defp fee_refund(nil), do: nil
+
+  defp fee_refund(%CarriedFee{id: id}) do
+    case Repo.one(IntakeRefund.latest_of_fees_query([id])) do
+      {^id, refund} -> refund
+      nil -> nil
+    end
+  end
+
+  @doc false
+  # ALE-402 parity seam: the facts the boundary decides an Intake command
+  # by, from the locked read with the widest Intake lock set (entry and
+  # live Carried Fee, as `refund_carried_fee` takes them) and no correction.
+  # Nothing is written.
+  @spec locked_intake_facts(binary(), binary(), Clock.t()) ::
+          {:ok, IntakePolicy.t()} | {:error, term()}
+  def locked_intake_facts(workshop_id, intake_id, %Clock{} = clock) do
+    with {:ok, workshop_id} <- cast_id(workshop_id),
+         {:ok, peek} <- peek_console_intake(workshop_id, intake_id) do
+      read_locked(intake_command_spec(:refund_carried_fee, peek), fn locked ->
+        policy_facts(locked, %{options: %{}}, Clock.read(clock))
+      end)
+    end
+  end
+
+  @doc false
+  # ALE-402 parity seam: the `CarriedFeePolicy` facts of the person's live
+  # Carried Fee, else their latest, under the entry → Carried Fee locks the
+  # Waitlist tab's commands take. Nothing is written.
+  @spec locked_carried_fee_facts(binary(), Clock.t()) ::
+          {:ok, CarriedFeePolicy.t()} | {:error, term()}
+  def locked_carried_fee_facts(waitlist_id, %Clock{} = clock) do
+    with {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
+      read_locked(
+        %{
+          waitlist_entry: from(e in WaitlistEntry, where: e.id == ^waitlist_id),
+          carried_fee: live_fee_query(waitlist_id)
+        },
+        fn %{waitlist_entry: entry, carried_fee: fee} ->
+          person_fee_facts(entry, fee || latest_fee(waitlist_id), Clock.read(clock))
+        end
+      )
+    end
+  end
+
+  defp read_locked(spec, read), do: transact(fn -> with_locked(spec, &{:ok, read.(&1)}) end)
+
+  # The person's fee as `CarriedFeePolicy` judges it, with its latest
+  # refund, under the person's entry lock.
+  defp person_fee_facts(entry, fee, reading),
+    do: CarriedFeePolicy.facts(fee: fee, refund: fee_refund(fee), entry: entry, now: reading.now)
+
+  # With no live fee: the person's latest one, if any. Every fee writer
+  # holds the person's entry lock.
+  defp latest_fee(waitlist_id) do
+    from(f in CarriedFee,
+      where: f.waitlist_id == ^waitlist_id,
+      order_by: [desc: f.status_changed_at, desc: f.created_at],
+      limit: 1
+    )
+    |> Repo.one()
   end
 
   defp record_intake_event(intake, command, event_id, context, reading) do
@@ -3945,27 +4004,46 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  # No open Intake: the standing, under the entry lock, and (ALE-389) the
-  # person's Carried Fee, which needs the refund-or-forfeit choice even
+  # No open Intake: `IntakePolicy.check(:withdraw, _)` with no Intake
+  # (ALE-402) over the standing, under the entry lock, and (ALE-389) the
+  # person's live Carried Fee, which needs the refund-or-forfeit choice even
   # when they are already removed. An Intake created since the peek (it
   # takes this lock too) is found here.
   defp withdraw_standing(%{waitlist_entry: nil}, _waitlist_id, _context, _clock),
     do: {:error, :person_not_found}
 
   defp withdraw_standing(%{waitlist_entry: entry, carried_fee: fee}, waitlist_id, context, clock) do
+    reading = Clock.read(clock)
+    facts = person_facts(entry, fee, reading)
+
     cond do
       peek_open_intake(waitlist_id) != nil ->
         {:error, :concurrent_change}
 
-      entry.status == "removed" and fee == nil ->
+      IntakePolicy.check(:withdraw, facts) == :already_done ->
         {:ok, withdraw_person_view(entry, nil, :already_done)}
 
       true ->
-        with {:ok, refund?} <- money_choice(fee, context.options),
-             :ok <- remove_from_waitlist(entry, Clock.read(clock).now),
-             :ok <- settle_withdrawn_fee(refund?, entry, fee, context, Clock.read(clock)),
+        with {:ok, refund?} <- withdraw_choice(%{facts: facts, context: context}),
+             :ok <- remove_from_waitlist(entry, reading.now),
+             :ok <- settle_withdrawn_fee(refund?, entry, fee, context, reading),
              do: {:ok, withdraw_person_view(Repo.reload!(entry), nil, :done)}
     end
+  end
+
+  # `IntakePolicy`'s facts of a person with no open Intake: their locked
+  # entry and live Carried Fee.
+  defp person_facts(entry, fee, reading) do
+    IntakePolicy.facts(
+      intake: nil,
+      entry: entry,
+      carried_fee: fee,
+      carried_fee_refund: fee_refund(fee),
+      latest_fee_refunded: fee == nil and fee_refunded?(entry.id),
+      workshop_status: nil,
+      correction: nil,
+      now: reading.now
+    )
   end
 
   # A withdrawal with no Intake settles the Carried Fee alone; its notice is
@@ -4294,48 +4372,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         CarriedFee.status_changeset(fee, "forfeited", fee.applied_intake_id, reading.now)
       )
 
-  # `refund_carried_fee`: a `held` fee of someone who has not attended — a
-  # waiting person (with or without a contacted Intake) or one removed
-  # within the 3-month retention window.
-  defp refund_held_fee(entry, fee, intake, actor, reading) do
-    with :ok <- may_refund_fee(entry, reading) do
-      case fee do
-        %CarriedFee{status: "held"} ->
-          refund_fee(fee, intake, actor, "carried_fee_refunded", reading)
-
-        %CarriedFee{status: "applied"} ->
-          {:error, :carried_fee_applied}
-
-        nil ->
-          {:error, :no_carried_fee}
-      end
-    end
-  end
-
-  defp may_refund_fee(nil, _reading), do: {:error, :person_not_found}
-
-  defp may_refund_fee(%WaitlistEntry{} = entry, reading),
-    do: if(fee_refundable?(entry, reading), do: :ok, else: {:error, :fee_not_refundable})
-
-  # `IntakePolicy.fee_refundable?/3` for a locked entry (none: anonymised).
-  defp fee_refundable?(%WaitlistEntry{status: status, removed_at: removed_at}, reading),
-    do: IntakePolicy.fee_refundable?(status, removed_at, reading.now)
-
-  defp fee_refundable?(_anonymised, _reading), do: false
-
   # With no live fee: whether the person's latest Carried Fee was refunded,
   # so a repeated `refund_carried_fee` is already done. Every fee writer
   # holds the person's entry lock, which the refund commands hold too.
-  defp fee_refunded?(waitlist_id) do
-    from(f in CarriedFee,
-      where: f.waitlist_id == ^waitlist_id,
-      order_by: [desc: f.status_changed_at, desc: f.created_at],
-      limit: 1,
-      select: f.status
-    )
-    |> Repo.one()
-    |> Kernel.==("refunded")
-  end
+  defp fee_refunded?(waitlist_id),
+    do: match?(%CarriedFee{status: "refunded"}, latest_fee(waitlist_id))
 
   # The Waitlist tab names the person. With an open Intake this is exactly
   # the console's `refund_carried_fee` on it (same locks, rule and history
@@ -4387,18 +4428,30 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp refund_fee_alone(%{waitlist_entry: entry, carried_fee: nil}, waitlist_id, _context, _clock)
-       when entry != nil do
-    if fee_refunded?(waitlist_id),
-      do: {:ok, fee_command_view(waitlist_id, nil, :already_done)},
-      else: {:error, :no_carried_fee}
+  # No open Intake: `CarriedFeePolicy.check(:refund, _)` over the person's
+  # live fee, else their latest (already done once it was refunded).
+  defp refund_fee_alone(%{waitlist_entry: nil}, waitlist_id, _context, _clock) do
+    if peek_open_intake(waitlist_id) == nil,
+      do: {:error, :person_not_found},
+      else: {:error, :concurrent_change}
+  end
+
+  defp refund_fee_alone(%{waitlist_entry: entry, carried_fee: nil}, waitlist_id, _context, clock) do
+    case CarriedFeePolicy.check(
+           :refund,
+           person_fee_facts(entry, latest_fee(waitlist_id), Clock.read(clock))
+         ) do
+      :already_done -> {:ok, fee_command_view(waitlist_id, nil, :already_done)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp refund_fee_alone(%{waitlist_entry: entry, carried_fee: fee}, waitlist_id, context, clock) do
     reading = Clock.read(clock)
 
     with true <- peek_open_intake(waitlist_id) == nil || {:error, :concurrent_change},
-         {:ok, refund} <- refund_held_fee(entry, fee, nil, context.actor, reading),
+         :ok <- CarriedFeePolicy.check(:refund, person_fee_facts(entry, fee, reading)),
+         {:ok, refund} <- refund_fee(fee, nil, context.actor, "carried_fee_refunded", reading),
          :ok <-
            emailed(
              IntakeEmails.deliver(
@@ -4483,18 +4536,26 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp linkable(%CarriedFee{origin: "deferral"}, _id), do: {:error, :not_imported}
-  defp linkable(%CarriedFee{stripe_payment_intent_id: id} = fee, id), do: {:ok, {:linked, fee}}
+  # `CarriedFeePolicy.check(:link_payment, _)`; asking again for the
+  # PaymentIntent already linked is already done.
+  defp linkable(%CarriedFee{} = fee, payment_intent_id) do
+    facts = CarriedFeePolicy.facts(fee: fee, refund: fee_refund(fee), entry: nil, now: nil)
 
-  defp linkable(%CarriedFee{stripe_payment_intent_id: nil} = fee, payment_intent_id) do
-    if Repo.exists?(
-         from(p in IntakePayment, where: p.stripe_payment_intent_id == ^payment_intent_id)
-       ),
-       do: {:error, :payment_already_linked},
-       else: {:ok, {:link, fee}}
+    case CarriedFeePolicy.check(:link_payment, facts) do
+      :ok ->
+        if Repo.exists?(
+             from(p in IntakePayment, where: p.stripe_payment_intent_id == ^payment_intent_id)
+           ),
+           do: {:error, :payment_already_linked},
+           else: {:ok, {:link, fee}}
+
+      {:error, :already_linked} when fee.stripe_payment_intent_id == payment_intent_id ->
+        {:ok, {:linked, fee}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
-
-  defp linkable(%CarriedFee{}, _other_id), do: {:error, :already_linked}
 
   defp link_fee_locked(%{carried_fee: nil}, _id, _payment, _clock), do: {:error, :no_carried_fee}
 

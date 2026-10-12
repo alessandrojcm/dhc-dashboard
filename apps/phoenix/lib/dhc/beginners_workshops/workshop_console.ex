@@ -236,6 +236,60 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     history = histories(workshop.id)
 
     rows =
+      workshop
+      |> roster_rows(reading)
+      |> Enum.map(fn {row, facts} ->
+        logged = Map.get(emails, row.id, [])
+
+        row
+        |> Map.drop([:date_of_birth, :medical_conditions, :fee_amount_cents, :fee_currency])
+        # The Payment Window its Contact email asks by.
+        |> Map.update!(
+          :window_ends_at,
+          &WorkshopPolicy.payment_window_end(workshop, &1, row.contacted_at)
+        )
+        |> Map.put(:minor, WorkshopPolicy.minor?(row.date_of_birth, workshop.date))
+        |> Map.put(:medical, medical?(row.medical_conditions))
+        |> Map.put(:refund, Map.get(refunds, row.id))
+        |> then(fn out ->
+          choice = refund_choice(row, facts, Map.get(paying, row.id))
+
+          out
+          |> Map.put(:refund_choice, choice)
+          |> Map.put(:refund_timing_days_to_go, choice && hint_days)
+        end)
+        |> Map.put(:email_log, logged ++ scheduled_emails(row, logged, workshop))
+        |> Map.put(:history, Map.get(history, row.id, []))
+        # The very rule the boundary decides by, over the same facts.
+        |> Map.put(:available_commands, IntakePolicy.available_commands(facts))
+        |> Map.put(:attendance_corrections, IntakePolicy.attendance_corrections(facts))
+      end)
+
+    %{
+      seated: Enum.filter(rows, &(&1.state == "paid")),
+      asked: Enum.filter(rows, &(&1.state == "contacted")),
+      attended: Enum.filter(rows, &(&1.state == "attended")),
+      no_show: Enum.filter(rows, &(&1.state == "no_show")),
+      out: Enum.reject(rows, &(&1.state in @not_out))
+    }
+  end
+
+  @doc false
+  # ALE-402 parity seam: the `IntakePolicy` facts the console builds for
+  # each Intake of a workshop, by Intake id.
+  @spec intake_facts(binary(), Clock.t()) :: %{binary() => IntakePolicy.t()}
+  def intake_facts(workshop_id, %Clock{} = clock) do
+    workshop = Repo.get!(BeginnersWorkshop, workshop_id)
+
+    workshop
+    |> roster_rows(Clock.read(clock))
+    |> Map.new(fn {row, facts} -> {row.id, facts} end)
+  end
+
+  # Each Intake's roster row (its output columns) and its `IntakePolicy`
+  # facts (`IntakePolicy.facts/1`) from the same SQL row.
+  defp roster_rows(workshop, reading) do
+    rows =
       from(i in Intake,
         left_join: b in Batch,
         on: b.id == i.batch_id,
@@ -254,92 +308,96 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         on: e.id == i.waitlist_id,
         where: i.workshop_id == ^workshop.id,
         order_by: [asc: i.queue_date, asc: i.id],
-        select: %{
-          id: i.id,
-          state: i.state,
-          paid_via: i.paid_via,
-          origin: i.origin,
-          batch_number: b.number,
-          queue_date: i.queue_date,
-          contacted_at: i.contacted_at,
-          window_ends_at: b.window_ends_at,
-          hold_expires_at: h.expires_at,
-          checked_in_at: i.checked_in_at,
-          standing: e.status,
-          removed_at: e.removed_at,
-          link_generation: i.link_generation,
-          carried_fee: coalesce(paid_fee.status, live_fee.status),
-          fee_amount_cents: coalesce(paid_fee.amount_cents, live_fee.amount_cents),
-          fee_currency: coalesce(paid_fee.currency, live_fee.currency),
-          first_name: p.first_name,
-          last_name: p.last_name,
-          date_of_birth: p.date_of_birth,
-          medical_conditions: p.medical_conditions
+        select: {
+          %{
+            id: i.id,
+            state: i.state,
+            paid_via: i.paid_via,
+            origin: i.origin,
+            batch_number: b.number,
+            queue_date: i.queue_date,
+            contacted_at: i.contacted_at,
+            window_ends_at: b.window_ends_at,
+            hold_expires_at: h.expires_at,
+            checked_in_at: i.checked_in_at,
+            standing: e.status,
+            link_generation: i.link_generation,
+            carried_fee: coalesce(paid_fee.status, live_fee.status),
+            fee_amount_cents: coalesce(paid_fee.amount_cents, live_fee.amount_cents),
+            fee_currency: coalesce(paid_fee.currency, live_fee.currency),
+            first_name: p.first_name,
+            last_name: p.last_name,
+            date_of_birth: p.date_of_birth,
+            medical_conditions: p.medical_conditions
+          },
+          # The raw values `IntakePolicy.facts/1` reads.
+          %{
+            invitation_outcome: i.invitation_outcome,
+            waitlist_id: i.waitlist_id,
+            entry_status: e.status,
+            removed_at: e.removed_at,
+            live_fee: %{
+              id: live_fee.id,
+              status: live_fee.status,
+              origin: live_fee.origin,
+              payment_id: live_fee.payment_id,
+              stripe_payment_intent_id: live_fee.stripe_payment_intent_id,
+              amount_cents: live_fee.amount_cents
+            }
+          }
         }
       )
       |> Repo.all()
-      |> Enum.map(fn row ->
-        logged = Map.get(emails, row.id, [])
 
-        fee_refundable =
-          IntakePolicy.fee_refundable?(row.standing, row.removed_at, reading.now)
+    fees = for {_row, %{live_fee: %{id: id}}} <- rows, id != nil, do: id
+    fee_refunds = fees |> IntakeRefund.latest_of_fees_query() |> Repo.all() |> Map.new()
+    latest = latest_fee_statuses(Enum.map(rows, fn {_row, raw} -> raw.waitlist_id end))
 
-        row
-        |> Map.drop([
-          :date_of_birth,
-          :medical_conditions,
-          :removed_at,
-          :fee_amount_cents,
-          :fee_currency
-        ])
-        # The Payment Window its Contact email asks by.
-        |> Map.update!(
-          :window_ends_at,
-          &WorkshopPolicy.payment_window_end(workshop, &1, row.contacted_at)
-        )
-        |> Map.put(:minor, WorkshopPolicy.minor?(row.date_of_birth, workshop.date))
-        |> Map.put(:medical, medical?(row.medical_conditions))
-        |> Map.put(:refund, Map.get(refunds, row.id))
-        |> then(fn out ->
-          choice = refund_choice(row, Map.get(paying, row.id))
+    Enum.map(rows, &{elem(&1, 0), facts(&1, fee_refunds, latest, workshop, reading)})
+  end
 
-          out
-          |> Map.put(:refund_choice, choice)
-          |> Map.put(:refund_timing_days_to_go, choice && hint_days)
-        end)
-        |> Map.put(:email_log, logged ++ scheduled_emails(row, logged, workshop))
-        |> Map.put(:history, Map.get(history, row.id, []))
-        |> then(fn row ->
-          # The rule's facts: the row plus the workshop's status (ALE-393)
-          # and whether the person may still have a fee refunded (ALE-389).
-          facts =
-            Map.merge(row, %{
-              workshop_status: workshop.status,
-              fee_refundable: fee_refundable
-            })
+  defp facts({row, raw}, fee_refunds, latest, workshop, reading) do
+    # A left join's absent fee selects as a map of nils.
+    fee = if raw.live_fee.id, do: raw.live_fee
 
-          row
-          |> Map.put(:available_commands, IntakePolicy.available_commands(facts))
-          |> Map.put(:attendance_corrections, IntakePolicy.attendance_corrections(facts))
-        end)
-      end)
+    IntakePolicy.facts(
+      intake: %{
+        state: row.state,
+        paid_via: row.paid_via,
+        invitation_outcome: raw.invitation_outcome
+      },
+      entry: raw.entry_status && %{status: raw.entry_status, removed_at: raw.removed_at},
+      carried_fee: fee,
+      carried_fee_refund: fee && Map.get(fee_refunds, fee.id),
+      latest_fee_refunded: fee == nil and Map.get(latest, raw.waitlist_id) == "refunded",
+      workshop_status: workshop.status,
+      correction: nil,
+      now: reading.now
+    )
+  end
 
-    %{
-      seated: Enum.filter(rows, &(&1.state == "paid")),
-      asked: Enum.filter(rows, &(&1.state == "contacted")),
-      attended: Enum.filter(rows, &(&1.state == "attended")),
-      no_show: Enum.filter(rows, &(&1.state == "no_show")),
-      out: Enum.reject(rows, &(&1.state in @not_out))
-    }
+  # Each person's latest Carried Fee status (the boundary's `latest_fee`
+  # order), by Waitlist id.
+  defp latest_fee_statuses(waitlist_ids) do
+    ids = waitlist_ids |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    from(f in CarriedFee,
+      where: f.waitlist_id in ^ids,
+      distinct: f.waitlist_id,
+      order_by: [desc: f.status_changed_at, desc: f.created_at],
+      select: {f.waitlist_id, f.status}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
 
   # ALE-387/389: the money a Withdraw must settle by refund or forfeit, when
   # `IntakePolicy.refund_choice_required?/1` says it needs the choice — the
   # payment that paid a Stripe-paid Intake, else the Carried Fee (the one
   # that paid it, or a contacted holder's), with the full amount it took.
-  defp refund_choice(row, paying) do
+  defp refund_choice(row, facts, paying) do
     cond do
-      not IntakePolicy.refund_choice_required?(row) ->
+      not IntakePolicy.refund_choice_required?(facts) ->
         nil
 
       row.state == "paid" and row.paid_via == "stripe" and paying != nil ->
