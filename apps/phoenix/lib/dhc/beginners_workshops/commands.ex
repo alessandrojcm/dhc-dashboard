@@ -459,6 +459,33 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       with_locked: 2
     ]
 
+  import Dhc.BeginnersWorkshops.Commands.Input,
+    only: [cast_id: 1, cast_person_id: 1, fetch_attr: 2]
+
+  import Dhc.BeginnersWorkshops.Commands.WorkshopRules,
+    only: [cutoff_due?: 2, facts_for: 1, still_scheduled: 1]
+
+  import Dhc.BeginnersWorkshops.Commands.LockSpecs,
+    only: [
+      entry_query: 1,
+      intake_spec: 2,
+      live_fee_query: 1,
+      locked_intake_fee: 1,
+      open_payment: 1,
+      paying_payment: 1
+    ]
+
+  import Dhc.BeginnersWorkshops.Commands.Facts,
+    only: [fee_refund: 1, fee_refunded?: 1, held?: 1, latest_fee: 1, read_locked: 2]
+
+  import Dhc.BeginnersWorkshops.Commands.IntakeHistory,
+    only: [bounded_note: 1, command_note: 1, record_intake_event: 5]
+
+  import Dhc.BeginnersWorkshops.Commands.IntakeNotices,
+    only: [emailed: 1, emailed_each: 2, place_confirmed: 3, pre_workshop: 3]
+
+  import Dhc.BeginnersWorkshops.Commands.CoordinatorAlerts, only: [alert: 2]
+
   alias Dhc.Auth
   alias Dhc.Auth.{Capabilities, Principal}
 
@@ -472,7 +499,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     Intake,
     IntakeCheckout,
     IntakeEmails,
-    IntakeEvent,
     IntakeLink,
     IntakePayment,
     IntakePolicy,
@@ -728,9 +754,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # How many refunds and payment rows one `reconcile` pass repairs (each);
   # the next tick takes the rest.
   @reconcile_batch 100
-
-  # The coordinator-alert recipients (ALE-380).
-  @alerts_capability :"beginners.workshops.alerts.receive"
 
   # A Batch pass that loses a proposed person to a concurrent command retries
   # from a fresh proposal this many times before giving up until the next
@@ -1614,10 +1637,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp toggle_pause(workshop, principal_id, false, reading),
     do: workshop |> BeginnersWorkshop.resume_changeset(principal_id, reading.now) |> persist()
 
-  defp still_scheduled(%BeginnersWorkshop{status: "scheduled"}), do: :ok
-  defp still_scheduled(%BeginnersWorkshop{status: "finalised"}), do: {:error, :after_finalisation}
-  defp still_scheduled(%BeginnersWorkshop{status: "cancelled"}), do: {:error, :already_cancelled}
-
   # ── send_due_batch ──────────────────────────────────────────────
 
   defp send_due_batch(workshop_id, clock, attempts_left) do
@@ -1879,13 +1898,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     )
   end
 
-  defp alert(key, body) do
-    @alerts_capability
-    |> Capabilities.principal_ids_with()
-    |> Enum.map(&{&1, key, body})
-    |> create_keyed()
-  end
-
   # ── start_payment ───────────────────────────────────────────────
 
   defp start_payment(token, clock) do
@@ -1919,17 +1931,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       peek -> {:ok, peek}
     end
   end
-
-  defp intake_spec(%{workshop_id: workshop_id, intake_id: intake_id}, payment) do
-    %{
-      workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
-      intake: required(from(i in Intake, where: i.id == ^intake_id)),
-      payment: payment
-    }
-  end
-
-  defp open_payment(intake_id),
-    do: from(p in IntakePayment, where: p.intake_id == ^intake_id and p.status == "open")
 
   # Seats are judged under the workshop lock, which every hold takes, so N
   # people racing for the last seat get exactly one hold.
@@ -2167,50 +2168,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
          :ok <- place_confirmed(intake, workshop, reading) do
       {:ok, %{outcome: :paid}}
     end
-  end
-
-  # "Place confirmed" for a newly paid or confirmed Intake. A person paid
-  # after the Payment Cutoff of a scheduled workshop gets Pre-workshop info
-  # at once (story 49); before it, the cutoff pass sends it, and a cancelled
-  # or finalised workshop sends none.
-  defp place_confirmed(intake, workshop, reading) do
-    with :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, workshop},
-               :place_confirmed,
-               Occasion.place_confirmed(),
-               reading
-             )
-           ) do
-      if cutoff_due?(workshop, reading),
-        do: emailed(pre_workshop(intake, workshop, reading)),
-        else: :ok
-    end
-  end
-
-  # "Pre-workshop info", once per Intake per schedule (ALE-394).
-  defp pre_workshop(intake, workshop, reading) do
-    IntakeEmails.deliver(
-      {:intake, intake, workshop},
-      "pre_workshop",
-      Occasion.pre_workshop(workshop.reschedule_count),
-      reading
-    )
-  end
-
-  # `IntakeEmails.deliver/5` in a `with`: queued, already sent and nobody
-  # to send to all go on.
-  defp emailed({:ok, _queued_or_not}), do: :ok
-  defp emailed({:error, reason}), do: {:error, reason}
-
-  defp emailed_each(items, deliver) do
-    Enum.reduce_while(items, :ok, fn item, :ok ->
-      case emailed(deliver.(item)) do
-        :ok -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
   end
 
   defp release_payment(%{"id" => session_id} = session, clock) do
@@ -3040,27 +2997,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp command_options(_command, _attrs), do: {:ok, %{}}
 
-  defp command_note(attrs) do
-    case fetch_attr(attrs, :note) do
-      nil ->
-        {:ok, nil}
-
-      note when is_binary(note) ->
-        note |> String.trim() |> bounded_note()
-
-      _other ->
-        {:error, :invalid_note}
-    end
-  end
-
-  defp bounded_note(""), do: {:ok, nil}
-
-  defp bounded_note(note) do
-    if String.length(note) <= IntakeEvent.note_max(),
-      do: {:ok, note},
-      else: {:error, :invalid_note}
-  end
-
   # Unlocked: which person the Intake is (to lock their Waitlist entry
   # before the Intake). An Intake never changes workshop or person; only
   # anonymisation nulls the person, which the locked re-read sees.
@@ -3152,29 +3088,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp intake_command_spec(_link_command, peek), do: intake_spec(peek, nil)
-
-  defp entry_query(%{waitlist_id: nil}), do: nil
-  defp entry_query(%{waitlist_id: id}), do: from(e in WaitlistEntry, where: e.id == ^id)
-
-  # The payment that paid an Intake: its `paid` row that was not refunded
-  # automatically (a completion after the Intake had closed, or one that
-  # failed the amount check, is refunded on its own and never paid it).
-  defp paying_payment(intake_id) do
-    automatic = IntakeRefund.automatic_reasons()
-
-    from(p in IntakePayment,
-      as: :payment,
-      where: p.intake_id == ^intake_id and p.status == "paid",
-      where:
-        not exists(
-          from(r in IntakeRefund,
-            where: r.payment_id == parent_as(:payment).id and r.reason in ^automatic
-          )
-        ),
-      order_by: [asc: p.paid_at, asc: p.id],
-      limit: 1
-    )
-  end
 
   defp intake_command_locked(%{intake: intake} = locked, command, context, clock) do
     reading = Clock.read(clock)
@@ -3362,17 +3275,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp live_fee(nil), do: nil
 
-  # A fee's latest refund (`IntakeRefund.latest_of_fees_query/1`); every
-  # refund writer of a fee holds its lock, which the caller holds.
-  defp fee_refund(nil), do: nil
-
-  defp fee_refund(%CarriedFee{id: id}) do
-    case Repo.one(IntakeRefund.latest_of_fees_query([id])) do
-      {^id, refund} -> refund
-      nil -> nil
-    end
-  end
-
   @doc false
   # ALE-402 parity seam: the facts the boundary decides an Intake command
   # by, from the locked read with the widest Intake lock set (entry and
@@ -3409,39 +3311,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp read_locked(spec, read), do: transact(fn -> with_locked(spec, &{:ok, read.(&1)}) end)
-
   # The person's fee as `CarriedFeePolicy` judges it, with its latest
   # refund, under the person's entry lock.
   defp person_fee_facts(entry, fee, reading),
     do: CarriedFeePolicy.facts(fee: fee, refund: fee_refund(fee), entry: entry, now: reading.now)
-
-  # With no live fee: the person's latest one, if any. Every fee writer
-  # holds the person's entry lock.
-  defp latest_fee(waitlist_id) do
-    from(f in CarriedFee,
-      where: f.waitlist_id == ^waitlist_id,
-      order_by: [desc: f.status_changed_at, desc: f.created_at],
-      limit: 1
-    )
-    |> Repo.one()
-  end
-
-  defp record_intake_event(intake, command, event_id, context, reading) do
-    %{actor: actor, note: note, options: options} = context
-
-    %{
-      id: event_id,
-      intake_id: intake.id,
-      command: Atom.to_string(command),
-      actor_principal_id: actor,
-      note: note,
-      correction: Map.get(options, :to),
-      occurred_at: reading.now
-    }
-    |> IntakeEvent.changeset()
-    |> persist()
-  end
 
   defp intake_command_view(%Intake{} = intake, outcome) do
     intake
@@ -3594,13 +3467,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp withdraw_person_view(%WaitlistEntry{} = entry, intake_view, outcome),
     do: %{waitlist_id: entry.id, status: entry.status, intake: intake_view, outcome: outcome}
 
-  defp cast_person_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, id} -> {:ok, id}
-      :error -> {:error, :person_not_found}
-    end
-  end
-
   # ── Hard delete: delete_person and purge_retention (ALE-396) ───
 
   # The person's rows a hard delete changes: their entry, every Intake they
@@ -3741,24 +3607,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     }
   end
 
-  # ── Carried Fees (ALE-388) ──────────────────────────────────────
-
-  # The person's live (`held` or `applied`) Carried Fee: at most one.
-  defp live_fee_query(waitlist_id),
-    do:
-      from(f in CarriedFee,
-        where: f.waitlist_id == ^waitlist_id and f.status in ^CarriedFee.live_statuses()
-      )
-
-  # The Carried Fee level for a command that locked an Intake.
-  defp locked_intake_fee(%{intake: %Intake{waitlist_id: id}}) when is_binary(id),
-    do: live_fee_query(id)
-
-  defp locked_intake_fee(_locked), do: nil
-
-  defp held?(%CarriedFee{status: "held"}), do: true
-  defp held?(_no_held_fee), do: false
-
   # The person's own confirm from their Intake page: the console command's
   # rule and act, with no actor and no note.
   defp confirm_by_link(token, clock) do
@@ -3810,12 +3658,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   # ── Carried Fee refunds and forfeits (ALE-389) ─────────────────
-
-  # With no live fee: whether the person's latest Carried Fee was refunded,
-  # so a repeated `refund_carried_fee` is already done. Every fee writer
-  # holds the person's entry lock, which the refund commands hold too.
-  defp fee_refunded?(waitlist_id),
-    do: match?(%CarriedFee{status: "refunded"}, latest_fee(waitlist_id))
 
   # The Waitlist tab names the person. With an open Intake this is exactly
   # the console's `refund_carried_fee` on it (same locks, rule and history
@@ -4140,9 +3982,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
        from(p in IntakePayment, where: p.workshop_id == ^workshop.id and p.status == "open")}
 
   defp cutoff_holds(_locked), do: nil
-
-  defp cutoff_due?(workshop, reading),
-    do: workshop.status == "scheduled" and not WorkshopPolicy.payment_open?(workshop, reading)
 
   defp pass_cutoff_locked(%{intake: nil}, _clock), do: {:ok, %{outcome: :not_due}}
 
@@ -4576,8 +4415,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp fetch_attr(attrs, key), do: Map.get(attrs, key, Map.get(attrs, Atom.to_string(key)))
-
   defp cast_optional_id(nil), do: {:ok, nil}
   defp cast_optional_id(""), do: {:ok, nil}
   defp cast_optional_id(id) when is_binary(id), do: Ecto.UUID.cast(id)
@@ -4712,14 +4549,5 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     if WorkshopPolicy.contact_from_valid?(contact_from, cutoff),
       do: :ok,
       else: {:error, :invalid_contact_from}
-  end
-
-  defp facts_for(%BeginnersWorkshop{id: id}), do: Map.fetch!(WorkshopFacts.load([id]), id)
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, id} -> {:ok, id}
-      :error -> {:error, :not_found}
-    end
   end
 end
