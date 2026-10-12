@@ -9,6 +9,7 @@ import { globSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { parse } from "svelte/compiler";
 import type { AST } from "svelte/compiler";
+import * as v from "valibot";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -18,14 +19,31 @@ import {
 
 const webRoot = join(import.meta.dirname, "../../..");
 
-const BEGINNERS_WORKSHOP_SVELTE = [
-	"src/routes/dashboard/beginners-workshop/**/*.svelte",
-	"src/routes/dashboard/my-beginners-workshops/**/*.svelte",
-	"src/routes/(public)/beginners/**/*.svelte",
-	"src/lib/beginners-workshops/**/*.svelte",
-	"src/lib/components/beginners-workshops/**/*.svelte",
-	"src/lib/server/beginners-workshops/**/*.svelte",
-];
+/**
+ * The Svelte files under the Beginners' Workshop override that enables the
+ * rule, read from `.oxlintrc.json` so the two scopes cannot drift.
+ */
+function beginnersWorkshopSvelteGlobs(): string[] {
+	const config = v.parse(
+		v.object({
+			overrides: v.array(
+				v.object({
+					files: v.array(v.string()),
+					rules: v.optional(v.record(v.string(), v.unknown())),
+				}),
+			),
+		}),
+		JSON.parse(readFileSync(join(webRoot, ".oxlintrc.json"), "utf8")),
+	);
+	const override = config.overrides.find(
+		({ rules }) => rules?.["anti-slop/no-backend-terms-in-copy"] !== undefined,
+	);
+	if (override === undefined)
+		throw new Error("No override enables no-backend-terms-in-copy");
+	return override.files.map((glob) =>
+		glob.endsWith("/**") ? `${glob}/*.svelte` : `${glob}.svelte`,
+	);
+}
 
 type Finding = { offset: number; text: string; term: string };
 type MarkupChild = AST.Fragment["nodes"][number];
@@ -184,7 +202,7 @@ describe("Beginners' Workshop copy vocabulary", () => {
 	});
 
 	it("shows no backend term in any Beginners' Workshop Svelte markup", () => {
-		const files = BEGINNERS_WORKSHOP_SVELTE.flatMap((pattern) =>
+		const files = beginnersWorkshopSvelteGlobs().flatMap((pattern) =>
 			globSync(pattern, { cwd: webRoot }),
 		);
 		expect(files.length).toBeGreaterThan(20);

@@ -71,7 +71,9 @@ const scheduleEntries = {
 		v.array(
 			v.object({
 				date: civilDate("Pick the workshop date."),
-				paymentCutoffDate: optionalCivilDate("Pick a valid cutoff date."),
+				paymentCutoffDate: optionalCivilDate(
+					"Pick a valid payment deadline date.",
+				),
 				contactFromDate: optionalCivilDate(
 					"Pick a valid date for offers to start.",
 				),
@@ -127,8 +129,8 @@ export const workshopSettingsSchema = v.pipe(
 	v.object({
 		id: workshopId,
 		...settingsEntries,
-		paymentCutoffDate: civilDate("Pick the cutoff date."),
-		paymentCutoffTime: wallTime("Enter the cutoff time."),
+		paymentCutoffDate: civilDate("Pick the payment deadline date."),
+		paymentCutoffTime: wallTime("Enter the payment deadline time."),
 		contactFromDate: optionalCivilDate(
 			"Pick a valid date for offers to start.",
 		),
@@ -212,8 +214,8 @@ export const rescheduleWorkshopSchema = v.pipe(
 		date: civilDate("Pick the new date."),
 		startTime: wallTime("Enter the start time."),
 		venue,
-		paymentCutoffDate: civilDate("Pick the cutoff date."),
-		paymentCutoffTime: wallTime("Enter the cutoff time."),
+		paymentCutoffDate: civilDate("Pick the payment deadline date."),
+		paymentCutoffTime: wallTime("Enter the payment deadline time."),
 		contactFromDate: optionalCivilDate(
 			"Pick a valid date for offers to start.",
 		),

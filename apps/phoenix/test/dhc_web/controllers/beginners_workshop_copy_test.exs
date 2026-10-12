@@ -5,27 +5,27 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
   Walks the reason table of every `DhcWeb.BeginnersWorkshop*HTTP` family
   and every field message `DhcWeb.BeginnersWorkshopsHTTP.respond/4` builds.
 
-  The banned phrases mirror `tools/oxlint/anti-slop/shared/backend-terms.ts`
-  (the frontend guard); keep the two lists in step.
+  The banned phrases are `tools/oxlint/anti-slop/shared/backend-terms.json`,
+  the list the frontend guards read too.
   """
 
   use ExUnit.Case, async: true
 
+  alias Dhc.BeginnersWorkshops.IntakeEmails.EmailType
+  alias Dhc.BeginnersWorkshops.IntakeEmails.Renderer
   alias DhcWeb.BeginnersWorkshopsHTTP
 
-  @banned [
-    {"Intake", ~r/\bintakes?\b/i},
-    {"Batch", ~r/\bbatch(?:es)?\b/i},
-    {"Carried Fee", ~r/\bcarried[\s-]+fees?\b/i},
-    {"Payment Cutoff", ~r/\bpayment[\s-]+cut-?offs?\b/i},
-    {"Finalisation", ~r/\bfinali[sz]ations?\b/i},
-    {"Seat Hold", ~r/\bseat[\s-]+holds?\b/i},
-    {"seat", ~r/\bseats?\b/i},
-    {"Fast-track", ~r/\bfast[\s-]?track(?:s|ed|ing)?\b/i},
-    {"Waitlist entry", ~r/\bwaitlist[\s-]+entr(?:y|ies)\b/i},
-    {"contact-from", ~r/\bcontact[\s-]+from\b/i},
-    {"Console", ~r/\bconsoles?\b/i}
-  ]
+  @terms_path Path.expand(
+                "../../../../../tools/oxlint/anti-slop/shared/backend-terms.json",
+                __DIR__
+              )
+  @external_resource @terms_path
+
+  defp banned do
+    for %{"term" => term, "pattern" => pattern} <-
+          @terms_path |> File.read!() |> Jason.decode!() |> Map.fetch!("terms"),
+        do: {term, Regex.compile!(pattern, "iu")}
+  end
 
   defp families do
     {:ok, modules} = :application.get_key(:dhc, :modules)
@@ -55,13 +55,40 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
     for error <- errors, message <- messages(error), do: {"field message", message}
   end
 
+  # The template editor's `fields.subject` / `fields.body` messages: every
+  # Renderer refusal, for every email type.
+  defp template_messages do
+    paragraph = fn text ->
+      %{
+        "type" => "doc",
+        "content" => [
+          %{"type" => "paragraph", "content" => [%{"type" => "text", "text" => text}]}
+        ]
+      }
+    end
+
+    attempts = [
+      {"", %{"type" => "doc", "content" => []}},
+      {"one\ntwo", "not a document"},
+      {String.duplicate("x", 500), paragraph.(String.duplicate("x", 3_000))},
+      {"{{notAPlaceholder}}", paragraph.("{{notAPlaceholder}}")},
+      {42, %{"type" => "doc", "content" => [%{"type" => "unknownBlock"}]}}
+    ]
+
+    for type <- EmailType.ids(),
+        {subject, body} <- attempts,
+        {:error, refusals} <- [Renderer.validate(type, subject, body)],
+        {field, _refusal, message} <- refusals,
+        do: {"template #{field}", message}
+  end
+
   defp messages({:error, _reason, fields}), do: fields |> Map.values() |> List.flatten()
   defp messages({:error, [_ | _] = messages}), do: messages
   defp messages(_error), do: []
 
   defp offences(copy) do
     for {where, text} <- copy,
-        {term, pattern} <- @banned,
+        {term, pattern} <- banned(),
         Regex.match?(pattern, text),
         do: "#{where}: #{inspect(term)} in #{inspect(text)}"
   end
@@ -77,8 +104,9 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
   end
 
   test "no field message shows a backend term" do
-    copy = field_messages()
-    assert copy != []
+    copy = field_messages() ++ template_messages()
+    assert {"template subject", "can't be blank"} in copy
+    assert Enum.any?(copy, &match?({"field message", _}, &1))
     assert offences(copy) == []
   end
 

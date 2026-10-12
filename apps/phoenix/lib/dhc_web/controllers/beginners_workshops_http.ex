@@ -127,7 +127,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       carried_fee_not_found: {404, "This person has never held a workshop credit"},
       full: {409, "Every place is taken; the workshop credit stays held"},
       payment_not_found: {409, "The payment for this workshop place can't be found"},
-      invalid_ids: {422, "Ask about at most 100 people at once"},
+      invalid_ids: {422, "Select at most 100 people at once"},
       # Carried Fee refunds and forfeits (ALE-389).
       fee_not_refundable:
         {409,
