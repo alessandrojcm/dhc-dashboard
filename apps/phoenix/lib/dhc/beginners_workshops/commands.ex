@@ -2382,8 +2382,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # original payment took — its payment row (`payment`, locked by the
   # caller) or, for an imported fee, the Stripe payment staff linked —
   # recorded against `intake`, the Intake the refund is about (else the
-  # original payment's own Intake, else none).
-  defp insert_refund(%IntakePayment{} = payment, reason, requested_by, reading) do
+  # original payment's own Intake, else none). Public only so
+  # `Commands.Settlement` writes its refunds here too; Reach keeps it inside
+  # the `Commands` namespace.
+  @doc false
+  @spec insert_refund(
+          IntakePayment.t()
+          | {:carried_fee, CarriedFee.t(), IntakePayment.t() | nil, Intake.t() | nil},
+          String.t(),
+          binary() | nil,
+          Clock.reading()
+        ) :: {:ok, IntakeRefund.t() | nil} | {:error, term()}
+  def insert_refund(%IntakePayment{} = payment, reason, requested_by, reading) do
     case payment.amount_received_cents do
       amount when is_integer(amount) and amount > 0 ->
         write_refund(
@@ -2405,7 +2415,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp insert_refund({:carried_fee, %CarriedFee{} = fee, payment, intake}, reason, by, reading) do
+  def insert_refund({:carried_fee, %CarriedFee{} = fee, payment, intake}, reason, by, reading) do
     if CarriedFee.refundable_through_stripe?(fee),
       do: write_refund(fee_refund_source(fee, payment, intake), reason, by, reading),
       else: {:error, :payment_not_linked}

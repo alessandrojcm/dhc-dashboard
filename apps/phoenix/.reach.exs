@@ -88,6 +88,14 @@
       # else writes through Dhc.BeginnersWorkshops.execute/3.
       {["Dhc.*", "DhcWeb.*"], ["Dhc.BeginnersWorkshops.Commands.Protocol.*"],
        except: ["Dhc.BeginnersWorkshops.Commands", "Dhc.BeginnersWorkshops.Commands.*"]},
+      # ALE-404: a Settlement (what an Intake's closing or a person's leaving
+      # does to them) runs only inside a Commands transaction, and its refund
+      # rows go through the one Commands.insert_refund/4.
+      {["Dhc.*", "DhcWeb.*"],
+       [
+         "Dhc.BeginnersWorkshops.Commands.Settlement.*",
+         "Dhc.BeginnersWorkshops.Commands.insert_refund"
+       ], except: ["Dhc.BeginnersWorkshops.Commands", "Dhc.BeginnersWorkshops.Commands.*"]},
       # ... and the context opens a transaction only through that core.
       {["Dhc.BeginnersWorkshops", "Dhc.BeginnersWorkshops.*"],
        ["Dhc.Repo.transaction", "Dhc.Repo.transact"],
