@@ -38,10 +38,25 @@ function calendarTitle() {
 	return document.querySelector(".ec-title")?.textContent?.trim() ?? "";
 }
 
+const MONTHS = [
+	"January",
+	"February",
+	"March",
+	"April",
+	"May",
+	"June",
+	"July",
+	"August",
+	"September",
+	"October",
+	"November",
+	"December",
+];
+
 /** Months since year 0 for a title such as `October 2026`. */
 function monthIndex(title: string) {
-	const date = new Date(`1 ${title} 12:00 UTC`);
-	return date.getUTCFullYear() * 12 + date.getUTCMonth();
+	const [month = "", year = ""] = title.split(" ");
+	return Number(year) * 12 + MONTHS.indexOf(month);
 }
 
 test("places a Workshop on its Dublin day and time", async () => {

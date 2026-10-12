@@ -70,6 +70,14 @@ export function civilIsoDate(value: DateValue | undefined): string {
 	return value instanceof CalendarDate ? value.toString() : "";
 }
 
+/** Reads an instant's parts in `format`, by part type. */
+function partsOf(format: Intl.DateTimeFormat, iso: string) {
+	const byType = new Map(
+		format.formatToParts(new Date(iso)).map((part) => [part.type, part.value]),
+	);
+	return (type: Intl.DateTimeFormatPartTypes) => byType.get(type) ?? "";
+}
+
 const dublinInstantParts = new Intl.DateTimeFormat("en-IE", {
 	timeZone: CLUB_TIME_ZONE,
 	weekday: "short",
@@ -82,12 +90,8 @@ const dublinInstantParts = new Intl.DateTimeFormat("en-IE", {
 
 /** An instant on the Dublin wall clock: `Tue 20 Oct, 10:00`. */
 export function formatDublinInstant(iso: string): string {
-	const parts = Object.fromEntries(
-		dublinInstantParts
-			.formatToParts(new Date(iso))
-			.map((part) => [part.type, part.value]),
-	);
-	return `${parts.weekday} ${parts.day} ${parts.month}, ${parts.hour}:${parts.minute}`;
+	const part = partsOf(dublinInstantParts, iso);
+	return `${part("weekday")} ${part("day")} ${part("month")}, ${part("hour")}:${part("minute")}`;
 }
 
 const dublinTime = new Intl.DateTimeFormat("en-IE", {
@@ -136,13 +140,6 @@ const dublinLongNames = new Intl.DateTimeFormat("en-US", {
 	month: "long",
 });
 
-function partsOf(format: Intl.DateTimeFormat, iso: string) {
-	const byType = new Map(
-		format.formatToParts(new Date(iso)).map((part) => [part.type, part.value]),
-	);
-	return (type: Intl.DateTimeFormatPartTypes) => byType.get(type) ?? "";
-}
-
 /** The Dublin wall clock reading of an instant. */
 function dublinClock(iso: string) {
 	const clock = partsOf(dublinClockParts, iso);
@@ -156,6 +153,8 @@ function dublinClock(iso: string) {
 		day: String(Number(clock("day"))),
 		hour: clock("hour"),
 		minute,
+		// Derived from the 24-hour reading rather than a separate h12 format,
+		// so the hour and the wall-clock date can never disagree.
 		time12h: `${((hour + 11) % 12) + 1}:${minute} ${hour < 12 ? "AM" : "PM"}`,
 		weekday: short("weekday"),
 		month: short("month"),
