@@ -6,10 +6,10 @@
 import { DoorOpen } from "@lucide/svelte";
 import { resolve } from "$app/paths";
 import {
-	formatCivilDate,
 	stageLabel,
 	staffRoleLabel,
 } from "#lib/beginners-workshops/presentation.js";
+import { formatCivilDate } from "#lib/club-calendar.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Empty from "#lib/components/ui/empty/index.js";

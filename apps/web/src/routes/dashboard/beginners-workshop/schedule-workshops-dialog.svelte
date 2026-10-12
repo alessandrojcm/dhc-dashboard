@@ -8,7 +8,8 @@
 <script lang="ts">
 import type { BeginnersWorkshopStaffCandidate } from "@dhc/api-client";
 import { CalendarPlus, Plus, Trash2 } from "@lucide/svelte";
-import { parseDate, type DateValue } from "@internationalized/date";
+import type { DateValue } from "@internationalized/date";
+import { civilCalendarDate } from "#lib/club-calendar.js";
 import { toast } from "svelte-sonner";
 import { Button } from "#lib/components/ui/button/index.js";
 import DatePicker from "#lib/components/ui/date-picker.svelte";
@@ -41,12 +42,7 @@ type DateKey = "date" | "paymentCutoffDate" | "contactFromDate";
 
 function pickerValue(index: number, key: DateKey): DateValue | undefined {
 	const value = fields.workshops[index]?.[key].value();
-	if (!value) return undefined;
-	try {
-		return parseDate(value);
-	} catch {
-		return undefined;
-	}
+	return value ? civilCalendarDate(value) : undefined;
 }
 
 function setDate(index: number, key: DateKey, value: DateValue | undefined) {

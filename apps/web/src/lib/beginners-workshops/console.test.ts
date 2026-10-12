@@ -10,7 +10,6 @@ import {
 	emailLogLine,
 	failedRefundText,
 	followUpLabel,
-	formatDublinInstant,
 	formatRefundAmount,
 	historyLine,
 	attendanceCorrectionDone,
@@ -122,17 +121,6 @@ function view(
 		...overrides,
 	};
 }
-
-describe("formatDublinInstant", () => {
-	it("shows the Dublin wall clock across the clock change", () => {
-		expect(formatDublinInstant("2026-10-20T09:00:00Z")).toBe(
-			"Tue 20 Oct, 10:00",
-		);
-		expect(formatDublinInstant("2026-10-28T10:00:00Z")).toBe(
-			"Wed 28 Oct, 10:00",
-		);
-	});
-});
 
 describe("the Next Batch preview", () => {
 	it("says when it goes out, or why not", () => {

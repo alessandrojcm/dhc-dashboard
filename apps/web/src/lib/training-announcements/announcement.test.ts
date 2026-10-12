@@ -8,7 +8,6 @@ import {
 	announcementLifecycle,
 	deleteBlockedReason,
 	draftPreviewDate,
-	dublinToday,
 	newAnnouncementDraft,
 	postTimeLabel,
 	scheduleChanged,
@@ -38,14 +37,6 @@ function announcement(
 		...overrides,
 	};
 }
-
-describe("dublinToday", () => {
-	it("reads the club's civil day, not the host's", () => {
-		// 23:30 UTC is already the next day in Dublin (IST, UTC+1).
-		expect(dublinToday(new Date("2026-10-04T23:30:00Z"))).toBe("2026-10-05");
-		expect(dublinToday(new Date("2026-10-04T09:30:00Z"))).toBe("2026-10-04");
-	});
-});
 
 describe("lifecycle", () => {
 	it("reads the two booleans the API exposes", () => {

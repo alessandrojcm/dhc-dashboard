@@ -27,26 +27,7 @@ import type {
 } from "@dhc/api-client";
 import { INTAKE_EMAIL_TYPES } from "#lib/beginners-workshops/intake-emails/presentation.js";
 import { stageLabel } from "#lib/beginners-workshops/presentation.js";
-
-const dublinParts = new Intl.DateTimeFormat("en-IE", {
-	timeZone: "Europe/Dublin",
-	weekday: "short",
-	day: "numeric",
-	month: "short",
-	hour: "2-digit",
-	minute: "2-digit",
-	hourCycle: "h23",
-});
-
-/** An instant on the Dublin wall clock: `Tue 20 Oct, 10:00`. */
-export function formatDublinInstant(iso: string): string {
-	const parts = Object.fromEntries(
-		dublinParts
-			.formatToParts(new Date(iso))
-			.map((part) => [part.type, part.value]),
-	);
-	return `${parts.weekday} ${parts.day} ${parts.month}, ${parts.hour}:${parts.minute}`;
-}
+import { formatDublinInstant, formatDublinTime } from "#lib/club-calendar.js";
 
 export type TimelineStep = {
 	label: string;
@@ -365,13 +346,6 @@ export function intakeStateLabel(state: BeginnersWorkshopIntakeState): string {
 	return INTAKE_STATE_LABELS[state];
 }
 
-const dublinTime = new Intl.DateTimeFormat("en-IE", {
-	timeZone: "Europe/Dublin",
-	hour: "2-digit",
-	minute: "2-digit",
-	hourCycle: "h23",
-});
-
 /**
  * ALE-381: a live Seat Hold on a roster row — `Paying now · hold until 12:30`
  * (Dublin) — or `null` without one. The seat stays taken until Stripe ends
@@ -382,9 +356,8 @@ export function holdLabel(
 	now: Date = new Date(),
 ): string | null {
 	if (!intake.holdExpiresAt) return null;
-	const until = new Date(intake.holdExpiresAt);
-	return until.getTime() > now.getTime()
-		? `Paying now · place reserved until ${dublinTime.format(until)}`
+	return new Date(intake.holdExpiresAt).getTime() > now.getTime()
+		? `Paying now · place reserved until ${formatDublinTime(intake.holdExpiresAt)}`
 		: "Paying now · checkout ending";
 }
 

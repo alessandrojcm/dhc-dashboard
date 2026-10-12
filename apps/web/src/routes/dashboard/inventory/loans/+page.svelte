@@ -32,7 +32,7 @@ import {
 	UserRound,
 	Wrench,
 } from "@lucide/svelte";
-import { parseDate } from "@internationalized/date";
+import { civilCalendarDate } from "#lib/club-calendar.js";
 import { MediaQuery } from "svelte/reactivity";
 import {
 	createLoanQueueBoard,
@@ -76,7 +76,7 @@ function formatDate(value: string | null) {
 }
 
 function dateValue(value: string) {
-	return value ? parseDate(value) : undefined;
+	return civilCalendarDate(value);
 }
 
 function shortPrincipal(id: string) {

@@ -10,7 +10,6 @@ import type {
 	BeginnersWorkshopStaffRole,
 	BeginnersWorkshopStage,
 } from "@dhc/api-client";
-import dayjs from "dayjs";
 
 const STAGE_LABELS = {
 	before_contact_from: "Offer emails have not started yet",
@@ -92,19 +91,4 @@ export function formatFee(cents: number): string {
 /** Euro for a form's fee input (`4000` → `40`). */
 export function feeInEuro(cents: number): number {
 	return cents / 100;
-}
-
-/** A civil `YYYY-MM-DD` as `Sat 14 Nov 2026` (dayjs reads it as local midnight). */
-export function formatCivilDate(date: string): string {
-	return dayjs(date).format("ddd D MMM YYYY");
-}
-
-/** The calendar tile parts of a civil date. */
-export function dateTile(date: string) {
-	const day = dayjs(date);
-	return {
-		weekday: day.format("ddd"),
-		day: day.format("D"),
-		month: day.format("MMM"),
-	};
 }

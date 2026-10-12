@@ -8,10 +8,10 @@ import { ArrowLeft, MapPin, Users } from "@lucide/svelte";
 import { resolve } from "$app/paths";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
 import {
-	formatCivilDate,
 	stageLabel,
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
+import { formatCivilDate } from "#lib/club-calendar.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import type { BeginnersWorkshopDoor } from "@dhc/api-client";
 import { Button } from "#lib/components/ui/button/index.js";

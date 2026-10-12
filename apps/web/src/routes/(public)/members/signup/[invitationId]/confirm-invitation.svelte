@@ -1,5 +1,4 @@
 <script lang="ts">
-import { parseDate } from "@internationalized/date";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { ArrowRightIcon } from "@lucide/svelte";
@@ -12,6 +11,7 @@ import DatePicker from "#lib/components/ui/date-picker.svelte";
 import * as Field from "#lib/components/ui/field/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import { civilCalendarDate } from "#lib/club-calendar.js";
 import { inviteValidationSchema } from "#lib/schemas/inviteValidationSchema.js";
 import { initForm } from "#lib/utils/init-form.svelte.js";
 import { validateInvitation } from "./data.remote";
@@ -37,7 +37,7 @@ const dobValue = $derived.by(() => {
 	) {
 		return undefined;
 	}
-	return parseDate(dob);
+	return civilCalendarDate(dob);
 });
 </script>
 

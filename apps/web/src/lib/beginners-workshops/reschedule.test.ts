@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	dublinToday,
 	keptContactFrom,
 	keptCutoff,
 	rescheduleWarning,
@@ -57,13 +56,6 @@ describe("keptContactFrom", () => {
 				"2026-10-09",
 			),
 		).toBe("2026-10-09");
-	});
-});
-
-describe("dublinToday", () => {
-	it("is the Dublin date, not UTC's", () => {
-		// 23:30 UTC on 9 October is 00:30 on 10 October in Dublin (IST).
-		expect(dublinToday(new Date("2026-10-09T23:30:00Z"))).toBe("2026-10-10");
 	});
 });
 

@@ -13,10 +13,8 @@ import type {
 	BeginnersIntakePage,
 	BeginnersIntakeState,
 } from "@dhc/api-client";
-import {
-	formatCivilDate,
-	formatFee,
-} from "#lib/beginners-workshops/presentation.js";
+import { formatFee } from "#lib/beginners-workshops/presentation.js";
+import { formatCivilDate } from "#lib/club-calendar.js";
 
 /** What an unknown link shows: the same as a closed Intake. */
 export const INACTIVE_PAGE: BeginnersIntakePage = {

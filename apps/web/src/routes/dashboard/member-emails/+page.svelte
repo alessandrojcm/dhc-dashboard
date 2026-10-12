@@ -29,6 +29,7 @@ import {
 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { apiProblem } from "#lib/api-error.js";
+import { formatDublinTimestamp } from "#lib/club-calendar.js";
 import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -164,12 +165,6 @@ const statusVariants = {
 	sent: "default",
 	failed: "destructive",
 } as const satisfies Record<MemberAnnouncementStatus, string>;
-
-const dateFormat = new Intl.DateTimeFormat("en-IE", {
-	dateStyle: "medium",
-	timeStyle: "short",
-	timeZone: "Europe/Dublin",
-});
 
 function audienceLabel(row: MemberAnnouncement) {
 	return row.includeInactive ? "Active + inactive" : "Active members";
@@ -378,7 +373,7 @@ function audienceLabel(row: MemberAnnouncement) {
 						<div class="min-w-0">
 							<p class="font-medium break-words">{row.subject}</p>
 							<p class="mt-1 text-sm leading-relaxed text-muted-foreground">
-								{dateFormat.format(new Date(row.createdAt))}
+								{formatDublinTimestamp(row.createdAt)}
 								· {row.recipientCount} recipients · {audienceLabel(row)}
 								{#if row.sentByName}· {row.sentByName}{/if}
 							</p>

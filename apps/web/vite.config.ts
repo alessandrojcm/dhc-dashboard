@@ -68,7 +68,11 @@ export default defineConfig(({ command }) => ({
 				extends: true,
 				test: {
 					name: "unit",
-					include: ["src/**/*.{test,spec}.{js,ts}", "tools/**/*.test.ts"],
+					include: [
+						"src/**/*.{test,spec}.{js,ts}",
+						"tools/**/*.test.ts",
+						"../../tools/oxlint/**/*.test.ts",
+					],
 					exclude: ["src/**/*.browser.{test,spec}.{js,ts}"],
 				},
 			},

@@ -12,11 +12,8 @@ import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
 import * as Select from "#lib/components/ui/select/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
-import {
-	type DateValue,
-	parseDate,
-	toCalendarDate,
-} from "@internationalized/date";
+import type { DateValue } from "@internationalized/date";
+import { civilCalendarDate, civilIsoDate } from "#lib/club-calendar.js";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import {
 	ArrowLeft,
@@ -162,14 +159,11 @@ function requireMemberId(): string {
 
 // The date of birth stays a `YYYY-MM-DD` string; the picker reads and writes
 // it as a `CalendarDate`, never through a JS `Date`.
-const isoDateSchema = v.pipe(v.string(), v.isoDate());
-const dobValue = $derived(
-	v.is(isoDateSchema, dateOfBirth) ? parseDate(dateOfBirth) : undefined,
-);
+const dobValue = $derived(civilCalendarDate(dateOfBirth));
 
 function setDateOfBirth(date: DateValue | undefined) {
 	if (!date) return;
-	updateProfile.fields.dateOfBirth.set(toCalendarDate(date).toString());
+	updateProfile.fields.dateOfBirth.set(civilIsoDate(date));
 }
 
 let pausedUntil: dayjs.Dayjs | null = $state(

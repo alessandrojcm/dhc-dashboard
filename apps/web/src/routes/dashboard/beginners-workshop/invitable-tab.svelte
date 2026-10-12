@@ -18,7 +18,7 @@ import {
 	X,
 } from "@lucide/svelte";
 import { followUpLabel, personName } from "#lib/beginners-workshops/console.js";
-import { formatCivilDate } from "#lib/beginners-workshops/presentation.js";
+import { formatCivilDate } from "#lib/club-calendar.js";
 import * as Empty from "#lib/components/ui/empty/index.js";
 import * as Table from "#lib/components/ui/table/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";

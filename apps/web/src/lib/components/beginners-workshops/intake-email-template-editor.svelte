@@ -17,6 +17,7 @@ import type {
 } from "@dhc/api-client";
 import { MousePointerClick } from "@lucide/svelte";
 import type { ApiProblem } from "#lib/api-error.js";
+import { formatDublinTimestamp } from "#lib/club-calendar.js";
 import {
 	INTAKE_EMAIL_LIMIT,
 	measureIntakeEmail,
@@ -50,11 +51,6 @@ const { template, onsave, saving = false, problem = null }: Props = $props();
 
 const SUBJECT_MAX = 200;
 const LIMIT_TEXT = INTAKE_EMAIL_LIMIT.toLocaleString("en-IE");
-const savedFormat = new Intl.DateTimeFormat("en-IE", {
-	dateStyle: "medium",
-	timeStyle: "short",
-	timeZone: "Europe/Dublin",
-});
 
 // The parent remounts this editor per template revision ({#key}), so the
 // draft starts from the template once and is never re-synced from it.
@@ -132,7 +128,7 @@ function save(event: SubmitEvent) {
 				{template.kind === "action" ? "With a button" : "Notice"}
 			</Badge>
 			<span class="text-xs text-muted-foreground">
-				Last saved {savedFormat.format(new Date(template.updatedAt))}
+				Last saved {formatDublinTimestamp(template.updatedAt)}
 			</span>
 		</div>
 	</header>

@@ -14,7 +14,7 @@ import type {
 	TrainingAnnouncementOverride,
 	TrainingAnnouncementSuppression,
 } from "@dhc/api-client";
-import { announcementDateLabel } from "./announcement";
+import { formatCivilDateLong } from "#lib/club-calendar.js";
 
 export type ExceptionKind = "suppression" | "override";
 
@@ -55,8 +55,8 @@ export type OverrideDraft = SuppressionDraft & {
 
 /** One date reads as the date; a range reads as `8 Oct → 22 Oct 2026`. */
 export function exceptionRangeLabel(fromDate: string, toDate: string): string {
-	if (fromDate === toDate) return announcementDateLabel(fromDate);
-	return `${announcementDateLabel(fromDate)} → ${announcementDateLabel(toDate)}`;
+	if (fromDate === toDate) return formatCivilDateLong(fromDate);
+	return `${formatCivilDateLong(fromDate)} → ${formatCivilDateLong(toDate)}`;
 }
 
 export function suppressionRangeLabel(

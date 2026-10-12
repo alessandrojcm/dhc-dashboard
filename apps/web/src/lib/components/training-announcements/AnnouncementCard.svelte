@@ -25,11 +25,11 @@ import "./occurrence-tone.css";
 import { KIND_LABELS } from "#lib/training-announcements/copy.js";
 import {
 	ANNOUNCEMENT_LIFECYCLE_LABELS,
-	announcementDateLabel,
 	announcementLifecycle,
 	deleteBlockedReason,
 	scheduleLabel,
 } from "#lib/training-announcements/announcement.js";
+import { formatCivilDateLong } from "#lib/club-calendar.js";
 import {
 	occurrenceKey,
 	occurrenceStatus,
@@ -184,12 +184,12 @@ const recent = createQuery(() => ({
 								>{occurrence.subject === "holiday"
 									? occurrenceTitle(occurrence)
 									: (occurrence.threadName ??
-										announcementDateLabel(occurrence.date))}</span
+										formatCivilDateLong(occurrence.date))}</span
 							>
 							<span
 								class="mt-0.5 flex items-center gap-1.5 text-muted-foreground"
 							>
-								<span>{announcementDateLabel(occurrence.date)}</span>
+								<span>{formatCivilDateLong(occurrence.date)}</span>
 								<span class="ta-pill ta-tone--{status.tone}">
 									<span class="ta-pill-dot" aria-hidden="true"></span>
 									{status.label}
@@ -221,12 +221,12 @@ const recent = createQuery(() => ({
 						<li class="min-w-0 text-xs">
 							<span class="block truncate font-semibold"
 								>{occurrence.threadName ??
-									announcementDateLabel(occurrence.date)}</span
+									formatCivilDateLong(occurrence.date)}</span
 							>
 							<span
 								class="mt-0.5 flex items-center justify-between gap-1.5 text-muted-foreground"
 							>
-								<span>{announcementDateLabel(occurrence.date)}</span>
+								<span>{formatCivilDateLong(occurrence.date)}</span>
 								<span class="ta-pill ta-tone--{status.tone}">
 									<span class="ta-pill-dot" aria-hidden="true"></span>
 									{status.label}

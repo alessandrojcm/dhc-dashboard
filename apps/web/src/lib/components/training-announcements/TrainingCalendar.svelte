@@ -42,7 +42,7 @@ import {
 } from "#lib/components/ui/toggle-group/index.js";
 import { TriangleAlert } from "@lucide/svelte";
 import { apiErrorMessage } from "#lib/api-error.js";
-import { announcementDateLabel } from "#lib/training-announcements/announcement.js";
+import { formatCivilDateLong } from "#lib/club-calendar.js";
 import {
 	occurrenceKey,
 	occurrenceStatus,
@@ -254,9 +254,7 @@ function backToToday() {
 			<Alert data-testid="horizon-refusal">
 				<TriangleAlert aria-hidden="true" />
 				<AlertTitle
-					>History is available from {announcementDateLabel(
-						horizon,
-					)}</AlertTitle
+					>History is available from {formatCivilDateLong(horizon)}</AlertTitle
 				>
 				<AlertDescription>
 					Posts older than 400 days are no longer available.

@@ -9,21 +9,9 @@ import type {
 	BeginnersWorkshopDoor,
 	BeginnersWorkshopDoorPerson,
 } from "@dhc/api-client";
-import { formatDublinInstant } from "#lib/beginners-workshops/console.js";
+import { formatDublinInstant, formatDublinTime } from "#lib/club-calendar.js";
 
 export type DoorFilter = "to_arrive" | "in" | "all";
-
-const dublinTime = new Intl.DateTimeFormat("en-IE", {
-	timeZone: "Europe/Dublin",
-	hour: "2-digit",
-	minute: "2-digit",
-	hourCycle: "h23",
-});
-
-/** An instant as Dublin `HH:MM`. */
-export function doorTime(iso: string): string {
-	return dublinTime.format(new Date(iso));
-}
 
 /** `Ciara Byrne`, or that the person was anonymised. */
 export function doorName(person: BeginnersWorkshopDoorPerson): string {
@@ -74,7 +62,7 @@ export function windowNotice(door: BeginnersWorkshopDoor): string | null {
 export function checkedInLine(
 	checkedIn: NonNullable<BeginnersWorkshopDoorPerson["checkedIn"]>,
 ): string {
-	return `In ${doorTime(checkedIn.at)} · by ${checkedIn.by}`;
+	return `In ${formatDublinTime(checkedIn.at)} · by ${checkedIn.by}`;
 }
 
 /** A `tel:` link for a phone number as typed (spaces and punctuation dropped). */

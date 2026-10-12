@@ -6,7 +6,7 @@
 -->
 <script lang="ts">
 import type { BeginnersWorkshop } from "@dhc/api-client";
-import { parseDate, type DateValue } from "@internationalized/date";
+import type { DateValue } from "@internationalized/date";
 import { toast } from "svelte-sonner";
 import { Button } from "#lib/components/ui/button/index.js";
 import DatePicker from "#lib/components/ui/date-picker.svelte";
@@ -14,10 +14,8 @@ import * as Dialog from "#lib/components/ui/dialog/index.js";
 import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 import * as Field from "#lib/components/ui/field/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
-import {
-	feeInEuro,
-	formatCivilDate,
-} from "#lib/beginners-workshops/presentation.js";
+import { feeInEuro } from "#lib/beginners-workshops/presentation.js";
+import { civilCalendarDate, formatCivilDate } from "#lib/club-calendar.js";
 import { workshopSettingsSchema } from "#lib/schemas/beginnersWorkshop.js";
 import { updateWorkshopSettings } from "./workshops.remote";
 
@@ -32,12 +30,7 @@ let formError = $state<string | null>(null);
 type DateKey = "paymentCutoffDate" | "contactFromDate";
 
 function pickerValue(key: DateKey): DateValue | undefined {
-	const value = form.fields[key].value() || workshop[key];
-	try {
-		return parseDate(value);
-	} catch {
-		return undefined;
-	}
+	return civilCalendarDate(form.fields[key].value() || workshop[key]);
 }
 
 function setDate(key: DateKey, value: DateValue | undefined) {

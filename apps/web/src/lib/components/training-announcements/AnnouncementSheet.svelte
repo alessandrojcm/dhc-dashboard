@@ -47,8 +47,6 @@ import {
 } from "#lib/training-announcements/copy.js";
 import {
 	announcementDraft,
-	draftCalendarDate,
-	draftIsoDate,
 	draftPreviewDate,
 	newAnnouncementDraft,
 	scheduleChanged,
@@ -56,6 +54,7 @@ import {
 	type AnnouncementSave,
 	type AnnouncementScheduleType,
 } from "#lib/training-announcements/announcement.js";
+import { civilCalendarDate, civilIsoDate } from "#lib/club-calendar.js";
 import { apiProblem, type ApiFieldMessages } from "#lib/api-error.js";
 import DiscordMessagePreview from "./DiscordMessagePreview.svelte";
 
@@ -429,12 +428,12 @@ async function showPreview() {
 								<DatePicker
 									id="announcement-date"
 									dateStyle="medium"
-									value={draftCalendarDate(draft.oneOffDate)}
-									minValue={draftCalendarDate(today)}
+									value={civilCalendarDate(draft.oneOffDate)}
+									minValue={civilCalendarDate(today)}
 									ariaInvalid={fieldMessage("oneOffDate") !== undefined}
 									ariaDescribedby="announcement-date-error"
 									onValueChange={(value) => {
-										draft.oneOffDate = draftIsoDate(value);
+										draft.oneOffDate = civilIsoDate(value);
 										syncPreviewDate();
 									}}
 								/>
@@ -534,9 +533,9 @@ async function showPreview() {
 						<div class="flex gap-2">
 							<DatePicker
 								id="announcement-preview-date"
-								value={draftCalendarDate(previewDate)}
+								value={civilCalendarDate(previewDate)}
 								onValueChange={(value) => {
-									previewDate = draftIsoDate(value);
+									previewDate = civilIsoDate(value);
 								}}
 							/>
 							<Button

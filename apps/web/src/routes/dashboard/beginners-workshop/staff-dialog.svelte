@@ -9,7 +9,7 @@ import type {
 	BeginnersWorkshopStaffCandidate,
 } from "@dhc/api-client";
 import { toast } from "svelte-sonner";
-import { formatCivilDate } from "#lib/beginners-workshops/presentation.js";
+import { formatCivilDate } from "#lib/club-calendar.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
 import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";

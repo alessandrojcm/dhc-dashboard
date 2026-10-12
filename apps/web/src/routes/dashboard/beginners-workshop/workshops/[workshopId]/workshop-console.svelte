@@ -45,7 +45,6 @@ import { toast } from "svelte-sonner";
 import { resolve } from "$app/paths";
 import {
 	consoleTimeline,
-	formatDublinInstant,
 	holdLabel,
 	intakeOrigin,
 	intakeStateLabel,
@@ -62,9 +61,12 @@ import {
 	type TimelineStep,
 	unpaidAfterWindowText,
 } from "#lib/beginners-workshops/console.js";
-import { doorTime } from "#lib/beginners-workshops/door.js";
 import {
 	formatCivilDate,
+	formatDublinInstant,
+	formatDublinTime,
+} from "#lib/club-calendar.js";
+import {
 	formatFee,
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
@@ -578,7 +580,7 @@ const attentionClass =
 												variant="outline"
 												class="border-emerald-600 text-emerald-800"
 												data-testid="checked-in"
-												>In {doorTime(intake.checkedInAt)}</Badge
+												>In {formatDublinTime(intake.checkedInAt)}</Badge
 											>{/if}
 										<Badge variant="secondary"
 											>{intakeStateLabel(intake.state)}</Badge

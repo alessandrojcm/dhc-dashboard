@@ -19,10 +19,7 @@ import * as Field from "#lib/components/ui/field/index.js";
 import * as Sheet from "#lib/components/ui/sheet/index.js";
 import DatePicker from "#lib/components/ui/date-picker.svelte";
 import { TriangleAlert } from "@lucide/svelte";
-import {
-	draftCalendarDate,
-	draftIsoDate,
-} from "#lib/training-announcements/announcement.js";
+import { civilCalendarDate, civilIsoDate } from "#lib/club-calendar.js";
 import {
 	hasDraftErrors,
 	newSuppressionDraft,
@@ -129,11 +126,11 @@ async function save() {
 					<Field.Label for="suppression-from-date">First date</Field.Label>
 					<DatePicker
 						id="suppression-from-date"
-						value={draftCalendarDate(draft.fromDate)}
-						minValue={draftCalendarDate(today)}
+						value={civilCalendarDate(draft.fromDate)}
+						minValue={civilCalendarDate(today)}
 						ariaInvalid={fieldMessage("fromDate") !== undefined}
 						onValueChange={(value) => {
-							draft.fromDate = draftIsoDate(value);
+							draft.fromDate = civilIsoDate(value);
 						}}
 					/>
 					{#if fieldMessage("fromDate")}
@@ -146,11 +143,11 @@ async function save() {
 					>
 					<DatePicker
 						id="suppression-to-date"
-						value={draftCalendarDate(draft.toDate)}
-						minValue={draftCalendarDate(draft.fromDate || today)}
+						value={civilCalendarDate(draft.toDate)}
+						minValue={civilCalendarDate(draft.fromDate || today)}
 						ariaInvalid={fieldMessage("toDate") !== undefined}
 						onValueChange={(value) => {
-							draft.toDate = draftIsoDate(value);
+							draft.toDate = civilIsoDate(value);
 						}}
 					/>
 					{#if fieldMessage("toDate")}

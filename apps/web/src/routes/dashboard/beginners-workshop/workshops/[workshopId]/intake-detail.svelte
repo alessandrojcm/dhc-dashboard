@@ -20,7 +20,6 @@ import { toast } from "svelte-sonner";
 import {
 	carriedFeeLabel,
 	emailLogLine,
-	formatDublinInstant,
 	historyLine,
 	holdLabel,
 	intakeCommandDone,
@@ -34,6 +33,7 @@ import {
 	attendanceCorrectionDone,
 	attendanceCorrectionLabel,
 } from "#lib/beginners-workshops/console.js";
+import { formatDublinInstant } from "#lib/club-calendar.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Field from "#lib/components/ui/field/index.js";

@@ -19,7 +19,7 @@ import {
 	Package,
 	RefreshCw,
 } from "@lucide/svelte";
-import { parseDate } from "@internationalized/date";
+import { civilCalendarDate } from "#lib/club-calendar.js";
 import {
 	availabilityLabel,
 	createRequestLoan,
@@ -50,8 +50,8 @@ let startsOn = $state(defaults.startsOn);
 let dueOn = $state(defaults.dueOn);
 let note = $state("");
 let requestSent = $state(false);
-const startsOnValue = $derived(parseDate(startsOn));
-const dueOnValue = $derived(parseDate(dueOn));
+const startsOnValue = $derived(civilCalendarDate(startsOn));
+const dueOnValue = $derived(civilCalendarDate(dueOn));
 
 const requestMutation = createRequestLoan(
 	() => slug,
