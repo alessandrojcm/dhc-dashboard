@@ -11,7 +11,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
   → Intake → Carried Fee → payment → refund). It opens no transaction and
   takes no lock of its own; every status change goes through
   `Commands.Protocol.transition/3`, every refund row through
-  `Commands.insert_refund/4`, every standing change through
+  `Commands.Refunds.insert_refund/4`, every standing change through
   `Dhc.Waitlist.change_standing/3` and every notice through
   `IntakeEmails.deliver/5`. Whether a command may run at all is
   `IntakePolicy` / `CarriedFeePolicy`'s decision, made by the caller before
@@ -100,7 +100,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     WorkshopPolicy
   }
 
-  alias Dhc.BeginnersWorkshops.Commands
+  alias Dhc.BeginnersWorkshops.Commands.Refunds
   alias Dhc.BeginnersWorkshops.IntakeEmails.Occasion
   alias Dhc.Repo
   alias Dhc.Waitlist
@@ -523,7 +523,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
 
   defp step({:refund_payment, reason}, %{rows: %{intake: %Intake{paid_via: "stripe"}}} = state) do
     case state.rows.payment &&
-           Commands.insert_refund(state.rows.payment, reason, state.actor, state.reading) do
+           Refunds.insert_refund(state.rows.payment, reason, state.actor, state.reading) do
       {:ok, %IntakeRefund{} = refund} -> {:ok, add_refund(state, refund)}
       {:error, reason} -> {:error, reason}
       _nothing_taken -> {:error, :nothing_to_refund}
@@ -636,14 +636,14 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
   # The refund row (the one `insert_refund/4`, against the fee's original
   # payment, recorded on the Intake the refund is about) and the fee
   # `refunded`: the obligation is recorded, so the fee is no longer held.
-  # A failed refund holds it again (`Commands.hold_fee_again/3`).
+  # A failed refund holds it again (`Commands.Refunds.hold_fee_again/3`).
   defp refund_fee(nil, _state, _reason), do: {:ok, nil, nil}
 
   defp refund_fee(%CarriedFee{status: status} = fee, state, reason)
        when status in ["held", "applied"] do
     source = {:carried_fee, fee, original_payment(fee), state.rows.intake}
 
-    with {:ok, refund} <- Commands.insert_refund(source, reason, state.actor, state.reading),
+    with {:ok, refund} <- Refunds.insert_refund(source, reason, state.actor, state.reading),
          {:ok, fee} <-
            transition(
              :carried_fee,

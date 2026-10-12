@@ -90,11 +90,29 @@
        except: ["Dhc.BeginnersWorkshops.Commands", "Dhc.BeginnersWorkshops.Commands.*"]},
       # ALE-404: a Settlement (what an Intake's closing or a person's leaving
       # does to them) runs only inside a Commands transaction, and its refund
-      # rows go through the one Commands.insert_refund/4.
+      # rows go through the one Commands.Refunds.insert_refund/4. ALE-405: the
+      # command families and their shared helpers are Commands' internals
+      # too; Commands.execute/3 routes to them after authorizing the actor,
+      # and authorize_assigned/3 is public only for Commands.Attendance.
       {["Dhc.*", "DhcWeb.*"],
        [
          "Dhc.BeginnersWorkshops.Commands.Settlement.*",
-         "Dhc.BeginnersWorkshops.Commands.insert_refund"
+         "Dhc.BeginnersWorkshops.Commands.authorize_assigned",
+         "Dhc.BeginnersWorkshops.Commands.Attendance.*",
+         "Dhc.BeginnersWorkshops.Commands.Batches.*",
+         "Dhc.BeginnersWorkshops.Commands.IntakeCommands.*",
+         "Dhc.BeginnersWorkshops.Commands.Payments.*",
+         "Dhc.BeginnersWorkshops.Commands.People.*",
+         "Dhc.BeginnersWorkshops.Commands.Refunds.*",
+         "Dhc.BeginnersWorkshops.Commands.Schedule.*",
+         "Dhc.BeginnersWorkshops.Commands.Staff.*",
+         "Dhc.BeginnersWorkshops.Commands.CoordinatorAlerts.*",
+         "Dhc.BeginnersWorkshops.Commands.Facts.*",
+         "Dhc.BeginnersWorkshops.Commands.Input.*",
+         "Dhc.BeginnersWorkshops.Commands.IntakeHistory.*",
+         "Dhc.BeginnersWorkshops.Commands.IntakeNotices.*",
+         "Dhc.BeginnersWorkshops.Commands.LockSpecs.*",
+         "Dhc.BeginnersWorkshops.Commands.WorkshopRules.*"
        ], except: ["Dhc.BeginnersWorkshops.Commands", "Dhc.BeginnersWorkshops.Commands.*"]},
       # ... and the context opens a transaction only through that core.
       {["Dhc.BeginnersWorkshops", "Dhc.BeginnersWorkshops.*"],
