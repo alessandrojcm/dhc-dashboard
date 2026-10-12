@@ -9,7 +9,6 @@ import {
 import { QueryClient } from "@tanstack/svelte-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-	canRestore,
 	createWaitlistTable,
 	type WaitlistTableDeps,
 } from "./waitlist-table.svelte.js";
@@ -39,6 +38,7 @@ function entry(
 		guardianLastName: null,
 		guardianPhoneNumber: null,
 		removedAt: null,
+		availableCommands: [],
 		...overrides,
 	};
 }
@@ -97,6 +97,7 @@ function setup(
 				notify,
 				listEntries,
 				updateEntry,
+				listPeople: async () => ({}),
 				navigate,
 				...deps,
 				url: () => url,
@@ -209,7 +210,7 @@ describe("createWaitlistTable", () => {
 		expect(notify.success).not.toHaveBeenCalled();
 	});
 
-	it("restores a removed person, notifies, and invalidates the waitlist once", async () => {
+	it("restores a removed person, notifies, and invalidates the page and its people", async () => {
 		const restoreEntry = vi.fn(async () => ({
 			data: entry("r", { status: "waiting" }),
 		}));
@@ -227,7 +228,8 @@ describe("createWaitlistTable", () => {
 		expect(restoreEntry).toHaveBeenCalledWith(
 			expect.objectContaining({ path: { id: "r" } }),
 		);
-		await expect.poll(() => invalidate.mock.calls.length).toBe(1);
+		// Restoring changes what the person is offered, so their read too.
+		await expect.poll(() => invalidate.mock.calls.length).toBe(2);
 	});
 
 	it("shows Phoenix's reason when a restore is refused", async () => {
@@ -250,16 +252,73 @@ describe("createWaitlistTable", () => {
 		);
 	});
 
-	it("offers restore only for people removed within 3 months", () => {
-		const now = new Date("2026-10-09T12:00:00Z");
-		const removed = (removedAt: string) =>
-			entry("r", { status: "removed", removedAt });
+	it("offers exactly the commands Phoenix lists, merging the entry's and the person's", async () => {
+		const removed = entry("r", {
+			status: "removed",
+			removedAt: "2026-09-01T00:00:00Z",
+			availableCommands: ["restore"],
+		});
+		const waiting = entry("w");
+		const listPeople = vi.fn(async (_ids: string[]) => ({
+			r: {
+				carriedFee: null,
+				availableCommands: ["delete_person" as const],
+				refundChoice: null,
+			},
+			w: {
+				carriedFee: "held" as const,
+				availableCommands: [
+					"withdraw" as const,
+					"delete_person" as const,
+					"refund_carried_fee" as const,
+				],
+				refundChoice: {
+					source: "carried_fee" as const,
+					amountCents: 3500,
+					currency: "eur",
+				},
+			},
+		}));
+		const { table } = setup([removed, waiting], { listPeople });
 
-		expect(canRestore(removed("2026-07-09T12:00:00Z"), now)).toBe(true);
-		expect(canRestore(removed("2026-07-09T11:59:59Z"), now)).toBe(false);
-		expect(canRestore(entry("w"), now)).toBe(false);
+		// The entry's own Restore is known at once; person commands wait for
+		// the person read.
+		expect(table.offers(removed, "restore")).toBe(true);
+		expect(table.offers(removed, "delete_person")).toBe(false);
 
-		const { table } = setup([entry("a")], { now: () => now });
-		expect(table.canRestore(removed("2026-09-01T00:00:00Z"))).toBe(true);
+		await expect.poll(() => table.offers(removed, "delete_person")).toBe(true);
+		expect(listPeople).toHaveBeenCalledWith(["r", "w"]);
+		expect(table.offers(removed, "withdraw")).toBe(false);
+		expect(table.offers(waiting, "restore")).toBe(false);
+		expect(table.offers(waiting, "withdraw")).toBe(true);
+		expect(table.offers(waiting, "refund_carried_fee")).toBe(true);
+		expect(table.carriedFee("w")).toBe("held");
+		expect(table.carriedFee("r")).toBeNull();
+	});
+
+	it("refreshes the page and its people after a withdraw", async () => {
+		const withdrawEntry = vi.fn(async () => ({
+			data: {
+				waitlistId: "a",
+				status: "removed" as const,
+				intake: null,
+				outcome: "done" as const,
+			},
+		}));
+		const { table, queryClient } = setup([entry("a")], {
+			withdrawEntry,
+			listPeople: vi.fn(async () => ({})),
+		});
+		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+		expect(await table.withdraw("a", {})).toEqual({ ok: true });
+
+		await expect.poll(() => invalidate.mock.calls.length).toBe(2);
+		expect(invalidate).toHaveBeenCalledWith({
+			queryKey: waitlistEntriesQueryKey(),
+		});
+		expect(invalidate).toHaveBeenCalledWith({
+			queryKey: [{ _id: "beginnersWorkshopPeopleIndex" }],
+		});
 	});
 });

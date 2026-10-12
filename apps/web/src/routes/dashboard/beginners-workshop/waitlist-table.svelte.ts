@@ -12,16 +12,19 @@
  * `beginnersWorkshopIntakes.withdrawPerson`. Delete (ALE-396) is the
  * boundary's hard delete too (`beginnersWorkshopIntakes.deletePerson`): it
  * anonymises the person's Intakes and settles their Carried Fee.
- * Each listed person's Carried Fee status (ALE-388) comes from Beginners'
- * Workshops — the Waitlist API cannot know it — through one extra query
- * over the page's ids. The controller owns
+ * Which of these a row offers is Phoenix's (ALE-417), never worked out
+ * here: Restore from the entry's own `availableCommands` (the Waitlist's
+ * retention rule), Withdraw and Delete — and each person's workshop credit
+ * status — from Beginners' Workshops' person read
+ * (`beginnersWorkshopPeople.index`), one extra query over the page's ids,
+ * because the Waitlist API cannot know them. `offers` merges both lists.
+ * The controller owns
  * the URL-backed list request, cache invalidation and the toasts; markup only
  * renders and calls these actions.
  */
 import {
-	beginnersWorkshopCarriedFeesIndexOptions,
+	beginnersWorkshopPeopleIndexOptions,
 	type BeginnersCarriedFeeStatus,
-	type BeginnersWorkshopCarriedFees,
 	type BeginnersWorkshopDeletePersonRequest,
 	beginnersWorkshopIntakesDeletePersonMutation,
 	type BeginnersWorkshopIntakesDeletePersonData,
@@ -29,6 +32,8 @@ import {
 	beginnersWorkshopIntakesWithdrawPersonMutation,
 	type BeginnersWorkshopIntakesWithdrawPersonData,
 	type BeginnersWorkshopIntakesWithdrawPersonResponse,
+	type BeginnersWorkshopPeople,
+	type BeginnersWorkshopPersonCommand,
 	type BeginnersWorkshopWithdrawRequest,
 	waitlistEntriesOptions,
 	waitlistEntriesQueryKey,
@@ -38,6 +43,7 @@ import {
 	type WaitlistEntriesData,
 	type WaitlistEntriesResponse2,
 	type WaitlistEntry,
+	type WaitlistEntryCommand,
 	type WaitlistRestoreEntryData,
 	type WaitlistRestoreEntryResponse,
 	type WaitlistUpdateEntryData,
@@ -50,7 +56,6 @@ import {
 	useQueryClient,
 	type QueryClient,
 } from "@tanstack/svelte-query";
-import dayjs from "dayjs";
 import { toast } from "svelte-sonner";
 import { apiProblem } from "#lib/api-error.js";
 import type { CarriedFeePanelDeps } from "./carried-fee-panel.svelte.js";
@@ -93,10 +98,8 @@ export type WaitlistTableDeps = {
 	restoreEntry?: (
 		options: Options<WaitlistRestoreEntryData>,
 	) => Promise<WaitlistRestoreEntryResponse>;
-	/** The page's Carried Fee statuses by entry id (ALE-388). */
-	listCarriedFees?: (
-		waitlistIds: string[],
-	) => Promise<BeginnersWorkshopCarriedFees>;
+	/** The page's people by entry id: credit and offered commands (ALE-417). */
+	listPeople?: (waitlistIds: string[]) => Promise<BeginnersWorkshopPeople>;
 	withdrawEntry?: (
 		options: Options<BeginnersWorkshopIntakesWithdrawPersonData>,
 	) => Promise<BeginnersWorkshopIntakesWithdrawPersonResponse>;
@@ -105,8 +108,6 @@ export type WaitlistTableDeps = {
 	) => Promise<BeginnersWorkshopIntakesDeletePersonResponse>;
 	/** ALE-389: the Carried Fee panel's requests, when a person's fee is managed. */
 	carriedFee?: CarriedFeePanelDeps;
-	/** Defaults to the current time; decides which removed people are offered restore. */
-	now?: () => Date;
 	/** Defaults to svelte-sonner's `toast`. */
 	notify?: WaitlistNotify;
 	/** URL source and navigation for the cursor-table URL state. */
@@ -114,37 +115,10 @@ export type WaitlistTableDeps = {
 	navigate?: CursorTableNavigate;
 };
 
-/** Phoenix restores a removed person within this many calendar months. */
-export const RESTORE_WINDOW_MONTHS = 3;
-
-/**
- * Whether restore is offered for `entry`: removed within the restore window.
- * Advisory only — Phoenix decides and answers `restore_window_passed`.
- */
-export function canRestore(entry: WaitlistEntry, now: Date): boolean {
-	if (entry.status !== "removed" || !entry.removedAt) return false;
-	return !dayjs(now).isAfter(
-		dayjs(entry.removedAt).add(RESTORE_WINDOW_MONTHS, "month"),
-	);
-}
-
-/**
- * Whether Withdraw is offered for `entry` (ALE-387): someone still on the
- * Waitlist — waiting (with or without an open Intake) or attended and not
- * yet invited. Advisory only — Phoenix decides (`already_invited`).
- */
-export function canWithdraw(entry: WaitlistEntry): boolean {
-	return entry.status === "waiting" || entry.status === "attended";
-}
-
-/**
- * Whether Delete is offered for `entry` (ALE-396): anyone the Invitation
- * handoff has not reached. Advisory only — Phoenix decides (`open_intake`,
- * `not_deletable`).
- */
-export function canDelete(entry: WaitlistEntry): boolean {
-	return entry.status !== "invited" && entry.status !== "joined";
-}
+/** A row command: the Waitlist entry's own, or a Beginners' Workshop person command. */
+export type WaitlistRowCommand =
+	| WaitlistEntryCommand
+	| BeginnersWorkshopPersonCommand;
 
 /** The outcome of a Withdraw or Delete: done, or Phoenix's reason and its code. */
 export type WithdrawOutcome =
@@ -153,6 +127,18 @@ export type WithdrawOutcome =
 
 /** Prefix shared by every Waitlist page's query key. */
 const allWaitlistPages = () => waitlistEntriesQueryKey();
+
+// Every person read, whatever its ids. Generated keys are
+// `[{ _id: "<operation id>", … }]`, and TanStack matches a partial key.
+const allPeople = [{ _id: "beginnersWorkshopPeopleIndex" }];
+
+/** A person command or Restore changes the page and its people. */
+function invalidatePageAndPeople(queryClient: QueryClient) {
+	return Promise.all([
+		queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+		queryClient.invalidateQueries({ queryKey: allPeople }),
+	]);
+}
 
 export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 	const queryClient = deps.queryClient ?? useQueryClient();
@@ -198,21 +184,20 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		(query.data?.data.entries ?? []).map((entry) => entry.id),
 	);
 
-	const carriedFees = createQuery(
+	const people = createQuery(
 		() => {
 			const waitlistIds = pageIds.join(",");
-			const options = beginnersWorkshopCarriedFeesIndexOptions({
+			const options = beginnersWorkshopPeopleIndexOptions({
 				query: { waitlistIds },
 			});
-			const listCarriedFees = deps.listCarriedFees;
+			const listPeople = deps.listPeople;
 			const ids = pageIds;
 			return {
 				...options,
-				...(listCarriedFees && {
-					queryFn: async () => ({ data: await listCarriedFees(ids) }),
+				...(listPeople && {
+					queryFn: async () => ({ data: await listPeople(ids) }),
 				}),
-				select: (response: { data: BeginnersWorkshopCarriedFees }) =>
-					response.data,
+				select: (response: { data: BeginnersWorkshopPeople }) => response.data,
 				enabled: ids.length > 0,
 			};
 		},
@@ -254,8 +239,7 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 						apiProblem(error)?.detail ?? "Could not restore this person.",
 					);
 				},
-				onSettled: () =>
-					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+				onSettled: () => invalidatePageAndPeople(queryClient),
 			};
 		},
 		() => queryClient,
@@ -271,8 +255,7 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 				onSuccess: () => {
 					notify.success("Withdrawn from the Waitlist.");
 				},
-				onSettled: () =>
-					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+				onSettled: () => invalidatePageAndPeople(queryClient),
 			};
 		},
 		() => queryClient,
@@ -290,14 +273,11 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 						"Deleted. Their workshop places stay in the reports, anonymised.",
 					);
 				},
-				onSettled: () =>
-					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+				onSettled: () => invalidatePageAndPeople(queryClient),
 			};
 		},
 		() => queryClient,
 	);
-
-	const now = deps.now ?? (() => new Date());
 
 	return {
 		/** URL-backed search, page size, cursor paging and table sort state. */
@@ -327,7 +307,19 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		},
 		/** The person's live Carried Fee status, or `null` without one (or until known). */
 		carriedFee(id: string): BeginnersCarriedFeeStatus | null {
-			return carriedFees.data?.[id] ?? null;
+			return people.data?.[id]?.carriedFee ?? null;
+		},
+		/**
+		 * Whether Phoenix offers `command` on this row: the entry's own
+		 * commands and the person's, merged (a person command is not offered
+		 * until the person read answers). Advisory — Phoenix decides again.
+		 */
+		offers(entry: WaitlistEntry, command: WaitlistRowCommand): boolean {
+			const offered: readonly WaitlistRowCommand[] = [
+				...entry.availableCommands,
+				...(people.data?.[entry.id]?.availableCommands ?? []),
+			];
+			return offered.includes(command);
 		},
 		/** Saves the entry's admin notes, the only editable Waitlist field. */
 		updateAdminNotes(id: string, adminNotes: string | null) {
@@ -336,20 +328,12 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		get isUpdating() {
 			return updateWaitlistEntry.isPending;
 		},
-		/** Whether restore is offered for this entry (removed within 3 months). */
-		canRestore(entry: WaitlistEntry) {
-			return canRestore(entry, now());
-		},
 		/** Moves a removed person back to `waiting` with their original date. */
 		restore(id: string) {
 			restoreWaitlistEntry.mutate({ path: { id } });
 		},
 		get isRestoring() {
 			return restoreWaitlistEntry.isPending;
-		},
-		/** Whether Withdraw is offered for this entry. */
-		canWithdraw(entry: WaitlistEntry) {
-			return canWithdraw(entry);
 		},
 		/**
 		 * Withdraws the person from the Waitlist (ALE-387). The dialog shows a
@@ -377,10 +361,6 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		},
 		get isWithdrawing() {
 			return withdrawWaitlistEntry.isPending;
-		},
-		/** Whether Delete is offered for this entry. */
-		canDelete(entry: WaitlistEntry) {
-			return canDelete(entry);
 		},
 		/**
 		 * Deletes the person (ALE-396). Like Withdraw, the dialog shows a

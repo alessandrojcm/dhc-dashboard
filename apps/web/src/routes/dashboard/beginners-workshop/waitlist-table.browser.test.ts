@@ -1,4 +1,6 @@
 import type {
+	BeginnersWorkshopPeople,
+	BeginnersWorkshopPersonCommand,
 	Options,
 	WaitlistEntriesData,
 	WaitlistEntriesResponse2,
@@ -26,8 +28,34 @@ function entry(id: string, overrides: Partial<WaitlistEntry>): WaitlistEntry {
 		adminNotes: null,
 		socialMediaConsent: "no",
 		removedAt: null,
+		availableCommands: [],
 		...overrides,
 	};
+}
+
+/** Phoenix's person read for the page: each id's offered commands and credit. */
+function people(
+	offered: Record<
+		string,
+		{
+			commands: BeginnersWorkshopPersonCommand[];
+			carriedFee?: "held" | "applied";
+		}
+	>,
+) {
+	return vi.fn(
+		async (_ids: string[]): Promise<BeginnersWorkshopPeople> =>
+			Object.fromEntries(
+				Object.entries(offered).map(([id, person]) => [
+					id,
+					{
+						carriedFee: person.carriedFee ?? null,
+						availableCommands: person.commands,
+						refundChoice: null,
+					},
+				]),
+			),
+	);
 }
 
 function page(entries: WaitlistEntry[]): WaitlistEntriesResponse2 {
@@ -60,6 +88,7 @@ test("lists the waiting queue by default and removed people behind the filter", 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries,
+			listPeople: people({}),
 			notify: { success: () => {}, error: () => {} },
 			url: () => url,
 			navigate,
@@ -124,6 +153,7 @@ test("renders a removed person's removal date from the URL filter", async () => 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries,
+			listPeople: people({}),
 			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(`${BASE}?status=removed`),
 			navigate: () => {},
@@ -147,11 +177,12 @@ test("renders a removed person's removal date from the URL filter", async () => 
 		.toBeVisible();
 });
 
-test("offers restore from the removed filter for a recent removal only", async () => {
+test("offers Restore only where Phoenix lists it on the entry", async () => {
 	const recent = entry("b", {
 		fullName: "Bea Recent",
 		status: "removed",
 		removedAt: "2026-09-01T10:00:00Z",
+		availableCommands: ["restore"],
 	});
 	const old = entry("c", {
 		fullName: "Cal Old",
@@ -165,8 +196,8 @@ test("offers restore from the removed filter for a recent removal only", async (
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([recent, old])),
+			listPeople: people({}),
 			restoreEntry,
-			now: () => new Date("2026-10-09T12:00:00Z"),
 			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(`${BASE}?status=removed`),
 			navigate: () => {},
@@ -212,6 +243,7 @@ test("ALE-387: Withdraw asks to refund or forfeit only when Phoenix says the per
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([ada])),
+			listPeople: people({ a: { commands: ["withdraw"] } }),
 			withdrawEntry,
 			notify: { success, error: () => {} },
 			url: () => new URL(BASE),
@@ -253,29 +285,46 @@ test("ALE-387: Withdraw asks to refund or forfeit only when Phoenix says the per
 	);
 });
 
-test("ALE-387: Withdraw is offered to waiting people, not removed ones", async () => {
-	const removed = entry("b", {
-		fullName: "Bea Removed",
-		status: "removed",
-		removedAt: "2026-09-01T10:00:00Z",
+test("ALE-417: Withdraw and Delete render only for the people Phoenix offers them to", async () => {
+	const ada = entry("a", { fullName: "Ada Offered" });
+	const bea = entry("b", { fullName: "Bea Withheld", position: 2 });
+	const listPeople = people({
+		a: { commands: ["withdraw", "delete_person"] },
+		b: { commands: [] },
 	});
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
-			listEntries: vi.fn(async () => page([removed])),
-			now: () => new Date("2026-10-09T12:00:00Z"),
+			listEntries: vi.fn(async () => page([ada, bea])),
+			listPeople,
 			notify: { success: () => {}, error: () => {} },
-			url: () => new URL(`${BASE}?status=removed`),
+			url: () => new URL(BASE),
 			navigate: () => {},
 		},
 	});
 
 	const desktop = screen.getByRole("table");
-	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
+	const mobile = screen.getByRole("list", { name: "Waitlist entries" });
+	await expect.element(desktop.getByText("Bea Withheld")).toBeVisible();
+	expect(listPeople).toHaveBeenCalledWith(["a", "b"]);
+
+	// The desktop row and the mobile card each render one of each, for Ada.
+	for (const layout of [desktop, mobile]) {
+		for (const name of ["Withdraw from the Waitlist", "Delete this person"]) {
+			await expect.element(layout.getByRole("button", { name })).toBeVisible();
+			expect(layout.getByRole("button", { name }).elements()).toHaveLength(1);
+		}
+	}
+	await expect
+		.element(
+			desktop
+				.getByRole("row")
+				.filter({ hasText: "Ada Offered" })
+				.getByRole("button", { name: "Delete this person" }),
+		)
+		.toBeVisible();
 	expect(
-		desktop
-			.getByRole("button", { name: "Withdraw from the Waitlist" })
-			.elements(),
+		desktop.getByRole("button", { name: "Restore to the Waitlist" }).elements(),
 	).toHaveLength(0);
 });
 
@@ -283,14 +332,15 @@ test("ALE-387: Withdraw is offered to waiting people, not removed ones", async (
 test("shows a Carried Fee holder's fee on their entry", async () => {
 	const holder = entry("a", { fullName: "Ada Holder" });
 	const other = entry("b", { fullName: "Bea Payer", position: 2 });
-	const listCarriedFees = vi.fn(async (_ids: string[]) => ({
-		a: "held" as const,
-	}));
+	const listPeople = people({
+		a: { commands: ["withdraw"], carriedFee: "held" },
+		b: { commands: ["withdraw"] },
+	});
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([holder, other])),
-			listCarriedFees,
+			listPeople,
 			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(BASE),
 			navigate: () => {},
@@ -301,7 +351,7 @@ test("shows a Carried Fee holder's fee on their entry", async () => {
 	await expect
 		.element(desktop.getByText("Waiting · Workshop credit"))
 		.toBeVisible();
-	expect(listCarriedFees).toHaveBeenCalledWith(["a", "b"]);
+	expect(listPeople).toHaveBeenCalledWith(["a", "b"]);
 	expect(
 		desktop.getByText("Waiting · Workshop credit").elements(),
 	).toHaveLength(1);
@@ -332,9 +382,10 @@ test("ALE-396: Delete removes a removed person, asking refund or forfeit first f
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([removed])),
-			listCarriedFees: vi.fn(async () => ({ b: "held" as const })),
+			listPeople: people({
+				b: { commands: ["delete_person"], carriedFee: "held" },
+			}),
 			deleteEntry,
-			now: () => new Date("2026-10-09T12:00:00Z"),
 			notify: { success, error: () => {} },
 			url: () => new URL(`${BASE}?status=removed`),
 			navigate: () => {},
@@ -377,6 +428,7 @@ test("ALE-396: Delete shows Phoenix's refusal", async () => {
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([ada])),
+			listPeople: people({ a: { commands: ["delete_person"] } }),
 			deleteEntry,
 			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(BASE),

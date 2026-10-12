@@ -124,14 +124,14 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 					onToggleExpand: () => row.toggleExpanded(),
 					onEdit: (adminNotes) =>
 						waitlist.updateAdminNotes(row.original.id, adminNotes),
-					onRestore: waitlist.canRestore(row.original)
+					onRestore: waitlist.offers(row.original, "restore")
 						? () => waitlist.restore(row.original.id)
 						: undefined,
 					restoreDisabled: waitlist.isRestoring,
-					onWithdraw: waitlist.canWithdraw(row.original)
+					onWithdraw: waitlist.offers(row.original, "withdraw")
 						? () => openWithdraw(row.original)
 						: undefined,
-					onDelete: waitlist.canDelete(row.original)
+					onDelete: waitlist.offers(row.original, "delete_person")
 						? () => openDelete(row.original)
 						: undefined,
 				});
@@ -494,14 +494,14 @@ const table = createSvelteTable(tableOptions);
 								onToggleExpand={() => row.toggleExpanded()}
 								onEdit={(adminNotes) =>
 									waitlist.updateAdminNotes(row.original.id, adminNotes)}
-								onRestore={waitlist.canRestore(row.original)
+								onRestore={waitlist.offers(row.original, "restore")
 									? () => waitlist.restore(row.original.id)
 									: undefined}
 								restoreDisabled={waitlist.isRestoring}
-								onWithdraw={waitlist.canWithdraw(row.original)
+								onWithdraw={waitlist.offers(row.original, "withdraw")
 									? () => openWithdraw(row.original)
 									: undefined}
-								onDelete={waitlist.canDelete(row.original)
+								onDelete={waitlist.offers(row.original, "delete_person")
 									? () => openDelete(row.original)
 									: undefined}
 							/>

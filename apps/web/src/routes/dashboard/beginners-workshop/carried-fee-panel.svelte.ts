@@ -7,7 +7,7 @@
  * The Waitlist API cannot know Carried Fees, so this reads and writes through
  * Beginners' Workshops (`beginnersWorkshopCarriedFees.*`). What is offered is
  * Phoenix's `availableCommands` (advisory; Phoenix decides again). Every
- * write invalidates this fee and the Waitlist page's Carried Fee statuses.
+ * write invalidates this fee and the Waitlist page's people.
  * A command's refusal is returned for the panel to show beside the action.
  */
 import {
@@ -76,11 +76,11 @@ const FALLBACK = {
 } satisfies Record<BeginnersWorkshopCarriedFeeCommand, string>;
 
 // What every Carried Fee write makes stale: this fee and the Waitlist page's
-// statuses. Generated keys are `[{ _id: "<operation id>", … }]`, and
-// TanStack matches a partial key.
+// people (their credit and offered commands). Generated keys are
+// `[{ _id: "<operation id>", … }]`, and TanStack matches a partial key.
 const CARRIED_FEE_QUERIES = [
 	[{ _id: "beginnersWorkshopCarriedFeesShow" }],
-	[{ _id: "beginnersWorkshopCarriedFeesIndex" }],
+	[{ _id: "beginnersWorkshopPeopleIndex" }],
 ];
 
 export function createCarriedFeePanel(
