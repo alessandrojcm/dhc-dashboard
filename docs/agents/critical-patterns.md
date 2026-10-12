@@ -114,6 +114,8 @@ Four consequences of that rule that cost real debugging time, all now settled:
 
 Browser tests drive a date field by opening the popover and clicking the day whose accessible name is its full date (`"Thursday, October 15, 2026"`). Do not target `role="dialog"` — the surrounding `Sheet` is a dialog too, and bits-ui renders each day twice (a `gridcell` plus a `[data-bits-day]` button) carrying the same `data-value`.
 
+An instant reaches `@event-calendar/core` as `dublinWallClock(iso)`, because the calendar reads a zone-less date-time as the reader's local time (ALE-422). To prove a component shows instants on the Dublin clock, call `onHostTimeZone("America/Los_Angeles")` from `#lib/testing/host-time-zone.ts` at the top of the browser test file: it emulates Chromium's zone over CDP for that file and clears it afterwards. Unit tests set `process.env.TZ` instead (see `club-calendar.test.ts`).
+
 ## Remote Forms
 
 Spread the remote form or its preflight-enhanced variant onto the native form element, and use the generated field APIs so names, restored values, and `aria-invalid` remain connected:

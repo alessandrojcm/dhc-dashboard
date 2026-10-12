@@ -22,7 +22,7 @@ import {
 	Users,
 	X,
 } from "@lucide/svelte";
-import dayjs from "dayjs";
+import { formatDublinDate } from "#lib/club-calendar.js";
 import { toast } from "svelte-sonner";
 import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
@@ -472,7 +472,7 @@ function markAttended(registrationIds: string[]) {
 							>
 								<span class="flex items-center gap-1.5">
 									<Clock3 aria-hidden="true" class="size-3.5" />
-									Registered {dayjs(attendee.registeredAt).format("D MMM YYYY")}
+									Registered {formatDublinDate(attendee.registeredAt)}
 								</span>
 								{#if attendee.amountPaid !== null}
 									<span class="flex items-center gap-1.5 tabular-nums">

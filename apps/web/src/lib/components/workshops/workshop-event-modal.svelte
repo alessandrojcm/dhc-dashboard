@@ -19,7 +19,10 @@ import {
 } from "@lucide/svelte";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
-import dayjs from "dayjs";
+import {
+	formatDublinDateLong,
+	formatDublinTime12h,
+} from "#lib/club-calendar.js";
 import type { WorkshopCalendarEvent } from "#lib/types.js";
 import Dinero from "dinero.js";
 import {
@@ -110,9 +113,8 @@ function formatPrice(price: number) {
 }
 
 function formatDuration() {
-	const minutes = dayjs(workshop.endDate).diff(
-		dayjs(workshop.startDate),
-		"minute",
+	const minutes = Math.floor(
+		(Date.parse(workshop.endDate) - Date.parse(workshop.startDate)) / 60_000,
 	);
 	const hours = Math.floor(minutes / 60);
 	const remainingMinutes = minutes % 60;
@@ -240,7 +242,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 					<div>
 						<dt class="text-xs font-medium text-muted-foreground">Date</dt>
 						<dd class="mt-0.5 text-sm font-bold">
-							{dayjs(workshop.startDate).format("dddd, D MMMM YYYY")}
+							{formatDublinDateLong(workshop.startDate)}
 						</dd>
 					</div>
 				</div>
@@ -254,9 +256,9 @@ const hasEditAction = $derived(!!event.handleEdit);
 					<div>
 						<dt class="text-xs font-medium text-muted-foreground">Time</dt>
 						<dd class="mt-0.5 text-sm font-bold">
-							{dayjs(workshop.startDate).format("h:mm A")}–{dayjs(
+							{formatDublinTime12h(workshop.startDate)}–{formatDublinTime12h(
 								workshop.endDate,
-							).format("h:mm A")}
+							)}
 							<span class="font-normal text-muted-foreground">
 								· {formatDuration()}</span
 							>

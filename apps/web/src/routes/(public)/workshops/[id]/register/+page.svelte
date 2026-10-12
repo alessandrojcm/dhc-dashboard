@@ -1,9 +1,12 @@
 <script lang="ts">
 import { PUBLIC_STRIPE_KEY } from "$app/env/public";
 import { loadStripe, type StripeEmbeddedCheckout } from "@stripe/stripe-js";
-import dayjs from "dayjs";
 import Dinero from "dinero.js";
 import { onMount } from "svelte";
+import {
+	formatDublinDateLong,
+	formatDublinTime12h,
+} from "#lib/club-calendar.js";
 import * as Alert from "#lib/components/ui/alert/index.js";
 import * as Card from "#lib/components/ui/card/index.js";
 import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
@@ -16,11 +19,11 @@ let flowError = $state<string | null>(null);
 let checkoutInitializing = $state(true);
 
 const formattedDate = $derived.by(() => {
-	return dayjs(workshop.start_date).format("dddd, MMM DD, YYYY");
+	return formatDublinDateLong(workshop.start_date);
 });
 
 const formattedTime = $derived.by(() => {
-	return `${dayjs(workshop.start_date).format("h:mm A")} - ${dayjs(workshop.end_date).format("h:mm A")}`;
+	return `${formatDublinTime12h(workshop.start_date)} - ${formatDublinTime12h(workshop.end_date)}`;
 });
 
 const formattedPrice = $derived.by(() => {

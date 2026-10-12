@@ -1,4 +1,5 @@
 <script lang="ts">
+import { formatDublinDate } from "#lib/club-calendar.js";
 import {
 	type Invitation,
 	type InvitationListSortField,
@@ -11,7 +12,6 @@ import {
 	createQuery,
 	keepPreviousData,
 } from "@tanstack/svelte-query";
-import dayjs from "dayjs";
 import {
 	ArrowDown,
 	ArrowUp,
@@ -222,7 +222,7 @@ function deleteSelected() {
 }
 
 function formatDate(value: string): string {
-	return dayjs(value).isValid() ? dayjs(value).format("D MMM YYYY") : "Unknown";
+	return Number.isNaN(Date.parse(value)) ? "Unknown" : formatDublinDate(value);
 }
 
 function statusVariant(status: Invitation["status"]): BadgeVariant {
@@ -245,7 +245,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 {/snippet}
 
 {#snippet expirationDate(value: string)}
-	{@const expired = dayjs(value).isBefore(dayjs())}
+	{@const expired = Date.parse(value) < Date.now()}
 	<span class={cn("text-sm tabular-nums", expired && "text-destructive")}>
 		{#if expired}<span class="font-semibold">Expired </span>{/if}
 		<time datetime={value}>{formatDate(value)}</time>

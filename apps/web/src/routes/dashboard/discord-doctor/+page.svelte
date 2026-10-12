@@ -28,6 +28,7 @@ import {
 	X,
 } from "@lucide/svelte";
 import { onMount } from "svelte";
+import { formatDublinDate } from "#lib/club-calendar.js";
 import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -230,11 +231,7 @@ function formatJoinedAt(value: string | null): string {
 	if (!value) return "Join date unavailable";
 	const date = new Date(value);
 	if (Number.isNaN(date.valueOf())) return "Join date unavailable";
-	return `Joined ${new Intl.DateTimeFormat("en-IE", {
-		day: "numeric",
-		month: "short",
-		year: "numeric",
-	}).format(date)}`;
+	return `Joined ${formatDublinDate(value)}`;
 }
 
 function outcomeStyle(outcome: DiscordDoctorKickResult["outcome"]): string {

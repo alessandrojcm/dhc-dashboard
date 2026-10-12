@@ -3,7 +3,7 @@ import { Calendar, DayGrid, Interaction } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
 import "#lib/components/calendar/dhc-calendar.css";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
-import dayjs from "dayjs";
+import { dublinWallClock, formatDublinTime } from "#lib/club-calendar.js";
 import WorkshopEventModal from "./workshop-event-modal.svelte";
 import type { WorkshopCalendarEvent } from "#lib/types.js";
 import type { WorkshopCalendarItem } from "@dhc/api-client";
@@ -71,8 +71,10 @@ const events: CalendarEvent[] = $derived(
 	workshops.map((workshop) => ({
 		id: workshop.id,
 		title: workshop.title,
-		start: dayjs(workshop.startDate).format("YYYY-MM-DD HH:mm"),
-		end: dayjs(workshop.endDate).format("YYYY-MM-DD HH:mm"),
+		// Placed by the Dublin wall clock: the calendar reads a zone-less
+		// date-time as the reader's local time.
+		start: dublinWallClock(workshop.startDate),
+		end: dublinWallClock(workshop.endDate),
 		extendedProps: {
 			workshop,
 			description: workshop.description || undefined,
@@ -159,7 +161,7 @@ const options = $derived({
 							<span class="workshop-event-status-dot" aria-hidden="true"></span>
 							${statusLabel}
 						</span>
-						<time>${dayjs(workshop.startDate).format("HH:mm")}</time>
+						<time>${formatDublinTime(workshop.startDate)}</time>
 					</div>
 					<div class="workshop-event-title">${title}</div>
 					<div class="workshop-event-footer">

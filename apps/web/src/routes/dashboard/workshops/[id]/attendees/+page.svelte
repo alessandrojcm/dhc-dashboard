@@ -1,5 +1,6 @@
 <script lang="ts">
 import { resolve } from "$app/paths";
+import { formatDublinDayAndTime } from "#lib/club-calendar.js";
 import {
 	Alert,
 	AlertDescription,
@@ -24,7 +25,6 @@ import {
 	Users,
 } from "@lucide/svelte";
 import { createQuery, useQueryClient } from "@tanstack/svelte-query";
-import dayjs from "dayjs";
 
 let { data } = $props();
 const workshopId = $derived(data.attendeesResponse.data.workshop.id);
@@ -71,7 +71,7 @@ function getStatusVariant(status: WorkshopSummary["status"]) {
 
 function formatWorkshopDate(startDate?: string | null) {
 	if (!startDate) return "Date not set";
-	return dayjs(startDate).format("ddd, D MMM YYYY · h:mm A");
+	return formatDublinDayAndTime(startDate, { withYear: true });
 }
 </script>
 
