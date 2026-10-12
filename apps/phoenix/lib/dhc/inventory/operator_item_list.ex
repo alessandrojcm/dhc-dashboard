@@ -49,8 +49,6 @@ defmodule Dhc.Inventory.OperatorItemList do
   alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemQuery
   alias Dhc.Inventory.ItemQuery.ReadModel
-  alias Dhc.Inventory.Loan
-  alias Dhc.Inventory.MaintenancePeriod
 
   @allowed_archived ~w(exclude include only)
 
@@ -122,37 +120,18 @@ defmodule Dhc.Inventory.OperatorItemList do
     where(query, ^dynamic([i], is_nil(i.archived_at) and ^matches))
   end
 
-  defp availability_match(:maintenance), do: open_maintenance()
+  defp availability_match(:maintenance), do: ItemProjection.open_maintenance_exists()
 
-  defp availability_match(:on_loan),
-    do: dynamic(not (^open_maintenance()) and ^active_loan())
-
-  defp availability_match(:available),
-    do: dynamic(not (^open_maintenance()) and not (^active_loan()))
-
-  defp open_maintenance do
+  defp availability_match(:on_loan) do
     dynamic(
-      exists(
-        from(p in MaintenancePeriod,
-          where: p.item_id == parent_as(:item).id,
-          where: is_nil(p.ended_at),
-          select: 1
-        )
-      )
+      not (^ItemProjection.open_maintenance_exists()) and ^ItemProjection.active_loan_exists()
     )
   end
 
-  defp active_loan do
-    statuses = ItemProjection.active_loan_statuses()
-
+  defp availability_match(:available) do
     dynamic(
-      exists(
-        from(l in Loan,
-          where: l.item_id == parent_as(:item).id,
-          where: l.status in ^statuses,
-          select: 1
-        )
-      )
+      not (^ItemProjection.open_maintenance_exists()) and
+        not (^ItemProjection.active_loan_exists())
     )
   end
 

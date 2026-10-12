@@ -177,6 +177,41 @@ defmodule Dhc.Inventory.ItemProjection do
     |> Repo.exists?()
   end
 
+  @doc """
+  The query twin of `open_maintenance?/1`: a correlated `EXISTS` over the
+  item bound as `:item`, so a list read filters on the same fact the
+  projection reports.
+  """
+  @spec open_maintenance_exists() :: Ecto.Query.dynamic_expr()
+  def open_maintenance_exists do
+    dynamic(
+      exists(
+        from(p in MaintenancePeriod,
+          where: p.item_id == parent_as(:item).id,
+          where: is_nil(p.ended_at),
+          select: 1
+        )
+      )
+    )
+  end
+
+  @doc """
+  The query twin of `active_loan?/1`: a correlated `EXISTS` over the item
+  bound as `:item`.
+  """
+  @spec active_loan_exists() :: Ecto.Query.dynamic_expr()
+  def active_loan_exists do
+    dynamic(
+      exists(
+        from(l in Loan,
+          where: l.item_id == parent_as(:item).id,
+          where: l.status in @active_loan_statuses,
+          select: 1
+        )
+      )
+    )
+  end
+
   # Same precedence as `availability/1`, decided from pre-fetched sets rather
   # than a query per item.
   defp batched_availability(%Item{archived_at: archived_at}, maintenance?, on_loan: on_loan?) do
