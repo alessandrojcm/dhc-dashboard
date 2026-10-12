@@ -66,7 +66,9 @@ const selectedItemId = $derived(page.params.itemId);
 const creatingItem = $derived(selectedItemId === "new");
 
 let archived = $state<"exclude" | "include" | "only">("exclude");
-let availability = $state<"all" | "available" | "maintenance">("all");
+let availability = $state<"all" | "available" | "on_loan" | "maintenance">(
+	"all",
+);
 let search = $state("");
 let debouncedQuery = $state("");
 let searchTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -111,8 +113,9 @@ function flashSuccess(
 }
 
 const availabilityOptions = [
-	{ value: "all", label: "All states" },
+	{ value: "all", label: "All" },
 	{ value: "available", label: "Available" },
+	{ value: "on_loan", label: "On loan" },
 	{ value: "maintenance", label: "Maintenance" },
 ];
 const archiveOptions = [
@@ -125,6 +128,7 @@ const itemsQuery = createQuery(() => ({
 	...inventoryItemsListOptions({
 		query: {
 			archived,
+			availability: availability === "all" ? undefined : availability,
 			limit: PAGE_SIZE,
 			q: debouncedQuery || undefined,
 			cursor,
@@ -172,13 +176,6 @@ const maintenanceQuery = createQuery(() => ({
 	enabled: Boolean(selected),
 	select: (response) => response.data.periods,
 }));
-const availabilityItems = $derived(
-	availability === "all"
-		? (itemsQuery.data?.items ?? [])
-		: (itemsQuery.data?.items ?? []).filter(
-				(item) => item.availability.status === availability,
-			),
-);
 const categoryOptions = $derived(
 	(categoriesQuery.data ?? []).map((category) => ({
 		value: category.id,
@@ -190,7 +187,7 @@ const containerOptions = $derived(
 		.filter((container) => !container.archivedAt)
 		.map((container) => ({ value: container.id, label: container.name })),
 );
-const visibleItems = $derived(availabilityItems);
+const visibleItems = $derived(itemsQuery.data?.items ?? []);
 const activeFilterCount = $derived(
 	Number(availability !== "all") + Number(archived !== "exclude"),
 );
@@ -847,6 +844,7 @@ function displayValue(item: InventoryOperatorItem) {
 								type="single"
 								items={availabilityOptions}
 								bind:value={availability}
+								onValueChange={() => (cursor = undefined)}
 							>
 								<Select.Trigger
 									id="availability-filter"
@@ -1038,6 +1036,7 @@ function displayValue(item: InventoryOperatorItem) {
 						type="single"
 						items={availabilityOptions}
 						bind:value={availability}
+						onValueChange={() => (cursor = undefined)}
 					>
 						<Select.Trigger
 							id="mobile-availability-filter"

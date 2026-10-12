@@ -82,7 +82,18 @@ test.describe("ALE-284 operator inventory items", () => {
 		});
 		await expect(filters).toBeVisible();
 		await filters.getByRole("button", { name: "Availability" }).click();
+		// The filter is applied by Phoenix across the whole list, not to the
+		// page already loaded.
+		const filtered = page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return (
+				url.pathname === "/api/inventory/items" &&
+				url.searchParams.get("availability") === "maintenance"
+			);
+		});
 		await page.getByRole("option", { name: "Maintenance" }).click();
+		await filtered;
+		await expect(item).toBeHidden();
 		await filters.getByRole("button", { name: "Show items" }).click();
 		await expect(
 			page.getByRole("button", { name: "Filters, 1 active", exact: true }),

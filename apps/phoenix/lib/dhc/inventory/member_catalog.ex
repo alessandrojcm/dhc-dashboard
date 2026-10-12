@@ -107,7 +107,7 @@ defmodule Dhc.Inventory.MemberCatalog do
   @spec list_catalog_items(map()) :: {:ok, page()} | {:error, error()}
   def list_catalog_items(params \\ %{}) when is_map(params) or is_list(params) do
     ItemQuery.list(params, %ReadModel{
-      param: {:availability, ["availability"], &parse_availability/1},
+      params: [{:availability, ["availability"], &parse_availability/1}],
       scope: &scope/2,
       search: &apply_search/2,
       project: &project_member_rows/1

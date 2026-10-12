@@ -6131,7 +6131,9 @@ paths:
         command can change. `totalCount` is an exact count over the same
         filtered set.
 
-        Archived Items are absent unless `archived` asks for them. Search
+        Archived Items are absent unless `archived` asks for them;
+        `availability` narrows to a subset of `available`, `maintenance`, and
+        `on_loan` before paging. Search
         (`q`) covers the immutable slug, the derived label through its
         Category and property-value ingredients, Container name, and operator
         notes. Filters: `categoryId` (comma-separated) and `property` (comma-separated
@@ -6180,6 +6182,19 @@ paths:
           description: |
             `exclude` (default) hides archived Items, `only` returns just
             them, `include` returns both.
+        - name: availability
+          in: query
+          schema:
+            type: string
+          description: |
+            Comma-separated subset of `available`, `maintenance`, and
+            `on_loan`. Absent or empty returns every availability. The
+            filter applies before paging and `totalCount` counts the filtered
+            set. It uses the projection's precedence (archived, maintenance,
+            on loan, available), so a returned row's `availability.status`
+            is always one of the requested statuses, and an archived Item is
+            never returned while this filter is set. An unknown value
+            returns `400`.
         - name: q
           in: query
           schema:

@@ -5,9 +5,11 @@ defmodule Dhc.Inventory.ItemQuery.ReadModel do
   Every field is required, so a read model cannot silently fall back to a
   shared default for its scope, search, or projection:
 
-    * `:param` — its one extra parameter (`archived`, `availability`) as
-      `{option_key, request_keys, parser}`. The option key is also its
-      cursor-context key; atom values are bound into the cursor as strings.
+    * `:params` — its own extra parameters as a list of
+      `{option_key, request_keys, parser}` (the member catalog's
+      `availability`; the operator list's `archived` and `availability`).
+      Each option key is also its cursor-context key; atom values are bound
+      into the cursor as strings, list values as sorted lists of strings.
     * `:scope` — constrains the `:item`-bound root query from the parsed
       options (archive, availability).
     * `:search` — applies a non-blank `q`.
@@ -20,7 +22,7 @@ defmodule Dhc.Inventory.ItemQuery.ReadModel do
 
   alias Dhc.Inventory.Item
 
-  @enforce_keys [:param, :scope, :search, :project]
+  @enforce_keys [:params, :scope, :search, :project]
   defstruct @enforce_keys
 
   @typedoc "The read models' own extra-parameter reasons."
@@ -30,7 +32,7 @@ defmodule Dhc.Inventory.ItemQuery.ReadModel do
           {atom(), [String.t()], (term() -> {:ok, term()} | {:error, param_error()})}
 
   @type t :: %__MODULE__{
-          param: param(),
+          params: [param()],
           scope: (Ecto.Query.t(), map() -> Ecto.Query.t()),
           search: (Ecto.Query.t(), String.t() -> Ecto.Query.t()),
           project: ([Item.t()] -> [term()])

@@ -5,8 +5,9 @@ defmodule DhcWeb.InventoryHTTP do
   and operator loans.
 
   Controllers return the domain result; where one domain atom needs two
-  details in this family (`:not_found` naming an Item, a Loan or a Category, or
-  `:still_referenced` naming a Category rather than an Option) the controller
+  details in this family (`:not_found` naming an Item, a Loan or a Category,
+  `:still_referenced` naming a Category rather than an Option, or
+  `:invalid_availability` describing the operator list's statuses) the controller
   renames it to the reason below. Reasons that share one public code declare
   it as the third element.
   """
@@ -30,6 +31,10 @@ defmodule DhcWeb.InventoryHTTP do
       invalid_category: {400, "categoryId must be comma-separated category UUIDs"},
       invalid_property: {400, "property must be comma-separated definitionId:value pairs"},
       invalid_availability: {400, "availability must be one of all, available, unavailable"},
+      # The operator list's `availability` is a subset of operator statuses,
+      # not the member catalog's `all | available | unavailable`.
+      invalid_item_availability:
+        {400, "availability must be comma-separated available, maintenance, or on_loan"},
       invalid_status: {400, "status must be all, open, or closed"},
       bad_cursor: {400, "cursor does not match the current query"},
 

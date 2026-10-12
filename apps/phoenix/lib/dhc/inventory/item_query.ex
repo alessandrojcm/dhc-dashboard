@@ -18,7 +18,7 @@ defmodule Dhc.Inventory.ItemQuery do
       look-ahead, cursors bound to every option that changes the result set,
       and an exact `COUNT(*)` over the same filtered set.
 
-  Each read model supplies a `Dhc.Inventory.ItemQuery.ReadModel`: its one extra parameter, its
+  Each read model supplies a `Dhc.Inventory.ItemQuery.ReadModel`: its own extra parameters, its
   scope over the item root, its own search, and its projection. Search stays
   with the read model on purpose — the operator search reads notes and
   Container paths that the member query must never touch — and the
@@ -72,7 +72,7 @@ defmodule Dhc.Inventory.ItemQuery do
   """
   @spec list(map() | keyword(), ReadModel.t()) :: {:ok, page()} | {:error, error()}
   def list(params, %ReadModel{} = read_model) do
-    with {:ok, opts} <- parse(params, read_model.param),
+    with {:ok, opts} <- parse(params, read_model.params),
          {:ok, cursor} <- CursorPagination.parse_cursor(opts, &cursor_context(&1, read_model)) do
       {:ok, build_page(opts, cursor, read_model)}
     end
@@ -81,23 +81,22 @@ defmodule Dhc.Inventory.ItemQuery do
   # ── Options ─────────────────────────────────────────────────────
 
   @doc """
-  Parse the common parameters plus the read model's one extra parameter.
+  Parse the common parameters plus the read model's own extra parameters.
 
   String and atom keys are both accepted; `category_id` and `properties` are
   accepted aliases of `categoryId` and `property`.
   """
-  @spec parse(map() | keyword(), ReadModel.param()) :: {:ok, opts()} | {:error, error()}
-  def parse(params, param) when is_list(params), do: parse(Map.new(params), param)
+  @spec parse(map() | keyword(), [ReadModel.param()]) :: {:ok, opts()} | {:error, error()}
+  def parse(params, extra_params) when is_list(params), do: parse(Map.new(params), extra_params)
 
-  def parse(params, {name, keys, parser}) when is_map(params) do
+  def parse(params, extra_params) when is_map(params) and is_list(extra_params) do
     with {:ok, limit} <- PageParams.parse_limit(take(params, ["limit"])),
          {:ok, direction} <- PageParams.parse_direction(take(params, ["direction"])),
-         {:ok, extra} <- parser.(take(params, keys)),
+         {:ok, extra} <- parse_extra(params, extra_params),
          {:ok, category_ids} <- parse_categories(take(params, ["categoryId", "category_id"])),
          {:ok, properties} <- parse_properties(take(params, ["property", "properties"])) do
       {:ok,
-       %{
-         name => extra,
+       Map.merge(extra, %{
          limit: limit,
          sort: "slug",
          direction: direction,
@@ -105,8 +104,18 @@ defmodule Dhc.Inventory.ItemQuery do
          properties: properties,
          q: PageParams.blank_to_nil(take(params, ["q"])),
          cursor: PageParams.blank_to_nil(take(params, ["cursor"]))
-       }}
+       })}
     end
+  end
+
+  # Each read-model parameter in declaration order; the first refusal wins.
+  defp parse_extra(params, extra_params) do
+    Enum.reduce_while(extra_params, {:ok, %{}}, fn {name, keys, parser}, {:ok, acc} ->
+      case parser.(take(params, keys)) do
+        {:ok, value} -> {:cont, {:ok, Map.put(acc, name, value)}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   # Category ids bind to a UUID column, so a malformed entry has to fail here
@@ -311,18 +320,24 @@ defmodule Dhc.Inventory.ItemQuery do
 
   # Everything that changes the result set is bound into the cursor, so a
   # cursor cannot be replayed against a different query.
-  defp cursor_context(opts, %ReadModel{param: {name, _keys, _parser}}) do
-    %{
+  defp cursor_context(opts, %ReadModel{params: extra_params}) do
+    extra_params
+    |> Map.new(fn {name, _keys, _parser} ->
+      {Atom.to_string(name), cursor_param(Map.fetch!(opts, name))}
+    end)
+    |> Map.merge(%{
       "limit" => opts.limit,
       "sort" => opts.sort,
       "direction" => opts.direction,
       "q" => opts.q,
       "categoryIds" => Enum.sort(opts.category_ids),
       "properties" =>
-        opts.properties |> Enum.sort() |> Enum.map(fn {k, v} -> [k, Enum.sort(v)] end),
-      Atom.to_string(name) => cursor_param(Map.fetch!(opts, name))
-    }
+        opts.properties |> Enum.sort() |> Enum.map(fn {k, v} -> [k, Enum.sort(v)] end)
+    })
   end
+
+  defp cursor_param(values) when is_list(values),
+    do: values |> Enum.map(&cursor_param/1) |> Enum.sort()
 
   defp cursor_param(value) when is_atom(value) and not is_nil(value), do: Atom.to_string(value)
   defp cursor_param(value), do: value

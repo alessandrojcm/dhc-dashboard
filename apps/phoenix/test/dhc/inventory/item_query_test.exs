@@ -22,7 +22,7 @@ defmodule Dhc.Inventory.ItemQueryTest do
   # tests can see the extra value reach both the scope and the cursor.
   defp read_model do
     %ReadModel{
-      param: {:mode, ["mode"], &parse_mode/1},
+      params: [{:mode, ["mode"], &parse_mode/1}],
       scope: fn query, opts -> scope(query, opts.mode) end,
       search: fn query, q -> where(query, [i], ilike(i.slug, ^"%#{q}%")) end,
       project: fn rows -> Enum.map(rows, & &1.id) end
@@ -37,7 +37,7 @@ defmodule Dhc.Inventory.ItemQueryTest do
   defp scope(query, :all), do: query
   defp scope(query, :none), do: where(query, false)
 
-  defp parse(params), do: ItemQuery.parse(params, read_model().param)
+  defp parse(params), do: ItemQuery.parse(params, read_model().params)
   defp list(params), do: ItemQuery.list(params, read_model())
 
   describe "parse/2" do

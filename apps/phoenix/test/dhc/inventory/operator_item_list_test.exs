@@ -96,6 +96,167 @@ defmodule Dhc.Inventory.OperatorItemListTest do
     end
   end
 
+  describe "availability filter" do
+    test "filters the whole list before paging, with an exact count" do
+      %{category: category, container_id: container_id} = fixture()
+      actor = principal_id()
+
+      items = for _ <- 1..23, do: elem(create_item(container_id, category.id), 1)
+
+      # Every third item is under maintenance, so they sit on every page of
+      # the unfiltered list.
+      serviced =
+        items
+        |> Enum.take_every(3)
+        |> Enum.map(fn item ->
+          {:ok, _} =
+            Inventory.start_operator_item_maintenance(item.slug, %{"reason" => "Bent"}, actor)
+
+          item.id
+        end)
+
+      assert {:ok, %{items: everything}} = Inventory.list_operator_items(%{"limit" => "100"})
+      in_order = Enum.map(everything, & &1.id)
+
+      params = %{"availability" => "maintenance", "limit" => "10"}
+      assert {:ok, first} = Inventory.list_operator_items(params)
+      assert first.total_count == 8
+      assert first.next_cursor == nil
+      assert Enum.map(first.items, & &1.id) == Enum.filter(in_order, &(&1 in serviced))
+      assert Enum.all?(first.items, &(&1.availability.status == :maintenance))
+
+      assert {:ok, available} =
+               Inventory.list_operator_items(%{"availability" => "available", "limit" => "10"})
+
+      assert available.total_count == 15
+      assert Enum.count(available.items) == 10
+
+      assert {:ok, rest} =
+               Inventory.list_operator_items(%{
+                 "availability" => "available",
+                 "limit" => "10",
+                 "cursor" => available.next_cursor
+               })
+
+      assert rest.total_count == 15
+      assert rest.next_cursor == nil
+      listed = Enum.map(available.items ++ rest.items, & &1.id)
+      assert listed == in_order -- serviced
+    end
+
+    test "selects each status by the projection's precedence, alone or combined" do
+      %{category: category, container_id: container_id} = fixture()
+      actor = principal_id()
+
+      {:ok, free} = create_item(container_id, category.id)
+      {:ok, serviced} = create_item(container_id, category.id)
+      {:ok, borrowed} = create_item(container_id, category.id)
+      {:ok, serviced_and_borrowed} = create_item(container_id, category.id)
+      {:ok, requested} = create_item(container_id, category.id)
+      {:ok, retired} = create_item(container_id, category.id)
+
+      for item <- [serviced, serviced_and_borrowed] do
+        {:ok, _} =
+          Inventory.start_operator_item_maintenance(item.slug, %{"reason" => "Bent"}, actor)
+      end
+
+      create_loan!(borrowed, principal_id(), "checked_out")
+      create_loan!(serviced_and_borrowed, principal_id(), "approved")
+      # A pending request is not an availability input.
+      create_loan!(requested, principal_id(), "requested")
+      {:ok, _} = Inventory.archive_operator_item(retired.slug, %{}, actor)
+
+      expectations = [
+        {"available", [free, requested], :available},
+        {"maintenance", [serviced, serviced_and_borrowed], :maintenance},
+        {"on_loan", [borrowed], :on_loan}
+      ]
+
+      for {filter, expected, status} <- expectations,
+          archived <- ["exclude", "include"] do
+        assert {:ok, page} =
+                 Inventory.list_operator_items(%{
+                   "availability" => filter,
+                   "archived" => archived
+                 })
+
+        assert ids(page) == ids(expected), "#{filter} with archived=#{archived}"
+        assert page.total_count == length(expected)
+        assert Enum.all?(page.items, &(&1.availability.status == status))
+      end
+
+      assert {:ok, combined} =
+               Inventory.list_operator_items(%{"availability" => " on_loan, available ,"})
+
+      assert ids(combined) == ids([free, borrowed, requested])
+      assert combined.total_count == 3
+
+      for blank <- [nil, ""] do
+        assert {:ok, all} =
+                 Inventory.list_operator_items(%{
+                   "availability" => blank,
+                   "archived" => "include"
+                 })
+
+        assert all.total_count == 6
+      end
+
+      # Archived items are only ever reached through `archived`.
+      assert {:ok, %{items: [], total_count: 0}} =
+               Inventory.list_operator_items(%{
+                 "availability" => "available,maintenance,on_loan",
+                 "archived" => "only"
+               })
+    end
+
+    test "binds the cursor to the availability filter" do
+      %{category: category, container_id: container_id} = fixture()
+      for _ <- 1..11, do: create_item(container_id, category.id)
+
+      assert {:ok, %{next_cursor: unfiltered}} =
+               Inventory.list_operator_items(%{"limit" => "10"})
+
+      assert {:ok, %{next_cursor: filtered}} =
+               Inventory.list_operator_items(%{"limit" => "10", "availability" => "available"})
+
+      assert {:error, :bad_cursor} =
+               Inventory.list_operator_items(%{
+                 "limit" => "10",
+                 "cursor" => unfiltered,
+                 "availability" => "available"
+               })
+
+      assert {:error, :bad_cursor} =
+               Inventory.list_operator_items(%{
+                 "limit" => "10",
+                 "cursor" => filtered,
+                 "availability" => "available,on_loan"
+               })
+
+      # The order of the subset does not change the result set.
+      assert {:ok, %{next_cursor: reordered}} =
+               Inventory.list_operator_items(%{
+                 "limit" => "10",
+                 "availability" => "on_loan,available"
+               })
+
+      assert {:ok, %{items: [_last]}} =
+               Inventory.list_operator_items(%{
+                 "limit" => "10",
+                 "cursor" => reordered,
+                 "availability" => "available,on_loan"
+               })
+    end
+
+    test "refuses an unknown availability, including archived" do
+      for raw <- ["archived", "unavailable", "all", "available,lost", 42] do
+        assert {:error, :invalid_availability} =
+                 Inventory.list_operator_items(%{"availability" => raw}),
+               "accepted #{inspect(raw)}"
+      end
+    end
+  end
+
   describe "search" do
     test "matches every operator-visible item fact case-insensitively" do
       %{category: category, container_id: container_id} = fixture()
@@ -285,5 +446,31 @@ defmodule Dhc.Inventory.OperatorItemListTest do
     })
     |> Repo.insert!()
     |> Map.fetch!(:id)
+  end
+
+  defp ids(items) when is_list(items), do: items |> Enum.map(& &1.id) |> Enum.sort()
+  defp ids(%{items: items}), do: ids(items)
+
+  # Loan rows are fixtures for the list read; a loan inserted directly can
+  # also hold an item under maintenance, which the loan commands refuse.
+  defp create_loan!(item, borrower_id, status) do
+    Repo.query!(
+      """
+      INSERT INTO inventory_loans (
+        item_id, borrower_principal_id, status,
+        requested_start_on, requested_due_on,
+        item_slug_snapshot, item_label_snapshot,
+        created_at, updated_at
+      )
+      VALUES ($1, $2, $3, CURRENT_DATE, CURRENT_DATE + 7, $4, $5, NOW(), NOW())
+      """,
+      [
+        Ecto.UUID.dump!(item.id),
+        Ecto.UUID.dump!(borrower_id),
+        status,
+        item.slug,
+        item.label || item.slug
+      ]
+    )
   end
 end
