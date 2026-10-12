@@ -7,7 +7,7 @@ defmodule DhcWeb.BeginnersWorkshopEmailTemplatesHTTP do
 
   use DhcWeb.Problem,
     reasons: %{
-      unknown_email_type: {404, "Intake Email type not found"},
+      unknown_email_type: {404, "Email template not found"},
       placeholder_not_allowed: {422, "The template uses a placeholder this email can't fill"},
       template_too_long:
         {422, "The message is over 2,000 characters with every placeholder at its longest"},

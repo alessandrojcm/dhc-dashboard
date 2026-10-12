@@ -145,7 +145,7 @@ defmodule DhcWeb.BeginnersWorkshopEmailTemplatesControllerTest do
     end
 
     test "an unknown email type is not found" do
-      assert %{"errors" => %{"detail" => "Intake Email type not found"} = errors} =
+      assert %{"errors" => %{"detail" => "Email template not found"} = errors} =
                "admin"
                |> as()
                |> put("#{@path}/coach_reminder", %{"subject" => "Hi", "body" => doc([])})
