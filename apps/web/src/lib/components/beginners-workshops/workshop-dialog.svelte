@@ -171,6 +171,21 @@ let alertRef = $state<HTMLDivElement | null>(null);
 }
 
 @media (max-width: 639px) {
+	:global(.workshop-dialog) {
+		inset: auto 0 0;
+		width: 100%;
+		max-width: none;
+		max-height: calc(100dvh - 1rem);
+		translate: none;
+		border-radius: 1rem 1rem 0 0;
+		border-bottom: 0;
+	}
+	:global(.workshop-dialog[data-state="open"]) {
+		animation: workshop-sheet-in 250ms ease-out;
+	}
+	:global(.workshop-dialog[data-state="closed"]) {
+		animation: workshop-sheet-out 200ms ease-in;
+	}
 	:global(.workshop-dialog [data-slot="dialog-title"]),
 	:global(.workshop-dialog [data-slot="alert-dialog-title"]) {
 		font-size: 1.125rem;
@@ -190,15 +205,33 @@ let alertRef = $state<HTMLDivElement | null>(null);
 			:is([data-slot="dialog-footer"], [data-slot="alert-dialog-footer"])
 	) {
 		margin-inline: -1rem;
-		padding: 1rem;
+		padding: 1rem 1rem max(1rem, env(safe-area-inset-bottom));
 	}
 	:global(.workshop-dialog > [data-slot="alert-dialog-footer"]) {
 		margin: 0;
 	}
 }
 
+@keyframes -global-workshop-sheet-in {
+	from {
+		transform: translateY(100%);
+	}
+	to {
+		transform: translateY(0);
+	}
+}
+
+@keyframes -global-workshop-sheet-out {
+	from {
+		transform: translateY(0);
+	}
+	to {
+		transform: translateY(100%);
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
-	:global(.workshop-dialog) {
+	:global(.workshop-dialog[data-state]) {
 		animation: none;
 		transition: none;
 	}

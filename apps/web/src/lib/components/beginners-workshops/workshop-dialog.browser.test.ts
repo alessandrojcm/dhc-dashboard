@@ -61,7 +61,19 @@ for (const dark of [false, true]) {
 			await expect
 				.poll(() => element.getBoundingClientRect().top)
 				.toBeGreaterThanOrEqual(0);
+			await expect
+				.poll(() => element.getAnimations().length)
+				.toBe(0);
 			const box = element.getBoundingClientRect();
+			if (viewport.width < 640) {
+				expect(box.left).toBe(0);
+				expect(box.width).toBe(viewport.width);
+				expect(box.bottom).toBe(viewport.height);
+				expect(getComputedStyle(element).animationName).toBe("workshop-sheet-in");
+			} else {
+				expect(box.left).toBeGreaterThan(0);
+				expect(box.bottom).toBeLessThan(viewport.height);
+			}
 			expect(box.right).toBeLessThanOrEqual(viewport.width);
 			expect(box.bottom).toBeLessThanOrEqual(viewport.height);
 			expect(form.scrollHeight).toBeGreaterThan(form.clientHeight);
@@ -98,12 +110,17 @@ for (const dark of [false, true]) {
 }
 
 test("waitlist alerts retain alert semantics and cancellation focus", async () => {
+	await page.viewport(390, 844);
 	const screen = await render(WorkshopDialogTest, { alert: true });
 	await screen.getByRole("button", { name: "Change waitlist" }).click();
 	await expect.element(screen.getByRole("alertdialog")).toBeVisible();
 	await expect
 		.element(screen.getByRole("button", { name: "Keep open" }))
 		.toHaveFocus();
+	const alert = screen.getByRole("alertdialog").element();
+	await expect.poll(() => alert.getAnimations().length).toBe(0);
+	expect(alert.getBoundingClientRect().bottom).toBe(844);
+	expect(alert.getBoundingClientRect().width).toBe(390);
 	await screen.getByRole("button", { name: "Keep open" }).click();
 	await expect
 		.element(screen.getByRole("button", { name: "Change waitlist" }))

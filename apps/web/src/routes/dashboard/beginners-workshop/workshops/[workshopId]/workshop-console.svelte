@@ -38,6 +38,7 @@ import {
 	DoorOpen,
 	Pause,
 	Play,
+	Settings,
 	UserPlus,
 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
@@ -84,6 +85,7 @@ import IntakeDetail from "./intake-detail.svelte";
 import RescheduleDialog from "./reschedule-dialog.svelte";
 import CancelWorkshopDialog from "./cancel-workshop-dialog.svelte";
 import StaffDialog from "../../staff-dialog.svelte";
+import WorkshopSettingsDialog from "../../workshop-settings-dialog.svelte";
 
 let {
 	view,
@@ -109,6 +111,7 @@ const selectedIntake = $derived(
 let rescheduleOpen = $state(false);
 let cancelOpen = $state(false);
 let staffOpen = $state(false);
+let settingsOpen = $state(false);
 // Mounted on first open, so the console renders without a search query.
 let fastTrackMounted = $state(false);
 
@@ -203,6 +206,13 @@ const attentionClass =
 			</div>
 			<div class="flex flex-wrap gap-2">
 				{#if scheduled}
+					<Button
+						type="button"
+						variant="outline"
+						onclick={() => (settingsOpen = true)}
+					>
+						<Settings /> Settings
+					</Button>
 					<Button
 						type="button"
 						variant="outline"
@@ -657,6 +667,9 @@ const attentionClass =
 {/if}
 
 {#if scheduled}
+	{#if settingsOpen}
+		<WorkshopSettingsDialog {workshop} bind:open={settingsOpen} />
+	{/if}
 	{#if staffOpen}
 		<StaffDialog
 			{workshop}
