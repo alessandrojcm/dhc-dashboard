@@ -79,7 +79,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
       {workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
       Stripe.stub_create()
 
-      assert {:ok, %{checkout_url: url}} = pay(token)
+      assert {:ok, %{checkout_url: nil, client_secret: secret, session_id: session_id}} =
+               pay(token)
 
       assert [%IntakePayment{status: "open", amount_cents: 4000, currency: "eur"} = row] =
                payments(intake)
@@ -87,7 +88,9 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
       assert row.expires_at == @hold_ends
       assert row.workshop_id == workshop.id
       assert row.stripe_checkout_session_id == Stripe.session_id(row)
-      assert url == Stripe.checkout_url(Stripe.session_id(row))
+      assert secret == Stripe.client_secret(Stripe.session_id(row))
+      assert session_id == row.stripe_checkout_session_id
+      assert row.checkout_ui_mode == "embedded"
 
       assert_received {:checkout_created, form, key}
       assert key == "beginners-intake-payment:#{row.id}"
@@ -103,12 +106,15 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
                "payment_method_types[1]" => "revolut_pay",
                "payment_method_types[2]" => "link",
                "metadata[payment_id]" => payment_id,
-               "success_url" => success_url,
-               "cancel_url" => ^link
+               "ui_mode" => "embedded",
+               "redirect_on_completion" => "if_required",
+               "return_url" => return_url
              } = form
 
       assert payment_id == row.id
-      assert success_url == link <> "?session_id={CHECKOUT_SESSION_ID}"
+      assert return_url == link <> "?session_id={CHECKOUT_SESSION_ID}"
+      refute Map.has_key?(form, "success_url")
+      refute Map.has_key?(form, "cancel_url")
       assert form["customer_email"] =~ "@waitlist.example.com"
       # The session outlives the hold by Stripe's latency grace; the reaper
       # expires it when the hold runs out.
@@ -124,12 +130,61 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
       {_workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
       Stripe.stub_create()
 
-      assert {:ok, %{checkout_url: url}} = pay(token)
+      assert {:ok, %{client_secret: secret}} = pay(token)
       assert_received {:checkout_created, _form, _key}
 
-      assert {:ok, %{checkout_url: ^url}} = pay(token, DateTime.add(@now, 29 * 60))
+      row = payment!(intake)
+
+      Stripe.stub_retrieve(
+        Stripe.session(row, %{
+          "status" => "open",
+          "payment_status" => "unpaid",
+          "client_secret" => secret
+        })
+      )
+
+      assert {:ok, %{client_secret: ^secret}} = pay(token, DateTime.add(@now, 29 * 60))
       refute_received {:checkout_created, _form, _key}
       assert [%IntakePayment{status: "open"}] = payments(intake)
+    end
+
+    test "a recorded embedded session with Stripe unavailable keeps its hold and never creates again",
+         %{coordinator: coordinator} do
+      {workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
+      Stripe.stub_create()
+      assert {:ok, _} = pay(token)
+      assert_received {:checkout_created, _form, _key}
+      row = payment!(intake)
+
+      Dhc.StripeHTTPStub.stub("GET", "/v1/checkout/sessions/#{Stripe.session_id(row)}", fn conn ->
+        Dhc.StripeHTTPStub.stripe_error(conn, 503)
+      end)
+
+      assert {:error, :payment_unavailable} = pay(token)
+      refute_received {:checkout_created, _form, _key}
+      assert %{holds: 1} = seats(workshop)
+    end
+
+    test "a pre-migration unsessioned hold replays hosted parameters unchanged",
+         %{coordinator: coordinator} do
+      {_workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
+      Stripe.fail_create(500)
+      assert {:error, :payment_unavailable} = pay(token)
+      row = payment!(intake)
+      Repo.update!(Ecto.Changeset.change(row, checkout_ui_mode: "hosted"))
+      Stripe.stub_create()
+
+      assert {:ok, %{checkout_url: url, client_secret: nil}} = pay(token)
+      assert url == Stripe.checkout_url(Stripe.session_id(row))
+      assert_received {:checkout_created, form, _key}
+      link = Dhc.BeginnersWorkshops.IntakeLink.url(token)
+      assert form["success_url"] == link <> "?session_id={CHECKOUT_SESSION_ID}"
+      assert form["cancel_url"] == link
+      refute Map.has_key?(form, "ui_mode")
+      refute Map.has_key?(form, "return_url")
+
+      assert {:ok, %{checkout_url: ^url, client_secret: nil}} = pay(token)
+      refute_received {:checkout_created, _form, _key}
     end
 
     test "when every seat is paid or held the next person sees full; a released hold frees the seat",

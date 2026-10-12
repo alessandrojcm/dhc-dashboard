@@ -13,5 +13,7 @@ let { data }: PageProps = $props();
 </svelte:head>
 
 <div class="flex justify-center">
-	<IntakePage page={data.page} token={data.token} />
+	{#key data.token}
+		<IntakePage page={data.page} token={data.token} />
+	{/key}
 </div>

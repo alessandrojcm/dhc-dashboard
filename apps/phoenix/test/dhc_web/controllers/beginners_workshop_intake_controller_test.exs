@@ -91,14 +91,20 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
     assert json_response(conn, 404)
   end
 
-  test "startPayment answers the Checkout URL; the next person for the last seat sees full",
+  test "startPayment answers embedded credentials; the next person for the last seat sees full",
        %{conn: conn, intake: intake, token: token, other_token: other_token} do
     conn = post(conn, "/api/beginners/intake/#{token}/payment")
     assert no_referrer?(conn)
-    assert %{"data" => %{"checkoutUrl" => url}} = json_response(conn, 200)
+
+    assert %{
+             "data" => %{"checkoutUrl" => nil, "clientSecret" => secret, "sessionId" => id} = data
+           } = json_response(conn, 200)
+
+    assert Map.keys(data) |> Enum.sort() == ~w(checkoutUrl clientSecret sessionId)
 
     row = Repo.one!(from(p in IntakePayment, where: p.intake_id == ^intake.id))
-    assert url == Stripe.checkout_url(Stripe.session_id(row))
+    assert secret == Stripe.client_secret(Stripe.session_id(row))
+    assert id == row.stripe_checkout_session_id
 
     conn = post(build_conn(), "/api/beginners/intake/#{other_token}/payment")
     assert no_referrer?(conn)

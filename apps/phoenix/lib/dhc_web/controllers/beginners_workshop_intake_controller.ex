@@ -4,8 +4,9 @@ defmodule DhcWeb.BeginnersWorkshopIntakeController do
   Public — the token in the path is the capability — and served through the
   `:intake_link` pipeline (`Referrer-Policy: no-referrer`, redacted request
   log). Every response is the closed `Dhc.BeginnersWorkshops.IntakePage`
-  view or a refusal; never an id or a Stripe object (the Checkout URL is the
-  one Stripe value, and only as the redirect target).
+  view or a refusal. The payment command alone returns the credentials to
+  mount embedded Checkout (or resume a pre-migration hosted session), never
+  a payment row or a Stripe object.
   """
   use DhcWeb, :controller
 
@@ -20,10 +21,10 @@ defmodule DhcWeb.BeginnersWorkshopIntakeController do
     end
   end
 
-  @doc "POST /beginners/intake/{token}/payment — takes the Seat Hold; answers the Checkout URL."
+  @doc "POST /beginners/intake/{token}/payment — takes the Seat Hold; answers Checkout credentials."
   def start_payment(conn, %{"token" => token}) do
     case link_command(token, :start_payment) do
-      {:ok, %{checkout_url: url}} -> render(conn, :checkout, checkout_url: url)
+      {:ok, checkout} -> render(conn, :checkout, checkout: checkout)
       {:error, reason} -> {:error, reason}
     end
   end

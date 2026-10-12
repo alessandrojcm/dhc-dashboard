@@ -50,6 +50,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePayment do
     field :checkout_link_generation, :integer
     field :checkout_email, :string, redact: true
     field :checkout_product_name, :string
+    field :checkout_ui_mode, :string, default: "hosted"
 
     timestamps(type: :utc_datetime_usec, inserted_at: :created_at)
   end
@@ -76,10 +77,11 @@ defmodule Dhc.BeginnersWorkshops.IntakePayment do
     ]
 
     %__MODULE__{}
-    |> cast(attrs, required)
+    |> cast(attrs, [:checkout_ui_mode | required])
     |> put_change(:status, "open")
     |> put_change(:currency, "eur")
     |> validate_required(required)
+    |> validate_inclusion(:checkout_ui_mode, ~w(hosted embedded))
     |> validate_number(:amount_cents, greater_than: 0)
   end
 

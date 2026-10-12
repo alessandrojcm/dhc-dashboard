@@ -159,7 +159,7 @@ test.describe("Waitlist table pagination and search", () => {
 	});
 
 	test("should clear search correctly", async ({ page }) => {
-		await gotoHydrated(page, `${waitlistPath}&q=test`);
+		await gotoHydrated(page, `${waitlistPath}?q=test`);
 
 		const searchInput = page.getByPlaceholder("Search for a person");
 		await expect(searchInput).toHaveValue("test");

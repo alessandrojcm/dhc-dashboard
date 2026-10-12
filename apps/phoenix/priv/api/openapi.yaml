@@ -5289,21 +5289,22 @@ paths:
     post:
       operationId: beginnersWorkshopIntake.startPayment
       tags: [BeginnersWorkshops]
-      summary: Take a Seat Hold and get the Stripe Checkout URL
+      summary: Take a Seat Hold and get embedded Stripe Checkout credentials
       description: |
         Takes a 30-minute Seat Hold under the workshop lock (an open payment
-        row with the fee frozen) and creates the hosted Checkout Session;
+        row with the fee frozen) and creates an embedded Checkout Session;
         while the person's hold is live it answers the same session again.
         Refused with `full` when every seat is paid or held, `after_cutoff`
         after the Payment Cutoff, `already_paid`, `intake_closed`,
         `payment_in_progress` when the hold ran out and Stripe has not ended
         it yet, or `confirm_instead` when the person holds a Carried Fee
-        (they confirm instead of paying). `success_url` and `cancel_url` return to the same Intake
-        link. 503 when Stripe is unavailable (try again).
+        (they confirm instead of paying). Redirect-based methods return to
+        the same Intake link; cards complete in place. Existing hosted holds
+        keep their original session until ended. 503 when Stripe is unavailable.
       security: []
       responses:
         "200":
-          description: Where to send the person (Stripe Checkout)
+          description: Credentials for embedded Checkout, or a legacy hosted URL
           headers:
             Referrer-Policy: {$ref: "#/components/headers/NoReferrer"}
           content:
@@ -9927,9 +9928,11 @@ components:
       properties:
         data:
           type: object
-          required: [checkoutUrl]
+          required: [checkoutUrl, clientSecret, sessionId]
           properties:
-            checkoutUrl: {type: string, format: uri, description: The hosted Stripe Checkout page}
+            checkoutUrl: {type: string, nullable: true, format: uri, description: Only for hosted sessions created before the embedded checkout migration}
+            clientSecret: {type: string, nullable: true, description: Embedded Checkout client secret; never log or persist in the browser}
+            sessionId: {type: string, nullable: true, description: Session to confirm server-side after embedded Checkout completes}
     BeginnersIntakeReturnRequest:
       type: object
       properties:

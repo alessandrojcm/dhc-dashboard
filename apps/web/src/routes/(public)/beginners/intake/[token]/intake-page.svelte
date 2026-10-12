@@ -1,15 +1,17 @@
 <!--
 	ALE-381: the person's Intake page. Everything shown is Phoenix's safe
-	view; the one action is Phoenix's too. Pay goes through the remote form,
-	which redirects to Stripe Checkout; "Check again" and the
+	view; the one action is Phoenix's too. Pay mounts embedded Checkout;
+	"Check again" and the
 	payment-in-progress refresh reload Phoenix's view. A Carried Fee holder
 	(ALE-388) gets "Confirm my place" instead of Pay. No self-service
 	decline or withdraw: replies to the email go through a coordinator.
 -->
 <script lang="ts">
+import { tick } from "svelte";
 import type { BeginnersIntakePage } from "@dhc/api-client";
 import { CalendarDays, Clock, MapPin, RefreshCw } from "@lucide/svelte";
-import { invalidateAll } from "$app/navigation";
+import { goto, invalidateAll } from "$app/navigation";
+import IntakeCheckout from "#lib/components/beginners-workshops/intake-checkout.svelte";
 import { formatDublinInstant } from "#lib/beginners-workshops/console.js";
 import {
 	confirmsWithCarriedFee,
@@ -30,24 +32,52 @@ let {
 	token,
 	refresh = () => void invalidateAll(),
 	refreshMs = REFRESH_MS,
+	startPayment = () => paymentForm.submit(),
 }: {
 	page: BeginnersIntakePage;
 	token: string;
 	refresh?: () => void;
 	refreshMs?: number;
+	startPayment?: () => Promise<boolean>;
 } = $props();
 
+const formId = $props.id();
+const paymentForm = startIntakePayment.for(formId);
+const confirmForm = confirmIntakePlace.for(formId);
 const copy = $derived(intakeCopy(page));
 const details = $derived(intakeDetails(page));
 const actionLabel = $derived(intakeActionLabel(page));
 const checkout = $derived(startsCheckout(page));
 const confirms = $derived(confirmsWithCarriedFee(page));
+const payment = $derived(paymentForm.result?.ok ? paymentForm.result : null);
+let requestFailed = $state(false);
 const refusal = $derived.by(() => {
-	const result = confirms
-		? confirmIntakePlace.result
-		: startIntakePayment.result;
-	return result && !result.ok ? result.error : null;
+	const result = confirms ? confirmForm.result : paymentForm.result;
+	if (result?.ok) return null;
+	return result && !result.ok
+		? result.error
+		: requestFailed
+			? "Payment is unavailable right now. Please try again shortly."
+			: null;
 });
+
+// Opening the email link opens payment too. POST still takes the Seat Hold;
+// the page's GET never reserves a place. A live hold resumes the same session.
+let initiated = false;
+$effect(() => {
+	if (!checkout || initiated) return;
+	initiated = true;
+	void openPayment();
+});
+
+async function openPayment() {
+	await tick(); // The remote form must be attached before programmatic submit.
+	try {
+		await startPayment();
+	} catch {
+		requestFailed = true;
+	}
+}
 
 // `payment_in_progress` asks Phoenix again until it reports `paid`.
 $effect(() => {
@@ -105,25 +135,35 @@ $effect(() => {
 			</Card.Content>
 		{/if}
 		<Card.Footer>
-			{#if checkout}
-				<form {...startIntakePayment} class="w-full">
-					<input {...startIntakePayment.fields.token.as("hidden", token)} />
+			{#if checkout && payment}
+				{#key payment.clientSecret}
+					<IntakeCheckout
+						clientSecret={payment.clientSecret}
+						onComplete={() =>
+							goto(`?session_id=${encodeURIComponent(payment.sessionId)}`)}
+					/>
+				{/key}
+			{:else if checkout}
+				{#if !refusal}
+					<p role="status" class="py-4 text-sm text-muted-foreground">
+						Loading secure payment…
+					</p>
+				{/if}
+				<form {...paymentForm} class="w-full" hidden={!refusal}>
+					<input {...paymentForm.fields.token.as("hidden", token)} />
 					<Button
 						type="submit"
 						class="w-full"
-						disabled={!!startIntakePayment.pending}
+						disabled={!!paymentForm.pending}
+						aria-busy={!!paymentForm.pending}
 					>
-						{actionLabel}
+						{paymentForm.pending ? "Loading secure payment…" : "Try again"}
 					</Button>
 				</form>
 			{:else if confirms}
-				<form {...confirmIntakePlace} class="w-full">
-					<input {...confirmIntakePlace.fields.token.as("hidden", token)} />
-					<Button
-						type="submit"
-						class="w-full"
-						disabled={!!confirmIntakePlace.pending}
-					>
+				<form {...confirmForm} class="w-full">
+					<input {...confirmForm.fields.token.as("hidden", token)} />
+					<Button type="submit" class="w-full" disabled={!!confirmForm.pending}>
 						{actionLabel}
 					</Button>
 				</form>

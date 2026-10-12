@@ -5,12 +5,14 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
   calls it, and always **between transactions** — nothing here touches the
   database.
 
-  A Checkout Session is hosted, payment mode, quantity 1, priced in `eur`
+  A new Checkout Session is embedded, payment mode, quantity 1, priced in `eur`
   from the fee frozen on the payment row, with `payment_method_types` listed
   explicitly (immediate methods only: card — which carries Apple Pay and
   Google Pay — Revolut Pay and Link), `customer_email` prefilled and no
-  Stripe Customer. `success_url` and `cancel_url` return to the person's own
-  Intake link. Metadata carries the payment row id, but the row is always
+  Stripe Customer. `return_url` returns to the person's own Intake link
+  only for payment methods requiring a redirect; card completion stays on
+  the page. Pre-migration holds replay their original hosted parameters.
+  Metadata carries the payment row id, but the row is always
   found by session id.
 
   Every parameter is frozen on the payment row when the Seat Hold is taken
@@ -78,6 +80,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
       expires_at: expires_at,
       checkout_link_generation: intake.link_generation,
       checkout_email: entry && entry.email,
+      checkout_ui_mode: "embedded",
       checkout_product_name: "Beginners' Workshop – #{Values.date(workshop.date)}"
     }
   end
@@ -87,7 +90,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
   row, from the parameters frozen on it alone.
   """
   @spec create(IntakePayment.t()) ::
-          {:ok, %{id: String.t(), url: String.t() | nil}} | {:error, failure()}
+          {:ok, map()} | {:error, failure()}
   def create(%IntakePayment{} = row) do
     link = IntakeLink.url(IntakeLink.token(row.intake_id, row.checkout_link_generation))
 
@@ -100,13 +103,13 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
       "customer_email" => row.checkout_email,
       "expires_at" =>
         row.expires_at |> DateTime.add(@expiry_grace_seconds, :second) |> DateTime.to_unix(),
-      "success_url" => link <> "?session_id={CHECKOUT_SESSION_ID}",
-      "cancel_url" => link,
       "metadata[type]" => @metadata_type,
       "metadata[payment_id]" => row.id,
       "payment_intent_data[metadata][type]" => @metadata_type,
       "payment_intent_data[metadata][payment_id]" => row.id
     }
+
+    body = Map.merge(body, ui_params(row.checkout_ui_mode, link))
 
     body =
       @payment_method_types
@@ -116,11 +119,29 @@ defmodule Dhc.BeginnersWorkshops.IntakeCheckout do
       end)
 
     case Operations.post_checkout_sessions(body, idempotency_key: idempotency_key(row)) do
-      {:ok, %{"id" => id} = session} when is_binary(id) -> {:ok, %{id: id, url: session["url"]}}
-      {:ok, _unexpected} -> {:error, :retryable}
-      {:error, reason} -> {:error, failure(reason)}
+      {:ok, %{"id" => id} = session} when is_binary(id) ->
+        {:ok, %{id: id, url: session["url"], client_secret: session["client_secret"]}}
+
+      {:ok, _unexpected} ->
+        {:error, :retryable}
+
+      {:error, reason} ->
+        {:error, failure(reason)}
     end
   end
+
+  defp ui_params("embedded", link),
+    do: %{
+      "ui_mode" => "embedded",
+      "redirect_on_completion" => "if_required",
+      "return_url" => link <> "?session_id={CHECKOUT_SESSION_ID}"
+    }
+
+  defp ui_params("hosted", link),
+    do: %{
+      "success_url" => link <> "?session_id={CHECKOUT_SESSION_ID}",
+      "cancel_url" => link
+    }
 
   @doc "Retrieves a Checkout Session."
   @spec retrieve(String.t()) :: {:ok, map()} | {:error, failure()}

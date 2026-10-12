@@ -1,7 +1,7 @@
 /**
- * ALE-381: the Intake page's Pay action. Phoenix takes the Seat Hold and
- * creates (or reuses) the Stripe Checkout Session; the person is sent there
- * with an external redirect. A refusal (`full`, `after_cutoff`, …) answers
+ * ALE-381: the Intake page's automatic payment start. Phoenix takes the Seat Hold and
+ * creates (or reuses) the embedded Stripe Checkout Session. Only a hosted
+ * hold created before the migration still redirects. A refusal answers
  * its detail, and the page reloads Phoenix's view.
  *
  * ALE-388: a Carried Fee holder confirms instead. Phoenix takes the seat in
@@ -27,7 +27,11 @@ export const startIntakePayment = form(
 		});
 
 		if (response.data) {
-			redirect(303, response.data.data.checkoutUrl, { external: true });
+			const { checkoutUrl, clientSecret, sessionId } = response.data.data;
+			if (checkoutUrl) redirect(303, checkoutUrl, { external: true });
+			if (clientSecret && sessionId) {
+				return { ok: true as const, clientSecret, sessionId };
+			}
 		}
 
 		return {

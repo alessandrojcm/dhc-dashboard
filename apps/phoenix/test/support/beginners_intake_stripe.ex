@@ -19,6 +19,9 @@ defmodule Dhc.BeginnersIntakeStripe do
   @doc "The hosted Checkout URL of a session id."
   def checkout_url(session_id), do: "https://checkout.stripe.com/c/pay/#{session_id}"
 
+  @doc "The embedded Checkout client secret of a session id."
+  def client_secret(session_id), do: session_id <> "_secret_stub"
+
   @doc """
   Answers `POST /v1/checkout/sessions` with a session derived from the
   idempotency key and sends `{:checkout_created, form, idempotency_key}` to
@@ -27,13 +30,15 @@ defmodule Dhc.BeginnersIntakeStripe do
   def stub_create(notify \\ self()) do
     StripeHTTPStub.stub("POST", "/v1/checkout/sessions", fn conn ->
       key = StripeHTTPStub.header(conn, "idempotency-key")
-      send(notify, {:checkout_created, StripeHTTPStub.form(conn), key})
+      form = StripeHTTPStub.form(conn)
+      send(notify, {:checkout_created, form, key})
       id = "cs_" <> (key |> String.split(":") |> List.last())
 
       StripeHTTPStub.json(conn, %{
         "id" => id,
         "object" => "checkout.session",
-        "url" => checkout_url(id)
+        "url" => if(form["ui_mode"] == "embedded", do: nil, else: checkout_url(id)),
+        "client_secret" => if(form["ui_mode"] == "embedded", do: client_secret(id), else: nil)
       })
     end)
   end

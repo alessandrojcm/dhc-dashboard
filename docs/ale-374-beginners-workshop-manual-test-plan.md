@@ -2,7 +2,7 @@
 
 ALE-374 has unit, browser and Playwright coverage. The Playwright journey does
 call the real Stripe test API, but only to create the Checkout Session: it
-checks the redirect to a `cs_test_` Checkout URL, stubs Stripe's hosted page,
+checks that embedded Checkout mounts on the Intake page, stubs Stripe.js,
 and completes the payment through the E2E harness (`complete_payment` with a
 made-up completed session). No card is entered, no Stripe webhook arrives, and
 no Beginners' Workshop refund reaches Stripe. This checklist covers what the
@@ -69,6 +69,16 @@ them first.
    `4000 0000 0000 0002` is declined; `4000 0000 0000 5126` succeeds, but a
    later refund of it fails asynchronously. To end a Checkout Session at once:
    `stripe checkout sessions expire cs_test_…`.
+
+   Opening the Intake page opens the embedded widget automatically, without
+   a Pay or Continue step or a hosted Checkout page. Card success stays there
+   and confirms through Phoenix.
+   Check a declined card can be retried in the same widget, refreshing the
+   Intake link resumes the same hold, and a bank-authentication method
+   returns to the Intake link. Hosted holds opened before deployment keep
+   their original checkout until they end. Enable Apple Pay/Google Pay and
+   register the frontend domain in Stripe's payment-method domain settings
+   to show those wallets in the embedded widget.
 
 7. **Door tests.** Check-in opens an hour before the start. Reschedule a
    workshop to today with a start time less than an hour away.

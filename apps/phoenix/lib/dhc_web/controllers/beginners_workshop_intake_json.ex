@@ -26,5 +26,12 @@ defmodule DhcWeb.BeginnersWorkshopIntakeJSON do
     }
   end
 
-  def checkout(%{checkout_url: url}), do: %{data: %{checkoutUrl: url}}
+  def checkout(%{checkout: checkout}),
+    do: %{
+      data: %{
+        checkoutUrl: checkout.checkout_url,
+        clientSecret: checkout.client_secret,
+        sessionId: checkout.session_id
+      }
+    }
 end

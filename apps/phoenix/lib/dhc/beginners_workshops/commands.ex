@@ -2259,13 +2259,31 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # Between transactions: reuse the live hold's session, or create it.
   defp checkout(%IntakePayment{checkout_url: url}, _clock) when is_binary(url),
-    do: {:ok, %{checkout_url: url}}
+    do: {:ok, %{checkout_url: url, client_secret: nil, session_id: nil}}
+
+  defp checkout(%IntakePayment{stripe_checkout_session_id: id}, _clock) when is_binary(id) do
+    case IntakeCheckout.retrieve(id) do
+      {:ok, %{"status" => "open", "client_secret" => secret}} when is_binary(secret) ->
+        {:ok, %{checkout_url: nil, client_secret: secret, session_id: id}}
+
+      _other ->
+        {:error, :payment_unavailable}
+    end
+  end
 
   defp checkout(%IntakePayment{} = row, clock) do
     case create_session(row, clock) do
-      {:ok, %{url: url}} when is_binary(url) -> {:ok, %{checkout_url: url}}
-      {:ok, _no_url} -> {:error, :payment_unavailable}
-      {:error, _reason} -> {:error, :payment_unavailable}
+      {:ok, %{id: id, client_secret: secret}} when is_binary(secret) ->
+        {:ok, %{checkout_url: nil, client_secret: secret, session_id: id}}
+
+      {:ok, %{url: url}} when is_binary(url) ->
+        {:ok, %{checkout_url: url, client_secret: nil, session_id: nil}}
+
+      {:ok, _no_credentials} ->
+        {:error, :payment_unavailable}
+
+      {:error, _reason} ->
+        {:error, :payment_unavailable}
     end
   end
 
@@ -2294,15 +2312,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp record_session(row, session),
     do: transact(fn -> with_locked(payment_spec(row), &record_session_locked(&1, session)) end)
 
-  defp record_session_locked(%{payment: payment}, %{id: session_id, url: url}) do
+  defp record_session_locked(%{payment: payment}, %{id: session_id, url: url} = session) do
     cond do
       payment.stripe_checkout_session_id == session_id ->
-        {:ok, %{id: session_id, url: payment.checkout_url}}
+        {:ok, %{session | url: payment.checkout_url}}
 
       payment.status in @unsessioned_statuses and is_nil(payment.stripe_checkout_session_id) ->
         with {:ok, payment} <-
                payment |> IntakePayment.session_changeset(session_id, url) |> persist(),
-             do: {:ok, %{id: session_id, url: payment.checkout_url}}
+             do: {:ok, %{session | url: payment.checkout_url}}
 
       true ->
         {:error, :concurrent_change}

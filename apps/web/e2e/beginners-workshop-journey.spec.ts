@@ -10,18 +10,18 @@ import {
 	seedE2EScenario,
 } from "./e2eApi";
 import { gotoHydrated } from "./hydration";
+import { stripeClient } from "./setupFunctions";
 
 // ALE-398: the Beginners' Workshop flow end to end, from scheduling to
 // Invitation. Named harness scenarios (`Dhc.E2EHarness.BeginnersWorkshops`)
 // stand in for the clock — the 10:00 Batch pass and the workshop day — and
-// for Stripe's hosted Checkout page, which is never automated: the test
-// only checks that Pay sends the person to a real test-mode Checkout URL.
+// for Stripe's payment UI: creation uses the real test API, while the SDK
+// is stubbed to exercise mounting and the completion callback in place.
 //
 // A Batch takes the oldest waiting people first and each workshop seats
 // one person, so every person here is seeded with a priority older than
 // anyone else the run creates: the Batch contacts exactly them.
 
-const CHECKOUT_URL = /^https:\/\/checkout\.stripe\.com\/c\/pay\/cs_test_/;
 const WORKSHOPS_PATH = "/dashboard/beginners-workshop/workshops";
 const INVITABLE_PATH = "/dashboard/beginners-workshop/invitable";
 
@@ -80,6 +80,42 @@ async function pickDate(page: Page, label: string, isoDate: string) {
 	await expect(page.getByLabel("Select a year")).toHaveCount(0);
 }
 
+async function stubEmbeddedCheckout(page: Page) {
+	const sessions = new Set<string>();
+	await page.exposeFunction("recordIntakeCheckoutSession", (id: string) => {
+		if (!id.startsWith("cs_test_")) throw new Error("Expected test session");
+		sessions.add(id);
+	});
+	await page.route("https://js.stripe.com/**", (route) =>
+		route.fulfill({
+			contentType: "application/javascript",
+			body: `window.Stripe = () => ({
+				initEmbeddedCheckout: async ({ clientSecret, onComplete }) => {
+					if (!/^cs_test_.*_secret_/.test(clientSecret)) throw new Error('Expected test session');
+					await window.recordIntakeCheckoutSession(clientSecret.split('_secret_')[0]);
+					let button;
+					return {
+						mount(container) {
+							button = document.createElement('button');
+							button.textContent = 'Complete test payment';
+							button.onclick = onComplete;
+							container.append(button);
+						},
+						destroy() { button?.remove(); }
+					};
+				}
+			});`,
+		}),
+	);
+	return async () => {
+		for (const id of sessions) {
+			const session = await stripeClient.checkout.sessions.retrieve(id);
+			if (session.status === "open")
+				await stripeClient.checkout.sessions.expire(id);
+		}
+	};
+}
+
 test.describe("Beginners' Workshop journey", () => {
 	let coordinatorEmail: string;
 	let coordinatorId: string;
@@ -103,6 +139,50 @@ test.describe("Beginners' Workshop journey", () => {
 		// both usually stay (409 `still_referenced`).
 		for (const memberId of memberIds)
 			await deleteE2EFixtureUnlessReferenced("member", memberId);
+	});
+
+	test("embedded intake payment stays on the page and resumes its existing session", async ({
+		page,
+	}) => {
+		const person = await seedPerson(
+			`Embedded${faker.string.alpha(6)}`,
+			"1999-01-01T09:00:00Z",
+		);
+		const workshop = await seedE2EScenario("beginnersWorkshop", {
+			actorId: coordinatorId,
+		});
+		const batch = await seedE2EScenario("beginnersWorkshopBatch", {
+			workshopId: workshop.workshopId,
+		});
+		expect(batch.contactedWaitlistIds).toEqual([person.waitlistId]);
+		const link = await seedE2EScenario("beginnersWorkshopIntakeLink", {
+			waitlistId: person.waitlistId,
+		});
+		const cleanupCheckout = await stubEmbeddedCheckout(page);
+		try {
+			await gotoHydrated(page, link.path);
+			await expect(
+				page.getByRole("button", { name: "Complete test payment" }),
+			).toBeVisible();
+			await expect(page).toHaveURL(new RegExp(`${link.path}$`));
+			await gotoHydrated(page, link.path);
+			await expect(
+				page.getByRole("button", { name: "Complete test payment" }),
+			).toBeVisible();
+			const payment = await seedE2EScenario("beginnersWorkshopPayment", {
+				waitlistId: person.waitlistId,
+			});
+			expect(payment.outcome).toBe("paid");
+			await page.getByRole("button", { name: "Complete test payment" }).click();
+			await expect(page).toHaveURL(
+				new RegExp(`session_id=${payment.sessionId}$`),
+			);
+			await expect(
+				page.getByRole("heading", { name: "Your place is confirmed" }),
+			).toBeVisible();
+		} finally {
+			await cleanupCheckout();
+		}
 	});
 
 	test("schedules, contacts, takes payment, checks in and invites", async ({
@@ -167,24 +247,19 @@ test.describe("Beginners' Workshop journey", () => {
 			`/dashboard/beginners-workshop/workshops/${workshopId}`,
 		);
 		await expect(
-			page.getByRole("button", { name: `${personName} — Contacted` }),
+			page.getByRole("button", { name: `${personName} — Place offered` }),
 		).toBeVisible();
 
-		// The person opens their Intake link and presses Pay: Phoenix sends
-		// them to a real test-mode Checkout Session. Stripe's page itself is
-		// not loaded.
+		// The person opens their Intake link: Phoenix creates
+		// a real embedded test-mode session, without leaving the Intake page.
 		const link = await seedE2EScenario("beginnersWorkshopIntakeLink", {
 			waitlistId: person.waitlistId,
 		});
 		const personContext = await browser.newContext();
+		let cleanupCheckout = async () => {};
 		try {
 			const personPage = await personContext.newPage();
-			await personPage.route("https://checkout.stripe.com/**", (route) =>
-				route.fulfill({
-					contentType: "text/html",
-					body: "<title>Stripe Checkout</title>",
-				}),
-			);
+			cleanupCheckout = await stubEmbeddedCheckout(personPage);
 			await gotoHydrated(personPage, link.path);
 			await expect(
 				personPage.getByRole("heading", {
@@ -192,24 +267,35 @@ test.describe("Beginners' Workshop journey", () => {
 				}),
 			).toBeVisible();
 			await expect(personPage.getByText(`Hi ${personFirst},`)).toBeVisible();
-			await personPage
-				.getByRole("button", { name: "Pay for your place" })
-				.click();
-			await personPage.waitForURL(CHECKOUT_URL);
+			await expect(
+				personPage.getByRole("region", { name: "Secure payment" }),
+			).toBeVisible();
+			await expect(
+				personPage.getByRole("button", { name: "Complete test payment" }),
+			).toBeVisible();
+			await expect(personPage).toHaveURL(new RegExp(`${link.path}$`));
 
 			// Stripe completes the payment; the page shows paid.
 			const payment = await seedE2EScenario("beginnersWorkshopPayment", {
 				waitlistId: person.waitlistId,
 			});
 			expect(payment.outcome).toBe("paid");
-			expect(personPage.url()).toContain(payment.sessionId);
-			await gotoHydrated(personPage, link.path);
+			await personPage
+				.getByRole("button", { name: "Complete test payment" })
+				.click();
+			await expect(personPage).toHaveURL(
+				new RegExp(`session_id=${payment.sessionId}$`),
+			);
 			await expect(
 				personPage.getByRole("heading", { name: "Your place is confirmed" }),
 			).toBeVisible();
 			await expect(personPage.getByText("€40.00 · paid")).toBeVisible();
 		} finally {
-			await personContext.close();
+			try {
+				await cleanupCheckout();
+			} finally {
+				await personContext.close();
+			}
 		}
 
 		// The workshop day: the assistant checks the person in and finishes
@@ -236,7 +322,7 @@ test.describe("Beginners' Workshop journey", () => {
 			).toBeVisible();
 			await expect(assistantPage.getByText("Everyone's in.")).toBeVisible();
 			await assistantPage
-				.getByRole("button", { name: "Finish workshop (0 will be no-show)" })
+				.getByRole("button", { name: "Finish workshop (0 did not attend)" })
 				.click();
 			const finish = assistantPage.getByRole("dialog", {
 				name: "Finish workshop?",
@@ -272,7 +358,9 @@ test.describe("Beginners' Workshop journey", () => {
 		await expect(
 			page.getByText(`Invitation sent to ${personName}`),
 		).toBeVisible();
-		await expect(attended.getByText("Invited", { exact: true })).toBeVisible();
+		await expect(
+			attended.getByText("Membership invitation sent", { exact: true }),
+		).toBeVisible();
 
 		const invitation = await seedE2EScenario("beginnersWorkshopInvitation", {
 			waitlistId: person.waitlistId,
@@ -284,7 +372,7 @@ test.describe("Beginners' Workshop journey", () => {
 			});
 			await gotoHydrated(page, INVITABLE_PATH);
 			await expect(
-				page.getByRole("tab", { name: "Invite members", selected: true }),
+				page.getByRole("link", { name: "Invite members", exact: true }),
 			).toBeVisible();
 			await expect(invitableRow).toHaveCount(0);
 		} finally {
@@ -351,7 +439,7 @@ test.describe("Beginners' Workshop journey", () => {
 		);
 		await expect(
 			page
-				.getByRole("region", { name: "Seated (paid)" })
+				.getByRole("region", { name: "Confirmed places" })
 				.getByRole("button", { name: `${holderName} — Paid` }),
 		).toBeVisible();
 	});

@@ -1,10 +1,60 @@
 import type { BeginnersIntakePage } from "@dhc/api-client";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
+import type { ComponentProps } from "svelte";
 import { INACTIVE_PAGE } from "#lib/beginners-workshops/intake-page.js";
 import IntakePage from "./intake-page.svelte";
 
 const token = "intake-link-token";
+
+function renderPage(props: ComponentProps<typeof IntakePage>) {
+	return render(IntakePage, { startPayment: async () => true, ...props });
+}
+
+test("a failed automatic start shows a safe error and only then offers Try again", async () => {
+	const startPayment = vi.fn(async () => {
+		throw new Error("credential-must-not-render");
+	});
+	const screen = await renderPage({ page: page(), token, startPayment });
+	await expect
+		.element(
+			screen.getByText(
+				"Payment is unavailable right now. Please try again shortly.",
+			),
+		)
+		.toBeVisible();
+	await expect
+		.element(screen.getByRole("button", { name: "Try again" }))
+		.toBeVisible();
+	expect(
+		screen.getByText("credential-must-not-render").elements(),
+	).toHaveLength(0);
+	expect(startPayment).toHaveBeenCalledOnce();
+});
+
+test.each(["pay", "continue_payment"] as const)(
+	"%s opens payment automatically, once",
+	async (action) => {
+		const startPayment = vi.fn(async () => true);
+		const screen = await renderPage({
+			page: page({ action }),
+			token,
+			startPayment,
+		});
+		await vi.waitFor(() => expect(startPayment).toHaveBeenCalledOnce());
+		await screen.rerender({ page: page({ action }), token, startPayment });
+		expect(startPayment).toHaveBeenCalledOnce();
+	},
+);
+
+test.each(["confirm", "check_again", "none"] as const)(
+	"%s never starts a payment automatically",
+	async (action) => {
+		const startPayment = vi.fn(async () => true);
+		await renderPage({ page: page({ action }), token, startPayment });
+		expect(startPayment).not.toHaveBeenCalled();
+	},
+);
 
 test("pay shows Phoenix's deadline on the Dublin clock", async () => {
 	const screen = await render(IntakePage, {
@@ -34,7 +84,7 @@ function page(
 	};
 }
 
-test("pay: the person's name, the workshop, the fee and one Pay button", async () => {
+test("pay: the person's name, the workshop, the fee and payment loading with no extra Pay button", async () => {
 	const screen = await render(IntakePage, { page: page(), token });
 
 	await expect.element(screen.getByText("Hi Aoife,")).toBeVisible();
@@ -44,9 +94,11 @@ test("pay: the person's name, the workshop, the fee and one Pay button", async (
 	await expect.element(workshop).toHaveTextContent("St. Andrew's Hall");
 	await expect.element(screen.getByText("€40.00")).toBeVisible();
 	await expect
-		.element(screen.getByRole("button", { name: "Pay for your place" }))
-		.toBeEnabled();
-	expect(screen.getByRole("button").elements()).toHaveLength(1);
+		.element(screen.getByRole("status"))
+		.toHaveTextContent("Loading secure payment…");
+	expect(
+		screen.getByRole("button", { name: "Pay for your place" }).elements(),
+	).toHaveLength(0);
 	// ALE-386 (story 54): no self-service decline or withdraw — every exit
 	// goes through a coordinator, by replying to the email.
 	for (const role of ["button", "link"] as const)
@@ -58,15 +110,18 @@ test("pay: the person's name, the workshop, the fee and one Pay button", async (
 	).toBe(token);
 });
 
-test("pay with a live hold continues the same checkout", async () => {
+test("pay with a live hold opens checkout without a Continue button", async () => {
 	const screen = await render(IntakePage, {
 		page: page({ action: "continue_payment" }),
 		token,
 	});
 
 	await expect
-		.element(screen.getByRole("button", { name: "Continue to payment" }))
-		.toBeVisible();
+		.element(screen.getByRole("status"))
+		.toHaveTextContent("Loading secure payment…");
+	expect(
+		screen.getByRole("button", { name: "Continue to payment" }).elements(),
+	).toHaveLength(0);
 });
 
 test("payment_in_progress refreshes on its own until Phoenix reports paid", async () => {
