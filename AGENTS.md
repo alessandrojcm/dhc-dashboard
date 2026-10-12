@@ -26,6 +26,8 @@ HTTP hardening has a few owning seams. Use `DhcWeb.Plugs.ClientIp` for client IP
 
 Phoenix `mix precommit` runs `hex.audit` before dependency-provided Mix tasks; under the pinned Mix version, running Credo or Reach first unloads the archived Hex task from the current process.
 
+Production retains Supabase-era database functions absent from fresh Ecto databases. Before replacing a PostgreSQL enum, account for inherited function signatures with targeted conditional drops (not `CASCADE`); migration regression tests must recreate those dependencies, as `reshape_waitlist_status_migration_test.exs` does.
+
 Beginners' Workshop command actions run through `DhcWeb.BeginnersWorkshopsHTTP.command/4` (session staff actor → `execute/2` → `respond/4`); do not re-write that pipeline in a controller.
 
 HTTP errors have one renderer (ALE-343): controllers declare `action_fallback DhcWeb.<Domain>HTTP` and return `{:error, reason}` or a changeset; the domain module (`use DhcWeb.Problem, reasons:, fields:`) owns status and detail, and `code` appears only on 409/422 reasons. Never `put_status`/`json(%{errors: …})` an error in a controller; plugs use `DhcWeb.Problem.send_reason/2`. See "HTTP Errors" in `docs/agents/critical-patterns.md`.
