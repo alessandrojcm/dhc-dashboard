@@ -29,6 +29,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeRefund do
 
   use Ecto.Schema
   import Ecto.Changeset
+  import Ecto.Query
 
   @primary_key {:id, :binary_id, autogenerate: false}
   @foreign_key_type :binary_id
@@ -74,6 +75,36 @@ defmodule Dhc.BeginnersWorkshops.IntakeRefund do
   @doc "The reasons the system refunds automatically."
   @spec automatic_reasons() :: [String.t()]
   def automatic_reasons, do: @automatic_reasons
+
+  @doc """
+  ALE-402: the latest refund of each of `fee_ids` (by creation), as
+  `{carried_fee_id, %{status: status, followed_up: boolean}}` —
+  `followed_up` when a Retry or Record manual refund row follows it. The
+  one read of what `CarriedFeePolicy` calls a fee's refund, shared by the
+  boundary (under the fee lock, which every refund writer of a fee holds)
+  and the read models.
+  """
+  @spec latest_of_fees_query([binary()]) :: Ecto.Query.t()
+  def latest_of_fees_query(fee_ids) do
+    from(r in __MODULE__,
+      as: :refund,
+      where: r.carried_fee_id in ^fee_ids,
+      distinct: r.carried_fee_id,
+      order_by: [desc: r.created_at],
+      select:
+        {r.carried_fee_id,
+         %{
+           status: r.status,
+           followed_up:
+             exists(
+               from(f in __MODULE__,
+                 where: f.follows_refund_id == parent_as(:refund).id,
+                 select: 1
+               )
+             )
+         }}
+    )
+  end
 
   @doc "Whether a refund was owed automatically rather than requested by someone."
   @spec automatic?(t()) :: boolean()

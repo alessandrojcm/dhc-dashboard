@@ -68,6 +68,56 @@
       # only Scheduling may insert Oban jobs.
       {"Dhc.TrainingAnnouncements.*", ["Oban.insert", "Oban.insert!", "Oban.insert_all"],
        except: ["Dhc.TrainingAnnouncements.Scheduling"]},
+      # ALE-401: an Intake Email is queued only by a Beginners' Workshop
+      # command (CONTEXT.md "Intake Emails"), never by a staff action itself;
+      # the template editor and the ledger queries stay open to the facade,
+      # the console and the web layer.
+      {["Dhc.*", "DhcWeb.*"],
+       [
+         "Dhc.BeginnersWorkshops.IntakeEmails.deliver",
+         "Dhc.BeginnersWorkshops.IntakeEmails.queue"
+       ],
+       except: [
+         "Dhc.BeginnersWorkshops.Commands",
+         "Dhc.BeginnersWorkshops.Commands.*",
+         "Dhc.BeginnersWorkshops.IntakeEmails"
+       ]},
+      # ADR 0029, second amendment (ALE-403): the Beginners' Workshop
+      # protocol core (lock primitive, transition table, persist/1, transact/1,
+      # keyed Notifications) is private to the Commands namespace. Everything
+      # else writes through Dhc.BeginnersWorkshops.execute/3.
+      {["Dhc.*", "DhcWeb.*"], ["Dhc.BeginnersWorkshops.Commands.Protocol.*"],
+       except: ["Dhc.BeginnersWorkshops.Commands", "Dhc.BeginnersWorkshops.Commands.*"]},
+      # ALE-404: a Settlement (what an Intake's closing or a person's leaving
+      # does to them) runs only inside a Commands transaction, and its refund
+      # rows go through the one Commands.Refunds.insert_refund/4. ALE-405: the
+      # command families and their shared helpers are Commands' internals
+      # too; Commands.execute/3 routes to them after authorizing the actor,
+      # and authorize_assigned/3 is public only for Commands.Attendance.
+      {["Dhc.*", "DhcWeb.*"],
+       [
+         "Dhc.BeginnersWorkshops.Commands.Settlement.*",
+         "Dhc.BeginnersWorkshops.Commands.authorize_assigned",
+         "Dhc.BeginnersWorkshops.Commands.Attendance.*",
+         "Dhc.BeginnersWorkshops.Commands.Batches.*",
+         "Dhc.BeginnersWorkshops.Commands.IntakeCommands.*",
+         "Dhc.BeginnersWorkshops.Commands.Payments.*",
+         "Dhc.BeginnersWorkshops.Commands.People.*",
+         "Dhc.BeginnersWorkshops.Commands.Refunds.*",
+         "Dhc.BeginnersWorkshops.Commands.Schedule.*",
+         "Dhc.BeginnersWorkshops.Commands.Staff.*",
+         "Dhc.BeginnersWorkshops.Commands.CoordinatorAlerts.*",
+         "Dhc.BeginnersWorkshops.Commands.Facts.*",
+         "Dhc.BeginnersWorkshops.Commands.Input.*",
+         "Dhc.BeginnersWorkshops.Commands.IntakeHistory.*",
+         "Dhc.BeginnersWorkshops.Commands.IntakeNotices.*",
+         "Dhc.BeginnersWorkshops.Commands.LockSpecs.*",
+         "Dhc.BeginnersWorkshops.Commands.WorkshopRules.*"
+       ], except: ["Dhc.BeginnersWorkshops.Commands", "Dhc.BeginnersWorkshops.Commands.*"]},
+      # ... and the context opens a transaction only through that core.
+      {["Dhc.BeginnersWorkshops", "Dhc.BeginnersWorkshops.*"],
+       ["Dhc.Repo.transaction", "Dhc.Repo.transact"],
+       except: ["Dhc.BeginnersWorkshops.Commands.Protocol"]},
       # Stripe goes through the generated Dhc.Stripe.Operations.* API only;
       # the raw client escape hatch is reserved for debugging the client
       # boundary itself (docs/agents/anti-patterns.md).

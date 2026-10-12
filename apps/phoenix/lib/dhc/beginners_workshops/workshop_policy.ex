@@ -63,6 +63,32 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
           DateTime.t()
   def starts_at(%{date: date, start_time: time}), do: ClubCalendar.to_utc(date, time)
 
+  @doc """
+  When an Intake's Payment Window ends (`CONTEXT.md`, **Payment Window**):
+  the date its Intake Emails ask the person to pay or confirm by.
+
+  An Intake from a Batch ends with its Batch's `window_ends_at`
+  (`batch_window_end`). A Fast-track (`nil`) ends at the Payment Cutoff when
+  contacted before it, else — a Carried Fee holder placed after the cutoff —
+  at the workshop start.
+  """
+  @spec payment_window_end(
+          BeginnersWorkshop.t()
+          | %{payment_cutoff: DateTime.t(), date: Date.t(), start_time: Time.t()},
+          DateTime.t() | nil,
+          DateTime.t()
+        ) :: DateTime.t()
+  def payment_window_end(workshop, batch_window_end, contacted_at)
+
+  def payment_window_end(_workshop, %DateTime{} = batch_window_end, _contacted_at),
+    do: batch_window_end
+
+  def payment_window_end(%{payment_cutoff: cutoff} = workshop, nil, %DateTime{} = contacted_at) do
+    if DateTime.compare(contacted_at, cutoff) == :lt,
+      do: cutoff,
+      else: starts_at(workshop)
+  end
+
   @doc "Whether `cutoff` is strictly before the start (the Payment Cutoff rule)."
   @spec cutoff_before_start?(DateTime.t(), DateTime.t()) :: boolean()
   def cutoff_before_start?(cutoff, starts_at), do: DateTime.compare(cutoff, starts_at) == :lt

@@ -13,17 +13,15 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeView do
     * `failed_refund` — its latest refund when that failed, has not been
       followed up and the fee is still owed back (the console's Needs
       attention rule);
-    * `available` — what the tab may offer: `refund` (a `held` fee of
-      someone who has not attended, with a payment to refund against),
-      `link_payment` (a live imported fee not yet linked), and `retry`,
-      `manual`, `forfeit` for a failed refund.
+    * `available` — what the tab may offer: `CarriedFeePolicy.available/1`
+      over the facts `CarriedFeePolicy.facts/1` builds from the same rows
+      the boundary locks (ALE-402).
   """
 
   import Ecto.Query
 
-  alias Dhc.BeginnersWorkshops.{CarriedFee, IntakeRefund}
+  alias Dhc.BeginnersWorkshops.{CarriedFee, CarriedFeePolicy, IntakeRefund}
   alias Dhc.Repo
-  alias Dhc.Waitlist
   alias Dhc.Waitlist.WaitlistEntry
 
   @type t :: %{
@@ -46,6 +44,18 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeView do
          %WaitlistEntry{} = entry <- Repo.get(WaitlistEntry, id) || {:error, :person_not_found},
          %CarriedFee{} = fee <- fee(id) || {:error, :no_carried_fee} do
       {:ok, view(fee, entry, now)}
+    end
+  end
+
+  @doc false
+  # ALE-402 parity seam: the `CarriedFeePolicy` facts `show/2` decides by.
+  @spec facts(binary(), DateTime.t()) ::
+          {:ok, CarriedFeePolicy.t()} | {:error, :no_carried_fee | :person_not_found}
+  def facts(waitlist_id, %DateTime{} = now) do
+    with {:ok, id} <- cast(waitlist_id),
+         %WaitlistEntry{} = entry <- Repo.get(WaitlistEntry, id) || {:error, :person_not_found},
+         %CarriedFee{} = fee <- fee(id) || {:error, :no_carried_fee} do
+      {:ok, policy_facts(fee, entry, now)}
     end
   end
 
@@ -74,7 +84,7 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeView do
 
   defp view(fee, entry, now) do
     failed = failed_refund(fee)
-    linked = CarriedFee.refundable_through_stripe?(fee)
+    facts = policy_facts(fee, entry, now)
 
     %{
       id: fee.id,
@@ -84,10 +94,22 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeView do
       currency: fee.currency,
       imported_paid_text: fee.imported_paid_text,
       stripe_payment_intent_id: fee.stripe_payment_intent_id,
-      linked: linked,
+      linked: facts.linked,
       failed_refund: failed && failed_view(failed),
-      available: available(fee, entry, linked, failed, now)
+      available: CarriedFeePolicy.available(facts)
     }
+  end
+
+  # The fee's latest refund (`IntakeRefund.latest_of_fees_query/1`, as the
+  # boundary reads it) and the person's standing.
+  defp policy_facts(fee, entry, now) do
+    refund =
+      case Repo.one(IntakeRefund.latest_of_fees_query([fee.id])) do
+        {_id, refund} -> refund
+        nil -> nil
+      end
+
+    CarriedFeePolicy.facts(fee: fee, refund: refund, entry: entry, now: now)
   end
 
   defp failed_refund(%CarriedFee{status: status} = fee) when status in ["held", "refunded"] do
@@ -122,24 +144,4 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeView do
         :last_error,
         :failed_at
       ])
-
-  defp available(fee, entry, linked, failed, now) do
-    [
-      {:refund, fee.status == "held" and linked and failed == nil and may_refund?(entry, now)},
-      {:link_payment,
-       fee.status in CarriedFee.live_statuses() and fee.origin == "import" and not linked},
-      {:retry, failed != nil},
-      {:manual, failed != nil},
-      {:forfeit, failed != nil and fee.status == "held"}
-    ]
-    |> Enum.filter(&elem(&1, 1))
-    |> Enum.map(&elem(&1, 0))
-  end
-
-  defp may_refund?(%WaitlistEntry{status: "waiting"}, _now), do: true
-
-  defp may_refund?(%WaitlistEntry{status: "removed", removed_at: %DateTime{} = at}, now),
-    do: Waitlist.restorable?(at, now)
-
-  defp may_refund?(_entry, _now), do: false
 end

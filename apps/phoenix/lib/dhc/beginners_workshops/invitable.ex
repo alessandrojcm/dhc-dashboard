@@ -15,6 +15,7 @@ defmodule Dhc.BeginnersWorkshops.Invitable do
   import Ecto.Query
 
   alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Intake, IntakeEmailLog, WorkshopPolicy}
+  alias Dhc.BeginnersWorkshops.IntakeEmails.Occasion
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
@@ -35,6 +36,8 @@ defmodule Dhc.BeginnersWorkshops.Invitable do
   @doc "Everyone Invitable now."
   @spec list() :: [t()]
   def list do
+    follow_up = Occasion.follow_up().name
+
     latest =
       from(i in Intake,
         join: w in BeginnersWorkshop,
@@ -55,7 +58,7 @@ defmodule Dhc.BeginnersWorkshops.Invitable do
       left_join: p in UserProfile,
       on: p.waitlist_id == e.id,
       left_join: f in IntakeEmailLog,
-      on: f.intake_id == i.id and f.occasion == "follow_up",
+      on: f.intake_id == i.id and f.occasion == ^follow_up,
       where: e.status == "attended",
       order_by: [asc: w.date, asc: p.first_name, asc: p.last_name, asc: i.id],
       select: %{

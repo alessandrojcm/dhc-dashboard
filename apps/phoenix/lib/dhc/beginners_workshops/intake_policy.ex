@@ -4,7 +4,9 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
   boundary (`Dhc.BeginnersWorkshops.Commands`, deciding under the lock) and
   the console read model (`WorkshopConsole`, advising without one) — the
   `Dhc.Inventory.LoanPolicy` precedent. Nothing here reads the database or
-  the clock (callers pass the instant to `fee_refundable?/3`).
+  the clock. Both adapters build the facts with `facts/1` (ALE-402); the
+  Carried Fee half of the rule is `CarriedFeePolicy`, which
+  `refund_carried_fee` delegates to.
 
   `check/2` is the one rule per command:
 
@@ -19,6 +21,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
   `check/2` clause here.
   """
 
+  alias Dhc.BeginnersWorkshops.{CarriedFee, CarriedFeePolicy}
+
   @type command ::
           :decline
           | :defer
@@ -29,39 +33,49 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
           | :resend_link
           | :rotate_link
           | :correct_attendance
-  @type decision ::
-          :ok
-          | :already_done
-          | {:error,
-             :already_paid
-             | :fee_not_refundable
-             | :intake_closed
-             | :intake_not_paid
-             | :no_carried_fee}
+  @type decision :: :ok | :already_done | {:error, atom()}
 
   @typedoc """
-  What the rule reads: the Intake's `state` (and `paid_via` once paid), and
-  `carried_fee` — the status of the person's live Carried Fee, or `nil`
-  (ALE-388; `confirm`, `withdraw` and `refund_carried_fee` read it).
-  `refund_carried_fee` also reads `fee_refundable` (`fee_refundable?/3` for
-  the person, absent = refundable) and `carried_fee_refunded` (no live fee,
-  and the person's latest one was refunded). `withdraw` and
-  `correct_attendance` (ALE-393) read the person's Waitlist `standing`
-  (`nil` once anonymised); `correct_attendance` also reads
-  `workshop_status` and `correction`, the state asked for (`nil` when the
-  console asks whether any correction is possible).
+  The facts the rule reads — closed (`@enforce_keys`) and built only by
+  `facts/1`, from the raw rows both adapters have (the boundary's locked
+  rows, the console's roster row):
+
+    * `state` / `paid_via` — the Intake's (`state: nil`: the person has no
+      open Intake, the Waitlist tab's Withdraw);
+    * `standing` — the person's Waitlist status, else (ALE-396) an
+      anonymised attendee's `invitation_outcome` when it is `invited` or
+      `joined`, else `nil`;
+    * `carried_fee` — the person's live Carried Fee as `CarriedFeePolicy`
+      facts, or `nil`; `latest_fee_refunded` — with no live fee, whether
+      their latest one was refunded;
+    * `workshop_status`, and `correction` — the state a
+      `correct_attendance` asks for (`nil` when the console asks whether any
+      correction is possible).
+
+  A boundary command's facts hold only the rows it locks; each `check/2`
+  clause reads only what its command locks.
   """
-  @type facts :: %{
-          required(:state) => String.t(),
-          optional(:paid_via) => String.t() | nil,
-          optional(:carried_fee) => String.t() | nil,
-          optional(:fee_refundable) => boolean(),
-          optional(:carried_fee_refunded) => boolean(),
-          optional(:workshop_status) => String.t(),
-          optional(:standing) => String.t() | nil,
-          optional(:correction) => String.t() | nil,
-          optional(atom()) => term()
+  @type t :: %__MODULE__{
+          state: String.t() | nil,
+          paid_via: String.t() | nil,
+          standing: String.t() | nil,
+          carried_fee: CarriedFeePolicy.t() | nil,
+          latest_fee_refunded: boolean(),
+          workshop_status: String.t() | nil,
+          correction: String.t() | nil
         }
+  @type facts :: t()
+
+  @enforce_keys [
+    :state,
+    :paid_via,
+    :standing,
+    :carried_fee,
+    :latest_fee_refunded,
+    :workshop_status,
+    :correction
+  ]
+  defstruct @enforce_keys
 
   @commands [
     :decline,
@@ -83,6 +97,56 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
   @doc "Every console Intake command, in display order."
   @spec commands() :: [command()]
   def commands, do: @commands
+
+  @doc """
+  The facts, from raw values; every key is required:
+
+    * `intake:` — the Intake (or a row with its `state`, `paid_via` and
+      `invitation_outcome`), or `nil` when the person has no open Intake;
+    * `entry:` — the person's Waitlist entry (or a row with its `status`
+      and `removed_at`), or `nil` once anonymised (or not locked);
+    * `carried_fee:` — the person's live Carried Fee (or a row with what
+      `CarriedFeePolicy.facts/1` reads), or `nil`; `carried_fee_refund:` —
+      that fee's latest refund as `%{status: _, followed_up: _}`, or `nil`;
+    * `latest_fee_refunded:` — with no live fee, whether the person's
+      latest Carried Fee was refunded;
+    * `workshop_status:`, `correction:` and `now:`.
+  """
+  @spec facts(keyword()) :: t()
+  def facts(opts) do
+    intake = Keyword.fetch!(opts, :intake)
+    entry = Keyword.fetch!(opts, :entry)
+    fee = Keyword.fetch!(opts, :carried_fee)
+    refund = Keyword.fetch!(opts, :carried_fee_refund)
+    now = Keyword.fetch!(opts, :now)
+
+    %__MODULE__{
+      state: intake && intake.state,
+      paid_via: intake && intake.paid_via,
+      standing: standing(entry, intake),
+      carried_fee: live_fee(fee, refund, entry, now),
+      latest_fee_refunded: Keyword.fetch!(opts, :latest_fee_refunded),
+      workshop_status: Keyword.fetch!(opts, :workshop_status),
+      correction: Keyword.fetch!(opts, :correction)
+    }
+  end
+
+  defp standing(%{status: status}, _intake), do: status
+
+  # ALE-396: an anonymised attendee keeps what became of them.
+  defp standing(nil, %{invitation_outcome: outcome}) when outcome in ~w(invited joined),
+    do: outcome
+
+  defp standing(nil, _intake), do: nil
+
+  defp live_fee(nil, _refund, _entry, _now), do: nil
+
+  defp live_fee(%{status: status} = fee, refund, entry, now) do
+    unless status in CarriedFee.live_statuses(),
+      do: raise(ArgumentError, "IntakePolicy.facts/1 takes the live Carried Fee, got #{status}")
+
+    CarriedFeePolicy.facts(fee: fee, refund: refund, entry: entry, now: now)
+  end
 
   @doc """
   Whether `command` may run on an Intake in its current `state`:
@@ -109,18 +173,18 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       Carried Fee left to settle (what a withdrawal of a contacted Intake
       leaves). A `declined` Intake of someone still waiting was declined,
       not withdrawn, and like every other state is `:intake_closed`.
-      Whether the refund choice was given
-      (required for a paid Intake and, ALE-389, whenever the person holds a
-      Carried Fee) is the command's own input, not the Intake's state, so
-      the boundary checks it;
+      With no open Intake (`state: nil`, the Waitlist tab, ALE-402) the
+      person is removed; that is already done when they are `removed` and
+      hold no live Carried Fee. Whether the refund choice was given
+      (`refund_choice_required?/1`) is the command's own input, not the
+      Intake's state, so the boundary checks it;
     * `refund_carried_fee` (ALE-389) — the person's `held` Carried Fee is
-      refunded; the Intake itself does not move (a `contacted` one stays
-      contacted and asks for payment). A `paid` Intake is `:already_paid`
-      (cancel with refund or withdraw instead); a held fee of someone who
-      may no longer have it refunded (`fee_refundable?/3`: not after
-      attending, nor once removed past retention) is `:fee_not_refundable`;
-      with no live fee it is already there when the person's latest fee
-      was refunded, and `:no_carried_fee` otherwise;
+      refunded (`CarriedFeePolicy.check(:refund, _)`); the Intake itself
+      does not move (a `contacted` one stays contacted and asks for
+      payment). A `paid` Intake is `:already_paid` (cancel with refund or
+      withdraw instead); a live fee `applied` elsewhere is
+      `:no_carried_fee`; with no live fee it is already there when the
+      person's latest fee was refunded, and `:no_carried_fee` otherwise;
     * `resend_link` / `rotate_link` — open Intakes only (`:intake_closed`).
       They have no target state, so each run sends again;
     * `correct_attendance` (ALE-393) — after Attendance Finalisation only
@@ -131,82 +195,84 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       never rests on a changed record); any other move is
       `:not_correctable`. Without a `correction` it answers whether any
       correction is possible (the console's question).
+
+  A plain map is read as `legacy_facts/1` reads it.
   """
-  @spec check(command(), facts()) :: decision()
-  def check(:decline, %{state: "contacted"}), do: :ok
-  def check(:decline, %{state: "declined"}), do: :already_done
-  def check(:decline, %{state: "paid"}), do: {:error, :already_paid}
-  def check(:decline, %{state: _closed}), do: {:error, :intake_closed}
+  @spec check(command(), t() | map()) :: decision()
+  def check(command, %__MODULE__{} = facts), do: decide(command, facts)
+  def check(command, %{state: _} = partial), do: decide(command, legacy_facts(partial))
 
-  def check(:defer, %{state: "paid"}), do: :ok
-  def check(:defer, %{state: "deferred"}), do: :already_done
-  def check(:defer, %{state: "contacted"}), do: {:error, :intake_not_paid}
-  def check(:defer, %{state: _closed}), do: {:error, :intake_closed}
+  defp decide(:decline, %{state: "contacted"}), do: :ok
+  defp decide(:decline, %{state: "declined"}), do: :already_done
+  defp decide(:decline, %{state: "paid"}), do: {:error, :already_paid}
+  defp decide(:decline, %{state: _closed}), do: {:error, :intake_closed}
 
-  def check(:confirm, %{state: "contacted"} = facts),
-    do: if(Map.get(facts, :carried_fee) == "held", do: :ok, else: {:error, :no_carried_fee})
+  defp decide(:defer, %{state: "paid"}), do: :ok
+  defp decide(:defer, %{state: "deferred"}), do: :already_done
+  defp decide(:defer, %{state: "contacted"}), do: {:error, :intake_not_paid}
+  defp decide(:defer, %{state: _closed}), do: {:error, :intake_closed}
 
-  def check(:confirm, %{state: "paid"} = facts),
-    do:
-      if(Map.get(facts, :paid_via) == "carried_fee",
-        do: :already_done,
-        else: {:error, :already_paid}
-      )
+  defp decide(:confirm, %{state: "contacted"} = facts),
+    do: if(live_status(facts) == "held", do: :ok, else: {:error, :no_carried_fee})
 
-  def check(:confirm, %{state: _closed}), do: {:error, :intake_closed}
+  defp decide(:confirm, %{state: "paid", paid_via: "carried_fee"}), do: :already_done
+  defp decide(:confirm, %{state: "paid"}), do: {:error, :already_paid}
+  defp decide(:confirm, %{state: _closed}), do: {:error, :intake_closed}
 
-  def check(:cancel_with_refund, %{state: "paid"}), do: :ok
-  def check(:cancel_with_refund, %{state: "cancelled_refunded"}), do: :already_done
-  def check(:cancel_with_refund, %{state: "contacted"}), do: {:error, :intake_not_paid}
-  def check(:cancel_with_refund, %{state: _closed}), do: {:error, :intake_closed}
+  defp decide(:cancel_with_refund, %{state: "paid"}), do: :ok
+  defp decide(:cancel_with_refund, %{state: "cancelled_refunded"}), do: :already_done
+  defp decide(:cancel_with_refund, %{state: "contacted"}), do: {:error, :intake_not_paid}
+  defp decide(:cancel_with_refund, %{state: _closed}), do: {:error, :intake_closed}
 
-  def check(:withdraw, %{state: "contacted"}), do: :ok
-  def check(:withdraw, %{state: "paid"}), do: :ok
-  def check(:withdraw, %{state: "withdrawn"}), do: :already_done
+  defp decide(:withdraw, %{state: nil, standing: "removed", carried_fee: nil}), do: :already_done
+  defp decide(:withdraw, %{state: nil}), do: :ok
+  defp decide(:withdraw, %{state: "contacted"}), do: :ok
+  defp decide(:withdraw, %{state: "paid"}), do: :ok
+  defp decide(:withdraw, %{state: "withdrawn"}), do: :already_done
 
-  def check(:withdraw, %{state: "declined"} = facts) do
-    if Map.get(facts, :standing) == "removed" and Map.get(facts, :carried_fee) != "held",
+  defp decide(:withdraw, %{state: "declined"} = facts) do
+    if facts.standing == "removed" and live_status(facts) != "held",
       do: :already_done,
       else: {:error, :intake_closed}
   end
 
-  def check(:withdraw, %{state: _closed}), do: {:error, :intake_closed}
+  defp decide(:withdraw, %{state: _closed}), do: {:error, :intake_closed}
 
-  def check(:refund_carried_fee, %{state: "paid"}), do: {:error, :already_paid}
+  defp decide(:refund_carried_fee, %{state: "paid"}), do: {:error, :already_paid}
 
-  def check(:refund_carried_fee, facts) do
-    cond do
-      Map.get(facts, :carried_fee) == "held" ->
-        if Map.get(facts, :fee_refundable, true), do: :ok, else: {:error, :fee_not_refundable}
+  defp decide(:refund_carried_fee, %{carried_fee: nil, latest_fee_refunded: true}),
+    do: :already_done
 
-      Map.get(facts, :carried_fee) == nil and Map.get(facts, :carried_fee_refunded, false) ->
-        :already_done
+  defp decide(:refund_carried_fee, %{carried_fee: nil}), do: {:error, :no_carried_fee}
 
-      true ->
-        {:error, :no_carried_fee}
-    end
-  end
+  defp decide(:refund_carried_fee, %{carried_fee: %CarriedFeePolicy{status: "applied"}}),
+    do: {:error, :no_carried_fee}
 
-  def check(command, %{state: state}) when command in [:resend_link, :rotate_link],
+  defp decide(:refund_carried_fee, %{carried_fee: fee}), do: CarriedFeePolicy.check(:refund, fee)
+
+  defp decide(command, %{state: state}) when command in [:resend_link, :rotate_link],
     do: if(state in @open_states, do: :ok, else: {:error, :intake_closed})
 
-  def check(:correct_attendance, facts) do
-    case Map.get(facts, :workshop_status) do
-      "finalised" -> check_correction(facts, Map.get(facts, :correction))
+  defp decide(:correct_attendance, facts) do
+    case facts.workshop_status do
+      "finalised" -> check_correction(facts, facts.correction)
       "cancelled" -> {:error, :already_cancelled}
       _scheduled -> {:error, :before_finalisation}
     end
   end
 
+  defp live_status(%{carried_fee: nil}), do: nil
+  defp live_status(%{carried_fee: %CarriedFeePolicy{status: status}}), do: status
+
   @doc """
   ALE-393: the states `correct_attendance` would move this Intake to now, in
   display order — each one `check/2` allows.
   """
-  @spec attendance_corrections(facts()) :: [String.t()]
-  def attendance_corrections(facts) do
+  @spec attendance_corrections(t()) :: [String.t()]
+  def attendance_corrections(%__MODULE__{} = facts) do
     facts.state
     |> then(&Map.get(@corrections, &1, []))
-    |> Enum.filter(&(check(:correct_attendance, Map.put(facts, :correction, &1)) == :ok))
+    |> Enum.filter(&(check(:correct_attendance, %{facts | correction: &1}) == :ok))
   end
 
   @doc "The states an attendance correction may name."
@@ -221,7 +287,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
     targets = Map.get(@corrections, facts.state, [])
 
     cond do
-      Map.get(facts, :standing) in ~w(invited joined) -> {:error, :already_invited}
+      facts.standing in ~w(invited joined) -> {:error, :already_invited}
       correction == nil and targets != [] -> :ok
       correction in targets -> :ok
       true -> {:error, :not_correctable}
@@ -229,38 +295,76 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
   end
 
   @doc """
-  ALE-387/389: whether `withdraw` needs the refund-or-forfeit choice for this
-  Intake (`:refund_choice_required` without it) — whenever there is money to
-  settle: a `paid` Intake (its payment or the Carried Fee that paid it), or a
-  `contacted` one whose person holds a Carried Fee. The boundary asks it
-  under the lock and the console row says so (`refund_choice`), so the
-  Withdraw dialog asks exactly when Phoenix requires it.
+  ALE-387/389: whether `withdraw` needs the refund-or-forfeit choice
+  (`:refund_choice_required` without it) — whenever there is money to
+  settle: a `paid` Intake (its payment or the Carried Fee that paid it), or
+  a `contacted` Intake, or no open Intake (the Waitlist tab), whose person
+  holds a live Carried Fee. The boundary asks it under the lock and the
+  console row says so (`refund_choice`), so the Withdraw dialog asks
+  exactly when Phoenix requires it.
   """
-  @spec refund_choice_required?(facts()) :: boolean()
-  def refund_choice_required?(%{state: "paid"}), do: true
+  @spec refund_choice_required?(t()) :: boolean()
+  def refund_choice_required?(%__MODULE__{state: "paid"}), do: true
 
-  def refund_choice_required?(%{state: "contacted"} = facts),
-    do: Map.get(facts, :carried_fee) != nil
+  def refund_choice_required?(%__MODULE__{state: state, carried_fee: fee})
+      when state in [nil, "contacted"],
+      do: fee != nil
 
-  def refund_choice_required?(_facts), do: false
+  def refund_choice_required?(%__MODULE__{}), do: false
 
   @doc """
-  ALE-389: whether a person may still have their Carried Fee refunded at
-  `now` — while `waiting` (with or without a contacted Intake) or `removed`
-  within the retention window (`Dhc.Waitlist.restorable?/2`); never once
-  they attended (or later), nor once anonymised. The one rule
-  `refund_carried_fee` applies on the console, the Waitlist tab and the
-  console's `availableCommands`.
+  The commands the console offers for an Intake: those `check/2` allows now.
+  A plain map is read as `legacy_facts/1` reads it.
   """
-  @spec fee_refundable?(String.t() | nil, DateTime.t() | nil, DateTime.t()) :: boolean()
-  def fee_refundable?("waiting", _removed_at, _now), do: true
+  @spec available_commands(t() | map()) :: [command()]
+  def available_commands(%__MODULE__{} = facts),
+    do: Enum.filter(@commands, &(decide(&1, facts) == :ok))
 
-  def fee_refundable?("removed", %DateTime{} = removed_at, %DateTime{} = now),
-    do: Dhc.Waitlist.restorable?(removed_at, now)
+  def available_commands(%{state: _} = partial), do: available_commands(legacy_facts(partial))
 
-  def fee_refundable?(_standing, _removed_at, _now), do: false
+  # The pre-ALE-402 partial-map shape, kept so the direct table tests of
+  # that era still read the same rule: `state` is required; `paid_via`,
+  # `standing`, `workshop_status` and `correction` absent are `nil`;
+  # `carried_fee` is the live fee's status (absent: none), refundable unless
+  # `fee_refundable: false` and taken to be linked; `carried_fee_refunded`
+  # absent is false. No adapter uses it: they build `facts/1`.
+  @legacy %{
+    paid_via: nil,
+    standing: nil,
+    workshop_status: nil,
+    correction: nil,
+    carried_fee: nil,
+    fee_refundable: true,
+    carried_fee_refunded: false
+  }
 
-  @doc "The commands the console offers for an Intake: those `check/2` allows now."
-  @spec available_commands(facts()) :: [command()]
-  def available_commands(intake), do: Enum.filter(@commands, &(check(&1, intake) == :ok))
+  @doc false
+  @spec legacy_facts(map()) :: t()
+  def legacy_facts(%{state: state} = partial) do
+    given = Map.merge(@legacy, partial)
+
+    %__MODULE__{
+      state: state,
+      paid_via: given.paid_via,
+      standing: given.standing,
+      carried_fee: legacy_fee(given.carried_fee, given.fee_refundable),
+      latest_fee_refunded: given.carried_fee_refunded,
+      workshop_status: given.workshop_status,
+      correction: given.correction
+    }
+  end
+
+  defp legacy_fee(nil, _refundable), do: nil
+
+  defp legacy_fee(status, refundable) do
+    %CarriedFeePolicy{
+      status: status,
+      origin: nil,
+      linked: true,
+      refund: nil,
+      standing: if(refundable, do: "waiting"),
+      removed_at: nil,
+      now: nil
+    }
+  end
 end

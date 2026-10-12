@@ -65,3 +65,23 @@ own boundary in the ADR 0027 shape, share no code with `Dhc.Workshops`, and
 there is a single lock order — it is just the same boundary as every other
 Beginners' Workshop write, so a payment and a staff command on the same Intake
 can never take locks in different orders.
+
+## Second amendment (2026-10-12, ALE-403): the protocol core is private by Reach, not by `defp`
+
+There is still one lock primitive, one transition table and one `persist/1`
+(with `transact/1` and the keyed-Notification plumbing beside them), and every
+write still arrives through `execute/3`. They now live in
+`Dhc.BeginnersWorkshops.Commands.Protocol` as public `@doc false` functions,
+so internal modules of the boundary (Settlement, the command-family modules)
+can share them. Their privacy is enforced by Reach instead of `defp`:
+
+- only `Dhc.BeginnersWorkshops.Commands` and `Dhc.BeginnersWorkshops.Commands.*`
+  may call `Dhc.BeginnersWorkshops.Commands.Protocol.*`;
+- nothing in `Dhc.BeginnersWorkshops` or `Dhc.BeginnersWorkshops.*` except
+  `Commands.Protocol` may call `Dhc.Repo.transaction` or `Dhc.Repo.transact`.
+
+The reason: `defp` scope was the only thing holding the boundary's 5,600
+lines in one file. Moving the protocol out changes no lock order, transition,
+constraint translation or behaviour. `Commands` keeps `transitions/0`,
+`transition_allowed?/3`, `lock_levels/0` and `declared_constraints/0` as
+delegating public functions for tests.
