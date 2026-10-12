@@ -1,35 +1,42 @@
 <script lang="ts">
-import { onDestroy } from "svelte";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
-import {
-	createMutation,
-	createQuery,
-	keepPreviousData,
-	useQueryClient,
-} from "@tanstack/svelte-query";
-import {
-	type InventoryOperatorItem,
-	type InventoryOperatorItemValues,
-	type InventoryPropertyDefinition,
-	inventoryCategoriesIndexOptions,
-	inventoryContainersIndexOptions,
-	inventoryItemsArchiveMutation,
-	inventoryItemsDeleteMutation,
-	inventoryItemsListMaintenanceOptions,
-	inventoryItemsListOptions,
-	inventoryItemsRestoreMutation,
-	inventoryItemsShowOptions,
-	inventoryStructureListDefinitionsOptions,
+import type {
+	InventoryOperatorItemValues,
+	InventoryPropertyDefinition,
 } from "@dhc/api-client";
 import {
+	archiveItem,
 	changeItemCategory,
 	createItem,
+	deleteItem,
 	endItemMaintenance,
 	moveItem,
+	restoreItem,
 	startItemMaintenance,
 	updateItem,
 } from "./data.remote";
+import {
+	ARCHIVE_FILTERS,
+	AVAILABILITY_FILTERS,
+	availabilityLabel,
+	createItemWorkbench,
+	type DraftTarget,
+} from "./item-workbench.svelte.js";
+import {
+	BOOLEAN_CHOICES,
+	draftInput,
+	formatPropertyValues,
+} from "#lib/inventory/property-values.js";
+import {
+	archiveItemSchema,
+	changeItemCategorySchema,
+	createItemSchema,
+	deleteItemSchema,
+	endItemMaintenanceSchema,
+	moveItemSchema,
+	restoreItemSchema,
+	startItemMaintenanceSchema,
+	updateItemSchema,
+} from "#lib/schemas/inventoryItem.js";
 import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
 import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
@@ -58,311 +65,10 @@ import {
 	Tags,
 	Trash2,
 } from "@lucide/svelte";
-import { toast } from "svelte-sonner";
 
-const PAGE_SIZE = 25;
-const LIST_PATH = "/dashboard/inventory/items";
-const selectedItemId = $derived(page.params.itemId);
-const creatingItem = $derived(selectedItemId === "new");
+const workbench = createItemWorkbench();
 
-let archived = $state<"exclude" | "include" | "only">("exclude");
-let availability = $state<"all" | "available" | "on_loan" | "maintenance">(
-	"all",
-);
-let search = $state("");
-let debouncedQuery = $state("");
-let searchTimeout: ReturnType<typeof setTimeout> | undefined;
-let cursor = $state<string | undefined>(undefined);
-let lookedUpSlug = $state<string | undefined>(undefined);
-const queryClient = useQueryClient();
-let categoryId = $state("");
-let containerId = $state("");
-let notes = $state("");
-let values = $state<InventoryOperatorItemValues>({});
-let selected = $state<InventoryOperatorItem | undefined>();
-let editNotes = $state("");
-let editValues = $state<InventoryOperatorItemValues>({});
-let moveContainerId = $state("");
-let newCategoryId = $state("");
-let newCategoryValues = $state<InventoryOperatorItemValues>({});
-let maintenanceReason = $state("");
-let maintenanceEndNote = $state("");
-let archiveReason = $state("");
-type ManagementTab = "details" | "placement" | "maintenance";
-let managementTab = $state<ManagementTab>("details");
-let deleteConfirmOpen = $state(false);
 let mobileFiltersOpen = $state(false);
-let createSucceeded = $state(false);
-let detailsSucceeded = $state(false);
-let moveSucceeded = $state(false);
-let categorySucceeded = $state(false);
-let maintenanceSucceeded = $state(false);
-let successTimer: ReturnType<typeof setTimeout> | undefined;
-
-function flashSuccess(
-	setter: (value: boolean) => void,
-	after?: () => void,
-	delay = 650,
-) {
-	setter(true);
-	clearTimeout(successTimer);
-	successTimer = setTimeout(() => {
-		setter(false);
-		after?.();
-	}, delay);
-}
-
-const availabilityOptions = [
-	{ value: "all", label: "All" },
-	{ value: "available", label: "Available" },
-	{ value: "on_loan", label: "On loan" },
-	{ value: "maintenance", label: "Maintenance" },
-];
-const archiveOptions = [
-	{ value: "exclude", label: "Active" },
-	{ value: "include", label: "All" },
-	{ value: "only", label: "Archived" },
-];
-
-const itemsQuery = createQuery(() => ({
-	...inventoryItemsListOptions({
-		query: {
-			archived,
-			availability: availability === "all" ? undefined : availability,
-			limit: PAGE_SIZE,
-			q: debouncedQuery || undefined,
-			cursor,
-		},
-	}),
-	placeholderData: keepPreviousData,
-	select: (response) => response.data,
-}));
-const routedItemQuery = createQuery(() => ({
-	...inventoryItemsShowOptions({ path: { slugOrId: selectedItemId ?? "" } }),
-	enabled: Boolean(selectedItemId && selectedItemId !== "new"),
-	select: (response) => response.data,
-}));
-const categoriesQuery = createQuery(() => ({
-	...inventoryCategoriesIndexOptions(),
-	select: (response) => response.data.categories,
-}));
-const containersQuery = createQuery(() => ({
-	...inventoryContainersIndexOptions(),
-	select: (response) => response.data.containers,
-}));
-const definitionsQuery = createQuery(() => ({
-	...inventoryStructureListDefinitionsOptions({ path: { categoryId } }),
-	enabled: Boolean(categoryId),
-	select: (response) => response.data.definitions,
-}));
-const editDefinitionsQuery = createQuery(() => ({
-	...inventoryStructureListDefinitionsOptions({
-		path: { categoryId: selected?.categoryId ?? "" },
-	}),
-	enabled: Boolean(selected),
-	select: (response) => response.data.definitions,
-}));
-const newDefinitionsQuery = createQuery(() => ({
-	...inventoryStructureListDefinitionsOptions({
-		path: { categoryId: newCategoryId },
-	}),
-	enabled: Boolean(newCategoryId),
-	select: (response) => response.data.definitions,
-}));
-const maintenanceQuery = createQuery(() => ({
-	...inventoryItemsListMaintenanceOptions({
-		path: { slugOrId: selected?.slug ?? "" },
-	}),
-	enabled: Boolean(selected),
-	select: (response) => response.data.periods,
-}));
-const categoryOptions = $derived(
-	(categoriesQuery.data ?? []).map((category) => ({
-		value: category.id,
-		label: category.name,
-	})),
-);
-const containerOptions = $derived(
-	(containersQuery.data ?? [])
-		.filter((container) => !container.archivedAt)
-		.map((container) => ({ value: container.id, label: container.name })),
-);
-const visibleItems = $derived(itemsQuery.data?.items ?? []);
-const activeFilterCount = $derived(
-	Number(availability !== "all") + Number(archived !== "exclude"),
-);
-const detailsDirty = $derived(
-	Boolean(
-		selected &&
-		(editNotes.trim() !== (selected.notes ?? "") ||
-			JSON.stringify(editValues) !== JSON.stringify(itemValues(selected))),
-	),
-);
-const placementDirty = $derived(
-	Boolean(selected && moveContainerId !== (selected.containerId ?? "")),
-);
-const categoryDirty = $derived(
-	Boolean(
-		selected &&
-		(newCategoryId !== selected.categoryId ||
-			JSON.stringify(newCategoryValues) !==
-				JSON.stringify(itemValues(selected))),
-	),
-);
-
-function refresh() {
-	void itemsQuery.refetch();
-	void maintenanceQuery.refetch();
-}
-function updateSearch(value: string) {
-	search = value;
-	clearTimeout(searchTimeout);
-	searchTimeout = setTimeout(() => {
-		debouncedQuery = value.trim();
-		cursor = undefined;
-	}, 300);
-}
-function openMobileFilters() {
-	mobileFiltersOpen = true;
-}
-function clearMobileFilters() {
-	availability = "all";
-	archived = "exclude";
-	cursor = undefined;
-}
-async function lookupSlug(slug: string) {
-	const trimmed = slug.trim();
-	if (!trimmed) return;
-	try {
-		const response = await queryClient.fetchQuery(
-			inventoryItemsShowOptions({ path: { slugOrId: trimmed } }),
-		);
-		await goto(`${LIST_PATH}/${response.data.slug}`);
-	} catch (cause) {
-		toast.error(apiErrorMessage(cause, "No item matches that code"));
-	}
-}
-// Deep link for the loan queue's "Open item" maintenance links:
-// `?slug=` resolves through the show endpoint (which is archive-agnostic)
-// and lands directly on the management route. Day-to-day code search goes
-// through the main search box — backend `q` full-text already covers slugs.
-$effect(() => {
-	const slug = page.url.searchParams.get("slug")?.trim();
-	if (!slug || slug === lookedUpSlug) return;
-	lookedUpSlug = slug;
-	void lookupSlug(slug);
-});
-$effect(() => {
-	if (!selectedItemId || creatingItem) {
-		selected = undefined;
-		return;
-	}
-	if (routedItemQuery.data && routedItemQuery.data.slug !== selected?.slug) {
-		choose(routedItemQuery.data);
-	}
-});
-onDestroy(() => clearTimeout(searchTimeout));
-function itemValues(item: InventoryOperatorItem): InventoryOperatorItemValues {
-	return Object.fromEntries(
-		item.values.map((value) => [
-			value.definitionId,
-			value.text ?? value.decimal ?? value.boolean ?? value.optionId,
-		]),
-	);
-}
-function choose(
-	item: InventoryOperatorItem,
-	tab: ManagementTab = "details",
-	resetTransientFields = true,
-) {
-	selected = item;
-	managementTab = tab;
-	editNotes = item.notes ?? "";
-	editValues = itemValues(item);
-	moveContainerId = item.containerId ?? "";
-	newCategoryId = item.categoryId;
-	newCategoryValues = itemValues(item);
-	if (resetTransientFields) {
-		maintenanceReason = "";
-		maintenanceEndNote = "";
-		archiveReason = "";
-	}
-	deleteConfirmOpen = false;
-}
-function resetCreate() {
-	categoryId = "";
-	containerId = "";
-	notes = "";
-	values = {};
-}
-function commandOptions(success: string, fallback: string, after?: () => void) {
-	return {
-		onSuccess: (response: { data: InventoryOperatorItem }) => {
-			toast.success(success);
-			if (selected) choose(response.data, managementTab, false);
-			after?.();
-			refresh();
-		},
-		onError: apiErrorHandler(fallback),
-	};
-}
-function apiErrorHandler(fallback: string) {
-	return (cause: unknown) => toast.error(apiErrorMessage(cause, fallback));
-}
-const archiveItem = createMutation(() => ({
-	...inventoryItemsArchiveMutation(),
-	...commandOptions("Item archived", "Could not archive item"),
-}));
-const restoreItem = createMutation(() => ({
-	...inventoryItemsRestoreMutation(),
-	...commandOptions("Item restored", "Could not restore item"),
-}));
-const deleteItem = createMutation(() => ({
-	...inventoryItemsDeleteMutation(),
-	onSuccess: () => {
-		// The list navigation is the feedback; no toast to linger over it.
-		deleteConfirmOpen = false;
-		selected = undefined;
-		refresh();
-		void goto(LIST_PATH);
-	},
-	onError: (error) =>
-		toast.error(apiErrorMessage(error, "Items with history must be archived")),
-}));
-
-function handleCreateItem(result: typeof createItem.result) {
-	if (!result) return;
-	// Errors render inline in the form; success flashes the submit button
-	// green and then navigates — no toast to cover the next submit.
-	if (!result.ok) return;
-	const slug = result.data.slug;
-	flashSuccess(
-		(value) => (createSucceeded = value),
-		() => {
-			resetCreate();
-			refresh();
-			void goto(`${LIST_PATH}/${slug}`);
-		},
-	);
-}
-
-function handleItemCommand(
-	result:
-		| typeof updateItem.result
-		| typeof moveItem.result
-		| typeof changeItemCategory.result
-		| typeof startItemMaintenance.result
-		| typeof endItemMaintenance.result,
-	setter: (value: boolean) => void,
-) {
-	if (!result) return;
-	// Errors render inline in each form; success flashes that form's submit
-	// button green while the detail refreshes underneath.
-	if (!result.ok) return;
-	choose(result.data, managementTab, false);
-	refresh();
-	flashSuccess(setter);
-}
 
 type FormIssue = NonNullable<
 	ReturnType<typeof createItem.fields.allIssues>
@@ -373,32 +79,23 @@ function formIssues(issues: FormIssue[] | undefined) {
 	return (issues ?? []).filter((issue) => issue.path[0] !== "values");
 }
 
-function setValue(
-	target: InventoryOperatorItemValues,
-	id: string,
-	value: string | boolean,
-) {
-	target[id] = value === "" ? null : value;
-}
-function displayValue(item: InventoryOperatorItem) {
-	return item.values
-		.map(
-			(value) =>
-				`${value.definitionLabel}: ${value.optionLabel ?? value.text ?? value.decimal ?? String(value.boolean)}`,
-		)
-		.join(" · ");
+function booleanLabel(input: string) {
+	return (
+		BOOLEAN_CHOICES.find((choice) => choice.value === input)?.label ?? "Not set"
+	);
 }
 </script>
 
 {#snippet fields(
 	definitions: InventoryPropertyDefinition[],
-	target: InventoryOperatorItemValues,
-	prefix: string,
+	draft: InventoryOperatorItemValues,
+	target: DraftTarget,
 	valueIssues: FormIssue[] | undefined,
 )}
 	{#each definitions.filter((definition) => !definition.retiredAt) as definition (definition.id)}
+		{@const input = draftInput(draft, definition.id)}
 		<div>
-			<Label for={`${prefix}-${definition.id}`} class="mb-2.5">
+			<Label for={`${target}-${definition.id}`} class="mb-2.5">
 				{definition.label}{#if definition.required}<span
 						class="ml-1 text-xs font-normal text-muted-foreground"
 						>(required)</span
@@ -408,34 +105,23 @@ function displayValue(item: InventoryOperatorItem) {
 				<Select.Root
 					type="single"
 					bind:value={
-						() =>
-							target[definition.id] === true
-								? "true"
-								: target[definition.id] === false
-									? "false"
-									: "",
-						(value) =>
-							setValue(
-								target,
-								definition.id,
-								value === "" ? "" : value === "true",
-							)
+						() => input,
+						(value) => workbench.setValue(target, definition, value)
 					}
 					required={definition.required}
 				>
 					<Select.Trigger
-						id={`${prefix}-${definition.id}`}
+						id={`${target}-${definition.id}`}
 						class="w-full data-[size=default]:h-11"
 					>
-						{target[definition.id] === true
-							? "Yes"
-							: target[definition.id] === false
-								? "No"
-								: "Not set"}
+						{booleanLabel(input)}
 					</Select.Trigger>
 					<Select.Content portalProps={{ disabled: true }}>
-						<Select.Item value="true" label="Yes">Yes</Select.Item>
-						<Select.Item value="false" label="No">No</Select.Item>
+						{#each BOOLEAN_CHOICES as choice (choice.value)}
+							<Select.Item value={choice.value} label={choice.label}>
+								{choice.label}
+							</Select.Item>
+						{/each}
 					</Select.Content>
 				</Select.Root>
 			{:else if definition.valueType === "single_select"}
@@ -445,18 +131,17 @@ function displayValue(item: InventoryOperatorItem) {
 				<Select.Root
 					type="single"
 					bind:value={
-						() => String(target[definition.id] ?? ""),
-						(value) => setValue(target, definition.id, value)
+						() => input,
+						(value) => workbench.setValue(target, definition, value)
 					}
 					required={definition.required}
 				>
 					<Select.Trigger
-						id={`${prefix}-${definition.id}`}
+						id={`${target}-${definition.id}`}
 						class="w-full data-[size=default]:h-11"
 					>
-						{activeOptions.find(
-							(option) => option.id === String(target[definition.id] ?? ""),
-						)?.label ?? "Choose"}
+						{activeOptions.find((option) => option.id === input)?.label ??
+							"Choose"}
 					</Select.Trigger>
 					<Select.Content portalProps={{ disabled: true }}>
 						{#each activeOptions as option (option.id)}
@@ -468,12 +153,12 @@ function displayValue(item: InventoryOperatorItem) {
 				</Select.Root>
 			{:else}
 				<Input
-					id={`${prefix}-${definition.id}`}
+					id={`${target}-${definition.id}`}
 					type={definition.valueType === "decimal" ? "number" : "text"}
 					step={definition.valueType === "decimal" ? "any" : undefined}
-					value={String(target[definition.id] ?? "")}
+					value={input}
 					oninput={(event) =>
-						setValue(target, definition.id, event.currentTarget.value)}
+						workbench.setValue(target, definition, event.currentTarget.value)}
 					required={definition.required}
 				/>
 			{/if}
@@ -484,24 +169,24 @@ function displayValue(item: InventoryOperatorItem) {
 
 <svelte:head>
 	<title
-		>{creatingItem
+		>{workbench.creating
 			? "Add inventory item"
-			: selected?.label
-				? `${selected.label} | Inventory items`
+			: workbench.selected?.label
+				? `${workbench.selected.label} | Inventory items`
 				: "Inventory items"} | Dublin HEMA Club</title
 	>
 </svelte:head>
 
 {#snippet createAction()}
-	<Button href={`${LIST_PATH}/new`}>
+	<Button href={workbench.newItemHref}>
 		<PackagePlus aria-hidden="true" />New item
 	</Button>
 {/snippet}
 
 <div
-	class="inventory-page {selectedItemId && !creatingItem
+	class="inventory-page {workbench.routed && !workbench.creating
 		? 'space-y-4 xl:py-4'
-		: 'xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:space-y-4 xl:overflow-hidden xl:py-4'} {selectedItemId
+		: 'xl:flex xl:h-[calc(100svh-2.8125rem)] xl:flex-col xl:space-y-4 xl:overflow-hidden xl:py-4'} {workbench.routed
 		? 'max-lg:max-w-none max-lg:space-y-0 max-lg:px-0 max-lg:py-0'
 		: ''}"
 >
@@ -509,53 +194,58 @@ function displayValue(item: InventoryOperatorItem) {
 		eyebrow="Quartermaster"
 		title="Items"
 		icon={PackageSearch}
-		actions={selectedItemId ? undefined : createAction}
-		class="flex-row items-end justify-between xl:pb-3 {selectedItemId
+		actions={workbench.routed ? undefined : createAction}
+		class="flex-row items-end justify-between xl:pb-3 {workbench.routed
 			? 'max-lg:hidden'
 			: ''}"
 	/>
-	{#if itemsQuery.isError}<Alert variant="destructive"
+	{#if workbench.list.isError}<Alert variant="destructive"
 			><AlertDescription class="flex items-center justify-between"
-				><span>{apiErrorMessage(itemsQuery.error, "Could not load items")}</span
+				><span
+					>{apiErrorMessage(workbench.list.error, "Could not load items")}</span
 				><Button
 					variant="outline"
 					size="sm"
-					onclick={() => itemsQuery.refetch()}><RefreshCw />Try again</Button
+					onclick={() => workbench.list.refetch()}
+					><RefreshCw />Try again</Button
 				></AlertDescription
 			></Alert
 		>{/if}
 	<div class="min-h-0 xl:flex-1">
-		{#if creatingItem}
+		{#if workbench.creating}
 			<section
 				class="mx-auto flex h-full min-h-0 max-w-4xl flex-col overflow-hidden rounded-2xl border bg-background shadow-sm max-lg:min-h-[calc(100svh-2.8125rem)] max-lg:rounded-none max-lg:border-x-0 max-lg:shadow-none max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-right-4 max-lg:duration-200 max-lg:motion-reduce:animate-none"
 			>
 				<div class="shrink-0 border-b px-3 py-2 sm:px-5">
-					<Button href={LIST_PATH} variant="ghost" class="min-h-11 px-2">
+					<Button
+						href={workbench.listHref}
+						variant="ghost"
+						class="min-h-11 px-2"
+					>
 						<ArrowLeft aria-hidden="true" />All items
 					</Button>
 				</div>
 				<form
-					{...createItem.enhance(async (form) => {
-						if (await form.submit()) handleCreateItem(form.result);
-					})}
+					{...createItem
+						.preflight(createItemSchema)
+						.enhance(workbench.enhance.create)}
 					aria-busy={createItem.pending > 0}
 					class="flex min-h-0 flex-1 flex-col"
 				>
 					<input
-						type="hidden"
-						name={createItem.fields.categoryId.as("hidden", categoryId).name}
-						value={categoryId}
+						{...createItem.fields.categoryId.as(
+							"hidden",
+							workbench.create.categoryId,
+						)}
 					/>
 					<input
-						type="hidden"
-						name={createItem.fields.containerId.as("hidden", containerId).name}
-						value={containerId}
+						{...createItem.fields.containerId.as(
+							"hidden",
+							workbench.create.containerId,
+						)}
 					/>
 					<input
-						type="hidden"
-						name={createItem.fields.values.as("hidden", JSON.stringify(values))
-							.name}
-						value={JSON.stringify(values)}
+						{...createItem.fields.values.as("hidden", workbench.encoded.create)}
 					/>
 					{#each formIssues(createItem.fields.allIssues()) as issue, index (`${issue.message}-${index}`)}<p
 							role="alert"
@@ -626,21 +316,24 @@ function displayValue(item: InventoryOperatorItem) {
 									>
 									<Select.Root
 										type="single"
-										items={categoryOptions}
-										bind:value={categoryId}
-										onValueChange={() => (values = {})}
+										items={workbench.categoryOptions}
+										bind:value={
+											() => workbench.create.categoryId,
+											(value) => workbench.chooseCreateCategory(value)
+										}
 										required
 									>
 										<Select.Trigger
 											id="item-category"
 											class="w-full data-[size=default]:h-11"
 										>
-											{categoryOptions.find(
-												(option) => option.value === categoryId,
+											{workbench.categoryOptions.find(
+												(option) =>
+													option.value === workbench.create.categoryId,
 											)?.label ?? "Choose category"}
 										</Select.Trigger>
 										<Select.Content portalProps={{ disabled: true }}>
-											{#each categoryOptions as option (option.value)}
+											{#each workbench.categoryOptions as option (option.value)}
 												<Select.Item value={option.value} label={option.label}>
 													{option.label}
 												</Select.Item>
@@ -662,20 +355,21 @@ function displayValue(item: InventoryOperatorItem) {
 									>
 									<Select.Root
 										type="single"
-										items={containerOptions}
-										bind:value={containerId}
+										items={workbench.containerOptions}
+										bind:value={workbench.create.containerId}
 										required
 									>
 										<Select.Trigger
 											id="item-container"
 											class="w-full data-[size=default]:h-11"
 										>
-											{containerOptions.find(
-												(option) => option.value === containerId,
+											{workbench.containerOptions.find(
+												(option) =>
+													option.value === workbench.create.containerId,
 											)?.label ?? "Choose container"}
 										</Select.Trigger>
 										<Select.Content portalProps={{ disabled: true }}>
-											{#each containerOptions as option (option.value)}
+											{#each workbench.containerOptions as option (option.value)}
 												<Select.Item value={option.value} label={option.label}>
 													{option.label}
 												</Select.Item>
@@ -702,7 +396,7 @@ function displayValue(item: InventoryOperatorItem) {
 									</p>
 								</div>
 							</div>
-							{#if categoryId && definitionsQuery.isPending}
+							{#if workbench.create.categoryId && workbench.createDefinitions.isPending}
 								<div
 									class="flex items-center gap-2 rounded-xl border border-dashed bg-muted/35 p-3 text-sm text-muted-foreground"
 									aria-live="polite"
@@ -713,10 +407,10 @@ function displayValue(item: InventoryOperatorItem) {
 									/>
 									Loading category details…
 								</div>
-							{:else if categoryId}
+							{:else if workbench.create.categoryId}
 								{@render fields(
-									definitionsQuery.data ?? [],
-									values,
+									workbench.createDefinitions.data ?? [],
+									workbench.create.values,
 									"create",
 									createItem.fields.values.issues(),
 								)}
@@ -736,7 +430,7 @@ function displayValue(item: InventoryOperatorItem) {
 								><Textarea
 									id="item-notes"
 									name={createItem.fields.notes.as("text").name}
-									bind:value={notes}
+									bind:value={workbench.create.notes}
 								/>
 								<p class="mt-1.5 text-xs text-muted-foreground">
 									Optional notes for whoever handles this next.
@@ -751,16 +445,14 @@ function displayValue(item: InventoryOperatorItem) {
 						<div
 							class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between"
 						>
-							<Button href={LIST_PATH} variant="outline">Cancel</Button>
+							<Button href={workbench.listHref} variant="outline">Cancel</Button
+							>
 							<SubmitButton
 								type="submit"
 								class="min-h-11 sm:min-w-36"
-								disabled={!categoryId ||
-									!containerId ||
-									createItem.pending > 0 ||
-									definitionsQuery.isPending}
+								disabled={!workbench.canCreate || createItem.pending > 0}
 								pending={createItem.pending > 0}
-								succeeded={createSucceeded}
+								succeeded={workbench.succeeded("create")}
 								pendingLabel="Adding item…"
 								successLabel="Added"
 							>
@@ -770,13 +462,13 @@ function displayValue(item: InventoryOperatorItem) {
 					</div>
 				</form>
 			</section>
-		{:else if !selectedItemId}
+		{:else if !workbench.routed}
 			<section class="min-h-0 space-y-3 xl:flex xl:h-full xl:flex-col">
 				<div class="flex items-center justify-between gap-3 lg:hidden">
 					<div class="flex min-w-0 items-baseline gap-2">
 						<h2 class="font-heading text-xl font-bold">All items</h2>
 						<span class="text-sm text-muted-foreground"
-							>{itemsQuery.data?.totalCount ?? 0} items</span
+							>{workbench.totalCount} items</span
 						>
 					</div>
 				</div>
@@ -789,25 +481,27 @@ function displayValue(item: InventoryOperatorItem) {
 						type="search"
 						class="h-11 flex-1 border-border bg-background shadow-xs"
 						placeholder="Search code, name, location or notes"
-						value={search}
-						oninput={(event) => updateSearch(event.currentTarget.value)}
+						value={workbench.search}
+						oninput={(event) => workbench.setSearch(event.currentTarget.value)}
 					/>
 					<Button
 						variant="outline"
 						size="icon"
 						class="relative size-11 shrink-0"
-						aria-label={activeFilterCount > 0
-							? `Filters, ${activeFilterCount} active`
+						aria-label={workbench.activeFilterCount > 0
+							? `Filters, ${workbench.activeFilterCount} active`
 							: "Filters"}
-						onclick={openMobileFilters}
+						onclick={() => {
+							mobileFiltersOpen = true;
+						}}
 					>
 						<SlidersHorizontal aria-hidden="true" />
-						{#if activeFilterCount > 0}
+						{#if workbench.activeFilterCount > 0}
 							<span
 								class="absolute -right-1.5 -top-1.5 grid size-5 place-items-center rounded-full bg-secondary text-[0.6875rem] font-bold text-secondary-foreground"
 								aria-hidden="true"
 							>
-								{activeFilterCount}
+								{workbench.activeFilterCount}
 							</span>
 						{/if}
 					</Button>
@@ -818,7 +512,7 @@ function displayValue(item: InventoryOperatorItem) {
 					<div>
 						<h2 class="text-lg font-semibold">All items</h2>
 						<p class="text-sm text-muted-foreground">
-							{itemsQuery.data?.totalCount ?? 0} items
+							{workbench.totalCount} items
 						</p>
 					</div>
 					<div class="flex flex-1 flex-wrap items-end justify-end gap-3">
@@ -831,8 +525,9 @@ function displayValue(item: InventoryOperatorItem) {
 								type="search"
 								class="h-11 border-border bg-background shadow-xs"
 								placeholder="Code, name, location or notes"
-								value={search}
-								oninput={(event) => updateSearch(event.currentTarget.value)}
+								value={workbench.search}
+								oninput={(event) =>
+									workbench.setSearch(event.currentTarget.value)}
 							/>
 						</div>
 						<div>
@@ -842,20 +537,22 @@ function displayValue(item: InventoryOperatorItem) {
 							>
 							<Select.Root
 								type="single"
-								items={availabilityOptions}
-								bind:value={availability}
-								onValueChange={() => (cursor = undefined)}
+								items={AVAILABILITY_FILTERS}
+								bind:value={
+									() => workbench.availability,
+									(value) => workbench.setAvailability(value)
+								}
 							>
 								<Select.Trigger
 									id="availability-filter"
 									class="min-w-36 data-[size=default]:h-11"
 								>
-									{availabilityOptions.find(
-										(option) => option.value === availability,
+									{AVAILABILITY_FILTERS.find(
+										(option) => option.value === workbench.availability,
 									)?.label}
 								</Select.Trigger>
 								<Select.Content>
-									{#each availabilityOptions as option (option.value)}
+									{#each AVAILABILITY_FILTERS as option (option.value)}
 										<Select.Item value={option.value} label={option.label}>
 											{option.label}
 										</Select.Item>
@@ -869,19 +566,22 @@ function displayValue(item: InventoryOperatorItem) {
 							>
 							<Select.Root
 								type="single"
-								items={archiveOptions}
-								bind:value={archived}
-								onValueChange={() => (cursor = undefined)}
+								items={ARCHIVE_FILTERS}
+								bind:value={
+									() => workbench.archived,
+									(value) => workbench.setArchived(value)
+								}
 							>
 								<Select.Trigger
 									id="archive-filter"
 									class="min-w-32 data-[size=default]:h-11"
 								>
-									{archiveOptions.find((option) => option.value === archived)
-										?.label}
+									{ARCHIVE_FILTERS.find(
+										(option) => option.value === workbench.archived,
+									)?.label}
 								</Select.Trigger>
 								<Select.Content>
-									{#each archiveOptions as option (option.value)}
+									{#each ARCHIVE_FILTERS as option (option.value)}
 										<Select.Item value={option.value} label={option.label}>
 											{option.label}
 										</Select.Item>
@@ -894,7 +594,7 @@ function displayValue(item: InventoryOperatorItem) {
 				<div
 					class="space-y-3 xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:pr-2 xl:[scrollbar-gutter:stable]"
 				>
-					{#each visibleItems as item (item.id)}<article
+					{#each workbench.items as item (item.id)}<article
 							class="inventory-card p-4 {item.archivedAt ? 'opacity-65' : ''}"
 						>
 							<div class="flex flex-wrap items-start justify-between gap-3">
@@ -905,11 +605,7 @@ function displayValue(item: InventoryOperatorItem) {
 											variant={item.availability.available
 												? "secondary"
 												: "outline"}
-											>{item.availability.status
-												.replace("_", " ")
-												.replace(/^./, (character) =>
-													character.toUpperCase(),
-												)}</Badge
+											>{availabilityLabel(item.availability.status)}</Badge
 										>
 									</div>
 									<p class="mt-1 text-sm text-muted-foreground">
@@ -917,7 +613,7 @@ function displayValue(item: InventoryOperatorItem) {
 											"No container"}
 									</p>
 									{#if item.values.length}<p class="mt-1 text-sm">
-											{displayValue(item)}
+											{formatPropertyValues(item.values)}
 										</p>{/if}{#if item.notes}<p class="mt-1 text-sm">
 											{item.notes}
 										</p>{/if}
@@ -925,7 +621,7 @@ function displayValue(item: InventoryOperatorItem) {
 								<Button
 									size="sm"
 									variant="outline"
-									href={`${LIST_PATH}/${item.slug}`}>Manage</Button
+									href={workbench.itemHref(item.slug)}>Manage</Button
 								>
 							</div>
 						</article>{:else}<div
@@ -933,37 +629,33 @@ function displayValue(item: InventoryOperatorItem) {
 						>
 							<h2 class="font-semibold">No items found</h2>
 							<p class="text-sm text-muted-foreground">
-								{debouncedQuery
+								{workbench.searching
 									? "Try another search or change the filters."
 									: "Add an item or change the archive filter."}
 							</p>
 						</div>{/each}
-					{#if cursor || itemsQuery.data?.nextCursor}
+					{#if workbench.paged}
 						<div class="flex items-center justify-between gap-2">
-							{#if itemsQuery.data?.previousCursor}
+							{#if workbench.previousCursor}
 								<Button
 									variant="outline"
 									size="sm"
 									class="min-h-11"
 									data-testid="items-previous-page"
-									onclick={() => {
-										cursor = itemsQuery.data?.previousCursor ?? undefined;
-									}}
+									onclick={() => workbench.previousPage()}
 								>
 									Previous
 								</Button>
 							{:else}
 								<span></span>
 							{/if}
-							{#if itemsQuery.data?.nextCursor}
+							{#if workbench.nextCursor}
 								<Button
 									variant="outline"
 									size="sm"
 									class="min-h-11"
 									data-testid="items-next-page"
-									onclick={() => {
-										cursor = itemsQuery.data?.nextCursor ?? undefined;
-									}}
+									onclick={() => workbench.nextPage()}
 								>
 									Next
 								</Button>
@@ -972,25 +664,25 @@ function displayValue(item: InventoryOperatorItem) {
 					{/if}
 				</div>
 			</section>
-		{:else if routedItemQuery.isError}
+		{:else if workbench.routedItem.isError}
 			<Alert variant="destructive" class="mx-auto max-w-5xl">
 				<AlertDescription class="flex items-center justify-between gap-4">
 					<span
 						>{apiErrorMessage(
-							routedItemQuery.error,
+							workbench.routedItem.error,
 							"Could not load item",
 						)}</span
 					>
 					<Button
 						variant="outline"
 						size="sm"
-						onclick={() => routedItemQuery.refetch()}
+						onclick={() => workbench.routedItem.refetch()}
 					>
 						<RefreshCw />Try again
 					</Button>
 				</AlertDescription>
 			</Alert>
-		{:else if routedItemQuery.isPending}
+		{:else if workbench.routedItem.isPending}
 			<div
 				class="mx-auto grid min-h-64 max-w-5xl place-items-center"
 				aria-live="polite"
@@ -1034,20 +726,22 @@ function displayValue(item: InventoryOperatorItem) {
 					>
 					<Select.Root
 						type="single"
-						items={availabilityOptions}
-						bind:value={availability}
-						onValueChange={() => (cursor = undefined)}
+						items={AVAILABILITY_FILTERS}
+						bind:value={
+							() => workbench.availability,
+							(value) => workbench.setAvailability(value)
+						}
 					>
 						<Select.Trigger
 							id="mobile-availability-filter"
 							class="w-full data-[size=default]:h-11"
 						>
-							{availabilityOptions.find(
-								(option) => option.value === availability,
+							{AVAILABILITY_FILTERS.find(
+								(option) => option.value === workbench.availability,
 							)?.label}
 						</Select.Trigger>
 						<Select.Content>
-							{#each availabilityOptions as option (option.value)}
+							{#each AVAILABILITY_FILTERS as option (option.value)}
 								<Select.Item value={option.value} label={option.label}>
 									{option.label}
 								</Select.Item>
@@ -1061,19 +755,21 @@ function displayValue(item: InventoryOperatorItem) {
 					>
 					<Select.Root
 						type="single"
-						items={archiveOptions}
-						bind:value={archived}
-						onValueChange={() => (cursor = undefined)}
+						items={ARCHIVE_FILTERS}
+						bind:value={
+							() => workbench.archived, (value) => workbench.setArchived(value)
+						}
 					>
 						<Select.Trigger
 							id="mobile-archive-filter"
 							class="w-full data-[size=default]:h-11"
 						>
-							{archiveOptions.find((option) => option.value === archived)
-								?.label}
+							{ARCHIVE_FILTERS.find(
+								(option) => option.value === workbench.archived,
+							)?.label}
 						</Select.Trigger>
 						<Select.Content>
-							{#each archiveOptions as option (option.value)}
+							{#each ARCHIVE_FILTERS as option (option.value)}
 								<Select.Item value={option.value} label={option.label}>
 									{option.label}
 								</Select.Item>
@@ -1089,15 +785,17 @@ function displayValue(item: InventoryOperatorItem) {
 		>
 			<Button
 				variant="ghost"
-				disabled={activeFilterCount === 0}
-				onclick={clearMobileFilters}>Clear filters</Button
+				disabled={workbench.activeFilterCount === 0}
+				onclick={() => workbench.clearFilters()}>Clear filters</Button
 			>
 			<Sheet.Close class={buttonVariants()}>Show items</Sheet.Close>
 		</Sheet.Footer>
 	</Sheet.Content>
 </Sheet.Root>
 
-{#if selected}
+{#if workbench.selected && workbench.item}
+	{@const selected = workbench.selected}
+	{@const item = workbench.item}
 	<section
 		class="inventory-page !pt-0 max-lg:max-w-none max-lg:px-0 max-lg:pb-0 max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-right-4 max-lg:duration-200 max-lg:motion-reduce:animate-none"
 	>
@@ -1105,7 +803,7 @@ function displayValue(item: InventoryOperatorItem) {
 			class="mx-auto flex min-h-[calc(100svh-12rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border bg-background shadow-sm max-lg:min-h-[calc(100svh-2.8125rem)] max-lg:rounded-none max-lg:border-x-0 max-lg:shadow-none"
 		>
 			<div class="shrink-0 border-b px-3 py-2 sm:px-5">
-				<Button href={LIST_PATH} variant="ghost" class="min-h-11 px-2">
+				<Button href={workbench.listHref} variant="ghost" class="min-h-11 px-2">
 					<ArrowLeft aria-hidden="true" />All items
 				</Button>
 			</div>
@@ -1128,9 +826,7 @@ function displayValue(item: InventoryOperatorItem) {
 									? "secondary"
 									: "outline"}
 							>
-								{selected.availability.status
-									.replace("_", " ")
-									.replace(/^./, (character) => character.toUpperCase())}
+								{availabilityLabel(selected.availability.status)}
 							</Badge>
 						</div>
 						<p class="mt-1 font-mono text-sm text-muted-foreground">
@@ -1140,7 +836,10 @@ function displayValue(item: InventoryOperatorItem) {
 				</div>
 			</div>
 
-			<Tabs.Root bind:value={managementTab} class="min-h-0 flex-1 gap-0">
+			<Tabs.Root
+				bind:value={workbench.managementTab}
+				class="min-h-0 flex-1 gap-0"
+			>
 				<div class="shrink-0 border-b bg-background px-5 py-3 sm:px-6">
 					<Tabs.List class="grid h-11 w-full grid-cols-3">
 						<Tabs.Trigger value="details">Details</Tabs.Trigger>
@@ -1150,63 +849,55 @@ function displayValue(item: InventoryOperatorItem) {
 				</div>
 
 				<Tabs.Content value="details" class="min-h-0 overflow-hidden">
-					<form
-						{...updateItem.enhance(async (form) => {
-							if (await form.submit())
-								handleItemCommand(
-									form.result,
-									(value) => (detailsSucceeded = value),
-								);
-						})}
-						aria-busy={updateItem.pending > 0}
-						class="flex h-full min-h-0 flex-col"
-					>
-						<input
-							type="hidden"
-							name={updateItem.fields.slugOrId.as("hidden", selected.slug).name}
-							value={selected.slug}
-						/>
-						<input
-							type="hidden"
-							name={updateItem.fields.values.as(
-								"hidden",
-								JSON.stringify(editValues),
-							).name}
-							value={JSON.stringify(editValues)}
-						/>
-						{#each formIssues(updateItem.fields.allIssues()) as issue, index (`${issue.message}-${index}`)}<p
-								role="alert"
-								class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
-							>
-								{issue.message}
-							</p>{/each}
-						{#if updateItem.result && !updateItem.result.ok}<p
-								role="alert"
-								class="mx-5 mt-4 text-sm text-destructive sm:mx-6"
-							>
-								{updateItem.result.error}
-							</p>{/if}
+					<div class="flex h-full min-h-0 flex-col">
 						<div
 							class="min-h-0 flex-1 space-y-6 overflow-y-auto bg-muted/20 p-5 sm:p-6"
 						>
-							<section
+							<!-- The Save button sits in the sticky footer, outside this form. -->
+							<form
+								id="item-details-form"
+								{...updateItem
+									.preflight(updateItemSchema)
+									.enhance(workbench.enhance.update)}
+								aria-busy={updateItem.pending > 0}
 								class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
 							>
+								<input
+									{...updateItem.fields.slugOrId.as("hidden", selected.slug)}
+								/>
+								<input
+									{...updateItem.fields.values.as(
+										"hidden",
+										workbench.encoded.details,
+									)}
+								/>
 								<div class="border-b pb-4">
 									<h3 class="font-heading text-lg font-bold">Details</h3>
 									<p class="mt-1 text-sm text-muted-foreground">
 										Update properties and notes.
 									</p>
 								</div>
-								{#if editDefinitionsQuery.isPending}
+								{#each formIssues(updateItem.fields.allIssues()) as issue, index (`${issue.message}-${index}`)}<p
+										role="alert"
+										class="text-sm text-destructive"
+									>
+										{issue.message}
+									</p>{/each}
+								{#if updateItem.result && !updateItem.result.ok}<p
+										role="alert"
+										class="text-sm text-destructive"
+									>
+										{updateItem.result.error}
+									</p>{/if}
+								{#if workbench.detailsDefinitions.isPending}
 									<p class="text-sm text-muted-foreground" aria-live="polite">
 										Loading item details…
 									</p>
 								{:else}
 									{@render fields(
-										editDefinitionsQuery.data ?? [],
-										editValues,
-										"edit",
+										workbench.detailsDefinitions.data ?? [],
+										item.values,
+										"details",
 										updateItem.fields.values.issues(),
 									)}
 								{/if}
@@ -1215,10 +906,10 @@ function displayValue(item: InventoryOperatorItem) {
 									<Textarea
 										id="edit-notes"
 										name={updateItem.fields.notes.as("text").name}
-										bind:value={editNotes}
+										bind:value={item.notes}
 									/>
 								</div>
-							</section>
+							</form>
 
 							<section
 								class="space-y-4 rounded-2xl border border-destructive/25 bg-destructive/3 p-5 shadow-sm"
@@ -1233,53 +924,83 @@ function displayValue(item: InventoryOperatorItem) {
 									</p>
 								</div>
 								{#if selected.archivedAt}
-									<Button
-										type="button"
-										variant="outline"
-										disabled={restoreItem.isPending}
-										onclick={() =>
-											restoreItem.mutate({
-												path: { slugOrId: selected!.slug },
-											})}
+									<form
+										{...restoreItem
+											.preflight(restoreItemSchema)
+											.enhance(workbench.enhance.restore)}
+										aria-busy={restoreItem.pending > 0}
 									>
-										<RotateCcw />{restoreItem.isPending
-											? "Restoring…"
-											: "Restore item"}
-									</Button>
-								{:else}
-									<div>
-										<Label for="archive-reason" class="mb-2.5"
-											>Archive note <span
-												class="font-normal text-muted-foreground"
-												>(optional)</span
-											></Label
-										>
-										<Input id="archive-reason" bind:value={archiveReason} />
-									</div>
-									<div class="flex flex-wrap gap-2 border-t pt-4">
+										<input
+											{...restoreItem.fields.slugOrId.as(
+												"hidden",
+												selected.slug,
+											)}
+										/>
 										<Button
-											type="button"
+											type="submit"
 											variant="outline"
-											disabled={archiveItem.isPending}
-											onclick={() =>
-												archiveItem.mutate({
-													path: { slugOrId: selected!.slug },
-													body: { reason: archiveReason.trim() || null },
-												})}
+											disabled={restoreItem.pending > 0}
 										>
-											<Archive />{archiveItem.isPending
-												? "Archiving…"
-												: "Archive item"}
+											<RotateCcw />{restoreItem.pending > 0
+												? "Restoring…"
+												: "Restore item"}
 										</Button>
-										<Button
-											type="button"
-											variant="destructive"
-											disabled={archiveItem.isPending}
-											onclick={() => (deleteConfirmOpen = true)}
-										>
-											<Trash2 />Delete item
-										</Button>
-									</div>
+									</form>
+								{:else}
+									<form
+										{...archiveItem
+											.preflight(archiveItemSchema)
+											.enhance(workbench.enhance.archive)}
+										aria-busy={archiveItem.pending > 0}
+										class="space-y-4"
+									>
+										<input
+											{...archiveItem.fields.slugOrId.as(
+												"hidden",
+												selected.slug,
+											)}
+										/>
+										<div>
+											<Label for="archive-reason" class="mb-2.5"
+												>Archive note <span
+													class="font-normal text-muted-foreground"
+													>(optional)</span
+												></Label
+											>
+											<Input
+												id="archive-reason"
+												name={archiveItem.fields.reason.as("text").name}
+												aria-invalid={archiveItem.fields.reason.issues()?.length
+													? true
+													: undefined}
+												bind:value={item.archiveReason}
+											/>
+											<Field.Error
+												errors={archiveItem.fields.reason.issues()}
+											/>
+										</div>
+										<div class="flex flex-wrap gap-2 border-t pt-4">
+											<Button
+												type="submit"
+												variant="outline"
+												disabled={archiveItem.pending > 0}
+											>
+												<Archive />{archiveItem.pending > 0
+													? "Archiving…"
+													: "Archive item"}
+											</Button>
+											<Button
+												type="button"
+												variant="destructive"
+												disabled={archiveItem.pending > 0}
+												onclick={() => {
+													workbench.deleteConfirmOpen = true;
+												}}
+											>
+												<Trash2 />Delete item
+											</Button>
+										</div>
+									</form>
 								{/if}
 							</section>
 						</div>
@@ -1288,17 +1009,18 @@ function displayValue(item: InventoryOperatorItem) {
 						>
 							<SubmitButton
 								type="submit"
+								form="item-details-form"
 								class="w-full sm:w-auto"
-								disabled={!detailsDirty || updateItem.pending > 0}
+								disabled={!workbench.dirty.details || updateItem.pending > 0}
 								pending={updateItem.pending > 0}
-								succeeded={detailsSucceeded}
+								succeeded={workbench.succeeded("details")}
 								pendingLabel="Saving…"
 								successLabel="Saved"
 							>
 								Save changes
 							</SubmitButton>
 						</div>
-					</form>
+					</div>
 				</Tabs.Content>
 
 				<Tabs.Content
@@ -1307,26 +1029,17 @@ function displayValue(item: InventoryOperatorItem) {
 				>
 					<div class="space-y-6">
 						<form
-							{...moveItem.enhance(async (form) => {
-								if (await form.submit())
-									handleItemCommand(
-										form.result,
-										(value) => (moveSucceeded = value),
-									);
-							})}
+							{...moveItem
+								.preflight(moveItemSchema)
+								.enhance(workbench.enhance.move)}
 							aria-busy={moveItem.pending > 0}
 							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
 						>
 							<input
-								type="hidden"
-								name={moveItem.fields.slugOrId.as("hidden", selected.slug).name}
-								value={selected.slug}
+								{...moveItem.fields.slugOrId.as("hidden", selected.slug)}
 							/>
 							<input
-								type="hidden"
-								name={moveItem.fields.containerId.as("hidden", moveContainerId)
-									.name}
-								value={moveContainerId}
+								{...moveItem.fields.containerId.as("hidden", item.containerId)}
 							/>
 							{#each moveItem.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
 									role="alert"
@@ -1352,20 +1065,20 @@ function displayValue(item: InventoryOperatorItem) {
 								>
 								<Select.Root
 									type="single"
-									items={containerOptions}
-									bind:value={moveContainerId}
+									items={workbench.containerOptions}
+									bind:value={item.containerId}
 									required
 								>
 									<Select.Trigger
 										id="move-container"
 										class="w-full data-[size=default]:h-11"
 									>
-										{containerOptions.find(
-											(option) => option.value === moveContainerId,
+										{workbench.containerOptions.find(
+											(option) => option.value === item.containerId,
 										)?.label ?? "Choose container"}
 									</Select.Trigger>
 									<Select.Content portalProps={{ disabled: true }}>
-										{#each containerOptions as option (option.value)}
+										{#each workbench.containerOptions as option (option.value)}
 											<Select.Item value={option.value} label={option.label}>
 												{option.label}
 											</Select.Item>
@@ -1378,9 +1091,9 @@ function displayValue(item: InventoryOperatorItem) {
 							</div>
 							<SubmitButton
 								type="submit"
-								disabled={!placementDirty || moveItem.pending > 0}
+								disabled={!workbench.dirty.placement || moveItem.pending > 0}
 								pending={moveItem.pending > 0}
-								succeeded={moveSucceeded}
+								succeeded={workbench.succeeded("placement")}
 								pendingLabel="Moving…"
 								successLabel="Moved"
 							>
@@ -1389,39 +1102,29 @@ function displayValue(item: InventoryOperatorItem) {
 						</form>
 
 						<form
-							{...changeItemCategory.enhance(async (form) => {
-								if (await form.submit())
-									handleItemCommand(
-										form.result,
-										(value) => (categorySucceeded = value),
-									);
-							})}
+							{...changeItemCategory
+								.preflight(changeItemCategorySchema)
+								.enhance(workbench.enhance.changeCategory)}
 							aria-busy={changeItemCategory.pending > 0}
 							class="space-y-5 rounded-2xl border bg-card p-5 shadow-sm"
 						>
 							<input
-								type="hidden"
-								name={changeItemCategory.fields.slugOrId.as(
+								{...changeItemCategory.fields.slugOrId.as(
 									"hidden",
 									selected.slug,
-								).name}
-								value={selected.slug}
+								)}
 							/>
 							<input
-								type="hidden"
-								name={changeItemCategory.fields.categoryId.as(
+								{...changeItemCategory.fields.categoryId.as(
 									"hidden",
-									newCategoryId,
-								).name}
-								value={newCategoryId}
+									item.categoryId,
+								)}
 							/>
 							<input
-								type="hidden"
-								name={changeItemCategory.fields.values.as(
+								{...changeItemCategory.fields.values.as(
 									"hidden",
-									JSON.stringify(newCategoryValues),
-								).name}
-								value={JSON.stringify(newCategoryValues)}
+									workbench.encoded.category,
+								)}
 							/>
 							{#each formIssues(changeItemCategory.fields.allIssues()) as issue, index (`${issue.message}-${index}`)}<p
 									role="alert"
@@ -1445,21 +1148,23 @@ function displayValue(item: InventoryOperatorItem) {
 								<Label for="new-category" class="mb-2.5">New category</Label>
 								<Select.Root
 									type="single"
-									items={categoryOptions}
-									bind:value={newCategoryId}
-									onValueChange={() => (newCategoryValues = {})}
+									items={workbench.categoryOptions}
+									bind:value={
+										() => item.categoryId,
+										(value) => workbench.chooseNewCategory(value)
+									}
 									required
 								>
 									<Select.Trigger
 										id="new-category"
 										class="w-full data-[size=default]:h-11"
 									>
-										{categoryOptions.find(
-											(option) => option.value === newCategoryId,
+										{workbench.categoryOptions.find(
+											(option) => option.value === item.categoryId,
 										)?.label ?? "Choose category"}
 									</Select.Trigger>
 									<Select.Content portalProps={{ disabled: true }}>
-										{#each categoryOptions as option (option.value)}
+										{#each workbench.categoryOptions as option (option.value)}
 											<Select.Item value={option.value} label={option.label}>
 												{option.label}
 											</Select.Item>
@@ -1467,25 +1172,25 @@ function displayValue(item: InventoryOperatorItem) {
 									</Select.Content>
 								</Select.Root>
 							</div>
-							{#if newDefinitionsQuery.isPending}
+							{#if workbench.categoryDefinitions.isPending}
 								<p class="text-sm text-muted-foreground" aria-live="polite">
 									Loading category details…
 								</p>
 							{:else}
 								{@render fields(
-									newDefinitionsQuery.data ?? [],
-									newCategoryValues,
+									workbench.categoryDefinitions.data ?? [],
+									item.categoryValues,
 									"category",
 									changeItemCategory.fields.values.issues(),
 								)}
 							{/if}
 							<SubmitButton
 								type="submit"
-								disabled={!categoryDirty ||
-									newDefinitionsQuery.isPending ||
+								disabled={!workbench.dirty.category ||
+									workbench.categoryDefinitions.isPending ||
 									changeItemCategory.pending > 0}
 								pending={changeItemCategory.pending > 0}
-								succeeded={categorySucceeded}
+								succeeded={workbench.succeeded("category")}
 								pendingLabel="Saving category…"
 								successLabel="Saved"
 							>
@@ -1509,23 +1214,17 @@ function displayValue(item: InventoryOperatorItem) {
 						</div>
 						{#if selected.availability.status === "maintenance"}
 							<form
-								{...endItemMaintenance.enhance(async (form) => {
-									if (await form.submit())
-										handleItemCommand(
-											form.result,
-											(value) => (maintenanceSucceeded = value),
-										);
-								})}
+								{...endItemMaintenance
+									.preflight(endItemMaintenanceSchema)
+									.enhance(workbench.enhance.endMaintenance)}
 								class="space-y-4"
 								aria-busy={endItemMaintenance.pending > 0}
 							>
 								<input
-									type="hidden"
-									name={endItemMaintenance.fields.slugOrId.as(
+									{...endItemMaintenance.fields.slugOrId.as(
 										"hidden",
 										selected.slug,
-									).name}
-									value={selected.slug}
+									)}
 								/>
 								{#each endItemMaintenance.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
 										role="alert"
@@ -1546,14 +1245,14 @@ function displayValue(item: InventoryOperatorItem) {
 									<Textarea
 										id="maintenance-end-note"
 										name={endItemMaintenance.fields.endNote.as("text").name}
-										bind:value={maintenanceEndNote}
+										bind:value={item.maintenanceEndNote}
 									/>
 								</div>
 								<SubmitButton
 									type="submit"
 									disabled={endItemMaintenance.pending > 0}
 									pending={endItemMaintenance.pending > 0}
-									succeeded={maintenanceSucceeded}
+									succeeded={workbench.succeeded("maintenance")}
 									pendingLabel="Ending maintenance…"
 									successLabel="Ended"
 								>
@@ -1562,23 +1261,17 @@ function displayValue(item: InventoryOperatorItem) {
 							</form>
 						{:else}
 							<form
-								{...startItemMaintenance.enhance(async (form) => {
-									if (await form.submit())
-										handleItemCommand(
-											form.result,
-											(value) => (maintenanceSucceeded = value),
-										);
-								})}
+								{...startItemMaintenance
+									.preflight(startItemMaintenanceSchema)
+									.enhance(workbench.enhance.startMaintenance)}
 								class="space-y-4"
 								aria-busy={startItemMaintenance.pending > 0}
 							>
 								<input
-									type="hidden"
-									name={startItemMaintenance.fields.slugOrId.as(
+									{...startItemMaintenance.fields.slugOrId.as(
 										"hidden",
 										selected.slug,
-									).name}
-									value={selected.slug}
+									)}
 								/>
 								{#each startItemMaintenance.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
 										role="alert"
@@ -1601,15 +1294,15 @@ function displayValue(item: InventoryOperatorItem) {
 									<Textarea
 										id="maintenance-reason"
 										name={startItemMaintenance.fields.reason.as("text").name}
-										bind:value={maintenanceReason}
+										bind:value={item.maintenanceReason}
 									/>
 								</div>
 								<SubmitButton
 									type="submit"
-									disabled={!maintenanceReason.trim() ||
+									disabled={!item.maintenanceReason.trim() ||
 										startItemMaintenance.pending > 0}
 									pending={startItemMaintenance.pending > 0}
-									succeeded={maintenanceSucceeded}
+									succeeded={workbench.succeeded("maintenance")}
 									pendingLabel="Starting maintenance…"
 									successLabel="Started"
 								>
@@ -1620,7 +1313,7 @@ function displayValue(item: InventoryOperatorItem) {
 
 						<div class="space-y-3 border-t pt-5">
 							<h4 class="font-semibold">Maintenance history</h4>
-							{#each maintenanceQuery.data ?? [] as period (period.id)}
+							{#each workbench.maintenance.data ?? [] as period (period.id)}
 								<div class="rounded-xl bg-muted/45 p-3 text-sm">
 									<div class="font-medium">{period.startReason}</div>
 									<div class="mt-1 text-muted-foreground">
@@ -1644,29 +1337,34 @@ function displayValue(item: InventoryOperatorItem) {
 		</div>
 	</section>
 
-	<AlertDialog.Root bind:open={deleteConfirmOpen}>
+	<AlertDialog.Root bind:open={workbench.deleteConfirmOpen}>
 		<AlertDialog.Content>
-			<AlertDialog.Header>
-				<AlertDialog.Title>Delete {selected.label}?</AlertDialog.Title>
-				<AlertDialog.Description>
-					This permanently removes the item. Items with retained history must be
-					archived instead.
-				</AlertDialog.Description>
-			</AlertDialog.Header>
-			<AlertDialog.Footer>
-				<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-				<AlertDialog.Action
-					class={buttonVariants({ variant: "destructive" })}
-					disabled={deleteItem.isPending}
-					onclick={() =>
-						deleteItem.mutate({
-							path: { slugOrId: selected!.slug },
-							body: { confirm: true },
-						})}
-				>
-					Delete permanently
-				</AlertDialog.Action>
-			</AlertDialog.Footer>
+			<form
+				{...deleteItem
+					.preflight(deleteItemSchema)
+					.enhance(workbench.enhance.delete)}
+				aria-busy={deleteItem.pending > 0}
+				class="contents"
+			>
+				<input {...deleteItem.fields.slugOrId.as("hidden", selected.slug)} />
+				<AlertDialog.Header>
+					<AlertDialog.Title>Delete {selected.label}?</AlertDialog.Title>
+					<AlertDialog.Description>
+						This permanently removes the item. Items with retained history must
+						be archived instead.
+					</AlertDialog.Description>
+				</AlertDialog.Header>
+				<AlertDialog.Footer>
+					<AlertDialog.Cancel type="button">Cancel</AlertDialog.Cancel>
+					<Button
+						type="submit"
+						variant="destructive"
+						disabled={deleteItem.pending > 0}
+					>
+						Delete permanently
+					</Button>
+				</AlertDialog.Footer>
+			</form>
 		</AlertDialog.Content>
 	</AlertDialog.Root>
 {/if}

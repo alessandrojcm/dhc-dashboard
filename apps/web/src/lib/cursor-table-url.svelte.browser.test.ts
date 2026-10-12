@@ -126,6 +126,19 @@ describe("createCursorTableUrl", () => {
 		expect(state.table.state.sorting).toEqual([{ id: "position", desc: true }]);
 	});
 
+	it("uses the table's own default page size when the URL names none", () => {
+		const h = harness();
+		const state = createCursorTableUrl({
+			sort: waitlistSort,
+			defaultPageSize: 25,
+			...h,
+		});
+
+		expect(state.request.limit).toBe(25);
+		h.visit("/dashboard/table?pageSize=50");
+		expect(state.request.limit).toBe(50);
+	});
+
 	it("pushes a history entry for cursor paging and keeps other params", () => {
 		const h = harness("/dashboard/table?tab=waitlist&q=ada");
 		const state = createCursorTableUrl({ sort: waitlistSort, ...h });
@@ -193,6 +206,21 @@ describe("createCursorTableUrl", () => {
 		});
 		expect(state.filter("membershipStatus")).toBeNull();
 		expect(state.request).not.toHaveProperty("membershipStatus");
+	});
+
+	it("writes several filters in one replace", () => {
+		const h = harness("/dashboard/table?cursor=c2&archived=only&status=active");
+		const state = createCursorTableUrl({
+			sort: waitlistSort,
+			filters: ["archived", "status"],
+			...h,
+		});
+
+		state.setFilters({ archived: null, status: null });
+
+		expect(h.navigations).toEqual([
+			{ href: "/dashboard/table", replace: true },
+		]);
 	});
 
 	describe("search", () => {
