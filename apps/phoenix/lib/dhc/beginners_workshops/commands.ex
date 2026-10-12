@@ -470,15 +470,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       intake_spec: 2,
       live_fee_query: 1,
       locked_intake_fee: 1,
-      open_payment: 1,
-      paying_payment: 1
+      open_payment: 1
     ]
 
   import Dhc.BeginnersWorkshops.Commands.Facts,
-    only: [fee_refund: 1, fee_refunded?: 1, held?: 1, latest_fee: 1, read_locked: 2]
-
-  import Dhc.BeginnersWorkshops.Commands.IntakeHistory,
-    only: [command_note: 1, record_intake_event: 5]
+    only: [held?: 1]
 
   import Dhc.BeginnersWorkshops.Commands.IntakeNotices,
     only: [emailed: 1, place_confirmed: 3]
@@ -508,9 +504,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   alias Dhc.BeginnersWorkshops.Commands.{
     Attendance,
     Batches,
+    IntakeCommands,
+    People,
     Protocol,
     Schedule,
-    Settlement,
     Staff
   }
 
@@ -518,7 +515,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   alias Dhc.BeginnersWorkshops.Workers.RefundWorker
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
-  alias Dhc.Waitlist
   alias Dhc.Waitlist.WaitlistEntry
 
   @type principal_id :: binary()
@@ -756,11 +752,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # the next tick takes the rest.
   @reconcile_batch 100
 
-  # A Batch pass that loses a proposed person to a concurrent command retries
-  # from a fresh proposal this many times before giving up until the next
-  # sweep.
-  @batch_attempts 3
-
   @doc """
   Executes one command as `actor`. The actor is authorized for the command
   before any read. Returns the command's closed view or a named refusal; a
@@ -789,6 +780,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # Constraint names `persist/1` translates; a test checks each one exists.
   @spec declared_constraints() :: [String.t()]
   defdelegate declared_constraints, to: Protocol
+
+  @doc false
+  # ALE-402 parity seam (`Commands.IntakeCommands`).
+  @spec locked_intake_facts(binary(), binary(), Clock.t()) ::
+          {:ok, IntakePolicy.t()} | {:error, term()}
+  defdelegate locked_intake_facts(workshop_id, intake_id, clock), to: IntakeCommands
+
+  @doc false
+  # ALE-402 parity seam (`Commands.People`).
+  @spec locked_carried_fee_facts(binary(), Clock.t()) ::
+          {:ok, CarriedFeePolicy.t()} | {:error, term()}
+  defdelegate locked_carried_fee_facts(waitlist_id, clock), to: People
 
   # ── Authorization ───────────────────────────────────────────────
 
@@ -893,8 +896,18 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     finish_workshop: Attendance,
     finalise_attendance: Attendance,
     send_follow_ups: Attendance,
-    invite: Attendance
+    invite: Attendance,
+    withdraw: People,
+    refund_carried_fee: People,
+    link_carried_fee_payment: People,
+    delete_person: People,
+    purge_retention: People,
+    import_carried_fee: People
   }
+
+  defp run(actor, {command, _workshop_id, _intake_id, _attrs} = intake_command, clock)
+       when command in @intake_commands,
+       do: IntakeCommands.run(actor, intake_command, clock)
 
   defp run(actor, command, clock)
        when is_tuple(command) and is_map_key(@families, elem(command, 0)),
@@ -903,10 +916,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp run({:intake_link, token}, :start_payment, clock), do: start_payment(token, clock)
 
   defp run({:intake_link, token}, :confirm, clock), do: confirm_by_link(token, clock)
-
-  defp run(:system, {:import_carried_fee, waitlist_id, paid_text}, clock)
-       when is_binary(paid_text),
-       do: import_carried_fee(waitlist_id, paid_text, clock)
 
   defp run(:stripe, {:complete_payment, session}, clock) do
     with {:ok, session} <- session_object(session), do: complete_payment(session, clock)
@@ -936,31 +945,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp run({:staff, principal_id}, {:forfeit_carried_fee, scope, refund_id}, clock),
     do: follow_up(scope, refund_id, principal_id, :forfeit, clock)
-
-  # ALE-389: the Waitlist tab's Refund Carried Fee names the person.
-  defp run({:staff, principal_id}, {:refund_carried_fee, waitlist_id, attrs}, clock)
-       when is_map(attrs),
-       do: refund_person_fee(principal_id, waitlist_id, attrs, clock)
-
-  defp run({:staff, _principal_id}, {:link_carried_fee_payment, waitlist_id, attrs}, clock)
-       when is_map(attrs),
-       do: link_fee_payment(waitlist_id, attrs, clock)
-
-  # ALE-396: the Waitlist tab's Delete, and the sweep's retention purge.
-  defp run({:staff, principal_id}, {:delete_person, waitlist_id, attrs}, clock)
-       when is_map(attrs),
-       do: delete_person(principal_id, waitlist_id, attrs, clock)
-
-  defp run(:system, {:purge_retention, waitlist_id}, clock),
-    do: purge_retention(waitlist_id, clock)
-
-  # ALE-387: the Waitlist tab's withdraw names the person, not an Intake.
-  defp run({:staff, principal_id}, {:withdraw, waitlist_id, attrs}, clock) when is_map(attrs),
-    do: withdraw_person(principal_id, waitlist_id, attrs, clock)
-
-  defp run({:staff, principal_id}, {command, workshop_id, intake_id, attrs}, clock)
-       when command in @intake_commands and is_map(attrs),
-       do: intake_command(command, principal_id, workshop_id, intake_id, attrs, clock)
 
   defp run(_actor, _command, _clock), do: {:error, :unknown_command}
 
@@ -2010,669 +1994,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     ])
   end
 
-  # ── Console Intake commands (ALE-386) ───────────────────────────
-
-  # The shared plumbing of every console Intake command: an optional note,
-  # one locked re-read, `IntakePolicy.check/2` deciding, the command's own
-  # act, and one history row when it acted. A repeat that finds the Intake
-  # already where the command leads succeeds and writes nothing.
-  defp intake_command(command, principal_id, workshop_id, intake_id, attrs, clock) do
-    with {:ok, context} <- intake_command_context(command, principal_id, attrs),
-         {:ok, workshop_id} <- cast_id(workshop_id),
-         {:ok, peek} <- peek_console_intake(workshop_id, intake_id) do
-      transact(fn ->
-        with_locked(
-          intake_command_spec(command, peek),
-          &intake_command_locked(&1, command, context, clock)
-        )
-      end)
-    end
-  end
-
-  # Who runs the command, their optional note, and the command's own
-  # options, all checked before any lock.
-  defp intake_command_context(command, principal_id, attrs) do
-    with {:ok, note} <- command_note(attrs),
-         {:ok, options} <- command_options(command, attrs) do
-      {:ok, %{actor: principal_id, note: note, options: options}}
-    end
-  end
-
-  # `withdraw` (ALE-387) takes the refund-or-forfeit choice: absent, or a
-  # boolean. Whether it is *required* depends on the locked Intake.
-  # `delete_person` (ALE-396) takes the same choice for a Carried Fee.
-  defp command_options(command, attrs) when command in [:withdraw, :delete_person] do
-    case fetch_attr(attrs, :refund) do
-      refund when is_nil(refund) or is_boolean(refund) -> {:ok, %{refund: refund}}
-      _other -> {:error, :invalid_refund_choice}
-    end
-  end
-
-  # `correct_attendance` (ALE-393) names the state the Intake becomes.
-  defp command_options(:correct_attendance, attrs) do
-    case fetch_attr(attrs, :to) do
-      to when is_binary(to) ->
-        if to in IntakePolicy.correction_states(),
-          do: {:ok, %{to: to}},
-          else: {:error, :invalid_correction}
-
-      _other ->
-        {:error, :invalid_correction}
-    end
-  end
-
-  defp command_options(_command, _attrs), do: {:ok, %{}}
-
-  # Unlocked: which person the Intake is (to lock their Waitlist entry
-  # before the Intake). An Intake never changes workshop or person; only
-  # anonymisation nulls the person, which the locked re-read sees.
-  defp peek_console_intake(workshop_id, intake_id) do
-    with {:ok, intake_id} <- Ecto.UUID.cast(intake_id),
-         %{} = peek <-
-           Repo.one(
-             from(i in Intake,
-               where: i.id == ^intake_id and i.workshop_id == ^workshop_id,
-               select: %{intake_id: i.id, workshop_id: i.workshop_id, waitlist_id: i.waitlist_id}
-             )
-           ) do
-      {:ok, peek}
-    else
-      _ -> {:error, :intake_not_found}
-    end
-  end
-
-  # `decline` changes the person's standing and may release their hold, so
-  # it locks the Waitlist entry and the live Seat Hold too.
-  defp intake_command_spec(:decline, %{waitlist_id: waitlist_id} = peek) do
-    peek
-    |> intake_spec(open_payment(peek.intake_id))
-    |> Map.put(
-      :waitlist_entry,
-      waitlist_id && from(e in WaitlistEntry, where: e.id == ^waitlist_id)
-    )
-  end
-
-  # `defer` returns the person to `waiting` and carries their fee: it locks
-  # their entry, their Carried Fee and the payment that paid a Stripe-paid
-  # Intake (the fee points at it); `confirm` applies the fee.
-  defp intake_command_spec(:defer, peek) do
-    peek
-    |> intake_spec(paying_payment(peek.intake_id))
-    |> Map.put(:waitlist_entry, entry_query(peek))
-    |> Map.put(:carried_fee, &locked_intake_fee/1)
-  end
-
-  defp intake_command_spec(:confirm, peek),
-    do: peek |> intake_spec(nil) |> Map.put(:carried_fee, &locked_intake_fee/1)
-
-  # `cancel_with_refund` refunds the money that paid the Intake and puts
-  # the person back to `waiting`, so it locks their entry, their Carried Fee
-  # (ALE-389: the one that paid a Carried-Fee-paid Intake) and the payment
-  # that paid a Stripe-paid one. A Carried Fee's original payment row is
-  # never edited, so its refund reads it without a lock; the fee lock
-  # serialises every refund of the fee.
-  defp intake_command_spec(:cancel_with_refund, peek) do
-    peek
-    |> intake_spec(paying_payment(peek.intake_id))
-    |> Map.put(:waitlist_entry, entry_query(peek))
-    |> Map.put(:carried_fee, &locked_intake_fee/1)
-  end
-
-  # `withdraw` removes the person and settles their money; which payment it
-  # locks depends on the locked Intake: a contacted one's live hold, a paid
-  # one's payment; and (ALE-389) the person's Carried Fee.
-  defp intake_command_spec(:withdraw, peek) do
-    peek
-    |> intake_spec(fn
-      %{intake: %Intake{state: "contacted"}} -> open_payment(peek.intake_id)
-      %{intake: %Intake{state: "paid"}} -> paying_payment(peek.intake_id)
-      _closed -> nil
-    end)
-    |> Map.put(:waitlist_entry, entry_query(peek))
-    |> Map.put(:carried_fee, &locked_intake_fee/1)
-  end
-
-  # ALE-389: refunding the person's Carried Fee locks their entry and the fee.
-  defp intake_command_spec(:refund_carried_fee, peek) do
-    peek
-    |> intake_spec(nil)
-    |> Map.put(:waitlist_entry, entry_query(peek))
-    |> Map.put(:carried_fee, &locked_intake_fee/1)
-  end
-
-  # `correct_attendance` (ALE-393) moves the standing and the Carried Fee
-  # that paid the Intake (or, for a Stripe payer's deferral, makes one on the
-  # paying payment, so it locks the person's live fee and that payment).
-  defp intake_command_spec(:correct_attendance, peek) do
-    peek
-    |> intake_spec(fn
-      %{intake: %Intake{paid_via: "stripe"}} -> paying_payment(peek.intake_id)
-      _carried_fee_paid -> nil
-    end)
-    |> Map.put(:waitlist_entry, entry_query(peek))
-    |> Map.put(:carried_fee, &correction_fee/1)
-  end
-
-  defp intake_command_spec(_link_command, peek), do: intake_spec(peek, nil)
-
-  defp intake_command_locked(%{intake: intake} = locked, command, context, clock) do
-    reading = Clock.read(clock)
-    facts = policy_facts(locked, context, reading)
-
-    case IntakePolicy.check(command, facts) do
-      :ok ->
-        event_id = Ecto.UUID.generate()
-        locked = Map.merge(locked, %{context: context, facts: facts})
-
-        with {:ok, intake} <- act_on_intake(command, locked, event_id, reading),
-             {:ok, _event} <- record_intake_event(intake, command, event_id, context, reading) do
-          {:ok, intake_command_view(intake, :done)}
-        end
-
-      :already_done ->
-        {:ok, intake_command_view(intake, :already_done)}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # What each closing does to the person is its `Commands.Settlement` row;
-  # the command only names it.
-  defp act_on_intake(:decline, locked, _event_id, reading),
-    do: settle({:decline, :contacted}, hold_rows(locked), reading)
-
-  # A deferral keeps the person's money as a Carried Fee and their place in
-  # the queue (story 69).
-  defp act_on_intake(:defer, locked, _event_id, reading),
-    do: settle({:defer, :paid}, locked, reading)
-
-  # ALE-387: a paid person wants their money back (ALE-389: a
-  # Carried-Fee-paid Intake refunds the Carried Fee).
-  defp act_on_intake(:cancel_with_refund, %{intake: intake} = locked, _event_id, reading),
-    do: settle({:cancel_with_refund, Settlement.paid_by(intake)}, locked, reading)
-
-  # Takes a seat under the workshop lock with the same rule as a Seat Hold,
-  # but needs no hold: nothing outside this transaction is called. The
-  # Payment Cutoff does not stop it (only new Stripe holds); finalisation
-  # closes the Intake, which ends it.
-  defp act_on_intake(:confirm, locked, _event_id, reading) do
-    %{workshop: workshop, intake: intake, carried_fee: fee} = locked
-
-    cond do
-      workshop.status != "scheduled" ->
-        {:error, :intake_closed}
-
-      not WorkshopPolicy.seat_free?(workshop, facts_for(workshop)) ->
-        {:error, :full}
-
-      true ->
-        with {:ok, intake} <-
-               transition(
-                 :intake,
-                 intake,
-                 Intake.paid_changeset(intake, {"carried_fee", fee.id}, reading.now)
-               ),
-             {:ok, _fee} <-
-               transition(
-                 :carried_fee,
-                 fee,
-                 CarriedFee.status_changeset(fee, "applied", intake.id, reading.now)
-               ),
-             :ok <- place_confirmed(intake, workshop, reading) do
-          {:ok, intake}
-        end
-    end
-  end
-
-  # ALE-387: the person leaves the Waitlist. Money is never handled
-  # implicitly: a paid Intake, and (ALE-389) any Carried Fee the person
-  # holds, needs the refund-or-forfeit choice, and the person is told which.
-  defp act_on_intake(:withdraw, %{intake: %Intake{state: "contacted"}} = locked, _id, reading),
-    do: settle({:withdraw, :contacted}, hold_rows(locked), reading)
-
-  defp act_on_intake(
-         :withdraw,
-         %{intake: %Intake{state: "paid"} = intake} = locked,
-         _id,
-         reading
-       ),
-       do: settle({:withdraw, Settlement.paid_by(intake)}, locked, reading)
-
-  # ALE-389: the person's `held` Carried Fee is refunded; nothing else
-  # moves (a contacted Intake now asks for payment).
-  defp act_on_intake(:refund_carried_fee, locked, _event_id, reading),
-    do: settle({:refund_carried_fee, :open_intake}, locked, reading)
-
-  defp act_on_intake(:resend_link, %{workshop: workshop, intake: intake}, event_id, reading) do
-    with :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, workshop},
-               :link,
-               Occasion.resend_link(event_id),
-               reading
-             )
-           ),
-         do: {:ok, intake}
-  end
-
-  defp act_on_intake(:rotate_link, %{workshop: workshop, intake: intake}, event_id, reading) do
-    token = IntakeLink.token(intake.id, intake.link_generation + 1)
-
-    with {:ok, intake} <-
-           intake |> Intake.rotate_link_changeset(IntakeLink.hash(token)) |> persist(),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, workshop},
-               :link,
-               Occasion.rotate_link(event_id),
-               reading
-             )
-           ) do
-      {:ok, intake}
-    end
-  end
-
-  # ALE-393: fix a door mistake, or turn a no-show into a Deferral.
-  defp act_on_intake(:correct_attendance, locked, _event_id, reading) do
-    %{waitlist_entry: entry, intake: intake, context: context} = locked
-    to = context.options.to
-
-    with :ok <- no_other_open_intake(entry, intake, to),
-         {:ok, intake} <- settle({:correct_attendance, to}, locked, reading) do
-      {:ok, intake}
-    else
-      # The person's record moved on since finalisation (a refunded fee,
-      # another live fee, a standing the table cannot reach from here): the
-      # correction no longer fits, so it is refused by name.
-      {:error, reason} when reason in [:illegal_transition, :illegal_standing_change] ->
-        {:error, :not_correctable}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # An Intake command's Settlement, against its locked rows, with the
-  # actor, the refund-or-forfeit choice and the facts that say whether the
-  # choice is required.
-  defp settle(key, %{context: context, facts: facts} = locked, reading) do
-    with {:ok, %{intake: intake}} <-
-           Settlement.run(key, locked, reading,
-             actor: context.actor,
-             choice: Map.get(context.options, :refund),
-             facts: facts
-           ),
-         do: {:ok, intake}
-  end
-
-  # `decline` and a contacted `withdraw` lock the Intake's live Seat Hold
-  # as its payment.
-  defp hold_rows(%{payment: hold} = locked),
-    do: %{locked | payment: nil} |> Map.put(:holds, List.wrap(hold))
-
-  # What `IntakePolicy.check/2` reads (`IntakePolicy.facts/1`): the locked
-  # Intake and workshop and, for the commands that lock them, the person's
-  # standing and live Carried Fee (with its latest refund), whether their
-  # latest fee was refunded, and a correction's target (ALE-393).
-  defp policy_facts(%{intake: intake} = locked, context, reading) do
-    fee = live_fee(Map.get(locked, :carried_fee))
-
-    IntakePolicy.facts(
-      intake: intake,
-      entry: Map.get(locked, :waitlist_entry),
-      carried_fee: fee,
-      carried_fee_refund: fee_refund(fee),
-      latest_fee_refunded:
-        fee == nil and is_binary(intake.waitlist_id) and fee_refunded?(intake.waitlist_id),
-      workshop_status: locked.workshop.status,
-      correction: Map.get(context.options, :to),
-      now: reading.now
-    )
-  end
-
-  # `correct_attendance` locks the fee that paid the Intake, which is no
-  # longer live once it is spent or forfeited.
-  defp live_fee(%CarriedFee{status: status} = fee) do
-    if status in CarriedFee.live_statuses(), do: fee
-  end
-
-  defp live_fee(nil), do: nil
-
-  @doc false
-  # ALE-402 parity seam: the facts the boundary decides an Intake command
-  # by, from the locked read with the widest Intake lock set (entry and
-  # live Carried Fee, as `refund_carried_fee` takes them) and no correction.
-  # Nothing is written.
-  @spec locked_intake_facts(binary(), binary(), Clock.t()) ::
-          {:ok, IntakePolicy.t()} | {:error, term()}
-  def locked_intake_facts(workshop_id, intake_id, %Clock{} = clock) do
-    with {:ok, workshop_id} <- cast_id(workshop_id),
-         {:ok, peek} <- peek_console_intake(workshop_id, intake_id) do
-      read_locked(intake_command_spec(:refund_carried_fee, peek), fn locked ->
-        policy_facts(locked, %{options: %{}}, Clock.read(clock))
-      end)
-    end
-  end
-
-  @doc false
-  # ALE-402 parity seam: the `CarriedFeePolicy` facts of the person's live
-  # Carried Fee, else their latest, under the entry → Carried Fee locks the
-  # Waitlist tab's commands take. Nothing is written.
-  @spec locked_carried_fee_facts(binary(), Clock.t()) ::
-          {:ok, CarriedFeePolicy.t()} | {:error, term()}
-  def locked_carried_fee_facts(waitlist_id, %Clock{} = clock) do
-    with {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
-      read_locked(
-        %{
-          waitlist_entry: from(e in WaitlistEntry, where: e.id == ^waitlist_id),
-          carried_fee: live_fee_query(waitlist_id)
-        },
-        fn %{waitlist_entry: entry, carried_fee: fee} ->
-          person_fee_facts(entry, fee || latest_fee(waitlist_id), Clock.read(clock))
-        end
-      )
-    end
-  end
-
-  # The person's fee as `CarriedFeePolicy` judges it, with its latest
-  # refund, under the person's entry lock.
-  defp person_fee_facts(entry, fee, reading),
-    do: CarriedFeePolicy.facts(fee: fee, refund: fee_refund(fee), entry: entry, now: reading.now)
-
-  defp intake_command_view(%Intake{} = intake, outcome) do
-    intake
-    |> Map.take([:id, :workshop_id, :state, :link_generation])
-    |> Map.put(:outcome, outcome)
-  end
-
-  # ── correct_attendance (ALE-393) ────────────────────────────────
-
-  # The Carried Fee that paid the Intake; a Stripe payer's live one (which a
-  # deferral would have to be the only one of).
-  defp correction_fee(%{intake: %Intake{carried_fee_id: id}}) when is_binary(id),
-    do: from(f in CarriedFee, where: f.id == ^id)
-
-  defp correction_fee(locked), do: locked_intake_fee(locked)
-
-  # An attendee is no longer on the Waitlist, so someone who has since been
-  # placed in another workshop cannot become one here. Every Intake is
-  # created under the person's entry lock, which this command holds.
-  defp no_other_open_intake(%WaitlistEntry{id: waitlist_id}, %Intake{id: intake_id}, "attended") do
-    if Repo.exists?(
-         from(i in Intake,
-           where:
-             i.waitlist_id == ^waitlist_id and i.id != ^intake_id and
-               i.state in ^Intake.open_states()
-         )
-       ),
-       do: {:error, :open_intake},
-       else: :ok
-  end
-
-  defp no_other_open_intake(_entry, _intake, _to), do: :ok
-
-  # ── withdraw from the Waitlist tab (ALE-387) ───────────────────
-
-  # The Waitlist tab names the person. With an open Intake this is exactly
-  # the console's `withdraw` on it (same lock order, rule and history row);
-  # without one only the standing changes. The open Intake is peeked
-  # unlocked, so a Batch or Fast-track that contacts the person meanwhile
-  # is caught under the lock and the attempt retries from a fresh peek.
-  defp withdraw_person(principal_id, waitlist_id, attrs, clock) do
-    with {:ok, context} <- intake_command_context(:withdraw, principal_id, attrs),
-         {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
-      withdraw_person_attempt(waitlist_id, context, clock, @batch_attempts)
-    end
-  end
-
-  defp withdraw_person_attempt(waitlist_id, context, clock, attempts) do
-    case transact(fn -> withdraw_person_locked(waitlist_id, context, clock) end) do
-      {:error, :concurrent_change} when attempts > 1 ->
-        withdraw_person_attempt(waitlist_id, context, clock, attempts - 1)
-
-      result ->
-        result
-    end
-  end
-
-  defp withdraw_person_locked(waitlist_id, context, clock) do
-    case peek_open_intake(waitlist_id) do
-      nil ->
-        with_locked(
-          %{
-            waitlist_entry: from(e in WaitlistEntry, where: e.id == ^waitlist_id),
-            carried_fee: live_fee_query(waitlist_id)
-          },
-          &withdraw_standing(&1, waitlist_id, context, clock)
-        )
-
-      peek ->
-        with_locked(
-          intake_command_spec(:withdraw, peek),
-          &withdraw_open_intake(&1, waitlist_id, context, clock)
-        )
-    end
-  end
-
-  defp peek_open_intake(waitlist_id) do
-    Repo.one(
-      from(i in Intake,
-        where: i.waitlist_id == ^waitlist_id and i.state in ^Intake.open_states(),
-        select: %{intake_id: i.id, workshop_id: i.workshop_id, waitlist_id: i.waitlist_id}
-      )
-    )
-  end
-
-  defp open_intake_of?(%{waitlist_entry: %WaitlistEntry{}, intake: %Intake{} = intake}, id),
-    do: intake.waitlist_id == id and intake.state in Intake.open_states()
-
-  defp open_intake_of?(_locked, _id), do: false
-
-  # The peeked Intake must still be this person's open one under the lock.
-  defp withdraw_open_intake(locked, waitlist_id, context, clock) do
-    with true <- open_intake_of?(locked, waitlist_id) || {:error, :concurrent_change},
-         {:ok, view} <- intake_command_locked(locked, :withdraw, context, clock) do
-      {:ok, withdraw_person_view(Repo.reload!(locked.waitlist_entry), view)}
-    end
-  end
-
-  # No open Intake: `IntakePolicy.check(:withdraw, _)` with no Intake
-  # (ALE-402) over the standing, under the entry lock, and (ALE-389) the
-  # person's live Carried Fee, which needs the refund-or-forfeit choice even
-  # when they are already removed. An Intake created since the peek (it
-  # takes this lock too) is found here.
-  defp withdraw_standing(%{waitlist_entry: nil}, _waitlist_id, _context, _clock),
-    do: {:error, :person_not_found}
-
-  defp withdraw_standing(%{waitlist_entry: entry, carried_fee: fee}, waitlist_id, context, clock) do
-    reading = Clock.read(clock)
-    facts = person_facts(entry, fee, reading)
-
-    cond do
-      peek_open_intake(waitlist_id) != nil ->
-        {:error, :concurrent_change}
-
-      IntakePolicy.check(:withdraw, facts) == :already_done ->
-        {:ok, withdraw_person_view(entry, nil, :already_done)}
-
-      true ->
-        with {:ok, _settled} <-
-               Settlement.run(
-                 {:withdraw, :no_intake},
-                 %{waitlist_entry: entry, carried_fee: fee},
-                 reading,
-                 actor: context.actor,
-                 choice: context.options.refund,
-                 facts: facts
-               ),
-             do: {:ok, withdraw_person_view(Repo.reload!(entry), nil, :done)}
-    end
-  end
-
-  # `IntakePolicy`'s facts of a person with no open Intake: their locked
-  # entry and live Carried Fee.
-  defp person_facts(entry, fee, reading) do
-    IntakePolicy.facts(
-      intake: nil,
-      entry: entry,
-      carried_fee: fee,
-      carried_fee_refund: fee_refund(fee),
-      latest_fee_refunded: fee == nil and fee_refunded?(entry.id),
-      workshop_status: nil,
-      correction: nil,
-      now: reading.now
-    )
-  end
-
-  defp withdraw_person_view(entry, intake_view),
-    do: withdraw_person_view(entry, intake_view, intake_view.outcome)
-
-  defp withdraw_person_view(%WaitlistEntry{} = entry, intake_view, outcome),
-    do: %{waitlist_id: entry.id, status: entry.status, intake: intake_view, outcome: outcome}
-
-  # ── Hard delete: delete_person and purge_retention (ALE-396) ───
-
-  # The person's rows a hard delete changes: their entry, every Intake they
-  # ever had (anonymised), and their live Carried Fee (refunded or
-  # forfeited first). Every Intake is created under the person's entry lock,
-  # so no new one can appear while it is held.
-  defp person_delete_spec(waitlist_id) do
-    %{
-      waitlist_entry: from(e in WaitlistEntry, where: e.id == ^waitlist_id),
-      intake: {:all, from(i in Intake, where: i.waitlist_id == ^waitlist_id)},
-      carried_fee: live_fee_query(waitlist_id)
-    }
-  end
-
-  # The coordinator's delete, at any time on request: refused with an open
-  # Intake or once the Invitation handoff is under way; a Carried Fee needs
-  # the refund-or-forfeit choice first. Deletion emails nobody.
-  defp delete_person(principal_id, waitlist_id, attrs, clock) do
-    with {:ok, %{refund: refund}} <- command_options(:delete_person, attrs),
-         {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
-      transact(fn ->
-        with_locked(
-          person_delete_spec(waitlist_id),
-          &delete_person_locked(&1, principal_id, refund, clock)
-        )
-      end)
-    end
-  end
-
-  defp delete_person_locked(%{waitlist_entry: nil}, _principal_id, _refund, _clock),
-    do: {:error, :person_not_found}
-
-  defp delete_person_locked(locked, principal_id, refund, clock) do
-    %{waitlist_entry: entry, intake: intakes, carried_fee: fee} = locked
-    reading = Clock.read(clock)
-
-    with :ok <- none_open(intakes),
-         :ok <- deletable_standing(entry),
-         {:ok, %{carried_fee: fee}} <-
-           Settlement.run(
-             {:delete_person, :deleted},
-             %{waitlist_entry: entry, carried_fee: fee},
-             reading,
-             actor: principal_id,
-             choice: refund
-           ),
-         {:ok, anonymised} <- hard_delete(entry, intakes, reading) do
-      {:ok, deleted_view(entry, anonymised, fee, :deleted)}
-    end
-  end
-
-  defp none_open(intakes) do
-    if Enum.any?(intakes, &(&1.state in Intake.open_states())),
-      do: {:error, :open_intake},
-      else: :ok
-  end
-
-  # An Invitation already under way, or a Member, belongs to Onboarding.
-  defp deletable_standing(%WaitlistEntry{status: status}) when status in ~w(invited joined),
-    do: {:error, :not_deletable}
-
-  defp deletable_standing(%WaitlistEntry{}), do: :ok
-
-  # The time-driven purge (`:system`, a sweep pass): someone `removed` for
-  # more than the 3-month retention window — judged with the boundary
-  # clock under the entry lock — is hard-deleted and any `held` Carried Fee
-  # forfeited. A removed person whose Intake is still open (staff removed
-  # them while contacted) waits until it closes.
-  defp purge_retention(waitlist_id, clock) do
-    with {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
-      transact(fn -> with_locked(person_delete_spec(waitlist_id), &purge_locked(&1, clock)) end)
-    end
-  end
-
-  defp purge_locked(%{waitlist_entry: nil}, _clock), do: {:ok, %{outcome: :not_due}}
-
-  defp purge_locked(%{waitlist_entry: entry, intake: intakes, carried_fee: fee}, clock) do
-    reading = Clock.read(clock)
-
-    if retention_ended?(entry, reading) and none_open(intakes) == :ok do
-      with {:ok, %{carried_fee: fee}} <-
-             Settlement.run(
-               {:purge_retention, :purged},
-               %{waitlist_entry: entry, carried_fee: fee},
-               reading
-             ),
-           {:ok, anonymised} <- hard_delete(entry, intakes, reading),
-           do: {:ok, deleted_view(entry, anonymised, fee, :purged)}
-    else
-      {:ok, %{waitlist_id: entry.id, outcome: :not_due}}
-    end
-  end
-
-  defp retention_ended?(%WaitlistEntry{status: "removed", removed_at: %DateTime{} = at}, reading),
-    do: not Waitlist.restorable?(at, reading.now)
-
-  defp retention_ended?(%WaitlistEntry{}, _reading), do: false
-
-  # The one hard delete: the person's Intakes are anonymised (each keeps its
-  # queue date; an attended one first records whether the person had been
-  # invited or had joined), every Carried Fee row of theirs is kept with no
-  # link to them, and the Waitlist deletes the entry, the unclaimed
-  # UserProfile and the Guardian.
-  defp hard_delete(%WaitlistEntry{} = entry, intakes, reading) do
-    outcome = invitation_outcome(entry)
-
-    with {:ok, anonymised} <- anonymise_intakes(intakes, outcome, reading),
-         {_count, _rows} <-
-           Repo.update_all(from(f in CarriedFee, where: f.waitlist_id == ^entry.id),
-             set: [waitlist_id: nil, updated_at: reading.now]
-           ),
-         :ok <- Waitlist.hard_delete(entry.id) do
-      {:ok, anonymised}
-    end
-  end
-
-  defp invitation_outcome(%WaitlistEntry{status: "invited"}), do: "invited"
-  defp invitation_outcome(%WaitlistEntry{status: "joined"}), do: "joined"
-  defp invitation_outcome(%WaitlistEntry{}), do: "not_invited"
-
-  defp anonymise_intakes(intakes, outcome, reading) do
-    Enum.reduce_while(intakes, {:ok, 0}, fn intake, {:ok, count} ->
-      recorded = if intake.state == "attended", do: outcome
-
-      case intake |> Intake.anonymise_changeset(recorded, reading.now) |> persist() do
-        {:ok, _intake} -> {:cont, {:ok, count + 1}}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-  end
-
-  defp deleted_view(entry, anonymised, fee, outcome) do
-    %{
-      waitlist_id: entry.id,
-      anonymised_intakes: anonymised,
-      carried_fee: fee && Map.take(fee, [:id, :status]),
-      outcome: outcome
-    }
-  end
-
   # The person's own confirm from their Intake page: the console command's
   # rule and act, with no actor and no note.
   defp confirm_by_link(token, clock) do
@@ -2683,245 +2004,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
              |> intake_spec(nil)
              |> Map.put(:carried_fee, &locked_intake_fee/1)
              |> with_locked(
-               &intake_command_locked(&1, :confirm, %{actor: nil, note: nil, options: %{}}, clock)
+               &IntakeCommands.intake_command_locked(
+                 &1,
+                 :confirm,
+                 %{actor: nil, note: nil, options: %{}},
+                 clock
+               )
              )
            end) do
       {:ok, %{outcome: outcome}}
     end
-  end
-
-  # The Waitlist spreadsheet import's Paid cell (ALE-376): a `held` fee whose
-  # original payment is the imported record. Runs inside the import row's
-  # transaction; a person who already holds a live fee keeps it.
-  defp import_carried_fee(waitlist_id, paid_text, clock) do
-    with {:ok, waitlist_id} <- cast_id(waitlist_id) do
-      transact(fn ->
-        with_locked(
-          %{
-            waitlist_entry: required(from(e in WaitlistEntry, where: e.id == ^waitlist_id)),
-            carried_fee: live_fee_query(waitlist_id)
-          },
-          &import_fee_locked(&1, paid_text, clock)
-        )
-      end)
-    end
-  end
-
-  defp import_fee_locked(%{carried_fee: %CarriedFee{} = fee}, _paid_text, _clock),
-    do: {:ok, %{outcome: :already_held, id: fee.id, status: fee.status}}
-
-  defp import_fee_locked(%{waitlist_entry: entry}, paid_text, clock) do
-    with {:ok, fee} <-
-           %{
-             waitlist_id: entry.id,
-             imported_paid_text: paid_text,
-             status_changed_at: Clock.read(clock).now
-           }
-           |> CarriedFee.import_changeset()
-           |> persist() do
-      {:ok, %{outcome: :created, id: fee.id, status: fee.status}}
-    end
-  end
-
-  # ── Carried Fee refunds and forfeits (ALE-389) ─────────────────
-
-  # The Waitlist tab names the person. With an open Intake this is exactly
-  # the console's `refund_carried_fee` on it (same locks, rule and history
-  # row); without one the fee alone is refunded under the person's entry
-  # lock, the refund recorded on the fee's original Intake (if any). The
-  # open Intake is peeked unlocked, so one created meanwhile makes the
-  # attempt retry from a fresh peek — the `withdraw_person/4` shape.
-  defp refund_person_fee(principal_id, waitlist_id, attrs, clock) do
-    with {:ok, context} <- intake_command_context(:refund_carried_fee, principal_id, attrs),
-         {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
-      refund_person_fee_attempt(waitlist_id, context, clock, @batch_attempts)
-    end
-  end
-
-  defp refund_person_fee_attempt(waitlist_id, context, clock, attempts) do
-    case transact(fn -> refund_person_fee_locked(waitlist_id, context, clock) end) do
-      {:error, :concurrent_change} when attempts > 1 ->
-        refund_person_fee_attempt(waitlist_id, context, clock, attempts - 1)
-
-      result ->
-        result
-    end
-  end
-
-  defp refund_person_fee_locked(waitlist_id, context, clock) do
-    case peek_open_intake(waitlist_id) do
-      nil ->
-        with_locked(
-          %{
-            waitlist_entry: from(e in WaitlistEntry, where: e.id == ^waitlist_id),
-            carried_fee: live_fee_query(waitlist_id)
-          },
-          &refund_fee_alone(&1, waitlist_id, context, clock)
-        )
-
-      peek ->
-        with_locked(
-          intake_command_spec(:refund_carried_fee, peek),
-          &refund_open_intake_fee(&1, waitlist_id, context, clock)
-        )
-    end
-  end
-
-  # The peeked Intake must still be this person's open one under the lock.
-  defp refund_open_intake_fee(locked, waitlist_id, context, clock) do
-    with true <- open_intake_of?(locked, waitlist_id) || {:error, :concurrent_change},
-         {:ok, view} <- intake_command_locked(locked, :refund_carried_fee, context, clock) do
-      {:ok, fee_command_view(waitlist_id, view, view.outcome)}
-    end
-  end
-
-  # No open Intake: `CarriedFeePolicy.check(:refund, _)` over the person's
-  # live fee, else their latest (already done once it was refunded).
-  defp refund_fee_alone(%{waitlist_entry: nil}, waitlist_id, _context, _clock) do
-    if peek_open_intake(waitlist_id) == nil,
-      do: {:error, :person_not_found},
-      else: {:error, :concurrent_change}
-  end
-
-  defp refund_fee_alone(%{waitlist_entry: entry, carried_fee: nil}, waitlist_id, _context, clock) do
-    case CarriedFeePolicy.check(
-           :refund,
-           person_fee_facts(entry, latest_fee(waitlist_id), Clock.read(clock))
-         ) do
-      :already_done -> {:ok, fee_command_view(waitlist_id, nil, :already_done)}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp refund_fee_alone(%{waitlist_entry: entry, carried_fee: fee}, waitlist_id, context, clock) do
-    reading = Clock.read(clock)
-
-    with true <- peek_open_intake(waitlist_id) == nil || {:error, :concurrent_change},
-         :ok <- CarriedFeePolicy.check(:refund, person_fee_facts(entry, fee, reading)),
-         {:ok, _settled} <-
-           Settlement.run(
-             {:refund_carried_fee, :no_intake},
-             %{waitlist_entry: entry, carried_fee: fee},
-             reading,
-             actor: context.actor
-           ) do
-      {:ok, fee_command_view(waitlist_id, nil, :done)}
-    end
-  end
-
-  defp fee_command_view(waitlist_id, intake_view, outcome) do
-    fee =
-      Repo.one(
-        from(f in CarriedFee,
-          where: f.waitlist_id == ^waitlist_id,
-          order_by: [desc: f.status_changed_at, desc: f.created_at],
-          limit: 1
-        )
-      )
-
-    %{
-      waitlist_id: waitlist_id,
-      carried_fee: fee && Map.take(fee, [:id, :status]),
-      intake: intake_view,
-      outcome: outcome
-    }
-  end
-
-  # `link_carried_fee_payment`: an imported Carried Fee (no payment this
-  # system made) linked to the Stripe payment the person originally paid
-  # with, by PaymentIntent id. Stripe is read between transactions — the
-  # amount is what Stripe says the payment took, never typed in — and the
-  # link written under the person's entry → Carried Fee locks after a
-  # re-read. Once linked the fee refunds through Stripe like a deferral's.
-  defp link_fee_payment(waitlist_id, attrs, clock) do
-    with {:ok, waitlist_id} <- cast_person_id(waitlist_id),
-         {:ok, payment_intent_id} <- payment_intent_reference(attrs),
-         {:ok, peek} <- peek_linkable_fee(waitlist_id, payment_intent_id) do
-      link_peeked_fee(peek, waitlist_id, payment_intent_id, clock)
-    end
-  end
-
-  defp link_peeked_fee({:linked, fee}, _waitlist_id, _id, _clock),
-    do: {:ok, linked_fee_view(fee, :already_done)}
-
-  defp link_peeked_fee({:link, _fee}, waitlist_id, payment_intent_id, clock) do
-    with {:ok, payment} <- IntakeRefunds.original_payment(payment_intent_id) do
-      transact(fn ->
-        with_locked(
-          %{
-            waitlist_entry: required(from(e in WaitlistEntry, where: e.id == ^waitlist_id)),
-            carried_fee: live_fee_query(waitlist_id)
-          },
-          &link_fee_locked(&1, payment_intent_id, payment, clock)
-        )
-      end)
-    end
-  end
-
-  defp payment_intent_reference(attrs) do
-    case fetch_attr(attrs, :payment_intent_id) do
-      id when is_binary(id) ->
-        id = String.trim(id)
-
-        if Regex.match?(~r/\Api_[A-Za-z0-9_-]{1,250}\z/, id),
-          do: {:ok, id},
-          else: {:error, :invalid_payment_reference}
-
-      _missing ->
-        {:error, :invalid_payment_reference}
-    end
-  end
-
-  defp peek_linkable_fee(waitlist_id, payment_intent_id) do
-    case Repo.one(live_fee_query(waitlist_id)) do
-      nil -> {:error, :no_carried_fee}
-      fee -> linkable(fee, payment_intent_id)
-    end
-  end
-
-  # `CarriedFeePolicy.check(:link_payment, _)`; asking again for the
-  # PaymentIntent already linked is already done.
-  defp linkable(%CarriedFee{} = fee, payment_intent_id) do
-    facts = CarriedFeePolicy.facts(fee: fee, refund: fee_refund(fee), entry: nil, now: nil)
-
-    case CarriedFeePolicy.check(:link_payment, facts) do
-      :ok ->
-        if Repo.exists?(
-             from(p in IntakePayment, where: p.stripe_payment_intent_id == ^payment_intent_id)
-           ),
-           do: {:error, :payment_already_linked},
-           else: {:ok, {:link, fee}}
-
-      {:error, :already_linked} when fee.stripe_payment_intent_id == payment_intent_id ->
-        {:ok, {:linked, fee}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp link_fee_locked(%{carried_fee: nil}, _id, _payment, _clock), do: {:error, :no_carried_fee}
-
-  defp link_fee_locked(%{carried_fee: fee}, payment_intent_id, payment, _clock) do
-    case linkable(fee, payment_intent_id) do
-      {:ok, {:linked, fee}} ->
-        {:ok, linked_fee_view(fee, :already_done)}
-
-      {:ok, {:link, fee}} ->
-        with {:ok, fee} <-
-               fee
-               |> CarriedFee.link_changeset(payment_intent_id, payment.amount, payment.currency)
-               |> persist(),
-             do: {:ok, linked_fee_view(fee, :done)}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  defp linked_fee_view(%CarriedFee{} = fee, outcome) do
-    fee
-    |> Map.take([:id, :waitlist_id, :status, :amount_cents, :currency, :stripe_payment_intent_id])
-    |> Map.put(:outcome, outcome)
   end
 end
