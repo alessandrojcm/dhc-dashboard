@@ -7,7 +7,7 @@ defmodule Dhc.Discord do
 
   alias Dhc.Auth.ExternalIdentity
   alias Dhc.Auth.UserRole
-  alias Dhc.Discord.{ApiError, GuildMemberCache, JoinGrant}
+  alias Dhc.Discord.{ApiError, DoctorKick, GuildMemberCache, JoinGrant}
   alias Dhc.Invitations.Invitation
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -169,18 +169,33 @@ defmodule Dhc.Discord do
 
   defp connection_refused?(_reason), do: false
 
-  @spec doctor_report(keyword()) :: {:ok, map()} | {:error, term()}
-  def doctor_report(options \\ []) do
+  @doc """
+  The Discord Doctor report for the administrator `admin_principal_id`.
+
+  Each server row carries `kick` and `kick_refusal` from
+  `Dhc.Discord.DoctorKick.decide/2`, the ladder `doctor_kick/3` enforces.
+  `kick_reasons` holds that administrator's audit-reason prefix per
+  kickable bucket; it is built per request, never cached — the
+  `GuildMemberCache` holds only the server's member list.
+  """
+  @spec doctor_report(Ecto.UUID.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def doctor_report(admin_principal_id, options \\ []) do
     refresh? = Keyword.get(options, :refresh, false)
 
-    with {:ok, guild_members, fetched_at} <-
+    with {:ok, admin_name} <- doctor_admin_name(admin_principal_id),
+         {:ok, guild_members, fetched_at} <-
            GuildMemberCache.fetch(
              guild_id(),
              refresh?,
              &list_guild_members/0,
              @doctor_cache_ttl_seconds
            ) do
-      {:ok, build_doctor_report(guild_members, fetched_at)}
+      report =
+        guild_members
+        |> build_doctor_report(fetched_at)
+        |> Map.put(:kick_reasons, DoctorKick.reason_prefixes(admin_name))
+
+      {:ok, report}
     end
   end
 
@@ -240,33 +255,21 @@ defmodule Dhc.Discord do
         context.roles
       )
 
-    cond do
-      guild_member.bot ->
-        kick_result(user_id, :refused, reason: "bot account")
+    case DoctorKick.decide(row, multiple_targets?: context.multiple_targets?) do
+      {:none, refusal} ->
+        kick_result(user_id, :refused, reason: refusal)
 
-      row.protected ->
-        kick_result(user_id, :refused, reason: "protected member")
-
-      row.membership_status == :paused ->
-        kick_result(user_id, :refused, reason: "paused member")
-
-      row.bucket == :linked_active ->
-        kick_result(user_id, :refused, reason: "active linked member")
-
-      row.bucket == :pending_link and context.multiple_targets? ->
-        kick_result(user_id, :refused, reason: "pending links can only be kicked one at a time")
-
-      row.bucket in [:linked_inactive, :pending_link, :unrecognized] ->
+      {_kick, nil} ->
         execute_doctor_kick(user_id, row.bucket, context.admin_name, context.note)
     end
   end
 
   defp execute_doctor_kick(user_id, bucket, admin_name, note) do
-    reason = doctor_audit_reason(admin_name, bucket, note)
+    reason = DoctorKick.audit_reason(admin_name, bucket, note)
 
     case kick_guild_member(user_id, reason) do
       :ok ->
-        kick_result(user_id, :kicked)
+        kick_result(user_id, :kicked, audit_reason: reason)
 
       {:error, %ApiError{status: 404}} ->
         kick_result(user_id, :already_left)
@@ -279,27 +282,13 @@ defmodule Dhc.Discord do
     end
   end
 
-  defp doctor_audit_reason(admin_name, bucket, note) do
-    base = "DHC Doctor — #{admin_name}: #{bucket}"
-
-    case note do
-      note when is_binary(note) ->
-        case String.trim(note) do
-          "" -> base
-          trimmed -> "#{base} — #{trimmed}"
-        end
-
-      _other ->
-        base
-    end
-  end
-
   defp kick_result(user_id, outcome, options \\ []) do
     %{
       discord_user_id: user_id,
       outcome: outcome,
       reason: Keyword.get(options, :reason),
-      error: Keyword.get(options, :error)
+      error: Keyword.get(options, :error),
+      audit_reason: Keyword.get(options, :audit_reason)
     }
   end
 
@@ -441,10 +430,7 @@ defmodule Dhc.Discord do
     bucket = if member.is_active, do: :linked_active, else: :linked_inactive
     protected = protected?(member.principal_id, roles)
 
-    guild_row(guild_member, member, protected,
-      bucket: bucket,
-      kickable: bucket == :linked_inactive and not protected
-    )
+    guild_row(guild_member, member, protected, bucket)
   end
 
   defp pending_or_unrecognized_row(guild_member, nil, _members, _roles),
@@ -458,20 +444,20 @@ defmodule Dhc.Discord do
       member ->
         protected = protected?(member.principal_id, roles)
 
-        guild_row(guild_member, member, protected,
-          bucket: :pending_link,
-          kickable: not protected
-        )
+        guild_row(guild_member, member, protected, :pending_link)
     end
   end
 
   defp unrecognized_row(guild_member) do
-    guild_row(guild_member, nil, false, bucket: :unrecognized, kickable: true)
+    guild_row(guild_member, nil, false, :unrecognized)
   end
 
-  defp guild_row(guild_member, member, protected, options) do
-    %{
-      bucket: Keyword.fetch!(options, :bucket),
+  # `kick`/`kick_refusal` answer for the account as a request's only target;
+  # `doctor_kick/3` decides again with the request's real target count.
+  defp guild_row(guild_member, member, protected, bucket) do
+    row = %{
+      bucket: bucket,
+      bot: guild_member.bot,
       discord_user_id: guild_member.user_id,
       username: guild_member.username,
       display_name: guild_member.display_name,
@@ -479,9 +465,11 @@ defmodule Dhc.Discord do
       joined_at: guild_member.joined_at,
       member: member_summary(member),
       membership_status: member && member.membership_status,
-      protected: protected,
-      kickable: Keyword.fetch!(options, :kickable)
+      protected: protected
     }
+
+    {kick, refusal} = DoctorKick.decide(row)
+    Map.merge(row, %{kick: kick, kick_refusal: refusal, kickable: kick != :none})
   end
 
   defp missing_member(

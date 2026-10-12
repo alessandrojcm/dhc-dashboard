@@ -439,7 +439,13 @@ paths:
       tags:
         - DiscordDoctor
       summary: Get the Discord Doctor reconciliation report
-      description: Returns every human server account in exactly one reconciliation bucket and every Member not known to be in the server.
+      description: |
+        Returns every human server account in exactly one reconciliation
+        bucket and every Member not known to be in the server. Each server
+        account says whether it can be kicked (`kick`) and, when not, why
+        (`kickRefusal`), from the same rule the kick operation enforces.
+        `kickReasons` gives the Discord audit-log reason prefix for the
+        requesting administrator, per kickable bucket.
       security:
         - cookieSession: []
       parameters:
@@ -465,6 +471,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "403":
           description: Discord Doctor role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The requesting administrator has no profile to name in the audit reason.
           content:
             application/json:
               schema:
@@ -11387,7 +11399,7 @@ components:
           $ref: "#/components/schemas/DiscordDoctorReport"
     DiscordDoctorReport:
       type: object
-      required: [serverMembers, missingMembers, cache]
+      required: [serverMembers, missingMembers, cache, kickReasons]
       properties:
         serverMembers:
           $ref: "#/components/schemas/DiscordDoctorServerMembers"
@@ -11397,6 +11409,31 @@ components:
             $ref: "#/components/schemas/DiscordDoctorMissingMember"
         cache:
           $ref: "#/components/schemas/DiscordDoctorCacheMetadata"
+        kickReasons:
+          $ref: "#/components/schemas/DiscordDoctorKickReasons"
+    DiscordDoctorKickReasons:
+      type: object
+      description: |
+        The Discord audit-log reason prefix a kick from each kickable bucket
+        writes for the requesting administrator, e.g.
+        `DHC Doctor — Aoife Byrne: Linked – inactive`. A kick appends
+        ` — <note>` when a note is given.
+      required: [linkedInactive, pendingLink, unrecognized]
+      additionalProperties: false
+      properties:
+        linkedInactive:
+          type: string
+        pendingLink:
+          type: string
+        unrecognized:
+          type: string
+    DiscordDoctorKick:
+      type: string
+      enum: [bulk, single, none]
+      description: |
+        Whether the account can be kicked: `bulk` (alone or with others),
+        `single` (only as the one account of a kick request; a pending link),
+        or `none`.
     DiscordDoctorServerMembers:
       type: object
       required: [linkedActive, linkedInactive, pendingLink, unrecognized]
@@ -11419,7 +11456,7 @@ components:
             $ref: "#/components/schemas/DiscordDoctorServerMember"
     DiscordDoctorServerMember:
       type: object
-      required: [discordUserId, username, displayName, avatar, joinedAt, member, membershipStatus, protected, kickable]
+      required: [discordUserId, username, displayName, avatar, joinedAt, member, membershipStatus, protected, kickable, kick, kickRefusal]
       properties:
         discordUserId:
           type: string
@@ -11446,6 +11483,13 @@ components:
           type: boolean
         kickable:
           type: boolean
+          description: Whether `kick` is not `none`.
+        kick:
+          $ref: "#/components/schemas/DiscordDoctorKick"
+        kickRefusal:
+          type: string
+          nullable: true
+          description: Staff-facing reason the account cannot be kicked, when `kick` is `none`.
     DiscordDoctorMemberSummary:
       type: object
       required: [id, firstName, lastName]
@@ -11515,7 +11559,7 @@ components:
                 $ref: "#/components/schemas/DiscordDoctorKickResult"
     DiscordDoctorKickResult:
       type: object
-      required: [discordUserId, outcome, reason, error]
+      required: [discordUserId, outcome, reason, error, auditReason]
       properties:
         discordUserId:
           type: string
@@ -11525,7 +11569,11 @@ components:
         reason:
           type: string
           nullable: true
-          description: Server-side safety reason when the outcome is refused.
+          description: Staff-facing safety reason when the outcome is refused.
+        auditReason:
+          type: string
+          nullable: true
+          description: The reason written to the Discord audit log when the outcome is kicked.
         error:
           type: string
           nullable: true
