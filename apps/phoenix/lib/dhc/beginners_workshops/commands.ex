@@ -1,14 +1,13 @@
 defmodule Dhc.BeginnersWorkshops.Commands do
   @moduledoc """
-  ALE-378 (ADR 0029 and its amendment): the one implementation of every
+  ALE-378 (ADR 0029 and its amendments): the one interface of every
   Beginners' Workshop write. `Dhc.BeginnersWorkshops.execute/3` delegates
   here; nothing else in the context opens a write transaction (the one
-  `Repo.transaction` is `Commands.Protocol.transact/1`). Staff
-  commands, the person's Intake-page commands, Stripe-driven commands and
-  time-driven passes all arrive as a `command` with an `actor`. The
-  Stripe-facing Intake payment logic (ALE-381) is the internal
-  `Dhc.BeginnersWorkshops.IntakeCheckout`, reached only through this
-  boundary.
+  `Repo.transaction` is `Commands.Protocol.transact/1`). Staff commands,
+  the person's Intake-page commands, Stripe-driven commands and time-driven
+  passes all arrive as a `command` with an `actor`. This module authorizes
+  the actor and routes the command to its family module; it holds no
+  command logic.
 
   ## The protocol
 
@@ -16,14 +15,25 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   `Dhc.BeginnersWorkshops.Commands.Protocol` (ADR 0029, second amendment):
   `transact/1` around `with_locked/2`, the clock read under the lock, and
   every write through `persist/1` (`transition/3` for a status change).
-  Its moduledoc holds the lock order, the transition table, the constraint
-  translation and the signal-after-commit rule. Reach lets only `Commands`
-  and `Commands.*` call it.
+  Its moduledoc holds the transition table, the constraint translation and
+  the signal-after-commit rule. **The lock order is Beginners' Workshop →
+  Waitlist entry → Intake → Carried Fee → payment → refund**: a command may
+  skip levels but never lock upward, and Stripe is called only between
+  transactions.
+
+  What a closing does to the person — standing, Seat Hold, Carried Fee,
+  refund, notice — is one row of `Commands.Settlement` (ALE-404), keyed by
+  cause and ending and run inside the command's `with_locked/2`. A command
+  decides whether it may run (`IntakePolicy`, `CarriedFeePolicy`,
+  `WorkshopPolicy`), names the row, and writes its own history row.
 
   ## Actors
 
     * `{:staff, principal_id}` — authorized through `Dhc.Auth.Capabilities`
-      for the command's capability **before any read**;
+      for the command's capability (`@staff_capabilities`) **before any
+      read**; an assignment-scoped capability (`beginners.workshops.run`) is
+      decided against the workshop's Staff rows, and a denial conceals the
+      workshop (`:not_found`);
     * `{:intake_link, token}` — the person's Intake page;
     * `:stripe` — webhook and success-return completions;
     * `:system` — time-driven passes and workers.
@@ -34,416 +44,47 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   clock). It is read inside the lock, so a decision never uses an instant
   taken before the rows were held. Tests pass `Clock.fixed/1`.
 
-  ## Staff (ALE-379)
+  ## Routing (ALE-405)
 
-  `beginners_workshop_staff` rows are written only under the Beginners'
-  Workshop lock (by `set_staff`, and `schedule_workshop` with optional
-  Staff), so they need no lock level of their own. A Staff change notifies
-  the people added and removed with keyed Notifications created inside the
-  transaction (`Dhc.Notifications.create_keyed_in_transaction/3`) and
-  signalled only after it commits.
+  After authorization, `@families` maps the command name to the family
+  module that runs it (`Family.run/3`, which casts its own input). A console
+  Intake command — `{command, workshop_id, intake_id, attrs}` with the
+  command in `IntakePolicy.commands/0` — is routed by its shape first,
+  because `withdraw` and `refund_carried_fee` are also the Waitlist tab's
+  `{command, waitlist_id, attrs}` and `confirm` the person's own `:confirm`.
+  Each family's moduledoc documents its commands:
 
-  ## Automatic Batches (ALE-380)
+    * `Commands.Schedule` — `schedule_workshop`, `update_workshop`,
+      `reschedule_workshop`, `cancel_workshop`, `pause_batches`,
+      `resume_batches`;
+    * `Commands.Batches` — `send_due_batch`, `fast_track`;
+    * `Commands.Payments` — `start_payment`, `confirm` by Intake link,
+      `complete_payment`, `release_payment`, `reap_holds`;
+    * `Commands.Refunds` — `submit_refund`, `apply_refund_event`,
+      `reconcile`, `retry_refund`, `record_manual_refund`,
+      `forfeit_carried_fee` (and `insert_refund/4`, the one refund-row
+      writer);
+    * `Commands.IntakeCommands` — the console Intake commands (`decline`,
+      `defer`, `confirm`, `cancel_with_refund`, `withdraw`, `resend_link`,
+      `rotate_link`, `refund_carried_fee`, `correct_attendance`);
+    * `Commands.People` — the Waitlist tab's `withdraw` and
+      `refund_carried_fee`, `link_carried_fee_payment`, `delete_person`,
+      `purge_retention`, `import_carried_fee`;
+    * `Commands.Attendance` — `check_in`, `undo_check_in`,
+      `pass_payment_cutoff`, `finish_workshop`, `finalise_attendance`,
+      `send_follow_ups`, `invite`;
+    * `Commands.Staff` — `set_staff` and the Staff Notifications.
 
-  `send_due_batch` (`:system`, run by the periodic sweep) sends a workshop's
-  next Batch only when `WorkshopPolicy.batch_due?/3` holds under the
-  Beginners' Workshop lock and someone eligible is waiting. The Batch is the
-  live `BatchProposal` of `WorkshopPolicy.batch_size/2` people; their
-  Waitlist entries are locked and re-checked, and a person taken by a
-  concurrent command makes the pass retry from a fresh proposal. Each new
-  Intake queues its Contact email through `IntakeEmails.deliver/5`, which
-  writes the Intake Email ledger row in the same transaction, and the coordinator-alert
-  holders get a keyed "Batch sent" Notification (signalled after commit).
-  With free seats but nobody eligible waiting it sends one keyed
-  Notification per workshop and nothing else. The Batch number's unique
-  index and the Intake states keep a pass exactly-once.
-
-  `pause_batches` / `resume_batches` stop and restart new Batches only.
-
-  ## Reschedule (ALE-394)
-
-  `reschedule_workshop` moves a scheduled workshop's date, start time
-  and/or venue at any time before Attendance Finalisation; it is refused
-  only with `:after_finalisation` or `:already_cancelled` (and a pending
-  Batch never blocks it). Under the Beginners' Workshop lock, then the open
-  Intakes:
-
-    * the Payment Cutoff keeps its (Dublin civil) offset before the start
-      unless a new date or time is supplied, and every open Batch window
-      ending after the new cutoff is brought forward to it;
-    * while Batch 1 has not gone out, the contact-from date keeps its offset
-      before the workshop date unless one is supplied (`update_workshop`'s
-      rules judge a supplied one); a kept date that would fall after the new
-      cutoff date is brought forward to Dublin today, so Batch 1 goes out at
-      the next 10:00;
-    * "Workshop rescheduled" is queued to every open Intake (log occasion
-      `rescheduled:<n>`); seats, holds and windows' people are untouched;
-    * the workshop's `reschedule_count` names the reschedule: Pre-workshop
-      info is owed once per schedule (occasion
-      `IntakeEmails.Occasion.pre_workshop/1`), so anyone who had it gets it
-      again at the new cutoff through the same Payment Cutoff pass;
-    * every Staff member (the actor included) gets a keyed Notification
-      (`beginners-workshop:<id>:rescheduled:<n>`), signalled after commit.
-
-  Nothing is scheduled per workshop, so no job needs rewriting.
-
-  ## Cancel (ALE-395)
-
-  `cancel_workshop` (`beginners.workshops.manage`, optional `reason` ≤ 500)
-  cancels a scheduled workshop at any time before Attendance Finalisation
-  (`:after_finalisation` / `:already_cancelled` otherwise). Under the
-  Beginners' Workshop lock, then the open Intakes' Waitlist entries, the
-  open Intakes, those people's live Carried Fees and the workshop's live
-  Seat Holds and paying payments:
-
-    * every `paid` Intake is deferred exactly as `defer` does it (a
-      Stripe-paid one creates a `held` Carried Fee, a Carried-Fee-paid
-      one's fee goes back to `held`), its door check-in is discarded, and
-      "Workshop cancelled – paid" is queued instead of "Deferred";
-    * every `contacted` Intake becomes `returned` (the person `waiting`
-      with their original priority; a holder keeps their `held` fee), its
-      live Seat Hold `releasing`, and "Workshop cancelled – unpaid" is
-      queued — both with log occasion `cancelled`;
-    * each Intake gets a `cancel_workshop` history row carrying the reason;
-    * every Staff member (the actor included) gets the keyed Notification
-      `beginners-workshop:<id>:cancelled`, signalled after commit.
-
-  Every time-driven pass, the Intake page's commands and the door judge
-  `status = scheduled`, so nothing happens to the workshop afterwards. A
-  completion that arrives for a `releasing` hold is refunded in full by
-  `complete_payment`'s `paid_after_close`. People move to another workshop
-  by being fast-tracked there as Carried Fee holders, who then confirm.
-
-  ## Fast-track (ALE-384)
-
-  `fast_track` places one person straight into a workshop outside Batch
-  order: a `waiting` Waitlist entry, a `removed` one within the 3-month
-  retention window (restored to `waiting` through `Dhc.Waitlist.restore/2`)
-  or a new person added through the staff path `Dhc.Waitlist.add_person/2`,
-  all inside this transaction under the Beginners' Workshop lock and then the
-  person's Waitlist entry lock. It is refused with `:open_intake`,
-  `:not_eligible` (attended, invited or joined, or removed too long ago) and
-  `:after_cutoff`, and the staff path's own refusals pass through. The new
-  `contacted` Intake has origin `fast_track` and no Batch; its Contact email
-  is the Batch one, with `{{windowEnd}}` rendering its Payment Window
-  (`WorkshopPolicy.payment_window_end/3`: the Payment Cutoff, or the workshop
-  start for a Carried Fee holder placed after it). The person pays the
-  workshop fee like everyone else.
-
-  ## Door check-in (ALE-390)
-
-  `check_in` / `undo_check_in` (`beginners.workshops.run`) record or clear
-  who checked a `paid` Intake in at the door and when — never a walk-in, and
-  only while `WorkshopPolicy.check_in_window/2` is `:open` (from 1 hour
-  before the start on the workshop date until Attendance Finalisation or the
-  end of that Dublin day). The capability is assignment-scoped, so the actor
-  is authorized against the workshop's Staff **before any read** of the
-  workshop or its Intakes (a denial is `:not_found`, concealing the
-  workshop), and again under the Beginners' Workshop lock, which every
-  Staff change takes. The record names a Principal, not a Staff row, so it
-  stays when that person is later unassigned. Both are idempotent: checking
-  in a checked-in person keeps the first record. Neither is a state change;
-  Attendance Finalisation turns the record into `attended` / `no_show`.
-
-  ## Console Intake commands (ALE-386)
-
-  `decline`, `cancel_with_refund`, `withdraw`, `resend_link` and
-  `rotate_link` (`beginners.workshops.manage`; `withdraw`
-  `beginners.waitlist.manage`) act on one Intake of one workshop and share one plumbing,
-  `intake_command/6`: every one takes an optional note, decides with
-  `IntakePolicy.check/2` under the lock (the same rule the console's
-  `availableCommands` comes from), and, when it acts, writes one Intake
-  history row (`IntakeEvent`: command, actor, time, note) in the same
-  transaction. A command whose Intake is already where it leads returns
-  `ok` (`outcome: :already_done`) and writes nothing. Later Intake commands
-  join `IntakePolicy` and add an `act_on_intake/4` clause.
-
-    * `decline` locks Beginners' Workshop → the person's Waitlist entry →
-      Intake → its live Seat Hold: the `contacted` Intake becomes
-      `declined`, the person stays (or goes back to) `waiting` with their
-      original priority, a live hold becomes `releasing` (Stripe still ends
-      it; a completion that arrives anyway is refunded in full by
-      `complete_payment`'s `paid_after_close` path) and "Declined" is
-      queued.
-    * `resend_link` sends the Intake's own email again — "Contact – pay"
-      through the Batch path's `queue_contact_email/7` while `contacted`,
-      "Place confirmed" while `paid` — with log occasion
-      `resend_link:<event id>`. `rotate_link` first increments the link
-      generation (a new token, so the old link resolves to nothing and the
-      page says "no longer active"), then sends the same email
-      (`rotate_link:<event id>`). Both work on open Intakes only.
-
-    * `cancel_with_refund` (ALE-387) locks Beginners' Workshop → Waitlist
-      entry → Intake → the payment that paid it: the Stripe-paid `paid`
-      Intake becomes `cancelled_refunded` (its seat is free at once, since
-      only `paid` Intakes and open holds count), a full refund of what that
-      payment took is requested (`insert_refund/4`, the one refund-row
-      writer, reason `cancelled_with_refund`, `requested_by` the actor), the
-      person stays (or goes back to) `waiting` with their original priority,
-      and "Cancelled with refund" is queued (occasion
-      `cancelled_with_refund`).
-    * `withdraw` (ALE-387, `beginners.waitlist.manage`) takes the same locks
-      (the payment level is the live hold of a contacted Intake, the paying
-      payment of a paid one). Contacted → `declined` (the hold becomes
-      `releasing`), no email. Paid → `withdrawn`; `refund: true | false` is
-      required (`:refund_choice_required`): a refund (reason `withdrawn`)
-      with "Withdrawn – refunded", or a forfeit with "Withdrawn –
-      forfeited" (occasion `withdrawn`). Either way the standing becomes
-      `removed` through `Waitlist.change_standing/2`; `invited`/`joined`
-      is `:already_invited`. The Waitlist tab's `{:withdraw, waitlist_id,
-      attrs}` peeks the person's open Intake and runs exactly this under
-      the lock (retrying if a Batch or Fast-track contacted them meanwhile),
-      or, with none, only removes the standing. A Carried-Fee-paid Intake
-      refunds or forfeits its Carried Fee instead (ALE-389).
-
-  ## Carried Fees (ALE-388)
-
-  A Carried Fee is a prepaid seat owned by the person (`CarriedFee`); a
-  person holds at most one live one. It is created `held` by `defer` on a
-  Stripe-paid Intake (pointing at that Intake's payment row) or by the
-  Waitlist spreadsheet import (`import_carried_fee`, `:system`, inside the
-  import row's transaction), and is read under the Carried Fee lock level.
-
-    * `defer` (`beginners.workshops.manage`, a console Intake command) locks
-      Beginners' Workshop → Waitlist entry → Intake → Carried Fee: the `paid`
-      Intake becomes `deferred`, the person stays (or goes back to)
-      `waiting` with their original priority, a Stripe-paid Intake creates
-      a `held` Carried Fee and a Carried-Fee-paid one returns its fee to
-      `held`, and "Deferred" is queued.
-    * A holder of a `held` Carried Fee who is contacted (a Batch, a
-      fast-track, a resent link) gets "Contact – confirm (Carried Fee)".
-    * `confirm` (the person, `{:intake_link, token}`, or a console Intake
-      command) moves a `contacted` Intake whose person holds a `held` fee
-      to `paid` (`paid_via: carried_fee`) and the fee to `applied`, in one
-      transaction with no Stripe call and no Seat Hold; it is refused with
-      `:full` (the same seat rule as a hold) or `:no_carried_fee`. The
-      Payment Cutoff does not stop it — the cutoff pass leaves a holder's
-      `contacted` Intake open, and Attendance Finalisation settles it — so it
-      is allowed until finalisation. "Place confirmed – Carried Fee" is
-      queued, and Pre-workshop info too when the cutoff has passed.
-    * `start_payment` is refused with `:confirm_instead` for a holder, and
-      `fast_track` after the cutoff places holders only.
-    * Attendance Finalisation spends an `applied` fee on an attended Intake
-      and forfeits it on a no-show.
-
-  ## Carried Fee refunds and forfeits (ALE-389)
-
-  A Carried Fee refund is always the full amount originally paid, against
-  the original payment, written by the one `insert_refund/4` with
-  `carried_fee_id` set: a deferral's fee against its Intake payment row
-  (`payment_id`), an imported fee against the Stripe PaymentIntent staff
-  linked (no payment row; until linked it is `:payment_not_linked`). The fee
-  becomes `refunded` when the refund is recorded and goes back to `held`
-  when Stripe refuses it (`hold_fee_again/3`, in the same transaction as
-  the refund's `failed`). Refund progression of such a refund locks the
-  person's entry → Carried Fee → payment → refund.
-
-    * `refund_carried_fee` (`beginners.workshops.manage`) — a console Intake
-      command (`IntakePolicy`) on any unpaid Intake of a person with a
-      `held` fee, or `{:refund_carried_fee, waitlist_id, attrs}` from the
-      Waitlist tab, which runs the same on their open Intake or refunds the
-      fee alone (the `withdraw_person` shape). Only someone `waiting` or
-      `removed` within retention (`:fee_not_refundable`); a paid Intake is
-      `:already_paid`. No Intake moves, standing and priority stay, and
-      "Carried Fee refunded" is queued; a contacted Intake's page then asks
-      for payment, and the next Contact email is "Contact – pay".
-    * `cancel_with_refund` on a Carried-Fee-paid Intake refunds its fee;
-      `withdraw` needs the refund-or-forfeit choice whenever the person
-      holds a fee (paid, contacted, or with no Intake — even already
-      removed), and forfeit makes it `forfeited`.
-    * `retry_refund` / `record_manual_refund` follow a Carried Fee's failed
-      refund too (the fee becomes `refunded` again), and
-      `forfeit_carried_fee` — only for a Carried Fee's failed refund, while
-      the fee is held — forfeits it. All three take a refund scope: a
-      workshop id (its console) or `{:person, waitlist_id}` (the Waitlist
-      tab). A fee confirmed or superseded since is no longer followed up.
-    * `link_carried_fee_payment` reads an imported fee's PaymentIntent from
-      Stripe between transactions (`IntakeRefunds.original_payment/1`: a
-      `succeeded`, unrefunded payment) and records it with Stripe's amount
-      under the entry → Carried Fee locks.
-
-  No staff command sends email itself; `fast_track`'s Contact email is
-  queued by the Intake it creates, exactly as a Batch's is.
-
-  ## Intake payment (ALE-381)
-
-  Seats taken = Intakes in `paid` + payment rows in `open` (Seat Holds);
-  `WorkshopFacts` counts them and `WorkshopPolicy` judges them.
-
-    * `start_payment` (`{:intake_link, token}`) is refused with
-      `:after_cutoff` or `:full`. Otherwise it takes the Seat Hold under the
-      Beginners' Workshop lock — an `open` payment row with the fee frozen
-      and 30 minutes to run — and then, **between transactions**, creates the
-      Checkout Session (`IntakeCheckout.create/2`, idempotency key
-      `beginners-intake-payment:<id>`) and records it after re-reading the
-      row under the lock. While a hold is live, pressing Pay again reuses its
-      session. A hold whose 30 minutes ran out is `:payment_in_progress`
-      until Stripe ends it. A session Stripe refused to create frees the hold
-      at once (no session exists that could still be paid).
-    * `complete_payment` (`:stripe`) runs from `checkout.session.completed`
-      and from the success return (which passes the session id, so it is
-      retrieved server-side). It is idempotent and always finds the row by
-      session id. An amount or non-`eur` currency mismatch makes the row
-      `policy_failed`, leaves the Intake `contacted` and requests the
-      automatic refund (ALE-382). Otherwise the row becomes `paid`; an open
-      Intake becomes `paid` (`paid_via: stripe`) and "Place confirmed –
-      paid" is queued with its log row in the same transaction, while a
-      completion for an Intake that already closed (or a `releasing` hold)
-      requests the automatic refund instead.
-    * `release_payment` (`:stripe`) runs on `checkout.session.expired`.
-    * `reap_holds` (`:system`, a sweep pass) asks Stripe to expire every
-      session whose hold ran out and settles the row from Stripe's answer
-      (expired → released, completed → paid). Our clock alone never frees a
-      seat.
-
-  ## Payment Cutoff (ALE-385)
-
-  `pass_payment_cutoff` (`:system`, a sweep pass) runs for a scheduled
-  workshop at or after its Payment Cutoff. Under the Beginners' Workshop
-  lock, then the contacted people's Waitlist entries, the open Intakes and
-  the live Seat Holds, it queues "Pre-workshop info" to every `paid` Intake
-  that has not had it (log occasion `pre_workshop`, unique per Intake) and
-  settles every `contacted` Intake by `WorkshopPolicy.cutoff_settlement/3`:
-  `lapsed` (standing `removed` through `Dhc.Waitlist.change_standing/2`)
-  when seats were free, `returned` (standing left `waiting`, so the
-  original priority stands) when the workshop was full, and left alone
-  while its own Seat Hold is live — the cutoff stops only new holds, so a
-  later sweep settles it once Stripe ends the hold. Neither close sends an
-  email. An Intake that becomes `paid` after the cutoff gets Pre-workshop
-  info in the same transaction (`complete_payment`). Re-running the pass
-  finds nothing owed, so it is exactly-once.
-
-  ## Attendance Finalisation and follow-up (ALE-391)
-
-  `finish_workshop` (assigned Staff, `beginners.workshops.run`, from the
-  door once check-in has opened) and `finalise_attendance` (`:system`, a
-  sweep pass once the workshop's Dublin date has ended) are the one
-  Attendance Finalisation. Under the Beginners' Workshop lock, then the
-  open Intakes' Waitlist entries, the open Intakes and the live Seat Holds:
-  every checked-in `paid` Intake becomes `attended` (standing `attended`)
-  and every other `paid` Intake `no_show` (standing `removed`, no email);
-  every Intake still `contacted` is settled by the Payment Cutoff rule
-  (`WorkshopPolicy.cutoff_settlement/3`) — and while one has a live Seat
-  Hold the workshop is not finalised yet (Finish is refused with
-  `:payment_in_progress`; the pass waits for the next sweep). Check-in
-  closes with the status change, and the Staff list is frozen: each row
-  keeps the person's name as it was (`frozen_name`), and `set_staff`
-  refuses a finalised workshop. The workshop records when, and who pressed
-  Finish (nobody, for the pass).
-
-  `send_follow_ups` (`:system`, a sweep pass) queues "Follow-up" once to
-  every `attended` Intake from 10:00 Dublin the morning after
-  (`WorkshopPolicy.follow_up_at/1`; log occasion `follow_up`, unique per
-  Intake), so re-running it finds nothing owed.
-
-  ## Attendance corrections (ALE-393)
-
-  `correct_attendance` (`beginners.workshops.manage`, a console Intake
-  command with `to`) fixes one Intake after Attendance Finalisation —
-  `attended → no_show`, `no_show → attended`, or `no_show → deferred` for
-  someone who told the club in time. It locks Beginners' Workshop → Waitlist
-  entry → Intake → Carried Fee → the paying payment, and is refused with
-  `:before_finalisation` (`:already_cancelled`), with `:already_invited`
-  once the standing is `invited` or `joined`, and `:not_correctable`
-  otherwise. The standing follows the lifecycle (attended → `attended`,
-  no-show → `removed`, deferred → `waiting` with the original priority)
-  through `Waitlist.change_standing/2`, and the Carried Fee that paid the
-  Intake follows too (`spent`, `forfeited`, or `held` again on a deferral);
-  a Stripe-paid no-show corrected to deferred gets a `held` Carried Fee on
-  its payment, exactly as `defer` makes one, and "Deferred" is queued. A
-  person corrected to attended once the Follow-up is due gets it at once
-  (the same `follow_up_email/3`); before then the sweep sends it. Other
-  corrections email nobody.
-
-  ## Hard delete: retention purge and manual delete (ALE-396)
-
-  `delete_person` (`beginners.waitlist.manage`, the Waitlist tab's Delete)
-  and `purge_retention` (`:system`, a sweep pass, one person per command)
-  are the one hard delete. Under the person's Waitlist entry lock, then
-  every Intake they ever had, then their live Carried Fee:
-
-    * `delete_person` is refused with `:open_intake` and with
-      `:not_deletable` (standing `invited` or `joined`, a claimed profile, or
-      an Invitation that still names them); a Carried Fee needs the
-      refund-or-forfeit choice first (`:refund_choice_required`), refunded in
-      full against its original payment (reason `deleted`) or forfeited.
-      It emails nobody.
-    * `purge_retention` acts only on someone `removed` for more than the
-      3-month retention window (`Waitlist.restorable?/2` on the boundary
-      clock, under the lock) with no open Intake, and forfeits any `held`
-      Carried Fee; anything else is `:not_due`.
-    * Both anonymise the person's Intakes (`waitlist_id` null,
-      `anonymised_at`), each keeping its queue date; an `attended` one first
-      records `invitation_outcome` (`not_invited`, `invited`, `joined`).
-      Every Carried Fee row of the person is kept with no link to them, and
-      refund rows (which never named the person) stay. Then
-      `Dhc.Waitlist.hard_delete/1` deletes the Guardian, the unclaimed
-      UserProfile and the Waitlist entry.
-
-  ## Settlement (ALE-404)
-
-  What every closing above does to the person — standing, Seat Hold,
-  Carried Fee, refund, notice — is one row of
-  `Dhc.BeginnersWorkshops.Commands.Settlement`, keyed by cause and ending
-  and run inside the command's `with_locked/2`. A command decides whether
-  it may run (`IntakePolicy`, `CarriedFeePolicy`, `WorkshopPolicy`), names
-  the row, and writes its own history row; a new ending is a new row there.
-
-  ## Invitation handoff (ALE-392)
-
-  `invite` (`members.invite`) hands one attended person to Onboarding.
-  Under the Beginners' Workshop lock, then the person's Waitlist entry and
-  their Intake, it refuses unless the workshop is finalised
-  (`:not_finalised`), the Intake is `attended` (`:not_attended`) and the
-  standing is `attended` (`:already_invited`, `:already_joined`,
-  `:not_invitable`; an anonymised person is `:person_not_found`). Then it
-  issues the Invitation through `Dhc.Onboarding.issue_invitation/3` (with
-  `waitlist_id:`, so acceptance claims this Waitlist profile) and moves the
-  standing `attended → invited`, both in this transaction. Onboarding's own
-  refusals come back as `:email_is_principal`,
-  `:email_has_pending_invitation` and `:incomplete_details`, and are written
-  to the Invitation processing log after the rollback. The Follow-up does not
-  gate it. Onboarding never calls back: deleting the Invitation returns the
-  standing to `attended` on the Onboarding side (`Dhc.Invitations`).
-
-  A payment-started command peeks the row by session id without a lock,
-  then locks Beginners' Workshop → Intake → payment from the top down and
-  decides on the re-read row. The row's workshop and Intake never change,
-  so the peek never goes stale.
-
-  ## Refunds (ALE-382)
-
-  A refund is always the full amount the payment row took, against that
-  payment's PaymentIntent, under the idempotency key
-  `beginners-intake-refund:<id>` (`IntakeRefunds`, the only Stripe refund
-  caller). An automatic refund is requested inside the transaction that
-  discovers it is owed — a `policy_failed` payment or a completion after
-  the Intake closed — which also enqueues its submission and queues
-  "Payment refunded (automatic)". A refund that starts a command peeks the
-  row (its payment never changes), then locks payment → refund; refund
-  progression never takes the workshop or Intake lock.
-
-    * `submit_refund` (`:system`, the refund worker) calls Stripe between
-      transactions and writes the answer after a locked re-read. A Stripe
-      outage leaves it `pending` and fails (the job retries); a refusal
-      makes it `failed`.
-    * `apply_refund_event` (`:stripe`, `refund.*`) finds the row by Stripe
-      refund id, or by the refund id in the object's metadata when the event
-      beat the submission's record. Any other refund is acknowledged as not
-      ours (the Workshops target owns it).
-    * `reconcile` (`:system`, the reconcile worker) repairs missed events in
-      one bounded pass: pending refunds are enqueued again, processing ones
-      re-read from Stripe, and live or releasing payment rows settled when
-      their Checkout Session completed or expired.
-    * `retry_refund` and `record_manual_refund` (`beginners.workshops.manage`)
-      follow up a failed refund with a new row (`follows_refund_id`); the
-      failed row stays as history and a refund is followed up once.
-
-  Failed refunds ignore later events. A Stripe-completed refund can still
-  fail asynchronously; manual completions and stale events remain settled. When a refund
-  fails, the coordinator-alert holders get a keyed Notification
-  (`beginners-workshop-refund:<id>:failed`, signalled after commit). Neither
-  a failed refund nor a manual refund record emails the person.
+  To add a command: its capability in `@staff_capabilities` (or its actor
+  list), its name in `@families`, a `run/3` clause in its family module, and
+  its docs in that family's moduledoc. A family never calls another
+  family's private functions: shared helpers are public `@doc false`
+  functions of the module that owns their concept (each family's moduledoc
+  lists the ones it offers and uses) or of the small internal modules
+  `Commands.Input`, `Commands.WorkshopRules`, `Commands.LockSpecs`,
+  `Commands.Facts`, `Commands.IntakeHistory`, `Commands.IntakeNotices` and
+  `Commands.CoordinatorAlerts`. Reach lets only `Commands` and `Commands.*`
+  call any of them.
   """
 
   import Ecto.Query
