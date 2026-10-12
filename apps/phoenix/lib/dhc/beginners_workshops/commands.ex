@@ -173,8 +173,10 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   `:not_eligible` (attended, invited or joined, or removed too long ago) and
   `:after_cutoff`, and the staff path's own refusals pass through. The new
   `contacted` Intake has origin `fast_track` and no Batch; its Contact email
-  is the Batch one, with `{{windowEnd}}` rendering the Payment Cutoff. The
-  person pays the workshop fee like everyone else.
+  is the Batch one, with `{{windowEnd}}` rendering its Payment Window
+  (`WorkshopPolicy.payment_window_end/3`: the Payment Cutoff, or the workshop
+  start for a Carried Fee holder placed after it). The person pays the
+  workshop fee like everyone else.
 
   ## Door check-in (ALE-390)
 
@@ -1949,7 +1951,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
              :fast_track,
              entry,
              first_name,
-             fast_track_window_end(workshop, reading),
+             WorkshopPolicy.payment_window_end(workshop, nil, reading.now),
              reading
            ) do
       {:ok, fast_track_view(intake, placed)}
@@ -1962,13 +1964,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     if WorkshopPolicy.payment_open?(workshop, reading) or held?(fee),
       do: :ok,
       else: {:error, :after_cutoff}
-  end
-
-  # A holder placed after the cutoff may confirm until the workshop starts.
-  defp fast_track_window_end(workshop, reading) do
-    if WorkshopPolicy.payment_open?(workshop, reading),
-      do: workshop.payment_cutoff,
-      else: WorkshopPolicy.starts_at(workshop)
   end
 
   defp fast_track_entry({:waitlist_entry, _id}, nil, _reading), do: {:error, :person_not_found}
@@ -2060,8 +2055,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # One new `contacted` Intake, its "Contact – pay" email with the person's
   # own link, and the Intake Email log row — all in this transaction. A
-  # Batch Intake's `{{windowEnd}}` is its Batch window; a fast-track's is the
-  # Payment Cutoff.
+  # Batch Intake's `{{windowEnd}}` is its Batch window; a fast-track's is
+  # `WorkshopPolicy.payment_window_end/3`.
   defp contact(workshop, origin, entry, first_name, window_end, reading) do
     intake_id = Ecto.UUID.generate()
     token = IntakeLink.token(intake_id, 1)
@@ -3880,8 +3875,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp back_to_waiting(_waiting_or_anonymised, _now), do: :ok
 
   # The email an open Intake's link travels in: "Contact – pay" while
-  # contacted (its window is its Batch's, or the Payment Cutoff for a
-  # fast-track), "Place confirmed" once paid.
+  # contacted (its Payment Window, `WorkshopPolicy.payment_window_end/3`),
+  # "Place confirmed" once paid.
   defp queue_link_email(%Intake{waitlist_id: nil}, _workshop, _occasion, _reading), do: :ok
 
   defp queue_link_email(%Intake{state: "contacted"} = intake, workshop, occasion, reading) do
@@ -3905,9 +3900,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp queue_link_email(%Intake{state: "paid"} = intake, workshop, occasion, reading),
     do: queue_place_confirmed(intake, workshop, occasion, reading)
 
-  defp intake_window_end(%Intake{batch_id: nil}, workshop), do: workshop.payment_cutoff
+  defp intake_window_end(%Intake{} = intake, workshop),
+    do: WorkshopPolicy.payment_window_end(workshop, batch_window_end(intake), intake.contacted_at)
 
-  defp intake_window_end(%Intake{batch_id: batch_id}, _workshop),
+  defp batch_window_end(%Intake{batch_id: nil}), do: nil
+
+  defp batch_window_end(%Intake{batch_id: batch_id}),
     do: Repo.one!(from(b in Batch, where: b.id == ^batch_id, select: b.window_ends_at))
 
   # What `IntakePolicy.check/2` reads: the locked Intake and, for the

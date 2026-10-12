@@ -33,7 +33,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   (`Dhc.Email.Worker`), and the recipient is always the person's own Waitlist
   email: Guardians have no email address in the system.
 
-  For a fast-track (no Batch), pass the Payment Cutoff as `windowEnd`.
+  Pass the Intake's Payment Window (`WorkshopPolicy.payment_window_end/3`)
+  as `windowEnd`.
   Format values with `Values`.
   """
 

@@ -315,7 +315,7 @@ defmodule Dhc.BeginnersWorkshops.Report do
   end
 
   defp group(kind, number, window_ends_at, rows, events, workshop \\ nil) do
-    window_end = fn row -> window_ends_at || fast_track_window_end(workshop, row) end
+    window_end = &WorkshopPolicy.payment_window_end(workshop, window_ends_at, &1.contacted_at)
     paid = Enum.filter(rows, & &1.paid_at)
     in_window? = &(DateTime.compare(&1.paid_at, window_end.(&1)) != :gt)
 
@@ -333,15 +333,6 @@ defmodule Dhc.BeginnersWorkshops.Report do
           &(&1.state in ~w(lapsed returned) and not MapSet.member?(events.cancelled, &1.id))
         )
     }
-  end
-
-  # A fast-track's window is the Payment Cutoff, or the start for a Carried
-  # Fee holder placed after the cutoff (`fast_track_window_end/2` in the
-  # boundary).
-  defp fast_track_window_end(workshop, row) do
-    if DateTime.compare(row.contacted_at, workshop.payment_cutoff) == :lt,
-      do: workshop.payment_cutoff,
-      else: WorkshopPolicy.starts_at(workshop)
   end
 
   # ── planning ─────────────────────────────────────────────────────

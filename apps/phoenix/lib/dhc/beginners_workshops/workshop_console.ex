@@ -37,8 +37,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       may be corrected to (`IntakePolicy.attendance_corrections/1`); a
       correction's history row names its `correction`;
     * `unpaid_after_window` — the Needs attention list of `contacted`
-      people whose payment window (their Batch's, or the Payment Cutoff for
-      a fast-track) has ended, oldest window first (ALE-386);
+      people whose Payment Window (`WorkshopPolicy.payment_window_end/3`)
+      has ended, oldest window first (ALE-386);
     * `unconfirmed_carried_fees` — the Needs attention list of `contacted`
       Carried Fee holders who have not confirmed yet (ALE-388);
     * `failed_refunds` — the Needs attention list of refunds that failed
@@ -291,8 +291,11 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
           :fee_amount_cents,
           :fee_currency
         ])
-        # A fast-track's window is the Payment Cutoff (its Contact email says so).
-        |> Map.update!(:window_ends_at, &(&1 || workshop.payment_cutoff))
+        # The Payment Window its Contact email asks by.
+        |> Map.update!(
+          :window_ends_at,
+          &WorkshopPolicy.payment_window_end(workshop, &1, row.contacted_at)
+        )
         |> Map.put(:minor, WorkshopPolicy.minor?(row.date_of_birth, workshop.date))
         |> Map.put(:medical, medical?(row.medical_conditions))
         |> Map.put(:refund, Map.get(refunds, row.id))
