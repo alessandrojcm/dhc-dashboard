@@ -99,6 +99,8 @@ Two rows are compositions that already exist rather than registry items, so they
 
 Copy the shape from a page that already does it: `apps/web/src/routes/(public)/waitlist/+page.svelte` (Field + Input + Select + RadioGroup + date picker in one remote form), `apps/web/src/routes/dashboard/members/[memberId]/+page.svelte`, and `apps/web/src/lib/components/ui/pause-subscription-modal.svelte` for a dialog over a date field.
 
+Beginners' Workshop dialogs compose `lib/components/beginners-workshops/workshop-dialog.svelte` inside `Dialog.Root` (`alert` inside `AlertDialog.Root`). Keep the header as a direct child, then one form or `.workshop-dialog-body` containing the body and footer: this keeps the header fixed, the body independently scrollable, and actions sticky within the viewport. Use `wide` for multi-date scheduling. The wrapper owns layout, touch sizes and safe cancellation focus; shared primitives retain input/placeholder typography and colors, and the shell uses the app's background surface. Feature code owns fields and workflow actions. Its browser tests load `app.css` to verify input-style parity, light/dark contrast and portrait/landscape geometry, not just unstyled semantics.
+
 Two boundaries: `apps/web/src/lib/components/ui/**` is vendored registry code and keeps its own native `<select>` internals (the calendar's month and year pickers), and `apps/web/src/routes/prototype/**` plus `routes/dashboard/prototype/**` are throwaway comparison surfaces. Everything a member or operator sees goes through `ui/`.
 
 Before finishing a UI change, walk the diff for interactive elements and confirm each maps to a row above.
@@ -137,6 +139,7 @@ Spread the remote form or its preflight-enhanced variant onto the native form el
 - `submit()` awaits the post-submission `refreshAll()` before resolving, so a refresh that re-renders the route (e.g. Invitation Acceptance after a terminal payment failure) unmounts the component — and its `useMachine` actor — before the `enhance` callback continues. Do user-visible work that must survive that (toasts) directly in the callback.
 - Treat `invalid(...)`, `redirect(...)`, and `error(...)` as control-flow exceptions. Keep them outside broad catches or explicitly rethrow them.
 - Use `.pending` for submission state and `.result` only for ephemeral post-submission feedback.
+- Attach each remote form instance (including `form.for(id)`) to exactly one mounted `<form>`. Responsive table/card views must reuse that form rather than render two CSS-hidden copies; SvelteKit raises `remote_form_multiple_elements` even when one copy is invisible. Invitable reflows its single table row into a mobile card for this reason.
 
 ## Real PostgreSQL Concurrency Tests
 
@@ -170,6 +173,7 @@ Controllers return `{:error, reason}`; the domain HTTP module owns status and de
 - Per-IP policy (rate limits, mandate IPs) resolves the client through `DhcWeb.Plugs.ClientIp`, never `conn.remote_ip`. SvelteKit calls Phoenix server-side, so `remote_ip` is the Worker's egress address. The trusted `x-dhc-client-ip` header counts only with a matching `x-dhc-forwarding-secret`, which `apps/web/src/lib/server/api-client.ts` adds. After that comes Fly's `fly-client-ip`; `x-forwarded-for` is never trusted. `TRUSTED_FORWARDING_SECRET` must be identical in Phoenix (fnox/1Password) and the web Worker (`wrangler secret`).
 - The `:api` pipeline rejects non-JSON bodies on unsafe methods with 415 (`DhcWeb.Plugs.RequireJsonBody`). This is CSRF hardening for the `.dublinhemaclub.com` `SameSite=Lax` cookie. `DhcWeb.ConnCase` sends params maps as `application/json`, so a test that posts a raw body sets `content-type` itself.
 - `DhcWeb.CacheBodyReader` keeps `raw_body` only for `/api/webhooks/stripe`.
+- Intake-link log privacy has two extra sinks: Phoenix filters Checkout `success_url`/`cancel_url` parameters (the credential is inside the path, not a `token` key), and Vite's `intakeSafeLogger` redacts SvelteKit dev access lines, which bypass `handleError`. Webhook warnings report metadata rather than the signed payload. Exercise actual request logs when changing either sink (`stripe_webhooks_controller_test.exs`, `tools/intake-access-log.test.ts`).
 - Email variables that carry a credential (a login link) go through `Dhc.Email.Worker.seal_data_variables/1`, never plain `data_variables`. Job args persist in `oban_jobs` and reach Sentry, and the worker reports variable keys only.
 - Web Push endpoints must pass the push-service allowlist in `Dhc.Notifications.WebPush.Endpoint`. It is checked at subscribe time and again before every send (SSRF). Don't loosen it into a hostname heuristic.
 - Public intake endpoints must not distinguish "already exists". `POST /api/waitlist/entries` returns the same 202 `{received: true}` for a duplicate email.

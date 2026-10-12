@@ -119,13 +119,15 @@ function save(event: SubmitEvent) {
 </script>
 
 <form
-	class="flex flex-col gap-4 rounded-2xl border bg-card p-5"
+	class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card"
 	aria-label={`${copy.label} template`}
 	onsubmit={save}
 >
-	<header class="flex flex-col gap-1">
+	<header
+		class="flex shrink-0 flex-col gap-2 border-b border-border bg-muted/20 p-4 sm:p-5"
+	>
 		<div class="flex flex-wrap items-center gap-2">
-			<h2 class="font-heading text-xl">{copy.label}</h2>
+			<h3 class="font-heading text-xl text-foreground">{copy.label}</h3>
 			<Badge variant="outline">
 				{template.kind === "action" ? "With a button" : "Notice"}
 			</Badge>
@@ -133,118 +135,132 @@ function save(event: SubmitEvent) {
 				Last saved {savedFormat.format(new Date(template.updatedAt))}
 			</span>
 		</div>
-		<dl class="grid gap-x-3 gap-y-0.5 text-sm sm:grid-cols-[auto_1fr]">
-			<dt class="font-medium">Sent when</dt>
-			<dd class="text-muted-foreground">{copy.sentWhen}</dd>
-			<dt class="font-medium">Sent to</dt>
-			<dd class="text-muted-foreground">
-				{copy.recipients}
-				{INTAKE_EMAIL_RECIPIENT_NOTE}
-			</dd>
-		</dl>
-		<p class="text-xs text-muted-foreground">
-			Edits apply to emails queued after you save. Emails already queued keep
-			the copy they were queued with.
-		</p>
 	</header>
 
-	<Field.Field>
-		<Field.Label for="intake-email-subject">Subject</Field.Label>
-		<TemplateInput
-			id="intake-email-subject"
-			label="Subject"
-			bind:value={subject}
-			tokens={subjectTokens}
-			maxLength={SUBJECT_MAX}
-			invalid={subjectProblem !== null ||
-				subjectRefused.length > 0 ||
-				serverFields.subject !== undefined}
-		/>
-		{#if subjectProblem}
-			<Field.Error>{subjectProblem}</Field.Error>
-		{/if}
-		{#each serverFields.subject ?? [] as message (message)}
-			<Field.Error>Subject {message}</Field.Error>
-		{/each}
-	</Field.Field>
+	<div
+		class="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5"
+		role="region"
+		aria-label="Template fields"
+	>
+		<div class="flex min-h-full w-full flex-col gap-5 [&>*]:shrink-0">
+			<div class="rounded-xl border border-border bg-muted/20 p-4">
+				<dl class="grid gap-x-3 gap-y-0.5 text-sm sm:grid-cols-[auto_1fr]">
+					<dt class="font-medium">Sent when</dt>
+					<dd class="text-muted-foreground">{copy.sentWhen}</dd>
+					<dt class="font-medium">Sent to</dt>
+					<dd class="text-muted-foreground">
+						{copy.recipients}
+						{INTAKE_EMAIL_RECIPIENT_NOTE}
+					</dd>
+				</dl>
+				<p class="mt-3 max-w-3xl text-sm leading-5 text-muted-foreground">
+					Edits apply to emails queued after you save. Emails already queued
+					keep the copy they were queued with.
+				</p>
+			</div>
+			<Field.Field>
+				<Field.Label for="intake-email-subject">Subject</Field.Label>
+				<TemplateInput
+					id="intake-email-subject"
+					label="Subject"
+					bind:value={subject}
+					tokens={subjectTokens}
+					maxLength={SUBJECT_MAX}
+					invalid={subjectProblem !== null ||
+						subjectRefused.length > 0 ||
+						serverFields.subject !== undefined}
+				/>
+				{#if subjectProblem}
+					<Field.Error>{subjectProblem}</Field.Error>
+				{/if}
+				{#each serverFields.subject ?? [] as message (message)}
+					<Field.Error>Subject {message}</Field.Error>
+				{/each}
+			</Field.Field>
 
-	<Field.Field>
-		<div class="flex flex-wrap items-center justify-between gap-2">
-			<Field.Label for="intake-email-body">Message</Field.Label>
-			<span
-				class={cn(
-					"text-xs font-semibold tabular-nums",
-					measure.fits ? "text-muted-foreground" : "text-destructive",
-				)}
-				data-testid="intake-email-counter"
-				aria-live="polite"
-			>
-				{measure.length.toLocaleString("en-IE")} / {LIMIT_TEXT}
-			</span>
+			<Field.Field class="flex-1">
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<Field.Label for="intake-email-body">Message</Field.Label>
+					<span
+						class={cn(
+							"text-xs font-semibold tabular-nums",
+							measure.fits ? "text-muted-foreground" : "text-destructive",
+						)}
+						data-testid="intake-email-counter"
+						aria-live="polite"
+					>
+						{measure.length.toLocaleString("en-IE")} / {LIMIT_TEXT}
+					</span>
+				</div>
+				{#key editorKey}
+					<RichTextEditor
+						class="flex min-h-72 flex-1 flex-col [&>div]:shrink-0 [&>div:last-child]:flex [&>div:last-child]:flex-1 [&>div:last-child]:flex-col [&_.tiptap]:flex-1"
+						bind:value={body}
+						id="intake-email-body"
+						aria-label="Message"
+						aria-invalid={!measure.fits ||
+							measure.refused.length > 0 ||
+							serverFields.body !== undefined}
+						placeholders={chips}
+					/>
+				{/key}
+				<Field.Description>
+					The counter measures the email as sent, with every placeholder at its
+					longest (a 40-character first name, an 80-character venue). Formatting
+					counts too. Resend allows {LIMIT_TEXT} characters.
+				</Field.Description>
+				{#if !measure.fits}
+					<Field.Error>
+						The message is over {LIMIT_TEXT} characters. Shorten it to save.
+					</Field.Error>
+				{/if}
+				{#if !measure.hasText}
+					<Field.Error>Write a message.</Field.Error>
+				{/if}
+				{#each serverFields.body ?? [] as message (message)}
+					<Field.Error>Message {message}</Field.Error>
+				{/each}
+			</Field.Field>
+
+			{#if template.buttonLabel}
+				<div
+					class="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-muted/20 p-4 text-sm text-foreground"
+					role="note"
+					aria-label="Button added by the app"
+				>
+					<MousePointerClick class="size-4 text-primary" aria-hidden="true" />
+					<span>Added by the app below the message:</span>
+					<span
+						class="rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground"
+						>{template.buttonLabel}</span
+					>
+					<span class="text-xs"
+						>It opens the person's page to manage their workshop place.</span
+					>
+				</div>
+			{/if}
+
+			{#if refused.length > 0}
+				<Alert.Root variant="destructive">
+					<Alert.Title>Not available in this email</Alert.Title>
+					<Alert.Description>
+						{refused.map((name) => `{{${name}}}`).join(", ")} can't be filled for
+						this email. Remove it to save.
+					</Alert.Description>
+				</Alert.Root>
+			{/if}
+
+			{#if problem?.detail}
+				<Alert.Root variant="destructive">
+					<Alert.Title>Not saved</Alert.Title>
+					<Alert.Description>{problem.detail}</Alert.Description>
+				</Alert.Root>
+			{/if}
 		</div>
-		{#key editorKey}
-			<RichTextEditor
-				bind:value={body}
-				id="intake-email-body"
-				aria-label="Message"
-				aria-invalid={!measure.fits ||
-					measure.refused.length > 0 ||
-					serverFields.body !== undefined}
-				placeholders={chips}
-			/>
-		{/key}
-		<Field.Description>
-			The counter measures the email as sent, with every placeholder at its
-			longest (a 40-character first name, an 80-character venue). Formatting
-			counts too. Resend allows {LIMIT_TEXT} characters.
-		</Field.Description>
-		{#if !measure.fits}
-			<Field.Error>
-				The message is over {LIMIT_TEXT} characters. Shorten it to save.
-			</Field.Error>
-		{/if}
-		{#if !measure.hasText}
-			<Field.Error>Write a message.</Field.Error>
-		{/if}
-		{#each serverFields.body ?? [] as message (message)}
-			<Field.Error>Message {message}</Field.Error>
-		{/each}
-	</Field.Field>
-
-	{#if template.buttonLabel}
-		<div
-			class="flex flex-wrap items-center gap-3 rounded-xl border-2 border-dashed p-3 text-sm text-muted-foreground"
-			role="note"
-			aria-label="Button added by the app"
-		>
-			<MousePointerClick class="size-4" />
-			<span>Added by the app below the message:</span>
-			<span
-				class="rounded-lg bg-primary px-3 py-1.5 font-semibold text-primary-foreground"
-				>{template.buttonLabel}</span
-			>
-			<span class="text-xs">It links to the person's own Intake page.</span>
-		</div>
-	{/if}
-
-	{#if refused.length > 0}
-		<Alert.Root variant="destructive">
-			<Alert.Title>Not available in this email</Alert.Title>
-			<Alert.Description>
-				{refused.map((name) => `{{${name}}}`).join(", ")} can't be filled for this
-				email. Remove it to save.
-			</Alert.Description>
-		</Alert.Root>
-	{/if}
-
-	{#if problem?.detail}
-		<Alert.Root variant="destructive">
-			<Alert.Title>Not saved</Alert.Title>
-			<Alert.Description>{problem.detail}</Alert.Description>
-		</Alert.Root>
-	{/if}
-
-	<div class="flex justify-end gap-2">
+	</div>
+	<div
+		class="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-muted/20 p-4 sm:px-5"
+	>
 		<Button type="button" variant="outline" onclick={discard} disabled={saving}>
 			Discard changes
 		</Button>

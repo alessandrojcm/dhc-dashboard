@@ -6,21 +6,19 @@ import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
 import { gotoHydrated } from "./hydration";
 
-// The Beginners' Workshop page mounts every tab panel (inactive ones are only
-// `hidden`), and the Workshops, Invitable and Dashboard tabs have tables of their
-// own, so every table locator is scoped to the Waitlist panel.
+// Each Beginners' Workshop section has its own route and view.
 function waitlistRows(page: Page) {
 	return waitlistPanel(page).locator("table tbody tr");
 }
 
 function waitlistPanel(page: Page) {
-	return page.getByRole("tabpanel", { name: "Waitlist", exact: true });
+	return page.getByRole("region", { name: "Waitlist", exact: true });
 }
 
 test.describe("Waitlist table pagination and search", () => {
 	let adminMember: Awaited<ReturnType<typeof createMember>>;
 	const waitlistIds: string[] = [];
-	const waitlistPath = "/dashboard/beginners-workshop?tab=waitlist";
+	const waitlistPath = "/dashboard/beginners-workshop/waitlist";
 	let searchTargetEmail = "";
 	const searchTargetName = "UniqueWaitlistSearch";
 
@@ -123,7 +121,7 @@ test.describe("Waitlist table pagination and search", () => {
 
 		// Wait for URL to update
 		await page.waitForURL(
-			"**/dashboard/beginners-workshop?**tab=waitlist**pageSize=25**",
+			"**/dashboard/beginners-workshop/waitlist?**pageSize=25**",
 			{
 				timeout: 10000,
 			},

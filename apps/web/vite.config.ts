@@ -8,8 +8,10 @@ import mkcert from "vite-plugin-mkcert";
 import { playwright } from "@vitest/browser-playwright";
 import adapter from "@sveltejs/adapter-cloudflare";
 import { cloudflareCreateRequire } from "./tools/cloudflare-create-require.js";
+import { intakeSafeLogger } from "./tools/intake-safe-logger.js";
 
 export default defineConfig(({ command }) => ({
+	customLogger: intakeSafeLogger(),
 	envDir: "../..",
 	assetsInclude: ["src/assets/**/*"],
 	plugins: [

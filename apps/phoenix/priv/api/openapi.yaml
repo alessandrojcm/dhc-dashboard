@@ -9911,6 +9911,11 @@ components:
           allOf: [{$ref: "#/components/schemas/BeginnersIntakeWorkshop"}]
           nullable: true
         feeCents: {type: integer, nullable: true, minimum: 1}
+        paymentCutoff:
+          type: string
+          format: date-time
+          nullable: true
+          description: Deadline for starting payment; null when the page does not offer a new payment.
     BeginnersIntakePageResponse:
       type: object
       required: [data]

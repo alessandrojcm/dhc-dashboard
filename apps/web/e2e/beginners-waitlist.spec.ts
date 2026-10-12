@@ -115,7 +115,7 @@ test.describe("Beginners waitlist", () => {
 });
 
 test.describe("Beginners waitlist view", () => {
-	const waitlistPath = "/dashboard/beginners-workshop?tab=waitlist";
+	const waitlistPath = "/dashboard/beginners-workshop/waitlist";
 	const suffix = `${Date.now()}-${faker.string.alphanumeric(6)}`;
 	const waitingName = `QueueWaiting${faker.string.alpha(6)}`;
 	const removedName = `QueueRemoved${faker.string.alpha(6)}`;
@@ -155,6 +155,43 @@ test.describe("Beginners waitlist view", () => {
 		await coach?.cleanUp();
 	});
 
+	test("navigates between dedicated sections and keeps browser history", async ({
+		context,
+		page,
+	}) => {
+		await loginAsUser(context, coordinator.email);
+		await gotoHydrated(page, "/dashboard/beginners-workshop");
+		const navigation = page.getByRole("navigation", {
+			name: "Beginners' Workshop sections",
+		});
+		await expect(
+			navigation.getByRole("link", { name: "Dashboard", exact: true }),
+		).toHaveAttribute("aria-current", "page");
+		for (const [label, path] of [
+			["Waitlist", "waitlist"],
+			["Workshops", "workshops"],
+			["Email templates", "email-templates"],
+			["Invite members", "invitable"],
+		]) {
+			await navigation.getByRole("link", { name: label, exact: true }).click();
+			await expect(page).toHaveURL(
+				new RegExp(`/dashboard/beginners-workshop/${path}$`),
+			);
+			await expect(
+				navigation.getByRole("link", { name: label, exact: true }),
+			).toHaveAttribute("aria-current", "page");
+			await expect(page.getByRole("tablist")).toHaveCount(0);
+		}
+		await page.goBack();
+		await expect(page).toHaveURL(
+			/\/dashboard\/beginners-workshop\/email-templates$/,
+		);
+		await page.reload();
+		await expect(
+			navigation.getByRole("link", { name: "Email templates", exact: true }),
+		).toHaveAttribute("aria-current", "page");
+	});
+
 	test("lists waiting people by default, with removed people behind a filter", async ({
 		context,
 		page,
@@ -164,7 +201,7 @@ test.describe("Beginners waitlist view", () => {
 		await gotoHydrated(page, waitlistPath);
 
 		const table = page
-			.getByRole("tabpanel", { name: "Waitlist" })
+			.getByRole("region", { name: "Waitlist", exact: true })
 			.getByRole("table");
 		await expect(table.getByText(`${waitingName} Queue`)).toBeVisible();
 		await expect(table.getByText(`${removedName} Queue`)).toHaveCount(0);
@@ -188,15 +225,9 @@ test.describe("Beginners waitlist view", () => {
 
 	test("reports the waiting queue as Waiting", async ({ context, page }) => {
 		await loginAsUser(context, coordinator.email);
-		// Workshop managers land on the Workshops tab (ALE-378), so the
-		// Dashboard tab is opened explicitly.
-		await gotoHydrated(page, "/dashboard/beginners-workshop?tab=dashboard");
+		await gotoHydrated(page, "/dashboard/beginners-workshop");
 
-		await expect(
-			page
-				.getByRole("tabpanel", { name: "Dashboard" })
-				.getByText("Waiting", { exact: true }),
-		).toBeVisible();
+		await expect(page.getByText("Waiting", { exact: true })).toBeVisible();
 		await expect(page.getByText("Total waitlist")).toHaveCount(0);
 	});
 

@@ -75,6 +75,8 @@ describe("rescheduleWarning", () => {
 		expect(rescheduleWarning(1)).toBe(
 			"This emails 1 person “Workshop rescheduled”.",
 		);
-		expect(rescheduleWarning(0)).toMatch(/nobody is emailed/);
+		expect(rescheduleWarning(0)).toBe(
+			"No emails will be sent: nobody has an active workshop place.",
+		);
 	});
 });

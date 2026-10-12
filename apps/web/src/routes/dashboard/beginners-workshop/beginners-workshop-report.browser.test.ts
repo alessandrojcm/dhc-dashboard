@@ -107,17 +107,17 @@ test("ALE-397: planning cards show the 12-month figures and the liabilities", as
 		.element(card("Workshops to clear the queue"))
 		.toHaveTextContent("4 waiting ÷ 4 attendees per workshop");
 	await expect
-		.element(card("Conversion Rate"))
+		.element(card("Attendees who joined the club"))
 		.toHaveTextContent(
-			"50% 2 joined of 4 attended · 1 Invitable · 1 invited, not yet joined",
+			"50% 2 joined of 4 attendees · 1 ready to invite · 1 invited, not yet joined",
 		);
 	await expect
-		.element(card("Outstanding Carried Fees"))
+		.element(card("People with workshop credit"))
 		.toHaveTextContent(
-			"€35.00 originally paid · 1 not linked to a payment yet",
+			"€35.00 originally paid · 1 missing the original payment record",
 		);
 	await expect
-		.element(card("Removed, within retention"))
+		.element(card("Can be restored to the waitlist"))
 		.toHaveTextContent("1");
 });
 
@@ -129,19 +129,25 @@ test("ALE-397: outcomes list each workshop with its rates; cancelled ones have n
 
 	const done = rows.filter({ hasText: "Sat 14 Nov 2026" });
 	await expect.element(done).toHaveTextContent("2 · 22%");
-	await expect.element(done).toHaveTextContent("1 declined · 1 lapsed");
-	await expect.element(done).toHaveTextContent("1 with a Carried Fee");
-	await expect.element(done).toHaveTextContent("67% 4 attended · 2 no-show");
 	await expect
 		.element(done)
-		.toHaveTextContent("2 joined 1 Invitable · 1 invited, not yet joined");
+		.toHaveTextContent("1 declined · 1 missed the deadline");
+	await expect.element(done).toHaveTextContent("1 using credit");
+	await expect
+		.element(done)
+		.toHaveTextContent("67% 4 attended · 2 did not attend");
+	await expect
+		.element(done)
+		.toHaveTextContent(
+			"2 joined 1 ready to invite · 1 invited, not yet joined",
+		);
 	await expect.element(done).toHaveTextContent("50%");
 
 	const off = rows.filter({ hasText: "Sat 21 Nov 2026" });
 	await expect.element(off).toHaveTextContent("Cancelled");
 	await expect.element(off).not.toHaveTextContent("%");
 	await expect
-		.element(off.getByRole("link", { name: "Console" }))
+		.element(off.getByRole("link", { name: "Manage" }))
 		.toHaveAttribute(
 			"href",
 			"/dashboard/beginners-workshop/workshops/7e0f7221-fc8c-4dcf-b64f-db21b20d5141",
@@ -149,7 +155,9 @@ test("ALE-397: outcomes list each workshop with its rates; cancelled ones have n
 
 	// Report only: the only buttons expand rows.
 	for (const button of screen.getByRole("button").elements())
-		expect(button.getAttribute("aria-label")).toMatch(/^(Show|Hide) Batches/);
+		expect(button.getAttribute("aria-label")).toMatch(
+			/^(Show|Hide) offer rounds/,
+		);
 });
 
 test("ALE-397: a row expands into its Batches and fast-tracks", async () => {
@@ -157,17 +165,17 @@ test("ALE-397: a row expands into its Batches and fast-tracks", async () => {
 
 	expect(screen.getByTestId("report-group").elements()).toHaveLength(0);
 	await screen
-		.getByRole("button", { name: "Show Batches for Sat 14 Nov 2026" })
+		.getByRole("button", { name: "Show offer rounds for Sat 14 Nov 2026" })
 		.click();
 
 	const groups = screen.getByTestId("report-group");
 	expect(groups.elements()).toHaveLength(2);
 	await expect
-		.element(groups.filter({ hasText: "Batch 1" }))
-		.toHaveTextContent("Batch 1 Window to Tue 27 Oct, 23:59 7 4 1 1 1");
+		.element(groups.filter({ hasText: "Offer round 1" }))
+		.toHaveTextContent("Offer round 1 Reply by Tue 27 Oct, 23:59 7 4 1 1 1");
 	await expect
-		.element(groups.filter({ hasText: "Fast-tracks" }))
-		.toHaveTextContent("Fast-tracks 2 2 0 0 0");
+		.element(groups.filter({ hasText: "Added by staff" }))
+		.toHaveTextContent("Added by staff 2 2 0 0 0");
 });
 
 test("ALE-397: says so when there are no past workshops", async () => {

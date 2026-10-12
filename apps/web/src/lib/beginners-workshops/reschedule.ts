@@ -94,7 +94,7 @@ export function rescheduleRecipients(view: BeginnersWorkshopConsole): number {
 /** The warning shown before saving. */
 export function rescheduleWarning(recipients: number): string {
 	if (recipients === 0)
-		return "Nobody has an open Intake, so nobody is emailed.";
+		return "No emails will be sent: nobody has an active workshop place.";
 	const people = recipients === 1 ? "1 person" : `${recipients} people`;
 	return `This emails ${people} “Workshop rescheduled”.`;
 }

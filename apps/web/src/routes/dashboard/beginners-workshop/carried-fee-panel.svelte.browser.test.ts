@@ -75,7 +75,7 @@ describe("createCarriedFeePanel (ALE-389)", () => {
 		await expect(panel.refund()).resolves.toEqual({ ok: true });
 		expect(refund).toHaveBeenCalledWith("person-1");
 		expect(notify.success).toHaveBeenCalledWith(
-			"Carried Fee refund requested — they'll pay normally next time.",
+			"Credit refund requested. They will need to pay for their next workshop.",
 		);
 		await expect.poll(() => show.mock.calls.length).toBe(2);
 	});

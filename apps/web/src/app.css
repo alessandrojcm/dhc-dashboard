@@ -52,6 +52,10 @@
 	--popover-foreground: 345 6.1% 12.9%;
 }
 
+@theme inline {
+	--color-field: hsl(var(--field-background));
+}
+
 :root {
 	--background: 42 30% 96%;
 	--foreground: 222 40% 12%;
@@ -71,6 +75,7 @@
 	--destructive-foreground: 210 40% 98%;
 	--border: 218 18% 78%;
 	--input: 218 18% 84%;
+	--field-background: 0 0% 100%;
 	--ring: 43 82% 52%;
 	--chart-1: 214 62% 32%;
 	--chart-2: 43 82% 52%;
@@ -111,6 +116,7 @@
 	--destructive-foreground: 210 40% 98%;
 	--border: 216 24% 26%;
 	--input: 216 24% 26%;
+	--field-background: 222 38% 12%;
 	--ring: 43 82% 52%;
 	--chart-1: 211 68% 62%;
 	--chart-2: 44 66.8% 49.6%;
@@ -195,7 +201,7 @@
 
 @layer components {
 	.inventory-page {
-		@apply mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8;
+		@apply w-full space-y-6 px-4 py-6 sm:px-6 sm:py-8;
 	}
 
 	.inventory-page-header {

@@ -89,19 +89,21 @@ test("lists waiting and recently removed people, each placed by its own form", a
 	});
 
 	await expect
-		.element(screen.getByRole("heading", { name: /Fast-track into/ }))
+		.element(screen.getByRole("heading", { name: /Add a person to/ }))
 		.toBeVisible();
-	const list = screen.getByRole("list", { name: "Fast-track candidates" });
+	const list = screen.getByRole("list", { name: "People available to add" });
 	await expect.element(list).toHaveTextContent("Aoife Byrne");
 	await expect.element(list).toHaveTextContent("Brian Nolan");
 
 	const brian = screen.getByRole("listitem").filter({ hasText: "Brian Nolan" });
-	await expect.element(brian).toHaveTextContent("Removed · restores");
+	await expect.element(brian).toHaveTextContent("Will rejoin the waitlist");
 	await expect.element(brian).toHaveTextContent("Minor");
 	const aoife = screen.getByRole("listitem").filter({ hasText: "Aoife Byrne" });
 	expect(aoife.element().textContent).not.toContain("Removed");
 
-	const form = screen.getByRole("form", { name: "Fast-track Brian Nolan" });
+	const form = screen.getByRole("form", {
+		name: "Add Brian Nolan to workshop",
+	});
 	expect(submitted(form.element())).toEqual({
 		id: WORKSHOP,
 		waitlistId: BRIAN,
@@ -120,7 +122,7 @@ test("searching asks Phoenix with the typed text", async () => {
 		fastTrackOpen: true,
 		searchCandidates: request,
 	});
-	const list = screen.getByRole("list", { name: "Fast-track candidates" });
+	const list = screen.getByRole("list", { name: "People available to add" });
 	await expect.element(list).toHaveTextContent("Brian Nolan");
 
 	await userEvent.fill(screen.getByRole("searchbox"), "aoife");
@@ -156,7 +158,7 @@ test("“Not on the Waitlist? Add them” opens the registration form, and Back 
 		.element(screen.getByRole("combobox", { name: "Gender" }))
 		.toBeVisible();
 	await expect
-		.element(screen.getByRole("button", { name: "Add and fast-track" }))
+		.element(screen.getByRole("button", { name: "Add and offer a place" }))
 		.toBeVisible();
 
 	await userEvent.fill(screen.getByLabelText("First name"), "Ciara");
@@ -168,7 +170,7 @@ test("“Not on the Waitlist? Add them” opens the registration form, and Back 
 
 	await userEvent.click(screen.getByRole("button", { name: "Back" }));
 	await expect
-		.element(screen.getByRole("list", { name: "Fast-track candidates" }))
+		.element(screen.getByRole("list", { name: "People available to add" }))
 		.toBeVisible();
 });
 
@@ -189,11 +191,11 @@ test("after the Payment Cutoff only Carried Fee holders are offered, with no Add
 	});
 
 	await expect
-		.element(screen.getByText(/only Carried Fee holders can be fast-tracked/))
+		.element(screen.getByText(/only add someone with workshop credit/))
 		.toBeVisible();
 	await expect
-		.element(screen.getByRole("list", { name: "Fast-track candidates" }))
-		.toHaveTextContent("Carried Fee · confirms");
+		.element(screen.getByRole("list", { name: "People available to add" }))
+		.toHaveTextContent("Has credit · confirmation needed");
 	expect(
 		screen
 			.getByRole("button", { name: "Not on the Waitlist? Add them" })
@@ -211,7 +213,11 @@ test("after the Payment Cutoff it explains that nobody can be fast-tracked", asy
 	});
 
 	await expect
-		.element(screen.getByText(/Payment is closed for this workshop/))
+		.element(
+			screen.getByText(
+				/The payment deadline has passed, so nobody can be added/,
+			),
+		)
 		.toBeVisible();
 	expect(screen.getByRole("searchbox").elements()).toHaveLength(0);
 	expect(

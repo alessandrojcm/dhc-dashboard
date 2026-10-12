@@ -52,7 +52,7 @@ test("prefills the shared values and names every control from its field", async 
 	await expect.element(screen.getByLabelText("Capacity")).toHaveValue(16);
 	await expect.element(screen.getByLabelText("Fee (€)")).toHaveValue(40);
 	await expect
-		.element(screen.getByLabelText("Payment window (days)"))
+		.element(screen.getByLabelText("Reply period (days)"))
 		.toHaveValue(7);
 	await expect
 		.element(screen.getByLabelText("Start time"))
@@ -130,7 +130,7 @@ test("offers optional Staff shared by every date (ALE-379)", async () => {
 	});
 	await expect
 		.element(screen.getByRole("combobox", { name: "Coach" }))
-		.toHaveTextContent("No coach yet (Unstaffed)");
+		.toHaveTextContent("No coach assigned");
 	expect(fieldNames(formElement(form.element()))).not.toContain(
 		"coachPrincipalId",
 	);

@@ -5,6 +5,7 @@
 -->
 <script lang="ts">
 import { toast } from "svelte-sonner";
+import { LoaderCircle, MailPlus } from "@lucide/svelte";
 import { Button } from "#lib/components/ui/button/index.js";
 import { inviteAttendee } from "./invitations.remote";
 
@@ -21,7 +22,9 @@ const refusal = $derived(
 </script>
 
 <form
-	class="flex flex-col items-end gap-1"
+	class="flex flex-col items-end gap-2"
+	aria-label={`Invite ${name}`}
+	aria-busy={!!invite.pending}
 	{...invite.enhance(async (instance) => {
 		if (!(await instance.submit())) return;
 		if (instance.result?.ok) toast.success(`Invitation sent to ${name}`);
@@ -29,9 +32,15 @@ const refusal = $derived(
 >
 	<input {...invite.fields.id.as("hidden", workshopId)} />
 	<input {...invite.fields.intakeId.as("hidden", intakeId)} />
-	<Button type="submit" size="sm" disabled={!!invite.pending}>Invite</Button>
+	<Button type="submit" class="min-w-28" disabled={!!invite.pending}>
+		{#if invite.pending}<LoaderCircle
+				class="size-4 animate-spin motion-reduce:animate-none"
+				aria-hidden="true"
+			/>Sending…{:else}<MailPlus class="size-4" aria-hidden="true" />Invite{/if}
+	</Button>
 	{#if refusal}<span
-			class="text-xs text-destructive"
+			class="max-w-xs text-sm text-destructive"
+			role="alert"
 			data-testid="invite-refusal">{refusal}</span
 		>{/if}
 </form>

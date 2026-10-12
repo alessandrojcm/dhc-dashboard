@@ -13,16 +13,16 @@ import type {
 import dayjs from "dayjs";
 
 const STAGE_LABELS = {
-	before_contact_from: "Waiting for the contact-from date",
-	window_open: "Batch window open",
-	next_batch_due: "Next Batch due",
-	batches_paused: "Batches paused",
-	full: "Full — waiting for the Payment Cutoff",
-	payment_closed: "Payment closed",
+	before_contact_from: "Offer emails have not started yet",
+	window_open: "Waiting for replies to place offers",
+	next_batch_due: "Next round of offers due",
+	batches_paused: "Automatic offers paused",
+	full: "Full — payments remain open until the deadline",
+	payment_closed: "Payment deadline passed",
 	today_before_check_in: "Today — check-in opens an hour before",
 	check_in_open: "Today — check-in open",
-	awaiting_finalisation: "Awaiting finalisation",
-	finalised: "Finalised",
+	awaiting_finalisation: "Attendance not yet confirmed",
+	finalised: "Attendance confirmed",
 	cancelled: "Cancelled",
 } satisfies Record<BeginnersWorkshopStage, string>;
 
@@ -44,7 +44,7 @@ const STAGE_TONES = {
 >;
 
 const ALERT_LABELS = {
-	unstaffed: "Unstaffed: no Staff assigned",
+	unstaffed: "No coach or assistants assigned",
 } satisfies Record<BeginnersWorkshopAlert, string>;
 
 const STAFF_ROLE_LABELS = {
@@ -62,7 +62,7 @@ export function staffSummary(staff: BeginnersWorkshopStaff): string {
 		...(staff.coach ? [`${staff.coach.name} (coach)`] : []),
 		...staff.assistants.map((assistant) => assistant.name),
 	];
-	return names.length ? names.join(", ") : "No Staff yet";
+	return names.length ? names.join(", ") : "No coach or assistants assigned";
 }
 
 export type StageTone = (typeof STAGE_TONES)[BeginnersWorkshopStage];

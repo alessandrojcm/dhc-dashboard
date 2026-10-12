@@ -79,7 +79,7 @@ export function consoleTimeline(
 	batches.forEach((batch, index) => {
 		const latest = index === batches.length - 1;
 		steps.push({
-			label: `Batch ${batch.number} · ${batch.size} contacted`,
+			label: `Offer round ${batch.number} · ${batch.size} people emailed`,
 			when: `${formatDublinInstant(batch.sentAt)} → ${formatDublinInstant(batch.windowEndsAt)}`,
 			state: latest && stage === "window_open" ? "now" : "done",
 		});
@@ -91,7 +91,7 @@ export function consoleTimeline(
 		nextBatch.status !== "full"
 	) {
 		steps.push({
-			label: `Batch ${nextBatch.number} · ${nextBatch.people.length} proposed`,
+			label: `Offer round ${nextBatch.number} · ${nextBatch.people.length} people next`,
 			when: nextBatchWhen(nextBatch),
 			state:
 				stage === "next_batch_due" ||
@@ -103,7 +103,7 @@ export function consoleTimeline(
 	}
 
 	steps.push({
-		label: "Payment Cutoff · pre-workshop info",
+		label: "Payment deadline · workshop information emailed",
 		when: formatDublinInstant(workshop.paymentCutoff),
 		// ALE-385: the cutoff pass runs at the first sweep after the cutoff.
 		state: cancelled ? "skipped" : AFTER_CUTOFF.has(stage) ? "done" : "next",
@@ -117,10 +117,10 @@ export function consoleTimeline(
 	});
 	const finalisation = view.finalisation;
 	steps.push({
-		label: "Attendance Finalisation",
+		label: "Confirm attendance",
 		when: finalisation
 			? `${formatDublinInstant(finalisation.at)} · ${finalisation.by ?? "automatically"}`
-			: "door “Finish”, or end of day",
+			: "Use Finish workshop on the check-in page, or wait until the day ends",
 		state: finalised ? "done" : pending(stage === "awaiting_finalisation"),
 	});
 	// ALE-391: the follow-up pass runs at the first sweep after its time.
@@ -142,7 +142,7 @@ export function consoleTimeline(
 export function nextBatchWhen(next: BeginnersWorkshopNextBatch): string {
 	switch (next.status) {
 		case "due":
-			return "goes out at the next sweep";
+			return "will be emailed within a few minutes";
 		case "scheduled":
 			return next.goesOutAt
 				? `goes out ${formatDublinInstant(next.goesOutAt)}`
@@ -152,32 +152,32 @@ export function nextBatchWhen(next: BeginnersWorkshopNextBatch): string {
 		case "full":
 			return "when a seat frees";
 		case "closed":
-			return "no more Batches before the cutoff";
+			return "no more offers before the payment deadline";
 	}
 }
 
 /** The Next Batch preview's headline. */
 export function nextBatchHeadline(next: BeginnersWorkshopNextBatch): string {
-	const batch = `Batch ${next.number}`;
+	const batch = `Offer round ${next.number}`;
 	switch (next.status) {
 		case "due":
 			return next.people.length
-				? `${batch} goes out at the next sweep, within a few minutes`
+				? `${batch} will be emailed within a few minutes`
 				: `${batch} is due, but nobody is waiting`;
 		case "scheduled":
 			return `${batch} ${nextBatchWhen(next)}`;
 		case "paused":
-			return `Batches are paused — ${batch} goes out at the next sweep after you resume`;
+			return `Automatic offers are paused. Resume to allow ${batch.toLowerCase()} when the next round is due`;
 		case "full":
-			return `Every seat is paid — ${batch} goes out as soon as a seat frees`;
+			return `All places are taken. ${batch} will be emailed when a place becomes available`;
 		case "closed":
-			return "No more Batches — payment closes at the Payment Cutoff";
+			return "No more automatic offers. New payments close at the payment deadline";
 	}
 }
 
 /** Why the Batch is the size it is: capacity − paid, and how many are waiting. */
 export function nextBatchSize(next: BeginnersWorkshopNextBatch): string {
-	const sum = `${next.capacity} seats − ${next.paid} paid = ${next.size}`;
+	const sum = `${next.size} people to contact (${next.capacity} places, ${next.paid} already paid)`;
 	if (next.people.length >= next.size) return sum;
 	return `${sum}; only ${next.people.length} waiting`;
 }
@@ -193,7 +193,7 @@ export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 	switch (workshop.stage) {
 		case "window_open":
 			return {
-				title: `Batch ${latest?.number ?? 1} window open${latest ? ` — ends ${formatDublinInstant(latest.windowEndsAt)}` : ""}`,
+				title: `Offer round ${latest?.number ?? 1}: waiting for replies${latest ? ` until ${formatDublinInstant(latest.windowEndsAt)}` : ""}`,
 				body: `${seats}. ${nextBatchHeadline(nextBatch)}.`,
 			};
 		case "before_contact_from":
@@ -226,18 +226,18 @@ export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 		case "awaiting_finalisation":
 			return {
 				title: stageLabel(workshop.stage),
-				body: `${seats}. Attendance finalises automatically within a few minutes of the end of the workshop day.`,
+				body: `${seats}. Attendance is confirmed automatically within a few minutes after the workshop day ends.`,
 			};
 		case "finalised":
 			return {
 				title: view.finalisation
-					? `Finalised ${formatDublinInstant(view.finalisation.at)} ${
+					? `Attendance confirmed ${formatDublinInstant(view.finalisation.at)} ${
 							view.finalisation.by
 								? `by ${view.finalisation.by}`
 								: "automatically at the end of the day"
 						}`
 					: stageLabel(workshop.stage),
-				body: `${workshop.seats.attended} attended · ${workshop.seats.noShow} no-show. Attended people get the follow-up email at 10:00 the next morning. Only corrections and invites remain.`,
+				body: `${workshop.seats.attended} attended · ${workshop.seats.noShow} did not attend. Attendees get a follow-up email at 10:00 the next morning. You can correct attendance or send membership invitations.`,
 			};
 		case "cancelled":
 			return {
@@ -263,8 +263,8 @@ export function cancelledBody(view: BeginnersWorkshopConsole): string {
 	const deferred = out.filter((intake) => intake.state === "deferred").length;
 	const returned = out.filter((intake) => intake.state === "returned").length;
 	return [
-		`${plural(deferred, "paid person", "paid people")} deferred with a Carried Fee · ${returned} back on the Waitlist.`,
-		"Read-only. To repay someone who asks, use Refund Carried Fee; to move people on, fast-track the Carried Fee holders into another workshop and they confirm.",
+		`${plural(deferred, "paid person", "paid people")} given workshop credit · ${returned} back on the waitlist.`,
+		"This workshop is cancelled. Use Refund credit to return a payment, or add the person to another workshop so they can confirm their place using their credit.",
 	].join(" ");
 }
 
@@ -279,14 +279,14 @@ export function cancelPreviewLines(preview: {
 	released: number;
 }): string[] {
 	const lines = [
-		`${plural(preview.deferred, "paid person", "paid people")} deferred: their fee becomes a Carried Fee. Email: “Workshop cancelled – paid” (refund, or keep the fee for a later workshop).`,
-		`${plural(preview.returned, "contacted person", "contacted people")} back on the Waitlist with their original priority. Email: “Workshop cancelled – unpaid”.`,
+		`${plural(preview.deferred, "paid person", "paid people")} will receive credit for a later workshop and a cancellation email. You can refund the credit if they prefer.`,
+		`${plural(preview.returned, "person offered a place", "people offered a place")} will return to the waitlist with their original priority and receive a cancellation email.`,
 	];
 	if (preview.released)
 		lines.push(
-			`${plural(preview.released, "live Seat Hold", "live Seat Holds")} released; a payment that lands anyway is refunded automatically.`,
+			`${plural(preview.released, "place reserved during checkout", "places reserved during checkout")} will be released. Any payment that completes afterwards is refunded automatically.`,
 		);
-	lines.push("Assigned Staff get a Notification.");
+	lines.push("The assigned coach and assistants will be notified.");
 	return lines;
 }
 
@@ -300,15 +300,24 @@ function paymentClosedBody(
 	seats: string,
 ): string {
 	const inCheckout = view.roster.asked.filter((intake) => intake.holdExpiresAt);
-	const waiting = view.roster.asked.length - inCheckout.length;
+	const awaitingCredit = view.roster.asked.filter(
+		(intake) => !intake.holdExpiresAt && intake.carriedFee === "held",
+	);
+	const waiting =
+		view.roster.asked.length - inCheckout.length - awaitingCredit.length;
 	const parts = [
-		`${seats}. Paid people get the pre-workshop info; unpaid people lapse, or go back to the queue if the workshop was full`,
+		`${seats}. People who paid receive the workshop information. Unpaid people without workshop credit are removed from the waitlist, or returned to it if the workshop was full`,
 	];
 	if (inCheckout.length)
 		parts.push(
-			`${inCheckout.length} still in checkout — settled when Stripe ends the payment`,
+			`${inCheckout.length} still completing payment. Their places stay reserved until checkout ends`,
 		);
-	if (waiting) parts.push(`${waiting} settled at the next sweep`);
+	if (waiting)
+		parts.push(`${waiting} awaiting an automatic update within a few minutes`);
+	if (awaitingCredit.length)
+		parts.push(
+			`${awaitingCredit.length} with workshop credit can still confirm their place`,
+		);
 	return `${parts.join(". ")}.`;
 }
 
@@ -324,31 +333,31 @@ export function rosterGroups(view: BeginnersWorkshopConsole): {
 	if (view.workshop.status === "finalised") {
 		return [
 			{ key: "attended", title: "Attended", intakes: view.roster.attended },
-			{ key: "noShow", title: "No-show", intakes: view.roster.noShow },
-			{ key: "out", title: "Out of this workshop", intakes: view.roster.out },
+			{ key: "noShow", title: "Did not attend", intakes: view.roster.noShow },
+			{ key: "out", title: "No longer attending", intakes: view.roster.out },
 		];
 	}
 	return [
-		{ key: "seated", title: "Seated (paid)", intakes: view.roster.seated },
+		{ key: "seated", title: "Confirmed places", intakes: view.roster.seated },
 		{
 			key: "asked",
-			title: "Asked, not paid yet",
+			title: "Offered a place, awaiting payment or confirmation",
 			intakes: view.roster.asked,
 		},
-		{ key: "out", title: "Out of this workshop", intakes: view.roster.out },
+		{ key: "out", title: "No longer attending", intakes: view.roster.out },
 	];
 }
 
 const INTAKE_STATE_LABELS = {
-	contacted: "Contacted",
+	contacted: "Place offered",
 	paid: "Paid",
 	attended: "Attended",
-	no_show: "No-show",
-	lapsed: "Lapsed",
+	no_show: "Did not attend",
+	lapsed: "Payment deadline missed",
 	declined: "Declined",
 	returned: "Back in the queue",
-	deferred: "Deferred",
-	cancelled_refunded: "Refunded",
+	deferred: "Moved to a later workshop",
+	cancelled_refunded: "Cancelled; refund requested",
 	withdrawn: "Withdrawn",
 } satisfies Record<BeginnersWorkshopIntakeState, string>;
 
@@ -375,15 +384,15 @@ export function holdLabel(
 	if (!intake.holdExpiresAt) return null;
 	const until = new Date(intake.holdExpiresAt);
 	return until.getTime() > now.getTime()
-		? `Paying now · hold until ${dublinTime.format(until)}`
-		: "Paying now · hold ending";
+		? `Paying now · place reserved until ${dublinTime.format(until)}`
+		: "Paying now · checkout ending";
 }
 
 /** `Batch 2` or `Fast-track`. */
 export function intakeOrigin(intake: BeginnersWorkshopRosterIntake): string {
 	return intake.origin === "batch" && intake.batchNumber
-		? `Batch ${intake.batchNumber}`
-		: "Fast-track";
+		? `Offer round ${intake.batchNumber}`
+		: "Added by staff";
 }
 
 /** A person's name, or that they were anonymised. */
@@ -392,7 +401,7 @@ export function personName(person: {
 	lastName: string | null;
 }): string {
 	const name = [person.firstName, person.lastName].filter(Boolean).join(" ");
-	return name || "Anonymised";
+	return name || "Personal details removed";
 }
 
 /**
@@ -419,10 +428,10 @@ export function refundLabel(intake: {
 
 const REFUND_REASONS = new Map([
 	["policy_failed", "the payment didn't match the fee"],
-	["paid_after_close", "they paid after their Intake closed"],
+	["paid_after_close", "they paid after their place was closed"],
 	["cancelled_with_refund", "cancelled with a refund"],
 	["withdrawn", "withdrawn with a refund"],
-	["carried_fee_refunded", "their Carried Fee"],
+	["carried_fee_refunded", "their workshop credit"],
 ]);
 
 /** A refund amount: `€40.00`, or `12.50 GBP` outside euro. */
@@ -439,10 +448,10 @@ export function failedRefundText(
 ): string {
 	const reason = REFUND_REASONS.get(refund.reason);
 	const next = refund.forfeitable
-		? "Their Carried Fee is held again: retry the refund, record a manual refund if you paid them back another way, or forfeit the fee."
+		? "Their workshop credit is available again. Retry the refund, record a refund paid outside the app, or keep the payment and remove the credit."
 		: refund.carriedFee
-			? "They have since paid or hold another Carried Fee, so the money is still owed back: retry the refund, or record a manual refund if you paid them back another way."
-			: "Retry it, or record a manual refund if you paid them back another way.";
+			? "They have since paid or received another workshop credit, so this payment is still owed back. Retry the refund or record a refund paid outside the app."
+			: "Retry the refund or record a refund paid outside the app.";
 	return `Refund of ${formatRefundAmount(refund.amountCents, refund.currency)} to ${personName(refund)} failed${reason ? ` (${reason})` : ""}. ${next}`;
 }
 
@@ -463,13 +472,13 @@ export function invitationSummary({
 export function standingLabel(standing: WaitlistStatus | null): string | null {
 	switch (standing) {
 		case "invited":
-			return "Invited";
+			return "Membership invitation sent";
 		case "joined":
-			return "Joined";
+			return "Joined the club";
 		case "removed":
-			return "Removed";
+			return "Removed from the waitlist";
 		case "waiting":
-			return "Waiting";
+			return "On the waitlist";
 		default:
 			return null;
 	}
@@ -491,19 +500,19 @@ export function followUpLabel({
  */
 const INTAKE_COMMAND_COPY = {
 	decline: {
-		label: "Decline",
+		label: "Decline place",
 		done: "Declined — they keep their place in the queue",
 		history: "Declined",
 	},
 	defer: {
-		label: "Defer",
-		done: "Deferred — their fee is a Carried Fee and they keep their place in the queue",
-		history: "Deferred",
+		label: "Move to a later workshop",
+		done: "Fee saved as workshop credit. They keep their place on the waitlist",
+		history: "Moved to a later workshop",
 	},
 	confirm: {
-		label: "Confirm with Carried Fee",
-		done: "Place confirmed with their Carried Fee",
-		history: "Confirmed with Carried Fee",
+		label: "Confirm using credit",
+		done: "Place confirmed using workshop credit",
+		history: "Place confirmed using workshop credit",
 	},
 	cancel_with_refund: {
 		label: "Cancel with refund",
@@ -516,9 +525,9 @@ const INTAKE_COMMAND_COPY = {
 		history: "Withdrawn",
 	},
 	refund_carried_fee: {
-		label: "Refund Carried Fee",
-		done: "Carried Fee refund requested — they'll pay normally next time",
-		history: "Carried Fee refunded",
+		label: "Refund credit",
+		done: "Credit refund requested. They will need to pay for their next workshop",
+		history: "Workshop credit refund requested",
 	},
 	resend_link: {
 		label: "Resend link",
@@ -526,9 +535,9 @@ const INTAKE_COMMAND_COPY = {
 		history: "Link resent",
 	},
 	rotate_link: {
-		label: "Rotate link",
-		done: "Link rotated — the old one no longer works",
-		history: "Link rotated",
+		label: "Replace link",
+		done: "New link emailed. The old link no longer works",
+		history: "Link replaced",
 	},
 	correct_attendance: {
 		label: "Correct attendance",
@@ -565,14 +574,14 @@ const ATTENDANCE_CORRECTION_COPY = {
 		history: "Attendance corrected to attended",
 	},
 	no_show: {
-		label: "Mark no-show",
-		done: "Corrected to no-show — they are removed from the Waitlist",
-		history: "Attendance corrected to no-show",
+		label: "Mark as did not attend",
+		done: "Marked as did not attend. They are removed from the waitlist",
+		history: "Attendance corrected to did not attend",
 	},
 	deferred: {
-		label: "Defer instead",
-		done: "Deferred — their fee is a Carried Fee and they keep their place in the queue",
-		history: "No-show corrected to deferred",
+		label: "Move to a later workshop instead",
+		done: "Fee saved as workshop credit. They keep their place on the waitlist",
+		history: "Non-attendance changed to a later workshop",
 	},
 } satisfies Record<
 	BeginnersWorkshopAttendanceCorrection,
@@ -656,7 +665,7 @@ export function refundTimingHint(
 export function refundChoiceLabel(
 	choice: BeginnersWorkshopRefundChoice,
 ): string {
-	const what = choice.source === "carried_fee" ? "their Carried Fee" : "";
+	const what = choice.source === "carried_fee" ? "their workshop credit" : "";
 	if (choice.amountCents === null || choice.currency === null) {
 		return what ? `Refund ${what} in full` : "Refund in full";
 	}
@@ -727,11 +736,11 @@ export function historyLine(
 }
 
 const CARRIED_FEE_LABELS = {
-	held: "Carried Fee · held",
-	applied: "Carried Fee · applied",
-	spent: "Carried Fee · spent",
-	refunded: "Carried Fee · refunded",
-	forfeited: "Carried Fee · forfeited",
+	held: "Workshop credit available",
+	applied: "Workshop credit used for this place",
+	spent: "Workshop credit used",
+	refunded: "Workshop credit removed; refund requested",
+	forfeited: "Workshop credit removed; payment kept",
 } satisfies Record<BeginnersCarriedFeeStatus, string>;
 
 /**
@@ -748,7 +757,7 @@ export function carriedFeeLabel(
 export function unconfirmedCarriedFeeText(
 	person: BeginnersWorkshopUnconfirmedCarriedFee,
 ): string {
-	return `${personName(person)} holds a Carried Fee and hasn't confirmed (contacted ${formatDublinInstant(person.contactedAt)}). They can confirm until the workshop is finished; confirm for them if they replied by email.`;
+	return `${personName(person)} has workshop credit but has not confirmed their place (offered ${formatDublinInstant(person.contactedAt)}). They can confirm until the workshop is finished. Confirm for them if they replied by email.`;
 }
 
 /** One line of an Intake's email log, as the console shows it. */
@@ -768,7 +777,7 @@ export function emailLogLine(
 	const due = new Date(entry.at).getTime() <= now.getTime();
 	return {
 		label: `${label} (scheduled)`,
-		when: due ? "at the next sweep" : formatDublinInstant(entry.at),
+		when: due ? "within a few minutes" : formatDublinInstant(entry.at),
 		scheduled: true,
 	};
 }
@@ -778,7 +787,7 @@ export function unpaidAfterWindowText(
 	person: BeginnersWorkshopUnpaidAfterWindow,
 ): string {
 	const window = person.batchNumber
-		? `Batch ${person.batchNumber} window`
-		: "payment window";
-	return `${personName(person)} hasn't paid — their ${window} ended ${formatDublinInstant(person.windowEndsAt)}. They can still pay until the cutoff; resend their link or decline if they've said no.`;
+		? `offer round ${person.batchNumber} reply period`
+		: "reply period";
+	return `${personName(person)} has not paid. Their ${window} ended ${formatDublinInstant(person.windowEndsAt)}. They can still pay until the payment deadline. Resend their link or decline the place if they have said no.`;
 }

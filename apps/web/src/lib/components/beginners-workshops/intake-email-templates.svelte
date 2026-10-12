@@ -27,6 +27,8 @@ import {
 import * as Alert from "#lib/components/ui/alert/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import { Skeleton } from "#lib/components/ui/skeleton/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import * as NativeSelect from "#lib/components/ui/native-select/index.js";
 import { cn } from "#lib/utils.js";
 import IntakeEmailTemplateEditor from "./intake-email-template-editor.svelte";
 
@@ -83,28 +85,27 @@ function onsave(draft: IntakeEmailTemplateUpdate) {
 const detailClass = (current: boolean) =>
 	cn(
 		"text-xs font-normal",
-		current ? "text-primary-foreground/80" : "text-muted-foreground",
+		current ? "text-foreground" : "text-muted-foreground",
 	);
-
-const savedFormat = new Intl.DateTimeFormat("en-IE", {
-	dateStyle: "medium",
-	timeZone: "Europe/Dublin",
-});
 </script>
 
-<div class="flex flex-col gap-5 py-2">
-	<header>
-		<h2 class="font-heading text-2xl">Intake Email templates</h2>
-		<p class="text-sm text-muted-foreground">
+<div class="flex h-full min-h-0 flex-col gap-4 pb-1">
+	<header class="shrink-0 border-b border-border px-1 py-4">
+		<h2 class="font-heading text-2xl">Workshop emails</h2>
+		<p class="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
 			One club-wide template per email. Each workshop's details fill the
 			placeholders, and the app adds the link button.
 		</p>
 	</header>
 
 	{#if templates.isPending}
-		<div class="grid gap-6 lg:grid-cols-[18rem_1fr]">
-			<Skeleton class="h-96" />
-			<Skeleton class="h-96" />
+		<div
+			class="grid min-h-0 flex-1 gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]"
+			aria-label="Loading email templates"
+			role="status"
+		>
+			<Skeleton class="hidden h-full lg:block" />
+			<Skeleton class="h-full" />
 		</div>
 	{:else if templates.isError}
 		<Alert.Root variant="destructive">
@@ -115,12 +116,38 @@ const savedFormat = new Intl.DateTimeFormat("en-IE", {
 			</Alert.Description>
 		</Alert.Root>
 	{:else if selected}
-		<div class="grid gap-6 lg:grid-cols-[18rem_1fr]">
-			<nav class="flex flex-col gap-4" aria-label="Email types">
+		<div
+			class="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-4 lg:grid-cols-[20rem_minmax(0,1fr)] lg:grid-rows-1"
+		>
+			<div class="grid shrink-0 gap-2 lg:hidden">
+				<Label for="intake-email-type">Email template</Label>
+				<NativeSelect.Root
+					id="intake-email-type"
+					value={selected.emailType}
+					onchange={(event) =>
+						pick(event.currentTarget.value as IntakeEmailType)}
+					class="w-full [&_select]:h-11"
+				>
+					{#each INTAKE_EMAIL_KIND_GROUPS as group (group.kind)}
+						<NativeSelect.OptGroup label={group.title}>
+							{#each rows.filter((row) => row.kind === group.kind) as row (row.emailType)}
+								<NativeSelect.Option value={row.emailType}
+									>{INTAKE_EMAIL_TYPES[row.emailType]
+										.label}</NativeSelect.Option
+								>
+							{/each}
+						</NativeSelect.OptGroup>
+					{/each}
+				</NativeSelect.Root>
+			</div>
+			<nav
+				class="hidden min-h-0 flex-col gap-5 overflow-y-auto rounded-2xl border border-border bg-card p-3 lg:flex"
+				aria-label="Email types"
+			>
 				{#each INTAKE_EMAIL_KIND_GROUPS as group (group.kind)}
-					<section class="flex flex-col gap-1">
+					<section class="flex shrink-0 flex-col gap-2">
 						<h3
-							class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+							class="px-3 py-1 text-xs font-bold tracking-wider text-foreground uppercase"
 						>
 							{group.title}
 						</h3>
@@ -129,16 +156,19 @@ const savedFormat = new Intl.DateTimeFormat("en-IE", {
 							{@const current = row.emailType === selected.emailType}
 							<Button
 								type="button"
-								variant={current ? "default" : "ghost"}
-								class="h-auto flex-col items-start gap-0.5 px-3 py-2 text-left whitespace-normal"
+								variant="outline"
+								class={cn(
+									"h-auto w-full flex-col items-start gap-1 px-3 py-3 text-left whitespace-normal shadow-none hover:text-foreground",
+									current
+										? "border-primary bg-primary/10 text-foreground hover:bg-primary/15"
+										: "border-transparent bg-transparent hover:border-border hover:bg-muted/50",
+								)}
 								aria-current={current ? "true" : undefined}
 								onclick={() => pick(row.emailType)}
 							>
 								<span class="font-medium">{copy.label}</span>
 								<span class={detailClass(current)}>
-									{copy.sentWhen} Saved {savedFormat.format(
-										new Date(row.updatedAt),
-									)}.
+									{copy.sentWhen}
 								</span>
 								<span class={detailClass(current)}>
 									To: {copy.recipients}

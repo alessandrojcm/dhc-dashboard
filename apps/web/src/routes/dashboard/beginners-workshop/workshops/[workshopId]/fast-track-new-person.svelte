@@ -76,10 +76,13 @@ function setDateOfBirth(date: DateValue | undefined) {
 	aria-label="Add a new person"
 >
 	<input {...form.fields.id.as("hidden", workshopId)} />
-	<p class="text-xs text-muted-foreground">
-		Staff-only registration: works even when the public Waitlist is closed.
-		Their place in the queue is today.
-	</p>
+	<div class="space-y-2">
+		<h3 class="font-sans text-base font-semibold">Personal details</h3>
+		<p class="text-sm leading-6 text-muted-foreground">
+			They join the waitlist from today. You can add them even when public
+			registration is closed.
+		</p>
+	</div>
 
 	<div class="grid gap-4 sm:grid-cols-2">
 		<Field.Field>
@@ -210,6 +213,8 @@ function setDateOfBirth(date: DateValue | undefined) {
 
 	<Dialog.Footer>
 		<Button type="button" variant="outline" onclick={onBack}>Back</Button>
-		<Button type="submit" disabled={!!form.pending}>Add and fast-track</Button>
+		<Button type="submit" disabled={!!form.pending}
+			>{form.pending ? "Adding…" : "Add and offer a place"}</Button
+		>
 	</Dialog.Footer>
 </form>

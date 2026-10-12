@@ -57,7 +57,7 @@ const formValue = $derived(value ? toCalendarDate(value).toString() : "");
 					{...props}
 					variant="outline"
 					class={cn(
-						"min-h-11 w-full min-w-0 justify-start text-left font-normal",
+						"bg-field hover:bg-field dark:bg-field dark:hover:bg-field min-h-11 w-full min-w-0 justify-start text-left font-normal",
 						!value && "text-muted-foreground",
 						className,
 					)}

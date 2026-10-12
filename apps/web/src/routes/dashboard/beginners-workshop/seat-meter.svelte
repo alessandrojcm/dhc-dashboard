@@ -46,7 +46,8 @@ const cells = $derived(
 	<p class="text-[11px] text-muted-foreground" data-testid="seat-meter">
 		{#if finalised}
 			<strong class="text-emerald-800">{seats.attended}</strong> attended ·
-			<strong class="text-destructive">{seats.noShow}</strong> no-show of {seats.capacity}
+			<strong class="text-destructive">{seats.noShow}</strong> did not attend
+			out of {seats.capacity} places
 		{:else}
 			<strong class="text-foreground">{seats.paid}</strong> paid
 			{#if seats.holds}· <strong class="text-sky-800">{seats.holds}</strong> paying

@@ -28,7 +28,7 @@ export function doorTime(iso: string): string {
 /** `Ciara Byrne`, or that the person was anonymised. */
 export function doorName(person: BeginnersWorkshopDoorPerson): string {
 	const name = [person.firstName, person.lastName].filter(Boolean).join(" ");
-	return name || "Anonymised";
+	return name || "Personal details removed";
 }
 
 /** The "N of M in" counter: everyone with a seat, and how many are in. */
@@ -101,7 +101,7 @@ export function canFinish(door: BeginnersWorkshopDoor): boolean {
 
 /** `Finish workshop (2 will be no-show)`. */
 export function finishLabel(door: BeginnersWorkshopDoor): string {
-	return `Finish workshop (${willNoShow(door).length} will be no-show)`;
+	return `Finish workshop (${willNoShow(door).length} did not attend)`;
 }
 
 /**
@@ -117,7 +117,7 @@ export function finalisedSummary(
 		? `by ${finalisation.by}`
 		: "automatically at the end of the day";
 	return {
-		title: `Finalised ${formatDublinInstant(finalisation.at)} ${by}`,
-		outcome: `${finalisation.attended} attended · ${finalisation.noShow} no-show`,
+		title: `Attendance confirmed ${formatDublinInstant(finalisation.at)} ${by}`,
+		outcome: `${finalisation.attended} attended · ${finalisation.noShow} did not attend`,
 	};
 }

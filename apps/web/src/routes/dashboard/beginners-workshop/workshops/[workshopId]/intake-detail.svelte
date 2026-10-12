@@ -44,6 +44,7 @@ import {
 } from "#lib/schemas/beginnersWorkshop.js";
 import { correctAttendance, runIntakeCommand } from "./console.remote";
 import WithdrawDialog from "./withdraw-dialog.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
 
 let {
 	workshopId,
@@ -106,10 +107,10 @@ const refundHint = $derived(
 	</header>
 
 	<dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-		<dt class="text-muted-foreground">Contacted</dt>
+		<dt class="text-muted-foreground">Place offered</dt>
 		<dd>{formatDublinInstant(intake.contactedAt)}</dd>
 		{#if intake.state === "contacted"}
-			<dt class="text-muted-foreground">Window ends</dt>
+			<dt class="text-muted-foreground">Reply period ends</dt>
 			<dd>{formatDublinInstant(intake.windowEndsAt)}</dd>
 		{/if}
 		{#if intake.checkedInAt}
@@ -118,7 +119,7 @@ const refundHint = $derived(
 		{/if}
 		<dt class="text-muted-foreground">Link</dt>
 		<dd class="flex items-center gap-1" data-testid="link-generation">
-			<Link2 class="size-3" /> generation {intake.linkGeneration}
+			<Link2 class="size-3" /> version {intake.linkGeneration}
 		</dd>
 	</dl>
 
@@ -136,15 +137,15 @@ const refundHint = $derived(
 			id="intake-commands"
 			class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
 		>
-			Commands
+			Actions
 		</h4>
 		{#if refundHint}
-			<p
-				class="rounded-lg border border-amber-500 bg-amber-50 p-2.5 text-amber-900"
+			<Alert.Root
+				class="block border-border border-l-4 border-l-primary bg-muted p-4 text-sm leading-relaxed text-foreground"
 				data-testid="refund-timing-hint"
 			>
 				{refundHint}
-			</p>
+			</Alert.Root>
 		{/if}
 		{#if buttonCommands.length || canWithdraw}
 			<form
@@ -162,14 +163,15 @@ const refundHint = $derived(
 					}
 				})}
 				class="flex flex-col gap-3"
-				aria-label="Intake commands"
+				aria-label="Workshop place actions"
 			>
 				<input {...form.fields.id.as("hidden", workshopId)} />
 				<input {...form.fields.intakeId.as("hidden", intake.id)} />
 				<Field.Field>
 					{@const props = form.fields.note.as("text")}
 					<Field.Label for={`${intake.id}-note`}
-						>Note (optional, recorded with the command)</Field.Label
+						>Note <span class="font-normal text-muted-foreground">Optional</span
+						></Field.Label
 					>
 					<Textarea
 						{...props}
@@ -212,7 +214,7 @@ const refundHint = $derived(
 			</form>
 		{:else if !canCorrect}
 			<p class="text-muted-foreground">
-				No commands for a {intakeStateLabel(intake.state).toLowerCase()} Intake.
+				No actions are available for this workshop place.
 			</p>
 		{/if}
 		{#if canCorrect}
@@ -236,15 +238,17 @@ const refundHint = $derived(
 				aria-label="Correct attendance"
 			>
 				<p class="text-muted-foreground">
-					Attendance is final. Fix a door mistake, or defer a no-show who told
-					the club in time.
+					Attendance has been recorded. Correct a check-in mistake, or save the
+					fee as workshop credit for someone who gave the club enough notice
+					that they could not attend.
 				</p>
 				<input {...correction.fields.id.as("hidden", workshopId)} />
 				<input {...correction.fields.intakeId.as("hidden", intake.id)} />
 				<Field.Field>
 					{@const props = correction.fields.note.as("text")}
 					<Field.Label for={`${intake.id}-correction-note`}
-						>Note (optional, recorded with the correction)</Field.Label
+						>Note <span class="font-normal text-muted-foreground">Optional</span
+						></Field.Label
 					>
 					<Textarea
 						{...props}
@@ -280,7 +284,7 @@ const refundHint = $derived(
 			id="intake-emails"
 			class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
 		>
-			Intake Emails
+			Emails to this person
 		</h4>
 		<ol class="flex flex-col gap-1" data-testid="email-log">
 			{#each intake.emailLog as entry, index (index)}
@@ -320,7 +324,7 @@ const refundHint = $derived(
 						>{/if}
 				</li>
 			{:else}
-				<li class="text-muted-foreground">No commands run yet.</li>
+				<li class="text-muted-foreground">No actions recorded yet.</li>
 			{/each}
 		</ol>
 	</section>

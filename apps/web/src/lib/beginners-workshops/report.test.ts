@@ -33,7 +33,7 @@ describe("report wording", () => {
 	it("names unlinked Carried Fees under the total originally paid", () => {
 		expect(
 			carriedFeesNote({ count: 2, totalPaidCents: 3500, unlinked: 1 }),
-		).toBe("€35.00 originally paid · 1 not linked to a payment yet");
+		).toBe("€35.00 originally paid · 1 missing the original payment record");
 		expect(
 			carriedFeesNote({ count: 1, totalPaidCents: 4000, unlinked: 0 }),
 		).toBe("€40.00 originally paid");
@@ -50,7 +50,7 @@ describe("report wording", () => {
 			declined: 0,
 			unpaidAtCutoff: 0,
 		};
-		expect(groupLabel(group)).toBe("Batch 2");
+		expect(groupLabel(group)).toBe("Offer round 2");
 		expect(
 			groupLabel({
 				...group,
@@ -58,7 +58,7 @@ describe("report wording", () => {
 				number: null,
 				windowEndsAt: null,
 			}),
-		).toBe("Fast-tracks");
+		).toBe("Added by staff");
 	});
 
 	it("details the exits, skipping empty kinds", () => {
@@ -70,7 +70,7 @@ describe("report wording", () => {
 				total: 3,
 				rate: 0.3,
 			}),
-		).toBe("1 declined · 2 returned");
+		).toBe("1 declined · 2 back on the waitlist");
 		expect(
 			exitsAfterPayingDetail({
 				deferred: 0,
@@ -79,6 +79,6 @@ describe("report wording", () => {
 				total: 2,
 				rate: 0.2,
 			}),
-		).toBe("1 refunded · 1 withdrawn");
+		).toBe("1 cancelled with refund requested · 1 withdrawn");
 	});
 });

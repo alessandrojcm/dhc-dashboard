@@ -20,7 +20,8 @@ defmodule DhcWeb.BeginnersWorkshopIntakeJSON do
               startTime: BeginnersWorkshopsJSON.hh_mm(page.workshop.start_time),
               venue: page.workshop.venue
             },
-        feeCents: page.fee_cents
+        feeCents: page.fee_cents,
+        paymentCutoff: page.payment_cutoff
       }
     }
   end

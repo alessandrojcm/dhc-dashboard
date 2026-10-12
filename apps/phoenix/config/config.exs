@@ -282,6 +282,8 @@ config :phoenix, :json_library, Jason
 config :phoenix, :filter_parameters, [
   "password",
   "token",
+  "success_url",
+  "cancel_url",
   "endpoint",
   "p256dh",
   "auth",

@@ -43,6 +43,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       payment (Seat Hold)  open → paid | releasing | released | policy_failed
                            releasing → released | paid
       refund               pending → processing | completed | failed
+                           completed → failed (Stripe asynchronous failure only)
                            processing → completed | failed
       Carried Fee          held → applied | refunded | forfeited
                            applied → held | spent | refunded | forfeited
@@ -475,7 +476,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       follow up a failed refund with a new row (`follows_refund_id`); the
       failed row stays as history and a refund is followed up once.
 
-  Terminal refunds (`completed`, `failed`) ignore later events. When a refund
+  Failed refunds ignore later events. A Stripe-completed refund can still
+  fail asynchronously; manual completions and stale events remain settled. When a refund
   fails, the coordinator-alert holders get a keyed Notification
   (`beginners-workshop-refund:<id>:failed`, signalled after commit). Neither
   a failed refund nor a manual refund record emails the person.
@@ -776,11 +778,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       "open" => ~w(paid releasing released policy_failed),
       "releasing" => ~w(released paid)
     },
-    # Stripe may answer the create terminally, so `pending` can go straight
-    # to `completed` or `failed`. A manual refund is inserted `completed`.
+    # Stripe can answer success on create and report failure asynchronously.
+    # Manual completions stay settled in record_refund_locked/4.
     refund: %{
       "pending" => ~w(processing completed failed),
-      "processing" => ~w(completed failed)
+      "processing" => ~w(completed failed),
+      "completed" => ~w(failed)
     },
     # ALE-389: a fee is `refunded` once its refund is requested and goes
     # back to `held` if Stripe refuses that refund.
@@ -2893,11 +2896,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
          clock
        ) do
     cond do
-      refund.status in ~w(completed failed) ->
-        {:ok, {%{outcome: :already_settled}, []}}
-
       refund.stripe_refund_id not in [nil, stripe_id] ->
         {:ok, {%{outcome: :not_ours}, []}}
+
+      refund.status == "failed" ->
+        {:ok, {%{outcome: :already_settled}, []}}
+
+      refund.status == "completed" and
+          not (refund.method == "stripe" and object["status"] == "failed") ->
+        {:ok, {%{outcome: :already_settled}, []}}
 
       true ->
         settle_refund(locked, object, extra, Clock.read(clock))

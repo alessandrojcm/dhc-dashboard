@@ -12,6 +12,7 @@ import type {
 } from "@dhc/api-client";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 import * as Field from "#lib/components/ui/field/index.js";
 import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
@@ -54,12 +55,13 @@ async function submit(event: SubmitEvent) {
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-md">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title>Withdraw {entry.fullName} from the Waitlist</Dialog.Title>
 			<Dialog.Description>
-				They leave the Waitlist entirely (restorable for 3 months). An open
-				Intake closes; a fee is never carried over.
+				They leave the waitlist and any current workshop place is closed. You
+				can restore them to the waitlist for 3 months. Their payment will not be
+				saved as workshop credit.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -75,7 +77,7 @@ async function submit(event: SubmitEvent) {
 							if (value === "refund" || value === "forfeit") refund = value;
 						}}
 						class="gap-2"
-						aria-label="Refund or forfeit"
+						aria-label="Refund or keep payment"
 					>
 						<label
 							class="flex items-start gap-2 rounded-lg border p-3 text-sm has-[[data-state=checked]]:border-primary"
@@ -84,8 +86,7 @@ async function submit(event: SubmitEvent) {
 							<span>
 								<strong>Refund the full fee</strong>
 								<span class="block text-muted-foreground"
-									>Against their original payment. Email: “Withdrawn –
-									refunded”.</span
+									>Refund their original payment and email them a confirmation.</span
 								>
 							</span>
 						</label>
@@ -94,9 +95,10 @@ async function submit(event: SubmitEvent) {
 						>
 							<RadioGroup.Item value="forfeit" class="mt-0.5" />
 							<span>
-								<strong>Forfeit the fee</strong>
+								<strong>Keep the payment</strong>
 								<span class="block text-muted-foreground"
-									>Nothing is refunded. Email: “Withdrawn – forfeited”.</span
+									>No refund or workshop credit. They receive an email
+									explaining this.</span
 								>
 							</span>
 						</label>
@@ -106,7 +108,8 @@ async function submit(event: SubmitEvent) {
 
 			<Field.Field>
 				<Field.Label for={`${entry.id}-withdraw-note`}
-					>Note (optional, kept in their Intake's history if they have one)</Field.Label
+					>Note <span class="font-normal text-muted-foreground">Optional</span
+					></Field.Label
 				>
 				<Textarea
 					id={`${entry.id}-withdraw-note`}
@@ -131,5 +134,5 @@ async function submit(event: SubmitEvent) {
 				>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

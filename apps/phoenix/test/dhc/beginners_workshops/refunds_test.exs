@@ -233,7 +233,7 @@ defmodule Dhc.BeginnersWorkshops.RefundsTest do
   end
 
   describe "apply_refund_event" do
-    test "settles a processing refund; a terminal refund ignores later events",
+    test "settles a processing refund; success ignores stale pending events",
          %{coordinator: coordinator} do
       {_workshop, _intake, _payment, refund} = policy_failed!(coordinator)
       Stripe.stub_refund_create("pending")
@@ -245,7 +245,7 @@ defmodule Dhc.BeginnersWorkshops.RefundsTest do
       assert {:ok, %{outcome: :already_settled}} =
                execute(
                  :stripe,
-                 {:apply_refund_event, Stripe.refund_object(refund.id, %{"status" => "failed"})}
+                 {:apply_refund_event, Stripe.refund_object(refund.id, %{"status" => "pending"})}
                )
 
       assert %IntakeRefund{status: "completed"} = Repo.reload!(refund)
@@ -459,14 +459,18 @@ defmodule Dhc.BeginnersWorkshops.RefundsTest do
   end
 
   describe "the transition table" do
-    test "declares the refund moves; completed and failed are terminal" do
+    test "declares the refund moves; success may fail asynchronously but failure is terminal" do
       assert Commands.transitions().refund == %{
                "pending" => ~w(processing completed failed),
-               "processing" => ~w(completed failed)
+               "processing" => ~w(completed failed),
+               "completed" => ~w(failed)
              }
+
+      assert Commands.transition_allowed?(:refund, "completed", "failed")
 
       for from <- ~w(completed failed),
           to <- IntakeRefund.statuses(),
+          not (from == "completed" and to == "failed"),
           do: refute(Commands.transition_allowed?(:refund, from, to))
 
       refute Commands.transition_allowed?(:refund, "processing", "pending")

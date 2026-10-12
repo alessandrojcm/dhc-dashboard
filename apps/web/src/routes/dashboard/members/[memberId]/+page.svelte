@@ -230,7 +230,7 @@ let showReactivateModal = $state(false);
 	<title>{pageTitle} | Dublin HEMA Club</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-6xl">
+<div class="w-full">
 	<header class="mb-7">
 		{#if !isOwnProfile}
 			<Button

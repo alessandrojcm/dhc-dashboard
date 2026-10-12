@@ -125,8 +125,8 @@ defmodule DhcWeb.StripeWebhooksController do
     end
   end
 
-  defp enqueue(event) do
-    Logger.warning("[stripe-webhooks] Event missing type field: #{inspect(event)}")
+  defp enqueue(_event) do
+    Logger.warning("[stripe-webhooks] Event missing type field")
     {:error, :missing_event_type}
   end
 end

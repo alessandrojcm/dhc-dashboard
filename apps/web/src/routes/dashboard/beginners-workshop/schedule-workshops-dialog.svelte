@@ -21,6 +21,7 @@ import {
 	VENUE_MAX,
 } from "#lib/schemas/beginnersWorkshop.js";
 import StaffPickers from "./staff-pickers.svelte";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 import { scheduleWorkshops } from "./workshops.remote";
 
 let {
@@ -76,12 +77,12 @@ function reset() {
 		if (!next) reset();
 	}}
 >
-	<Dialog.Content class="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+	<WorkshopDialog wide>
 		<Dialog.Header>
 			<Dialog.Title>Schedule Beginners' Workshops</Dialog.Title>
 			<Dialog.Description>
-				One or several dates at the same venue and time. Nothing is emailed when
-				you schedule; Batches go out from the contact-from date.
+				Set up one or more dates with shared workshop details. No emails are
+				sent when you save.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -106,6 +107,7 @@ function reset() {
 			class="grid gap-5"
 			aria-label="Schedule Beginners' Workshops"
 		>
+			<h3 class="text-base font-semibold">Workshop details</h3>
 			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_8rem]">
 				<Field.Field>
 					{@const props = fields.venue.as("text")}
@@ -144,7 +146,7 @@ function reset() {
 				</Field.Field>
 				<Field.Field>
 					{@const props = fields.paymentWindowDays.as("number", 7)}
-					<Field.Label for={props.name}>Payment window (days)</Field.Label>
+					<Field.Label for={props.name}>Reply period (days)</Field.Label>
 					<Input {...props} id={props.name} min="1" step="1" />
 					{#each fields.paymentWindowDays.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
@@ -152,18 +154,29 @@ function reset() {
 				</Field.Field>
 			</Field.Group>
 
-			<fieldset class="grid gap-3">
+			<fieldset class="grid gap-4 border-t pt-5">
 				<legend class="mb-2 text-sm font-medium">Dates</legend>
-				<p class="text-xs text-muted-foreground">
-					Leave the cutoff blank for 3 days before the start, and contact-from
-					blank to start contacting from today.
+				<p class="text-sm leading-5 text-muted-foreground">
+					Leave the payment deadline blank for 3 days before the start, and the
+					offer start date blank to start contacting from today.
 				</p>
 				{#each { length: dateCount }, index (index)}
 					{@const row = fields.workshops[index]}
 					<div
-						class="grid items-start gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_1fr_1fr_auto]"
+						class="grid items-start gap-4 rounded-lg border bg-field p-4 sm:grid-cols-3"
 						data-testid="schedule-date-row"
 					>
+						<div class="flex items-center justify-between sm:col-span-3">
+							<p class="font-semibold">Workshop {index + 1}</p>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								aria-label={`Remove date ${index + 1}`}
+								disabled={dateCount === 1}
+								onclick={() => removeDate(index)}><Trash2 /></Button
+							>
+						</div>
 						<Field.Field>
 							{@const { value: _date, ...props } = row.date.as("text")}
 							<Field.Label for={props.name}>Workshop date</Field.Label>
@@ -181,11 +194,11 @@ function reset() {
 						<Field.Field>
 							{@const { value: _cutoff, ...props } =
 								row.paymentCutoffDate.as("text")}
-							<Field.Label for={props.name}>Payment Cutoff</Field.Label>
+							<Field.Label for={props.name}>Payment deadline</Field.Label>
 							<DatePicker
 								{...props}
 								id={props.name}
-								label={`Payment Cutoff ${index + 1}`}
+								label={`Payment deadline ${index + 1}`}
 								value={pickerValue(index, "paymentCutoffDate")}
 								onValueChange={(value) =>
 									setDate(index, "paymentCutoffDate", value)}
@@ -197,11 +210,11 @@ function reset() {
 						<Field.Field>
 							{@const { value: _contact, ...props } =
 								row.contactFromDate.as("text")}
-							<Field.Label for={props.name}>Contact from</Field.Label>
+							<Field.Label for={props.name}>Start offering places</Field.Label>
 							<DatePicker
 								{...props}
 								id={props.name}
-								label={`Contact from ${index + 1}`}
+								label={`Start offering places ${index + 1}`}
 								value={pickerValue(index, "contactFromDate")}
 								onValueChange={(value) =>
 									setDate(index, "contactFromDate", value)}
@@ -210,17 +223,6 @@ function reset() {
 								<Field.Error>{issue.message}</Field.Error>
 							{/each}
 						</Field.Field>
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon"
-							class="sm:mt-7"
-							aria-label={`Remove date ${index + 1}`}
-							disabled={dateCount === 1}
-							onclick={() => removeDate(index)}
-						>
-							<Trash2 />
-						</Button>
 					</div>
 				{/each}
 				{#each fields.workshops.issues() as issue (issue.message)}
@@ -237,7 +239,7 @@ function reset() {
 				</Button>
 			</fieldset>
 
-			<fieldset class="grid gap-3">
+			<fieldset class="grid gap-3 border-t pt-5">
 				<legend class="mb-2 text-sm font-medium">Staff (optional)</legend>
 				{#if coach}
 					<input {...fields.coachPrincipalId.as("hidden", coach)} />
@@ -255,9 +257,10 @@ function reset() {
 					coachIssues={fields.coachPrincipalId.issues() ?? []}
 					assistantIssues={fields.assistantPrincipalIds.issues() ?? []}
 				/>
-				<p class="text-xs text-muted-foreground">
+				<p class="text-sm leading-5 text-muted-foreground">
 					Every date gets the same Staff. You can change them until attendance
-					is final; without a coach the workshop shows as Unstaffed.
+					is final. The workshop shows a staffing alert if neither a coach nor
+					assistants are assigned.
 				</p>
 			</fieldset>
 
@@ -271,11 +274,13 @@ function reset() {
 				>
 				<Button type="submit" disabled={!!form.pending}>
 					<CalendarPlus />
-					{dateCount === 1
-						? "Schedule workshop"
-						: `Schedule ${dateCount} workshops`}
+					{form.pending
+						? "Scheduling…"
+						: dateCount === 1
+							? "Schedule workshop"
+							: `Schedule ${dateCount} workshops`}
 				</Button>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

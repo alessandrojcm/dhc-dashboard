@@ -6,6 +6,36 @@ import WorkshopConsole from "./workshop-console.svelte";
 
 const id = "6d9e6110-fc8c-4dcf-b64f-db21b20d5140";
 
+test("workshop management exposes offer settings and staff without returning to the list", async () => {
+	const screen = await render(WorkshopConsole, {
+		view: view(),
+		staffCandidates: [{ principalId: id, name: "Aoife Coach", coach: true }],
+	});
+	await expect
+		.element(screen.getByText("Beginners' Workshop · Manage workshop"))
+		.toBeVisible();
+	const details = screen.getByRole("region", { name: "Workshop details" });
+	await expect
+		.element(details.getByTestId("seat-meter"))
+		.toHaveTextContent("2 free of 3");
+	expect(screen.getByTestId("seat-meter").elements()).toHaveLength(1);
+	await expect
+		.element(details)
+		.toHaveTextContent("Up to 2 people in the next round");
+	await expect.element(details).toHaveTextContent("Wed 28 Oct, 10:00");
+	await expect.element(details).toHaveTextContent("Wed 11 Nov, 18:30");
+	await expect.element(details).toHaveTextContent("7-day reply window");
+	await screen.getByRole("button", { name: "Add staff", exact: true }).click();
+	const dialog = screen.getByRole("dialog");
+	await expect
+		.element(dialog.getByRole("heading", { name: /^Staff for/ }))
+		.toBeVisible();
+	await expect
+		.element(dialog.getByRole("button", { name: "Save Staff" }))
+		.toBeVisible();
+	await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+});
+
 function view(
 	overrides: Partial<BeginnersWorkshopConsole> = {},
 ): BeginnersWorkshopConsole {
@@ -149,23 +179,56 @@ function view(
 	};
 }
 
+test("keeps timeline markers inside the rail and connects every step", async () => {
+	const data = view();
+	data.nextBatch.people[0]!.confirms = true;
+	const screen = await render(WorkshopConsole, { view: data });
+	await expect
+		.element(screen.getByRole("heading", { name: "Workshop timeline" }))
+		.toBeVisible();
+	await expect
+		.element(screen.getByTestId("confirms"))
+		.toHaveTextContent("Has credit · confirmation needed");
+	const timeline = screen.getByRole("list", { name: "Lifecycle" }).element();
+	const rail = timeline.getBoundingClientRect();
+	const steps = Array.from(timeline.querySelectorAll("li"));
+	for (const [index, step] of steps.entries()) {
+		const marker = step.querySelector("span")!.getBoundingClientRect();
+		expect(marker.left).toBeGreaterThanOrEqual(rail.left);
+		expect(marker.right).toBeLessThanOrEqual(rail.right);
+		if (index === steps.length - 1) continue;
+		const connector = getComputedStyle(step, "::after");
+		const box = step.getBoundingClientRect();
+		const nextMarker =
+			steps[index + 1]!.querySelector("span")!.getBoundingClientRect();
+		expect(box.top + parseFloat(connector.top)).toBeLessThanOrEqual(
+			marker.bottom,
+		);
+		expect(box.bottom - parseFloat(connector.bottom)).toBeGreaterThanOrEqual(
+			nextMarker.top,
+		);
+	}
+});
+
 test("shows the Next Batch preview in priority order, minors badged, with Pause beside it", async () => {
 	const screen = await render(WorkshopConsole, { view: view() });
 
 	await expect
 		.element(screen.getByTestId("next-batch-headline"))
-		.toHaveTextContent("Batch 2 goes out Wed 28 Oct, 10:00");
+		.toHaveTextContent("Offer round 2 goes out Wed 28 Oct, 10:00");
 	await expect
 		.element(screen.getByTestId("next-batch-size"))
-		.toHaveTextContent("3 seats − 1 paid = 2");
+		.toHaveTextContent("2 people to contact (3 places, 1 already paid)");
 
-	const proposed = screen.getByRole("list", { name: "Proposed people" });
+	const proposed = screen.getByRole("list", {
+		name: "People to offer a place",
+	});
 	const rows = proposed.getByRole("listitem");
 	expect(rows.elements()).toHaveLength(2);
 	await expect.element(rows.nth(0)).toHaveTextContent("Aoife Byrne");
 	await expect.element(rows.nth(1)).toHaveTextContent("2 Bea Kelly Minor");
 	await expect
-		.element(screen.getByRole("button", { name: "Pause Batches" }))
+		.element(screen.getByRole("button", { name: "Pause offers" }))
 		.toBeVisible();
 });
 
@@ -173,14 +236,20 @@ test("groups the roster: seated, then asked, not paid yet", async () => {
 	const screen = await render(WorkshopConsole, { view: view() });
 
 	await expect
-		.element(screen.getByRole("region", { name: "Asked, not paid yet" }))
+		.element(
+			screen.getByRole("region", {
+				name: "Offered a place, awaiting payment or confirmation",
+			}),
+		)
 		.toHaveTextContent("Dara Nolan");
 	await expect
-		.element(screen.getByRole("region", { name: "Seated (paid)" }))
+		.element(screen.getByRole("region", { name: "Confirmed places" }))
 		.toHaveTextContent("Cian Doyle");
 	await expect
 		.element(screen.getByRole("region", { name: "Now" }))
-		.toHaveTextContent("Batch 1 window open — ends Tue 27 Oct, 23:59");
+		.toHaveTextContent(
+			"Offer round 1: waiting for replies until Tue 27 Oct, 23:59",
+		);
 });
 
 test("ALE-381: the seat meter counts live holds and each Intake shows when its hold runs out", async () => {
@@ -213,9 +282,9 @@ test("ALE-381: the seat meter counts live holds and each Intake shows when its h
 		.toHaveTextContent("1 paid · 1 paying now · 0 free of 2");
 	await expect
 		.element(screen.getByTestId("hold-expiry"))
-		.toHaveTextContent("Paying now · hold until 12:30");
+		.toHaveTextContent("Paying now · place reserved until 12:30");
 	await expect
-		.element(screen.getByRole("region", { name: "Seated (paid)" }))
+		.element(screen.getByRole("region", { name: "Confirmed places" }))
 		.toHaveTextContent("Cian Doyle");
 });
 
@@ -236,12 +305,12 @@ test("paused Batches offer Resume and say who paused them", async () => {
 
 	await expect
 		.element(screen.getByTestId("next-batch-headline"))
-		.toHaveTextContent(/^Batches are paused/);
+		.toHaveTextContent(/^Automatic offers are paused/);
 	await expect
 		.element(screen.getByText("Paused Wed 21 Oct, 12:00 by Róisín Walsh"))
 		.toBeVisible();
 	await expect
-		.element(screen.getByRole("button", { name: "Resume Batches" }))
+		.element(screen.getByRole("button", { name: "Resume offers" }))
 		.toBeVisible();
 });
 
@@ -257,16 +326,16 @@ test("free seats with nobody waiting need attention", async () => {
 
 	await expect
 		.element(screen.getByRole("region", { name: "Needs attention" }))
-		.toHaveTextContent("nobody is left waiting");
+		.toHaveTextContent("nobody is waiting");
 	await expect
 		.element(screen.getByTestId("next-batch-headline"))
-		.toHaveTextContent("Batch 2 is due, but nobody is waiting");
+		.toHaveTextContent("Offer round 2 is due, but nobody is waiting");
 });
 
 test("offers Fast-track only while Phoenix says it is open", async () => {
 	const open = await render(WorkshopConsole, { view: view() });
 	await expect
-		.element(open.getByRole("button", { name: "Fast-track" }))
+		.element(open.getByRole("button", { name: "Add a person" }))
 		.toBeEnabled();
 	open.unmount();
 
@@ -274,7 +343,7 @@ test("offers Fast-track only while Phoenix says it is open", async () => {
 		view: view({ fastTrackOpen: false }),
 	});
 	await expect
-		.element(closed.getByRole("button", { name: "Fast-track" }))
+		.element(closed.getByRole("button", { name: "Add a person" }))
 		.toBeDisabled();
 });
 
@@ -318,7 +387,7 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 	const row = screen
 		.getByRole("listitem")
 		.filter({ hasText: "Ciara Referral" });
-	await expect.element(row).toHaveTextContent("Fast-track");
+	await expect.element(row).toHaveTextContent("Added by staff");
 });
 
 test("ALE-391: a finalised workshop reads attended / no-show and is read-only", async () => {
@@ -353,18 +422,20 @@ test("ALE-391: a finalised workshop reads attended / no-show and is read-only", 
 
 	await expect
 		.element(screen.getByTestId("seat-meter"))
-		.toHaveTextContent("1 attended · 1 no-show of 3");
+		.toHaveTextContent("1 attended · 1 did not attend out of 3 places");
 	await expect
 		.element(screen.getByRole("region", { name: "Attended" }))
 		.toHaveTextContent("Cian Doyle");
 	await expect
-		.element(screen.getByRole("region", { name: "No-show" }))
+		.element(screen.getByRole("region", { name: "Did not attend" }))
 		.toHaveTextContent("Dara Nolan");
 	await expect
 		.element(screen.getByRole("region", { name: "Now" }))
-		.toHaveTextContent("Finalised Sat 14 Nov, 20:05 by Aoife Coach");
+		.toHaveTextContent("Attendance confirmed Sat 14 Nov, 20:05 by Aoife Coach");
 	expect(
-		screen.getByRole("button", { name: /Fast-track|Pause Batches/ }).elements(),
+		screen
+			.getByRole("button", { name: /Add a person|Pause offers/ })
+			.elements(),
 	).toHaveLength(0);
 });
 
@@ -428,10 +499,10 @@ test("ALE-392: a finalised console offers Invite to each Invitable attendee and 
 		.toBeVisible();
 	await expect
 		.element(attended.getByRole("listitem").filter({ hasText: "Bea" }))
-		.toHaveTextContent("Invited");
+		.toHaveTextContent("Membership invitation sent");
 	await expect
 		.element(attended.getByRole("listitem").filter({ hasText: "Cian" }))
-		.toHaveTextContent("Joined");
+		.toHaveTextContent("Joined the club");
 });
 
 test("ALE-392: without members.invite the attended list offers no Invite", async () => {
@@ -550,30 +621,42 @@ test("ALE-382: a failed refund needs attention with Retry and Record manual refu
 		.element(payment.getByRole("button", { name: "Record manual refund" }))
 		.toBeVisible();
 	// Only a Carried Fee's failed refund can be forfeited (ALE-389).
-	expect(payment.getByRole("button", { name: "Forfeit" }).elements()).toEqual(
-		[],
-	);
+	expect(
+		payment
+			.getByRole("button", { name: "Remove credit, keep payment" })
+			.elements(),
+	).toEqual([]);
 	await expect
 		.element(carried)
-		.toHaveTextContent("Their Carried Fee is held again");
+		.toHaveTextContent("Their workshop credit is available again");
 	await expect
-		.element(carried.getByRole("button", { name: "Forfeit" }))
+		.element(
+			carried.getByRole("button", { name: "Remove credit, keep payment" }),
+		)
 		.toBeVisible();
 	// A fee still owed back (the person has since paid) is not forfeitable.
-	await expect.element(owed).toHaveTextContent("the money is still owed back");
-	expect(owed.getByRole("button", { name: "Forfeit" }).elements()).toEqual([]);
+	await expect
+		.element(owed)
+		.toHaveTextContent("this payment is still owed back");
+	expect(
+		owed
+			.getByRole("button", { name: "Remove credit, keep payment" })
+			.elements(),
+	).toEqual([]);
 
 	await expect
 		.element(
 			screen
-				.getByRole("region", { name: "Asked, not paid yet" })
+				.getByRole("region", {
+					name: "Offered a place, awaiting payment or confirmation",
+				})
 				.getByTestId("refund-status"),
 		)
 		.toHaveTextContent("Refund failed");
 	await expect
 		.element(
 			screen
-				.getByRole("region", { name: "Seated (paid)" })
+				.getByRole("region", { name: "Confirmed places" })
 				.getByTestId("refund-status"),
 		)
 		.toHaveTextContent("Refunded manually");
@@ -610,10 +693,14 @@ test("ALE-395: Cancel opens a dialog with Phoenix's deferred, returned and relea
 		screen.getByRole("button", { name: "Cancel workshop" }),
 	);
 	const preview = screen.getByTestId("cancel-preview");
-	await expect.element(preview).toHaveTextContent("1 paid person deferred");
 	await expect
 		.element(preview)
-		.toHaveTextContent("1 contacted person back on the Waitlist");
+		.toHaveTextContent(
+			"1 paid person will receive credit for a later workshop",
+		);
+	await expect
+		.element(preview)
+		.toHaveTextContent("1 person offered a place will return to the waitlist");
 	await expect.element(preview).not.toHaveTextContent("Seat Hold");
 	await expect
 		.element(screen.getByRole("button", { name: "Cancel and email 2" }))
@@ -659,9 +746,9 @@ test("ALE-395: a cancelled workshop is read-only, says who and why, and points t
 	await expect
 		.element(now)
 		.toHaveTextContent(
-			"1 paid person deferred with a Carried Fee · 1 back on the Waitlist.",
+			"1 paid person given workshop credit · 1 back on the waitlist.",
 		);
-	await expect.element(now).toHaveTextContent("Refund Carried Fee");
+	await expect.element(now).toHaveTextContent("Refund credit");
 	await expect
 		.element(screen.getByTestId("cancel-reason"))
 		.toHaveTextContent("Hall flooded");
@@ -669,11 +756,11 @@ test("ALE-395: a cancelled workshop is read-only, says who and why, and points t
 		.element(screen.getByRole("button", { name: "Cancel workshop" }))
 		.not.toBeInTheDocument();
 	await expect
-		.element(screen.getByRole("button", { name: /Fast-track/ }))
+		.element(screen.getByRole("button", { name: /Add a person/ }))
 		.not.toBeInTheDocument();
 	await expect
-		.element(screen.getByRole("region", { name: "Out of this workshop" }))
-		.toHaveTextContent("Deferred");
+		.element(screen.getByRole("region", { name: "No longer attending" }))
+		.toHaveTextContent("Moved to a later workshop");
 	await expect
 		.element(screen.getByRole("listitem").filter({ hasText: "Cancelled" }))
 		.toHaveAttribute("data-state", "done");
@@ -773,7 +860,7 @@ test("ALE-386: a contacted Intake offers exactly Phoenix's availableCommands", a
 	const buttons = detail.getByTestId("intake-commands").getByRole("button");
 	expect(
 		buttons.elements().map((button) => button.textContent?.trim()),
-	).toEqual(["Decline", "Resend link", "Rotate link"]);
+	).toEqual(["Decline place", "Resend link", "Replace link"]);
 	await expect.element(detail.getByLabelText(/^Note/)).toBeVisible();
 	expect(document.body.textContent).not.toMatch(/copy link/i);
 	await closeIntake(screen);
@@ -786,15 +873,17 @@ test("ALE-386: a paid Intake offers no Decline, and shows its flag, link, emails
 	const buttons = detail.getByTestId("intake-commands").getByRole("button");
 	expect(
 		buttons.elements().map((button) => button.textContent?.trim()),
-	).toEqual(["Resend link", "Rotate link"]);
+	).toEqual(["Resend link", "Replace link"]);
 	await expect.element(detail.getByTestId("medical-flag")).toBeVisible();
 	await expect
 		.element(detail.getByTestId("link-generation"))
-		.toHaveTextContent("generation 2");
+		.toHaveTextContent("version 2");
 
 	const emails = detail.getByTestId("email-log").getByRole("listitem");
 	expect(emails.elements()).toHaveLength(3);
-	await expect.element(emails.nth(0)).toHaveTextContent("Contact — pay");
+	await expect
+		.element(emails.nth(0))
+		.toHaveTextContent("Place offer: payment needed");
 	await expect
 		.element(emails.nth(2))
 		.toHaveTextContent("Pre-workshop info (scheduled)");
@@ -802,7 +891,7 @@ test("ALE-386: a paid Intake offers no Decline, and shows its flag, link, emails
 	await expect
 		.element(detail.getByTestId("intake-history"))
 		.toHaveTextContent(
-			"Link rotated · Róisín Walsh · Thu 22 Oct, 12:00 “Forwarded the email to a friend”",
+			"Link replaced · Róisín Walsh · Thu 22 Oct, 12:00 “Forwarded the email to a friend”",
 		);
 	await closeIntake(screen);
 });
@@ -812,7 +901,9 @@ test("ALE-386: a closed Intake offers no commands", async () => {
 	const detail = await openIntake(screen, /^Eimear Ryan/);
 
 	await expect
-		.element(detail.getByText("No commands for a declined Intake."))
+		.element(
+			detail.getByText("No actions are available for this workshop place."),
+		)
 		.toBeVisible();
 	expect(detail.getByRole("button").elements()).toHaveLength(0);
 
@@ -874,13 +965,13 @@ test("ALE-393: the finalised roster offers the corrections Phoenix allows", asyn
 		.getByRole("button");
 	expect(
 		buttons.elements().map((button) => button.textContent?.trim()),
-	).toEqual(["Mark attended", "Defer instead"]);
+	).toEqual(["Mark attended", "Move to a later workshop instead"]);
 	expect(noShow.getByTestId("intake-commands").elements()).toHaveLength(0);
-	expect(document.body.textContent).not.toMatch(/No commands for/);
+	expect(document.body.textContent).not.toMatch(/No actions are available/);
 	await expect
 		.element(noShow.getByTestId("intake-history"))
 		.toHaveTextContent(
-			"Attendance corrected to no-show · Clare Coord · Mon 16 Nov, 11:00 “Door mix-up”",
+			"Attendance corrected to did not attend · Clare Coord · Mon 16 Nov, 11:00 “Door mix-up”",
 		);
 	await closeIntake(screen);
 
@@ -891,7 +982,7 @@ test("ALE-393: the finalised roster offers the corrections Phoenix allows", asyn
 			.getByRole("button")
 			.elements()
 			.map((button) => button.textContent?.trim()),
-	).toEqual(["Mark no-show"]);
+	).toEqual(["Mark as did not attend"]);
 	await closeIntake(screen);
 });
 
@@ -917,7 +1008,7 @@ test("ALE-386: contacted people unpaid after their window need attention", async
 				.getByTestId("unpaid-after-window"),
 		)
 		.toHaveTextContent(
-			"Dara Nolan hasn't paid — their Batch 1 window ended Tue 27 Oct, 23:59.",
+			"Dara Nolan has not paid. Their offer round 1 reply period ended Tue 27 Oct, 23:59.",
 		);
 });
 
@@ -983,7 +1074,7 @@ test("ALE-387: a paid Intake offers Cancel with refund and Withdraw, with the re
 	const buttons = detail.getByTestId("intake-commands").getByRole("button");
 	expect(
 		buttons.elements().map((button) => button.textContent?.trim()),
-	).toEqual(["Cancel with refund", "Resend link", "Rotate link", "Withdraw…"]);
+	).toEqual(["Cancel with refund", "Resend link", "Replace link", "Withdraw…"]);
 	await expect
 		.element(detail.getByTestId("refund-timing-hint"))
 		.toHaveTextContent("Less than 3 days to go");
@@ -1024,7 +1115,7 @@ test("ALE-387: the Withdraw dialog asks to refund or forfeit a paid person's fee
 	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
 	await expect.element(submit).toBeDisabled();
 
-	await dialog.getByRole("radio", { name: /Forfeit the fee/ }).click();
+	await dialog.getByRole("radio", { name: /Keep the payment/ }).click();
 	await expect.element(submit).toBeEnabled();
 
 	await dialog.getByRole("button", { name: "Keep them" }).click();
@@ -1040,9 +1131,7 @@ test("ALE-387: withdrawing a contacted person asks no money question", async () 
 	const dialog = screen.getByRole("dialog", {
 		name: "Withdraw Dara Nolan from the Waitlist",
 	});
-	await expect
-		.element(dialog)
-		.toHaveTextContent("their Intake closes as declined");
+	await expect.element(dialog).toHaveTextContent("Their place is closed");
 	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
 	await expect
 		.element(dialog.getByRole("button", { name: "Withdraw", exact: true }))
@@ -1081,7 +1170,9 @@ test("ALE-389: withdrawing a contacted Carried Fee holder asks to refund or forf
 	});
 	await expect
 		.element(
-			dialog.getByRole("radio", { name: /Refund their Carried Fee: €35\.00/ }),
+			dialog.getByRole("radio", {
+				name: /Refund their workshop credit: €35\.00/,
+			}),
 		)
 		.toBeVisible();
 	await expect
@@ -1089,7 +1180,7 @@ test("ALE-389: withdrawing a contacted Carried Fee holder asks to refund or forf
 		.toHaveTextContent("Less than 3 days to go");
 	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
 	await expect.element(submit).toBeDisabled();
-	await dialog.getByRole("radio", { name: /Forfeit the fee/ }).click();
+	await dialog.getByRole("radio", { name: /Keep the payment/ }).click();
 	await expect.element(submit).toBeEnabled();
 	await dialog.getByRole("button", { name: "Keep them" }).click();
 	await closeIntake(screen);
@@ -1151,11 +1242,13 @@ test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need
 		}),
 	});
 
-	const proposed = screen.getByRole("list", { name: "Proposed people" });
+	const proposed = screen.getByRole("list", {
+		name: "People to offer a place",
+	});
 	expect(proposed.getByTestId("confirms").elements()).toHaveLength(1);
 	await expect
 		.element(proposed.getByRole("listitem").nth(0))
-		.toHaveTextContent("confirms");
+		.toHaveTextContent("Has credit · confirmation needed");
 
 	await expect
 		.element(
@@ -1163,16 +1256,18 @@ test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need
 				.getByRole("region", { name: "Needs attention" })
 				.getByTestId("unconfirmed-carried-fee"),
 		)
-		.toHaveTextContent("Dara Nolan holds a Carried Fee and hasn't confirmed");
+		.toHaveTextContent(
+			"Dara Nolan has workshop credit but has not confirmed their place",
+		);
 
 	await expect
 		.element(screen.getByRole("button", { name: /^Cian Doyle/ }))
-		.toHaveTextContent("Carried Fee · applied");
+		.toHaveTextContent("Workshop credit used for this place");
 
-	const detail = await openIntake(screen, /^Dara Nolan — Contacted/);
+	const detail = await openIntake(screen, /^Dara Nolan — Place offered/);
 	await expect
 		.element(detail.getByTestId("carried-fee"))
-		.toHaveTextContent("Carried Fee · held");
+		.toHaveTextContent("Workshop credit available");
 	expect(
 		detail
 			.getByTestId("intake-commands")
@@ -1180,13 +1275,13 @@ test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need
 			.elements()
 			.map((button) => button.textContent?.trim()),
 	).toEqual([
-		"Decline",
-		"Confirm with Carried Fee",
+		"Decline place",
+		"Confirm using credit",
 		"Resend link",
-		"Rotate link",
+		"Replace link",
 	]);
 	await expect
 		.element(detail.getByTestId("intake-history"))
-		.toHaveTextContent("Confirmed with Carried Fee · by the person");
+		.toHaveTextContent("Place confirmed using workshop credit · by the person");
 	await closeIntake(screen);
 });

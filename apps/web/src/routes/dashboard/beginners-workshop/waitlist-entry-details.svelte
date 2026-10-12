@@ -87,12 +87,12 @@ const panel = $derived(
 	</div>
 
 	<div class={panel} data-testid="waitlist-carried-fee">
-		<h3 class="text-sm font-medium mb-2">Carried Fee</h3>
+		<h3 class="text-sm font-medium mb-2">Workshop credit</h3>
 		<p class="text-xs">
 			{carriedFee === "held"
-				? "Held — a prepaid seat: they confirm instead of paying when contacted"
+				? "Available for a later workshop. They confirm their place instead of paying again"
 				: carriedFee === "applied"
-					? "Applied — it paid their current Intake"
+					? "Used to pay for their current workshop place"
 					: (carriedFeeLabel(carriedFee) ?? "None")}
 		</p>
 		{#if carriedFee && waitlistId}

@@ -52,7 +52,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePageTest do
     assert page.first_name =~ "Person"
 
     assert Map.keys(page) |> Enum.sort() ==
-             ~w(action closed_reason fee_cents first_name state workshop)a
+             ~w(action closed_reason fee_cents first_name payment_cutoff state workshop)a
   end
 
   test "pay with a live hold continues that checkout", %{intakes: [{_, token} | _]} do

@@ -70,6 +70,17 @@ test("lists the waiting queue by default and removed people behind the filter", 
 	const desktop = screen.getByRole("table");
 	const mobile = screen.getByRole("list", { name: "Waitlist entries" });
 
+	await expect
+		.element(screen.getByRole("heading", { name: "Waitlist", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(screen.getByRole("searchbox", { name: "Search people" }))
+		.toBeVisible();
+	await expect
+		.element(
+			screen.getByRole("columnheader", { name: "Full Name", exact: true }),
+		)
+		.toBeVisible();
 	await expect.element(desktop.getByText("Ada Waiting")).toBeVisible();
 	expect(listEntries).toHaveBeenCalledWith(
 		expect.objectContaining({
@@ -288,15 +299,17 @@ test("shows a Carried Fee holder's fee on their entry", async () => {
 
 	const desktop = screen.getByRole("table");
 	await expect
-		.element(desktop.getByText("Waiting · Carried Fee"))
+		.element(desktop.getByText("Waiting · Workshop credit"))
 		.toBeVisible();
 	expect(listCarriedFees).toHaveBeenCalledWith(["a", "b"]);
-	expect(desktop.getByText("Waiting · Carried Fee").elements()).toHaveLength(1);
+	expect(
+		desktop.getByText("Waiting · Workshop credit").elements(),
+	).toHaveLength(1);
 	await expect
 		.element(
 			screen
 				.getByRole("list", { name: "Waitlist entries" })
-				.getByText("Waiting · Carried Fee"),
+				.getByText("Waiting · Workshop credit"),
 		)
 		.toBeVisible();
 });
@@ -330,7 +343,9 @@ test("ALE-396: Delete removes a removed person, asking refund or forfeit first f
 
 	const desktop = screen.getByRole("table");
 	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
-	await expect.element(desktop.getByText(/Carried Fee/).first()).toBeVisible();
+	await expect
+		.element(desktop.getByText(/workshop credit/i).first())
+		.toBeVisible();
 	await desktop.getByRole("button", { name: "Delete this person" }).click();
 
 	const dialog = screen.getByRole("dialog", { name: "Delete Bea Removed" });
@@ -338,7 +353,7 @@ test("ALE-396: Delete removes a removed person, asking refund or forfeit first f
 	const submit = dialog.getByRole("button", { name: "Delete", exact: true });
 	await expect.element(submit).toBeDisabled();
 
-	await dialog.getByRole("radio", { name: /Forfeit the fee/ }).click();
+	await dialog.getByRole("radio", { name: /Keep the payment/ }).click();
 	await submit.click();
 
 	await expect.poll(() => success.mock.calls.length).toBe(1);

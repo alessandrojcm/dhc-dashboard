@@ -28,6 +28,7 @@ import { Label } from "#lib/components/ui/label/index.js";
 import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import { fastTrackWaitlistPerson } from "./console.remote";
 import FastTrackNewPerson from "./fast-track-new-person.svelte";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 
 let {
 	workshop,
@@ -82,7 +83,7 @@ const candidates = createQuery(() => {
 
 function placed(firstName: string | null) {
 	toast.success(
-		`${firstName || "They"} ${firstName ? "is" : "are"} fast-tracked and will get the Contact email`,
+		`${firstName || "They"} will receive an email offering a workshop place`,
 	);
 	open = false;
 	addingNew = false;
@@ -91,138 +92,166 @@ function placed(firstName: string | null) {
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-h-[90svh] overflow-y-auto sm:max-w-xl">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title
-				>Fast-track into {formatCivilDate(workshop.date)}</Dialog.Title
+				>Add a person to {formatCivilDate(workshop.date)}</Dialog.Title
 			>
 			<Dialog.Description>
-				{fastTrackOpen
-					? "Outside Batch order. They're contacted now and pay the fee like anyone else; seats go to whoever pays first."
-					: holdersOnly
-						? "Payment is closed for this workshop, so only Carried Fee holders can be fast-tracked. They're contacted now and confirm their place without paying."
-						: "Payment is closed for this workshop, so nobody can be fast-tracked."}
+				{addingNew
+					? "Register their details and email a place offer. They must pay or confirm before their place is secured."
+					: fastTrackOpen
+						? "Offer someone a place now, without waiting for the next automatic offer round. They receive an email to pay or use their workshop credit. Places go to whoever pays or confirms first."
+						: holdersOnly
+							? "The payment deadline has passed. You can only add someone with workshop credit. They receive an email to confirm their place without paying again."
+							: "The payment deadline has passed, so nobody can be added."}
 			</Dialog.Description>
 		</Dialog.Header>
 
-		{#if !searchable}
-			<Dialog.Footer>
-				<Button type="button" variant="outline" onclick={() => (open = false)}
-					>Close</Button
-				>
-			</Dialog.Footer>
-		{:else if addingNew}
-			<FastTrackNewPerson
-				workshopId={workshop.id}
-				{genders}
-				onBack={() => (addingNew = false)}
-				onDone={placed}
-			/>
-		{:else}
-			<div class="grid gap-3">
-				<Label for="fast-track-search" class="sr-only"
-					>Search the Waitlist</Label
-				>
-				<div class="relative">
-					<Search
-						class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-					/>
-					<Input
-						id="fast-track-search"
-						type="search"
-						bind:value={draft}
-						placeholder="Search waiting, or removed in the last 3 months"
-						class="pl-9"
-					/>
-				</div>
-
-				{#if candidates.isPending}
-					<div class="grid gap-2" aria-busy="true">
-						<Skeleton class="h-12 w-full" />
-						<Skeleton class="h-12 w-full" />
-					</div>
-				{:else if candidates.isError}
-					<p class="text-sm text-destructive" role="alert">
-						Could not search the Waitlist. Try again.
-					</p>
-				{:else if candidates.data?.length}
-					<ul
-						class="divide-y rounded-lg border text-sm"
-						aria-label="Fast-track candidates"
-					>
-						{#each candidates.data as person (person.waitlistId)}
-							{@const command = fastTrackWaitlistPerson.for(person.waitlistId)}
-							<li class="flex flex-wrap items-center gap-2 px-3 py-2">
-								<span class="min-w-0 flex-1">
-									<span class="block font-medium">{personName(person)}</span>
-									<span class="block truncate text-xs text-muted-foreground"
-										>{person.email}</span
-									>
-								</span>
-								{#if person.minor}<Badge variant="outline">Minor</Badge>{/if}
-								{#if person.carriedFee}<Badge
-										variant="outline"
-										class="border-emerald-700 text-emerald-900"
-										>Carried Fee · confirms</Badge
-									>{/if}
-								{#if person.status === "removed"}<Badge variant="outline"
-										>Removed · restores</Badge
-									>{/if}
-								<form
-									{...command.enhance(async (instance) => {
-										formError = null;
-										if (!(await instance.submit())) return;
-										const result = instance.result;
-										if (result?.ok) placed(person.firstName);
-										else if (result) formError = result.error;
-									})}
-									aria-label={`Fast-track ${personName(person)}`}
-								>
-									<input {...command.fields.id.as("hidden", workshop.id)} />
-									<input
-										{...command.fields.waitlistId.as(
-											"hidden",
-											person.waitlistId,
-										)}
-									/>
-									<Button
-										type="submit"
-										size="sm"
-										variant="outline"
-										disabled={!!command.pending}>Fast-track</Button
-									>
-								</form>
-							</li>
-						{/each}
-					</ul>
-				{:else}
-					<Empty.Root class="border py-6">
-						<Empty.Header>
-							<Empty.Title>No one matches</Empty.Title>
-							<Empty.Description
-								>Nobody waiting, or removed in the last 3 months, matches that
-								search.</Empty.Description
-							>
-						</Empty.Header>
-					</Empty.Root>
-				{/if}
-
-				{#if formError}
-					<p class="text-sm text-destructive" role="alert">{formError}</p>
-				{/if}
-			</div>
-			{#if fastTrackOpen}
+		<div class="workshop-dialog-body grid gap-5">
+			{#if !searchable}
 				<Dialog.Footer>
-					<Button
-						type="button"
-						variant="ghost"
-						onclick={() => {
-							formError = null;
-							addingNew = true;
-						}}>Not on the Waitlist? Add them</Button
+					<Button type="button" variant="outline" onclick={() => (open = false)}
+						>Close</Button
 					>
 				</Dialog.Footer>
+			{:else if addingNew}
+				<FastTrackNewPerson
+					workshopId={workshop.id}
+					{genders}
+					onBack={() => (addingNew = false)}
+					onDone={placed}
+				/>
+			{:else}
+				<div class="grid gap-3">
+					<div
+						class="sticky -top-6 z-10 -mx-1 -mt-6 grid gap-3 bg-background px-1 pt-6 pb-3"
+					>
+						<Label for="fast-track-search">Search the Waitlist</Label>
+						<div class="relative">
+							<Search
+								class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+							/>
+							<Input
+								id="fast-track-search"
+								type="search"
+								bind:value={draft}
+								placeholder="Search waiting, or removed in the last 3 months"
+								class="pl-9"
+							/>
+						</div>
+					</div>
+
+					{#if candidates.isPending}
+						<div class="grid gap-2" aria-busy="true">
+							<p role="status" class="text-sm">Searching the waitlist…</p>
+							<Skeleton class="h-12 w-full" />
+							<Skeleton class="h-12 w-full" />
+						</div>
+					{:else if candidates.isError}
+						<p class="text-sm text-destructive" role="alert">
+							Could not search the Waitlist. Try again.
+						</p>
+						<Button
+							type="button"
+							variant="outline"
+							class="justify-self-start"
+							onclick={() => candidates.refetch()}>Try search again</Button
+						>
+					{:else if candidates.data?.length}
+						<ul
+							class="divide-y overflow-hidden rounded-lg border bg-field text-sm"
+							aria-label="People available to add"
+						>
+							{#each candidates.data as person (person.waitlistId)}
+								{@const command = fastTrackWaitlistPerson.for(
+									person.waitlistId,
+								)}
+								<li
+									class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 p-4"
+								>
+									<div class="min-w-0 space-y-2">
+										<div>
+											<span class="block break-words font-medium"
+												>{personName(person)}</span
+											>
+											<span
+												class="block break-all text-sm text-muted-foreground"
+												>{person.email}</span
+											>
+										</div>
+									</div>
+									<form
+										{...command.enhance(async (instance) => {
+											formError = null;
+											if (!(await instance.submit())) return;
+											const result = instance.result;
+											if (result?.ok) placed(person.firstName);
+											else if (result) formError = result.error;
+										})}
+										aria-label={`Add ${personName(person)} to workshop`}
+									>
+										<input {...command.fields.id.as("hidden", workshop.id)} />
+										<input
+											{...command.fields.waitlistId.as(
+												"hidden",
+												person.waitlistId,
+											)}
+										/>
+										<Button
+											type="submit"
+											variant="outline"
+											disabled={!!command.pending}
+											>{command.pending ? "Offering…" : "Offer place"}</Button
+										>
+									</form>
+									{#if person.minor || person.carriedFee || person.status === "removed"}
+										<div class="col-span-2 flex flex-wrap gap-2">
+											{#if person.minor}<Badge variant="outline">Minor</Badge
+												>{/if}
+											{#if person.carriedFee}<Badge variant="outline"
+													>Has credit · confirmation needed</Badge
+												>{/if}
+											{#if person.status === "removed"}<Badge variant="outline"
+													>Will rejoin the waitlist</Badge
+												>{/if}
+										</div>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<Empty.Root class="border py-6">
+							<Empty.Header>
+								<Empty.Title>No one matches</Empty.Title>
+								<Empty.Description
+									>Nobody waiting, or removed in the last 3 months, matches that
+									search.</Empty.Description
+								>
+							</Empty.Header>
+						</Empty.Root>
+					{/if}
+
+					{#if formError}
+						<p class="text-sm text-destructive" role="alert">{formError}</p>
+					{/if}
+				</div>
+				<Dialog.Footer>
+					<Button type="button" variant="outline" onclick={() => (open = false)}
+						>Close</Button
+					>
+					{#if fastTrackOpen}
+						<Button
+							type="button"
+							variant="default"
+							onclick={() => {
+								formError = null;
+								addingNew = true;
+							}}>Not on the Waitlist? Add them</Button
+						>
+					{/if}
+				</Dialog.Footer>
 			{/if}
-		{/if}
-	</Dialog.Content>
+		</div>
+	</WorkshopDialog>
 </Dialog.Root>

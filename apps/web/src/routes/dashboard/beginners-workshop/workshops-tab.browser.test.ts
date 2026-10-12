@@ -63,15 +63,19 @@ test("shows Phoenix's stage, seat meter and alerts, upcoming before past", async
 
 	const rows = screen.getByTestId("beginners-workshop-row");
 	expect(rows.elements()).toHaveLength(2);
-	await expect.element(rows.nth(0)).toHaveTextContent("Next Batch due");
 	await expect
 		.element(rows.nth(0))
-		.toHaveTextContent("Unstaffed: no Staff assigned");
+		.toHaveTextContent("Next round of offers due");
+	await expect
+		.element(rows.nth(0))
+		.toHaveTextContent("No coach or assistants assigned");
 	await expect
 		.element(rows.nth(0).getByTestId("seat-meter"))
 		.toHaveTextContent("3 paid · 1 paying now · 12 free of 16");
 	await expect.element(rows.nth(0)).toHaveTextContent("€40.00");
-	await expect.element(rows.nth(0)).toHaveTextContent("No Staff yet");
+	await expect
+		.element(rows.nth(0))
+		.toHaveTextContent("No coach or assistants assigned");
 	await expect.element(rows.nth(1)).toHaveTextContent("Cancelled");
 	await expect
 		.element(rows.nth(1))
@@ -81,17 +85,19 @@ test("shows Phoenix's stage, seat meter and alerts, upcoming before past", async
 		screen.getByRole("button", { name: /^Staff for/ }).elements(),
 	).toHaveLength(1);
 	expect(
-		screen.getByRole("link", { name: /^Door view for/ }).elements(),
+		screen.getByRole("link", { name: /^Check-in for/ }).elements(),
 	).toHaveLength(2);
 	await expect
 		.element(
 			screen.getByRole("button", {
-				name: "Capacity, fee and cutoff for 2026-11-14",
+				name: "Places, fee and payment deadline for 2026-11-14",
 			}),
 		)
 		.toBeVisible();
 	expect(
-		screen.getByRole("button", { name: /Capacity, fee and cutoff/ }).elements(),
+		screen
+			.getByRole("button", { name: /Places, fee and payment deadline/ })
+			.elements(),
 	).toHaveLength(1);
 });
 

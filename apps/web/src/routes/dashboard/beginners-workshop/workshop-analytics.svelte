@@ -132,8 +132,8 @@ const cards = $derived([
 			Waiting now
 		</h2>
 		<p class="text-sm text-muted-foreground">
-			Over waiting people only; removed, attended, invited and joined people are
-			not counted.
+			People still waiting for a workshop place. People who have left the
+			waitlist or already attended are not counted.
 		</p>
 	</div>
 

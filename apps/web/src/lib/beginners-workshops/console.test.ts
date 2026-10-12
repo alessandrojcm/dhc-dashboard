@@ -137,27 +137,31 @@ describe("formatDublinInstant", () => {
 describe("the Next Batch preview", () => {
 	it("says when it goes out, or why not", () => {
 		expect(nextBatchHeadline(next())).toBe(
-			"Batch 2 goes out Wed 28 Oct, 10:00",
+			"Offer round 2 goes out Wed 28 Oct, 10:00",
 		);
-		expect(nextBatchHeadline(next({ status: "due" }))).toMatch(/next sweep/);
+		expect(nextBatchHeadline(next({ status: "due" }))).toMatch(
+			/within a few minutes/,
+		);
 		expect(nextBatchHeadline(next({ status: "due", people: [] }))).toBe(
-			"Batch 2 is due, but nobody is waiting",
+			"Offer round 2 is due, but nobody is waiting",
 		);
 		expect(nextBatchHeadline(next({ status: "paused" }))).toMatch(
-			/^Batches are paused/,
+			/^Automatic offers are paused/,
 		);
 		expect(nextBatchHeadline(next({ status: "full" }))).toMatch(
-			/as soon as a seat frees/,
+			/when a place becomes available/,
 		);
 		expect(nextBatchHeadline(next({ status: "closed" }))).toMatch(
-			/No more Batches/,
+			/No more automatic offers/,
 		);
 	});
 
 	it("explains its size as capacity − paid", () => {
-		expect(nextBatchSize(next())).toBe("3 seats − 1 paid = 2");
+		expect(nextBatchSize(next())).toBe(
+			"2 people to contact (3 places, 1 already paid)",
+		);
 		expect(nextBatchSize(next({ people: [] }))).toBe(
-			"3 seats − 1 paid = 2; only 0 waiting",
+			"2 people to contact (3 places, 1 already paid); only 0 waiting",
 		);
 	});
 });
@@ -167,11 +171,11 @@ describe("consoleTimeline", () => {
 		const steps = consoleTimeline(view());
 		expect(steps.map((step) => [step.label, step.state])).toEqual([
 			["Scheduled", "done"],
-			["Batch 1 · 3 contacted", "now"],
-			["Batch 2 · 2 proposed", "next"],
-			["Payment Cutoff · pre-workshop info", "next"],
+			["Offer round 1 · 3 people emailed", "now"],
+			["Offer round 2 · 2 people next", "next"],
+			["Payment deadline · workshop information emailed", "next"],
 			["Workshop · check-in from an hour before", "next"],
-			["Attendance Finalisation", "next"],
+			["Confirm attendance", "next"],
 			["Follow-up email", "next"],
 		]);
 		expect(steps[1]?.when).toBe("Tue 20 Oct, 10:00 → Tue 27 Oct, 23:59");
@@ -186,10 +190,10 @@ describe("consoleTimeline", () => {
 			}),
 		);
 		expect(steps.map((step) => step.label)).not.toContain(
-			"Batch 2 · 0 proposed",
+			"Offer round 2 · 0 people next",
 		);
 		expect(
-			steps.find((step) => step.label.startsWith("Payment Cutoff"))?.state,
+			steps.find((step) => step.label.startsWith("Payment deadline"))?.state,
 		).toBe("done");
 	});
 
@@ -204,9 +208,9 @@ describe("consoleTimeline", () => {
 		expect(
 			steps.filter((step) => step.state === "skipped").map((s) => s.label),
 		).toEqual([
-			"Payment Cutoff · pre-workshop info",
+			"Payment deadline · workshop information emailed",
 			"Workshop · check-in from an hour before",
-			"Attendance Finalisation",
+			"Confirm attendance",
 			"Follow-up email",
 		]);
 	});
@@ -217,10 +221,10 @@ describe("ALE-395 cancellation", () => {
 		expect(
 			cancelPreviewLines({ deferred: 2, returned: 1, released: 1 }),
 		).toEqual([
-			"2 paid people deferred: their fee becomes a Carried Fee. Email: “Workshop cancelled – paid” (refund, or keep the fee for a later workshop).",
-			"1 contacted person back on the Waitlist with their original priority. Email: “Workshop cancelled – unpaid”.",
-			"1 live Seat Hold released; a payment that lands anyway is refunded automatically.",
-			"Assigned Staff get a Notification.",
+			"2 paid people will receive credit for a later workshop and a cancellation email. You can refund the credit if they prefer.",
+			"1 person offered a place will return to the waitlist with their original priority and receive a cancellation email.",
+			"1 place reserved during checkout will be released. Any payment that completes afterwards is refunded automatically.",
+			"The assigned coach and assistants will be notified.",
 		]);
 		expect(
 			cancelPreviewLines({ deferred: 0, returned: 0, released: 0 }),
@@ -251,8 +255,8 @@ describe("ALE-395 cancellation", () => {
 describe("nowCard", () => {
 	it("pairs the stage with the Next Batch", () => {
 		expect(nowCard(view())).toEqual({
-			title: "Batch 1 window open — ends Tue 27 Oct, 23:59",
-			body: "1 of 3 paid. Batch 2 goes out Wed 28 Oct, 10:00.",
+			title: "Offer round 1: waiting for replies until Tue 27 Oct, 23:59",
+			body: "1 of 3 paid. Offer round 2 goes out Wed 28 Oct, 10:00.",
 		});
 	});
 
@@ -342,9 +346,26 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 				view({ workshop: { ...base.workshop, stage: "payment_closed" } }),
 			),
 		).toEqual({
-			title: "Payment closed",
-			body: "1 of 3 paid. Paid people get the pre-workshop info; unpaid people lapse, or go back to the queue if the workshop was full.",
+			title: "Payment deadline passed",
+			body: "1 of 3 paid. People who paid receive the workshop information. Unpaid people without workshop credit are removed from the waitlist, or returned to it if the workshop was full.",
 		});
+	});
+
+	it("does not describe credit holders as awaiting removal after the payment deadline", () => {
+		const base = view();
+		const card = nowCard(
+			view({
+				workshop: { ...base.workshop, stage: "payment_closed" },
+				roster: {
+					...base.roster,
+					asked: [{ ...intake(null), carriedFee: "held" }],
+				},
+			}),
+		);
+		expect(card.body).toContain(
+			"1 with workshop credit can still confirm their place",
+		);
+		expect(card.body).not.toContain("awaiting an automatic update");
 	});
 
 	it("names who is still in checkout or not settled yet", () => {
@@ -362,7 +383,7 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 			}),
 		);
 		expect(card.body).toMatch(
-			/1 still in checkout — settled when Stripe ends the payment\. 1 settled at the next sweep\.$/,
+			/1 still completing payment\. Their places stay reserved until checkout ends\. 1 awaiting an automatic update within a few minutes\.$/,
 		);
 	});
 });
@@ -372,13 +393,13 @@ describe("holdLabel (ALE-381)", () => {
 
 	it("names when a live Seat Hold runs out on the Dublin clock", () => {
 		expect(holdLabel({ holdExpiresAt: "2026-10-22T11:30:00Z" }, now)).toBe(
-			"Paying now · hold until 12:30",
+			"Paying now · place reserved until 12:30",
 		);
 	});
 
 	it("keeps a hold Stripe has not ended yet as ending, and is null without one", () => {
 		expect(holdLabel({ holdExpiresAt: "2026-10-22T10:59:00Z" }, now)).toBe(
-			"Paying now · hold ending",
+			"Paying now · checkout ending",
 		);
 		expect(holdLabel({ holdExpiresAt: null }, now)).toBeNull();
 	});
@@ -447,23 +468,23 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 			]),
 		).toEqual([
 			["Attended", 2],
-			["No-show", 1],
-			["Out of this workshop", 0],
+			["Did not attend", 1],
+			["No longer attending", 0],
 		]);
 		expect(rosterGroups(view()).map((group) => group.title)).toEqual([
-			"Seated (paid)",
-			"Asked, not paid yet",
-			"Out of this workshop",
+			"Confirmed places",
+			"Offered a place, awaiting payment or confirmation",
+			"No longer attending",
 		]);
 	});
 
 	it("says who finalised it and the outcome", () => {
 		expect(nowCard(finalised())).toEqual({
-			title: "Finalised Sat 14 Nov, 20:05 by Aoife Coach",
-			body: "2 attended · 1 no-show. Attended people get the follow-up email at 10:00 the next morning. Only corrections and invites remain.",
+			title: "Attendance confirmed Sat 14 Nov, 20:05 by Aoife Coach",
+			body: "2 attended · 1 did not attend. Attendees get a follow-up email at 10:00 the next morning. You can correct attendance or send membership invitations.",
 		});
 		expect(nowCard(finalised(null)).title).toBe(
-			"Finalised Sat 14 Nov, 20:05 automatically at the end of the day",
+			"Attendance confirmed Sat 14 Nov, 20:05 automatically at the end of the day",
 		);
 	});
 
@@ -473,7 +494,7 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 
 		expect(step("2026-11-15T09:59:00Z")).toEqual([
 			{
-				label: "Attendance Finalisation",
+				label: "Confirm attendance",
 				when: "Sat 14 Nov, 20:05 · Aoife Coach",
 				state: "done",
 			},
@@ -523,7 +544,7 @@ describe("refundLabel (ALE-382)", () => {
 				forfeitable: false,
 			}),
 		).toBe(
-			"Refund of €35.00 to Dara failed (they paid after their Intake closed). Retry it, or record a manual refund if you paid them back another way.",
+			"Refund of €35.00 to Dara failed (they paid after their place was closed). Retry the refund or record a refund paid outside the app.",
 		);
 	});
 
@@ -542,7 +563,7 @@ describe("refundLabel (ALE-382)", () => {
 				forfeitable: true,
 			}),
 		).toBe(
-			"Refund of €40.00 to Dara failed (their Carried Fee). Their Carried Fee is held again: retry the refund, record a manual refund if you paid them back another way, or forfeit the fee.",
+			"Refund of €40.00 to Dara failed (their workshop credit). Their workshop credit is available again. Retry the refund, record a refund paid outside the app, or keep the payment and remove the credit.",
 		);
 	});
 
@@ -561,7 +582,7 @@ describe("refundLabel (ALE-382)", () => {
 				forfeitable: false,
 			}),
 		).toBe(
-			"Refund of €40.00 to Dara failed (their Carried Fee). They have since paid or hold another Carried Fee, so the money is still owed back: retry the refund, or record a manual refund if you paid them back another way.",
+			"Refund of €40.00 to Dara failed (their workshop credit). They have since paid or received another workshop credit, so this payment is still owed back. Retry the refund or record a refund paid outside the app.",
 		);
 	});
 });
@@ -575,8 +596,8 @@ describe("Invitation handoff (ALE-392)", () => {
 
 	it("labels an attended person's standing, leaving the Invitable ones to the Invite button", () => {
 		expect(standingLabel("attended")).toBeNull();
-		expect(standingLabel("invited")).toBe("Invited");
-		expect(standingLabel("joined")).toBe("Joined");
+		expect(standingLabel("invited")).toBe("Membership invitation sent");
+		expect(standingLabel("joined")).toBe("Joined the club");
 		expect(standingLabel(null)).toBeNull();
 	});
 
@@ -604,18 +625,18 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			"correct_attendance",
 		]);
 		expect(INTAKE_COMMANDS.map(intakeCommandLabel)).toEqual([
-			"Decline",
-			"Defer",
-			"Confirm with Carried Fee",
+			"Decline place",
+			"Move to a later workshop",
+			"Confirm using credit",
 			"Cancel with refund",
 			"Withdraw…",
-			"Refund Carried Fee",
+			"Refund credit",
 			"Resend link",
-			"Rotate link",
+			"Replace link",
 			"Correct attendance",
 		]);
 		expect(intakeCommandDone("rotate_link", "done")).toBe(
-			"Link rotated — the old one no longer works",
+			"New link emailed. The old link no longer works",
 		);
 		expect(intakeCommandDone("decline", "already_done")).toBe(
 			"Already done — nothing changed",
@@ -624,8 +645,10 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 
 	it("ALE-393: words attendance corrections and their history", () => {
 		expect(attendanceCorrectionLabel("attended")).toBe("Mark attended");
-		expect(attendanceCorrectionLabel("no_show")).toBe("Mark no-show");
-		expect(attendanceCorrectionLabel("deferred")).toBe("Defer instead");
+		expect(attendanceCorrectionLabel("no_show")).toBe("Mark as did not attend");
+		expect(attendanceCorrectionLabel("deferred")).toBe(
+			"Move to a later workshop instead",
+		);
 		expect(attendanceCorrectionDone("no_show", "already_done")).toBe(
 			"Already done — nothing changed",
 		);
@@ -640,7 +663,9 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				note: null,
 				correction: "deferred",
 			}),
-		).toBe("No-show corrected to deferred · Clare Coord · Mon 16 Nov, 11:00");
+		).toBe(
+			"Non-attendance changed to a later workshop · Clare Coord · Mon 16 Nov, 11:00",
+		);
 	});
 
 	it("story 97: words door check-ins and their undos with who and when", () => {
@@ -665,7 +690,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 	});
 
 	it("ALE-388: words Carried Fees, a person's own confirm and a holder who hasn't confirmed", () => {
-		expect(carriedFeeLabel("held")).toBe("Carried Fee · held");
+		expect(carriedFeeLabel("held")).toBe("Workshop credit available");
 		expect(carriedFeeLabel(null)).toBeNull();
 		expect(
 			historyLine({
@@ -675,7 +700,9 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				note: null,
 				correction: null,
 			}),
-		).toBe("Confirmed with Carried Fee · by the person · Thu 22 Oct, 12:00");
+		).toBe(
+			"Place confirmed using workshop credit · by the person · Thu 22 Oct, 12:00",
+		);
 		expect(
 			historyLine({
 				command: "defer",
@@ -684,7 +711,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				note: null,
 				correction: null,
 			}),
-		).toBe("Deferred · a former member · Thu 22 Oct, 12:00");
+		).toBe("Moved to a later workshop · a former member · Thu 22 Oct, 12:00");
 		expect(
 			unconfirmedCarriedFeeText({
 				id: "0b0c3b2e-8a43-4a8d-9a39-5b9d8a2ab002",
@@ -694,7 +721,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				contactedAt: "2026-10-20T09:00:00Z",
 			}),
 		).toMatch(
-			/^Dara Nolan holds a Carried Fee and hasn't confirmed \(contacted Tue 20 Oct, 10:00\)/,
+			/^Dara Nolan has workshop credit but has not confirmed their place \(offered Tue 20 Oct, 10:00\)/,
 		);
 	});
 
@@ -733,7 +760,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				},
 				now,
 			).when,
-		).toBe("at the next sweep");
+		).toBe("within a few minutes");
 	});
 
 	it("words a history entry, and an actor who is gone", () => {
@@ -758,7 +785,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				windowEndsAt: "2026-11-11T18:30:00Z",
 			}),
 		).toMatch(
-			/^Anonymised hasn't paid — their payment window ended Wed 11 Nov, 18:30\./,
+			/^Personal details removed has not paid\. Their reply period ended Wed 11 Nov, 18:30\./,
 		);
 	});
 });
@@ -787,14 +814,14 @@ describe("ALE-387: the refund-timing hint", () => {
 				amountCents: 3500,
 				currency: "eur",
 			}),
-		).toBe("Refund their Carried Fee: €35.00");
+		).toBe("Refund their workshop credit: €35.00");
 		expect(
 			refundChoiceLabel({
 				source: "carried_fee",
 				amountCents: null,
 				currency: null,
 			}),
-		).toBe("Refund their Carried Fee in full");
+		).toBe("Refund their workshop credit in full");
 	});
 
 	it("withdraw opens its own dialog; every other command is a button", () => {

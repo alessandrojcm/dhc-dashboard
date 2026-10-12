@@ -11,6 +11,7 @@ import { toast } from "svelte-sonner";
 import { Button } from "#lib/components/ui/button/index.js";
 import DatePicker from "#lib/components/ui/date-picker.svelte";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 import * as Field from "#lib/components/ui/field/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import {
@@ -45,9 +46,9 @@ function setDate(key: DateKey, value: DateValue | undefined) {
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-lg">
+	<WorkshopDialog>
 		<Dialog.Header>
-			<Dialog.Title>Capacity, fee and cutoff</Dialog.Title>
+			<Dialog.Title>Places, fee and payment deadline</Dialog.Title>
 			<Dialog.Description>
 				{formatCivilDate(workshop.date)} at {workshop.startTime}, {workshop.venue}.
 				Nothing is emailed when you save.
@@ -96,27 +97,30 @@ function setDate(key: DateKey, value: DateValue | undefined) {
 						"number",
 						workshop.paymentWindowDays,
 					)}
-					<Field.Label for={props.name}>Payment window (days)</Field.Label>
+					<Field.Label for={props.name}>Reply period (days)</Field.Label>
 					<Input {...props} id={props.name} min="1" step="1" />
-					<Field.Description>Applies to later Batches.</Field.Description>
 					{#each form.fields.paymentWindowDays.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
 			</Field.Group>
+			<p class="text-sm leading-5 text-muted-foreground">
+				The reply period applies to future offer rounds. After it ends, unpaid
+				places may be offered to the next people on the waitlist.
+			</p>
 
-			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_8rem]">
+			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_10rem]">
 				<Field.Field>
 					{@const { value: _cutoff, ...props } =
 						form.fields.paymentCutoffDate.as(
 							"text",
 							workshop.paymentCutoffDate,
 						)}
-					<Field.Label for={props.name}>Payment Cutoff date</Field.Label>
+					<Field.Label for={props.name}>Payment deadline date</Field.Label>
 					<DatePicker
 						{...props}
 						id={props.name}
-						label="Payment Cutoff date"
+						label="Payment deadline date"
 						value={pickerValue("paymentCutoffDate")}
 						onValueChange={(value) => setDate("paymentCutoffDate", value)}
 					/>
@@ -129,7 +133,7 @@ function setDate(key: DateKey, value: DateValue | undefined) {
 						"time",
 						workshop.paymentCutoffTime,
 					)}
-					<Field.Label for={props.name}>Cutoff time</Field.Label>
+					<Field.Label for={props.name}>Payment deadline time</Field.Label>
 					<Input {...props} id={props.name} />
 					{#each form.fields.paymentCutoffTime.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
@@ -141,16 +145,17 @@ function setDate(key: DateKey, value: DateValue | undefined) {
 				<Field.Field>
 					{@const { value: _contact, ...props } =
 						form.fields.contactFromDate.as("text", workshop.contactFromDate)}
-					<Field.Label for={props.name}>Contact from</Field.Label>
+					<Field.Label for={props.name}>Start offering places</Field.Label>
 					<DatePicker
 						{...props}
 						id={props.name}
-						label="Contact from"
+						label="Start offering places"
 						value={pickerValue("contactFromDate")}
 						onValueChange={(value) => setDate("contactFromDate", value)}
 					/>
 					<Field.Description
-						>Batch 1 goes out at 10:00 on this date.</Field.Description
+						>Automatic offers can start from 10:00 on this date, subject to
+						available places and pauses.</Field.Description
 					>
 					{#each form.fields.contactFromDate.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
@@ -166,8 +171,10 @@ function setDate(key: DateKey, value: DateValue | undefined) {
 				<Button type="button" variant="outline" onclick={() => (open = false)}
 					>Cancel</Button
 				>
-				<Button type="submit" disabled={!!form.pending}>Save</Button>
+				<Button type="submit" disabled={!!form.pending}
+					>{form.pending ? "Saving…" : "Save"}</Button
+				>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

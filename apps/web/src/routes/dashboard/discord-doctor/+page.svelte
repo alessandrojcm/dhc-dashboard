@@ -389,7 +389,7 @@ async function refreshMembers() {
 </svelte:head>
 
 <div class="px-4 pb-10 sm:px-6 lg:px-8">
-	<div class="mx-auto w-full max-w-7xl">
+	<div class="w-full">
 		<header class="flex flex-col gap-5 py-6 sm:py-8">
 			<div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
 				<div class="max-w-2xl">

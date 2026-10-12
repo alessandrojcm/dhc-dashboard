@@ -154,12 +154,12 @@ test("clearing the coach leaves the workshop Unstaffed", async () => {
 	});
 
 	await userEvent.click(
-		screen.getByRole("button", { name: "Clear coach (Unstaffed)" }),
+		screen.getByRole("button", { name: "Remove coach assignment" }),
 	);
 
 	await expect
 		.element(screen.getByRole("combobox", { name: "Coach" }))
-		.toHaveTextContent("No coach yet (Unstaffed)");
+		.toHaveTextContent("No coach assigned");
 	expect(submitted(form.element())).toEqual({ coach: null, assistants: [] });
 });
 

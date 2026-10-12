@@ -12,6 +12,7 @@ import { toast } from "svelte-sonner";
 import { formatCivilDate } from "#lib/beginners-workshops/presentation.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 import { workshopStaffSchema } from "#lib/schemas/beginnersWorkshop.js";
 import StaffPickers from "./staff-pickers.svelte";
 import { setWorkshopStaff } from "./workshops.remote";
@@ -38,13 +39,12 @@ let formError = $state<string | null>(null);
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-lg">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title>Staff for {formatCivilDate(workshop.date)}</Dialog.Title>
 			<Dialog.Description>
-				Access changes immediately. Staff see this workshop's door view and
-				nothing else. Emails never name the Staff, so a change emails no
-				attendee.
+				Assigned staff can access this workshop’s check-in screen immediately.
+				Attendees are not emailed about staff changes.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -91,8 +91,10 @@ let formError = $state<string | null>(null);
 				<Button type="button" variant="outline" onclick={() => (open = false)}
 					>Cancel</Button
 				>
-				<Button type="submit" disabled={!!form.pending}>Save Staff</Button>
+				<Button type="submit" disabled={!!form.pending}
+					>{form.pending ? "Saving…" : "Save Staff"}</Button
+				>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

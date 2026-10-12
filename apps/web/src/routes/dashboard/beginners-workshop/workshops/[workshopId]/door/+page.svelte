@@ -4,7 +4,7 @@
 	latest view a door command answers.
 -->
 <script lang="ts">
-import { ArrowLeft, Users } from "@lucide/svelte";
+import { ArrowLeft, MapPin, Users } from "@lucide/svelte";
 import { resolve } from "$app/paths";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
 import {
@@ -22,7 +22,7 @@ const { data } = $props();
 let workshop = $derived<BeginnersWorkshopDoor>(data.workshop);
 </script>
 
-<div class="mx-auto flex max-w-md flex-col gap-4 py-4">
+<div class="flex w-full min-w-0 flex-col gap-6 py-4 sm:py-6">
 	<Button
 		variant="ghost"
 		size="sm"
@@ -35,22 +35,33 @@ let workshop = $derived<BeginnersWorkshopDoor>(data.workshop);
 		{data.canManageWorkshops ? "Workshops" : "My Beginners' Workshops"}
 	</Button>
 
-	<header class="flex flex-col gap-2" data-testid="door-header">
-		<p class="text-xs font-bold tracking-wider text-muted-foreground uppercase">
-			Door
-		</p>
-		<h1 class="font-heading text-3xl">
-			{formatCivilDate(workshop.date)} · {workshop.startTime}
-		</h1>
-		<p class="text-muted-foreground">{workshop.venue}</p>
-		<div class="flex flex-wrap items-center gap-2">
-			<Badge variant="outline">{stageLabel(workshop.stage)}</Badge>
-			<WorkshopAlerts alerts={workshop.alerts} />
+	<header
+		class="flex flex-wrap items-start justify-between gap-5 border-b pb-6"
+		data-testid="door-header"
+	>
+		<div class="space-y-3">
+			<p
+				class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+			>
+				Beginners' Workshop · Door check-in
+			</p>
+			<h1 class="font-heading text-3xl sm:text-4xl">
+				{formatCivilDate(workshop.date)} · {workshop.startTime}
+			</h1>
+			<p class="flex items-center gap-2 text-muted-foreground">
+				<MapPin class="size-4 shrink-0" aria-hidden="true" />{workshop.venue}
+			</p>
 		</div>
-		<p class="flex items-center gap-2 text-sm">
-			<Users class="size-4 text-muted-foreground" />
-			{staffSummary(workshop.staff)}
-		</p>
+		<div class="flex flex-col gap-3 lg:items-end">
+			<div class="flex flex-wrap items-center gap-2">
+				<Badge variant="outline">{stageLabel(workshop.stage)}</Badge>
+				<WorkshopAlerts alerts={workshop.alerts} />
+			</div>
+			<p class="flex items-center gap-2 text-sm">
+				<Users class="size-4 text-muted-foreground" />
+				{staffSummary(workshop.staff)}
+			</p>
+		</div>
 	</header>
 
 	<DoorCheckIn door={data.workshop} onchange={(next) => (workshop = next)} />

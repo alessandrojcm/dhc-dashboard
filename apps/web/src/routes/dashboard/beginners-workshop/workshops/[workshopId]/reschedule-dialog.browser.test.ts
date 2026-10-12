@@ -66,17 +66,17 @@ test("prefills the kept cutoff and follows a new start time", async () => {
 		.element(screen.getByTestId("reschedule-warning"))
 		.toHaveTextContent("This emails 1 person");
 	await expect
-		.element(screen.getByLabelText("Cutoff time"))
+		.element(screen.getByLabelText("Payment deadline time"))
 		.toHaveValue("18:30");
 
 	await userEvent.fill(screen.getByLabelText("Start"), "19:15");
 	await expect
-		.element(screen.getByLabelText("Cutoff time"))
+		.element(screen.getByLabelText("Payment deadline time"))
 		.toHaveValue("19:15");
 
 	// After Batch 1 the contact-from date can't change, so it isn't offered.
 	await expect
-		.element(screen.getByText("Contact from", { exact: true }))
+		.element(screen.getByText("Start offering places", { exact: true }))
 		.not.toBeInTheDocument();
 });
 
@@ -88,9 +88,15 @@ test("offers the contact-from date while Batch 1 hasn't gone out", async () => {
 
 	await expect
 		.element(screen.getByTestId("reschedule-warning"))
-		.toHaveTextContent("nobody is emailed");
+		.toHaveTextContent(
+			"No emails will be sent: nobody has an active workshop place.",
+		);
 	await expect
-		.element(screen.getByText("Batch 1 goes out at 10:00 on this date."))
+		.element(
+			screen.getByText(
+				"Automatic offers can start from 10:00 on this date, subject to available places and pauses.",
+			),
+		)
 		.toBeVisible();
 	await expect
 		.element(screen.getByRole("button", { name: "Reschedule", exact: true }))

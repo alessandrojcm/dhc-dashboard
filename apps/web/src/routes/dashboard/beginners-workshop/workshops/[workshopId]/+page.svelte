@@ -7,5 +7,6 @@ const { data } = $props();
 <WorkshopConsole
 	view={data.console}
 	genders={data.genders}
+	staffCandidates={data.staffCandidates}
 	canInvite={data.canInvite}
 />

@@ -47,7 +47,7 @@ const planning = $derived([
 	{
 		label: "Time to a seat",
 		value: formatDays(queue.medianDaysToSeat),
-		note: "Median from queue date to workshop (Batch Intakes)",
+		note: "Typical wait from joining the waitlist to the workshop date, for automatic place offers",
 	},
 	{
 		label: "Workshops to clear the queue",
@@ -55,25 +55,25 @@ const planning = $derived([
 		note: `${queue.waiting} waiting ÷ ${formatFigure(months.averageAttendees)} attendees per workshop`,
 	},
 	{
-		label: "Conversion Rate",
+		label: "Attendees who joined the club",
 		value: formatRate(months.conversionRate),
-		note: `${months.joined} joined of ${months.attended} attended · ${months.invitable} Invitable · ${months.invitedNotJoined} invited, not yet joined`,
+		note: `${months.joined} joined of ${months.attended} attendees · ${months.invitable} ready to invite · ${months.invitedNotJoined} invited, not yet joined`,
 	},
 ]);
 
 const liabilities = $derived([
 	{
-		label: "Removed, within retention",
+		label: "Can be restored to the waitlist",
 		value: String(queue.removedInRetention),
-		note: "Can still be restored",
+		note: "People removed within the last 3 months",
 	},
 	{
-		label: "Invitable",
+		label: "Ready for a membership invitation",
 		value: String(queue.invitable),
 		note: "Attended, not yet invited",
 	},
 	{
-		label: "Outstanding Carried Fees",
+		label: "People with workshop credit",
 		value: String(queue.carriedFees.count),
 		note: carriedFeesNote(queue.carriedFees),
 	},
@@ -141,8 +141,9 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 			Past workshops
 		</h2>
 		<p class="text-sm text-muted-foreground">
-			Intake counts, newest first. Rates are out of the people who could take
-			each step; attendance is out of the people still seated at finalisation.
+			People offered a place at each workshop, newest first. Attendance rates
+			count confirmed places when attendance was recorded; membership rates
+			count those who attended.
 		</p>
 	</div>
 
@@ -151,15 +152,24 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 			<Empty.Header>
 				<Empty.Title>No past workshops yet</Empty.Title>
 				<Empty.Description>
-					Outcomes appear once a workshop is finalised or cancelled.
+					Results appear after attendance is confirmed or a workshop is
+					cancelled.
 				</Empty.Description>
 			</Empty.Header>
 		</Empty.Root>
 	{:else}
-		<div class="overflow-x-auto rounded-lg border">
-			<Table.Root>
-				<Table.Header>
-					<Table.Row>
+		<div
+			class="overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm"
+		>
+			<Table.Root
+				class="min-w-[1120px] text-[0.8125rem] [&_td]:px-3 [&_td]:py-2 [&_td]:whitespace-normal [&_td]:font-semibold [&_td_p]:mt-0.5 [&_td_p]:text-xs [&_td_p]:font-normal [&_td_p]:leading-4 [&_th]:h-10 [&_th]:px-3 [&_th]:whitespace-normal [&_th]:font-semibold"
+			>
+				<Table.Caption class="sr-only"
+					>Past workshop outcomes, newest first. Expand a workshop to see its
+					contact rounds.</Table.Caption
+				>
+				<Table.Header class="bg-primary [&_th]:text-primary-foreground">
+					<Table.Row class="border-primary hover:bg-primary">
 						<Table.Head>Workshop</Table.Head>
 						<Table.Head class="text-right">Contacted</Table.Head>
 						<Table.Head class="text-right">Left before paying</Table.Head>
@@ -167,27 +177,30 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 						<Table.Head class="text-right">Left after paying</Table.Head>
 						<Table.Head class="text-right">Attendance</Table.Head>
 						<Table.Head class="text-right">After attending</Table.Head>
-						<Table.Head class="text-right">Conversion Rate</Table.Head>
+						<Table.Head class="text-right">Joined the club</Table.Head>
 					</Table.Row>
 				</Table.Header>
 				<Table.Body>
 					{#each report.outcomes as outcome (outcome.workshopId)}
 						{@const open = expanded.has(outcome.workshopId)}
-						<Table.Row data-testid="report-outcome" class="align-top">
+						<Table.Row
+							data-testid="report-outcome"
+							class="align-top text-foreground transition-colors even:bg-muted/25 hover:bg-muted/50"
+						>
 							<Table.Cell>
 								<div class="flex items-start gap-2">
 									<Button
 										variant="ghost"
 										size="icon"
-										class="size-7"
+										class="size-11 shrink-0 text-primary hover:bg-muted hover:text-primary sm:size-8"
 										aria-expanded={open}
-										aria-label={`${open ? "Hide" : "Show"} Batches for ${formatCivilDate(outcome.date)}`}
+										aria-label={`${open ? "Hide" : "Show"} offer rounds for ${formatCivilDate(outcome.date)}`}
 										onclick={() => toggle(outcome.workshopId)}
 									>
 										{#if open}<ChevronDown />{:else}<ChevronRight />{/if}
 									</Button>
-									<div>
-										<p class="font-medium text-foreground">
+									<div class="min-w-48 max-w-64">
+										<p class="font-semibold text-foreground">
 											{formatCivilDate(outcome.date)}
 											{#if cancelled(outcome)}
 												<Badge variant="destructive" class="ml-1"
@@ -196,16 +209,16 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 											{/if}
 										</p>
 										<p class="text-xs text-muted-foreground">
-											{outcome.venue} · Batches sent: {outcome.batchesSent}
+											{outcome.venue} · Offer rounds: {outcome.batchesSent}
 										</p>
 										<a
-											class="mt-1 inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline"
+											class="mt-1 inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6"
 											href={resolve(
 												"/dashboard/beginners-workshop/workshops/[workshopId]",
 												{ workshopId: outcome.workshopId },
 											)}
 										>
-											<PanelsTopLeft class="size-3" aria-hidden="true" /> Console
+											<PanelsTopLeft class="size-3" aria-hidden="true" /> Manage
 										</a>
 									</div>
 								</div>
@@ -213,8 +226,8 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 							<Table.Cell class="text-right tabular-nums">
 								{outcome.contacted.total}
 								<p class="text-xs text-muted-foreground">
-									{outcome.contacted.batch} Batch · {outcome.contacted
-										.fastTrack} fast-track
+									{outcome.contacted.batch} automatic · {outcome.contacted
+										.fastTrack} added by staff
 								</p>
 							</Table.Cell>
 							<Table.Cell class="text-right tabular-nums">
@@ -230,7 +243,7 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 								{outcome.paid.total}
 								{#if outcome.paid.carriedFee > 0}
 									<p class="text-xs text-muted-foreground">
-										{outcome.paid.carriedFee} with a Carried Fee
+										{outcome.paid.carriedFee} using credit
 									</p>
 								{/if}
 							</Table.Cell>
@@ -251,7 +264,7 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 									<p class="text-xs text-muted-foreground">
 										{outcome.attendance.attended} attended · {outcome.attendance
 											.noShow}
-										no-show
+										did not attend
 									</p>
 								{/if}
 							</Table.Cell>
@@ -261,38 +274,43 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 								{:else}
 									{outcome.afterAttending.joined} joined
 									<p class="text-xs text-muted-foreground">
-										{outcome.afterAttending.invitable} Invitable · {outcome
+										{outcome.afterAttending.invitable} ready to invite · {outcome
 											.afterAttending.invitedNotJoined} invited, not yet joined
 									</p>
 								{/if}
 							</Table.Cell>
-							<Table.Cell class="text-right font-semibold tabular-nums">
+							<Table.Cell
+								class="bg-primary/5 text-right font-semibold tabular-nums text-primary"
+							>
 								{formatRate(outcome.conversionRate)}
 							</Table.Cell>
 						</Table.Row>
 						{#if open}
 							<Table.Row
 								data-testid="report-groups"
-								class="bg-muted/30 hover:bg-muted/30"
+								class="bg-muted/50 hover:bg-muted/50"
 							>
-								<Table.Cell colspan={8} class="p-0">
+								<Table.Cell colspan={8} class="!p-0">
 									{#if outcome.groups.length === 0}
 										<p class="px-4 py-3 text-sm text-muted-foreground">
 											Nobody was contacted.
 										</p>
 									{:else}
-										<Table.Root>
-											<Table.Header>
-												<Table.Row>
-													<Table.Head class="pl-12">Contact round</Table.Head>
+										<Table.Root
+											aria-label={`Contact rounds for ${formatCivilDate(outcome.date)}`}
+											class="border-l-4 border-primary/40"
+										>
+											<Table.Header class="bg-muted [&_th]:text-foreground">
+												<Table.Row class="hover:bg-muted">
+													<Table.Head class="pl-12">Offer round</Table.Head>
 													<Table.Head class="text-right">Contacted</Table.Head>
 													<Table.Head class="text-right"
-														>Paid within the window</Table.Head
+														>Paid within reply period</Table.Head
 													>
 													<Table.Head class="text-right">Paid later</Table.Head>
 													<Table.Head class="text-right">Declined</Table.Head>
 													<Table.Head class="text-right"
-														>Unpaid at cutoff</Table.Head
+														>Unpaid at deadline</Table.Head
 													>
 												</Table.Row>
 											</Table.Header>
@@ -303,7 +321,7 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 															{groupLabel(group)}
 															{#if group.windowEndsAt}
 																<p class="text-xs text-muted-foreground">
-																	Window to {formatDublinInstant(
+																	Reply by {formatDublinInstant(
 																		group.windowEndsAt,
 																	)}
 																</p>
@@ -335,6 +353,15 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 					{/each}
 				</Table.Body>
 			</Table.Root>
+			<div
+				class="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground"
+			>
+				<p class="font-semibold text-foreground">
+					{report.outcomes.length}
+					{report.outcomes.length === 1 ? "workshop" : "workshops"}
+				</p>
+				<p>Expand a row to see automatic offers and people added by staff.</p>
+			</div>
 		</div>
 	{/if}
 </section>

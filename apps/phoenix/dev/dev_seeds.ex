@@ -4,7 +4,7 @@ defmodule Dhc.DevSeeds do
   import Ecto.Query
 
   alias Dhc.Auth.{Principal, UserRole}
-  alias Dhc.BeginnersWorkshops.{Intake, IntakePayment}
+  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Intake, IntakeCheckout, IntakePayment}
   alias Dhc.Invitations.Repository, as: InvitationRepository
   alias Dhc.Inventory
   alias Dhc.ClubCalendar
@@ -512,8 +512,11 @@ defmodule Dhc.DevSeeds do
              {:staff, coordinator_id},
              {:schedule_workshop, chunk}
            ) do
-        {:ok, _views} -> :ok
-        {:error, reason} -> Mix.raise("Could not schedule Beginners' Workshops: #{inspect(reason)}")
+        {:ok, _views} ->
+          :ok
+
+        {:error, reason} ->
+          Mix.raise("Could not schedule Beginners' Workshops: #{inspect(reason)}")
       end
     end)
 
@@ -563,7 +566,8 @@ defmodule Dhc.DevSeeds do
 
     {paid, rest} = Enum.split(intakes, 2)
     Enum.each(paid, &seed_pay!(&1, workshop, DateTime.add(batch_at, 3600, :second)))
-    for intake <- Enum.take(rest, 1), do: insert_seed_hold!(intake, workshop, DateTime.utc_now(), nil)
+    for intake <- Enum.take(rest, 1),
+        do: insert_seed_hold!(intake, workshop, DateTime.utc_now(), nil)
 
     {:ok, done} =
       Dhc.BeginnersWorkshops.execute(
@@ -657,7 +661,9 @@ defmodule Dhc.DevSeeds do
            clock: batch_clock
          ) do
       {:ok, %{outcome: :sent, batch: batch}} ->
-        Mix.shell().info("Sent Batch 1 (#{batch.size} contacted) for the workshop on #{workshop.date}")
+        Mix.shell().info(
+          "Sent Batch 1 (#{batch.size} contacted) for the workshop on #{workshop.date}"
+        )
 
       other ->
         Mix.shell().error("Batch 1 was not sent for the seeded workshop: #{inspect(other)}")
@@ -896,12 +902,11 @@ defmodule Dhc.DevSeeds do
   end
 
   defp insert_seed_hold!(intake, workshop, now, session_id) do
-    %{
-      workshop_id: workshop.id,
-      intake_id: intake.id,
-      amount_cents: workshop.fee_cents,
-      expires_at: DateTime.add(now, 30 * 60, :second)
-    }
+    entry = Repo.get!(WaitlistEntry, intake.waitlist_id)
+
+    BeginnersWorkshop
+    |> Repo.get!(workshop.id)
+    |> IntakeCheckout.hold_params(intake, entry, DateTime.add(now, 30 * 60, :second))
     |> IntakePayment.hold_changeset()
     |> Ecto.Changeset.put_change(:stripe_checkout_session_id, session_id)
     |> Repo.insert!()

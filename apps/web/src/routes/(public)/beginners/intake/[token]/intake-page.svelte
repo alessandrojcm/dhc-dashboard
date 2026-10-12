@@ -10,6 +10,7 @@
 import type { BeginnersIntakePage } from "@dhc/api-client";
 import { CalendarDays, Clock, MapPin, RefreshCw } from "@lucide/svelte";
 import { invalidateAll } from "$app/navigation";
+import { formatDublinInstant } from "#lib/beginners-workshops/console.js";
 import {
 	confirmsWithCarriedFee,
 	intakeActionLabel,
@@ -96,6 +97,13 @@ $effect(() => {
 	{/if}
 
 	{#if actionLabel}
+		{#if page.action === "pay" && page.paymentCutoff}
+			<Card.Content>
+				<p class="text-sm text-muted-foreground">
+					Payment deadline: {formatDublinInstant(page.paymentCutoff)}
+				</p>
+			</Card.Content>
+		{/if}
 		<Card.Footer>
 			{#if checkout}
 				<form {...startIntakePayment} class="w-full">

@@ -20,6 +20,8 @@ import * as Field from "#lib/components/ui/field/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
 import { cancelWorkshopSchema } from "#lib/schemas/beginnersWorkshop.js";
 import { cancelWorkshop } from "./console.remote";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
 
 let {
 	workshop,
@@ -38,12 +40,11 @@ let formError = $state<string | null>(null);
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-md">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title>Cancel {formatCivilDate(workshop.date)}?</Dialog.Title>
 			<Dialog.Description>
-				This can't be undone. Nobody loses their place or their money, and the
-				workshop stays visible, read-only.
+				This can't be undone. The workshop stays visible as a read-only record.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -55,7 +56,7 @@ let formError = $state<string | null>(null);
 				if (result?.ok) {
 					const { deferred, returned } = result.data;
 					toast.success(
-						`Cancelled: ${deferred} deferred with a Carried Fee, ${returned} back on the Waitlist`,
+						`Cancelled: ${deferred} given workshop credit, ${returned} back on the waitlist`,
 					);
 					open = false;
 				} else if (result) {
@@ -67,21 +68,27 @@ let formError = $state<string | null>(null);
 		>
 			<input {...form.fields.id.as("hidden", workshop.id)} />
 
-			<ul class="grid gap-1.5 text-sm" data-testid="cancel-preview">
-				{#each lines as line (line)}
-					<li>{line}</li>
-				{/each}
-			</ul>
+			<Alert.Root class="workshop-dialog-notice workshop-dialog-danger block">
+				<h3 class="mb-2 font-semibold">What happens when you cancel</h3>
+				<ul class="grid gap-3 text-sm" data-testid="cancel-preview">
+					{#each lines as line (line)}
+						<li>{line}</li>
+					{/each}
+				</ul>
+				<p class="mt-3 font-medium">
+					Payments become credit for a later workshop, not automatic refunds.
+				</p>
+			</Alert.Root>
 
 			<Field.Field>
 				{@const props = form.fields.reason.as("text")}
 				<Field.Label for={`${workshop.id}-cancel-reason`}
-					>Reason (optional, kept with each Intake)</Field.Label
+					>Reason (optional, saved with each person's workshop record)</Field.Label
 				>
 				<Textarea
 					{...props}
 					id={`${workshop.id}-cancel-reason`}
-					rows={2}
+					rows={3}
 					maxlength={500}
 				/>
 				{#each form.fields.reason.issues() as issue (issue.message)}
@@ -98,9 +105,13 @@ let formError = $state<string | null>(null);
 					>Keep workshop</Button
 				>
 				<Button type="submit" variant="destructive" disabled={!!form.pending}
-					>{emailed ? `Cancel and email ${emailed}` : "Cancel workshop"}</Button
+					>{form.pending
+						? "Cancelling…"
+						: emailed
+							? `Cancel and email ${emailed}`
+							: "Cancel workshop"}</Button
 				>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

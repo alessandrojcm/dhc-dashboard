@@ -88,7 +88,7 @@ function toggle(itemValue: string) {
 					role="combobox"
 					aria-expanded={open}
 					aria-label={label}
-					class="w-full justify-between font-normal"
+					class="w-full justify-between bg-field font-normal"
 				>
 					<span
 						class={cn("truncate", !chosen.length && "text-muted-foreground")}

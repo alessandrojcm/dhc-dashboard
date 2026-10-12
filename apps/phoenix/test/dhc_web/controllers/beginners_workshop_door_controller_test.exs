@@ -46,6 +46,7 @@ defmodule DhcWeb.BeginnersWorkshopDoorControllerTest do
     force_today!(workshop.id)
 
     %{
+      coordinator: coordinator,
       workshop: workshop,
       minor: minor,
       door: "/api/beginners-workshops/#{workshop.id}/door",
@@ -56,6 +57,26 @@ defmodule DhcWeb.BeginnersWorkshopDoorControllerTest do
 
   defp as(conn, name),
     do: Plug.Conn.put_req_header(conn, "authorization", "Bearer #{name}-session")
+
+  test "a future Door gives the browser its opening notice without enabling check-in", %{
+    conn: conn,
+    coordinator: coordinator
+  } do
+    date = Date.add(Dhc.ClubCalendar.today(), 40)
+
+    workshop =
+      scheduled_fixture(coordinator, %{"date" => Date.to_iso8601(date)},
+        clock: clock(DateTime.utc_now())
+      )
+
+    assert %{"data" => %{"checkIn" => %{"window" => "before", "opensAt" => opens_at}}} =
+             conn
+             |> as("coordinator")
+             |> get("/api/beginners-workshops/#{workshop.id}/door")
+             |> json_response(200)
+
+    assert {:ok, _, 0} = DateTime.from_iso8601(opens_at)
+  end
 
   test "GET /door carries the door list in its own shape", %{conn: conn} = ctx do
     assert %{"data" => data} = conn |> as("coach") |> get(ctx.door) |> json_response(200)

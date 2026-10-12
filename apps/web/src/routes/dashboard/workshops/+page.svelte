@@ -61,9 +61,7 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 	<title>Manage workshops | Dublin HEMA Club</title>
 </svelte:head>
 
-<div
-	class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10"
->
+<div class="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
 	<header
 		class="order-1 flex flex-col gap-5 border-b border-border/80 pb-6 sm:flex-row sm:items-end sm:justify-between"
 	>

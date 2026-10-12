@@ -33,13 +33,14 @@ them first.
    the existing row:
 
    ```csv
-   beginners@example.com,Coordinator,"beginners_coordinator,member",Clare,Coordinator,01/01/1990,she/her,female,Next of Kin,+353820000001,longsword,
-   coach@example.com,Coach,"coach,member",Aoife,Coach,01/01/1988,she/her,female,Next of Kin,+353820000002,longsword,
-   assistant@example.com,Assistant,member,Brian,Assist,01/01/1992,he/him,male,Next of Kin,+353820000003,longsword,
+   beginners@example.com,Coordinator,"beginners_coordinator,member",Clare,Coordinator,01/01/1990,she/her,woman (cis),Next of Kin,+353820000001,longsword,
+   coach@example.com,Coach,"coach,member",Aoife,Coach,01/01/1988,she/her,woman (cis),Next of Kin,+353820000002,longsword,
+   assistant@example.com,Assistant,member,Brian,Assist,01/01/1992,he/him,man (cis),Next of Kin,+353820000003,longsword,
    ```
 
 3. **Run the app.** `mise run phx-server` (Phoenix on :4000) and `mise run dev`
-   (SvelteKit on :5173). `docker compose up -d mailpit` if it isn't running.
+   (SvelteKit at <https://127.0.0.1:5173>). Keep browser visits on `127.0.0.1`
+   so host-only sign-in cookies work. `docker compose up -d mailpit` if it isn't running.
    Every email lands in Mailpit at <http://localhost:8025>: magic-link sign-ins,
    Contact emails (with the Intake link), and every notice.
 
@@ -48,7 +49,7 @@ them first.
    as `STRIPE_WEBHOOK_SIGNING_SECRET` (restart Phoenix after):
 
    ```bash
-   stripe listen --forward-to localhost:4000/api/webhooks/stripe
+   stripe listen --all-snapshot --forward-to localhost:4000/api/webhooks/stripe
    ```
 
 5. **Moving time.** The sweep runs every 5 minutes on real time. To run the

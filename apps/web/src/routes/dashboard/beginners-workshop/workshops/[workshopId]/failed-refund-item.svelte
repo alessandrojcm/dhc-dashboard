@@ -53,7 +53,7 @@ let manualOpen = $state(false);
 			{...forfeit.enhance(async (instance) => {
 				if (!(await instance.submit())) return;
 				const result = instance.result;
-				if (result?.ok) toast.success("Carried Fee forfeited");
+				if (result?.ok) toast.success("Workshop credit removed; payment kept");
 				else if (result) toast.error(result.error);
 			})}
 		>
@@ -64,7 +64,7 @@ let manualOpen = $state(false);
 				size="sm"
 				variant="outline"
 				class="text-destructive"
-				disabled={!!forfeit.pending}>Forfeit</Button
+				disabled={!!forfeit.pending}>Remove credit, keep payment</Button
 			>
 		</form>
 	{/if}

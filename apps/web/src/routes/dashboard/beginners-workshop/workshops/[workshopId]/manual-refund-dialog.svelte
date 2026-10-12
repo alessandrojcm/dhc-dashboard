@@ -12,6 +12,7 @@ import {
 } from "#lib/beginners-workshops/console.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 import * as Field from "#lib/components/ui/field/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
 import { recordManualRefundSchema } from "#lib/schemas/beginnersWorkshop.js";
@@ -32,7 +33,7 @@ let formError = $state<string | null>(null);
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-md">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title>Record manual refund</Dialog.Title>
 			<Dialog.Description>
@@ -78,8 +79,10 @@ let formError = $state<string | null>(null);
 				<Button type="button" variant="outline" onclick={() => (open = false)}
 					>Cancel</Button
 				>
-				<Button type="submit" disabled={!!form.pending}>Record refund</Button>
+				<Button type="submit" disabled={!!form.pending}
+					>{form.pending ? "Recording…" : "Record refund"}</Button
+				>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

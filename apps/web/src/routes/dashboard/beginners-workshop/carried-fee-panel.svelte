@@ -49,14 +49,14 @@ async function settle(outcome: Promise<CarriedFeeOutcome>) {
 
 <div class="flex flex-col gap-2 text-xs" data-testid="carried-fee-panel">
 	{#if panel.isLoading}
-		<p class="text-muted-foreground">Loading the Carried Fee…</p>
+		<p class="text-muted-foreground">Loading workshop credit…</p>
 	{:else if panel.loadError}
 		<p class="text-destructive">{panel.loadError}</p>
 	{:else if panel.fee}
 		{@const fee = panel.fee}
 		<p>
 			{fee.origin === "deferral"
-				? "Carried from a deferred Beginners' Workshop payment"
+				? "Payment saved as credit for a later workshop"
 				: `Imported from the Waitlist spreadsheet (Paid: “${fee.importedPaidText ?? ""}”)`}{amount
 				? ` · ${amount} originally paid`
 				: ""}
@@ -76,8 +76,9 @@ async function settle(outcome: Promise<CarriedFeeOutcome>) {
 					fee.failedRefund.currency,
 				)} failed{fee.failedRefund.lastError
 					? ` (${fee.failedRefund.lastError})`
-					: ""}. The fee is held again: retry the refund, record a manual refund
-				if you paid them back another way, or forfeit the fee.
+					: ""}. {panel.can("forfeit")
+					? "The credit is available again. Retry the refund, record a refund paid outside the app, or keep the payment and remove the credit."
+					: "This payment is still owed back. Retry the refund or record a refund paid outside the app."}
 			</p>
 		{/if}
 
@@ -99,7 +100,7 @@ async function settle(outcome: Promise<CarriedFeeOutcome>) {
 					<Button
 						size="sm"
 						variant="outline"
-						onclick={() => (confirmingRefund = true)}>Refund Carried Fee</Button
+						onclick={() => (confirmingRefund = true)}>Refund credit</Button
 					>
 				{/if}
 			{/if}
@@ -117,7 +118,8 @@ async function settle(outcome: Promise<CarriedFeeOutcome>) {
 					variant="outline"
 					class="text-destructive"
 					disabled={panel.pending}
-					onclick={() => settle(panel.forfeit())}>Forfeit</Button
+					onclick={() => settle(panel.forfeit())}
+					>Remove credit, keep payment</Button
 				>
 			{/if}
 		</div>
@@ -159,6 +161,11 @@ async function settle(outcome: Promise<CarriedFeeOutcome>) {
 				<Label for={`payment-intent-${waitlistId}`}>
 					Stripe payment id (pi_…)
 				</Label>
+				<p class="text-muted-foreground">
+					Find the original payment in Stripe and copy its payment ID, starting
+					with pi_. This lets you refund the imported credit to the right
+					payment.
+				</p>
 				<div class="flex gap-2">
 					<Input
 						id={`payment-intent-${waitlistId}`}

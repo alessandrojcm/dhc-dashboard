@@ -52,6 +52,18 @@ export const protectedRoutes: ProtectedRoute[] = [
 		requires: "beginners.workshops.assigned.read",
 		onDeny: "redirect-to-own-profile",
 	}),
+	protect("/dashboard/beginners-workshop/workshops", {
+		requires: "beginners.workshops.manage",
+		onDeny: "redirect-to-own-profile",
+	}),
+	protect("/dashboard/beginners-workshop/email-templates", {
+		requires: "beginners.workshops.manage",
+		onDeny: "redirect-to-own-profile",
+	}),
+	protect("/dashboard/beginners-workshop/invitable", {
+		requires: "members.invite",
+		onDeny: "redirect-to-own-profile",
+	}),
 	protect("/dashboard/beginners-workshop", {
 		requires: "beginners.waitlist.manage",
 		onDeny: "redirect-to-own-profile",

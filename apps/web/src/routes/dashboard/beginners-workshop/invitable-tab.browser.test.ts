@@ -47,8 +47,32 @@ test("ALE-392: lists each Invitable person with the workshop, the Follow-up and 
 		.element(rows.filter({ hasText: "Bea Kelly" }))
 		.toHaveTextContent("Sent Sun 15 Nov, 10:00");
 	expect(
-		screen.getByRole("button", { name: "Invite" }).elements(),
+		screen
+			.getByRole("table")
+			.getByRole("button", { name: "Invite", exact: true })
+			.elements(),
 	).toHaveLength(2);
+	// Responsive cards reuse the same rows: one remote form per person.
+	expect(
+		screen.getByRole("button", { name: "Invite", exact: true }).elements(),
+	).toHaveLength(2);
+	await expect
+		.element(screen.getByRole("heading", { name: "Ready to invite" }))
+		.toBeVisible();
+	await screen
+		.getByRole("searchbox", { name: "Search attendees" })
+		.fill("bea@example.com");
+	expect(rows.elements()).toHaveLength(1);
+	await expect.element(rows).toHaveTextContent("Bea Kelly");
+	await screen
+		.getByRole("searchbox", { name: "Search attendees" })
+		.fill("nobody-matches");
+	await expect.element(screen.getByText("No matching attendees")).toBeVisible();
+	await screen
+		.getByRole("button", { name: "Clear search", exact: true })
+		.first()
+		.click();
+	expect(rows.elements()).toHaveLength(2);
 });
 
 test("ALE-392: says nobody is waiting for an Invitation", async () => {

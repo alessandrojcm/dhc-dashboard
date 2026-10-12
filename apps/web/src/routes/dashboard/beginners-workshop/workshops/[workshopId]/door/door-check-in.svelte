@@ -39,6 +39,8 @@ import { intakeStateLabel } from "#lib/beginners-workshops/console.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import { Progress } from "#lib/components/ui/progress/index.js";
 import {
@@ -138,13 +140,20 @@ async function finish() {
 }
 </script>
 
-<section class="flex flex-col gap-3" aria-label="Check-in">
+<section
+	class="grid items-start gap-5 lg:grid-cols-[19rem_minmax(0,1fr)] lg:gap-6"
+	aria-label="Check-in"
+>
 	<div
-		class="sticky top-0 z-10 flex flex-col gap-3 border-b bg-background/95 pt-2 pb-3 backdrop-blur"
+		class="z-10 flex min-w-0 flex-col gap-4 rounded-2xl border bg-field p-4 shadow-sm sm:p-5 lg:sticky lg:top-4"
 	>
-		<div class="flex items-baseline justify-between gap-3">
-			<h2 class="font-heading text-xl">Check-in</h2>
-			<span class="text-2xl font-bold tabular-nums" data-testid="door-count"
+		<div class="flex flex-col gap-2">
+			<h2
+				class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+			>
+				Attendance
+			</h2>
+			<span class="text-xl font-bold tabular-nums" data-testid="door-count"
 				>{count.label}</span
 			>
 		</div>
@@ -172,170 +181,182 @@ async function finish() {
 				{notice}
 			</p>
 		{/if}
-		<div class="relative">
-			<Search
-				class="pointer-events-none absolute top-3.5 left-3 size-5 text-muted-foreground"
-			/>
-			<Input
-				bind:value={search}
-				type="search"
-				placeholder="Find a name"
-				aria-label="Find a name"
-				class="h-12 pl-10 text-base"
-				autocomplete="off"
-			/>
-		</div>
-		{#if !search.trim()}
-			<!-- Clicking the active item would clear a single ToggleGroup, so an
+		<div class="flex flex-col gap-3 border-t pt-4">
+			<div class="relative min-w-0 flex-1">
+				<Search
+					class="pointer-events-none absolute top-3.5 left-3 size-5 text-muted-foreground"
+				/>
+				<Input
+					bind:value={search}
+					type="search"
+					placeholder="Find a name"
+					aria-label="Find a name"
+					class="h-12 pl-10 text-base"
+					autocomplete="off"
+				/>
+			</div>
+			{#if !search.trim()}
+				<!-- Clicking the active item would clear a single ToggleGroup, so an
 			     empty value is ignored. -->
-			<ToggleGroup
-				type="single"
-				variant="outline"
-				value={filter}
-				onValueChange={(next) => {
-					if (next) filter = next as DoorFilter;
-				}}
-				aria-label="Show"
-				class="grid w-full grid-cols-3"
-			>
-				{#each filters as item (item.value)}
-					<ToggleGroupItem
-						value={item.value}
-						class="min-h-11 font-semibold data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
-					>
-						{item.label}
-					</ToggleGroupItem>
-				{/each}
-			</ToggleGroup>
-		{/if}
+				<ToggleGroup
+					type="single"
+					variant="outline"
+					value={filter}
+					onValueChange={(next) => {
+						if (next) filter = next as DoorFilter;
+					}}
+					aria-label="Show"
+					class="grid w-full grid-cols-3"
+				>
+					{#each filters as item (item.value)}
+						<ToggleGroupItem
+							value={item.value}
+							class="min-h-11 font-semibold data-[state=on]:bg-secondary data-[state=on]:text-secondary-foreground"
+						>
+							{item.label}
+						</ToggleGroupItem>
+					{/each}
+				</ToggleGroup>
+			{/if}
+		</div>
 	</div>
 
-	<ul class="flex flex-col gap-2">
-		{#each shown as person (person.id)}
-			{@const name = doorName(person)}
-			<li
-				class={cn(
-					"rounded-2xl border bg-card",
-					person.checkedIn && "border-emerald-600 bg-emerald-50",
-				)}
-				data-testid="door-person"
-			>
-				<div class="flex items-center gap-3 p-3">
-					<Button
-						variant="ghost"
-						class="h-auto min-w-0 flex-1 flex-col items-start gap-1 px-1 py-1 text-left whitespace-normal"
-						aria-expanded={expanded === person.id}
-						onclick={() =>
-							(expanded = expanded === person.id ? null : person.id)}
-					>
-						<span class="truncate text-lg font-semibold">{name}</span>
-						<span
-							class="flex flex-wrap items-center gap-1.5 text-sm font-normal text-muted-foreground"
-						>
-							{#if person.pronouns}{person.pronouns}{/if}
-							{#if person.minor}<Badge
-									variant="outline"
-									class="border-violet-600 text-violet-800"
-									><Baby /> Minor</Badge
-								>{/if}
-							{#if person.medicalConditions}<Badge
-									variant="outline"
-									class="border-destructive text-destructive"
-									><HeartPulse /> Medical</Badge
-								>{/if}
-							{#if person.state !== "paid"}<Badge variant="secondary"
-									>{intakeStateLabel(person.state)}</Badge
-								>{/if}
-						</span>
-					</Button>
-					{#if person.checkedIn}
-						<div class="flex flex-col items-end gap-1">
-							<span class="text-sm font-semibold text-emerald-800"
-								>{checkedInLine(person.checkedIn)}</span
-							>
-							{#if open}
-								<Button
-									size="sm"
-									variant="ghost"
-									class="h-9"
-									aria-label={`Undo check-in for ${name}`}
-									disabled={pending === person.id}
-									onclick={() => run(undoCheckIn, person.id)}
-									><Undo2 /> Undo</Button
-								>
-							{/if}
-						</div>
-					{:else if open && person.state === "paid"}
+	<div class="min-w-0 space-y-4 lg:col-start-2 lg:row-start-1 lg:row-span-2">
+		<div class="flex flex-wrap items-baseline justify-between gap-2">
+			<h2 class="font-heading text-xl">Attendees</h2>
+			<p class="text-sm text-muted-foreground">Select a name for details</p>
+		</div>
+		<ul class="flex flex-col gap-3">
+			{#each shown as person (person.id)}
+				{@const name = doorName(person)}
+				<li
+					class={cn(
+						"overflow-hidden rounded-xl border bg-field shadow-sm",
+						person.checkedIn &&
+							"border-emerald-600/40 bg-emerald-50 dark:bg-emerald-950/30",
+					)}
+					data-testid="door-person"
+				>
+					<div class="flex items-center gap-3 p-3 sm:px-5 sm:py-4">
 						<Button
-							class="h-14 min-w-28 text-base"
-							aria-label={`Check in ${name}`}
-							disabled={pending === person.id}
-							onclick={() => run(checkIn, person.id)}>Check in</Button
+							variant="ghost"
+							class="h-auto min-w-0 flex-1 flex-col items-start gap-1 px-1 py-1 text-left whitespace-normal"
+							aria-expanded={expanded === person.id}
+							onclick={() =>
+								(expanded = expanded === person.id ? null : person.id)}
 						>
-					{/if}
-				</div>
-				{#if expanded === person.id}
-					<div
-						class="flex flex-col gap-2 border-t px-3 py-3 text-sm"
-						data-testid="door-person-details"
-					>
-						{#if person.medicalConditions}
-							<p class="flex gap-2">
-								<HeartPulse class="size-4 shrink-0 text-destructive" />
-								{person.medicalConditions}
-							</p>
-						{/if}
-						{#if person.minor && person.guardian}
-							<p class="flex flex-wrap items-center gap-2">
-								<Phone class="size-4 shrink-0" />
-								Guardian {person.guardian.name} ·
-								<a
-									class="font-semibold underline"
-									href={telHref(person.guardian.phoneNumber)}
-									>{person.guardian.phoneNumber}</a
+							<span class="break-words text-base font-semibold sm:text-lg"
+								>{name}</span
+							>
+							<span
+								class="flex flex-wrap items-center gap-1.5 text-sm font-normal text-muted-foreground"
+							>
+								{#if person.pronouns}{person.pronouns}{/if}
+								{#if person.minor}<Badge
+										variant="outline"
+										class="border-violet-600 text-violet-800"
+										><Baby /> Minor</Badge
+									>{/if}
+								{#if person.medicalConditions}<Badge
+										variant="outline"
+										class="border-destructive text-destructive"
+										><HeartPulse /> Medical</Badge
+									>{/if}
+								{#if person.state !== "paid"}<Badge variant="secondary"
+										>{intakeStateLabel(person.state)}</Badge
+									>{/if}
+							</span>
+						</Button>
+						{#if person.checkedIn}
+							<div class="flex flex-col items-end gap-1">
+								<span
+									class="text-sm font-semibold text-emerald-800 dark:text-emerald-300"
+									>{checkedInLine(person.checkedIn)}</span
 								>
-							</p>
-						{:else if person.minor}
-							<p class="text-muted-foreground">No Guardian on record.</p>
-						{/if}
-						{#if !person.medicalConditions && !person.minor}
-							<p class="text-muted-foreground">Nothing else to know.</p>
+								{#if open}
+									<Button
+										size="sm"
+										variant="ghost"
+										class="min-h-11"
+										aria-label={`Undo check-in for ${name}`}
+										disabled={pending === person.id}
+										onclick={() => run(undoCheckIn, person.id)}
+										><Undo2 /> Undo</Button
+									>
+								{/if}
+							</div>
+						{:else if open && person.state === "paid"}
+							<Button
+								class="h-12 min-w-24 shrink-0 text-base shadow-none"
+								aria-label={`Check in ${name}`}
+								disabled={pending === person.id}
+								onclick={() => run(checkIn, person.id)}>Check in</Button
+							>
 						{/if}
 					</div>
-				{/if}
-			</li>
-		{:else}
-			<li
-				class="rounded-2xl border border-dashed p-6 text-center text-muted-foreground"
-			>
-				{search.trim()
-					? "No one by that name. No walk-ins."
-					: count.total === 0
-						? "Nobody has a seat yet."
-						: filter === "to_arrive"
-							? "Everyone's in."
-							: "Nobody in yet."}
-			</li>
-		{/each}
-	</ul>
+					{#if expanded === person.id}
+						<div
+							class="flex flex-col gap-2 border-t px-3 py-3 text-sm"
+							data-testid="door-person-details"
+						>
+							{#if person.medicalConditions}
+								<p class="flex gap-2">
+									<HeartPulse class="size-4 shrink-0 text-destructive" />
+									{person.medicalConditions}
+								</p>
+							{/if}
+							{#if person.minor && person.guardian}
+								<p class="flex flex-wrap items-center gap-2">
+									<Phone class="size-4 shrink-0" />
+									Guardian {person.guardian.name} ·
+									<a
+										class="font-semibold underline"
+										href={telHref(person.guardian.phoneNumber)}
+										>{person.guardian.phoneNumber}</a
+									>
+								</p>
+							{:else if person.minor}
+								<p class="text-muted-foreground">No Guardian on record.</p>
+							{/if}
+							{#if !person.medicalConditions && !person.minor}
+								<p class="text-muted-foreground">Nothing else to know.</p>
+							{/if}
+						</div>
+					{/if}
+				</li>
+			{:else}
+				<li
+					class="rounded-2xl border border-dashed p-6 text-center text-muted-foreground"
+				>
+					{search.trim()
+						? "No one by that name. No walk-ins."
+						: count.total === 0
+							? "Nobody has a seat yet."
+							: filter === "to_arrive"
+								? "Everyone's in."
+								: "Nobody in yet."}
+				</li>
+			{/each}
+		</ul>
 
-	{#if canFinish(view)}
-		<div
-			class="sticky bottom-0 z-10 border-t bg-background/95 pt-3 pb-4 backdrop-blur"
-		>
-			<Button
-				variant="outline"
-				class="h-12 w-full border-2 text-base"
-				onclick={() => (finishOpen = true)}
+		{#if canFinish(view)}
+			<div
+				class="sticky bottom-0 z-10 flex justify-end border-t bg-background/95 pt-3 pb-4 backdrop-blur"
 			>
-				{finishLabel(view)}
-			</Button>
-		</div>
-	{/if}
+				<Button
+					variant="outline"
+					class="h-12 w-full border-2 text-base md:w-auto md:min-w-64"
+					onclick={() => (finishOpen = true)}
+				>
+					{finishLabel(view)}
+				</Button>
+			</div>
+		{/if}
+	</div>
 </section>
 
 <Dialog.Root bind:open={finishOpen}>
-	<Dialog.Content class="sm:max-w-md">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title>Finish workshop?</Dialog.Title>
 			<Dialog.Description
@@ -343,32 +364,41 @@ async function finish() {
 				coordinator can correct attendance, one person at a time.</Dialog.Description
 			>
 		</Dialog.Header>
-		{#if noShows.length}
-			<div class="flex flex-col gap-2 text-sm">
-				<p>
-					<strong>{noShows.length}</strong> not checked in will become
-					<strong>no-show</strong> (fee kept, removed from the Waitlist):
-				</p>
-				<ul class="flex flex-wrap gap-1.5" aria-label="Will be no-show">
-					{#each noShows as person (person.id)}
-						<li>
-							<Badge
-								variant="outline"
-								class="border-destructive text-destructive"
-								>{doorName(person)}</Badge
-							>
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{:else}
-			<p class="text-sm">Everyone is checked in.</p>
-		{/if}
-		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (finishOpen = false)}
-				>Not yet</Button
-			>
-			<Button disabled={finishing} onclick={finish}>Finish workshop</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
+		<div class="workshop-dialog-body grid gap-5">
+			{#if noShows.length}
+				<Alert.Root
+					class="workshop-dialog-notice workshop-dialog-danger flex flex-col gap-3"
+				>
+					<p>
+						<strong>{noShows.length}</strong> not checked in will become
+						<strong>did not attend</strong> (payment kept, removed from the waitlist):
+					</p>
+					<ul
+						class="flex flex-wrap gap-1.5"
+						aria-label="People marked as did not attend"
+					>
+						{#each noShows as person (person.id)}
+							<li>
+								<Badge
+									variant="outline"
+									class="border-destructive text-destructive"
+									>{doorName(person)}</Badge
+								>
+							</li>
+						{/each}
+					</ul>
+				</Alert.Root>
+			{:else}
+				<p class="text-sm">Everyone is checked in.</p>
+			{/if}
+			<Dialog.Footer>
+				<Button variant="outline" onclick={() => (finishOpen = false)}
+					>Not yet</Button
+				>
+				<Button disabled={finishing} onclick={finish}
+					>{finishing ? "Finishing…" : "Finish workshop"}</Button
+				>
+			</Dialog.Footer>
+		</div>
+	</WorkshopDialog>
 </Dialog.Root>

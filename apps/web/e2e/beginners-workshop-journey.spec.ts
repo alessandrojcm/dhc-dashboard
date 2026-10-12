@@ -22,8 +22,8 @@ import { gotoHydrated } from "./hydration";
 // anyone else the run creates: the Batch contacts exactly them.
 
 const CHECKOUT_URL = /^https:\/\/checkout\.stripe\.com\/c\/pay\/cs_test_/;
-const WORKSHOPS_PATH = "/dashboard/beginners-workshop?tab=workshops";
-const INVITABLE_PATH = "/dashboard/beginners-workshop?tab=invitable";
+const WORKSHOPS_PATH = "/dashboard/beginners-workshop/workshops";
+const INVITABLE_PATH = "/dashboard/beginners-workshop/invitable";
 
 const tag = `${Date.now()}-${faker.string.alphanumeric(6).toLowerCase()}`;
 
@@ -132,7 +132,7 @@ test.describe("Beginners' Workshop journey", () => {
 		await dialog.getByLabel("Venue").fill(venue);
 		await dialog.getByLabel("Capacity").fill("1");
 		await pickDate(page, "Workshop date 1", workshopDate);
-		await pickDate(page, "Contact from 1", today);
+		await pickDate(page, "Start offering places 1", today);
 		await dialog.getByRole("combobox", { name: "Assistants" }).click();
 		await page.getByPlaceholder("Search Members…").fill(assistantLast);
 		await page.getByRole("option", { name: assistantName }).click();
@@ -145,7 +145,7 @@ test.describe("Beginners' Workshop journey", () => {
 			page.getByText("Scheduled 1 Beginners' Workshop"),
 		).toBeVisible();
 
-		const consoleLink = `Open the console for ${workshopDate}`;
+		const consoleLink = `Manage workshop on ${workshopDate}`;
 		const row = page
 			.getByRole("listitem")
 			.filter({ hasText: venue })
@@ -284,7 +284,7 @@ test.describe("Beginners' Workshop journey", () => {
 			});
 			await gotoHydrated(page, INVITABLE_PATH);
 			await expect(
-				page.getByRole("tab", { name: "Invitable", selected: true }),
+				page.getByRole("tab", { name: "Invite members", selected: true }),
 			).toBeVisible();
 			await expect(invitableRow).toHaveCount(0);
 		} finally {

@@ -14,6 +14,7 @@ import type {
 } from "@dhc/api-client";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 import * as Field from "#lib/components/ui/field/index.js";
 import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
 import type { WithdrawOutcome } from "./waitlist-table.svelte.js";
@@ -56,20 +57,21 @@ async function submit(event: SubmitEvent) {
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-md">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title>Delete {entry.fullName}</Dialog.Title>
 			<Dialog.Description>
-				Their Waitlist entry, details and Guardian are deleted for good and
-				can't be restored. Their Intakes stay in the reports, anonymised. Nobody
-				is emailed.
+				Their waitlist record, personal details and guardian details are
+				permanently deleted. Workshop reports keep the counts without their name
+				or contact details. Nobody is emailed.
 			</Dialog.Description>
 		</Dialog.Header>
 
 		<form class="grid gap-4" aria-label="Delete" onsubmit={submit}>
 			{#if askRefund}
 				<Field.Field>
-					<Field.Label>They hold a Carried Fee. What happens to it?</Field.Label
+					<Field.Label
+						>They have workshop credit. What happens to it?</Field.Label
 					>
 					<RadioGroup.Root
 						value={refund}
@@ -77,7 +79,7 @@ async function submit(event: SubmitEvent) {
 							if (value === "refund" || value === "forfeit") refund = value;
 						}}
 						class="gap-2"
-						aria-label="Refund or forfeit"
+						aria-label="Refund or keep payment"
 					>
 						<label
 							class="flex items-start gap-2 rounded-lg border p-3 text-sm has-[[data-state=checked]]:border-primary"
@@ -95,7 +97,7 @@ async function submit(event: SubmitEvent) {
 						>
 							<RadioGroup.Item value="forfeit" class="mt-0.5" />
 							<span>
-								<strong>Forfeit the fee</strong>
+								<strong>Keep the payment</strong>
 								<span class="block text-muted-foreground"
 									>Nothing is refunded.</span
 								>
@@ -116,9 +118,10 @@ async function submit(event: SubmitEvent) {
 				<Button
 					type="submit"
 					variant="destructive"
-					disabled={pending || (askRefund && !refund)}>Delete</Button
+					disabled={pending || (askRefund && !refund)}
+					>{pending ? "Deleting…" : "Delete"}</Button
 				>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

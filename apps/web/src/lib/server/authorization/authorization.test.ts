@@ -327,6 +327,7 @@ type PageLoadEvent = {
 		}>;
 	};
 	params: PageLoadParams;
+	route: { id: string };
 	url: URL;
 	cookies: { get: (name: string) => string | undefined };
 	depends: (dep: string) => void;
@@ -407,6 +408,7 @@ function paramSetsFor(routeId: string): PageLoadParams[] {
 function loadEvent(
 	session: PhoenixSessionProjection | null,
 	params: PageLoadParams,
+	routeId: string,
 ): PageLoadEvent {
 	return {
 		locals: {
@@ -414,7 +416,8 @@ function loadEvent(
 			safeGetSession: async () => ({ session }),
 		},
 		params,
-		url: new URL("http://localhost/dashboard"),
+		route: { id: routeId },
+		url: new URL(routeId, "http://localhost"),
 		cookies: { get: () => undefined },
 		depends: () => {},
 	};
@@ -503,14 +506,22 @@ describe("guardRoute — request-hook gating", () => {
 						const outcome = guardRoute(s, { id: routeId, params });
 						const description = `${label(capabilities)} load on ${routeId} ${JSON.stringify(params)}`;
 						if (outcome.kind === "allow") {
-							await expectLoadAllows(load, loadEvent(s, params), description);
+							await expectLoadAllows(
+								load,
+								loadEvent(s, params, routeId),
+								description,
+							);
 						} else {
-							await expectLoadDenies(load, loadEvent(s, params), description);
+							await expectLoadDenies(
+								load,
+								loadEvent(s, params, routeId),
+								description,
+							);
 						}
 					}
 					await expectLoadDenies(
 						load,
-						loadEvent(null, params),
+						loadEvent(null, params, routeId),
 						`anonymous load on ${routeId}`,
 					);
 				}
@@ -570,6 +581,57 @@ describe("guardRoute — request-hook gating", () => {
 				params: {},
 			}).kind,
 		).toBe("redirect");
+	});
+
+	it("keeps the shared Beginners' Workshop layout open to assignment-scoped door Staff", async () => {
+		const load = layouts.get("/dashboard/beginners-workshop")?.load;
+		expect(load).toBeDefined();
+		if (!load) throw new Error("Missing Beginners' Workshop layout load");
+		const result = await load(
+			loadEvent(
+				session(...MEMBER),
+				{},
+				"/dashboard/beginners-workshop/workshops/[workshopId]/door",
+			),
+		);
+		expect(result).toMatchObject({
+			isWaitlistOpen: null,
+			canManageWorkshops: false,
+		});
+	});
+
+	it("gates Beginners' Workshop sections by their own capabilities", () => {
+		const waitlistManager = session("beginners.waitlist.manage");
+		expect(
+			guardRoute(waitlistManager, {
+				id: "/dashboard/beginners-workshop/waitlist",
+				params: {},
+			}),
+		).toEqual({ kind: "allow" });
+		for (const id of [
+			"/dashboard/beginners-workshop/workshops",
+			"/dashboard/beginners-workshop/email-templates",
+			"/dashboard/beginners-workshop/invitable",
+		])
+			expect(guardRoute(waitlistManager, { id, params: {} }).kind).toBe(
+				"redirect",
+			);
+		for (const id of [
+			"/dashboard/beginners-workshop/workshops",
+			"/dashboard/beginners-workshop/email-templates",
+		])
+			expect(
+				guardRoute(
+					session("beginners.waitlist.manage", "beginners.workshops.manage"),
+					{ id, params: {} },
+				),
+			).toEqual({ kind: "allow" });
+		expect(
+			guardRoute(session("beginners.waitlist.manage", "members.invite"), {
+				id: "/dashboard/beginners-workshop/invitable",
+				params: {},
+			}),
+		).toEqual({ kind: "allow" });
 	});
 
 	it("lets members reach their own profile but not another member's", () => {

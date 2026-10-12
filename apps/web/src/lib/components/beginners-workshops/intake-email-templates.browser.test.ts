@@ -39,9 +39,32 @@ test("the type list shows who receives each email", async () => {
 
 	const types = screen.getByRole("navigation", { name: "Email types" });
 	await expect
-		.element(types.getByRole("button", { name: /Contact — pay/ }))
+		.element(types.getByRole("button", { name: /Place offer: payment needed/ }))
 		.toHaveTextContent(INTAKE_EMAIL_TYPES.contact_pay.recipients);
 	await expect
 		.element(types.getByRole("button", { name: /Follow-up/ }))
 		.toHaveTextContent(INTAKE_EMAIL_TYPES.follow_up.recipients);
+	await expect
+		.element(types.getByRole("button", { name: /Place offer: payment needed/ }))
+		.toHaveAttribute("aria-current", "true");
+
+	await types.getByRole("button", { name: /Follow-up/ }).click();
+	await expect
+		.element(screen.getByRole("form", { name: "Follow-up template" }))
+		.toBeVisible();
+	await expect
+		.element(types.getByRole("button", { name: /Follow-up/ }))
+		.toHaveAttribute("aria-current", "true");
+
+	// The compact picker and desktop list select the same editor.
+	await screen
+		.getByRole("combobox", { name: "Email template", exact: true })
+		.selectOptions("contact_pay");
+	await expect
+		.element(
+			screen.getByRole("form", {
+				name: "Place offer: payment needed template",
+			}),
+		)
+		.toBeVisible();
 });

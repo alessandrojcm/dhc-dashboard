@@ -39,6 +39,15 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
 
   defp no_referrer?(conn), do: get_resp_header(conn, "referrer-policy") == ["no-referrer"]
 
+  test "the payment page gives the person the workshop's authoritative payment deadline", %{
+    conn: conn,
+    token: token,
+    workshop: workshop
+  } do
+    data = conn |> get("/api/beginners/intake/#{token}") |> json_response(200)
+    assert data["data"]["paymentCutoff"] == DateTime.to_iso8601(workshop.payment_cutoff)
+  end
+
   test "GET answers the closed safe view with no-referrer and no ids", %{
     conn: conn,
     token: token,
@@ -68,7 +77,7 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
     assert iso_date == Date.to_iso8601(date)
 
     assert Map.keys(data) |> Enum.sort() ==
-             ~w(action closedReason feeCents firstName state workshop)
+             ~w(action closedReason feeCents firstName paymentCutoff state workshop)
   end
 
   test "an unknown link is 404, still without a referrer", %{conn: conn} do

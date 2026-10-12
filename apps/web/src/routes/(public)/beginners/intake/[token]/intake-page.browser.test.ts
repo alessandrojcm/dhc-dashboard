@@ -6,6 +6,16 @@ import IntakePage from "./intake-page.svelte";
 
 const token = "intake-link-token";
 
+test("pay shows Phoenix's deadline on the Dublin clock", async () => {
+	const screen = await render(IntakePage, {
+		page: page({ paymentCutoff: "2026-11-11T18:00:00Z" }),
+		token,
+	});
+	await expect
+		.element(screen.getByText("Payment deadline: Wed 11 Nov, 18:00"))
+		.toBeVisible();
+});
+
 function page(
 	overrides: Partial<BeginnersIntakePage> = {},
 ): BeginnersIntakePage {

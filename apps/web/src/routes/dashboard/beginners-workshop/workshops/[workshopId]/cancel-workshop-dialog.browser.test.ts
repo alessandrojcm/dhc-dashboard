@@ -44,17 +44,23 @@ test("shows the deferred, returned and released counts", async () => {
 	await expect
 		.element(preview)
 		.toHaveTextContent(
-			"3 paid people deferred: their fee becomes a Carried Fee",
+			"3 paid people will receive credit for a later workshop",
 		);
 	await expect
 		.element(preview)
-		.toHaveTextContent("2 contacted people back on the Waitlist");
-	await expect.element(preview).toHaveTextContent("1 live Seat Hold released");
+		.toHaveTextContent("2 people offered a place will return to the waitlist");
+	await expect
+		.element(preview)
+		.toHaveTextContent("1 place reserved during checkout will be released");
 	await expect
 		.element(screen.getByRole("button", { name: "Cancel and email 5" }))
 		.toBeVisible();
 	await expect
-		.element(screen.getByLabelText("Reason (optional, kept with each Intake)"))
+		.element(
+			screen.getByLabelText(
+				"Reason (optional, saved with each person's workshop record)",
+			),
+		)
 		.toBeVisible();
 });
 
@@ -62,8 +68,14 @@ test("an empty workshop emails nobody and releases nothing", async () => {
 	const screen = await openDialog({ deferred: 0, returned: 0, released: 0 });
 	const preview = screen.getByTestId("cancel-preview");
 
-	await expect.element(preview).toHaveTextContent("0 paid people deferred");
-	await expect.element(preview).not.toHaveTextContent("Seat Hold");
+	await expect
+		.element(preview)
+		.toHaveTextContent(
+			"0 paid people will receive credit for a later workshop",
+		);
+	await expect
+		.element(preview)
+		.not.toHaveTextContent("reserved during checkout");
 	await expect
 		.element(screen.getByRole("button", { name: "Cancel workshop" }))
 		.toBeVisible();

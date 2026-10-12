@@ -45,13 +45,15 @@ export function countWithRate(
 export function carriedFeesNote(fees: BeginnersWorkshopReportCarriedFees) {
 	const total = `${formatFee(fees.totalPaidCents)} originally paid`;
 	return fees.unlinked > 0
-		? `${total} · ${fees.unlinked} not linked to a payment yet`
+		? `${total} · ${fees.unlinked} missing the original payment record`
 		: total;
 }
 
 /** `Batch 2` or `Fast-tracks`. */
 export function groupLabel(group: BeginnersWorkshopReportGroup): string {
-	return group.kind === "batch" ? `Batch ${group.number}` : "Fast-tracks";
+	return group.kind === "batch"
+		? `Offer round ${group.number}`
+		: "Added by staff";
 }
 
 /** What the exits before paying were made of, skipping empty kinds. */
@@ -62,8 +64,8 @@ export function exitsBeforePayingDetail({
 }: BeginnersWorkshopReportExitsBeforePaying): string {
 	return detail([
 		[declined, "declined"],
-		[lapsed, "lapsed"],
-		[returned, "returned"],
+		[lapsed, "missed the deadline"],
+		[returned, "back on the waitlist"],
 	]);
 }
 
@@ -74,8 +76,8 @@ export function exitsAfterPayingDetail({
 	withdrawn,
 }: BeginnersWorkshopReportExitsAfterPaying): string {
 	return detail([
-		[deferred, "deferred"],
-		[cancelledRefunded, "refunded"],
+		[deferred, "moved to a later workshop"],
+		[cancelledRefunded, "cancelled with refund requested"],
 		[withdrawn, "withdrawn"],
 	]);
 }

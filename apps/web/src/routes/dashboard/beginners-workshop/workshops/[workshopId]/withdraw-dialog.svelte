@@ -20,6 +20,8 @@ import {
 } from "#lib/beginners-workshops/console.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
 import * as Field from "#lib/components/ui/field/index.js";
 import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
@@ -47,14 +49,15 @@ let formError = $state<string | null>(null);
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-md">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title
 				>Withdraw {personName(intake)} from the Waitlist</Dialog.Title
 			>
 			<Dialog.Description>
-				They leave the Waitlist entirely (restorable for 3 months). A fee is
-				never carried over.
+				They leave the waitlist and this workshop. You can restore them to the
+				waitlist for 3 months. Their payment will not be saved as workshop
+				credit.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -80,16 +83,16 @@ let formError = $state<string | null>(null);
 				<Field.Field>
 					<Field.Label
 						>{choice.source === "carried_fee"
-							? "What happens to their Carried Fee?"
+							? "What happens to their workshop credit?"
 							: "What happens to their fee?"}</Field.Label
 					>
 					{#if hint}
-						<p
-							class="rounded-lg border border-amber-500 bg-amber-50 p-2.5 text-sm text-amber-900"
+						<Alert.Root
+							class="workshop-dialog-notice block"
 							data-testid="refund-timing-hint"
 						>
 							{hint}
-						</p>
+						</Alert.Root>
 					{/if}
 					<RadioGroup.Root
 						value={refund}
@@ -97,7 +100,7 @@ let formError = $state<string | null>(null);
 							if (value === "refund" || value === "forfeit") refund = value;
 						}}
 						class="gap-2"
-						aria-label="Refund or forfeit"
+						aria-label="Refund or keep payment"
 					>
 						<label
 							class="flex items-start gap-2 rounded-lg border p-3 text-sm has-[[data-state=checked]]:border-primary"
@@ -108,8 +111,7 @@ let formError = $state<string | null>(null);
 									>{refundChoiceLabel(choice)}</strong
 								>
 								<span class="block text-muted-foreground"
-									>The full amount, against their original payment. Email:
-									“Withdrawn – refunded”.</span
+									>Refund their original payment and email them a confirmation.</span
 								>
 							</span>
 						</label>
@@ -118,9 +120,10 @@ let formError = $state<string | null>(null);
 						>
 							<RadioGroup.Item value="forfeit" class="mt-0.5" />
 							<span>
-								<strong>Forfeit the fee</strong>
+								<strong>Keep the payment</strong>
 								<span class="block text-muted-foreground"
-									>Nothing is refunded. Email: “Withdrawn – forfeited”.</span
+									>No refund or workshop credit. They receive an email
+									explaining this.</span
 								>
 							</span>
 						</label>
@@ -134,15 +137,16 @@ let formError = $state<string | null>(null);
 				</Field.Field>
 			{:else}
 				<p class="text-sm">
-					No money to settle: their Intake closes as declined and their Seat
-					Hold, if any, is released. No email is sent.
+					There is no payment to refund. Their place is closed and any checkout
+					reservation is released. No email is sent.
 				</p>
 			{/if}
 
 			<Field.Field>
 				{@const props = form.fields.note.as("text")}
 				<Field.Label for={`${intake.id}-withdraw-note`}
-					>Note (optional, recorded with the command)</Field.Label
+					>Note <span class="font-normal text-muted-foreground">Optional</span
+					></Field.Label
 				>
 				<Textarea
 					{...props}
@@ -166,9 +170,10 @@ let formError = $state<string | null>(null);
 				<Button
 					type="submit"
 					variant="destructive"
-					disabled={!!form.pending || (!!choice && !refund)}>Withdraw</Button
+					disabled={!!form.pending || (!!choice && !refund)}
+					>{form.pending ? "Withdrawing…" : "Withdraw"}</Button
 				>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

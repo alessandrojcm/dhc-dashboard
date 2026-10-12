@@ -223,12 +223,14 @@ test("Finish lists who becomes a no-show, then shows the finalised summary", asy
 	});
 
 	await userEvent.click(
-		screen.getByRole("button", { name: "Finish workshop (2 will be no-show)" }),
+		screen.getByRole("button", { name: "Finish workshop (2 did not attend)" }),
 	);
 
 	const dialog = screen.getByRole("dialog");
 	await expect.element(dialog).toHaveTextContent("Finish workshop?");
-	const noShows = screen.getByRole("list", { name: "Will be no-show" });
+	const noShows = screen.getByRole("list", {
+		name: "People marked as did not attend",
+	});
 	await expect.element(noShows).toHaveTextContent("Ciara Byrne");
 	await expect.element(noShows).toHaveTextContent("Dara Kelly");
 	await expect.element(noShows).not.toHaveTextContent("Niamh Walsh");
@@ -237,7 +239,7 @@ test("Finish lists who becomes a no-show, then shows the finalised summary", asy
 	expect(calls).toEqual([]);
 
 	await userEvent.click(
-		screen.getByRole("button", { name: "Finish workshop (2 will be no-show)" }),
+		screen.getByRole("button", { name: "Finish workshop (2 did not attend)" }),
 	);
 	await userEvent.click(
 		screen.getByRole("button", { name: "Finish workshop", exact: true }),
@@ -248,8 +250,10 @@ test("Finish lists who becomes a no-show, then shows the finalised summary", asy
 	const summary = screen.getByTestId("door-finalised");
 	await expect
 		.element(summary)
-		.toHaveTextContent("Finalised Sat 14 Nov, 20:05 by Aoife Coach");
-	await expect.element(summary).toHaveTextContent("1 attended · 2 no-show");
+		.toHaveTextContent("Attendance confirmed Sat 14 Nov, 20:05 by Aoife Coach");
+	await expect
+		.element(summary)
+		.toHaveTextContent("1 attended · 2 did not attend");
 	await expect.element(screen.getByRole("dialog")).not.toBeInTheDocument();
 	expect(
 		screen.getByRole("button", { name: /^Finish workshop/ }).elements(),
@@ -291,6 +295,6 @@ test("an automatic finalisation says so", async () => {
 	await expect
 		.element(screen.getByTestId("door-finalised"))
 		.toHaveTextContent(
-			"Finalised Sun 15 Nov, 00:00 automatically at the end of the day",
+			"Attendance confirmed Sun 15 Nov, 00:00 automatically at the end of the day",
 		);
 });

@@ -56,7 +56,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
           closed_reason: :inactive | :payment_closed | nil,
           first_name: String.t() | nil,
           workshop: %{date: Date.t(), start_time: Time.t(), venue: String.t()} | nil,
-          fee_cents: pos_integer() | nil
+          fee_cents: pos_integer() | nil,
+          payment_cutoff: DateTime.t() | nil
         }
 
   @doc "Every state, in display order."
@@ -99,7 +100,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
           closed_reason: :inactive,
           first_name: nil,
           workshop: nil,
-          fee_cents: nil
+          fee_cents: nil,
+          payment_cutoff: nil
         }
 
       {state, action, closed_reason} ->
@@ -109,7 +111,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
           closed_reason: closed_reason,
           first_name: first_name(intake),
           workshop: %{date: workshop.date, start_time: workshop.start_time, venue: workshop.venue},
-          fee_cents: fee_cents(intake, workshop, hold, holder?)
+          fee_cents: fee_cents(intake, workshop, hold, holder?),
+          payment_cutoff: if(action == :pay, do: workshop.payment_cutoff)
         }
     end
   end

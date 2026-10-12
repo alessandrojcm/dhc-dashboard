@@ -10,9 +10,7 @@ let { data }: PageProps = $props();
 	<title>Training Announcements | Dublin HEMA Club</title>
 </svelte:head>
 
-<div
-	class="mx-auto w-full max-w-7xl space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8"
->
+<div class="w-full space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
 	<header class="border-b border-border/80 pb-5">
 		<div class="flex items-start gap-4">
 			<div

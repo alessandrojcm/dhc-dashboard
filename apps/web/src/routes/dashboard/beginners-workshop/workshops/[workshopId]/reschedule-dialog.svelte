@@ -7,7 +7,6 @@
 -->
 <script lang="ts">
 import type { BeginnersWorkshop } from "@dhc/api-client";
-import { AlertTriangle } from "@lucide/svelte";
 import { parseDate, type DateValue } from "@internationalized/date";
 import { toast } from "svelte-sonner";
 import { formatCivilDate } from "#lib/beginners-workshops/presentation.js";
@@ -27,6 +26,8 @@ import {
 	VENUE_MAX,
 } from "#lib/schemas/beginnersWorkshop.js";
 import { rescheduleWorkshop } from "./console.remote";
+import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
+import * as Alert from "#lib/components/ui/alert/index.js";
 
 let {
 	workshop,
@@ -98,12 +99,12 @@ function setContactFrom(value: DateValue | undefined) {
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="sm:max-w-lg">
+	<WorkshopDialog>
 		<Dialog.Header>
 			<Dialog.Title>Reschedule {formatCivilDate(workshop.date)}</Dialog.Title>
 			<Dialog.Description>
-				Same workshop: every Intake carries on and nobody reconfirms. Seats and
-				chances to pay are unchanged.
+				Change the date, time or venue. Existing bookings stay confirmed and the
+				number of places stays the same.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -124,7 +125,8 @@ function setContactFrom(value: DateValue | undefined) {
 		>
 			<input {...form.fields.id.as("hidden", workshop.id)} />
 
-			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_8rem]">
+			<h3 class="text-base font-semibold">New workshop details</h3>
+			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_10rem]">
 				<Field.Field>
 					{@const { value: _date, ...props } = form.fields.date.as(
 						"text",
@@ -166,23 +168,23 @@ function setContactFrom(value: DateValue | undefined) {
 				{/each}
 			</Field.Field>
 
-			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_8rem]">
+			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_10rem]">
 				<Field.Field>
 					{@const { value: _cutoff, ...props } =
 						form.fields.paymentCutoffDate.as(
 							"text",
 							workshop.paymentCutoffDate,
 						)}
-					<Field.Label for={props.name}>Payment Cutoff date</Field.Label>
+					<Field.Label for={props.name}>Payment deadline date</Field.Label>
 					<DatePicker
 						{...props}
 						id={props.name}
-						label="Payment Cutoff date"
+						label="Payment deadline date"
 						value={pickerValue("paymentCutoffDate", workshop.paymentCutoffDate)}
 						onValueChange={setCutoffDate}
 					/>
 					<Field.Description
-						>Keeps its offset before the start.</Field.Description
+						>Moves with the workshop date until you edit it.</Field.Description
 					>
 					{#each form.fields.paymentCutoffDate.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
@@ -193,7 +195,7 @@ function setContactFrom(value: DateValue | undefined) {
 						"time",
 						workshop.paymentCutoffTime,
 					)}
-					<Field.Label for={props.name}>Cutoff time</Field.Label>
+					<Field.Label for={props.name}>Payment deadline time</Field.Label>
 					<Input
 						{...props}
 						id={props.name}
@@ -209,16 +211,17 @@ function setContactFrom(value: DateValue | undefined) {
 				<Field.Field>
 					{@const { value: _contact, ...props } =
 						form.fields.contactFromDate.as("text", workshop.contactFromDate)}
-					<Field.Label for={props.name}>Contact from</Field.Label>
+					<Field.Label for={props.name}>Start offering places</Field.Label>
 					<DatePicker
 						{...props}
 						id={props.name}
-						label="Contact from"
+						label="Start offering places"
 						value={pickerValue("contactFromDate", workshop.contactFromDate)}
 						onValueChange={setContactFrom}
 					/>
 					<Field.Description
-						>Batch 1 goes out at 10:00 on this date.</Field.Description
+						>Automatic offers can start from 10:00 on this date, subject to
+						available places and pauses.</Field.Description
 					>
 					{#each form.fields.contactFromDate.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
@@ -226,12 +229,11 @@ function setContactFrom(value: DateValue | undefined) {
 				</Field.Field>
 			{/if}
 
-			<p
-				class="flex items-center gap-2 rounded-lg border border-amber-500 bg-amber-50 p-2.5 text-sm text-amber-900"
-				role="status"
-				data-testid="reschedule-warning"
-			>
-				<AlertTriangle class="size-4 shrink-0" />
+			<Alert.Root class="workshop-dialog-notice block">
+				<strong>Check the payment deadline.</strong> Existing reply periods do not
+				extend and may shorten to the new payment deadline.
+			</Alert.Root>
+			<p class="text-sm text-muted-foreground" data-testid="reschedule-warning">
 				{warning}
 			</p>
 
@@ -244,11 +246,13 @@ function setContactFrom(value: DateValue | undefined) {
 					>Keep current date</Button
 				>
 				<Button type="submit" disabled={!!form.pending}
-					>{recipients > 0
-						? `Reschedule and email ${recipients}`
-						: "Reschedule"}</Button
+					>{form.pending
+						? "Rescheduling…"
+						: recipients > 0
+							? `Reschedule and email ${recipients}`
+							: "Reschedule"}</Button
 				>
 			</Dialog.Footer>
 		</form>
-	</Dialog.Content>
+	</WorkshopDialog>
 </Dialog.Root>

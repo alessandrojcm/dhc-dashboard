@@ -112,14 +112,14 @@ function editStaff(workshop: BeginnersWorkshop) {
 				href={resolve("/dashboard/beginners-workshop/workshops/[workshopId]", {
 					workshopId: workshop.id,
 				})}
-				aria-label={`Open the console for ${workshop.date}`}
+				aria-label={`Manage workshop on ${workshop.date}`}
 			>
-				<PanelsTopLeft /> Console
+				<PanelsTopLeft /> Manage
 			</Button>
 			<Button
 				variant="ghost"
 				size="icon"
-				aria-label={`Door view for ${workshop.date}`}
+				aria-label={`Check-in for ${workshop.date}`}
 				href={resolve(
 					"/dashboard/beginners-workshop/workshops/[workshopId]/door",
 					{ workshopId: workshop.id },
@@ -139,7 +139,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 				<Button
 					variant="ghost"
 					size="icon"
-					aria-label={`Capacity, fee and cutoff for ${workshop.date}`}
+					aria-label={`Places, fee and payment deadline for ${workshop.date}`}
 					onclick={() => editSettings(workshop)}
 				>
 					<Settings2 />
@@ -149,12 +149,15 @@ function editStaff(workshop: BeginnersWorkshop) {
 	</li>
 {/snippet}
 
-<div class="flex flex-col gap-6 py-4">
-	<header class="flex flex-wrap items-end justify-between gap-4">
+<div class="flex h-full min-h-0 flex-col">
+	<header
+		class="flex shrink-0 flex-wrap items-end justify-between gap-4 border-b border-border py-4"
+	>
 		<div>
 			<h2 class="font-heading text-3xl">Beginners' Workshops</h2>
 			<p class="text-sm text-muted-foreground">
-				Never listed publicly. Seats come from the Waitlist through Batches.
+				Offer places to people on the waitlist and manage each workshop. These
+				workshops are not listed publicly.
 			</p>
 		</div>
 		<Button onclick={() => (scheduleOpen = true)}
@@ -162,46 +165,51 @@ function editStaff(workshop: BeginnersWorkshop) {
 		>
 	</header>
 
-	<section class="flex flex-col gap-3" aria-labelledby="bw-upcoming">
-		<h3
-			id="bw-upcoming"
-			class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
-		>
-			Upcoming
-		</h3>
-		{#if workshops.upcoming.length}
-			<ul class="flex flex-col gap-3">
-				{#each workshops.upcoming as workshop (workshop.id)}{@render row(
-						workshop,
-					)}{/each}
-			</ul>
-		{:else}
-			<Empty.Root class="border">
-				<Empty.Header>
-					<Empty.Title>No upcoming workshops</Empty.Title>
-					<Empty.Description
-						>Schedule one or several to start filling them from the Waitlist.</Empty.Description
-					>
-				</Empty.Header>
-			</Empty.Root>
-		{/if}
-	</section>
-
-	{#if workshops.past.length}
-		<section class="flex flex-col gap-3" aria-labelledby="bw-past">
+	<section
+		class="min-h-0 flex-1 space-y-6 overflow-y-auto px-1 pt-4 pb-6"
+		aria-label="Workshop list"
+	>
+		<section class="flex flex-col gap-3" aria-labelledby="bw-upcoming">
 			<h3
-				id="bw-past"
+				id="bw-upcoming"
 				class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
 			>
-				Past and cancelled
+				Upcoming
 			</h3>
-			<ul class="flex flex-col gap-3 opacity-90">
-				{#each workshops.past as workshop (workshop.id)}{@render row(
-						workshop,
-					)}{/each}
-			</ul>
+			{#if workshops.upcoming.length}
+				<ul class="flex flex-col gap-3">
+					{#each workshops.upcoming as workshop (workshop.id)}{@render row(
+							workshop,
+						)}{/each}
+				</ul>
+			{:else}
+				<Empty.Root class="border">
+					<Empty.Header>
+						<Empty.Title>No upcoming workshops</Empty.Title>
+						<Empty.Description
+							>Schedule one or several to start filling them from the Waitlist.</Empty.Description
+						>
+					</Empty.Header>
+				</Empty.Root>
+			{/if}
 		</section>
-	{/if}
+
+		{#if workshops.past.length}
+			<section class="flex flex-col gap-3" aria-labelledby="bw-past">
+				<h3
+					id="bw-past"
+					class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+				>
+					Past and cancelled
+				</h3>
+				<ul class="flex flex-col gap-3 opacity-90">
+					{#each workshops.past as workshop (workshop.id)}{@render row(
+							workshop,
+						)}{/each}
+				</ul>
+			</section>
+		{/if}
+	</section>
 </div>
 
 <ScheduleWorkshopsDialog bind:open={scheduleOpen} {candidates} />

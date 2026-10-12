@@ -90,10 +90,10 @@ function pickCoach(value: string[]) {
 		<Combobox.Root
 			id={`${idPrefix}-coach`}
 			label="Coach"
-			placeholder="No coach yet (Unstaffed)"
+			placeholder="No coach assigned"
 			searchPlaceholder="Search coaches…"
 			emptyText="No coach found."
-			clearLabel="Clear coach (Unstaffed)"
+			clearLabel="Remove coach assignment"
 			items={coachItems}
 			value={coach ? [coach] : []}
 			onValueChange={pickCoach}

@@ -7,6 +7,43 @@ defmodule DhcWeb.StripeWebhooksControllerTest do
   @secret "whsec_test_signing_key_for_webhook_verification"
 
   describe "POST /api/webhooks/stripe" do
+    test "Checkout return URLs never expose Intake credentials in request logs", %{conn: conn} do
+      token = "intake-credential-must-not-be-logged"
+
+      payload =
+        Jason.encode!(%{
+          "id" => "evt_private_checkout",
+          "type" => "checkout.session.expired",
+          "data" => %{
+            "object" => %{
+              "id" => "cs_unknown",
+              "success_url" => "https://127.0.0.1:5173/beginners/intake/#{token}",
+              "cancel_url" => "https://127.0.0.1:5173/beginners/intake/#{token}"
+            }
+          }
+        })
+
+      Logger.put_process_level(self(), :debug)
+      on_exit(fn -> Logger.delete_process_level(self()) end)
+
+      logs =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          response =
+            conn
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> Plug.Conn.put_req_header(
+              "stripe-signature",
+              StripeWebhook.generate_test_signature(payload, @secret)
+            )
+            |> post("/api/webhooks/stripe", payload)
+
+          assert json_response(response, 200)["data"]["received"]
+        end)
+
+      assert logs =~ "Parameters:"
+      refute logs =~ token
+    end
+
     test "returns 200 and enqueues job for a valid signature", %{conn: conn} do
       payload =
         Jason.encode!(%{
@@ -91,17 +128,32 @@ defmodule DhcWeb.StripeWebhooksControllerTest do
     end
 
     test "returns 400 for a signed event without a type", %{conn: conn} do
-      payload = Jason.encode!(%{"id" => "evt_untyped"})
+      token = "private-intake-in-malformed-event"
+
+      payload =
+        Jason.encode!(%{
+          "id" => "evt_untyped",
+          "data" => %{
+            "object" => %{"success_url" => "https://127.0.0.1:5173/beginners/intake/#{token}"}
+          }
+        })
+
       sig_header = StripeWebhook.generate_test_signature(payload, @secret)
 
-      conn =
-        conn
-        |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> Plug.Conn.put_req_header("stripe-signature", sig_header)
-        |> post("/api/webhooks/stripe", payload)
+      logs =
+        ExUnit.CaptureLog.capture_log(fn ->
+          conn =
+            conn
+            |> Plug.Conn.put_req_header("content-type", "application/json")
+            |> Plug.Conn.put_req_header("stripe-signature", sig_header)
+            |> post("/api/webhooks/stripe", payload)
 
-      assert json_response(conn, 400) == %{"errors" => %{"detail" => "Missing event type"}}
-      assert all_enqueued() == []
+          assert json_response(conn, 400) == %{"errors" => %{"detail" => "Missing event type"}}
+          assert all_enqueued() == []
+        end)
+
+      assert logs =~ "Event missing type field"
+      refute logs =~ token
     end
 
     test "returns 401 for expired timestamp", %{conn: conn} do

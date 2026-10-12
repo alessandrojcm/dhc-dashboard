@@ -59,19 +59,20 @@ type Command = {
 };
 
 const DONE = {
-	refund: "Carried Fee refund requested — they'll pay normally next time.",
+	refund:
+		"Credit refund requested. They will need to pay for their next workshop.",
 	link_payment: "Linked to the Stripe payment.",
 	retry: "Refund sent to Stripe again.",
 	manual: "Recorded as refunded (manual) — no email sent.",
-	forfeit: "Carried Fee forfeited — no email sent.",
+	forfeit: "Workshop credit removed; payment kept. No email sent.",
 } satisfies Record<BeginnersWorkshopCarriedFeeCommand, string>;
 
 const FALLBACK = {
-	refund: "Could not refund the Carried Fee.",
+	refund: "Could not refund the workshop credit.",
 	link_payment: "Could not link the payment.",
 	retry: "Could not retry the refund.",
 	manual: "Could not record the manual refund.",
-	forfeit: "Could not forfeit the Carried Fee.",
+	forfeit: "Could not remove the workshop credit.",
 } satisfies Record<BeginnersWorkshopCarriedFeeCommand, string>;
 
 // What every Carried Fee write makes stale: this fee and the Waitlist page's
