@@ -82,6 +82,16 @@
          "Dhc.BeginnersWorkshops.Commands.*",
          "Dhc.BeginnersWorkshops.IntakeEmails"
        ]},
+      # ADR 0029, second amendment (ALE-403): the Beginners' Workshop
+      # protocol core (lock primitive, transition table, persist/1, transact/1,
+      # keyed Notifications) is private to the Commands namespace. Everything
+      # else writes through Dhc.BeginnersWorkshops.execute/3.
+      {["Dhc.*", "DhcWeb.*"], ["Dhc.BeginnersWorkshops.Commands.Protocol.*"],
+       except: ["Dhc.BeginnersWorkshops.Commands", "Dhc.BeginnersWorkshops.Commands.*"]},
+      # ... and the context opens a transaction only through that core.
+      {["Dhc.BeginnersWorkshops", "Dhc.BeginnersWorkshops.*"],
+       ["Dhc.Repo.transaction", "Dhc.Repo.transact"],
+       except: ["Dhc.BeginnersWorkshops.Commands.Protocol"]},
       # Stripe goes through the generated Dhc.Stripe.Operations.* API only;
       # the raw client escape hatch is reserved for debugging the client
       # boundary itself (docs/agents/anti-patterns.md).
