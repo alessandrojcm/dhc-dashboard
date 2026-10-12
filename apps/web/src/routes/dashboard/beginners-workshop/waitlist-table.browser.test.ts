@@ -304,7 +304,7 @@ test("ALE-417: Withdraw and Delete render only for the people Phoenix offers the
 	});
 
 	const desktop = screen.getByRole("table");
-	const mobile = screen.getByRole("list", { name: "Waitlist entries" });
+	const mobile = screen.getByRole("list", { name: "People on the waitlist" });
 	await expect.element(desktop.getByText("Bea Withheld")).toBeVisible();
 	expect(listPeople).toHaveBeenCalledWith(["a", "b"]);
 
