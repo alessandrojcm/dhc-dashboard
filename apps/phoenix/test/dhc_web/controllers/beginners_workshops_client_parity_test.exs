@@ -7,7 +7,13 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
   """
   use ExUnit.Case, async: true
 
-  alias Dhc.BeginnersWorkshops.{Intake, IntakePolicy, PersonPolicy, WorkshopPolicy}
+  alias Dhc.BeginnersWorkshops.{
+    CarriedFeePolicy,
+    Intake,
+    IntakePolicy,
+    PersonPolicy,
+    WorkshopPolicy
+  }
 
   @repo_root Path.expand("../../../../..", __DIR__)
   @client_root Path.join(@repo_root, "packages/api-client")
@@ -139,6 +145,15 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     # ALE-417: the Waitlist tab's person commands.
     assert schemas["BeginnersWorkshopPersonCommand"]["enum"] ==
              Enum.map(PersonPolicy.commands(), &Atom.to_string/1)
+
+    # ALE-421: the console's and the Waitlist tab's failed-refund follow-ups.
+    assert schemas["BeginnersWorkshopFailedRefundCommand"]["enum"] ==
+             Enum.map(CarriedFeePolicy.follow_ups(), &Atom.to_string/1)
+
+    assert MapSet.subset?(
+             MapSet.new(schemas["BeginnersWorkshopFailedRefundCommand"]["enum"]),
+             MapSet.new(schemas["BeginnersWorkshopCarriedFeeCommand"]["enum"])
+           )
 
     # ALE-393: the states an attendance correction may name.
     assert schemas["BeginnersWorkshopAttendanceCorrection"]["enum"] ==

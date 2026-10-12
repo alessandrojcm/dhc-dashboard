@@ -441,8 +441,14 @@ defmodule Dhc.BeginnersWorkshops.RefundsTest do
       assert row.id == intake.id
       assert %{status: "failed", method: "stripe", automatic: true} = row.refund
 
-      assert [%{id: failed_id, amount_cents: 3500, reason: "policy_failed"}] =
-               console.failed_refunds
+      assert [
+               %{
+                 id: failed_id,
+                 amount_cents: 3500,
+                 reason: "policy_failed",
+                 available_commands: [:retry, :manual]
+               }
+             ] = console.failed_refunds
 
       assert failed_id == failed.id
 

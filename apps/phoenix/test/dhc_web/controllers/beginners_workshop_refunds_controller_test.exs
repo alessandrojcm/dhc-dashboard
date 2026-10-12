@@ -84,7 +84,14 @@ defmodule DhcWeb.BeginnersWorkshopRefundsControllerTest do
              |> get("/api/beginners-workshops/#{w.id}/console")
              |> json_response(200)
 
-    assert %{"id" => failed_id, "intakeId" => intake_id, "amountCents" => 3500} = failed
+    assert %{
+             "id" => failed_id,
+             "intakeId" => intake_id,
+             "amountCents" => 3500,
+             "availableCommands" => ["retry", "manual"]
+           } = failed
+
+    refute Map.has_key?(failed, "forfeitable")
     assert failed_id == r.id
     assert intake_id == intake.id
 

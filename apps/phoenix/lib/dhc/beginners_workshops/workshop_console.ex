@@ -44,9 +44,11 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     * `failed_refunds` — the Needs attention list of refunds that failed
       and have not been followed up (Retry or Record manual refund), oldest
       first (ALE-382); `carried_fee` marks a Carried Fee's refund, listed
-      only while the fee is owed back (ALE-389), and `forfeitable` says it
-      may be forfeited: only while the fee is held again, not while it stays
-      `refunded` because the person has since paid or holds another fee;
+      only while the fee is owed back (ALE-389), and `available_commands`
+      lists the follow-ups `CarriedFeePolicy.check/2` allows (ALE-421):
+      Retry and Record manual refund always, Forfeit only while the fee is
+      held again, not while it stays `refunded` because the person has
+      since paid or holds another fee;
     * `finalisation` (ALE-391) — `nil` until Attendance Finalisation, then
       when, who pressed Finish (`nil`: automatically at the end of the day)
       and when the Follow-up goes out (`WorkshopPolicy.follow_up_at/1`),
@@ -79,6 +81,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     BatchProposal,
     BeginnersWorkshop,
     CarriedFee,
+    CarriedFeePolicy,
     Clock,
     DoorView,
     Intake,
@@ -158,7 +161,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
          pause: pause(workshop),
          next_batch: next_batch,
          roster: roster,
-         failed_refunds: failed_refunds(id),
+         failed_refunds: failed_refunds(id, reading),
          unpaid_after_window: unpaid_after_window(roster, reading),
          unconfirmed_carried_fees: unconfirmed_carried_fees(roster),
          attention: attention(next_batch),
@@ -553,7 +556,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     end)
   end
 
-  defp failed_refunds(workshop_id) do
+  defp failed_refunds(workshop_id, reading) do
     from(r in IntakeRefund,
       as: :refund,
       join: i in Intake,
@@ -583,7 +586,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         id: r.id,
         intake_id: r.intake_id,
         carried_fee: not is_nil(r.carried_fee_id),
-        forfeitable: coalesce(fee.status == "held", false),
+        fee: fee,
         first_name: p.first_name,
         last_name: p.last_name,
         amount_cents: r.amount_cents,
@@ -593,6 +596,26 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       }
     )
     |> Repo.all()
+    |> Enum.map(fn %{fee: fee} = refund ->
+      refund
+      |> Map.delete(:fee)
+      |> Map.put(:available_commands, failed_refund_follow_ups(fee, reading))
+    end)
+  end
+
+  # Every listed refund failed and is not followed up, so the policy only
+  # decides by the fee: Retry and Record manual refund while it is owed back,
+  # Forfeit while it is held.
+  defp failed_refund_follow_ups(fee, reading) do
+    facts =
+      CarriedFeePolicy.facts(
+        fee: fee,
+        refund: %{status: "failed", followed_up: false},
+        entry: nil,
+        now: reading.now
+      )
+
+    Enum.filter(CarriedFeePolicy.follow_ups(), &(CarriedFeePolicy.check(&1, facts) == :ok))
   end
 
   defp attention(%{status: :due, people: []}), do: [:nobody_waiting]

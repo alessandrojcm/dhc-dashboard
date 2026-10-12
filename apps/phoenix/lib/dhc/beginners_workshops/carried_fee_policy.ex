@@ -84,6 +84,13 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeePolicy do
   def commands, do: @commands
 
   @doc """
+  The follow-ups to a failed refund, in display order: what the console's
+  Needs attention offers (`WorkshopConsole`, ALE-421) by `check/2`.
+  """
+  @spec follow_ups() :: [command()]
+  def follow_ups, do: @follow_ups
+
+  @doc """
   Whether `command` may run on the fee now:
 
     * `refund` — a `held` fee of someone who may still have it refunded

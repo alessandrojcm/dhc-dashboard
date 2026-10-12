@@ -9828,11 +9828,13 @@ components:
       type: object
       description: |
         A refund that failed and has not been retried or recorded as manual.
-        `carriedFee`: it refunds a Carried Fee. `forfeitable`: that fee is
-        held again and may be forfeited instead; false while the fee stays
-        `refunded` because the person has since paid an open Intake through
-        Stripe or holds another fee (the money is still owed back).
-      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt, carriedFee, forfeitable]
+        `carriedFee`: it refunds a Carried Fee. `availableCommands`: the
+        follow-ups `CarriedFeePolicy` allows (advisory; Phoenix decides
+        again) — `retry` and `manual` always, `forfeit` only while the fee is
+        held again, not while it stays `refunded` because the person has since
+        paid an open Intake through Stripe or holds another fee (the money is
+        still owed back).
+      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt, carriedFee, availableCommands]
       properties:
         id: {type: string, format: uuid}
         intakeId: {type: string, format: uuid}
@@ -9843,7 +9845,16 @@ components:
         reason: {type: string, description: "Why the refund was owed, e.g. `policy_failed`, `paid_after_close`."}
         failedAt: {type: string, format: date-time, nullable: true}
         carriedFee: {type: boolean}
-        forfeitable: {type: boolean}
+        availableCommands:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopFailedRefundCommand"}
+    BeginnersWorkshopFailedRefundCommand:
+      type: string
+      description: |
+        A follow-up to a failed refund (`CarriedFeePolicy.follow_ups/0`):
+        `retry` (a new Stripe refund), `manual` (record a refund paid outside
+        Stripe), `forfeit` (keep the payment and remove the Carried Fee).
+      enum: [retry, manual, forfeit]
     BeginnersWorkshopRefund:
       type: object
       required: [id, intakeId, followsRefundId, status, method, reason, amountCents, currency, requestedAt, completedAt]
