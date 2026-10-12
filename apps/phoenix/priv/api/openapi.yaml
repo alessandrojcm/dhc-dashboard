@@ -4775,16 +4775,19 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
 
-  /beginners-workshops/carried-fees:
+  /beginners-workshops/people:
     get:
-      operationId: beginnersWorkshopCarriedFees.index
+      operationId: beginnersWorkshopPeople.index
       tags: [BeginnersWorkshops]
-      summary: Carried Fee status of Waitlist people
+      summary: The Waitlist tab's people
       description: |
-        For the Waitlist view: the status of each listed person's live
-        Carried Fee (`held` or `applied`), keyed by Waitlist entry id; people
-        without one are absent. At most 100 ids. Requires
-        `beginners.waitlist.manage`.
+        For the Waitlist view (ALE-417): each listed person as Beginners'
+        Workshops sees them, keyed by Waitlist entry id — their live workshop
+        credit status, the person commands the tab may offer and the
+        refund-or-forfeit choice an offered Withdraw or Delete needs. Every
+        requested id that names a Waitlist entry is present; unknown ids are
+        absent. Advisory: the commands decide again by the same rules. At
+        most 100 ids. Requires `beginners.waitlist.manage`.
       security: [{cookieSession: []}]
       parameters:
         - name: waitlistIds
@@ -4794,10 +4797,10 @@ paths:
           schema: {type: string}
       responses:
         "200":
-          description: The live Carried Fees of the given people
+          description: The given people
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeesResponse"}
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopPeopleResponse"}
         "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
         "403":
           description: The `beginners.waitlist.manage` capability is required
@@ -10540,17 +10543,41 @@ components:
                     - payment_not_linked
                     - already_requested
                     - concurrent_change
-    BeginnersWorkshopCarriedFees:
-      type: object
+    BeginnersWorkshopPersonCommand:
+      type: string
       description: |
-        The status of each person's live Carried Fee, keyed by Waitlist entry
-        id. People without one are absent.
-      additionalProperties: {$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}
-    BeginnersWorkshopCarriedFeesResponse:
+        What the Waitlist tab may offer for a person (advisory; Phoenix
+        decides again by the same rules): `withdraw`, `delete_person`, and
+        `refund_carried_fee` (refund their held workshop credit).
+      enum: [withdraw, delete_person, refund_carried_fee]
+    BeginnersWorkshopPerson:
+      type: object
+      required: [carriedFee, availableCommands, refundChoice]
+      properties:
+        carriedFee:
+          allOf: [{$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}]
+          nullable: true
+          description: The status of the person's live Carried Fee (null without one).
+        availableCommands:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopPersonCommand"}
+        refundChoice:
+          allOf: [{$ref: "#/components/schemas/BeginnersWorkshopRefundChoice"}]
+          nullable: true
+          description: |
+            The money an offered Withdraw or Delete must settle by refund or
+            forfeit — the payment that paid a Stripe-paid open Intake, else
+            the live Carried Fee — or null when neither needs the choice. The
+            commands require it by the same rule (`refund_choice_required`).
+    BeginnersWorkshopPeople:
+      type: object
+      description: The given people, keyed by Waitlist entry id.
+      additionalProperties: {$ref: "#/components/schemas/BeginnersWorkshopPerson"}
+    BeginnersWorkshopPeopleResponse:
       type: object
       required: [data]
       properties:
-        data: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFees"}
+        data: {$ref: "#/components/schemas/BeginnersWorkshopPeople"}
     BeginnersWorkshopCarriedFeeCommand:
       type: string
       description: |
@@ -11916,6 +11943,7 @@ components:
         - insuranceFormSubmitted
         - lastStatusChange
         - removedAt
+        - availableCommands
       properties:
         id:
           type: string
@@ -11972,6 +12000,16 @@ components:
           description: |
             When the entry's current `removed` standing started, which starts
             the 3-month retention clock; `null` unless the status is `removed`.
+        availableCommands:
+          type: array
+          description: |
+            ALE-417: the Waitlist commands the entry offers now (advisory;
+            `restore` decides again): `restore` for someone removed within
+            the 3-month retention window.
+          items: {$ref: "#/components/schemas/WaitlistEntryCommand"}
+    WaitlistEntryCommand:
+      type: string
+      enum: [restore]
     NotificationsListResponse:
       type: object
       required:

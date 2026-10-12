@@ -5,6 +5,9 @@ defmodule Dhc.BeginnersWorkshops.PolicyParityTest do
   situations, `WorkshopConsole`'s `IntakePolicy` facts equal the boundary's
   locked read (`Commands.locked_intake_facts/3`), and `CarriedFeeView`'s
   `CarriedFeePolicy` facts equal `Commands.locked_carried_fee_facts/2`.
+  ALE-417: `PeopleView`'s `PersonPolicy` facts equal
+  `Commands.locked_person_facts/2`, and what it offers (and whether it asks
+  for the refund-or-forfeit choice) is what the person commands do.
   """
 
   use Dhc.DataCase, async: true
@@ -19,7 +22,10 @@ defmodule Dhc.BeginnersWorkshops.PolicyParityTest do
     Commands,
     Intake,
     IntakePolicy,
+    IntakePayment,
     IntakeRefund,
+    PeopleView,
+    PersonPolicy,
     WorkshopConsole
   }
 
@@ -225,6 +231,152 @@ defmodule Dhc.BeginnersWorkshops.PolicyParityTest do
 
     assert Enum.map(shown, & &1.refund) |> Enum.uniq() |> Enum.sort() ==
              Enum.sort([nil, :failed, :not_failed])
+  end
+
+  # The Waitlist tab's people: everyone the console matrix names, and the
+  # situations only a person without an open Intake reaches.
+  defp people(workshop, except \\ []) do
+    from_matrix =
+      for {label, _person, %Intake{waitlist_id: id}} <- matrix(workshop),
+          id != nil and label not in except,
+          do: id
+
+    plain = person!()
+
+    held = person!()
+    fee!(held, "held")
+
+    unlinked = person!()
+    fee!(unlinked, "held", linked: false)
+
+    failed = person!()
+    failed |> fee!("held") |> refund!("failed")
+
+    removed = removed!(20)
+    removed_with_fee = removed!(20)
+    fee!(removed_with_fee, "held")
+    long_removed = removed!(200)
+
+    claimed = person!()
+    principal = Dhc.AuthFixtures.principal_fixture()
+
+    Repo.update_all(
+      from(p in Dhc.UserProfiles.UserProfile, where: p.waitlist_id == ^claimed.id),
+      set: [principal_id: principal.id]
+    )
+
+    stripe = person!()
+    stripe_paid = intake!(workshop, stripe, "paid")
+
+    Repo.insert!(%IntakePayment{
+      workshop_id: workshop.id,
+      intake_id: stripe_paid.id,
+      status: "paid",
+      amount_cents: 4000,
+      expires_at: @now,
+      stripe_checkout_session_id: "cs_#{stripe_paid.id}",
+      stripe_payment_intent_id: "pi_#{stripe_paid.id}",
+      amount_received_cents: 4000,
+      currency_received: "eur",
+      paid_at: @now
+    })
+
+    joined = person!("joined")
+
+    Enum.uniq(
+      from_matrix ++
+        Enum.map(
+          [
+            plain,
+            held,
+            unlinked,
+            failed,
+            removed,
+            removed_with_fee,
+            long_removed,
+            claimed,
+            stripe,
+            joined
+          ],
+          & &1.id
+        )
+    )
+  end
+
+  test "PeopleView builds the locked read's PersonPolicy facts", %{coordinator: c} do
+    workshop = scheduled_fixture(c)
+    ids = people(workshop)
+
+    facts = PeopleView.facts(ids, @now)
+    listed = PeopleView.list(ids, @now)
+
+    for id <- ids do
+      assert {:ok, %PersonPolicy{} = locked} =
+               Commands.locked_person_facts(id, Clock.fixed(@now))
+
+      assert facts[id] == locked, id
+      assert listed[id].available_commands == PersonPolicy.available_commands(locked), id
+    end
+
+    # The fixtures offer and withhold every command, and both kinds of money.
+    offered = listed |> Map.values() |> Enum.flat_map(& &1.available_commands)
+    assert offered |> Enum.uniq() |> Enum.sort() == Enum.sort(PersonPolicy.commands())
+
+    for command <- PersonPolicy.commands(),
+        do: assert(Enum.any?(Map.values(listed), &(command not in &1.available_commands)))
+
+    sources =
+      for %{refund_choice: %{source: source}} <- Map.values(listed), uniq: true, do: source
+
+    assert Enum.sort(sources) == [:carried_fee, :payment]
+  end
+
+  # Runs one person command and rolls everything it wrote back.
+  defp dry_run(c, command, id, attrs) do
+    {:error, {:dry_run, result}} =
+      Repo.transaction(fn ->
+        result =
+          Dhc.BeginnersWorkshops.execute({:staff, c}, {command, id, attrs},
+            clock: Clock.fixed(@now)
+          )
+
+        Repo.rollback({:dry_run, result})
+      end)
+
+    result
+  end
+
+  test "what PeopleView offers is what the person commands do", %{coordinator: c} do
+    workshop = scheduled_fixture(c)
+    # A held fee whose follow-up refund completed is a facts-only fixture:
+    # a completed refund leaves the fee `refunded`, so no command reaches it.
+    ids = people(workshop, ["contacted, followed-up refund"])
+    listed = PeopleView.list(ids, @now)
+    facts = PeopleView.facts(ids, @now)
+
+    for id <- ids, command <- PersonPolicy.commands() do
+      person = listed[id]
+      label = "#{command} #{id}"
+      choice = if person.refund_choice, do: %{"refund" => false}, else: %{}
+
+      result = dry_run(c, command, id, choice)
+      label = "#{label}: #{inspect(result)}"
+
+      if command in person.available_commands do
+        assert match?({:ok, %{outcome: outcome}} when outcome in [:done, :deleted], result),
+               label
+
+        if person.refund_choice != nil and command in [:withdraw, :delete_person],
+          do: assert(dry_run(c, command, id, %{}) == {:error, :refund_choice_required}, label)
+      else
+        # A refund awaiting its follow-up is offered as the follow-ups instead.
+        withheld = command == :refund_carried_fee and facts[id].carried_fee.refund == :failed
+
+        refute not withheld and
+                 match?({:ok, %{outcome: outcome}} when outcome in [:done, :deleted], result),
+               label
+      end
+    end
   end
 
   describe "where the console used to disagree with the boundary" do

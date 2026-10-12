@@ -466,7 +466,7 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeesTest do
 
       assert id == person.id
       assert %CarriedFee{status: "held"} = fee!(person)
-      assert BeginnersWorkshops.carried_fees([person.id]) == %{person.id => "held"}
+      assert %{carried_fee: "held"} = BeginnersWorkshops.people([person.id])[person.id]
     end
   end
 

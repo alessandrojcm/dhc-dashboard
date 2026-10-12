@@ -3,9 +3,9 @@ defmodule DhcWeb.BeginnersWorkshopCarriedFeesControllerTest do
   ALE-388 contract tests over HTTP: the console's Defer and Confirm Intake
   commands, the person's `POST /beginners/intake/{token}/confirm` with the
   `confirm` safe-view state, `startPayment`'s `confirm_instead`, the
-  console's Carried Fee fields, and the Waitlist view's
-  `GET /beginners-workshops/carried-fees`. The HTTP path runs on the wall
-  clock, so workshops are dated relative to today.
+  console's Carried Fee fields. (The Waitlist view's credit column is
+  `GET /beginners-workshops/people` since ALE-417.) The HTTP path runs on
+  the wall clock, so workshops are dated relative to today.
   """
   use DhcWeb.ConnCase, async: false
 
@@ -158,29 +158,6 @@ defmodule DhcWeb.BeginnersWorkshopCarriedFeesControllerTest do
             |> post(intake_path(w, payer_intake.id, "confirm"), %{})
             |> json_response(403)
           )
-  end
-
-  test "the Waitlist view reads Carried Fee statuses by entry id", %{
-    conn: conn,
-    holder: holder,
-    payer: payer
-  } do
-    path = "/api/beginners-workshops/carried-fees?waitlistIds=#{holder.id},#{payer.id}"
-
-    assert conn |> get(path) |> json_response(401)
-    assert conn |> as_role("coach") |> get(path) |> json_response(403)
-
-    holder_id = holder.id
-
-    assert %{"data" => %{^holder_id => "held"} = data} =
-             conn |> as_role("beginners_coordinator") |> get(path) |> json_response(200)
-
-    assert map_size(data) == 1
-
-    assert conn
-           |> as_role("beginners_coordinator")
-           |> get("/api/beginners-workshops/carried-fees?waitlistIds=nope")
-           |> json_response(422)
   end
 
   test "startPayment still works for a payer", %{payer_token: token} do

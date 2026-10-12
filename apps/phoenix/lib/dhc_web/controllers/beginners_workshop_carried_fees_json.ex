@@ -1,7 +1,5 @@
 defmodule DhcWeb.BeginnersWorkshopCarriedFeesJSON do
-  @moduledoc "Renders the Waitlist view's Carried Fees (ALE-388) and one person's Carried Fee (ALE-389)."
-
-  def index(%{carried_fees: carried_fees}), do: %{data: carried_fees}
+  @moduledoc "Renders one person's Carried Fee (ALE-389) and the commands on it."
 
   @doc "One person's Carried Fee: its original payment, a failed refund, what may be done."
   def show(%{result: fee}) do

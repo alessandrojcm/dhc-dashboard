@@ -162,9 +162,10 @@ defmodule DhcWeb.Router do
     post("/people/:waitlistId/delete", BeginnersWorkshopIntakesController, :delete_person)
     post("/:id/intakes/:intakeId/withdraw", BeginnersWorkshopIntakesController, :withdraw)
 
-    # ALE-388: the Waitlist view's Carried Fee column (the Waitlist cannot
-    # read Beginners' Workshops, so the dashboard asks here).
-    get("/carried-fees", BeginnersWorkshopCarriedFeesController, :index)
+    # ALE-417: the Waitlist view's people — workshop credit, offered
+    # commands, refund choice (the Waitlist cannot read Beginners'
+    # Workshops, so the dashboard asks here).
+    get("/people", BeginnersWorkshopPeopleController, :index)
   end
 
   scope "/api/beginners-workshops", DhcWeb do

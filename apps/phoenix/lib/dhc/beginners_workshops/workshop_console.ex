@@ -88,6 +88,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     IntakePayment,
     IntakePolicy,
     IntakeRefund,
+    RefundChoice,
     WorkshopFacts,
     WorkshopPolicy,
     WorkshopProjection
@@ -392,23 +393,15 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
   end
 
   # ALE-387/389: the money a Withdraw must settle by refund or forfeit, when
-  # `IntakePolicy.refund_choice_required?/1` says it needs the choice — the
-  # payment that paid a Stripe-paid Intake, else the Carried Fee (the one
-  # that paid it, or a contacted holder's), with the full amount it took.
+  # `IntakePolicy.refund_choice_required?/1` says it needs the choice
+  # (`RefundChoice.of/4`, the rule the Waitlist tab's person read shares).
   defp refund_choice(row, facts, paying) do
-    cond do
-      not IntakePolicy.refund_choice_required?(facts) ->
-        nil
-
-      row.state == "paid" and row.paid_via == "stripe" and paying != nil ->
-        Map.put(paying, :source, :payment)
-
-      row.state == "paid" and row.paid_via == "stripe" ->
-        %{source: :payment, amount_cents: nil, currency: nil}
-
-      true ->
-        %{source: :carried_fee, amount_cents: row.fee_amount_cents, currency: row.fee_currency}
-    end
+    RefundChoice.of(
+      IntakePolicy.refund_choice_required?(facts),
+      facts,
+      paying,
+      %{amount_cents: row.fee_amount_cents, currency: row.fee_currency}
+    )
   end
 
   # The payment that paid each Stripe-paid Intake (the boundary's

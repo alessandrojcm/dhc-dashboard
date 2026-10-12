@@ -44,7 +44,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
 
     * `delete_person` is refused with `:open_intake` and with
       `:not_deletable` (standing `invited` or `joined`, a claimed profile, or
-      an Invitation that still names them); a Carried Fee needs the
+      an Invitation that still names them), by
+      `PersonPolicy.check(:delete_person, _)` (ALE-417), the rule the
+      Waitlist tab's person read offers Delete by; a Carried Fee needs the
       refund-or-forfeit choice first (`:refund_choice_required`), refunded in
       full against its original payment (reason `deleted`) or forfeited.
       It emails nobody.
@@ -66,7 +68,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
   `delete_person`'s refund choice, go through `Commands.IntakeCommands`
   (`intake_command_context/3`, `intake_command_spec/2`,
   `intake_command_locked/4`, `command_options/2`). `locked_carried_fee_facts/2`
-  is the ALE-402 parity seam, delegated from `Commands`. A family never calls another family's private functions (ALE-405).
+  is the ALE-402 parity seam and `locked_person_facts/2` the ALE-417 one,
+  both delegated from `Commands`. A family never calls another family's private functions (ALE-405).
   """
 
   import Ecto.Query
@@ -95,7 +98,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     Intake,
     IntakePayment,
     IntakePolicy,
-    IntakeRefunds
+    IntakeRefunds,
+    PersonPolicy
   }
 
   alias Dhc.BeginnersWorkshops.Commands
@@ -221,24 +225,21 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     reading = Clock.read(clock)
     facts = person_facts(entry, fee, reading)
 
-    cond do
-      peek_open_intake(waitlist_id) != nil ->
-        {:error, :concurrent_change}
-
-      IntakePolicy.check(:withdraw, facts) == :already_done ->
-        {:ok, withdraw_person_view(entry, nil, :already_done)}
-
-      true ->
-        with {:ok, _settled} <-
-               Settlement.run(
-                 {:withdraw, :no_intake},
-                 %{waitlist_entry: entry, carried_fee: fee},
-                 reading,
-                 actor: context.actor,
-                 choice: context.options.refund,
-                 facts: facts
-               ),
-             do: {:ok, withdraw_person_view(Repo.reload!(entry), nil, :done)}
+    with true <- peek_open_intake(waitlist_id) == nil || {:error, :concurrent_change},
+         :ok <- IntakePolicy.check(:withdraw, facts),
+         {:ok, _settled} <-
+           Settlement.run(
+             {:withdraw, :no_intake},
+             %{waitlist_entry: entry, carried_fee: fee},
+             reading,
+             actor: context.actor,
+             choice: context.options.refund,
+             facts: facts
+           ) do
+      {:ok, withdraw_person_view(Repo.reload!(entry), nil, :done)}
+    else
+      :already_done -> {:ok, withdraw_person_view(entry, nil, :already_done)}
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -299,8 +300,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     %{waitlist_entry: entry, intake: intakes, carried_fee: fee} = locked
     reading = Clock.read(clock)
 
-    with :ok <- none_open(intakes),
-         :ok <- deletable_standing(entry),
+    with :ok <- PersonPolicy.check(:delete_person, person_policy_facts(locked, reading)),
          {:ok, %{carried_fee: fee}} <-
            Settlement.run(
              {:delete_person, :deleted},
@@ -319,12 +319,6 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
       do: {:error, :open_intake},
       else: :ok
   end
-
-  # An Invitation already under way, or a Member, belongs to Onboarding.
-  defp deletable_standing(%WaitlistEntry{status: status}) when status in ~w(invited joined),
-    do: {:error, :not_deletable}
-
-  defp deletable_standing(%WaitlistEntry{}), do: :ok
 
   # The time-driven purge (`:system`, a sweep pass): someone `removed` for
   # more than the 3-month retention window — judged with the boundary
@@ -658,6 +652,44 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
         end
       )
     end
+  end
+
+  @doc false
+  # ALE-417 parity seam: the `PersonPolicy` facts of the person under the
+  # locks `delete_person` takes (entry → every Intake → live Carried Fee).
+  # Nothing is written.
+  @spec locked_person_facts(binary(), Clock.t()) ::
+          {:ok, PersonPolicy.t()} | {:error, term()}
+  def locked_person_facts(waitlist_id, %Clock{} = clock) do
+    with {:ok, waitlist_id} <- cast_person_id(waitlist_id),
+         {:ok, %PersonPolicy{} = facts} <-
+           read_locked(person_delete_spec(waitlist_id), fn
+             %{waitlist_entry: nil} -> nil
+             locked -> person_policy_facts(locked, Clock.read(clock))
+           end) do
+      {:ok, facts}
+    else
+      {:ok, nil} -> {:error, :person_not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # `PersonPolicy`'s facts from the person's locked rows: their entry, their
+  # Intakes (the open one, if any), their live Carried Fee, else their
+  # latest, with its latest refund, and whether the Waitlist would delete
+  # them.
+  defp person_policy_facts(%{waitlist_entry: entry, intake: intakes, carried_fee: fee}, reading) do
+    latest = if fee == nil, do: latest_fee(entry.id)
+
+    PersonPolicy.facts(
+      intake: Enum.find(intakes, &(&1.state in Intake.open_states())),
+      entry: entry,
+      live_fee: fee,
+      latest_fee: latest,
+      fee_refund: fee_refund(fee || latest),
+      deletable: MapSet.member?(Waitlist.deletable_ids([entry.id]), entry.id),
+      now: reading.now
+    )
   end
 
   # The person's fee as `CarriedFeePolicy` judges it, with its latest

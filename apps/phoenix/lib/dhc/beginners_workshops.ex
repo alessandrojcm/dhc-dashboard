@@ -26,6 +26,7 @@ defmodule Dhc.BeginnersWorkshops do
     IntakePage,
     Invitable,
     MyWorkshops,
+    PeopleView,
     Report,
     StaffCandidates,
     WorkshopConsole,
@@ -353,24 +354,16 @@ defmodule Dhc.BeginnersWorkshops do
   def door_view(workshop_id, opts \\ []), do: DoorView.load(workshop_id, Clock.from_opts(opts))
 
   @doc """
-  The status of each person's live Carried Fee (ALE-388), for the Waitlist
-  view: `%{waitlist_id => "held" | "applied"}`; people without one are
-  absent. The Waitlist cannot read Beginners' Workshops, so the dashboard
-  asks here.
+  The Waitlist tab's people (ALE-417): for each of `waitlist_ids` that names
+  a Waitlist entry, their live Carried Fee status, the person commands the
+  tab may offer and the refund-or-forfeit choice an offered Withdraw or
+  Delete needs. The Waitlist cannot read Beginners' Workshops, so the
+  dashboard asks here. Option `clock:` fixes the time retention is judged
+  at. See `Dhc.BeginnersWorkshops.PeopleView`.
   """
-  @spec carried_fees([binary()]) :: %{binary() => String.t()}
-  def carried_fees([]), do: %{}
-
-  def carried_fees(waitlist_ids) when is_list(waitlist_ids) do
-    live = CarriedFee.live_statuses()
-
-    from(f in CarriedFee,
-      where: f.waitlist_id in ^waitlist_ids and f.status in ^live,
-      select: {f.waitlist_id, f.status}
-    )
-    |> Repo.all()
-    |> Map.new()
-  end
+  @spec people([binary()], keyword()) :: %{binary() => PeopleView.person()}
+  def people(waitlist_ids, opts \\ []) when is_list(waitlist_ids),
+    do: PeopleView.list(waitlist_ids, Clock.read(Clock.from_opts(opts)).now)
 
   @doc """
   One person's Carried Fee as the Waitlist tab shows it (ALE-389): the live

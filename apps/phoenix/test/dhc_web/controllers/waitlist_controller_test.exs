@@ -615,10 +615,47 @@ defmodule DhcWeb.WaitlistControllerTest do
         |> json_response(200)
         |> Map.fetch!("data")
 
-      assert %{"id" => ^id, "status" => "waiting", "removedAt" => nil} = entry
+      assert %{"id" => ^id, "status" => "waiting", "removedAt" => nil, "availableCommands" => []} =
+               entry
 
       restored = Repo.get!(WaitlistEntry, id)
       assert restored.initial_registration_date == original.initial_registration_date
+    end
+
+    test "ALE-417: entries offer restore only while removed within 3 months", %{conn: conn} do
+      recent = insert_waitlist_profile(status: "removed")
+      long_ago = insert_waitlist_profile(status: "removed")
+      waiting = insert_waitlist_profile(status: "waiting")
+
+      removed_at =
+        DateTime.utc_now() |> DateTime.shift(month: -3, day: -1) |> DateTime.truncate(:second)
+
+      Repo.update_all(from(w in WaitlistEntry, where: w.id == ^long_ago),
+        set: [removed_at: removed_at]
+      )
+
+      offered =
+        for id <- [recent, long_ago, waiting], into: %{} do
+          %{"data" => %{"availableCommands" => commands}} =
+            conn
+            |> put_req_header("authorization", "Bearer admin-token")
+            |> get("/api/waitlist/entries/#{id}")
+            |> json_response(200)
+
+          {id, commands}
+        end
+
+      assert offered == %{recent => ["restore"], long_ago => [], waiting => []}
+
+      %{"data" => %{"entries" => entries}} =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries?status=removed")
+        |> json_response(200)
+
+      listed = Map.new(entries, &{&1["id"], &1["availableCommands"]})
+      assert listed[recent] == ["restore"]
+      assert listed[long_ago] == []
     end
 
     test "refuses an entry removed more than 3 months ago (409)", %{conn: conn} do

@@ -154,9 +154,14 @@ defmodule Dhc.Waitlist do
   Cursor payloads bind to the query semantics (limit, search, status, sort and
   direction), so stale cursors from a different table state return an explicit
   `{:error, :bad_cursor}` instead of silently serving the wrong page.
+
+  Each entry carries its `available_commands` (`available_commands/2`) at
+  `now:` (default: the wall clock).
   """
-  @spec entries(map()) :: {:ok, map()} | {:error, atom()}
-  def entries(params \\ %{}) do
+  @spec entries(map(), keyword()) :: {:ok, map()} | {:error, atom()}
+  def entries(params \\ %{}, opts \\ []) do
+    now = now(opts)
+
     with {:ok, opts} <- parse_entry_options(params),
          {:ok, cursor} <- CursorPagination.parse_cursor(opts, &entry_cursor_context/1) do
       total_count = entries_total_count(opts)
@@ -167,7 +172,7 @@ defmodule Dhc.Waitlist do
 
       {:ok,
        %{
-         entries: page.visible_rows,
+         entries: Enum.map(page.visible_rows, &with_available_commands(&1, now)),
          total_count: total_count,
          limit: opts.limit,
          next_cursor: page.next_cursor,
@@ -259,7 +264,7 @@ defmodule Dhc.Waitlist do
       end
     end)
     |> case do
-      {:ok, id} -> get_entry(id)
+      {:ok, id} -> get_entry(id, now: now)
       {:error, reason} -> {:error, reason}
     end
   end
@@ -273,18 +278,35 @@ defmodule Dhc.Waitlist do
     DateTime.compare(now, DateTime.shift(removed_at, month: @restore_window_months)) != :gt
   end
 
+  @doc """
+  The Waitlist commands an entry (anything with its `status` and
+  `removed_at`) offers at `now` (ALE-417): `"restore"` for someone removed
+  within the retention window (`restorable?/2`), else nothing. Advisory:
+  `restore/2` decides again under the lock.
+  """
+  @spec available_commands(%{status: String.t(), removed_at: DateTime.t() | nil}, DateTime.t()) ::
+          [String.t()]
+  def available_commands(%{status: "removed", removed_at: %DateTime{} = removed_at}, now),
+    do: if(restorable?(removed_at, now), do: ["restore"], else: [])
+
+  def available_commands(%{status: _status}, _now), do: []
+
+  defp with_available_commands(entry, now),
+    do: Map.put(entry, :available_commands, available_commands(entry, now))
+
   @doc "The longest first name the Waitlist accepts: its Intake Email placeholder maximum."
   @spec first_name_max_length() :: pos_integer()
   def first_name_max_length, do: @first_name_max_length
 
   @doc """
-  Returns one domain-shaped waitlist entry for admin inspection.
+  Returns one domain-shaped waitlist entry for admin inspection, with its
+  `available_commands` at `now:` (default: the wall clock).
   """
-  @spec get_entry(Ecto.UUID.t()) :: {:ok, map()} | {:error, :not_found}
-  def get_entry(id) do
+  @spec get_entry(Ecto.UUID.t(), keyword()) :: {:ok, map()} | {:error, :not_found}
+  def get_entry(id, opts \\ []) do
     case entry_by_id_query(id) |> Repo.one() do
       nil -> {:error, :not_found}
-      entry -> {:ok, entry}
+      entry -> {:ok, with_available_commands(entry, now(opts))}
     end
   end
 
@@ -413,6 +435,20 @@ defmodule Dhc.Waitlist do
       where: w.status not in ~w(invited joined),
       where: not exists(subquery(claimed)) and not exists(subquery(named))
     )
+  end
+
+  @doc """
+  Which of `ids` `hard_delete/1` would not refuse as `:not_deletable`
+  (`deletable_entries_query/0`), lock-free (ALE-417). Unknown ids are
+  absent. The decision is still `hard_delete/1`'s, under the lock.
+  """
+  @spec deletable_ids([Ecto.UUID.t()]) :: MapSet.t(Ecto.UUID.t())
+  def deletable_ids([]), do: MapSet.new()
+
+  def deletable_ids(ids) when is_list(ids) do
+    from(w in deletable_entries_query(), where: w.id in ^Enum.uniq(ids), select: w.id)
+    |> Repo.all()
+    |> MapSet.new()
   end
 
   defp deletable_profiles(%WaitlistEntry{status: status}) when status in ~w(invited joined),
