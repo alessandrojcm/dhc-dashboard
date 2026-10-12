@@ -33,8 +33,11 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeesTest do
     IntakeEvent,
     IntakePage,
     IntakePayment,
-    WorkshopConsole
+    WorkshopConsole,
+    WorkshopPolicy
   }
+
+  alias Dhc.BeginnersWorkshops.IntakeEmails.Template
 
   alias Dhc.Repo
   alias Dhc.Waitlist
@@ -388,6 +391,53 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeesTest do
       {:ok, console} = WorkshopConsole.show(workshop.id, Clock.fixed(@after_cutoff))
       refute console.fast_track_open
       assert console.fast_track_holders_only
+    end
+
+    # ALE-400: one Payment Window. A holder placed after the cutoff is asked
+    # to confirm by the workshop start, and a resent link asks the same.
+    test "a holder placed after the cutoff keeps the workshop start as their window on resend",
+         %{coordinator: c} do
+      workshop = scheduled_fixture(c, %{"contact_from" => "2026-10-20"})
+      person = holder!()
+
+      Repo.update_all(Template |> where(email_type: "contact_confirm"),
+        set: [
+          body: %{
+            "type" => "doc",
+            "content" => [
+              %{
+                "type" => "paragraph",
+                "content" => [%{"type" => "placeholder", "attrs" => %{"name" => "windowEnd"}}]
+              }
+            ]
+          }
+        ]
+      )
+
+      assert {:ok, %{state: "contacted"}} =
+               execute(
+                 {:staff, c},
+                 {:fast_track, workshop.id, {:waitlist_entry, person.id}},
+                 @after_cutoff
+               )
+
+      intake = intake_of(workshop, person)
+      assert {:ok, %{outcome: :done}} = command(c, :resend_link, workshop, intake, @after_cutoff)
+
+      starts = "<p>Saturday 14 November 2026, 18:30</p>"
+
+      assert [^starts, ^starts] =
+               from(j in Oban.Job,
+                 where: fragment("?->>'email'", j.args) == ^person.email,
+                 order_by: [asc: j.id],
+                 select: fragment("?->'data_variables'->>'MESSAGE_HTML'", j.args)
+               )
+               |> Repo.all()
+
+      starts_at = WorkshopPolicy.starts_at(workshop)
+      {:ok, console} = WorkshopConsole.show(workshop.id, Clock.fixed(@after_cutoff))
+      assert [%{id: id, window_ends_at: ^starts_at}] = console.roster.asked
+      assert id == intake.id
     end
   end
 
