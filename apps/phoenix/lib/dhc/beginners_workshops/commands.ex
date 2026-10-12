@@ -380,6 +380,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       `Dhc.Waitlist.hard_delete/1` deletes the Guardian, the unclaimed
       UserProfile and the Waitlist entry.
 
+  ## Settlement (ALE-404)
+
+  What every closing above does to the person — standing, Seat Hold,
+  Carried Fee, refund, notice — is one row of
+  `Dhc.BeginnersWorkshops.Commands.Settlement`, keyed by cause and ending
+  and run inside the command's `with_locked/2`. A command decides whether
+  it may run (`IntakePolicy`, `CarriedFeePolicy`, `WorkshopPolicy`), names
+  the row, and writes its own history row; a new ending is a new row there.
+
   ## Invitation handoff (ALE-392)
 
   `invite` (`members.invite`) hands one attended person to Onboarding.
@@ -475,7 +484,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     WorkshopProjection
   }
 
-  alias Dhc.BeginnersWorkshops.Commands.Protocol
+  alias Dhc.BeginnersWorkshops.Commands.{Protocol, Settlement}
   alias Dhc.BeginnersWorkshops.IntakeEmails.{Occasion, Values}
   alias Dhc.BeginnersWorkshops.Workers.RefundWorker
   alias Dhc.ClubCalendar
@@ -483,7 +492,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist
-  alias Dhc.Waitlist.{Standing, WaitlistEntry}
+  alias Dhc.Waitlist.WaitlistEntry
 
   @type principal_id :: binary()
 
@@ -1513,78 +1522,38 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     )
   end
 
-  # A paid person is deferred (story 129): their fee is carried, any door
-  # check-in is discarded, and "Workshop cancelled – paid" replaces the
-  # Deferred notice. A person whose Waitlist entry was deleted has nobody
-  # to carry a fee to (and no address): their Intake just closes, and the
-  # payment stays on record for a manual refund.
-  defp cancel_intake(
-         %{intake: %Intake{state: "paid", waitlist_id: nil} = intake},
-         context,
-         reading
-       ) do
-    with {:ok, intake} <- discard_check_in(intake),
-         {:ok, intake} <-
-           transition(:intake, intake, Intake.close_changeset(intake, "deferred")),
-         {:ok, _event} <-
-           record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
-         do: {:ok, %{deferred: 1}}
-  end
-
+  # A paid person is deferred (story 129) and their door check-in
+  # discarded; an unpaid one is returned. What that does to the person is
+  # the `cancel_workshop` rows of `Commands.Settlement`; each Intake also
+  # gets a `cancel_workshop` history row.
   defp cancel_intake(%{intake: %Intake{state: "paid"} = intake} = one, context, reading) do
+    ending = if intake.waitlist_id, do: :paid, else: :paid_anonymised
+
     payment =
       one.payments
       |> Enum.filter(&(&1.status == "paid"))
       |> Enum.min_by(&{DateTime.to_unix(&1.paid_at, :microsecond), &1.id}, fn -> nil end)
 
     with {:ok, intake} <- discard_check_in(intake),
-         {:ok, intake} <-
-           defer_paid(%{one | intake: intake} |> Map.put(:payment, payment), reading),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, one.workshop},
-               "cancelled_paid",
-               Occasion.cancelled(),
-               reading
-             )
+         {:ok, %{intake: intake}} <-
+           Settlement.run(
+             {:cancel_workshop, ending},
+             %{one | intake: intake} |> Map.put(:payment, payment),
+             reading
            ),
          {:ok, _event} <-
            record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
          do: {:ok, %{deferred: 1}}
   end
 
-  # An unpaid person never had a seat to lose: the Intake is `returned`,
-  # the person `waiting` with their original priority, and a live Seat
-  # Hold is `releasing` (Stripe still ends it; a completion that lands
-  # anyway is refunded by `complete_payment`'s `paid_after_close`). A
-  # Carried Fee holder keeps their `held` fee.
-  defp cancel_intake(%{intake: %Intake{state: "contacted"} = intake} = one, context, reading) do
+  defp cancel_intake(%{intake: %Intake{state: "contacted"}} = one, context, reading) do
     holds = Enum.filter(one.payments, &(&1.status == "open"))
 
-    with {:ok, intake} <-
-           transition(:intake, intake, Intake.close_changeset(intake, "returned")),
-         :ok <- Enum.reduce_while(holds, :ok, &release_each/2),
-         :ok <- back_to_waiting(one.waitlist_entry, reading.now),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, one.workshop},
-               "cancelled_unpaid",
-               Occasion.cancelled(),
-               reading
-             )
-           ),
+    with {:ok, %{intake: intake}} <-
+           Settlement.run({:cancel_workshop, :contacted}, Map.put(one, :holds, holds), reading),
          {:ok, _event} <-
            record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
          do: {:ok, %{returned: 1, released: length(holds)}}
-  end
-
-  defp release_each(hold, :ok) do
-    case release_to_stripe(hold) do
-      :ok -> {:cont, :ok}
-      error -> {:halt, error}
-    end
   end
 
   defp discard_check_in(%Intake{checked_in_at: nil} = intake), do: {:ok, intake}
@@ -2360,18 +2329,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
       {:error, reason} ->
         {:error, reason}
-    end
-  end
-
-  # ALE-387: a refund a coordinator chose (`cancel_with_refund`, `withdraw`
-  # with refund), under the lock of the payment that paid the Intake. The
-  # command's own notice names the amount, so nothing else is emailed.
-  # A paid Intake with no payment that took money has nothing to refund.
-  defp request_staff_refund(%{payment: payment}, reason, %{actor: actor}, reading) do
-    case payment && insert_refund(payment, reason, actor, reading) do
-      {:ok, %IntakeRefund{} = refund} -> {:ok, refund}
-      {:error, reason} -> {:error, reason}
-      _nothing_taken -> {:error, :nothing_to_refund}
     end
   end
 
@@ -3241,68 +3198,20 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  defp act_on_intake(:decline, locked, _event_id, reading) do
-    %{workshop: workshop, waitlist_entry: entry, intake: intake, payment: hold} = locked
-
-    with {:ok, intake} <-
-           transition(:intake, intake, Intake.close_changeset(intake, "declined")),
-         :ok <- release_to_stripe(hold),
-         :ok <- back_to_waiting(entry, reading.now),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, workshop},
-               "declined",
-               Occasion.declined(),
-               reading
-             )
-           ) do
-      {:ok, intake}
-    end
-  end
+  # What each closing does to the person is its `Commands.Settlement` row;
+  # the command only names it.
+  defp act_on_intake(:decline, locked, _event_id, reading),
+    do: settle({:decline, :contacted}, hold_rows(locked), reading)
 
   # A deferral keeps the person's money as a Carried Fee and their place in
-  # the queue (story 69): a Stripe-paid Intake creates a `held` fee pointing
-  # at its payment, a Carried-Fee-paid one returns its fee to `held`.
-  defp act_on_intake(:defer, %{workshop: workshop} = locked, _event_id, reading) do
-    with {:ok, intake} <- defer_paid(locked, reading),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, workshop},
-               "deferred",
-               Occasion.deferred(),
-               reading
-             )
-           ) do
-      {:ok, intake}
-    end
-  end
+  # the queue (story 69).
+  defp act_on_intake(:defer, locked, _event_id, reading),
+    do: settle({:defer, :paid}, locked, reading)
 
-  # ALE-387: a paid person wants their money back. The seat is free at once
-  # (it counted only while `paid`); the person keeps their priority. A
-  # Stripe-paid Intake refunds its payment; (ALE-389) a Carried-Fee-paid one
-  # refunds the Carried Fee, against the fee's original payment.
-  defp act_on_intake(:cancel_with_refund, locked, _event_id, reading) do
-    %{workshop: workshop, waitlist_entry: entry, intake: intake, context: context} = locked
-
-    with {:ok, intake} <-
-           transition(:intake, intake, Intake.close_changeset(intake, "cancelled_refunded")),
-         {:ok, refund} <- refund_paid(intake, locked, "cancelled_with_refund", context, reading),
-         :ok <- back_to_waiting(entry, reading.now),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, workshop},
-               "cancelled_with_refund",
-               Occasion.cancelled_with_refund(),
-               reading,
-               refund: refund
-             )
-           ) do
-      {:ok, intake}
-    end
-  end
+  # ALE-387: a paid person wants their money back (ALE-389: a
+  # Carried-Fee-paid Intake refunds the Carried Fee).
+  defp act_on_intake(:cancel_with_refund, %{intake: intake} = locked, _event_id, reading),
+    do: settle({:cancel_with_refund, Settlement.paid_by(intake)}, locked, reading)
 
   # Takes a seat under the workshop lock with the same rule as a Seat Hold,
   # but needs no hold: nothing outside this transaction is called. The
@@ -3337,57 +3246,24 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  # ALE-387: the person leaves the Waitlist. A contacted Intake closes as
-  # `declined` (its live hold stops counting); a paid one closes as
-  # `withdrawn` — freeing the seat at once. Money is never handled
+  # ALE-387: the person leaves the Waitlist. Money is never handled
   # implicitly: a paid Intake, and (ALE-389) any Carried Fee the person
   # holds, needs the refund-or-forfeit choice, and the person is told which.
-  # A contacted Intake of someone without a Carried Fee emails nobody.
-  defp act_on_intake(:withdraw, %{intake: %Intake{state: "contacted"}} = locked, _id, reading) do
-    %{waitlist_entry: entry, intake: intake, payment: hold} = locked
+  defp act_on_intake(:withdraw, %{intake: %Intake{state: "contacted"}} = locked, _id, reading),
+    do: settle({:withdraw, :contacted}, hold_rows(locked), reading)
 
-    with {:ok, refund?} <- withdraw_choice(locked),
-         {:ok, intake} <-
-           transition(:intake, intake, Intake.close_changeset(intake, "declined")),
-         :ok <- release_to_stripe(hold),
-         :ok <- remove_from_waitlist(entry, reading.now),
-         :ok <- settle_withdrawn(refund?, locked, intake, reading),
-         do: {:ok, intake}
-  end
+  defp act_on_intake(
+         :withdraw,
+         %{intake: %Intake{state: "paid"} = intake} = locked,
+         _id,
+         reading
+       ),
+       do: settle({:withdraw, Settlement.paid_by(intake)}, locked, reading)
 
-  defp act_on_intake(:withdraw, %{intake: %Intake{state: "paid"}} = locked, _id, reading) do
-    %{waitlist_entry: entry, intake: intake} = locked
-
-    with {:ok, refund?} <- withdraw_choice(locked),
-         {:ok, intake} <- transition(:intake, intake, Intake.close_changeset(intake, "withdrawn")),
-         :ok <- remove_from_waitlist(entry, reading.now),
-         :ok <- settle_withdrawn(refund?, locked, intake, reading) do
-      {:ok, intake}
-    end
-  end
-
-  # ALE-389: the person's `held` Carried Fee is refunded (the full amount
-  # originally paid, against the original payment). Nothing else moves: the
-  # Intake stays where it is — a contacted one now asks for payment, since
-  # its person holds no fee — and the standing and priority are untouched.
-  # "Carried Fee refunded" is queued.
-  defp act_on_intake(:refund_carried_fee, locked, _event_id, reading) do
-    %{intake: intake, carried_fee: fee, context: context} = locked
-
-    with {:ok, refund} <- refund_fee(fee, intake, context.actor, "carried_fee_refunded", reading),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, locked.workshop},
-               "carried_fee_refunded",
-               Occasion.carried_fee_refunded(refund.id),
-               reading,
-               refund: refund
-             )
-           ) do
-      {:ok, intake}
-    end
-  end
+  # ALE-389: the person's `held` Carried Fee is refunded; nothing else
+  # moves (a contacted Intake now asks for payment).
+  defp act_on_intake(:refund_carried_fee, locked, _event_id, reading),
+    do: settle({:refund_carried_fee, :open_intake}, locked, reading)
 
   defp act_on_intake(:resend_link, %{workshop: workshop, intake: intake}, event_id, reading) do
     with :ok <-
@@ -3420,18 +3296,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  # ALE-393: fix a door mistake, or turn a no-show into a Deferral. The
-  # standing and the Carried Fee follow the new state; only a deferral is
-  # emailed, and an attendee owed the Follow-up gets it now.
+  # ALE-393: fix a door mistake, or turn a no-show into a Deferral.
   defp act_on_intake(:correct_attendance, locked, _event_id, reading) do
-    %{workshop: workshop, waitlist_entry: entry, intake: intake, context: context} = locked
+    %{waitlist_entry: entry, intake: intake, context: context} = locked
     to = context.options.to
 
     with :ok <- no_other_open_intake(entry, intake, to),
-         {:ok, intake} <- transition(:intake, intake, Intake.close_changeset(intake, to)),
-         :ok <- correct_standing(entry, to, reading.now),
-         {:ok, _fee} <- correct_fee(intake, locked, to, reading),
-         :ok <- after_correction(intake, workshop, to, reading) do
+         {:ok, intake} <- settle({:correct_attendance, to}, locked, reading) do
       {:ok, intake}
     else
       # The person's record moved on since finalisation (a refunded fee,
@@ -3445,120 +3316,23 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     end
   end
 
-  # The deferral itself, shared by `defer` and `cancel_workshop` (which
-  # sends its own notice instead of "Deferred"): the fee is carried, the
-  # Intake closes as `deferred` and the person is `waiting` again with
-  # their original priority. `locked` holds this Intake's person's entry,
-  # live Carried Fee and paying payment.
-  defp defer_paid(%{waitlist_entry: entry, intake: intake} = locked, reading) do
-    with {:ok, _fee} <- carry_fee(intake, locked, reading),
-         {:ok, intake} <-
-           transition(:intake, intake, Intake.close_changeset(intake, "deferred")),
-         :ok <- back_to_waiting(entry, reading.now),
+  # An Intake command's Settlement, against its locked rows, with the
+  # actor, the refund-or-forfeit choice and the facts that say whether the
+  # choice is required.
+  defp settle(key, %{context: context, facts: facts} = locked, reading) do
+    with {:ok, %{intake: intake}} <-
+           Settlement.run(key, locked, reading,
+             actor: context.actor,
+             choice: Map.get(context.options, :refund),
+             facts: facts
+           ),
          do: {:ok, intake}
   end
 
-  # Withdraw's refund-or-forfeit choice, asked exactly when
-  # `IntakePolicy.refund_choice_required?/1` says there is money to settle
-  # (the console row's `refund_choice` reads the same rule); `nil`: none.
-  defp withdraw_choice(%{facts: facts, context: context}) do
-    if IntakePolicy.refund_choice_required?(facts),
-      do: refund_choice(context.options),
-      else: {:ok, nil}
-  end
-
-  defp refund_choice(%{refund: refund}) when is_boolean(refund), do: {:ok, refund}
-  defp refund_choice(_options), do: {:error, :refund_choice_required}
-
-  # The refund-or-forfeit choice, required only when there is money to
-  # handle: a Carried Fee (ALE-389). `nil` means nothing to settle.
-  defp money_choice(nil, _options), do: {:ok, nil}
-  defp money_choice(%CarriedFee{}, options), do: refund_choice(options)
-
-  # What a withdrawal does with the person's money, and the notice saying
-  # so: the payment that paid a Stripe-paid Intake and the person's Carried
-  # Fee (the one that paid a Carried-Fee-paid Intake, or a held one) are
-  # refunded or forfeited together. `nil`: there was no money.
-  defp settle_withdrawn(nil, _locked, _intake, _reading), do: :ok
-
-  defp settle_withdrawn(true, %{context: context} = locked, intake, reading) do
-    with {:ok, payment_refund} <- refund_withdrawn_payment(intake, locked, context, reading),
-         {:ok, fee_refund} <-
-           refund_fee(locked.carried_fee, intake, context.actor, "withdrawn", reading) do
-      {:intake, intake, locked.workshop}
-      |> IntakeEmails.deliver(
-        "withdrawn_refunded",
-        Occasion.withdrawn(),
-        reading,
-        refund: payment_refund || fee_refund
-      )
-      |> emailed()
-    end
-  end
-
-  defp settle_withdrawn(false, locked, intake, reading) do
-    with {:ok, _fee} <- forfeit_fee(locked.carried_fee, reading) do
-      {:intake, intake, locked.workshop}
-      |> IntakeEmails.deliver("withdrawn_forfeited", Occasion.withdrawn(), reading)
-      |> emailed()
-    end
-  end
-
-  # Only a Stripe-paid `withdrawn` Intake has a payment of its own to refund.
-  defp refund_withdrawn_payment(%Intake{state: "withdrawn", paid_via: "stripe"}, l, c, reading),
-    do: request_staff_refund(l, "withdrawn", c, reading)
-
-  defp refund_withdrawn_payment(_intake, _locked, _context, _reading), do: {:ok, nil}
-
-  # The money that paid a paid Intake: its Stripe payment, or the Carried
-  # Fee it was confirmed with.
-  defp refund_paid(%Intake{paid_via: "carried_fee"} = intake, locked, reason, context, reading) do
-    case locked.carried_fee do
-      %CarriedFee{id: id} = fee when id == intake.carried_fee_id ->
-        refund_fee(fee, intake, context.actor, reason, reading)
-
-      _moved_on ->
-        {:error, :illegal_transition}
-    end
-  end
-
-  defp refund_paid(_stripe_paid, locked, reason, context, reading),
-    do: request_staff_refund(locked, reason, context, reading)
-
-  # A withdrawn person's standing becomes `removed` (which starts the
-  # retention clock); one already removed stays so. An Invitation already
-  # under way belongs to Onboarding, so withdraw refuses it. An anonymised
-  # person has no standing.
-  defp remove_from_waitlist(nil, _now), do: :ok
-  defp remove_from_waitlist(%WaitlistEntry{status: "removed"}, _now), do: :ok
-
-  defp remove_from_waitlist(%WaitlistEntry{status: status}, _now)
-       when status in ~w(invited joined),
-       do: {:error, :already_invited}
-
-  defp remove_from_waitlist(%WaitlistEntry{id: id}, now) do
-    with {:ok, _entry} <- Waitlist.change_standing(id, "removed", now: now), do: :ok
-  end
-
-  # A live Seat Hold of a closing Intake stops counting as a seat at once;
-  # only Stripe ends the session (`release_payment`, `reconcile`), and a
-  # completion that arrives anyway is refunded (`refund_after_close/2`).
-  defp release_to_stripe(nil), do: :ok
-
-  defp release_to_stripe(%IntakePayment{} = hold) do
-    with {:ok, _hold} <-
-           transition(:payment, hold, Ecto.Changeset.change(hold, status: "releasing")),
-         do: :ok
-  end
-
-  # A contacted person is `waiting`, so their original priority stands; one
-  # staff removed while contacted goes back to `waiting` (the Waitlist
-  # keeps their registration date). An anonymised person has no standing.
-  defp back_to_waiting(%WaitlistEntry{status: "removed", id: id}, now) do
-    with {:ok, _entry} <- Waitlist.change_standing(id, "waiting", now: now), do: :ok
-  end
-
-  defp back_to_waiting(_waiting_or_anonymised, _now), do: :ok
+  # `decline` and a contacted `withdraw` lock the Intake's live Seat Hold
+  # as its payment.
+  defp hold_rows(%{payment: hold} = locked),
+    do: %{locked | payment: nil} |> Map.put(:holds, List.wrap(hold))
 
   # What `IntakePolicy.check/2` reads (`IntakePolicy.facts/1`): the locked
   # Intake and workshop and, for the commands that lock them, the person's
@@ -3677,12 +3451,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   # ── correct_attendance (ALE-393) ────────────────────────────────
 
-  @correction_standings %{
-    "attended" => "attended",
-    "no_show" => "removed",
-    "deferred" => "waiting"
-  }
-
   # The Carried Fee that paid the Intake; a Stripe payer's live one (which a
   # deferral would have to be the only one of).
   defp correction_fee(%{intake: %Intake{carried_fee_id: id}}) when is_binary(id),
@@ -3706,64 +3474,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp no_other_open_intake(_entry, _intake, _to), do: :ok
-
-  # The standing follows the lifecycle; one already there is left alone. An
-  # anonymised person has no standing.
-  defp correct_standing(nil, _to, _now), do: :ok
-
-  defp correct_standing(%WaitlistEntry{status: status, id: id}, to, now) do
-    case Map.fetch!(@correction_standings, to) do
-      ^status -> :ok
-      standing -> with {:ok, _entry} <- Waitlist.change_standing(id, standing, now: now), do: :ok
-    end
-  end
-
-  # A Carried Fee that paid the Intake is spent on attendance, forfeited on
-  # a no-show and held again on a deferral; a Stripe payer's deferral makes
-  # a held fee on the paying payment, as `defer` does.
-  defp correct_fee(
-         %Intake{paid_via: "carried_fee", carried_fee_id: id} = intake,
-         %{carried_fee: %CarriedFee{id: id} = fee},
-         to,
-         reading
-       ) do
-    {status, applied_intake_id} =
-      case to do
-        "attended" -> {"spent", intake.id}
-        "no_show" -> {"forfeited", intake.id}
-        "deferred" -> {"held", nil}
-      end
-
-    transition(
-      :carried_fee,
-      fee,
-      CarriedFee.status_changeset(fee, status, applied_intake_id, reading.now)
-    )
-  end
-
-  defp correct_fee(%Intake{paid_via: "carried_fee"}, _locked, _to, _reading),
-    do: {:error, :illegal_transition}
-
-  defp correct_fee(%Intake{} = intake, locked, "deferred", reading),
-    do: carry_fee(intake, locked, reading)
-
-  defp correct_fee(_stripe_paid, _locked, _to, _reading), do: {:ok, nil}
-
-  defp after_correction(intake, workshop, "attended", reading) do
-    if WorkshopPolicy.follow_up_due?(workshop, reading) do
-      emailed(follow_up_email(intake, workshop, reading))
-    else
-      :ok
-    end
-  end
-
-  defp after_correction(intake, workshop, "deferred", reading) do
-    {:intake, intake, workshop}
-    |> IntakeEmails.deliver("deferred", Occasion.deferred(), reading)
-    |> emailed()
-  end
-
-  defp after_correction(_intake, _workshop, "no_show", _reading), do: :ok
 
   # ── withdraw from the Waitlist tab (ALE-387) ───────────────────
 
@@ -3850,9 +3560,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         {:ok, withdraw_person_view(entry, nil, :already_done)}
 
       true ->
-        with {:ok, refund?} <- withdraw_choice(%{facts: facts, context: context}),
-             :ok <- remove_from_waitlist(entry, reading.now),
-             :ok <- settle_withdrawn_fee(refund?, entry, fee, context, reading),
+        with {:ok, _settled} <-
+               Settlement.run(
+                 {:withdraw, :no_intake},
+                 %{waitlist_entry: entry, carried_fee: fee},
+                 reading,
+                 actor: context.actor,
+                 choice: context.options.refund,
+                 facts: facts
+               ),
              do: {:ok, withdraw_person_view(Repo.reload!(entry), nil, :done)}
     end
   end
@@ -3870,31 +3586,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       correction: nil,
       now: reading.now
     )
-  end
-
-  # A withdrawal with no Intake settles the Carried Fee alone; its notice is
-  # logged on the fee's original Intake, if any.
-  defp settle_withdrawn_fee(nil, _entry, _fee, _context, _reading), do: :ok
-
-  defp settle_withdrawn_fee(true, entry, fee, context, reading) do
-    with {:ok, refund} <- refund_fee(fee, nil, context.actor, "withdrawn", reading) do
-      {:person, entry, refund.intake_id}
-      |> IntakeEmails.deliver(
-        "withdrawn_refunded",
-        Occasion.withdrawn(refund.id),
-        reading,
-        refund: refund
-      )
-      |> emailed()
-    end
-  end
-
-  defp settle_withdrawn_fee(false, entry, fee, _context, reading) do
-    with {:ok, fee} <- forfeit_fee(fee, reading) do
-      {:person, entry, nil}
-      |> IntakeEmails.deliver("withdrawn_forfeited", Occasion.withdrawn(fee.id), reading)
-      |> emailed()
-    end
   end
 
   defp withdraw_person_view(entry, intake_view),
@@ -3948,8 +3639,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     with :ok <- none_open(intakes),
          :ok <- deletable_standing(entry),
-         {:ok, refund?} <- money_choice(fee, %{refund: refund}),
-         {:ok, fee} <- settle_deleted_fee(refund?, fee, principal_id, reading),
+         {:ok, %{carried_fee: fee}} <-
+           Settlement.run(
+             {:delete_person, :deleted},
+             %{waitlist_entry: entry, carried_fee: fee},
+             reading,
+             actor: principal_id,
+             choice: refund
+           ),
          {:ok, anonymised} <- hard_delete(entry, intakes, reading) do
       {:ok, deleted_view(entry, anonymised, fee, :deleted)}
     end
@@ -3966,18 +3663,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     do: {:error, :not_deletable}
 
   defp deletable_standing(%WaitlistEntry{}), do: :ok
-
-  # The Carried Fee, settled by the coordinator's choice: refunded in full
-  # against its original payment (the refund row outlives the person) or
-  # forfeited. `nil`: there was no money.
-  defp settle_deleted_fee(nil, _fee, _actor, _reading), do: {:ok, nil}
-
-  defp settle_deleted_fee(true, fee, actor, reading) do
-    with {:ok, _refund} <- refund_fee(fee, nil, actor, "deleted", reading),
-         do: {:ok, Repo.reload!(fee)}
-  end
-
-  defp settle_deleted_fee(false, fee, _actor, reading), do: forfeit_fee(fee, reading)
 
   # The time-driven purge (`:system`, a sweep pass): someone `removed` for
   # more than the 3-month retention window — judged with the boundary
@@ -3996,7 +3681,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     reading = Clock.read(clock)
 
     if retention_ended?(entry, reading) and none_open(intakes) == :ok do
-      with {:ok, fee} <- forfeit_fee(fee, reading),
+      with {:ok, %{carried_fee: fee}} <-
+             Settlement.run(
+               {:purge_retention, :purged},
+               %{waitlist_entry: entry, carried_fee: fee},
+               reading
+             ),
            {:ok, anonymised} <- hard_delete(entry, intakes, reading),
            do: {:ok, deleted_view(entry, anonymised, fee, :purged)}
     else
@@ -4069,39 +3759,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp held?(%CarriedFee{status: "held"}), do: true
   defp held?(_no_held_fee), do: false
 
-  defp carry_fee(
-         %Intake{paid_via: "carried_fee", carried_fee_id: id, id: intake_id},
-         %{
-           carried_fee: %CarriedFee{id: id, status: "applied", applied_intake_id: intake_id} = fee
-         },
-         reading
-       ),
-       do:
-         transition(:carried_fee, fee, CarriedFee.status_changeset(fee, "held", nil, reading.now))
-
-  # The payment that paid it is locked by the command (`paying_payment/1`).
-  defp carry_fee(%Intake{paid_via: "stripe"} = intake, %{carried_fee: nil} = locked, reading) do
-    case locked.payment do
-      nil ->
-        {:error, :payment_not_found}
-
-      payment ->
-        %{
-          waitlist_id: intake.waitlist_id,
-          payment_id: payment.id,
-          amount_cents: payment.amount_received_cents || payment.amount_cents,
-          currency: payment.currency_received || payment.currency,
-          status_changed_at: reading.now
-        }
-        |> CarriedFee.deferral_changeset()
-        |> persist()
-    end
-  end
-
-  # A Carried-Fee-paid Intake whose fee moved on, or a Stripe payer who
-  # somehow already holds one: the table has no move for it.
-  defp carry_fee(_intake, _locked, _reading), do: {:error, :illegal_transition}
-
   # The person's own confirm from their Intake page: the console command's
   # rule and act, with no actor and no note.
   defp confirm_by_link(token, clock) do
@@ -4153,50 +3810,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   # ── Carried Fee refunds and forfeits (ALE-389) ─────────────────
-
-  # Refunds a live Carried Fee under its lock: the refund row (the one
-  # `insert_refund/4`, against the fee's original payment, recorded on
-  # `intake`) and the fee `refunded` — the obligation is recorded, so the
-  # fee is no longer held. A failed refund holds it again
-  # (`hold_fee_again/3`). No fee: nothing to refund.
-  defp refund_fee(nil, _intake, _actor, _reason, _reading), do: {:ok, nil}
-
-  defp refund_fee(%CarriedFee{status: status} = fee, intake, actor, reason, reading)
-       when status in ["held", "applied"] do
-    with {:ok, refund} <-
-           insert_refund(
-             {:carried_fee, fee, original_payment(fee), intake},
-             reason,
-             actor,
-             reading
-           ),
-         {:ok, _fee} <-
-           transition(
-             :carried_fee,
-             fee,
-             CarriedFee.status_changeset(fee, "refunded", fee.applied_intake_id, reading.now)
-           ) do
-      {:ok, refund}
-    end
-  end
-
-  defp refund_fee(%CarriedFee{}, _intake, _actor, _reason, _reading),
-    do: {:error, :carried_fee_not_held}
-
-  # A deferral's fee points at its Intake payment row, which is never
-  # edited, so it is read without a lock.
-  defp original_payment(%CarriedFee{payment_id: nil}), do: nil
-  defp original_payment(%CarriedFee{payment_id: id}), do: Repo.get!(IntakePayment, id)
-
-  defp forfeit_fee(nil, _reading), do: {:ok, nil}
-
-  defp forfeit_fee(%CarriedFee{} = fee, reading),
-    do:
-      transition(
-        :carried_fee,
-        fee,
-        CarriedFee.status_changeset(fee, "forfeited", fee.applied_intake_id, reading.now)
-      )
 
   # With no live fee: whether the person's latest Carried Fee was refunded,
   # so a repeated `refund_carried_fee` is already done. Every fee writer
@@ -4277,16 +3890,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     with true <- peek_open_intake(waitlist_id) == nil || {:error, :concurrent_change},
          :ok <- CarriedFeePolicy.check(:refund, person_fee_facts(entry, fee, reading)),
-         {:ok, refund} <- refund_fee(fee, nil, context.actor, "carried_fee_refunded", reading),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:person, entry, refund.intake_id},
-               "carried_fee_refunded",
-               Occasion.carried_fee_refunded(refund.id),
-               reading,
-               refund: refund
-             )
+         {:ok, _settled} <-
+           Settlement.run(
+             {:refund_carried_fee, :no_intake},
+             %{waitlist_entry: entry, carried_fee: fee},
+             reading,
+             actor: context.actor
            ) do
       {:ok, fee_command_view(waitlist_id, nil, :done)}
     end
@@ -4592,30 +4201,27 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       # A person contacted after this pass peeked the entries: the next sweep.
       {:not_locked, _settlement} -> {:ok, nil}
       {_entry, :await_hold} -> {:ok, :awaiting_hold}
-      {entry, :lapse} -> lapse(intake, entry, pass.reading.now)
-      {_entry, :return} -> close(intake, "returned", :returned)
+      {entry, settlement} -> settle_contacted(intake, entry, settlement, pass.reading)
     end
   end
 
   defp entry_of(%Intake{waitlist_id: nil}, _entries), do: nil
   defp entry_of(%Intake{waitlist_id: id}, entries), do: Map.get(entries, id, :not_locked)
 
-  # A lapse removes a waiting person (story 86). A person staff already
-  # removed stays removed; an anonymised one has no standing.
-  defp lapse(intake, %WaitlistEntry{status: "waiting", id: id}, now) do
-    with {:ok, counted} <- close(intake, "lapsed", :lapsed),
-         {:ok, _entry} <- Waitlist.change_standing(id, "removed", now: now),
-         do: {:ok, counted}
+  # A lapse or a return, counted by its name (`Commands.Settlement`'s
+  # `:cutoff` rows).
+  defp settle_contacted(intake, entry, settlement, reading) do
+    with {:ok, _settled} <-
+           Settlement.run(
+             {:cutoff, settlement},
+             %{waitlist_entry: entry, intake: intake},
+             reading
+           ),
+         do: {:ok, counted(settlement)}
   end
 
-  defp lapse(intake, _entry, _now), do: close(intake, "lapsed", :lapsed)
-
-  # A return leaves the standing alone: a contacted person is still
-  # `waiting`, and their priority date was never touched (story 87).
-  defp close(intake, state, counted) do
-    with {:ok, _intake} <- transition(:intake, intake, Intake.close_changeset(intake, state)),
-         do: {:ok, counted}
-  end
+  defp counted(:lapse), do: :lapsed
+  defp counted(:return), do: :returned
 
   # ── finish_workshop / finalise_attendance ───────────────────────
 
@@ -4764,7 +4370,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp finaliser(:system), do: nil
 
   # The check-in record decides: in → `attended`, not in → `no_show`
-  # (standing `removed`, story 104, with no email). A person contacted
+  # (`Commands.Settlement`'s `:finalisation` rows). A person contacted
   # after the entries were locked cannot exist after the cutoff, so an
   # unlocked entry is a race: roll back and let the next attempt decide.
   defp finalise_intake(%Intake{state: "paid"} = intake, pass) do
@@ -4773,15 +4379,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         {:error, :concurrent_change}
 
       entry ->
-        {state, counted, standing} =
-          if intake.checked_in_at,
-            do: {"attended", :attended, "attended"},
-            else: {"no_show", :no_show, "removed"}
+        ending = if intake.checked_in_at, do: :attended, else: :no_show
 
-        with {:ok, counted} <- close(intake, state, counted),
-             {:ok, _entry} <- follow_standing(entry, standing, pass.reading.now),
-             {:ok, _fee} <- end_fee(Map.get(pass.fees, intake.id), state, pass.reading),
-             do: {:ok, counted}
+        rows = %{
+          waitlist_entry: entry,
+          intake: intake,
+          carried_fee: Map.get(pass.fees, intake.id)
+        }
+
+        with {:ok, _settled} <- Settlement.run({:finalisation, ending}, rows, pass.reading),
+             do: {:ok, ending}
     end
   end
 
@@ -4791,32 +4398,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     case {entry_of(intake, pass.entries),
           WorkshopPolicy.cutoff_settlement(false, pass.workshop, pass.facts)} do
       {:not_locked, _settlement} -> {:error, :concurrent_change}
-      {entry, :lapse} -> lapse(intake, entry, pass.reading.now)
-      {_entry, :return} -> close(intake, "returned", :returned)
+      {entry, settlement} -> settle_contacted(intake, entry, settlement, pass.reading)
     end
-  end
-
-  defp end_fee(nil, _state, _reading), do: {:ok, nil}
-
-  defp end_fee(%CarriedFee{} = fee, state, reading) do
-    status = if state == "attended", do: "spent", else: "forfeited"
-
-    transition(
-      :carried_fee,
-      fee,
-      CarriedFee.status_changeset(fee, status, fee.applied_intake_id, reading.now)
-    )
-  end
-
-  # An anonymised person has no standing; one whose standing already moved
-  # (a coordinator removed them, say) keeps it unless the table allows the
-  # change.
-  defp follow_standing(nil, _to, _now), do: {:ok, nil}
-
-  defp follow_standing(%WaitlistEntry{status: from} = entry, to, now) do
-    if Standing.allowed?(from, to),
-      do: Waitlist.change_standing(entry.id, to, now: now),
-      else: {:ok, entry}
   end
 
   # The Staff list freezes as the permanent record (story 18): each row
