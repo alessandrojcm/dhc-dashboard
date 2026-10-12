@@ -175,7 +175,7 @@ function harness(
 		listed: () =>
 			vi.waitFor(() => expect(workbench.items.length).toBeGreaterThan(0)),
 		selectedLoaded: () =>
-			vi.waitFor(() => expect(workbench.item).toBeDefined()),
+			vi.waitFor(() => expect(workbench.drafts).toBeDefined()),
 	};
 }
 
@@ -317,7 +317,7 @@ describe("createItemWorkbench", () => {
 			expect(h.workbench.routed).toBe(true);
 			expect(h.workbench.creating).toBe(false);
 			expect(h.workbench.selected?.slug).toBe("item-000001");
-			expect(h.workbench.item).toMatchObject({
+			expect(h.workbench.drafts).toMatchObject({
 				notes: "Training loaner",
 				values: { [SIZE]: "opt-medium" },
 				containerId: RACK,
@@ -338,13 +338,13 @@ describe("createItemWorkbench", () => {
 
 			expect(h.workbench.creating).toBe(true);
 			expect(h.workbench.selected).toBeUndefined();
-			expect(h.workbench.item).toBeUndefined();
+			expect(h.workbench.drafts).toBeUndefined();
 		});
 
 		it("starts fresh drafts, on the details tab, when another item is routed", async () => {
 			const h = harness({ path: `${LIST}/item-000001` });
 			await h.selectedLoaded();
-			h.workbench.item!.notes = "Edited";
+			h.workbench.drafts!.notes = "Edited";
 			h.workbench.managementTab = "maintenance";
 
 			h.go(`${LIST}/item-000002`);
@@ -352,7 +352,7 @@ describe("createItemWorkbench", () => {
 				expect(h.workbench.selected?.slug).toBe("item-000002"),
 			);
 
-			expect(h.workbench.item?.notes).toBe("");
+			expect(h.workbench.drafts?.notes).toBe("");
 			expect(h.workbench.managementTab).toBe("details");
 		});
 
@@ -379,7 +379,7 @@ describe("createItemWorkbench", () => {
 			const definition = { id: PADDED, valueType: "boolean" } as const;
 
 			expect(h.workbench.dirty.details).toBe(false);
-			h.workbench.item!.notes = "  Training loaner  ";
+			h.workbench.drafts!.notes = "  Training loaner  ";
 			expect(h.workbench.dirty.details).toBe(false);
 
 			h.workbench.setValue("details", definition, "false");
@@ -397,9 +397,9 @@ describe("createItemWorkbench", () => {
 			const h = harness({ path: `${LIST}/item-000001` });
 			await h.selectedLoaded();
 
-			h.workbench.item!.containerId = CUPBOARD;
+			h.workbench.drafts!.containerId = CUPBOARD;
 			expect(h.workbench.dirty.placement).toBe(true);
-			h.workbench.item!.containerId = RACK;
+			h.workbench.drafts!.containerId = RACK;
 			expect(h.workbench.dirty.placement).toBe(false);
 		});
 
@@ -408,11 +408,11 @@ describe("createItemWorkbench", () => {
 			await h.selectedLoaded();
 
 			h.workbench.chooseNewCategory(MASKS);
-			expect(h.workbench.item?.categoryValues).toEqual({});
+			expect(h.workbench.drafts?.categoryValues).toEqual({});
 			expect(h.workbench.dirty.category).toBe(true);
 
 			h.workbench.chooseNewCategory(BLADES);
-			expect(h.workbench.item?.categoryValues).toEqual({
+			expect(h.workbench.drafts?.categoryValues).toEqual({
 				[SIZE]: "opt-medium",
 			});
 			expect(h.workbench.dirty.category).toBe(false);
@@ -445,7 +445,7 @@ describe("createItemWorkbench", () => {
 		it("adopts the item an update answers with and flashes Save", async () => {
 			const h = await managing();
 			const invalidate = vi.spyOn(h.queryClient, "invalidateQueries");
-			h.workbench.item!.notes = "Sharpened";
+			h.workbench.drafts!.notes = "Sharpened";
 			const answered = item({ notes: "Sharpened" });
 
 			await h.workbench.enhance.update(
@@ -453,7 +453,7 @@ describe("createItemWorkbench", () => {
 			);
 			expect(h.workbench.succeeded("details")).toBe(true);
 
-			expect(h.workbench.item?.notes).toBe("Sharpened");
+			expect(h.workbench.drafts?.notes).toBe("Sharpened");
 			expect(h.workbench.dirty.details).toBe(false);
 			await vi.waitFor(() =>
 				expect(h.workbench.selected?.notes).toBe("Sharpened"),
@@ -466,13 +466,13 @@ describe("createItemWorkbench", () => {
 
 		it("keeps the drafts and stays quiet when an update is refused", async () => {
 			const h = await managing();
-			h.workbench.item!.notes = "Sharpened";
+			h.workbench.drafts!.notes = "Sharpened";
 
 			await h.workbench.enhance.update(
 				submission({ ok: false, error: "Item is archived" }),
 			);
 
-			expect(h.workbench.item?.notes).toBe("Sharpened");
+			expect(h.workbench.drafts?.notes).toBe("Sharpened");
 			expect(h.workbench.dirty.details).toBe(true);
 			expect(h.workbench.succeeded("details")).toBe(false);
 			expect(h.notify.error).not.toHaveBeenCalled();
@@ -480,13 +480,13 @@ describe("createItemWorkbench", () => {
 
 		it("does nothing for a submission that failed validation", async () => {
 			const h = await managing();
-			h.workbench.item!.notes = "Sharpened";
+			h.workbench.drafts!.notes = "Sharpened";
 
 			await h.workbench.enhance.update(
 				submission({ ok: true, data: item({ notes: "x" }) }, false),
 			);
 
-			expect(h.workbench.item?.notes).toBe("Sharpened");
+			expect(h.workbench.drafts?.notes).toBe("Sharpened");
 			expect(h.workbench.succeeded("details")).toBe(false);
 		});
 
@@ -516,7 +516,7 @@ describe("createItemWorkbench", () => {
 				);
 				expect(h.workbench.succeeded(form)).toBe(true);
 
-				expect(h.workbench.item).toMatchObject({
+				expect(h.workbench.drafts).toMatchObject({
 					containerId: answered.containerId,
 					categoryId: answered.categoryId,
 				});
@@ -525,6 +525,31 @@ describe("createItemWorkbench", () => {
 					placement: false,
 					category: false,
 				});
+			},
+		);
+
+		it.each([
+			["move", "placement"],
+			["changeCategory", "category"],
+			["startMaintenance", "maintenance"],
+			["endMaintenance", "maintenance"],
+		] as const)(
+			"leaves the drafts and stays quiet when %s is refused",
+			async (command, form) => {
+				const h = await managing();
+				h.workbench.drafts!.containerId = CUPBOARD;
+				h.workbench.drafts!.maintenanceReason = "Inspect strap";
+
+				await h.workbench.enhance[command](
+					submission({ ok: false, error: "A loan holds this item" }),
+				);
+
+				expect(h.workbench.drafts).toMatchObject({
+					containerId: CUPBOARD,
+					maintenanceReason: "Inspect strap",
+				});
+				expect(h.workbench.succeeded(form)).toBe(false);
+				expect(h.notify.error).not.toHaveBeenCalled();
 			},
 		);
 

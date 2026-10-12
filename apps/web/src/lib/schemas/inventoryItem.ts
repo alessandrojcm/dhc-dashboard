@@ -21,7 +21,10 @@ import {
 	vInventoryOperatorItemUpdateRequest,
 } from "@dhc/api-client";
 import * as v from "valibot";
-import { decodePropertyDraft } from "#lib/inventory/property-values.js";
+import {
+	decodePropertyDraft,
+	draftValueSchema,
+} from "#lib/inventory/property-values.js";
 
 /** The item a command addresses: its code or id, as a hidden field. */
 const slugOrId = v.pipe(v.string(), v.minLength(1, "An item is required"));
@@ -40,15 +43,14 @@ const optionalText = <TOutput extends string>(
 		v.nullable(limit),
 	);
 
-/** The property draft, encoded as JSON in one hidden input. */
+/**
+ * The property draft, encoded as JSON in one hidden input. The record
+ * re-checks the decoded draft so its keys must be definition ids.
+ */
 const propertyValues = v.pipe(
 	v.string(),
 	v.transform(decodePropertyDraft),
-	v.record(
-		recordId,
-		v.nullable(v.union([v.string(), v.boolean(), v.number()])),
-		"Item properties are invalid",
-	),
+	v.record(recordId, draftValueSchema, "Item properties are invalid"),
 );
 
 const notesFor = {

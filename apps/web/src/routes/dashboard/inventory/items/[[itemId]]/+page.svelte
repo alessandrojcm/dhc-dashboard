@@ -793,9 +793,9 @@ function booleanLabel(input: string) {
 	</Sheet.Content>
 </Sheet.Root>
 
-{#if workbench.selected && workbench.item}
+{#if workbench.selected && workbench.drafts}
 	{@const selected = workbench.selected}
-	{@const item = workbench.item}
+	{@const drafts = workbench.drafts}
 	<section
 		class="inventory-page !pt-0 max-lg:max-w-none max-lg:px-0 max-lg:pb-0 max-lg:animate-in max-lg:fade-in-0 max-lg:slide-in-from-right-4 max-lg:duration-200 max-lg:motion-reduce:animate-none"
 	>
@@ -896,7 +896,7 @@ function booleanLabel(input: string) {
 								{:else}
 									{@render fields(
 										workbench.detailsDefinitions.data ?? [],
-										item.values,
+										drafts.values,
 										"details",
 										updateItem.fields.values.issues(),
 									)}
@@ -906,7 +906,7 @@ function booleanLabel(input: string) {
 									<Textarea
 										id="edit-notes"
 										name={updateItem.fields.notes.as("text").name}
-										bind:value={item.notes}
+										bind:value={drafts.notes}
 									/>
 								</div>
 							</form>
@@ -973,7 +973,7 @@ function booleanLabel(input: string) {
 												aria-invalid={archiveItem.fields.reason.issues()?.length
 													? true
 													: undefined}
-												bind:value={item.archiveReason}
+												bind:value={drafts.archiveReason}
 											/>
 											<Field.Error
 												errors={archiveItem.fields.reason.issues()}
@@ -1039,7 +1039,10 @@ function booleanLabel(input: string) {
 								{...moveItem.fields.slugOrId.as("hidden", selected.slug)}
 							/>
 							<input
-								{...moveItem.fields.containerId.as("hidden", item.containerId)}
+								{...moveItem.fields.containerId.as(
+									"hidden",
+									drafts.containerId,
+								)}
 							/>
 							{#each moveItem.fields.allIssues() as issue, index (`${issue.message}-${index}`)}<p
 									role="alert"
@@ -1066,7 +1069,7 @@ function booleanLabel(input: string) {
 								<Select.Root
 									type="single"
 									items={workbench.containerOptions}
-									bind:value={item.containerId}
+									bind:value={drafts.containerId}
 									required
 								>
 									<Select.Trigger
@@ -1074,7 +1077,7 @@ function booleanLabel(input: string) {
 										class="w-full data-[size=default]:h-11"
 									>
 										{workbench.containerOptions.find(
-											(option) => option.value === item.containerId,
+											(option) => option.value === drafts.containerId,
 										)?.label ?? "Choose container"}
 									</Select.Trigger>
 									<Select.Content portalProps={{ disabled: true }}>
@@ -1117,7 +1120,7 @@ function booleanLabel(input: string) {
 							<input
 								{...changeItemCategory.fields.categoryId.as(
 									"hidden",
-									item.categoryId,
+									drafts.categoryId,
 								)}
 							/>
 							<input
@@ -1150,7 +1153,7 @@ function booleanLabel(input: string) {
 									type="single"
 									items={workbench.categoryOptions}
 									bind:value={
-										() => item.categoryId,
+										() => drafts.categoryId,
 										(value) => workbench.chooseNewCategory(value)
 									}
 									required
@@ -1160,7 +1163,7 @@ function booleanLabel(input: string) {
 										class="w-full data-[size=default]:h-11"
 									>
 										{workbench.categoryOptions.find(
-											(option) => option.value === item.categoryId,
+											(option) => option.value === drafts.categoryId,
 										)?.label ?? "Choose category"}
 									</Select.Trigger>
 									<Select.Content portalProps={{ disabled: true }}>
@@ -1179,7 +1182,7 @@ function booleanLabel(input: string) {
 							{:else}
 								{@render fields(
 									workbench.categoryDefinitions.data ?? [],
-									item.categoryValues,
+									drafts.categoryValues,
 									"category",
 									changeItemCategory.fields.values.issues(),
 								)}
@@ -1245,7 +1248,7 @@ function booleanLabel(input: string) {
 									<Textarea
 										id="maintenance-end-note"
 										name={endItemMaintenance.fields.endNote.as("text").name}
-										bind:value={item.maintenanceEndNote}
+										bind:value={drafts.maintenanceEndNote}
 									/>
 								</div>
 								<SubmitButton
@@ -1294,12 +1297,12 @@ function booleanLabel(input: string) {
 									<Textarea
 										id="maintenance-reason"
 										name={startItemMaintenance.fields.reason.as("text").name}
-										bind:value={item.maintenanceReason}
+										bind:value={drafts.maintenanceReason}
 									/>
 								</div>
 								<SubmitButton
 									type="submit"
-									disabled={!item.maintenanceReason.trim() ||
+									disabled={!drafts.maintenanceReason.trim() ||
 										startItemMaintenance.pending > 0}
 									pending={startItemMaintenance.pending > 0}
 									succeeded={workbench.succeeded("maintenance")}

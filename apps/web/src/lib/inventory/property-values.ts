@@ -26,6 +26,9 @@ const draftSchema = v.record(
 	v.nullable(v.union([v.string(), v.boolean(), v.number()])),
 );
 
+/** One draft value as the request carries it. */
+export const draftValueSchema = draftSchema.value;
+
 /** The draft an item's stored values start from. */
 export function draftFromItem(
 	item: Pick<InventoryOperatorItem, "values">,

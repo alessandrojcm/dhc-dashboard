@@ -110,7 +110,7 @@ export function availabilityLabel(
 	return AVAILABILITY_LABELS[status];
 }
 
-function parseFilter<T extends string>(
+function pickOption<T extends string>(
 	options: readonly { value: T }[],
 	value: string | null,
 	fallback: T,
@@ -242,10 +242,10 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 	});
 
 	const archived = $derived(
-		parseFilter(ARCHIVE_FILTERS, table.filter("archived"), "exclude"),
+		pickOption(ARCHIVE_FILTERS, table.filter("archived"), "exclude"),
 	);
 	const availability = $derived(
-		parseFilter(AVAILABILITY_FILTERS, table.filter("availability"), "all"),
+		pickOption(AVAILABILITY_FILTERS, table.filter("availability"), "all"),
 	);
 	const listRequest = $derived.by(
 		(): NonNullable<InventoryItemsListData["query"]> => {
@@ -285,6 +285,9 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		const query = params.toString();
 		return query ? `?${query}` : "";
 	});
+
+	const listHref = () => `${ITEMS_PATH}${listSearch}`;
+	const itemHref = (slug: string) => `${ITEMS_PATH}/${slug}${listSearch}`;
 
 	// ── Routed selection ─────────────────────────────────────────────────
 
@@ -413,6 +416,8 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		if (!selectedSlug) return undefined;
 		return untrack(() => (selected ? itemDrafts(selected) : undefined));
 	});
+	// Writable deriveds: reading `selectedSlug` resets them to their initial
+	// value whenever another item is selected; the page may assign them.
 	let managementTab = $derived.by((): ManagementTab => {
 		void selectedSlug;
 		return "details";
@@ -563,18 +568,19 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		 * Flashes the button, then opens the new item's route. No toast: it
 		 * would cover the next submit.
 		 */
-		create: submitted((result) => {
+		create: submitted(async (result) => {
 			if (!result.ok) return;
 			const item = result.data;
+			const href = itemHref(item.slug);
 			queryClient.setQueryData<InventoryItemsShowResponse>(
 				inventoryItemsShowQueryKey({ path: { slugOrId: item.slug } }),
 				{ data: item },
 			);
 			flash("create", () => {
 				resetCreate();
-				void invalidateLists(item.slug);
-				void visit(`${ITEMS_PATH}/${item.slug}${listSearch}`);
+				void visit(href);
 			});
+			await invalidateLists(item.slug);
 		}),
 		update: edited("details"),
 		move: edited("placement"),
@@ -597,7 +603,7 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 					}),
 				});
 			}
-			await visit(`${ITEMS_PATH}${listSearch}`);
+			await visit(listHref());
 			await queryClient.invalidateQueries({
 				queryKey: inventoryItemsListQueryKey(),
 			});
@@ -627,7 +633,7 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		},
 		/** Takes a select's value; one the page does not offer is ignored. */
 		setArchived(value: string) {
-			const next = parseFilter(ARCHIVE_FILTERS, value, archived);
+			const next = pickOption(ARCHIVE_FILTERS, value, archived);
 			table.setFilter("archived", next === "exclude" ? null : next);
 		},
 		get availability() {
@@ -635,7 +641,7 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		},
 		/** Takes a select's value; one the page does not offer is ignored. */
 		setAvailability(value: string) {
-			const next = parseFilter(AVAILABILITY_FILTERS, value, availability);
+			const next = pickOption(AVAILABILITY_FILTERS, value, availability);
 			table.setFilter("availability", next === "all" ? null : next);
 		},
 		get activeFilterCount() {
@@ -661,14 +667,12 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		},
 		/** The list, with its search and filters. */
 		get listHref() {
-			return `${ITEMS_PATH}${listSearch}`;
+			return listHref();
 		},
 		get newItemHref() {
 			return `${ITEMS_PATH}/new${listSearch}`;
 		},
-		itemHref(slug: string) {
-			return `${ITEMS_PATH}/${slug}${listSearch}`;
-		},
+		itemHref,
 
 		// Routed selection
 		/** Whether the route is an item or the create form, not the list. */
@@ -702,7 +706,7 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		/** The create form's draft; `categoryId` goes through `chooseCreateCategory`. */
 		create,
 		/** The managed item's drafts; `categoryId` goes through `chooseNewCategory`. */
-		get item() {
+		get drafts() {
 			return drafts?.fields;
 		},
 		/** The property drafts as their hidden inputs carry them. */
@@ -728,7 +732,7 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 			return managementTab;
 		},
 		set managementTab(tab: string) {
-			managementTab = parseFilter(MANAGEMENT_TABS, tab, managementTab);
+			managementTab = pickOption(MANAGEMENT_TABS, tab, managementTab);
 		},
 		get deleteConfirmOpen() {
 			return deleteConfirmOpen;
