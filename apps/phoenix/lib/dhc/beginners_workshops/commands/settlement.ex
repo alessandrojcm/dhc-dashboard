@@ -48,7 +48,14 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
         (a correction must reach its standing);
     * `{:paying_fee, status}` — the Carried Fee that paid a
       Carried-Fee-paid Intake moves to `status` (`:illegal_transition`
-      when the locked fee is no longer it); a Stripe-paid Intake has none;
+      when the locked fee is no longer it); a Stripe-paid Intake has none.
+      An attendance correction must reach its fee, so it is strict;
+    * `{:paying_fee, status, :if_locked}` — Attendance Finalisation's
+      variant: the fee the caller locked as applied to this Intake (if any)
+      moves to `status`, keeping its `applied_intake_id`; with none,
+      nothing. It never refuses, because finalisation runs from the sweep
+      every 5 minutes: one Intake whose fee moved on must not block the
+      whole workshop's finalisation on every pass;
     * `:carry` — the person's money becomes a `held` Carried Fee: the fee
       that paid a Carried-Fee-paid Intake is held again, a Stripe-paid
       Intake's paying payment makes a new deferral fee (`:payment_not_found`
@@ -135,7 +142,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
       steps: [
         {:close, "attended"},
         {:standing, "attended", :if_allowed},
-        {:paying_fee, "spent"}
+        {:paying_fee, "spent", :if_locked}
       ]
     },
     # A no-show is removed (story 104) and emailed nothing.
@@ -144,7 +151,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
       steps: [
         {:close, "no_show"},
         {:standing, "removed", :if_allowed},
-        {:paying_fee, "forfeited"}
+        {:paying_fee, "forfeited", :if_locked}
       ]
     },
 
@@ -470,6 +477,19 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp step({:paying_fee, _status, :if_locked}, %{rows: %{carried_fee: nil}} = state),
+    do: {:ok, state}
+
+  defp step({:paying_fee, status, :if_locked}, %{rows: %{carried_fee: fee}} = state) do
+    with {:ok, fee} <-
+           transition(
+             :carried_fee,
+             fee,
+             CarriedFee.status_changeset(fee, status, fee.applied_intake_id, state.reading.now)
+           ),
+         do: {:ok, put_row(state, :carried_fee, fee)}
   end
 
   defp step(:carry, %{rows: %{intake: %Intake{paid_via: "carried_fee"}}} = state),

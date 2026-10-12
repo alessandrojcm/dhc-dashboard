@@ -63,6 +63,18 @@ defmodule Dhc.BeginnersWorkshops.SettlementTableTest do
     assert standings == [["attended"], ["removed"], ["waiting"]]
   end
 
+  test "finalisation spends or forfeits only the fee it locked; corrections stay strict" do
+    for ending <- [:attended, :no_show] do
+      %{steps: steps} = Map.fetch!(Settlement.table(), {:finalisation, ending})
+      assert [{:paying_fee, _status, :if_locked}] = for({:paying_fee, _, _} = s <- steps, do: s)
+    end
+
+    for to <- ~w(attended no_show) do
+      %{steps: steps} = Map.fetch!(Settlement.table(), {:correct_attendance, to})
+      assert [{:paying_fee, _status}] = for({:paying_fee, _} = s <- steps, do: s)
+    end
+  end
+
   defp flatten(steps) do
     Enum.flat_map(steps, fn
       {:by_choice, refunded, forfeited} -> flatten(refunded) ++ flatten(forfeited)
@@ -85,6 +97,7 @@ defmodule Dhc.BeginnersWorkshops.SettlementTableTest do
   end
 
   defp assert_legal({:paying_fee, to}, from), do: assert_fee(from, to)
+  defp assert_legal({:paying_fee, to, :if_locked}, from), do: assert_fee(from, to)
 
   # A Stripe payer's deferral creates a `held` fee; a Carried-Fee-paid one's
   # fee moves back to `held`.
