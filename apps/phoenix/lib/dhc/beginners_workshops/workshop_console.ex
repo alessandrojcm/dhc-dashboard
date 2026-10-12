@@ -83,6 +83,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     DoorView,
     Intake,
     IntakeEmailLog,
+    IntakeEmails,
     IntakeEvent,
     IntakePayment,
     IntakePolicy,
@@ -397,33 +398,12 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
-  # The scheduled email still owed, by the same occasions the passes use:
-  # "Pre-workshop info" for this schedule to a `paid` Intake of a scheduled
-  # workshop, at the Payment Cutoff (`IntakeEmailLog.pre_workshop_occasion/1`),
-  # and the Follow-up to an `attended` Intake (`WorkshopPolicy.follow_up_at/1`).
-  # An `at` in the past means the next sweep.
-  defp scheduled_emails(%{state: "paid"}, logged, %BeginnersWorkshop{status: "scheduled"} = w),
-    do:
-      owed(
-        logged,
-        IntakeEmailLog.pre_workshop_occasion(w.reschedule_count),
-        "pre_workshop",
-        w.payment_cutoff
-      )
-
-  defp scheduled_emails(
-         %{state: "attended"},
-         logged,
-         %BeginnersWorkshop{status: "finalised"} = w
-       ),
-       do: owed(logged, "follow_up", "follow_up", WorkshopPolicy.follow_up_at(w))
-
-  defp scheduled_emails(_row, _logged, _workshop), do: []
-
-  defp owed(logged, occasion, email_type, at) do
-    if Enum.any?(logged, &(&1.occasion == occasion)),
-      do: [],
-      else: [%{email_type: email_type, occasion: nil, at: at, scheduled: true}]
+  # The scheduled email still owed (`IntakeEmails.scheduled/3`, the same
+  # occasions the passes use). An `at` in the past means the next sweep.
+  defp scheduled_emails(%{state: state}, logged, workshop) do
+    state
+    |> IntakeEmails.scheduled(Enum.map(logged, & &1.occasion), workshop)
+    |> Enum.map(&Map.merge(&1, %{occasion: nil, scheduled: true}))
   end
 
   # Each Intake's history, oldest first, the actor named by their profile.

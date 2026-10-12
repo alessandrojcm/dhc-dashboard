@@ -68,6 +68,20 @@
       # only Scheduling may insert Oban jobs.
       {"Dhc.TrainingAnnouncements.*", ["Oban.insert", "Oban.insert!", "Oban.insert_all"],
        except: ["Dhc.TrainingAnnouncements.Scheduling"]},
+      # ALE-401: an Intake Email is queued only by a Beginners' Workshop
+      # command (CONTEXT.md "Intake Emails"), never by a staff action itself;
+      # the template editor and the ledger queries stay open to the facade,
+      # the console and the web layer.
+      {["Dhc.*", "DhcWeb.*"],
+       [
+         "Dhc.BeginnersWorkshops.IntakeEmails.deliver",
+         "Dhc.BeginnersWorkshops.IntakeEmails.queue"
+       ],
+       except: [
+         "Dhc.BeginnersWorkshops.Commands",
+         "Dhc.BeginnersWorkshops.Commands.*",
+         "Dhc.BeginnersWorkshops.IntakeEmails"
+       ]},
       # Stripe goes through the generated Dhc.Stripe.Operations.* API only;
       # the raw client escape hatch is reserved for debugging the client
       # boundary itself (docs/agents/anti-patterns.md).

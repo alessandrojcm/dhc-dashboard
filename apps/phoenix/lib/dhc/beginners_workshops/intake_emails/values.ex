@@ -36,4 +36,16 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Values do
   def money(cents) when is_integer(cents) and cents >= 0 do
     "€#{div(cents, 100)}.#{cents |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0")}"
   end
+
+  @doc """
+  A refund's amount: `money/1` in euro, else `12.34 USD` (a refund repays
+  what the payment took, in the currency it took it in).
+  """
+  @spec refund_amount(%{amount_cents: non_neg_integer(), currency: String.t()}) :: String.t()
+  def refund_amount(%{amount_cents: cents, currency: "eur"}), do: money(cents)
+
+  def refund_amount(%{amount_cents: cents, currency: currency}),
+    do:
+      "#{div(cents, 100)}.#{cents |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0")} " <>
+        String.upcase(currency)
 end

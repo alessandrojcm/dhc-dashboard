@@ -22,7 +22,7 @@ defmodule Dhc.BeginnersWorkshops do
     DoorView,
     FastTrackCandidates,
     Intake,
-    IntakeEmailLog,
+    IntakeEmails,
     IntakePage,
     Invitable,
     MyWorkshops,
@@ -223,13 +223,7 @@ defmodule Dhc.BeginnersWorkshops do
   defp run_follow_up_passes(opts) do
     today = Clock.read(Clock.from_opts(opts)).today
 
-    owed =
-      from(i in Intake,
-        left_join: l in IntakeEmailLog,
-        on: l.intake_id == i.id and l.occasion == "follow_up",
-        where: i.state == "attended" and not is_nil(i.waitlist_id) and is_nil(l.id),
-        select: i.workshop_id
-      )
+    owed = :follow_up |> IntakeEmails.owing() |> select([intake: i], i.workshop_id)
 
     from(w in BeginnersWorkshop,
       where: w.status == "finalised" and w.date < ^today and w.id in subquery(owed),
@@ -286,22 +280,13 @@ defmodule Dhc.BeginnersWorkshops do
 
   # Only a filter, so a quiet workshop is not locked every sweep: the pass
   # itself decides what is owed under the lock. Pre-workshop info is owed
-  # once per schedule (`IntakeEmailLog.pre_workshop_occasion/1`, ALE-394).
+  # once per schedule (`IntakeEmails.owing/1`, ALE-394).
   defp cutoff_owed_ids(now) do
+    pre_workshop = :pre_workshop |> IntakeEmails.owing() |> select([intake: i], i.id)
+
     owed =
       from(i in Intake,
         as: :intake,
-        join: w in BeginnersWorkshop,
-        on: w.id == i.workshop_id,
-        left_join: l in IntakeEmailLog,
-        on:
-          l.intake_id == i.id and
-            l.occasion ==
-              fragment(
-                "CASE WHEN ? = 0 THEN 'pre_workshop' ELSE 'pre_workshop:' || ? END",
-                w.reschedule_count,
-                w.reschedule_count
-              ),
         # A Carried Fee holder's contacted Intake stays open until
         # finalisation (ALE-388), so it owes the cutoff pass nothing.
         where:
@@ -312,7 +297,7 @@ defmodule Dhc.BeginnersWorkshops do
                  select: 1
                )
              )) or
-            (i.state == "paid" and not is_nil(i.waitlist_id) and is_nil(l.id)),
+            i.id in subquery(pre_workshop),
         select: i.workshop_id
       )
 

@@ -99,8 +99,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   live `BatchProposal` of `WorkshopPolicy.batch_size/2` people; their
   Waitlist entries are locked and re-checked, and a person taken by a
   concurrent command makes the pass retry from a fresh proposal. Each new
-  Intake queues "Contact – pay" through `IntakeEmails.queue/4` and writes an
-  Intake Email log row in the same transaction, and the coordinator-alert
+  Intake queues its Contact email through `IntakeEmails.deliver/5`, which
+  writes the Intake Email ledger row in the same transaction, and the coordinator-alert
   holders get a keyed "Batch sent" Notification (signalled after commit).
   With free seats but nobody eligible waiting it sends one keyed
   Notification per workshop and nothing else. The Batch number's unique
@@ -128,7 +128,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       `rescheduled:<n>`); seats, holds and windows' people are untouched;
     * the workshop's `reschedule_count` names the reschedule: Pre-workshop
       info is owed once per schedule (occasion
-      `IntakeEmailLog.pre_workshop_occasion/1`), so anyone who had it gets it
+      `IntakeEmails.Occasion.pre_workshop/1`), so anyone who had it gets it
       again at the new cutoff through the same Payment Cutoff pass;
     * every Staff member (the actor included) gets a keyed Notification
       (`beginners-workshop:<id>:rescheduled:<n>`), signalled after commit.
@@ -400,7 +400,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   a Stripe-paid no-show corrected to deferred gets a `held` Carried Fee on
   its payment, exactly as `defer` makes one, and "Deferred" is queued. A
   person corrected to attended once the Follow-up is due gets it at once
-  (the same `queue_follow_up/3`); before then the sweep sends it. Other
+  (the same `follow_up_email/3`); before then the sweep sends it. Other
   corrections email nobody.
 
   ## Hard delete: retention purge and manual delete (ALE-396)
@@ -498,7 +498,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     Clock,
     Intake,
     IntakeCheckout,
-    IntakeEmailLog,
     IntakeEmails,
     IntakeEvent,
     IntakeLink,
@@ -512,7 +511,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     WorkshopProjection
   }
 
-  alias Dhc.BeginnersWorkshops.IntakeEmails.Values
+  alias Dhc.BeginnersWorkshops.IntakeEmails.{Occasion, Values}
   alias Dhc.BeginnersWorkshops.Workers.RefundWorker
   alias Dhc.ClubCalendar
   alias Dhc.Notifications
@@ -837,9 +836,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     Intake => [
       {:waitlist_id, "beginners_workshop_intakes_one_open_per_person_index", :concurrent_change},
       {:link_token_hash, "beginners_workshop_intakes_link_token_hash_index", :concurrent_change}
-    ],
-    IntakeEmailLog => [
-      {:occasion, "beginners_workshop_intake_emails_occasion_index", :concurrent_change}
     ],
     # Staff rows are written under the workshop lock, so these are backstops.
     StaffAssignment => [
@@ -1440,7 +1436,16 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            })
            |> persist(),
          :ok <- clamp_open_windows(workshop, reading),
-         :ok <- tell_open_intakes(intakes, workshop, reading),
+         :ok <-
+           emailed_each(
+             intakes,
+             &IntakeEmails.deliver(
+               {:intake, &1, workshop},
+               "rescheduled",
+               Occasion.rescheduled(workshop.reschedule_count),
+               reading
+             )
+           ),
          {:ok, created} <- notify_rescheduled(workshop) do
       {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), reading), created}}
     end
@@ -1533,25 +1538,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     |> Enum.reduce_while(:ok, fn batch, :ok ->
       case batch |> Batch.clamp_window_changeset(clamp_to) |> persist() do
         {:ok, _batch} -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
-    end)
-  end
-
-  defp tell_open_intakes(intakes, workshop, reading) do
-    occasion = IntakeEmailLog.rescheduled_occasion(workshop.reschedule_count)
-
-    values = fn first_name ->
-      Map.put(
-        base_values(workshop, first_name),
-        "paymentCutoff",
-        Values.deadline(workshop.payment_cutoff)
-      )
-    end
-
-    Enum.reduce_while(intakes, :ok, fn intake, :ok ->
-      case queue_intake_email(intake, "rescheduled", occasion, values, reading) do
-        :ok -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
@@ -1737,7 +1723,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     with {:ok, intake} <- discard_check_in(intake),
          {:ok, intake} <-
            defer_paid(%{one | intake: intake} |> Map.put(:payment, payment), reading),
-         :ok <- queue_cancelled(intake, one.workshop, "cancelled_paid", reading),
+         :ok <-
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, one.workshop},
+               "cancelled_paid",
+               Occasion.cancelled(),
+               reading
+             )
+           ),
          {:ok, _event} <-
            record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
          do: {:ok, %{deferred: 1}}
@@ -1755,7 +1749,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            transition(:intake, intake, Intake.close_changeset(intake, "returned")),
          :ok <- Enum.reduce_while(holds, :ok, &release_each/2),
          :ok <- back_to_waiting(one.waitlist_entry, reading.now),
-         :ok <- queue_cancelled(intake, one.workshop, "cancelled_unpaid", reading),
+         :ok <-
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, one.workshop},
+               "cancelled_unpaid",
+               Occasion.cancelled(),
+               reading
+             )
+           ),
          {:ok, _event} <-
            record_intake_event(intake, :cancel_workshop, Ecto.UUID.generate(), context, reading),
          do: {:ok, %{returned: 1, released: length(holds)}}
@@ -1772,16 +1774,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp discard_check_in(%Intake{} = intake),
     do: intake |> Intake.undo_check_in_changeset() |> persist()
-
-  defp queue_cancelled(intake, workshop, type, reading),
-    do:
-      queue_intake_email(
-        intake,
-        type,
-        "cancelled",
-        &%{"firstName" => &1, "date" => Values.date(workshop.date)},
-        reading
-      )
 
   # Assigned Staff stay on the (read-only) record; each one (the actor
   # included) hears that it is off, once.
@@ -1909,11 +1901,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     locked = Map.new(entries, &{&1.id, &1})
 
     if MapSet.new(live, & &1.waitlist_id) == MapSet.new(Map.keys(locked)) do
-      {:ok,
-       Enum.map(
-         live,
-         &%{entry: Map.fetch!(locked, &1.waitlist_id), first_name: &1.first_name || ""}
-       )}
+      {:ok, Enum.map(live, &%{entry: Map.fetch!(locked, &1.waitlist_id)})}
     else
       {:error, :concurrent_change}
     end
@@ -1944,16 +1932,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     with :ok <- still_scheduled(workshop),
          :ok <- payment_open(workshop, locked.carried_fee, reading),
          {:ok, entry, placed} <- fast_track_entry(person, entry, reading),
-         {:ok, first_name} <- contactable(entry),
-         {:ok, intake} <-
-           contact(
-             workshop,
-             :fast_track,
-             entry,
-             first_name,
-             WorkshopPolicy.payment_window_end(workshop, nil, reading.now),
-             reading
-           ) do
+         :ok <- contactable(entry),
+         {:ok, intake} <- contact(workshop, :fast_track, entry, reading) do
       {:ok, fast_track_view(intake, placed)}
     end
   end
@@ -2014,7 +1994,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp contactable(%WaitlistEntry{id: id}) do
     case Repo.one(from(p in UserProfile, where: p.waitlist_id == ^id, select: p.first_name)) do
       nil -> {:error, :not_eligible}
-      first_name -> {:ok, first_name}
+      _first_name -> :ok
     end
   end
 
@@ -2045,19 +2025,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp contact_all(workshop, batch, people, reading) do
-    Enum.reduce_while(people, :ok, fn %{entry: entry, first_name: first_name}, :ok ->
-      case contact(workshop, {:batch, batch}, entry, first_name, batch.window_ends_at, reading) do
+    Enum.reduce_while(people, :ok, fn %{entry: entry}, :ok ->
+      case contact(workshop, {:batch, batch}, entry, reading) do
         {:ok, _intake} -> {:cont, :ok}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
-  # One new `contacted` Intake, its "Contact – pay" email with the person's
-  # own link, and the Intake Email log row — all in this transaction. A
-  # Batch Intake's `{{windowEnd}}` is its Batch window; a fast-track's is
-  # `WorkshopPolicy.payment_window_end/3`.
-  defp contact(workshop, origin, entry, first_name, window_end, reading) do
+  # One new `contacted` Intake and its Contact email (with the person's own
+  # link and the Intake's Payment Window), logged — all in this transaction.
+  defp contact(workshop, origin, entry, reading) do
     intake_id = Ecto.UUID.generate()
     token = IntakeLink.token(intake_id, 1)
 
@@ -2081,60 +2059,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
            |> Intake.contact_changeset()
            |> persist(),
          :ok <-
-           queue_contact_email(
-             intake,
-             entry,
-             first_name,
-             workshop,
-             window_end,
-             "contact",
-             reading
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, workshop},
+               :contact,
+               Occasion.contact(),
+               reading
+             )
            ) do
       {:ok, intake}
     end
   end
-
-  # The one Contact path: the Batch and Fast-track contact, and a resent or
-  # rotated link (ALE-386), each with its own log occasion. The button is
-  # the Intake's link at its current generation. A holder of a `held`
-  # Carried Fee is asked to confirm, not to pay (ALE-388, story 60).
-  defp queue_contact_email(intake, entry, first_name, workshop, window_end, occasion, reading) do
-    token = IntakeLink.token(intake.id, intake.link_generation)
-
-    {type, values} =
-      if held_fee?(entry.id),
-        do: {"contact_confirm", confirm_values(workshop, window_end, first_name)},
-        else: {"contact_pay", contact_values(workshop, window_end, first_name)}
-
-    with {:ok, _job} <-
-           IntakeEmails.queue(type, entry, values, button_url: IntakeLink.url(token)),
-         {:ok, _log} <-
-           %{
-             intake_id: intake.id,
-             email_type: type,
-             occasion: occasion,
-             queued_at: reading.now
-           }
-           |> IntakeEmailLog.changeset()
-           |> persist() do
-      :ok
-    end
-  end
-
-  defp contact_values(workshop, window_end, first_name) do
-    %{
-      "firstName" => first_name,
-      "date" => Values.date(workshop.date),
-      "startTime" => Values.start_time(workshop.start_time),
-      "venue" => workshop.venue,
-      "fee" => Values.money(workshop.fee_cents),
-      "windowEnd" => Values.deadline(window_end),
-      "paymentCutoff" => Values.deadline(workshop.payment_cutoff)
-    }
-  end
-
-  defp confirm_values(workshop, window_end, first_name),
-    do: workshop |> contact_values(window_end, first_name) |> Map.delete("fee")
 
   defp batch_view(%Batch{} = batch) do
     Map.take(batch, [:id, :workshop_id, :number, :size, :sent_at, :window_ends_at])
@@ -2440,114 +2375,56 @@ defmodule Dhc.BeginnersWorkshops.Commands do
          do: {:ok, %{outcome: :paid_after_close}}
   end
 
-  # A person paid after the Payment Cutoff gets Pre-workshop info at once
-  # (story 49); before it, the cutoff pass sends it.
   defp pay_intake(intake, workshop, reading) do
     with {:ok, intake} <-
            transition(:intake, intake, Intake.paid_changeset(intake, "stripe", reading.now)),
-         :ok <- queue_place_confirmed(intake, workshop, "place_confirmed", reading),
-         :ok <- pre_workshop_if_cutoff_passed(intake, workshop, reading) do
+         :ok <- place_confirmed(intake, workshop, reading) do
       {:ok, %{outcome: :paid}}
     end
   end
 
-  # "Place confirmed" for how the Intake was paid; `occasion` is
-  # `place_confirmed` at payment, or a resent/rotated link's (ALE-386).
-  defp queue_place_confirmed(
-         %Intake{paid_via: "carried_fee"} = intake,
-         workshop,
-         occasion,
-         reading
-       ),
-       do:
-         queue_intake_email(
-           intake,
-           "place_confirmed_carried",
-           occasion,
-           &base_values(workshop, &1),
-           reading
-         )
+  # "Place confirmed" for a newly paid or confirmed Intake. A person paid
+  # after the Payment Cutoff of a scheduled workshop gets Pre-workshop info
+  # at once (story 49); before it, the cutoff pass sends it, and a cancelled
+  # or finalised workshop sends none.
+  defp place_confirmed(intake, workshop, reading) do
+    with :ok <-
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, workshop},
+               :place_confirmed,
+               Occasion.place_confirmed(),
+               reading
+             )
+           ) do
+      if cutoff_due?(workshop, reading),
+        do: emailed(pre_workshop(intake, workshop, reading)),
+        else: :ok
+    end
+  end
 
-  defp queue_place_confirmed(intake, workshop, occasion, reading) do
-    queue_intake_email(
-      intake,
-      "place_confirmed_paid",
-      occasion,
-      &Map.put(base_values(workshop, &1), "fee", Values.money(workshop.fee_cents)),
+  # "Pre-workshop info", once per Intake per schedule (ALE-394).
+  defp pre_workshop(intake, workshop, reading) do
+    IntakeEmails.deliver(
+      {:intake, intake, workshop},
+      "pre_workshop",
+      Occasion.pre_workshop(workshop.reschedule_count),
       reading
     )
   end
 
-  # Only a scheduled workshop past its cutoff: a cancelled or finalised one
-  # sends no Pre-workshop info.
-  defp pre_workshop_if_cutoff_passed(intake, workshop, reading) do
-    if cutoff_due?(workshop, reading) do
-      with {:ok, _queued_or_not} <- queue_pre_workshop(intake, workshop, reading), do: :ok
-    else
-      :ok
-    end
-  end
+  # `IntakeEmails.deliver/5` in a `with`: queued, already sent and nobody
+  # to send to all go on.
+  defp emailed({:ok, _queued_or_not}), do: :ok
+  defp emailed({:error, reason}), do: {:error, reason}
 
-  # "Pre-workshop info", once per Intake per schedule: a reschedule
-  # (ALE-394) moves the workshop to a new occasion, so it is owed again.
-  # Every writer of it holds the workshop lock, so the log row read here
-  # cannot appear concurrently; the unique `occasion` index is the backstop.
-  # An anonymised person is owed nothing.
-  defp queue_pre_workshop(%Intake{waitlist_id: nil}, _workshop, _reading), do: {:ok, :not_owed}
-
-  defp queue_pre_workshop(intake, workshop, reading) do
-    occasion = IntakeEmailLog.pre_workshop_occasion(workshop.reschedule_count)
-    queue_once(intake, "pre_workshop", occasion, &base_values(workshop, &1), reading)
-  end
-
-  # Queues an Intake Email unless its occasion is already logged for the
-  # Intake (the ledger is the schedule). Callers hold the workshop lock,
-  # which every writer of these occasions takes.
-  defp queue_once(intake, type, occasion, values, reading) do
-    sent? =
-      Repo.exists?(
-        from(l in IntakeEmailLog, where: l.intake_id == ^intake.id and l.occasion == ^occasion)
-      )
-
-    if sent? do
-      {:ok, :not_owed}
-    else
-      with :ok <- queue_intake_email(intake, type, occasion, values, reading), do: {:ok, :queued}
-    end
-  end
-
-  defp base_values(workshop, first_name) do
-    %{
-      "firstName" => first_name,
-      "date" => Values.date(workshop.date),
-      "startTime" => Values.start_time(workshop.start_time),
-      "venue" => workshop.venue
-    }
-  end
-
-  # Queues one Intake Email to the Intake's person, with their Intake link as
-  # the button, and writes its log row in the same transaction. An
-  # anonymised person (no Waitlist entry) is not emailed.
-  defp queue_intake_email(%Intake{waitlist_id: nil}, _type, _occasion, _values, _reading),
-    do: :ok
-
-  defp queue_intake_email(intake, type, occasion, values, reading) do
-    entry = Repo.get!(WaitlistEntry, intake.waitlist_id)
-    first_name = first_name_of(intake.waitlist_id)
-
-    with {:ok, _job} <-
-           IntakeEmails.queue(
-             type,
-             entry,
-             values.(first_name),
-             button_url: IntakeLink.url(IntakeLink.token(intake.id, intake.link_generation))
-           ),
-         {:ok, _log} <-
-           %{intake_id: intake.id, email_type: type, occasion: occasion, queued_at: reading.now}
-           |> IntakeEmailLog.changeset()
-           |> persist() do
-      :ok
-    end
+  defp emailed_each(items, deliver) do
+    Enum.reduce_while(items, :ok, fn item, :ok ->
+      case emailed(deliver.(item)) do
+        :ok -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp release_payment(%{"id" => session_id} = session, clock) do
@@ -2652,7 +2529,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
         {:ok, nil}
 
       {:ok, refund} ->
-        with :ok <- queue_payment_refunded(intake, workshop, refund, reading), do: {:ok, refund}
+        with :ok <-
+               emailed(
+                 IntakeEmails.deliver(
+                   {:intake, intake, workshop},
+                   "payment_refunded",
+                   Occasion.payment_refunded(refund.payment_id),
+                   reading,
+                   refund: refund
+                 )
+               ),
+             do: {:ok, refund}
 
       {:error, reason} ->
         {:error, reason}
@@ -2742,47 +2629,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       {:ok, refund}
     end
   end
-
-  defp queue_payment_refunded(%Intake{waitlist_id: nil}, _workshop, _refund, _reading), do: :ok
-
-  defp queue_payment_refunded(intake, workshop, refund, reading) do
-    case Repo.get(WaitlistEntry, intake.waitlist_id) do
-      %WaitlistEntry{email: email} = entry when is_binary(email) ->
-        with {:ok, _job} <-
-               IntakeEmails.queue("payment_refunded", entry, %{
-                 "firstName" => first_name_of(intake.waitlist_id),
-                 "date" => Values.date(workshop.date),
-                 "refundAmount" => refund_amount(refund)
-               }),
-             {:ok, _log} <-
-               %{
-                 intake_id: intake.id,
-                 email_type: "payment_refunded",
-                 occasion: "payment_refunded:#{refund.payment_id}",
-                 queued_at: reading.now
-               }
-               |> IntakeEmailLog.changeset()
-               |> persist() do
-          :ok
-        end
-
-      _anonymised ->
-        :ok
-    end
-  end
-
-  defp first_name_of(waitlist_id) do
-    Repo.one(
-      from(p in UserProfile, where: p.waitlist_id == ^waitlist_id, limit: 1, select: p.first_name)
-    ) || ""
-  end
-
-  defp refund_amount(%IntakeRefund{amount_cents: cents, currency: "eur"}), do: Values.money(cents)
-
-  defp refund_amount(%IntakeRefund{amount_cents: cents, currency: currency}),
-    do:
-      "#{div(cents, 100)}.#{cents |> rem(100) |> Integer.to_string() |> String.pad_leading(2, "0")} " <>
-        String.upcase(currency)
 
   defp enqueue_refund(refund_id) do
     case %{refund_id: refund_id} |> RefundWorker.new() |> Oban.insert() do
@@ -3070,7 +2916,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     alert(
       "beginners-workshop-refund:#{refund.id}:failed",
-      "A refund of #{refund_amount(refund)} to #{first_name || "an anonymised person"}" <>
+      "A refund of #{Values.refund_amount(refund)} to #{first_name || "an anonymised person"}" <>
         "#{workshop} failed. " <> follow_up
     )
   end
@@ -3573,12 +3419,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
          :ok <- release_to_stripe(hold),
          :ok <- back_to_waiting(entry, reading.now),
          :ok <-
-           queue_intake_email(
-             intake,
-             "declined",
-             "declined",
-             &%{"firstName" => &1, "date" => Values.date(workshop.date)},
-             reading
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, workshop},
+               "declined",
+               Occasion.declined(),
+               reading
+             )
            ) do
       {:ok, intake}
     end
@@ -3590,12 +3437,13 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp act_on_intake(:defer, %{workshop: workshop} = locked, _event_id, reading) do
     with {:ok, intake} <- defer_paid(locked, reading),
          :ok <-
-           queue_intake_email(
-             intake,
-             "deferred",
-             "deferred",
-             &%{"firstName" => &1, "date" => Values.date(workshop.date)},
-             reading
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, workshop},
+               "deferred",
+               Occasion.deferred(),
+               reading
+             )
            ) do
       {:ok, intake}
     end
@@ -3613,16 +3461,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
          {:ok, refund} <- refund_paid(intake, locked, "cancelled_with_refund", context, reading),
          :ok <- back_to_waiting(entry, reading.now),
          :ok <-
-           queue_intake_email(
-             intake,
-             "cancelled_with_refund",
-             "cancelled_with_refund",
-             &%{
-               "firstName" => &1,
-               "date" => Values.date(workshop.date),
-               "refundAmount" => refund_amount(refund)
-             },
-             reading
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, workshop},
+               "cancelled_with_refund",
+               Occasion.cancelled_with_refund(),
+               reading,
+               refund: refund
+             )
            ) do
       {:ok, intake}
     end
@@ -3655,8 +3501,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
                  fee,
                  CarriedFee.status_changeset(fee, "applied", intake.id, reading.now)
                ),
-             :ok <- queue_place_confirmed(intake, workshop, "place_confirmed", reading),
-             :ok <- pre_workshop_if_cutoff_passed(intake, workshop, reading) do
+             :ok <- place_confirmed(intake, workshop, reading) do
           {:ok, intake}
         end
     end
@@ -3701,19 +3546,29 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     with {:ok, refund} <- refund_held_fee(entry, fee, intake, context.actor, reading),
          :ok <-
-           queue_intake_email(
-             intake,
-             "carried_fee_refunded",
-             "carried_fee_refunded:#{refund.id}",
-             &%{"firstName" => &1, "refundAmount" => refund_amount(refund)},
-             reading
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, locked.workshop},
+               "carried_fee_refunded",
+               Occasion.carried_fee_refunded(refund.id),
+               reading,
+               refund: refund
+             )
            ) do
       {:ok, intake}
     end
   end
 
   defp act_on_intake(:resend_link, %{workshop: workshop, intake: intake}, event_id, reading) do
-    with :ok <- queue_link_email(intake, workshop, "resend_link:#{event_id}", reading),
+    with :ok <-
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, workshop},
+               :link,
+               Occasion.resend_link(event_id),
+               reading
+             )
+           ),
          do: {:ok, intake}
   end
 
@@ -3722,7 +3577,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
     with {:ok, intake} <-
            intake |> Intake.rotate_link_changeset(IntakeLink.hash(token)) |> persist(),
-         :ok <- queue_link_email(intake, workshop, "rotate_link:#{event_id}", reading) do
+         :ok <-
+           emailed(
+             IntakeEmails.deliver(
+               {:intake, intake, workshop},
+               :link,
+               Occasion.rotate_link(event_id),
+               reading
+             )
+           ) do
       {:ok, intake}
     end
   end
@@ -3794,27 +3657,22 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     with {:ok, payment_refund} <- refund_withdrawn_payment(intake, locked, context, reading),
          {:ok, fee_refund} <-
            refund_fee(locked.carried_fee, intake, context.actor, "withdrawn", reading) do
-      refund = payment_refund || fee_refund
-
-      queue_intake_email(
-        intake,
+      {:intake, intake, locked.workshop}
+      |> IntakeEmails.deliver(
         "withdrawn_refunded",
-        "withdrawn",
-        &%{"firstName" => &1, "refundAmount" => refund_amount(refund)},
-        reading
+        Occasion.withdrawn(),
+        reading,
+        refund: payment_refund || fee_refund
       )
+      |> emailed()
     end
   end
 
   defp settle_withdrawn(false, locked, intake, reading) do
     with {:ok, _fee} <- forfeit_fee(locked.carried_fee, reading) do
-      queue_intake_email(
-        intake,
-        "withdrawn_forfeited",
-        "withdrawn",
-        &%{"firstName" => &1},
-        reading
-      )
+      {:intake, intake, locked.workshop}
+      |> IntakeEmails.deliver("withdrawn_forfeited", Occasion.withdrawn(), reading)
+      |> emailed()
     end
   end
 
@@ -3873,40 +3731,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp back_to_waiting(_waiting_or_anonymised, _now), do: :ok
-
-  # The email an open Intake's link travels in: "Contact – pay" while
-  # contacted (its Payment Window, `WorkshopPolicy.payment_window_end/3`),
-  # "Place confirmed" once paid.
-  defp queue_link_email(%Intake{waitlist_id: nil}, _workshop, _occasion, _reading), do: :ok
-
-  defp queue_link_email(%Intake{state: "contacted"} = intake, workshop, occasion, reading) do
-    case Repo.get(WaitlistEntry, intake.waitlist_id) do
-      %WaitlistEntry{email: email} = entry when is_binary(email) ->
-        queue_contact_email(
-          intake,
-          entry,
-          first_name_of(intake.waitlist_id),
-          workshop,
-          intake_window_end(intake, workshop),
-          occasion,
-          reading
-        )
-
-      _anonymised ->
-        :ok
-    end
-  end
-
-  defp queue_link_email(%Intake{state: "paid"} = intake, workshop, occasion, reading),
-    do: queue_place_confirmed(intake, workshop, occasion, reading)
-
-  defp intake_window_end(%Intake{} = intake, workshop),
-    do: WorkshopPolicy.payment_window_end(workshop, batch_window_end(intake), intake.contacted_at)
-
-  defp batch_window_end(%Intake{batch_id: nil}), do: nil
-
-  defp batch_window_end(%Intake{batch_id: batch_id}),
-    do: Repo.one!(from(b in Batch, where: b.id == ^batch_id, select: b.window_ends_at))
 
   # What `IntakePolicy.check/2` reads: the locked Intake and, for the
   # commands that lock them, the person's live Carried Fee and standing
@@ -4042,21 +3866,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp after_correction(intake, workshop, "attended", reading) do
     if WorkshopPolicy.follow_up_due?(workshop, reading) do
-      with {:ok, _queued_or_not_owed} <- queue_follow_up(intake, workshop, reading), do: :ok
+      emailed(follow_up_email(intake, workshop, reading))
     else
       :ok
     end
   end
 
-  defp after_correction(intake, workshop, "deferred", reading),
-    do:
-      queue_intake_email(
-        intake,
-        "deferred",
-        "deferred",
-        &%{"firstName" => &1, "date" => Values.date(workshop.date)},
-        reading
-      )
+  defp after_correction(intake, workshop, "deferred", reading) do
+    {:intake, intake, workshop}
+    |> IntakeEmails.deliver("deferred", Occasion.deferred(), reading)
+    |> emailed()
+  end
 
   defp after_correction(_intake, _workshop, "no_show", _reading), do: :ok
 
@@ -4154,27 +3974,22 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp settle_withdrawn_fee(true, entry, fee, context, reading) do
     with {:ok, refund} <- refund_fee(fee, nil, context.actor, "withdrawn", reading) do
-      queue_person_notice(
-        entry,
-        refund.intake_id,
+      {:person, entry, refund.intake_id}
+      |> IntakeEmails.deliver(
         "withdrawn_refunded",
-        "withdrawn:#{refund.id}",
-        %{"firstName" => first_name_of(entry.id), "refundAmount" => refund_amount(refund)},
-        reading
+        Occasion.withdrawn(refund.id),
+        reading,
+        refund: refund
       )
+      |> emailed()
     end
   end
 
   defp settle_withdrawn_fee(false, entry, fee, _context, reading) do
     with {:ok, fee} <- forfeit_fee(fee, reading) do
-      queue_person_notice(
-        entry,
-        nil,
-        "withdrawn_forfeited",
-        "withdrawn:#{fee.id}",
-        %{"firstName" => first_name_of(entry.id)},
-        reading
-      )
+      {:person, entry, nil}
+      |> IntakeEmails.deliver("withdrawn_forfeited", Occasion.withdrawn(fee.id), reading)
+      |> emailed()
     end
   end
 
@@ -4349,14 +4164,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   defp held?(%CarriedFee{status: "held"}), do: true
   defp held?(_no_held_fee), do: false
-
-  # Unlocked: which Contact email a person gets. Every writer of a fee holds
-  # the person's entry or Intake lock, which the Contact paths hold too.
-  defp held_fee?(waitlist_id),
-    do:
-      Repo.exists?(
-        from(f in CarriedFee, where: f.waitlist_id == ^waitlist_id and f.status == "held")
-      )
 
   defp carry_fee(
          %Intake{paid_via: "carried_fee", carried_fee_id: id, id: intake_id},
@@ -4593,16 +4400,14 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     with true <- peek_open_intake(waitlist_id) == nil || {:error, :concurrent_change},
          {:ok, refund} <- refund_held_fee(entry, fee, nil, context.actor, reading),
          :ok <-
-           queue_person_notice(
-             entry,
-             refund.intake_id,
-             "carried_fee_refunded",
-             "carried_fee_refunded:#{refund.id}",
-             %{
-               "firstName" => first_name_of(entry.id),
-               "refundAmount" => refund_amount(refund)
-             },
-             reading
+           emailed(
+             IntakeEmails.deliver(
+               {:person, entry, refund.intake_id},
+               "carried_fee_refunded",
+               Occasion.carried_fee_refunded(refund.id),
+               reading,
+               refund: refund
+             )
            ) do
       {:ok, fee_command_view(waitlist_id, nil, :done)}
     end
@@ -4624,36 +4429,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       intake: intake_view,
       outcome: outcome
     }
-  end
-
-  # A notice to a person outside any one Intake's own command (the
-  # Waitlist tab's Carried Fee and withdraw paths), logged on `intake_id`
-  # when there is an Intake it belongs with. An anonymised person is not
-  # emailed.
-  defp queue_person_notice(
-         %WaitlistEntry{email: email} = entry,
-         intake_id,
-         type,
-         occasion,
-         values,
-         reading
-       )
-       when is_binary(email) do
-    with {:ok, _job} <- IntakeEmails.queue(type, entry, values) do
-      log_person_notice(intake_id, type, occasion, reading)
-    end
-  end
-
-  defp queue_person_notice(_anonymised, _intake_id, _type, _occasion, _values, _reading), do: :ok
-
-  defp log_person_notice(nil, _type, _occasion, _reading), do: :ok
-
-  defp log_person_notice(intake_id, type, occasion, reading) do
-    with {:ok, _log} <-
-           %{intake_id: intake_id, email_type: type, occasion: occasion, queued_at: reading.now}
-           |> IntakeEmailLog.changeset()
-           |> persist(),
-         do: :ok
   end
 
   # `link_carried_fee_payment`: an imported Carried Fee (no payment this
@@ -4909,9 +4684,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp count_passed({:error, reason}, _tally), do: {:halt, {:error, reason}}
 
   defp pass_intake(%Intake{state: "paid"} = intake, %{workshop: workshop, reading: reading}) do
-    case queue_pre_workshop(intake, workshop, reading) do
+    case pre_workshop(intake, workshop, reading) do
       {:ok, :queued} -> {:ok, :pre_workshop}
-      {:ok, :not_owed} -> {:ok, nil}
+      {:ok, _already_sent_or_no_recipient} -> {:ok, nil}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -5203,25 +4978,20 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   end
 
   defp follow_up(intake, {:ok, tally}, workshop, reading) do
-    case queue_follow_up(intake, workshop, reading) do
+    case follow_up_email(intake, workshop, reading) do
       {:ok, :queued} -> {:cont, {:ok, Map.update!(tally, :follow_ups, &(&1 + 1))}}
-      {:ok, :not_owed} -> {:cont, {:ok, tally}}
+      {:ok, _already_sent_or_no_recipient} -> {:cont, {:ok, tally}}
       {:error, reason} -> {:halt, {:error, reason}}
     end
   end
 
-  # "Follow-up", once per Intake: every writer of it holds the workshop
-  # lock, so the log row read here cannot appear concurrently; the unique
-  # `occasion` index is the backstop. An anonymised person is owed nothing.
-  defp queue_follow_up(%Intake{waitlist_id: nil}, _workshop, _reading), do: {:ok, :not_owed}
-
-  defp queue_follow_up(intake, workshop, reading),
+  # "Follow-up", once per Intake.
+  defp follow_up_email(intake, workshop, reading),
     do:
-      queue_once(
-        intake,
+      IntakeEmails.deliver(
+        {:intake, intake, workshop},
         "follow_up",
-        "follow_up",
-        &%{"firstName" => &1, "date" => Values.date(workshop.date)},
+        Occasion.follow_up(),
         reading
       )
 
