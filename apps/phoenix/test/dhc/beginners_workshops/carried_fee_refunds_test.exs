@@ -383,8 +383,10 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
 
       # Needs attention on the original workshop's console offers Forfeit too.
       workshop = %{id: deferred.workshop_id}
+
       assert [%{id: id, carried_fee: true, available_commands: [:retry, :manual, :forfeit]}] =
                console(workshop).failed_refunds
+
       assert id == refund.id
 
       assert {:ok, %{status: "pending", follows_refund_id: follows}} =
