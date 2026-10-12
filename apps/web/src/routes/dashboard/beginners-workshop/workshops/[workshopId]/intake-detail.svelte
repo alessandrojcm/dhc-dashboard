@@ -128,7 +128,8 @@ const refundHint = $derived(
 			class="rounded-lg border border-sky-600/40 bg-sky-50 p-2.5 text-sky-900"
 			data-testid="hold-expiry"
 		>
-			{holdLabel(intake)}. The seat is held until Stripe ends the checkout.
+			{holdLabel(intake)}. Their place stays reserved until Stripe ends the
+			checkout.
 		</p>
 	{/if}
 

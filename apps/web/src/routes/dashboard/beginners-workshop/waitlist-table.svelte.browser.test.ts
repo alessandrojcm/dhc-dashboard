@@ -177,7 +177,7 @@ describe("createWaitlistTable", () => {
 		table.updateAdminNotes("a", "Called twice");
 
 		await expect.poll(() => notify.success.mock.calls.length).toBe(1);
-		expect(notify.success).toHaveBeenCalledWith("Waitlist entry updated.");
+		expect(notify.success).toHaveBeenCalledWith("Details updated.");
 		expect(updateEntry).toHaveBeenCalledWith(
 			expect.objectContaining({
 				path: { id: "a" },
@@ -203,7 +203,7 @@ describe("createWaitlistTable", () => {
 
 		await expect.poll(() => notify.error.mock.calls.length).toBe(1);
 		expect(notify.error).toHaveBeenCalledWith(
-			"Failed to update waitlist entry.",
+			"Could not update their details.",
 		);
 		await expect.poll(() => invalidate.mock.calls.length).toBe(1);
 		expect(notify.success).not.toHaveBeenCalled();

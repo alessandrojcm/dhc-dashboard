@@ -37,7 +37,7 @@ describe("beginnersWorkshopCommand", () => {
 		const issues = await issuesOf(
 			beginnersWorkshopCommand(
 				rejection({
-					detail: "The contact-from date must be on or before the cutoff date",
+					detail: "Offers must start on or before the payment deadline",
 					code: "invalid_contact_from",
 					fields: { "workshops.1.contactFromDate": ["too late"] },
 				}),

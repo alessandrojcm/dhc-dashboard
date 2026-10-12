@@ -44,7 +44,7 @@ const months = $derived(report.twelveMonths);
 
 const planning = $derived([
 	{
-		label: "Time to a seat",
+		label: "Time to a place",
 		value: formatDays(queue.medianDaysToSeat),
 		note: "Typical wait from joining the waitlist to the workshop date, for automatic place offers",
 	},

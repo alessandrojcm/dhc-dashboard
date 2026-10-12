@@ -62,7 +62,7 @@ export const pauseBatches = form(batchesCommandSchema, async ({ id }) => {
 	const options = await beginnersWorkshopsManageOptions();
 	return beginnersWorkshopCommand(
 		beginnersWorkshopBatchesPause({ ...options, path: { id } }),
-		{ fallback: "Could not pause Batches", formPath: noFormFields },
+		{ fallback: "Could not pause offer rounds", formPath: noFormFields },
 	);
 });
 
@@ -70,7 +70,7 @@ export const resumeBatches = form(batchesCommandSchema, async ({ id }) => {
 	const options = await beginnersWorkshopsManageOptions();
 	return beginnersWorkshopCommand(
 		beginnersWorkshopBatchesResume({ ...options, path: { id } }),
-		{ fallback: "Could not resume Batches", formPath: noFormFields },
+		{ fallback: "Could not resume offer rounds", formPath: noFormFields },
 	);
 });
 
@@ -84,7 +84,10 @@ export const fastTrackWaitlistPerson = form(
 				path: { id },
 				body,
 			}),
-			{ fallback: "Could not fast-track this person", formPath: noFormFields },
+			{
+				fallback: "Could not add this person to this workshop",
+				formPath: noFormFields,
+			},
 		);
 	},
 );
@@ -96,7 +99,7 @@ export const fastTrackNewPerson = form(
 		return beginnersWorkshopCommand(
 			beginnersWorkshopFastTrackNewPerson({ ...options, path: { id }, body }),
 			{
-				fallback: "Could not add and fast-track this person",
+				fallback: "Could not add this person to the waitlist and this workshop",
 				formPath: newPersonFormPath,
 			},
 		);
@@ -136,7 +139,10 @@ export const forfeitCarriedFee = form(
 		const options = await beginnersWorkshopsManageOptions();
 		return beginnersWorkshopCommand(
 			beginnersWorkshopRefundsForfeit({ ...options, path: { id, refundId } }),
-			{ fallback: "Could not forfeit the Carried Fee", formPath: noFormFields },
+			{
+				fallback: "Could not forfeit the workshop credit",
+				formPath: noFormFields,
+			},
 		);
 	},
 );

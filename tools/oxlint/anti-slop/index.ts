@@ -1,5 +1,6 @@
 import { eslintCompatPlugin } from "@oxlint/plugins";
 
+import { noBackendTermsInCopyRule } from "./rules/no-backend-terms-in-copy.ts";
 import { noChainedTypeAssertionsRule } from "./rules/no-chained-type-assertions.ts";
 import { noConditionalEmptyObjectSpreadRule } from "./rules/no-conditional-empty-object-spread.ts";
 import { noDublinTimeZoneLiteralRule } from "./rules/no-dublin-time-zone-literal.ts";
@@ -21,6 +22,7 @@ import { requireSafetyCommentForTypeAssertionRule } from "./rules/require-safety
 const antiSlopPlugin = eslintCompatPlugin({
 	meta: { name: "anti-slop" },
 	rules: {
+		"no-backend-terms-in-copy": noBackendTermsInCopyRule,
 		"no-chained-type-assertions": noChainedTypeAssertionsRule,
 		"no-conditional-empty-object-spread": noConditionalEmptyObjectSpreadRule,
 		"no-dublin-time-zone-literal": noDublinTimeZoneLiteralRule,

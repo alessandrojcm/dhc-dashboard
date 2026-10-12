@@ -227,10 +227,10 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 			return {
 				...options,
 				onSuccess: () => {
-					notify.success("Waitlist entry updated.");
+					notify.success("Details updated.");
 				},
 				onError: () => {
-					notify.error("Failed to update waitlist entry.");
+					notify.error("Could not update their details.");
 				},
 				onSettled: () =>
 					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
@@ -251,7 +251,7 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 				},
 				onError: (error) => {
 					notify.error(
-						apiProblem(error)?.detail ?? "Failed to restore waitlist entry.",
+						apiProblem(error)?.detail ?? "Could not restore this person.",
 					);
 				},
 				onSettled: () =>
@@ -287,7 +287,7 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 				...options,
 				onSuccess: () => {
 					notify.success(
-						"Deleted. Their Intakes stay in the reports, anonymised.",
+						"Deleted. Their workshop places stay in the reports, anonymised.",
 					);
 				},
 				onSettled: () =>

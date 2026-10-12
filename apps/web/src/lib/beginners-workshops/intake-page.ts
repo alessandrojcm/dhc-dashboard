@@ -34,11 +34,11 @@ type Copy = { title: string; body: string };
 const STATE_COPY = {
 	pay: {
 		title: "Your place at the Beginners' Workshop",
-		body: "Pay to confirm your place. Your seat is held for 30 minutes while you're in checkout.",
+		body: "Pay to confirm your place. Your place is reserved for 30 minutes while you're in checkout.",
 	},
 	confirm: {
 		title: "Confirm your place at the Beginners' Workshop",
-		body: "You have a Carried Fee from an earlier workshop, so there's nothing to pay: confirm your place in one click.",
+		body: "You have a workshop credit from an earlier workshop, so there's nothing to pay: confirm your place in one click.",
 	},
 	payment_in_progress: {
 		title: "Payment in progress",
@@ -46,7 +46,7 @@ const STATE_COPY = {
 	},
 	full: {
 		title: "The workshop is full right now",
-		body: "Every seat is paid for or being paid for. Seats can free up before the payment deadline, so check again later.",
+		body: "Every place is paid for or being paid for. Places can free up before the payment deadline, so check again later.",
 	},
 	paid: {
 		title: "Your place is confirmed",
@@ -61,11 +61,11 @@ const STATE_COPY = {
 const CARRIED_FEE_COPY = {
 	full: {
 		title: "The workshop is full right now",
-		body: "Every seat is taken. Your Carried Fee is kept: seats can free up, so check again later, or wait for the next workshop.",
+		body: "Every place is taken. Your workshop credit is kept: places can free up, so check again later, or wait for the next workshop.",
 	},
 	paid: {
 		title: "Your place is confirmed",
-		body: "Your Carried Fee covers your place — we've emailed you a confirmation. See you at the workshop!",
+		body: "Your workshop credit covers your place — we've emailed you a confirmation. See you at the workshop!",
 	},
 } satisfies Partial<Record<BeginnersIntakeState, Copy>>;
 

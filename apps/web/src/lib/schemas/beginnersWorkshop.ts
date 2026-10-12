@@ -72,7 +72,9 @@ const scheduleEntries = {
 			v.object({
 				date: civilDate("Pick the workshop date."),
 				paymentCutoffDate: optionalCivilDate("Pick a valid cutoff date."),
-				contactFromDate: optionalCivilDate("Pick a valid contact-from date."),
+				contactFromDate: optionalCivilDate(
+					"Pick a valid date for offers to start.",
+				),
 			}),
 		),
 		v.minLength(1, "Add at least one date."),
@@ -127,7 +129,9 @@ export const workshopSettingsSchema = v.pipe(
 		...settingsEntries,
 		paymentCutoffDate: civilDate("Pick the cutoff date."),
 		paymentCutoffTime: wallTime("Enter the cutoff time."),
-		contactFromDate: optionalCivilDate("Pick a valid contact-from date."),
+		contactFromDate: optionalCivilDate(
+			"Pick a valid date for offers to start.",
+		),
 	}),
 	v.transform(({ id, fee, ...settings }) => ({
 		id,
@@ -210,7 +214,9 @@ export const rescheduleWorkshopSchema = v.pipe(
 		venue,
 		paymentCutoffDate: civilDate("Pick the cutoff date."),
 		paymentCutoffTime: wallTime("Enter the cutoff time."),
-		contactFromDate: optionalCivilDate("Pick a valid contact-from date."),
+		contactFromDate: optionalCivilDate(
+			"Pick a valid date for offers to start.",
+		),
 	}),
 	v.transform(({ id, ...body }) => ({
 		id,
@@ -304,7 +310,7 @@ export const recordManualRefundSchema = v.pipe(
 	})),
 );
 
-const intakeId = v.pipe(v.string(), v.uuid("Unknown Intake."));
+const intakeId = v.pipe(v.string(), v.uuid("Unknown workshop place."));
 
 /**
  * ALE-386: one console Intake command. Each command is a submit button of

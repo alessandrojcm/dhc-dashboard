@@ -163,7 +163,7 @@ export function createCarriedFeePanel(
 		() => ({
 			mutationFn: (variables: Command) => {
 				const fee = query.data;
-				if (!fee) throw new Error("The Carried Fee is not loaded yet.");
+				if (!fee) throw new Error("The workshop credit is not loaded yet.");
 				return request(variables, fee);
 			},
 			onSuccess: (_done: void, variables: Command) =>
@@ -200,7 +200,8 @@ export function createCarriedFeePanel(
 		},
 		get loadError(): string | null {
 			return query.error
-				? (apiProblem(query.error)?.detail ?? "Could not load the Carried Fee.")
+				? (apiProblem(query.error)?.detail ??
+						"Could not load the workshop credit.")
 				: null;
 		},
 		/** Whether Phoenix offers `kind` for this fee now. */

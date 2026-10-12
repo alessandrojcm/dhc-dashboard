@@ -472,7 +472,7 @@ const table = createSvelteTable(tableOptions);
 		{#if table.getRowCount() === 0}
 			{@render emptyState()}
 		{/if}
-		<ul class="divide-y divide-border" aria-label="Waitlist entries">
+		<ul class="divide-y divide-border" aria-label="People on the waitlist">
 			{#each table.getRowModel().rows as row (row.id)}
 				<li class="p-4 sm:p-5">
 					<!-- Name and Actions Row -->

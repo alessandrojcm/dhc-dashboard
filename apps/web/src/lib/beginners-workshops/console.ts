@@ -131,7 +131,7 @@ export function nextBatchWhen(next: BeginnersWorkshopNextBatch): string {
 		case "paused":
 			return "paused";
 		case "full":
-			return "when a seat frees";
+			return "when a place frees up";
 		case "closed":
 			return "no more offers before the payment deadline";
 	}

@@ -68,7 +68,7 @@ test("lists the waiting queue by default and removed people behind the filter", 
 
 	// Tailwind is not loaded, so both layouts render side by side.
 	const desktop = screen.getByRole("table");
-	const mobile = screen.getByRole("list", { name: "Waitlist entries" });
+	const mobile = screen.getByRole("list", { name: "People on the waitlist" });
 
 	await expect
 		.element(screen.getByRole("heading", { name: "Waitlist", exact: true }))
@@ -308,7 +308,7 @@ test("shows a Carried Fee holder's fee on their entry", async () => {
 	await expect
 		.element(
 			screen
-				.getByRole("list", { name: "Waitlist entries" })
+				.getByRole("list", { name: "People on the waitlist" })
 				.getByText("Waiting · Workshop credit"),
 		)
 		.toBeVisible();
@@ -369,7 +369,7 @@ test("ALE-396: Delete shows Phoenix's refusal", async () => {
 	const ada = entry("a", { fullName: "Ada Contacted" });
 	const deleteEntry = vi.fn().mockRejectedValueOnce({
 		errors: {
-			detail: "This person already has an open Intake",
+			detail: "This person already has an open workshop place",
 			code: "open_intake",
 		},
 	});
@@ -393,7 +393,7 @@ test("ALE-396: Delete shows Phoenix's refusal", async () => {
 	await dialog.getByRole("button", { name: "Delete", exact: true }).click();
 	await expect
 		.element(dialog.getByRole("alert"))
-		.toHaveTextContent("This person already has an open Intake");
+		.toHaveTextContent("This person already has an open workshop place");
 	expect(deleteEntry).toHaveBeenCalledWith(
 		expect.objectContaining({ path: { waitlistId: "a" }, body: {} }),
 	);
