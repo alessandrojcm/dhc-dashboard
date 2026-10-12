@@ -877,7 +877,9 @@ async function refreshMembers() {
 												@{row.username}
 											</p>
 										</div>
-										<Badge variant="outline">{reason}</Badge>
+										{#if reason}
+											<Badge variant="outline">{reason}</Badge>
+										{/if}
 									</div>
 								</li>
 							{/each}

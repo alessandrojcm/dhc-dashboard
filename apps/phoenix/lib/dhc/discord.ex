@@ -469,7 +469,7 @@ defmodule Dhc.Discord do
     }
 
     {kick, refusal} = DoctorKick.decide(row)
-    Map.merge(row, %{kick: kick, kick_refusal: refusal, kickable: kick != :none})
+    Map.merge(row, %{kick: kick, kick_refusal: refusal})
   end
 
   defp missing_member(

@@ -11456,7 +11456,7 @@ components:
             $ref: "#/components/schemas/DiscordDoctorServerMember"
     DiscordDoctorServerMember:
       type: object
-      required: [discordUserId, username, displayName, avatar, joinedAt, member, membershipStatus, protected, kickable, kick, kickRefusal]
+      required: [discordUserId, username, displayName, avatar, joinedAt, member, membershipStatus, protected, kick, kickRefusal]
       properties:
         discordUserId:
           type: string
@@ -11481,9 +11481,6 @@ components:
           nullable: true
         protected:
           type: boolean
-        kickable:
-          type: boolean
-          description: Whether `kick` is not `none`.
         kick:
           $ref: "#/components/schemas/DiscordDoctorKick"
         kickRefusal:

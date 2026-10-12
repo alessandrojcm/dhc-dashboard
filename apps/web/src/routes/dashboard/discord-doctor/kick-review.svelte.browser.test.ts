@@ -21,7 +21,6 @@ function account(
 		member: null,
 		membershipStatus: null,
 		protected: false,
-		kickable: true,
 		kick: "bulk",
 		kickRefusal: null,
 		...overrides,
@@ -32,7 +31,6 @@ const report: DiscordDoctorReport = {
 	serverMembers: {
 		linkedActive: [
 			account("active", {
-				kickable: false,
 				kick: "none",
 				kickRefusal: "Active member",
 			}),
@@ -41,7 +39,6 @@ const report: DiscordDoctorReport = {
 			account("sean"),
 			account("ciaran", {
 				protected: true,
-				kickable: false,
 				kick: "none",
 				kickRefusal: "Protected member",
 			}),

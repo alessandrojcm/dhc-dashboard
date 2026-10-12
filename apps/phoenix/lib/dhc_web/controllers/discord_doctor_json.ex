@@ -51,7 +51,6 @@ defmodule DhcWeb.DiscordDoctorJSON do
       member: member(row.member),
       membershipStatus: row.membership_status,
       protected: row.protected,
-      kickable: row.kickable,
       kick: row.kick,
       kickRefusal: row.kick_refusal
     }

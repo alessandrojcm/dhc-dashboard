@@ -31,7 +31,11 @@ import { apiProblem } from "#lib/api-error.js";
 export type ServerBucket = keyof DiscordDoctorServerMembers;
 type KickableBucket = keyof DiscordDoctorReport["kickReasons"];
 
-export type KickSkip = { row: DiscordDoctorServerMember; reason: string };
+/** A row a bulk review leaves out, with Phoenix's `kickRefusal`. */
+export type KickSkip = {
+	row: DiscordDoctorServerMember;
+	reason: string | null;
+};
 
 export type KickReviewState = {
 	bucket: KickableBucket;
@@ -59,10 +63,6 @@ const BULK_LABELS = {
 	pendingLink: null,
 	unrecognized: "Kick all unrecognized",
 } satisfies Record<ServerBucket, string | null>;
-
-// A row Phoenix allows only as the one target of a request, met in a bulk
-// review. Phoenix would refuse it with its own reason; say so up front.
-const ONLY_ON_ITS_OWN = "Can only be kicked on its own";
 
 function isKickable(bucket: ServerBucket): bucket is KickableBucket {
 	return bucket !== "linkedActive";
@@ -122,7 +122,7 @@ export function createKickReview(
 			targets: rows.filter((row) => row.kick === "bulk"),
 			skipped: rows
 				.filter((row) => row.kick !== "bulk")
-				.map((row) => ({ row, reason: row.kickRefusal ?? ONLY_ON_ITS_OWN })),
+				.map((row) => ({ row, reason: row.kickRefusal })),
 		});
 	}
 
