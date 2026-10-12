@@ -51,7 +51,12 @@ defmodule DhcWeb.Endpoint do
   end
 
   plug Plug.RequestId
-  plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
+  # Intake link paths carry a capability token: Phoenix's request line is
+  # off for them and `DhcWeb.Plugs.IntakeLinkPage` logs a redacted one.
+  plug Plug.Telemetry,
+    event_prefix: [:phoenix, :endpoint],
+    log: {DhcWeb.IntakeLinkPrivacy, :log_level, []}
+
   plug DhcWeb.Plugs.Cors
 
   plug Plug.Parsers,
@@ -60,7 +65,7 @@ defmodule DhcWeb.Endpoint do
     json_decoder: Phoenix.json_library(),
     body_reader: {DhcWeb.CacheBodyReader, :read_body, []}
 
-  plug Sentry.PlugContext
+  plug Sentry.PlugContext, url_scrubber: {DhcWeb.IntakeLinkPrivacy, :scrub_url}
 
   plug Plug.MethodOverride
   plug Plug.Head

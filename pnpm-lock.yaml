@@ -45,6 +45,9 @@ importers:
       '@dhc/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
+      '@dhc/email-templates':
+        specifier: workspace:*
+        version: link:../../packages/email-templates
       '@event-calendar/core':
         specifier: ^4.7.1
         version: 4.7.1(@typescript-eslint/types@8.67.0)

@@ -1,6 +1,10 @@
 <script lang="ts">
-import type { WaitlistEntry } from "@dhc/api-client";
+import type { BeginnersCarriedFeeStatus, WaitlistEntry } from "@dhc/api-client";
+import { carriedFeeLabel } from "#lib/beginners-workshops/console.js";
+import { Button } from "#lib/components/ui/button/index.js";
 import { cn } from "#lib/utils.js";
+import CarriedFeePanel from "./carried-fee-panel.svelte";
+import type { CarriedFeePanelDeps } from "./carried-fee-panel.svelte.js";
 
 type Props = {
 	entry: Pick<
@@ -12,9 +16,27 @@ type Props = {
 	>;
 	/** `table` lays the panels out as bordered cards side by side; `card` stacks them. */
 	layout: "table" | "card";
+	/** The person's live Carried Fee (ALE-388), from Beginners' Workshops. */
+	carriedFee?: BeginnersCarriedFeeStatus | null;
+	/**
+	 * ALE-389: the person, to manage their Carried Fee (refund, link its
+	 * payment, follow up a failed refund). Without it the panel only shows
+	 * the status.
+	 */
+	waitlistId?: string;
+	carriedFeeDeps?: CarriedFeePanelDeps;
 };
 
-let { entry, layout }: Props = $props();
+let {
+	entry,
+	layout,
+	carriedFee = null,
+	waitlistId,
+	carriedFeeDeps,
+}: Props = $props();
+
+// Mounted on first open, so the Waitlist asks for no fee details until then.
+let managing = $state(false);
 
 const hasGuardian = $derived(
 	Boolean(
@@ -62,5 +84,30 @@ const panel = $derived(
 		<p class="text-xs">
 			{entry.medicalConditions || "None reported"}
 		</p>
+	</div>
+
+	<div class={panel} data-testid="waitlist-carried-fee">
+		<h3 class="text-sm font-medium mb-2">Workshop credit</h3>
+		<p class="text-xs">
+			{carriedFee === "held"
+				? "Available for a later workshop. They confirm their place instead of paying again"
+				: carriedFee === "applied"
+					? "Used to pay for their current workshop place"
+					: (carriedFeeLabel(carriedFee) ?? "None")}
+		</p>
+		{#if carriedFee && waitlistId}
+			{#if managing}
+				<div class="mt-2">
+					<CarriedFeePanel {waitlistId} deps={carriedFeeDeps} />
+				</div>
+			{:else}
+				<Button
+					size="sm"
+					variant="outline"
+					class="mt-2"
+					onclick={() => (managing = true)}>Refund or link payment…</Button
+				>
+			{/if}
+		{/if}
 	</div>
 </div>

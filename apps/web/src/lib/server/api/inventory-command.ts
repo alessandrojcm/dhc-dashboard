@@ -11,19 +11,18 @@
  * generated call, and passes in the pending response and its `issue` builder.
  */
 import * as Sentry from "@sentry/sveltekit";
-import { invalid } from "@sveltejs/kit";
-import { apiProblem } from "#lib/api-error.js";
+import type { ApiFieldMessages } from "#lib/api-error.js";
+import {
+	type CommandIssue as Issue,
+	type CommandResponse,
+	type CommandResult,
+	commandResult,
+	type FieldAttribution,
+} from "#lib/server/api/command-result.js";
 
-export interface InventoryCommandResponse<Data> {
-	data?: { data: Data };
-	error?: unknown;
-}
+export type InventoryCommandResponse<Data> = CommandResponse<Data>;
+export type InventoryCommandResult<Data> = CommandResult<Data>;
 
-export type InventoryCommandResult<Data> =
-	| { ok: true; data: Data }
-	| { ok: false; error: string };
-
-type Issue = Exclude<Parameters<typeof invalid>[number], string>;
 type IssueBuilder = (message: string) => Issue;
 
 export interface InventoryCommandTranslation<Field extends string> {
@@ -47,16 +46,17 @@ export async function inventoryCommand<Data, const Field extends string>(
 	request: Promise<InventoryCommandResponse<Data>>,
 	translation: InventoryCommandTranslation<Field>,
 ): Promise<InventoryCommandResult<Data>> {
-	const response = await request;
-	if (!response.error && response.data) {
-		return { ok: true, data: response.data.data };
-	}
+	return commandResult(request, translation.fallback, (fields) =>
+		attributeFields(translation, fields),
+	);
+}
 
-	const problem = apiProblem(response.error);
-	const detail = problem?.detail ?? translation.fallback;
+async function attributeFields<Field extends string>(
+	translation: InventoryCommandTranslation<Field>,
+	fields: ApiFieldMessages[],
+): Promise<FieldAttribution> {
 	const issues: Issue[] = [];
 	let unattributed = false;
-	const fields = problem?.fields ?? [];
 	const labels = fields.some(({ field }) =>
 		field.startsWith(VALUE_FIELD_PREFIX),
 	)
@@ -84,10 +84,8 @@ export async function inventoryCommand<Data, const Field extends string>(
 		issues.push(...messages.map((message) => build(message)));
 	}
 
-	if (issues.length === 0) return { ok: false, error: detail };
 	// Keep what no field can show visible at form level.
-	if (unattributed) invalid(...issues, detail);
-	invalid(...issues);
+	return { issues, unattributed };
 }
 
 function issueFor<Field extends string>(

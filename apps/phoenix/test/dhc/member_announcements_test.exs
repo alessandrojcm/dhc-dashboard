@@ -73,6 +73,12 @@ defmodule Dhc.MemberAnnouncementsTest do
                Document.render(doc([%{"type" => "heading", "attrs" => %{"level" => 1}}]))
 
       assert {:error, "is not a rich-text document"} = Document.render("<p>hi</p>")
+
+      # Placeholders belong to Intake Email templates only.
+      placeholder = %{"type" => "placeholder", "attrs" => %{"name" => "firstName"}}
+
+      assert {:error, "contains unsupported content (placeholder)"} =
+               Document.render(doc([paragraph([placeholder])]))
     end
 
     test "rejects javascript: and relative links" do

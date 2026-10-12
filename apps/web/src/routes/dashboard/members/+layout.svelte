@@ -51,7 +51,7 @@ function isActive(href: (typeof sections)[number]["href"]): boolean {
 <div
 	class="members-scroll-region h-[calc(100dvh-57px)] overflow-y-auto px-4 pb-8 sm:px-6 lg:px-8"
 >
-	<div class="mx-auto w-full max-w-7xl">
+	<div class="w-full">
 		{#if isMemberEditor}
 			<div class="py-6 sm:py-8">
 				{@render children()}

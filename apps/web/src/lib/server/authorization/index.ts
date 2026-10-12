@@ -44,11 +44,12 @@ import {
 	type Capability,
 	type ResourceContext,
 } from "./capabilities";
-import { navigationFor } from "./navigation";
+import { navigationFor, type NavigationFacts } from "./navigation";
 import { governingRule, type RouteParams } from "./routes";
 
 export { CAPABILITIES };
 export type { AccessDecision, Capability, ResourceContext };
+export type { NavigationFacts };
 export type { PhoenixSessionProjection };
 
 export interface Authorization {
@@ -61,8 +62,12 @@ export interface Authorization {
 	 * anonymous, 403 forbidden, 404 concealed) when the capability is denied.
 	 */
 	require(capability: Capability, resource?: ResourceContext): void;
-	/** The navigation tree containing exactly the entries this user may open. */
-	navigation(): NavData;
+	/**
+	 * The navigation tree containing exactly the entries this user may open.
+	 * `facts` reveal entries that also depend on the user's own data (ALE-379:
+	 * "My Beginners' Workshops" only while the user has an assignment).
+	 */
+	navigation(facts?: NavigationFacts): NavData;
 }
 
 const DENIAL_MESSAGES = {
@@ -92,8 +97,8 @@ export function authorizationFor(
 				error(decision.status, DENIAL_MESSAGES[decision.status]);
 			}
 		},
-		navigation: () =>
-			navigationFor((capability) => decideFor(capability).allowed),
+		navigation: (facts) =>
+			navigationFor((capability) => decideFor(capability).allowed, facts),
 	};
 }
 

@@ -1,12 +1,12 @@
 <script lang="ts">
 import { Button } from "#lib/components/ui/button/index.js";
-import * as Tooltip from "#lib/components/ui/tooltip/index.js";
 import {
 	ChevronUp,
 	ChevronDown,
-	SendIcon,
 	SquarePen,
 	NotebookPen,
+	Undo2,
+	UserMinus,
 	Trash2,
 } from "@lucide/svelte";
 import * as Popover from "#lib/components/ui/popover/index.js";
@@ -18,7 +18,13 @@ type Props = {
 	onEdit: (newValue: string) => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
-	inviteMember: () => void;
+	/** Offered only for a person removed within the restore window. */
+	onRestore?: () => void;
+	restoreDisabled?: boolean;
+	/** ALE-387: offered for someone still on the Waitlist. */
+	onWithdraw?: () => void;
+	/** ALE-396: a hard delete, offered until the Invitation handoff. */
+	onDelete?: () => void;
 };
 let isEdit = $state(false);
 let {
@@ -26,7 +32,10 @@ let {
 	onEdit,
 	isExpanded = false,
 	onToggleExpand,
-	inviteMember,
+	onRestore,
+	restoreDisabled = false,
+	onWithdraw,
+	onDelete,
 }: Props = $props();
 let value = $state(adminNotes);
 </script>
@@ -47,24 +56,38 @@ let value = $state(adminNotes);
 			{/if}
 		</Button>
 	{/if}
-	<Tooltip.Root>
-		<Tooltip.Trigger>
-			{#snippet child({ props })}
-				<Button
-					variant="ghost"
-					aria-label="Invite Member"
-					{...props}
-					onclick={() => inviteMember()}
-				>
-					<SendIcon class="h-4 w-4" />
-				</Button>
-			{/snippet}
-		</Tooltip.Trigger>
-		<Tooltip.Content class="flex flex-col gap-y-2">
-			<Label>Invite member</Label>
-		</Tooltip.Content>
-	</Tooltip.Root>
-
+	{#if onRestore}
+		<Button
+			variant="ghost"
+			onclick={onRestore}
+			disabled={restoreDisabled}
+			aria-label="Restore to the Waitlist"
+			title="Restore to the Waitlist with their original date"
+		>
+			<Undo2 class="h-4 w-4" />
+			Restore
+		</Button>
+	{/if}
+	{#if onWithdraw}
+		<Button
+			variant="ghost"
+			onclick={onWithdraw}
+			aria-label="Withdraw from the Waitlist"
+			title="Withdraw from the Waitlist"
+		>
+			<UserMinus class="h-4 w-4" />
+		</Button>
+	{/if}
+	{#if onDelete}
+		<Button
+			variant="ghost"
+			onclick={onDelete}
+			aria-label="Delete this person"
+			title="Delete this person"
+		>
+			<Trash2 class="h-4 w-4" />
+		</Button>
+	{/if}
 	<!-- Admin Notes -->
 	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
 		<Popover.Trigger>

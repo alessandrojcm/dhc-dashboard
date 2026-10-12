@@ -9,6 +9,8 @@ describe("templateAlias", () => {
     ["workshopRegistration", "workshop-registration"],
     ["workshopRegistrationError", "workshop-registration-error"],
     ["magicLink", "magic-link"],
+    ["beginnersWorkshopAction", "beginners-workshop-action"],
+    ["beginnersWorkshopNotice", "beginners-workshop-notice"],
   ])("derives the kebab-case alias of %s", (kind, expected) => {
     expect(templateAlias(kind)).toBe(expected);
   });
@@ -94,13 +96,15 @@ describe("defineTemplate", () => {
 });
 
 describe("EMAIL_KINDS whitelist", () => {
-  it("mirrors the five whitelisted kinds of Dhc.Email.Worker", () => {
+  it("mirrors the whitelisted kinds of Dhc.Email.Worker", () => {
     expect([...EMAIL_KINDS]).toEqual([
       "inviteMember",
       "workshopAnnouncement",
       "workshopRegistration",
       "workshopRegistrationError",
       "magicLink",
+      "beginnersWorkshopAction",
+      "beginnersWorkshopNotice",
     ]);
   });
 });

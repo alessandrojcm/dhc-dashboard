@@ -47,6 +47,7 @@ defmodule Mix.Tasks.Stripe.Gen do
                         # Checkout sessions
                         "PostCheckoutSessions",
                         "GetCheckoutSessionsSession",
+                        "PostCheckoutSessionsSessionExpire",
                         # Billing portal sessions
                         "PostBillingPortalSessions",
                         # Refunds

@@ -146,10 +146,21 @@ defmodule DhcWeb.E2EHarnessController do
         _other -> nil
       end
 
-    if is_integer(count) do
-      %{detail: "still_referenced", activeValueCount: count}
-    else
-      %{detail: "still_referenced"}
+    errors =
+      if is_integer(count) do
+        %{detail: "still_referenced", activeValueCount: count}
+      else
+        %{detail: "still_referenced"}
+      end
+
+    # A member teardown names the foreign key that still points at the
+    # Principal, so a refusal says what the spec left behind.
+    case details do
+      %{constraint: constraint} when is_binary(constraint) ->
+        Map.put(errors, :constraint, constraint)
+
+      _other ->
+        errors
     end
   end
 

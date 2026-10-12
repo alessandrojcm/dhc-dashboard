@@ -8,6 +8,7 @@ import type { Snippet } from "svelte";
 import { onMount } from "svelte";
 import { browser, dev } from "$app/env";
 import { configureBrowserApiClient } from "#lib/api-client.js";
+import { redactPayload } from "#lib/intake-link-redaction.js";
 import type { LayoutData } from "./$types";
 
 const { children, data }: { children: Snippet; data: LayoutData } = $props();
@@ -34,6 +35,8 @@ onMount(() => {
 			person_profiles: "identified_only",
 			capture_pageview: true,
 			capture_pageleave: true,
+			// ALE-381: Intake link tokens never reach analytics.
+			before_send: (event) => (event ? redactPayload(event) : event),
 		});
 	}
 

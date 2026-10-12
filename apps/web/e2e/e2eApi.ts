@@ -1,4 +1,5 @@
 import type {
+	BeginnersCarriedFeeStatus,
 	InvitationCreateInvite,
 	InvitationStatus,
 	RegistrationStatus,
@@ -29,6 +30,7 @@ const connectionResetErrorSchema = v.object({
 
 export type E2ERole =
 	| "admin"
+	| "beginners_coordinator"
 	| "coach"
 	| "committee_coordinator"
 	| "member"
@@ -63,6 +65,8 @@ type MemberSeed = {
 type E2EWaitlistSeedRequest = Partial<WaitlistEntryCreateRequest> &
 	Pick<WaitlistEntryCreateRequest, "email"> & {
 		status?: WaitlistStatus;
+		/** ISO instant; sets the Waitlist priority (oldest is contacted first). */
+		initialRegistrationDate?: string;
 		guardian?: {
 			firstName?: string;
 			lastName?: string;
@@ -358,7 +362,86 @@ type SettingSeed = {
 	result: Pick<SettingsItem, "key" | "value">;
 };
 
+/** ALE-398: Beginners' Workshop scenarios (`Dhc.E2EHarness.BeginnersWorkshops`). */
+type BeginnersWorkshopSeed = {
+	attrs: {
+		/** A `beginners.workshops.manage` holder (e.g. a beginners_coordinator). */
+		actorId: string;
+		venue?: string;
+		/** Dublin civil date; defaults to 14 days from today. */
+		date?: string;
+		startTime?: string;
+		capacity?: number;
+		feeCents?: number;
+	};
+	result: { workshopId: string; date: string; venue: string };
+};
+
+/** The Batch pass for one workshop at a fixed 10:00 Dublin today. */
+type BeginnersWorkshopBatchSeed = {
+	attrs: { workshopId: string };
+	result: {
+		outcome: "sent";
+		sentAt: string;
+		contactedWaitlistIds: string[];
+	};
+};
+
+/** The person's open Intake and its Intake page path (token included). */
+type BeginnersWorkshopIntakeLinkSeed = {
+	attrs: { waitlistId: string };
+	result: { intakeId: string; workshopId: string; path: string };
+};
+
+/** Stands in for Stripe's hosted Checkout: completes the live Seat Hold. */
+type BeginnersWorkshopPaymentSeed = {
+	attrs: { waitlistId: string };
+	/** `complete_payment`'s outcome (`BeginnersWorkshops.Commands`). */
+	result: {
+		outcome:
+			| "paid"
+			| "paid_after_close"
+			| "policy_failed"
+			| "not_paid"
+			| "already_recorded";
+		sessionId: string;
+	};
+};
+
+/** Stands in for the clock reaching the workshop day (check-in opens). */
+type BeginnersWorkshopDoorOpenSeed = {
+	attrs: { workshopId: string };
+	result: { workshopId: string; date: string; startTime: string };
+};
+
+/** A `held` Carried Fee, as the Waitlist import records one. */
+type BeginnersWorkshopCarriedFeeSeed = {
+	attrs: { waitlistId: string };
+	result: { carriedFeeId: string; status: BeginnersCarriedFeeStatus };
+};
+
+/** The Invitation the handoff issued to a Waitlist person (for cleanup). */
+type BeginnersWorkshopInvitationSeed = {
+	attrs: { waitlistId: string };
+	result: {
+		invitationId: string;
+		status: InvitationStatus;
+		/**
+		 * The latest Invitation naming the person: the handoff's
+		 * `beginners_workshop`, or `admin` (`Invitations.Repository`'s default).
+		 */
+		invitationType: "beginners_workshop" | "admin";
+	};
+};
+
 type E2EScenarios = {
+	beginnersWorkshop: BeginnersWorkshopSeed;
+	beginnersWorkshopInvitation: BeginnersWorkshopInvitationSeed;
+	beginnersWorkshopBatch: BeginnersWorkshopBatchSeed;
+	beginnersWorkshopIntakeLink: BeginnersWorkshopIntakeLinkSeed;
+	beginnersWorkshopPayment: BeginnersWorkshopPaymentSeed;
+	beginnersWorkshopDoorOpen: BeginnersWorkshopDoorOpenSeed;
+	beginnersWorkshopCarriedFee: BeginnersWorkshopCarriedFeeSeed;
 	member: MemberSeed;
 	waitlist: WaitlistSeed;
 	invitation: InvitationSeed;
@@ -391,7 +474,7 @@ type HarnessRequestBody =
 	| { empty?: never };
 export type E2EFixtureType = Exclude<
 	E2EScenarioName,
-	"setting" | "waitlistStatus"
+	"setting" | "waitlistStatus" | `beginnersWorkshop${string}`
 >;
 
 export async function fetchE2EHarness(
@@ -516,18 +599,45 @@ export async function seedE2EScenario<S extends E2EScenarioName>(
 	return response.data;
 }
 
-export async function deleteE2EFixture(type: E2EFixtureType, id: string) {
+async function requestFixtureDelete(
+	type: E2EFixtureType,
+	id: string,
+	allowed: (status: number) => boolean,
+) {
 	const path = `/fixtures/${type}/${id}`;
 	const response = await fetchE2EHarness(path, {
 		method: "POST",
 		body: JSON.stringify({}),
 	});
 
-	if (!response.ok) {
+	if (!response.ok && !allowed(response.status)) {
 		throw new Error(
 			`E2E harness ${path} failed (${response.status}): ${await response.text()}`,
 		);
 	}
+	return response;
+}
+
+export async function deleteE2EFixture(type: E2EFixtureType, id: string) {
+	await requestFixtureDelete(type, id, () => false);
+}
+
+/**
+ * Best-effort teardown of a fixture the run may have made act: answers
+ * `false` when the harness refuses with 409 `still_referenced` (history
+ * still names it, so it stays in the disposable per-run database) and
+ * throws on any other failure.
+ */
+export async function deleteE2EFixtureUnlessReferenced(
+	type: E2EFixtureType,
+	id: string,
+): Promise<boolean> {
+	const response = await requestFixtureDelete(
+		type,
+		id,
+		(status) => status === 409,
+	);
+	return response.ok;
 }
 
 export async function auditInvitationAcceptance(id: string) {

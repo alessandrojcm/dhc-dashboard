@@ -170,7 +170,7 @@ function closeSheet() {
 	<title>Browse equipment | Dublin HEMA Club</title>
 </svelte:head>
 
-<div class="inventory-page max-w-6xl">
+<div class="inventory-page">
 	<InventoryPageHeader
 		eyebrow="Club gear"
 		title="Find the right kit"

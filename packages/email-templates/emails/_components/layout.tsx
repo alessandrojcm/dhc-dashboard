@@ -1,12 +1,17 @@
 import type { ReactNode } from "react";
 
-import { Body, Container, Html, Img, Preview, Section, Text } from "react-email";
+import { Body, Container, Head, Html, Img, Preview, Section, Text } from "react-email";
 
 export interface EmailLayoutProps {
   /** Rendered into the hidden `<Preview>` preheader. */
   preview?: string;
   /** Optional display heading under the logo (see {@link Heading}). */
   heading?: ReactNode;
+  /**
+   * Optional stylesheet for the `<head>`. Only for markup Phoenix renders
+   * without inline styles (see `rich-message.tsx`); everything else stays inline.
+   */
+  headCss?: string;
   children: ReactNode;
 }
 
@@ -116,9 +121,20 @@ export function Heading({ children }: { children: ReactNode }) {
  * Lives in an underscore-prefixed folder so the `email dev` preview does
  * not list it as a template.
  */
-export function EmailLayout({ preview = "Dublin HEMA Club", heading, children }: EmailLayoutProps) {
+export function EmailLayout({
+  preview = "Dublin HEMA Club",
+  heading,
+  headCss,
+  children,
+}: EmailLayoutProps) {
   return (
     <Html lang="en">
+      {headCss ? (
+        <Head>
+          {/* Raw CSS: React would entity-escape the quoted font names. */}
+          <style dangerouslySetInnerHTML={{ __html: headCss }} />
+        </Head>
+      ) : null}
       <Preview>{preview}</Preview>
       <Body style={body}>
         <Section style={headerBand} role="presentation" />

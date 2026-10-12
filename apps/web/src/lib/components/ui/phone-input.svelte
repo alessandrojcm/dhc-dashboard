@@ -5,6 +5,7 @@ import * as Popover from "#lib/components/ui/popover/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import getUnicodeFlagIcon from "country-flag-icons/unicode";
 import { Input } from "#lib/components/ui/input/index.js";
+import { cn } from "#lib/utils.js";
 import * as countryCodesList from "country-codes-list";
 import {
 	AsYouType,
@@ -158,20 +159,20 @@ function updatePhoneNumber(inputValue: string) {
 					aria-label="Country code"
 					variant="outline"
 					size="sm"
-					class="w-[16ch] justify-between rounded-md"
 					{...props}
+					class="bg-field hover:bg-field dark:bg-field dark:hover:bg-field h-11 w-32 shrink-0 justify-between rounded-md"
 					role="combobox"
 					aria-expanded={open}
 				>
-					{#if open}
-						<ChevronUp class="h-4 w-4" />
-					{:else}
-						<ChevronDown class="h-4 w-4" />
-					{/if}
 					{#if selectedValue}
 						{`${getUnicodeFlagIcon(countryValue)} +${selectedValue}`}
 					{:else}
 						Select a country...
+					{/if}
+					{#if open}
+						<ChevronUp class="h-4 w-4" />
+					{:else}
+						<ChevronDown class="h-4 w-4" />
 					{/if}
 				</Button>
 			{/snippet}
@@ -206,6 +207,7 @@ function updatePhoneNumber(inputValue: string) {
 	</Popover.Root>
 	<Input
 		{...props}
+		class={cn("h-11 min-w-0 flex-1", props.class)}
 		{id}
 		type="tel"
 		bind:value={formattedPhone}

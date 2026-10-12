@@ -28,7 +28,10 @@ mise run dev                      # 3. SvelteKit dev from apps/web
 - The SvelteKit dev server serves **HTTPS** at the canonical local origin `https://127.0.0.1:5173` (`vite-plugin-mkcert`, self-signed). Probe it with `curl -sk https://127.0.0.1:5173/...`; plain `http://` curls fail even when the server is up. Keep frontend URLs, redirects, and browser visits on `127.0.0.1` rather than mixing it with `localhost`, because host-only auth cookies do not cross between them.
 - Phoenix remains on `http://127.0.0.1:4000` in development. Since the browser frontend and API use different schemes, development auth cookies are intentionally `Secure; SameSite=None` and browser API calls use credentialed CORS. E2E remains a separate HTTP-only `127.0.0.1` topology with `SameSite=Lax` cookies.
 - Invitation onboarding skips the external Discord authorization screen in development and returns through the normal callback automatically. Set `DISCORD_DEV_BYPASS=false` on `mise run phx-server` when manually testing the real Discord OAuth integration; sign-in and account-linking OAuth are never bypassed.
+- If the Phoenix log shows `Phoenix.Ecto.PendingMigrationError`, every API request fails, including magic-link requests, which then send no email. Run `mise run phx-migrate`.
+- **Agent smoke tests of dashboard pages:** the local dev DB has role accounts `admin@example.com`, `beginners@example.com` (beginners_coordinator, coach) and `president@example.com`. Request a magic link on `/auth`. The Mailpit message's `Text` is the JSON summary, so read `data_variables.LOGIN_LINK` from `GET http://127.0.0.1:8025/api/v1/message/<id>`. Magic links are rate-limited per email and per IP, so save Playwright `storageState` after the first login and reuse it. To stay out of the user's Chrome, drive `apps/web/node_modules/playwright` (Chromium is already installed for E2E) from a scratch `.mjs` outside the repo with `ignoreHTTPSErrors: true`, run via `mise exec -- node`.
 - Unhandled server errors are console-logged (status, method, path, route, stack) by `logUnhandledServerError` in `apps/web/src/hooks.server.ts`, wrapped inside Sentry's `handleError`. The catch-all UI is the root `apps/web/src/routes/+error.svelte` plus `apps/web/src/error.html` (fallback for errors in `handle`, `+server.js`, or the root layout load, which no `+error.svelte` can render).
+- Browser absence assertions need DOM evidence: Playwriter accessibility snapshots can omit visible paragraphs (the Door's `door-window` notice is one). Confirm the relevant locator's text and visibility, and capture a focused screenshot before reporting missing UI.
 
 ```bash
 
@@ -59,6 +62,20 @@ In a fresh linked worktree, run `mise run check` before `mise run lint` or
 `apps/web/.svelte-kit/tsconfig.json`; without it, Oxlint can fail while loading
 the web TypeScript project, and the parallel `ci` tasks cannot reliably create
 the file before lint starts.
+
+The generated API client (`packages/api-client/src/client/`) is gitignored and
+regenerated only by `pnpm install`'s postinstall. After pulling or merging an
+OpenAPI change, run `pnpm --filter @dhc/api-client api:generate` before
+`mise run check`, or svelte-check reports the old types.
+
+`mise run test-unit` runs plain `vitest`, which covers **both** the `unit` and
+`browser` projects and stays in watch mode in a terminal (a herdr pane is one);
+for a one-shot run use `cd apps/web && pnpm test:unit --run`. Two startup flakes
+fail a run before or during the first tests and pass on rerun: Miniflare
+`SQLITE_BUSY` (the Vite servers' Cloudflare platform proxies race on
+`apps/web/.wrangler/state`), and a cold Vite cache that optimizes a newly
+imported dependency mid-run ("optimized dependencies changed. reloading"),
+which fails whichever browser tests were mounted.
 
 Oxlint runs in `apps/web`, `packages/api-client`, and `packages/email-templates`;
 the generated API client under `packages/api-client/src/client/` is ignored.
@@ -92,7 +109,7 @@ Never supply a live-mode key.
 
 ## Email templates (Resend sync)
 
-The five transactional templates are React Email components in
+The transactional templates are React Email components in
 `packages/email-templates`, synced upsert-by-alias to Resend-hosted templates
 (ADR 0022). See that package's README for the drift policy and CI wiring.
 
@@ -107,10 +124,12 @@ mise run email-sync          # render + upsert drafts (what PRs do)
 mise run email-sync-publish  # upsert + publish (what merge-to-main does)
 mise run email-smoke         # fail unless every whitelisted kind has a published template
 mise run email-shells        # generate Phoenix announcement HTML + styles (no Resend key)
+pnpm --filter @dhc/email-templates verify:html-variable
+                             # one real send to delivered@resend.dev: is {{{MESSAGE_HTML}}} inserted unescaped?
 ```
 
-All three need a Full Access key as `RESEND_API_KEY` (`fnox` holds the send-only
-key under that name; use the `RESEND_API_KEY_CI` value for syncs). The GitHub
+The sync, smoke and verify commands need a Full Access key as `RESEND_API_KEY` (`fnox` holds the send-only
+key under that name in the `production` profile, read through the 1Password `op` CLI with the desktop app integration turned on; use the `RESEND_API_KEY_CI` value, a GitHub Actions secret that fnox does not hold, for syncs and the verify send). The GitHub
 Actions workflow `.github/workflows/email-templates.yml` runs the same pipeline:
 drafts on pull requests, publish + smoke on main, gated by change detection on
 `packages/email-templates/**`.
@@ -191,6 +210,26 @@ the task authorizes both against current Member-admin roles in the database, and
 they must be different. The ID arguments are not authentication credentials.
 The roster exporter is throwaway migration tooling, not a recurring sync or
 Phoenix runtime task.
+
+### One-time Waitlist spreadsheet import (ALE-376)
+
+Imports the club's Waitlist Google Forms export (CSV or TSV, header row as
+exported) once. Always dry-run first: it validates every row against the
+database and prints the full report (imported, refused with reasons, notes,
+each row's Paid/Carried Fee value) without writing. A sheet with
+month-first-only dates or a missing column is refused whole. Do not run it
+against the shared dev database, and do not run it in production until
+ALE-388 makes `Dhc.Waitlist.Import.create_carried_fee/2` create Carried Fees.
+
+```bash
+cd apps/phoenix
+mix dhc.waitlist.import /secure/path/waitlist.tsv --dry-run
+mix dhc.waitlist.import /secure/path/waitlist.tsv
+
+# In a release (no Mix):
+bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv", dry_run: true)'
+bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv")'
+```
 
 # Code quality
 mise run phx-format         # Format all Elixir files
@@ -349,6 +388,7 @@ To add new Stripe endpoints:
 5. Use the generated functions via `Dhc.Stripe.Operations.*` with `Dhc.Stripe.Client`
 
 - Do not hand-roll Stripe endpoint calls with `Dhc.Stripe.Client.request/1` in domain code. If an endpoint exists in Stripe's OpenAPI spec, find the operation ID by the Stripe URL, add that exact ID to both allow-lists above, regenerate, and call the generated `Dhc.Stripe.Operations.*` function. If generation still fails after both allow-lists match the current spec, debug the generator/filter rather than bypassing it.
+- Check both allow-lists before regenerating: the operation is often already there. `mise run stripe-gen` boots the dev app against the database in `.env` (the shared local dev DB) and downloads Stripe's latest spec, so a regeneration also rewrites dozens of unrelated generated files. Run it with `mise exec -- env DATABASE_URL=<throwaway> …` and keep only the generated changes the work needs.
 
 Hand-written modules: `Dhc.Stripe.Client` (Req adapter), `Dhc.Stripe.Processor` (allowlist filter), `Dhc.StripeSync` (sync business logic), `Dhc.StripeSync.Worker` (Oban worker).
 
@@ -368,6 +408,8 @@ mise run seed-committee
 mise run seed-committee ./scripts/users.csv
 mise run seed-inventory
 mise run seed-inventory 30
+mise run seed-beginners-workshops
+mise run seed-beginners-workshops 6
 
 # Or run directly from Phoenix app
 cd apps/phoenix && mix seed.waitlist 50
@@ -377,7 +419,7 @@ cd apps/phoenix && mix seed.committee_members ../../scripts/users.csv
 cd apps/phoenix && mix seed.inventory 30
 ```
 
-`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.invitations` creates direct, pending member invitations without a waitlist entry or an issuing administrator. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. `seed.inventory` creates typed categories, nested containers, physical items, active members as needed, and a spread of available, maintenance, requested, approved, and checked-out states. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
+`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. An exported `DATABASE_URL` does **not** override `.env` under `mise exec`/`mise run` — every linked worktree's `.env` points at the shared local dev DB. To migrate or seed a throwaway database, pass it inside the command: `mise exec -- env DATABASE_URL=postgres://… mix ecto.migrate`. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.invitations` creates direct, pending member invitations without a waitlist entry or an issuing administrator. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. `seed.beginners_workshops` schedules workshops through the `Dhc.BeginnersWorkshops` boundary as `beginners.seeder@example.com` (a beginners coordinator it creates), plus one workshop contacted from yesterday whose Batch 1 is sent through `send_due_batch` at yesterday's 10:00 Dublin, so it has an open Batch window (it seeds waiting Waitlist entries first when fewer than 8 are waiting, and queues their contact emails), plus (ALE-381) one more workshop contacted yesterday with 2 Intakes paid through `complete_payment` and 2 holding a live Seat Hold (their payment rows are written directly so the seed needs no Stripe key; the sweep's reaper frees those holds 30 minutes later), plus (ALE-385) one workshop two days out whose Payment Cutoff was yesterday, scheduled and contacted at fixed past clocks with 2 Intakes paid, after which `pass_payment_cutoff` sends the paid two Pre-workshop info and lapses the other two (removing them from the Waitlist), plus (ALE-391) one finalised workshop three days ago run through the whole lifecycle at fixed past clocks (2 checked in by the seeder, then `finalise_attendance` at the end of that day and `send_follow_ups` the next morning: 2 attended, 1 no-show, Staff frozen); later tickets extend it with lifecycle stages. `seed.inventory` creates typed categories, nested containers, physical items, active members as needed, and a spread of available, maintenance, requested, approved, and checked-out states. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present. Without it there are no role accounts at all: to recreate one, write a `scripts/users.csv` with the header `email,displayname,roles,first_name,last_name,dob,pronouns,gender,next_of_kin_name,next_of_kin_phone,preferred_weapon,additional_data` and a row such as `admin@example.com,Admin,"admin,member",Admin,Example,01/01/1990,they/them,other,Next of Kin,+353820000000,longsword,` (`dob` is `dd/mm/yyyy`), then run `mise run seed-committee`.
 
 ## CI (full check)
 

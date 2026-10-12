@@ -105,7 +105,7 @@ function formatDate(iso: string | null): string {
 	<title>My loans | Dublin HEMA Club</title>
 </svelte:head>
 
-<div class="inventory-page max-w-5xl">
+<div class="inventory-page">
 	<InventoryPageHeader
 		eyebrow="Club gear"
 		title="My loans"

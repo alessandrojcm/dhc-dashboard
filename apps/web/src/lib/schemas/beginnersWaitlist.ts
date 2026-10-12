@@ -13,8 +13,24 @@ import {
 } from "#lib/schemas/fields.js";
 import { SocialMediaConsent } from "#lib/types.js";
 
-const entries = {
-	firstName: requiredText("First name is required."),
+/**
+ * Phoenix holds a first name to the Intake Email `firstName` placeholder
+ * maximum (the `WaitlistEntryCreateRequest` contract's `maxLength`).
+ */
+export const FIRST_NAME_MAX_LENGTH = 40;
+
+/**
+ * The registration fields, shared with the staff "add a new person" form of
+ * the Fast-track dialog (ALE-384), which posts the same body.
+ */
+export const waitlistRegistrationEntries = {
+	firstName: v.pipe(
+		requiredText("First name is required."),
+		v.maxLength(
+			FIRST_NAME_MAX_LENGTH,
+			`First name must be at most ${FIRST_NAME_MAX_LENGTH} characters.`,
+		),
+	),
 	lastName: requiredText("Last name is required."),
 	email: email(),
 	phoneNumber: phoneNumber(),
@@ -28,6 +44,8 @@ const entries = {
 	),
 	...guardianEntries,
 };
+
+const entries = waitlistRegistrationEntries;
 
 /**
  * The public Waitlist form, used for both `form(...)` and `.preflight(...)`.

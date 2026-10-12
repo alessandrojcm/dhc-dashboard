@@ -12,8 +12,12 @@ defmodule Dhc.Email.Worker do
     * `email` — the recipient email address
     * `transactional_id` — the Email Kind (`"inviteMember"`,
       `"workshopAnnouncement"`, `"workshopRegistration"`,
-      `"workshopRegistrationError"`, `"magicLink"`). The worker derives the
-      Resend template alias mechanically in kebab-case.
+      `"workshopRegistrationError"`, `"magicLink"`, `"beginnersWorkshopAction"`,
+      `"beginnersWorkshopNotice"`). The worker derives the Resend template
+      alias mechanically in kebab-case.
+    * `subject` (optional) — a non-blank string that overrides the
+      template's default subject. Intake Emails (ALE-377) pass the subject
+      filled from the club-wide template when they are queued.
     * `data_variables` — key-value pairs injected into the email template
       (values must be strings or numbers)
     * `sealed_data_variables` (optional) — more template variables, encrypted
@@ -22,7 +26,11 @@ defmodule Dhc.Email.Worker do
       stored in `oban_jobs` until pruned and attached to Sentry events by the
       Oban integration, so a plaintext credential there would outlive the
       email. The ciphertext is bound to `secret_key_base` and expires after
-      15 minutes; an expired or tampered value cancels the job.
+      a Kind-dependent lifetime: 15 minutes by default (the magic-link token
+      lives that long), 24 hours for the Beginners' Workshop Kinds, whose
+      Intake link stays valid while the Intake is open, so a worker outage
+      must not silently drop the email. An expired or tampered value cancels
+      the job.
       Sealed variables override plain ones with the same key.
 
   ## Delivery
@@ -71,12 +79,17 @@ defmodule Dhc.Email.Worker do
   alias Dhc.Email.Mailer
   alias Swoosh.Email
 
-  @transactional_ids ~w(inviteMember workshopAnnouncement workshopRegistration workshopRegistrationError magicLink)
+  @transactional_ids ~w(inviteMember workshopAnnouncement workshopRegistration workshopRegistrationError magicLink beginnersWorkshopAction beginnersWorkshopNotice)
   @idempotency_header "Idempotency-Key"
 
-  # The magic-link token behind the one sealed caller is valid for 15 minutes;
-  # a sealed value older than that could only deliver a dead link.
+  # The magic-link token is valid for 15 minutes; a sealed value older than
+  # that could only deliver a dead link. Intake links stay valid while the
+  # Intake is open, so their Kinds keep the seal for a day instead.
   @sealed_max_age_seconds 15 * 60
+  @sealed_max_age_seconds_by_kind %{
+    "beginnersWorkshopAction" => 24 * 60 * 60,
+    "beginnersWorkshopNotice" => 24 * 60 * 60
+  }
   @sealed_salt "dhc.email.worker sealed_data_variables v1"
 
   @doc """
@@ -114,6 +127,7 @@ defmodule Dhc.Email.Worker do
       |> validate_transactional_id(args)
       |> validate_data_variables(args)
       |> validate_sealed_data_variables(args)
+      |> validate_subject(args)
 
     case errors do
       [] ->
@@ -188,12 +202,22 @@ defmodule Dhc.Email.Worker do
 
   defp validate_sealed_data_variables(errors, _args), do: errors
 
+  defp validate_subject(errors, %{"subject" => subject}) do
+    if is_binary(subject) and String.trim(subject) != "" do
+      errors
+    else
+      ["subject must be a non-blank string" | errors]
+    end
+  end
+
+  defp validate_subject(errors, _args), do: errors
+
   # -- Sealed data variables ---------------------------------------------------
 
   defp unseal_data_variables(%{"sealed_data_variables" => sealed} = args, ctx)
        when is_binary(sealed) do
     case Plug.Crypto.decrypt(secret_key_base(), @sealed_salt, sealed,
-           max_age: @sealed_max_age_seconds
+           max_age: sealed_max_age_seconds(args["transactional_id"])
          ) do
       {:ok, variables} when is_map(variables) ->
         if valid_variable_values?(variables) do
@@ -212,6 +236,9 @@ defmodule Dhc.Email.Worker do
   end
 
   defp unseal_data_variables(args, _ctx), do: {:ok, args}
+
+  defp sealed_max_age_seconds(kind),
+    do: Map.get(@sealed_max_age_seconds_by_kind, kind, @sealed_max_age_seconds)
 
   # An expired or tampered value cannot be fixed by retrying. The reason is
   # `:expired`, `:invalid` or `:invalid_values`; never the ciphertext.
@@ -259,11 +286,11 @@ defmodule Dhc.Email.Worker do
     data_variables = Map.get(args, "data_variables", %{})
 
     recipient
-    |> build_email(kind, data_variables, job.id)
+    |> build_email(kind, data_variables, args["subject"], job.id)
     |> deliver_email(kind, ctx)
   end
 
-  defp build_email(recipient, kind, data_variables, oban_job_id) do
+  defp build_email(recipient, kind, data_variables, subject, oban_job_id) do
     email =
       Email.new()
       |> Email.from(email_from())
@@ -273,6 +300,7 @@ defmodule Dhc.Email.Worker do
         id: template_alias(kind),
         variables: data_variables
       })
+      |> put_subject(subject)
 
     if oban_job_id do
       key = "oban-#{oban_job_id}"
@@ -285,22 +313,27 @@ defmodule Dhc.Email.Worker do
     else
       email
     end
-    |> decorate_for_dev(recipient, kind, data_variables)
+    |> decorate_for_dev(recipient, kind, data_variables, subject)
   end
+
+  # Resend uses the template's default subject unless the payload sets one.
+  defp put_subject(email, nil), do: email
+  defp put_subject(email, subject), do: Email.subject(email, subject)
 
   # Non-prod only: providers render real bodies from their templates, so the
   # dev inbox gets a JSON summary (recipient + friendly Kind + variables).
-  defp decorate_for_dev(email, recipient, kind, data_variables) do
+  defp decorate_for_dev(email, recipient, kind, data_variables, subject_override) do
     if env() == :prod do
       email
     else
-      payload = %{
-        email: recipient,
-        transactional_id: kind,
-        data_variables: data_variables
-      }
+      summary = %{email: recipient, transactional_id: kind, data_variables: data_variables}
 
-      subject = "[dev] Email: #{kind}"
+      {payload, subject} =
+        case subject_override do
+          nil -> {summary, "[dev] Email: #{kind}"}
+          override -> {Map.put(summary, :subject, override), "[dev] #{override}"}
+        end
+
       body = Jason.encode!(payload, pretty: true)
 
       email

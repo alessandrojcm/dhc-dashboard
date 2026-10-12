@@ -39,6 +39,7 @@ defmodule Dhc.Stripe.Processor do
                         # Checkout sessions
                         "PostCheckoutSessions",
                         "GetCheckoutSessionsSession",
+                        "PostCheckoutSessionsSessionExpire",
                         # Billing portal sessions
                         "PostBillingPortalSessions",
                         # Refunds

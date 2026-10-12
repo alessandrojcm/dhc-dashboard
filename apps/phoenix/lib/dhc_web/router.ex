@@ -16,8 +16,18 @@ defmodule DhcWeb.Router do
     plug(DhcWeb.Plugs.RequireSession, capability: :"members.invite")
   end
 
-  pipeline :beginners_workshop_read do
-    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.workshop.read")
+  pipeline :beginners_waitlist_manage do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.waitlist.manage")
+  end
+
+  pipeline :beginners_workshops_manage do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.workshops.manage")
+  end
+
+  # ALE-379: every member; `beginners.workshops.run` is assignment-scoped, so
+  # the door controller checks it against the workshop's Staff.
+  pipeline :beginners_workshops_assigned_read do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"beginners.workshops.assigned.read")
   end
 
   pipeline :beginners_waitlist_toggle do
@@ -49,6 +59,146 @@ defmodule DhcWeb.Router do
 
   pipeline :training_announcements_manage do
     plug(DhcWeb.Plugs.RequireSession, capability: :"training_announcements.manage")
+  end
+
+  scope "/api/beginners-workshops", DhcWeb do
+    pipe_through([:api, :beginners_workshops_manage])
+
+    get("/", BeginnersWorkshopsController, :index)
+    post("/", BeginnersWorkshopsController, :create)
+    get("/staff-candidates", BeginnersWorkshopsController, :staff_candidates)
+    # ALE-397: the Dashboard tab's report (read only).
+    get("/report", BeginnersWorkshopReportController, :show)
+    put("/:id/settings", BeginnersWorkshopsController, :update_settings)
+    post("/:id/reschedule", BeginnersWorkshopsController, :reschedule)
+    post("/:id/cancel", BeginnersWorkshopsController, :cancel)
+    get("/:id/console", BeginnersWorkshopsController, :console)
+    post("/:id/batches/pause", BeginnersWorkshopBatchesController, :pause)
+    post("/:id/batches/resume", BeginnersWorkshopBatchesController, :resume)
+    put("/:id/staff", BeginnersWorkshopsController, :set_staff)
+    get("/:id/fast-track/candidates", BeginnersWorkshopFastTrackController, :candidates)
+    post("/:id/fast-track", BeginnersWorkshopFastTrackController, :waitlist_person)
+    post("/:id/fast-track/new-person", BeginnersWorkshopFastTrackController, :new_person)
+    # ALE-382 — follow-ups to a failed refund.
+    post("/:id/refunds/:refundId/retry", BeginnersWorkshopRefundsController, :retry)
+    post("/:id/refunds/:refundId/manual", BeginnersWorkshopRefundsController, :record_manual)
+    # ALE-389 — a Carried Fee's failed refund can also be forfeited.
+    post("/:id/refunds/:refundId/forfeit", BeginnersWorkshopRefundsController, :forfeit)
+    # ALE-386: console Intake commands.
+    post("/:id/intakes/:intakeId/decline", BeginnersWorkshopIntakesController, :decline)
+    # ALE-388: defer and confirm with a Carried Fee.
+    post("/:id/intakes/:intakeId/defer", BeginnersWorkshopIntakesController, :defer)
+    post("/:id/intakes/:intakeId/confirm", BeginnersWorkshopIntakesController, :confirm)
+    post("/:id/intakes/:intakeId/resend-link", BeginnersWorkshopIntakesController, :resend_link)
+    post("/:id/intakes/:intakeId/rotate-link", BeginnersWorkshopIntakesController, :rotate_link)
+    # ALE-389.
+    post(
+      "/:id/intakes/:intakeId/refund-carried-fee",
+      BeginnersWorkshopIntakesController,
+      :refund_carried_fee
+    )
+
+    # ALE-389 — one person's Carried Fee, from the Waitlist tab (money, so
+    # `beginners.workshops.manage`).
+    get("/people/:waitlistId/carried-fee", BeginnersWorkshopCarriedFeesController, :show)
+
+    post(
+      "/people/:waitlistId/carried-fee/refund",
+      BeginnersWorkshopCarriedFeesController,
+      :refund
+    )
+
+    post(
+      "/people/:waitlistId/carried-fee/link-payment",
+      BeginnersWorkshopCarriedFeesController,
+      :link_payment
+    )
+
+    post(
+      "/people/:waitlistId/carried-fee/refunds/:refundId/retry",
+      BeginnersWorkshopCarriedFeesController,
+      :retry_refund
+    )
+
+    post(
+      "/people/:waitlistId/carried-fee/refunds/:refundId/manual",
+      BeginnersWorkshopCarriedFeesController,
+      :record_manual_refund
+    )
+
+    post(
+      "/people/:waitlistId/carried-fee/refunds/:refundId/forfeit",
+      BeginnersWorkshopCarriedFeesController,
+      :forfeit
+    )
+
+    # ALE-387.
+    post(
+      "/:id/intakes/:intakeId/cancel-with-refund",
+      BeginnersWorkshopIntakesController,
+      :cancel_with_refund
+    )
+
+    # ALE-393: attendance corrections after finalisation.
+    post(
+      "/:id/intakes/:intakeId/correct-attendance",
+      BeginnersWorkshopIntakesController,
+      :correct_attendance
+    )
+
+    # ALE-383 — Intake Email templates.
+    get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)
+    put("/email-templates/:emailType", BeginnersWorkshopEmailTemplatesController, :update)
+  end
+
+  # ALE-387: withdraw is the Waitlist's exit (`beginners.waitlist.manage`),
+  # offered on the Waitlist tab (by person) and the console (by Intake), and
+  # run by the Beginners' Workshop boundary.
+  scope "/api/beginners-workshops", DhcWeb do
+    pipe_through([:api, :beginners_waitlist_manage])
+
+    post("/people/:waitlistId/withdraw", BeginnersWorkshopIntakesController, :withdraw_person)
+    # ALE-396: the Waitlist tab's Delete (a hard delete in the boundary).
+    post("/people/:waitlistId/delete", BeginnersWorkshopIntakesController, :delete_person)
+    post("/:id/intakes/:intakeId/withdraw", BeginnersWorkshopIntakesController, :withdraw)
+
+    # ALE-388: the Waitlist view's Carried Fee column (the Waitlist cannot
+    # read Beginners' Workshops, so the dashboard asks here).
+    get("/carried-fees", BeginnersWorkshopCarriedFeesController, :index)
+  end
+
+  scope "/api/beginners-workshops", DhcWeb do
+    pipe_through([:api, :beginners_workshops_assigned_read])
+
+    get("/mine", BeginnersWorkshopAssignmentsController, :list)
+    get("/:id/door", BeginnersWorkshopDoorController, :show)
+    post("/:id/door/people/:intakeId/check-in", BeginnersWorkshopDoorController, :check_in)
+    delete("/:id/door/people/:intakeId/check-in", BeginnersWorkshopDoorController, :undo_check_in)
+    post("/:id/door/finish", BeginnersWorkshopDoorController, :finish)
+  end
+
+  # ALE-392: the Invitation handoff is an Invitation, gated like one.
+  scope "/api/beginners-workshops", DhcWeb do
+    pipe_through([:api, :members_invite])
+
+    get("/invitable", BeginnersWorkshopInvitationsController, :invitable)
+    post("/:id/intakes/:intakeId/invite", BeginnersWorkshopInvitationsController, :invite)
+  end
+
+  # ALE-381: the person's Intake link. The token in the path is the only
+  # credential; the pipeline sends `Referrer-Policy: no-referrer` and logs the
+  # request with the token redacted.
+  pipeline :intake_link do
+    plug(DhcWeb.Plugs.IntakeLinkPage)
+  end
+
+  scope "/api/beginners/intake", DhcWeb do
+    pipe_through([:api, :intake_link])
+
+    get("/:token", BeginnersWorkshopIntakeController, :show)
+    post("/:token/payment", BeginnersWorkshopIntakeController, :start_payment)
+    post("/:token/confirm", BeginnersWorkshopIntakeController, :confirm)
+    post("/:token/return", BeginnersWorkshopIntakeController, :return_from_checkout)
   end
 
   scope "/api/training-announcements", DhcWeb do
@@ -241,13 +391,14 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
-    pipe_through([:api, :beginners_workshop_read])
+    pipe_through([:api, :beginners_waitlist_manage])
 
     get("/waitlist/analytics", WaitlistController, :analytics)
     get("/waitlist/entries", WaitlistController, :entries)
     get("/waitlist/entries/:id", WaitlistController, :show)
     patch("/waitlist/entries/:id", WaitlistController, :update)
     get("/waitlist/entries/:id/guardian", WaitlistController, :guardian)
+    post("/waitlist/entries/:id/restore", WaitlistController, :restore)
   end
 
   scope "/api", DhcWeb do

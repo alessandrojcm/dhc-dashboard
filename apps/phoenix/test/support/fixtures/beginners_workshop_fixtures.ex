@@ -1,0 +1,309 @@
+defmodule Dhc.BeginnersWorkshopFixtures do
+  @moduledoc "Beginners' Workshop fixtures: staff principals, a fixed clock and scheduled workshops."
+
+  import Ecto.Query
+
+  alias Dhc.Auth.UserRole
+  alias Dhc.BeginnersWorkshops
+  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Clock, Intake}
+  alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist.WaitlistEntry
+
+  # 2026-10-09 12:00 Dublin (IST, UTC+1).
+  @now ~U[2026-10-09 11:00:00Z]
+
+  def now, do: @now
+  def clock(now \\ @now), do: Clock.fixed(now)
+
+  @doc """
+  An active member holding `role` plus `member` (as every real member does);
+  returns the principal id. `attrs` go to `Dhc.MemberFixtures.member_fixture/1`.
+  """
+  def staff_fixture(role \\ "beginners_coordinator", attrs \\ %{}) do
+    member = Dhc.MemberFixtures.member_fixture(attrs)
+
+    for role <- Enum.uniq(["member", role]),
+        do: Repo.insert!(%UserRole{principal_id: member.principal_id, role: role})
+
+    member.principal_id
+  end
+
+  @doc "Sets a workshop's Staff through the boundary (as a fresh coordinator unless given)."
+  def set_staff!(workshop_id, coach, assistants \\ [], opts \\ []) do
+    actor = Keyword.get_lazy(opts, :actor, fn -> staff_fixture() end)
+
+    {:ok, view} =
+      BeginnersWorkshops.execute(
+        {:staff, actor},
+        {:set_staff, workshop_id,
+         %{"coach_principal_id" => coach, "assistant_principal_ids" => assistants}},
+        Keyword.put_new(opts, :clock, clock())
+      )
+
+    view
+  end
+
+  def workshop_attrs(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "venue" => "St. Andrew's Hall",
+        "date" => "2026-11-14",
+        "start_time" => "18:30",
+        "capacity" => 16,
+        "fee_cents" => 4000
+      },
+      overrides
+    )
+  end
+
+  @doc "Schedules one workshop through the boundary and returns its view."
+  def scheduled_fixture(staff_id, overrides \\ %{}, opts \\ []) do
+    {:ok, [view]} =
+      BeginnersWorkshops.execute(
+        {:staff, staff_id},
+        {:schedule_workshop, [workshop_attrs(overrides)]},
+        Keyword.put_new(opts, :clock, clock())
+      )
+
+    view
+  end
+
+  @doc """
+  Test-only: forces a workshop's status, for tests that need a finalised or
+  cancelled workshop without running `finish_workshop` (or the cancel
+  ticket's command).
+  """
+  def force_status!(workshop_id, status) do
+    # A finalised workshop records when (the finalised check).
+    # A finalised or cancelled workshop records when (the finalised and
+    # cancelled checks).
+    at = %{@now | microsecond: {0, 6}}
+    finalised_at = if status == "finalised", do: at
+    cancelled_at = if status == "cancelled", do: at
+
+    Repo.get!(BeginnersWorkshop, workshop_id)
+    |> Ecto.Changeset.change(
+      status: status,
+      finalised_at: finalised_at,
+      cancelled_at: cancelled_at
+    )
+    |> Repo.update!()
+  end
+
+  @doc """
+  A Waitlist person with an inactive profile. `registered_at` sets the
+  priority (`initial_registration_date`); options `first_name`,
+  `date_of_birth` and `status` (default `waiting`). Any other standing is
+  reached through `Dhc.Waitlist.change_standing/3` stamped at
+  `registered_at`, never by writing the status.
+  """
+  def waiting_person_fixture(registered_at, opts \\ []) do
+    at = DateTime.truncate(registered_at, :second)
+
+    entry =
+      %WaitlistEntry{}
+      |> WaitlistEntry.create_changeset(%{
+        email: "#{System.unique_integer([:positive])}@waitlist.example.com"
+      })
+      |> Ecto.Changeset.change(initial_registration_date: at, last_status_change: at)
+      |> Repo.insert!()
+
+    Repo.insert!(%UserProfile{
+      waitlist_id: entry.id,
+      first_name: Keyword.get(opts, :first_name, "Person#{System.unique_integer([:positive])}"),
+      last_name: "Waiting",
+      phone_number: "+353810000000",
+      date_of_birth: Keyword.get(opts, :date_of_birth, ~D[1995-05-05]),
+      gender: "non-binary",
+      pronouns: "they/them",
+      is_active: false,
+      social_media_consent: "no"
+    })
+
+    {:ok, _} =
+      Repo.transaction(fn ->
+        for to <- standing_path(Keyword.get(opts, :status, "waiting")),
+            do: {:ok, _} = Dhc.Waitlist.change_standing(entry.id, to, now: at)
+      end)
+
+    Repo.get!(WaitlistEntry, entry.id)
+  end
+
+  defp standing_path("waiting"), do: []
+  defp standing_path("removed"), do: ["removed"]
+  defp standing_path("attended"), do: ["attended"]
+  defp standing_path("invited"), do: ["attended", "invited"]
+  defp standing_path("joined"), do: ["attended", "invited", "joined"]
+
+  # 10:00 Dublin on 20 October 2026: Batch 1 of a workshop contacted from that day.
+  @batch_1_at ~U[2026-10-20 09:00:00.000000Z]
+
+  @doc "When `contacted_fixture/3`'s Batch 1 goes out."
+  def batch_1_at, do: @batch_1_at
+
+  @doc """
+  A workshop (contact from 20 October, cutoff 11 November 18:30 UTC) whose
+  Batch 1 contacted `count` people (capacity `count` unless overridden).
+  Returns `{workshop_view, intakes}`, intakes in priority order with their
+  link tokens as `{intake, token}`.
+  """
+  def contacted_fixture(staff_id, count, overrides \\ %{}) do
+    workshop =
+      scheduled_fixture(
+        staff_id,
+        Map.merge(%{"contact_from" => "2026-10-20", "capacity" => count}, overrides)
+      )
+
+    waiting_people_fixture(count)
+
+    {:ok, %{outcome: :sent}} =
+      BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: Clock.fixed(@batch_1_at)
+      )
+
+    intakes =
+      Repo.all(
+        from(i in Intake, where: i.workshop_id == ^workshop.id, order_by: [i.queue_date, i.id])
+      )
+
+    {workshop, Enum.map(intakes, &{&1, Dhc.BeginnersWorkshops.IntakeLink.token(&1.id, 1)})}
+  end
+
+  @doc """
+  Test-only: a `contacted` fast-track Intake for `person` inserted straight
+  into the table (no fast-track command exists yet); returns
+  `{intake, link_token}`.
+  """
+  def intake_fixture!(workshop_id, %WaitlistEntry{} = person, contacted_at \\ @now) do
+    id = Ecto.UUID.generate()
+    token = Dhc.BeginnersWorkshops.IntakeLink.token(id, 1)
+
+    intake =
+      %{
+        id: id,
+        workshop_id: workshop_id,
+        waitlist_id: person.id,
+        origin: "fast_track",
+        queue_date: person.initial_registration_date,
+        link_token_hash: Dhc.BeginnersWorkshops.IntakeLink.hash(token),
+        contacted_at: contacted_at
+      }
+      |> Intake.contact_changeset()
+      |> Repo.insert!()
+
+    {intake, token}
+  end
+
+  @doc "`count` waiting people registered a day apart, oldest first."
+  def waiting_people_fixture(count, from \\ ~U[2025-01-01 12:00:00Z]) do
+    for index <- 0..(count - 1)//1,
+        do: waiting_person_fixture(DateTime.add(from, index * 86_400, :second))
+  end
+
+  @doc """
+  Test-only: forces an Intake's state. A forced `paid` is paid via Stripe
+  (the `paid` check needs `paid_via`/`paid_at`); pay through
+  `complete_payment` when the payment row matters.
+  """
+  def force_intake_state!(intake_id, state) do
+    intake = Repo.get!(Intake, intake_id)
+
+    paid =
+      if state == "paid",
+        do: [
+          paid_via: intake.paid_via || "stripe",
+          paid_at: intake.paid_at || %{@now | microsecond: {0, 6}}
+        ],
+        else: []
+
+    intake
+    |> Ecto.Changeset.change([state: state] ++ paid)
+    |> Repo.update!()
+  end
+
+  @doc """
+  Test-only (ALE-388): forces an Intake `paid` by its person's Carried Fee,
+  inserting the `applied` fee that paid it (the `carried_fee` check ties
+  `paid_via: carried_fee` to a Carried Fee). Returns the Intake.
+  """
+  def force_carried_fee_paid!(%Intake{} = intake) do
+    intake = Repo.reload!(intake)
+    at = %{@now | microsecond: {0, 6}}
+
+    fee =
+      Repo.insert!(%Dhc.BeginnersWorkshops.CarriedFee{
+        waitlist_id: intake.waitlist_id,
+        status: "applied",
+        origin: "import",
+        imported_paid_text: "Yes",
+        applied_intake_id: intake.id,
+        status_changed_at: at
+      })
+
+    intake
+    |> Ecto.Changeset.change(
+      state: "paid",
+      paid_via: "carried_fee",
+      carried_fee_id: fee.id,
+      paid_at: at
+    )
+    |> Repo.update!()
+  end
+
+  @doc """
+  Test-only (ALE-390): a `paid` Intake for a new person in `workshop_id`;
+  returns the Intake. Options `first_name`, `date_of_birth`,
+  `medical_conditions` and `guardian` (`{first, last, phone}`, attached to
+  the person's profile).
+  """
+  def paid_person_fixture!(workshop_id, opts \\ []) do
+    person =
+      waiting_person_fixture(
+        ~U[2025-01-01 12:00:00Z],
+        Keyword.take(opts, [:first_name, :date_of_birth])
+      )
+
+    profile = Repo.one!(from(p in UserProfile, where: p.waitlist_id == ^person.id))
+
+    profile
+    |> Ecto.Changeset.change(medical_conditions: Keyword.get(opts, :medical_conditions))
+    |> Repo.update!()
+
+    case Keyword.get(opts, :guardian) do
+      {first, last, phone} ->
+        Repo.insert!(%Dhc.Waitlist.WaitlistGuardian{
+          profile_id: profile.id,
+          first_name: first,
+          last_name: last,
+          phone_number: phone
+        })
+
+      nil ->
+        :ok
+    end
+
+    {intake, _token} = intake_fixture!(workshop_id, person)
+    force_intake_state!(intake.id, "paid")
+  end
+
+  @doc """
+  Test-only (ALE-390): moves a scheduled workshop to Dublin today, starting
+  at the current Dublin minute (so door check-in is open on the wall clock
+  the HTTP path uses), with its cutoff a day earlier.
+  """
+  def force_today!(workshop_id) do
+    now = DateTime.utc_now()
+    today = Dhc.ClubCalendar.on_date(now)
+    start = now |> Dhc.ClubCalendar.time_on() |> Time.truncate(:second) |> Map.put(:second, 0)
+
+    Repo.get!(BeginnersWorkshop, workshop_id)
+    |> Ecto.Changeset.change(
+      date: today,
+      start_time: start,
+      contact_from: Date.add(today, -2),
+      payment_cutoff: %{Dhc.ClubCalendar.to_utc(Date.add(today, -1), start) | microsecond: {0, 6}}
+    )
+    |> Repo.update!()
+  end
+end

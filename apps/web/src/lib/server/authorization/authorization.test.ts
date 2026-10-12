@@ -37,6 +37,7 @@ function session(...capabilities: Capability[]): PhoenixSessionProjection {
 
 /** What Phoenix grants a plain member. */
 const MEMBER: Capability[] = [
+	"beginners.workshops.assigned.read",
 	"inventory.catalog.read",
 	"inventory.loans.own.read",
 	"workshops.own.read",
@@ -47,6 +48,9 @@ const OWNER_SCOPED: Capability[] = [
 	"members.profile.read",
 	"members.profile.update",
 ];
+
+/** A resource's assigned principals also hold these (ALE-379). */
+const ASSIGNMENT_SCOPED: Capability[] = ["beginners.workshops.run"];
 
 /** Capability sets the exhaustive loops visit: none, each alone, member, all. */
 const SESSIONS: Capability[][] = [
@@ -69,9 +73,11 @@ describe("authorizationFor — capability registry", () => {
 
 		it("is denied by holding every other capability", () => {
 			const others = CAPABILITIES.filter((other) => other !== capability);
-			const denial = OWNER_SCOPED.includes(capability)
-				? { allowed: false, status: 404, reason: "concealed_resource" }
-				: { allowed: false, status: 403, reason: "missing_capability" };
+			const denial =
+				OWNER_SCOPED.includes(capability) ||
+				ASSIGNMENT_SCOPED.includes(capability)
+					? { allowed: false, status: 404, reason: "concealed_resource" }
+					: { allowed: false, status: 403, reason: "missing_capability" };
 			expect(authorizationFor(session(...others)).decide(capability)).toEqual(
 				denial,
 			);
@@ -159,6 +165,40 @@ describe("authorizationFor — decisions", () => {
 		);
 	});
 
+	it("assigned principals run their workshop; anyone else is concealed (ALE-379)", () => {
+		const access = authorizationFor(session(...MEMBER));
+		const concealed = {
+			allowed: false,
+			status: 404,
+			reason: "concealed_resource",
+		};
+		expect(
+			access.decide("beginners.workshops.run", {
+				assignedPrincipalIds: [OTHER, SELF],
+			}),
+		).toEqual({ allowed: true });
+		expect(
+			access.decide("beginners.workshops.run", {
+				assignedPrincipalIds: [OTHER],
+			}),
+		).toEqual(concealed);
+		expect(access.decide("beginners.workshops.run")).toEqual(concealed);
+		// Ownership is not an assignment, nor the reverse.
+		expect(
+			access.can("beginners.workshops.run", { ownerPrincipalId: SELF }),
+		).toBe(false);
+		expect(
+			access.can("members.profile.read", { assignedPrincipalIds: [SELF] }),
+		).toBe(false);
+		// The managers hold it by role, assigned or not.
+		expect(
+			authorizationFor(session("beginners.workshops.run")).can(
+				"beginners.workshops.run",
+				{ assignedPrincipalIds: [] },
+			),
+		).toBe(true);
+	});
+
 	it("membership reactivation needs its own capability, not directory access", () => {
 		expect(
 			authorizationFor(session("membership.reactivate")).can(
@@ -214,6 +254,22 @@ describe("authorizationFor — navigation", () => {
 		]);
 	});
 
+	it("shows My Beginners' Workshops only while the member has an assignment (ALE-379)", () => {
+		const access = authorizationFor(session(...MEMBER));
+		const titlesWith = (hasBeginnersWorkshopAssignments: boolean) =>
+			access
+				.navigation({ hasBeginnersWorkshopAssignments })
+				.navMain.map((group) => group.title);
+		expect(titlesWith(false)).not.toContain("My Beginners' Workshops");
+		expect(titlesWith(true)).toContain("My Beginners' Workshops");
+		// The fact never reveals an entry the capability denies.
+		expect(
+			authorizationFor(session())
+				.navigation({ hasBeginnersWorkshopAssignments: true })
+				.navMain.map((group) => group.title),
+		).toEqual([]);
+	});
+
 	it("shows inventory operators the inventory group with every sub-item", () => {
 		const nav = authorizationFor(session("inventory.manage")).navigation();
 		const inventory = nav.navMain.find((group) => group.title === "Inventory");
@@ -247,6 +303,7 @@ describe("authorizationFor — navigation", () => {
 		for (const group of nav.navMain) {
 			expect(group).not.toHaveProperty("role");
 			expect(group).not.toHaveProperty("requires");
+			expect(group).not.toHaveProperty("shownWhen");
 			for (const item of group.items ?? []) {
 				expect(item).not.toHaveProperty("role");
 				expect(item).not.toHaveProperty("requires");
@@ -270,6 +327,7 @@ type PageLoadEvent = {
 		}>;
 	};
 	params: PageLoadParams;
+	route: { id: string };
 	url: URL;
 	cookies: { get: (name: string) => string | undefined };
 	depends: (dep: string) => void;
@@ -350,6 +408,7 @@ function paramSetsFor(routeId: string): PageLoadParams[] {
 function loadEvent(
 	session: PhoenixSessionProjection | null,
 	params: PageLoadParams,
+	routeId: string,
 ): PageLoadEvent {
 	return {
 		locals: {
@@ -357,7 +416,8 @@ function loadEvent(
 			safeGetSession: async () => ({ session }),
 		},
 		params,
-		url: new URL("http://localhost/dashboard"),
+		route: { id: routeId },
+		url: new URL(routeId, "http://localhost"),
 		cookies: { get: () => undefined },
 		depends: () => {},
 	};
@@ -446,14 +506,22 @@ describe("guardRoute — request-hook gating", () => {
 						const outcome = guardRoute(s, { id: routeId, params });
 						const description = `${label(capabilities)} load on ${routeId} ${JSON.stringify(params)}`;
 						if (outcome.kind === "allow") {
-							await expectLoadAllows(load, loadEvent(s, params), description);
+							await expectLoadAllows(
+								load,
+								loadEvent(s, params, routeId),
+								description,
+							);
 						} else {
-							await expectLoadDenies(load, loadEvent(s, params), description);
+							await expectLoadDenies(
+								load,
+								loadEvent(s, params, routeId),
+								description,
+							);
 						}
 					}
 					await expectLoadDenies(
 						load,
-						loadEvent(null, params),
+						loadEvent(null, params, routeId),
 						`anonymous load on ${routeId}`,
 					);
 				}
@@ -497,6 +565,73 @@ describe("guardRoute — request-hook gating", () => {
 		expect(
 			guardRoute(null, { id: "/dashboard/inventory", params: {} }),
 		).toEqual({ kind: "redirect", location: "/auth" });
+	});
+
+	it("lets every member reach the door route; Phoenix conceals the workshop (ALE-379)", () => {
+		const door = {
+			id: "/dashboard/beginners-workshop/workshops/[workshopId]/door",
+			params: { workshopId: OTHER },
+		};
+		expect(guardRoute(session(...MEMBER), door)).toEqual({ kind: "allow" });
+		expect(guardRoute(session(), door).kind).toBe("redirect");
+		// The rest of the section stays the Waitlist managers'.
+		expect(
+			guardRoute(session(...MEMBER), {
+				id: "/dashboard/beginners-workshop",
+				params: {},
+			}).kind,
+		).toBe("redirect");
+	});
+
+	it("keeps the shared Beginners' Workshop layout open to assignment-scoped door Staff", async () => {
+		const load = layouts.get("/dashboard/beginners-workshop")?.load;
+		expect(load).toBeDefined();
+		if (!load) throw new Error("Missing Beginners' Workshop layout load");
+		const result = await load(
+			loadEvent(
+				session(...MEMBER),
+				{},
+				"/dashboard/beginners-workshop/workshops/[workshopId]/door",
+			),
+		);
+		expect(result).toMatchObject({
+			isWaitlistOpen: null,
+			canManageWorkshops: false,
+		});
+	});
+
+	it("gates Beginners' Workshop sections by their own capabilities", () => {
+		const waitlistManager = session("beginners.waitlist.manage");
+		expect(
+			guardRoute(waitlistManager, {
+				id: "/dashboard/beginners-workshop/waitlist",
+				params: {},
+			}),
+		).toEqual({ kind: "allow" });
+		for (const id of [
+			"/dashboard/beginners-workshop/workshops",
+			"/dashboard/beginners-workshop/email-templates",
+			"/dashboard/beginners-workshop/invitable",
+		])
+			expect(guardRoute(waitlistManager, { id, params: {} }).kind).toBe(
+				"redirect",
+			);
+		for (const id of [
+			"/dashboard/beginners-workshop/workshops",
+			"/dashboard/beginners-workshop/email-templates",
+		])
+			expect(
+				guardRoute(
+					session("beginners.waitlist.manage", "beginners.workshops.manage"),
+					{ id, params: {} },
+				),
+			).toEqual({ kind: "allow" });
+		expect(
+			guardRoute(session("beginners.waitlist.manage", "members.invite"), {
+				id: "/dashboard/beginners-workshop/invitable",
+				params: {},
+			}),
+		).toEqual({ kind: "allow" });
 	});
 
 	it("lets members reach their own profile but not another member's", () => {

@@ -1,28 +1,45 @@
 /**
- * The beginners' waitlist table: one interface for reading a page of Waitlist
+ * The beginners' Waitlist table: one interface for reading a page of Waitlist
  * entries and for every action the desktop table and the mobile cards offer.
  *
- * The controller owns the Waitlist Status decision for a single invitation
- * (`sendInvitation`), the optimistic `invited` marking across every cached
- * Waitlist page with rollback on error, cache invalidation, selection, and
- * the toasts each action raises. Markup only renders and calls these actions.
+ * The Waitlist view is the queue: it lists `waiting` people by default, with
+ * `removed` people behind the standing filter (ALE-375). Waitlist Status is
+ * not editable here — it changes only through named commands — so the
+ * writes are the entry's admin notes and `restore` (ALE-376), which returns a
+ * removed person to the queue with their original date. Withdraw (ALE-387)
+ * is the Beginners' Workshop boundary's command, not the Waitlist's — it may
+ * close the person's open Intake — so it calls Phoenix's
+ * `beginnersWorkshopIntakes.withdrawPerson`. Delete (ALE-396) is the
+ * boundary's hard delete too (`beginnersWorkshopIntakes.deletePerson`): it
+ * anonymises the person's Intakes and settles their Carried Fee.
+ * Each listed person's Carried Fee status (ALE-388) comes from Beginners'
+ * Workshops — the Waitlist API cannot know it — through one extra query
+ * over the page's ids. The controller owns
+ * the URL-backed list request, cache invalidation and the toasts; markup only
+ * renders and calls these actions.
  */
 import {
-	invitationsCreateMutation,
-	invitationsResendMutation,
+	beginnersWorkshopCarriedFeesIndexOptions,
+	type BeginnersCarriedFeeStatus,
+	type BeginnersWorkshopCarriedFees,
+	type BeginnersWorkshopDeletePersonRequest,
+	beginnersWorkshopIntakesDeletePersonMutation,
+	type BeginnersWorkshopIntakesDeletePersonData,
+	type BeginnersWorkshopIntakesDeletePersonResponse,
+	beginnersWorkshopIntakesWithdrawPersonMutation,
+	type BeginnersWorkshopIntakesWithdrawPersonData,
+	type BeginnersWorkshopIntakesWithdrawPersonResponse,
+	type BeginnersWorkshopWithdrawRequest,
 	waitlistEntriesOptions,
 	waitlistEntriesQueryKey,
+	waitlistRestoreEntryMutation,
 	waitlistUpdateEntryMutation,
-	type InvitationsCreateData,
-	type InvitationsCreateResponse,
-	type InvitationsResendData,
-	type InvitationsResendResponse,
 	type Options,
 	type WaitlistEntriesData,
 	type WaitlistEntriesResponse2,
 	type WaitlistEntry,
-	type WaitlistEntryUpdateRequest,
-	type WaitlistStatus,
+	type WaitlistRestoreEntryData,
+	type WaitlistRestoreEntryResponse,
 	type WaitlistUpdateEntryData,
 	type WaitlistUpdateEntryResponse,
 } from "@dhc/api-client";
@@ -32,11 +49,11 @@ import {
 	keepPreviousData,
 	useQueryClient,
 	type QueryClient,
-	type QueryKey,
 } from "@tanstack/svelte-query";
-import type { RowSelectionState, Updater } from "@tanstack/table-core";
+import dayjs from "dayjs";
 import { toast } from "svelte-sonner";
-import * as v from "valibot";
+import { apiProblem } from "#lib/api-error.js";
+import type { CarriedFeePanelDeps } from "./carried-fee-panel.svelte.js";
 import {
 	createCursorTableUrl,
 	type CursorTableNavigate,
@@ -47,6 +64,22 @@ export type WaitlistNotify = {
 	error(message: string): void;
 };
 
+/** The standings the Waitlist view can list; `waiting` is the queue. */
+export type WaitlistStanding = NonNullable<
+	NonNullable<WaitlistEntriesData["query"]>["status"]
+>;
+
+export const WAITLIST_STANDINGS = [
+	{ value: "waiting", label: "Waiting" },
+	{ value: "removed", label: "Removed" },
+] as const satisfies ReadonlyArray<{ value: WaitlistStanding; label: string }>;
+
+const DEFAULT_STANDING: WaitlistStanding = "waiting";
+
+function isStanding(value: string | null): value is WaitlistStanding {
+	return WAITLIST_STANDINGS.some((standing) => standing.value === value);
+}
+
 export type WaitlistTableDeps = {
 	/** Defaults to the query client from context. */
 	queryClient?: QueryClient;
@@ -54,15 +87,26 @@ export type WaitlistTableDeps = {
 	listEntries?: (
 		options: Options<WaitlistEntriesData>,
 	) => Promise<WaitlistEntriesResponse2>;
-	createInvitations?: (
-		options: Options<InvitationsCreateData>,
-	) => Promise<InvitationsCreateResponse>;
-	resendInvitations?: (
-		options: Options<InvitationsResendData>,
-	) => Promise<InvitationsResendResponse>;
 	updateEntry?: (
 		options: Options<WaitlistUpdateEntryData>,
 	) => Promise<WaitlistUpdateEntryResponse>;
+	restoreEntry?: (
+		options: Options<WaitlistRestoreEntryData>,
+	) => Promise<WaitlistRestoreEntryResponse>;
+	/** The page's Carried Fee statuses by entry id (ALE-388). */
+	listCarriedFees?: (
+		waitlistIds: string[],
+	) => Promise<BeginnersWorkshopCarriedFees>;
+	withdrawEntry?: (
+		options: Options<BeginnersWorkshopIntakesWithdrawPersonData>,
+	) => Promise<BeginnersWorkshopIntakesWithdrawPersonResponse>;
+	deleteEntry?: (
+		options: Options<BeginnersWorkshopIntakesDeletePersonData>,
+	) => Promise<BeginnersWorkshopIntakesDeletePersonResponse>;
+	/** ALE-389: the Carried Fee panel's requests, when a person's fee is managed. */
+	carriedFee?: CarriedFeePanelDeps;
+	/** Defaults to the current time; decides which removed people are offered restore. */
+	now?: () => Date;
 	/** Defaults to svelte-sonner's `toast`. */
 	notify?: WaitlistNotify;
 	/** URL source and navigation for the cursor-table URL state. */
@@ -70,21 +114,45 @@ export type WaitlistTableDeps = {
 	navigate?: CursorTableNavigate;
 };
 
-type Snapshot = Array<[QueryKey, WaitlistEntriesResponse2 | undefined]>;
+/** Phoenix restores a removed person within this many calendar months. */
+export const RESTORE_WINDOW_MONTHS = 3;
+
+/**
+ * Whether restore is offered for `entry`: removed within the restore window.
+ * Advisory only — Phoenix decides and answers `restore_window_passed`.
+ */
+export function canRestore(entry: WaitlistEntry, now: Date): boolean {
+	if (entry.status !== "removed" || !entry.removedAt) return false;
+	return !dayjs(now).isAfter(
+		dayjs(entry.removedAt).add(RESTORE_WINDOW_MONTHS, "month"),
+	);
+}
+
+/**
+ * Whether Withdraw is offered for `entry` (ALE-387): someone still on the
+ * Waitlist — waiting (with or without an open Intake) or attended and not
+ * yet invited. Advisory only — Phoenix decides (`already_invited`).
+ */
+export function canWithdraw(entry: WaitlistEntry): boolean {
+	return entry.status === "waiting" || entry.status === "attended";
+}
+
+/**
+ * Whether Delete is offered for `entry` (ALE-396): anyone the Invitation
+ * handoff has not reached. Advisory only — Phoenix decides (`open_intake`,
+ * `not_deletable`).
+ */
+export function canDelete(entry: WaitlistEntry): boolean {
+	return entry.status !== "invited" && entry.status !== "joined";
+}
+
+/** The outcome of a Withdraw or Delete: done, or Phoenix's reason and its code. */
+export type WithdrawOutcome =
+	| { ok: true }
+	| { ok: false; error: string; code: string | null };
 
 /** Prefix shared by every Waitlist page's query key. */
 const allWaitlistPages = () => waitlistEntriesQueryKey();
-
-function getEntryIds(options: Options<InvitationsCreateData>) {
-	return options.body.invites.flatMap((invite) => {
-		const parsed = v.safeParse(v.string(), invite);
-		return parsed.success ? [parsed.output] : [];
-	});
-}
-
-function resolve<T>(updater: Updater<T>, current: T): T {
-	return updater instanceof Function ? updater(current) : updater;
-}
 
 export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 	const queryClient = deps.queryClient ?? useQueryClient();
@@ -104,20 +172,20 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 			},
 			default: "position",
 		},
+		filters: ["status"],
 		url: deps.url,
 		navigate: deps.navigate,
 	});
 
-	let selection = $state<RowSelectionState>({});
-	const selectedIds = $derived(
-		Object.entries(selection).flatMap(([id, selected]) =>
-			selected ? [id] : [],
-		),
-	);
+	// An absent or unknown `status` param is the queue.
+	const standing = $derived.by((): WaitlistStanding => {
+		const requested = url.filter("status");
+		return isStanding(requested) ? requested : DEFAULT_STANDING;
+	});
 
 	const query = createQuery(
 		() => {
-			const requestOptions = { query: url.request };
+			const requestOptions = { query: { ...url.request, status: standing } };
 			const options = waitlistEntriesOptions(requestOptions);
 			const listEntries = deps.listEntries;
 			if (listEntries) options.queryFn = () => listEntries(requestOptions);
@@ -126,89 +194,26 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		() => queryClient,
 	);
 
-	/** Marks matching entries `invited` on every cached page; returns the rollback snapshot. */
-	async function markInvited(
-		matches: (entry: WaitlistEntry) => boolean,
-	): Promise<{ snapshot: Snapshot }> {
-		await queryClient.cancelQueries({ queryKey: allWaitlistPages() });
-		const snapshot: Snapshot =
-			queryClient.getQueriesData<WaitlistEntriesResponse2>({
-				queryKey: allWaitlistPages(),
-			});
-		queryClient.setQueriesData<WaitlistEntriesResponse2>(
-			{ queryKey: allWaitlistPages() },
-			(old) =>
-				old && {
-					...old,
-					data: {
-						...old.data,
-						entries: old.data.entries.map((entry) =>
-							matches(entry) ? { ...entry, status: "invited" } : entry,
-						),
-					},
-				},
-		);
-		return { snapshot };
-	}
-
-	function rollback(context: { snapshot: Snapshot } | undefined) {
-		for (const [key, data] of context?.snapshot ?? []) {
-			queryClient.setQueryData(key, data);
-		}
-	}
-
-	function invalidateWaitlist() {
-		return queryClient.invalidateQueries({ queryKey: allWaitlistPages() });
-	}
-
-	const createInvitation = createMutation(
-		() => {
-			const options = invitationsCreateMutation();
-			const request = deps.createInvitations;
-			if (request) options.mutationFn = (vars) => request(vars);
-			return {
-				...options,
-				onMutate: (vars) => {
-					const ids = getEntryIds(vars);
-					return markInvited((entry) => ids.includes(entry.id));
-				},
-				onSuccess: (_data, vars) => {
-					// Invited entries leave the selection; a bulk invite empties it.
-					const invited = getEntryIds(vars);
-					selection = Object.fromEntries(
-						Object.entries(selection).filter(([id]) => !invited.includes(id)),
-					);
-					notify.success("Invitations are being processed in the background.");
-				},
-				onError: (_error, _vars, context) => {
-					rollback(context);
-					notify.error("Something has gone wrong inviting members.");
-				},
-				onSettled: invalidateWaitlist,
-			};
-		},
-		() => queryClient,
+	const pageIds = $derived(
+		(query.data?.data.entries ?? []).map((entry) => entry.id),
 	);
 
-	const resendInvitation = createMutation(
+	const carriedFees = createQuery(
 		() => {
-			const options = invitationsResendMutation();
-			const request = deps.resendInvitations;
-			if (request) options.mutationFn = (vars) => request(vars);
+			const waitlistIds = pageIds.join(",");
+			const options = beginnersWorkshopCarriedFeesIndexOptions({
+				query: { waitlistIds },
+			});
+			const listCarriedFees = deps.listCarriedFees;
+			const ids = pageIds;
 			return {
 				...options,
-				onMutate: (vars) => {
-					const emails = vars.body.emails;
-					return markInvited((entry) => emails.includes(entry.email));
-				},
-				onSuccess: () => {
-					notify.success("Invitation link resent.");
-				},
-				onError: (_error, _vars, context) => {
-					rollback(context);
-					notify.error("Something has gone wrong inviting members.");
-				},
-				onSettled: invalidateWaitlist,
+				...(listCarriedFees && {
+					queryFn: async () => ({ data: await listCarriedFees(ids) }),
+				}),
+				select: (response: { data: BeginnersWorkshopCarriedFees }) =>
+					response.data,
+				enabled: ids.length > 0,
 			};
 		},
 		() => queryClient,
@@ -227,15 +232,84 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 				onError: () => {
 					notify.error("Failed to update waitlist entry.");
 				},
-				onSettled: invalidateWaitlist,
+				onSettled: () =>
+					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
 			};
 		},
 		() => queryClient,
 	);
 
+	const restoreWaitlistEntry = createMutation(
+		() => {
+			const options = waitlistRestoreEntryMutation();
+			const request = deps.restoreEntry;
+			if (request) options.mutationFn = (vars) => request(vars);
+			return {
+				...options,
+				onSuccess: () => {
+					notify.success("Restored to the Waitlist with their original date.");
+				},
+				onError: (error) => {
+					notify.error(
+						apiProblem(error)?.detail ?? "Failed to restore waitlist entry.",
+					);
+				},
+				onSettled: () =>
+					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+			};
+		},
+		() => queryClient,
+	);
+
+	const withdrawWaitlistEntry = createMutation(
+		() => {
+			const options = beginnersWorkshopIntakesWithdrawPersonMutation();
+			const request = deps.withdrawEntry;
+			if (request) options.mutationFn = (vars) => request(vars);
+			return {
+				...options,
+				onSuccess: () => {
+					notify.success("Withdrawn from the Waitlist.");
+				},
+				onSettled: () =>
+					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+			};
+		},
+		() => queryClient,
+	);
+
+	const deleteWaitlistEntry = createMutation(
+		() => {
+			const options = beginnersWorkshopIntakesDeletePersonMutation();
+			const request = deps.deleteEntry;
+			if (request) options.mutationFn = (vars) => request(vars);
+			return {
+				...options,
+				onSuccess: () => {
+					notify.success(
+						"Deleted. Their Intakes stay in the reports, anonymised.",
+					);
+				},
+				onSettled: () =>
+					queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
+			};
+		},
+		() => queryClient,
+	);
+
+	const now = deps.now ?? (() => new Date());
+
 	return {
 		/** URL-backed search, page size, cursor paging and table sort state. */
 		url,
+		/** The standing being listed: `waiting` (default) or `removed`. */
+		get standing() {
+			return standing;
+		},
+		/** Lists another standing; the queue is written as no filter. */
+		setStanding(next: WaitlistStanding) {
+			url.setFilter("status", next === DEFAULT_STANDING ? null : next);
+		},
 		get entries(): WaitlistEntry[] {
 			return query.data?.data.entries ?? [];
 		},
@@ -251,44 +325,88 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		get isFetching() {
 			return query.isFetching;
 		},
-		get selection() {
-			return selection;
+		/** The person's live Carried Fee status, or `null` without one (or until known). */
+		carriedFee(id: string): BeginnersCarriedFeeStatus | null {
+			return carriedFees.data?.[id] ?? null;
 		},
-		setSelection(updater: Updater<RowSelectionState>) {
-			selection = resolve(updater, selection);
-		},
-		get selectedIds() {
-			return selectedIds;
-		},
-		/** Bulk: creates an Invitation for each Waitlist entry id. */
-		invite(entryIds: string[]) {
-			if (entryIds.length === 0) return;
-			createInvitation.mutate({ body: { invites: entryIds } });
-		},
-		/** Invites a non-`invited` entry by id; resends an `invited` entry's link by email. */
-		sendInvitation(entry: WaitlistEntry) {
-			if (entry.status === "invited") {
-				resendInvitation.mutate({ body: { emails: [entry.email] } });
-			} else {
-				createInvitation.mutate({ body: { invites: [entry.id] } });
-			}
-		},
-		updateEntry(id: string, patch: WaitlistEntryUpdateRequest) {
-			updateWaitlistEntry.mutate({ path: { id }, body: patch });
-		},
-		/** Changes an entry's Waitlist Status; choosing its current status is a no-op. */
-		setStatus(entry: WaitlistEntry, status: WaitlistStatus) {
-			if (status === entry.status) return;
-			updateWaitlistEntry.mutate({ path: { id: entry.id }, body: { status } });
-		},
-		get isInviting() {
-			return createInvitation.isPending;
-		},
-		get isResending() {
-			return resendInvitation.isPending;
+		/** Saves the entry's admin notes, the only editable Waitlist field. */
+		updateAdminNotes(id: string, adminNotes: string | null) {
+			updateWaitlistEntry.mutate({ path: { id }, body: { adminNotes } });
 		},
 		get isUpdating() {
 			return updateWaitlistEntry.isPending;
+		},
+		/** Whether restore is offered for this entry (removed within 3 months). */
+		canRestore(entry: WaitlistEntry) {
+			return canRestore(entry, now());
+		},
+		/** Moves a removed person back to `waiting` with their original date. */
+		restore(id: string) {
+			restoreWaitlistEntry.mutate({ path: { id } });
+		},
+		get isRestoring() {
+			return restoreWaitlistEntry.isPending;
+		},
+		/** Whether Withdraw is offered for this entry. */
+		canWithdraw(entry: WaitlistEntry) {
+			return canWithdraw(entry);
+		},
+		/**
+		 * Withdraws the person from the Waitlist (ALE-387). The dialog shows a
+		 * refusal itself — `refund_choice_required` under the refund choice —
+		 * so the outcome is returned rather than toasted.
+		 */
+		async withdraw(
+			id: string,
+			body: BeginnersWorkshopWithdrawRequest,
+		): Promise<WithdrawOutcome> {
+			try {
+				await withdrawWaitlistEntry.mutateAsync({
+					path: { waitlistId: id },
+					body,
+				});
+				return { ok: true };
+			} catch (error) {
+				const problem = apiProblem(error);
+				return {
+					ok: false,
+					error: problem?.detail ?? "Could not withdraw this person.",
+					code: problem?.code ?? null,
+				};
+			}
+		},
+		get isWithdrawing() {
+			return withdrawWaitlistEntry.isPending;
+		},
+		/** Whether Delete is offered for this entry. */
+		canDelete(entry: WaitlistEntry) {
+			return canDelete(entry);
+		},
+		/**
+		 * Deletes the person (ALE-396). Like Withdraw, the dialog shows a
+		 * refusal itself (`refund_choice_required` under the refund choice).
+		 */
+		async deletePerson(
+			id: string,
+			body: BeginnersWorkshopDeletePersonRequest,
+		): Promise<WithdrawOutcome> {
+			try {
+				await deleteWaitlistEntry.mutateAsync({
+					path: { waitlistId: id },
+					body,
+				});
+				return { ok: true };
+			} catch (error) {
+				const problem = apiProblem(error);
+				return {
+					ok: false,
+					error: problem?.detail ?? "Could not delete this person.",
+					code: problem?.code ?? null,
+				};
+			}
+		},
+		get isDeleting() {
+			return deleteWaitlistEntry.isPending;
 		},
 	};
 }

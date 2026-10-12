@@ -43,6 +43,12 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Workshops.Registration
   alias Dhc.UserProfiles.UserProfile
 
+  # Kept by `reset!/0`: the migration history, and reference rows only a
+  # migration seeds (ALE-398: without the Intake Email templates no Batch
+  # can queue its Contact email). The database is fresh per run, so these
+  # still hold exactly what the migrations wrote.
+  @kept_tables ~w(schema_migrations beginners_workshop_email_templates)
+
   def reset! do
     Dhc.Onboarding.Finalizer.E2E.reset!()
     _ = Dhc.Onboarding.StripeAdapter.E2E.finish_probe()
@@ -50,7 +56,7 @@ defmodule Dhc.E2EHarness do
     %{rows: [[tables]]} =
       Ecto.Adapters.SQL.query!(
         Repo,
-        "SELECT string_agg(quote_ident(tablename), ', ') FROM pg_tables WHERE schemaname = 'public' AND tablename != 'schema_migrations'",
+        "SELECT string_agg(quote_ident(tablename), ', ') FROM pg_tables WHERE schemaname = 'public' AND tablename NOT IN (#{Enum.map_join(@kept_tables, ", ", &"'#{&1}'")})",
         []
       )
 
@@ -221,6 +227,10 @@ defmodule Dhc.E2EHarness do
     }
   end
 
+  # ALE-398: the Beginners' Workshop journey's scenarios.
+  def seed("beginnersWorkshop" <> _ = scenario, attrs),
+    do: Dhc.E2EHarness.BeginnersWorkshops.seed(scenario, attrs)
+
   def seed("waitlist", attrs) do
     email = Map.fetch!(attrs, "email")
 
@@ -249,10 +259,25 @@ defmodule Dhc.E2EHarness do
       end
 
     with {:ok, result} <- Waitlist.create_entry(payload) do
+      # Seeds an arbitrary standing directly; product code changes standing
+      # only through `Dhc.Waitlist.change_standing/2`.
       status = Map.get(attrs, "status", "waiting")
+      removed_at = if status == "removed", do: DateTime.utc_now() |> DateTime.truncate(:second)
+
+      # `initialRegistrationDate` sets the priority (ALE-398: a Batch takes
+      # the oldest waiting people first, whatever else the run seeded).
+      priority =
+        case Map.get(attrs, "initialRegistrationDate") do
+          nil ->
+            []
+
+          iso ->
+            {:ok, at, _offset} = DateTime.from_iso8601(iso)
+            [initial_registration_date: DateTime.truncate(at, :second)]
+        end
 
       from(w in WaitlistEntry, where: w.id == ^result.id)
-      |> Repo.update_all(set: [status: status])
+      |> Repo.update_all(set: [status: status, removed_at: removed_at] ++ priority)
 
       Map.merge(result, %{email: email, waitlistId: result.id, profileId: result.profile_id})
     end
@@ -1602,7 +1627,12 @@ defmodule Dhc.E2EHarness do
     from(profile in UserProfile, where: profile.waitlist_id == ^id)
     |> Repo.delete_all()
 
-    Waitlist.delete_entry(id)
+    # Teardown, not the product's delete (`delete_person`, ALE-396): it
+    # removes whatever the scenario left, whatever the person's standing.
+    case Repo.delete_all(from(w in WaitlistEntry, where: w.id == ^id)) do
+      {0, _} -> {:error, :not_found}
+      {_deleted, _} -> :ok
+    end
   end
 
   # Teardown for the frozen structure scenario. Accepts either a category id
@@ -2340,25 +2370,42 @@ defmodule Dhc.E2EHarness do
     :ok
   end
 
+  # A Principal the run made act (created a container, borrowed or started
+  # maintenance, staffed a workshop…) is still named by history the schema
+  # keeps on purpose (`NO ACTION`/`RESTRICT` foreign keys, several NOT NULL).
+  # Teardown never force-deletes history, so that refuses as
+  # `:still_referenced`, like the inventory teardowns, and rolls the whole
+  # delete back. It must not raise: Bandit closes the keep-alive connection
+  # after a raised request, and the client's next harness call fails on it.
   defp delete_principal(id) do
-    Repo.transaction(fn ->
-      Repo.delete_all(from(t in PrincipalToken, where: t.principal_id == ^id))
-      Repo.delete_all(from(r in UserRole, where: r.principal_id == ^id))
+    {:ok, _} =
+      Repo.transaction(fn ->
+        Repo.delete_all(from(t in PrincipalToken, where: t.principal_id == ^id))
+        Repo.delete_all(from(r in UserRole, where: r.principal_id == ^id))
 
-      Repo.update_all(
-        from(i in Invitation, where: i.created_by_principal_id == ^id),
-        set: [created_by_principal_id: nil]
-      )
+        Repo.update_all(
+          from(i in Invitation, where: i.created_by_principal_id == ^id),
+          set: [created_by_principal_id: nil]
+        )
 
-      profile_ids =
-        Repo.all(from(p in UserProfile, where: p.principal_id == ^id, select: p.id))
+        profile_ids =
+          Repo.all(from(p in UserProfile, where: p.principal_id == ^id, select: p.id))
 
-      Repo.delete_all(from(m in MemberProfile, where: m.user_profile_id in ^profile_ids))
-      Repo.delete_all(from(p in UserProfile, where: p.principal_id == ^id))
-      Repo.delete_all(from(p in Dhc.Auth.Principal, where: p.id == ^id))
-    end)
+        Repo.delete_all(from(m in MemberProfile, where: m.user_profile_id in ^profile_ids))
+        Repo.delete_all(from(p in UserProfile, where: p.principal_id == ^id))
+        Repo.delete_all(from(p in Dhc.Auth.Principal, where: p.id == ^id))
+      end)
 
     :ok
+  rescue
+    error in Postgrex.Error ->
+      case error.postgres do
+        %{code: :foreign_key_violation, constraint: constraint} ->
+          {:error, :still_referenced, %{constraint: constraint}}
+
+        _other ->
+          reraise error, __STACKTRACE__
+      end
   end
 
   defp stripe_progress_count(attempts, key) do

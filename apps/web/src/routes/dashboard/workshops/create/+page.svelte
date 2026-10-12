@@ -17,7 +17,7 @@ function handleSuccess() {
 	<title>Create workshop | Dublin HEMA Club</title>
 </svelte:head>
 
-<div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+<div class="w-full space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
 	<header
 		class="flex flex-col gap-5 border-b border-border/80 pb-6 sm:flex-row sm:items-end sm:justify-between"
 	>

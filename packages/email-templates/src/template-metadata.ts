@@ -21,13 +21,15 @@
  * compilation instead of validation.
  */
 
-/** The five whitelisted Email Kinds — mirrors `@transactional_ids` in `Dhc.Email.Worker`. */
+/** The whitelisted Email Kinds — mirrors `@transactional_ids` in `Dhc.Email.Worker`. */
 export const EMAIL_KINDS = [
   "inviteMember",
   "workshopAnnouncement",
   "workshopRegistration",
   "workshopRegistrationError",
   "magicLink",
+  "beginnersWorkshopAction",
+  "beginnersWorkshopNotice",
 ] as const;
 
 export type EmailKind = (typeof EMAIL_KINDS)[number];

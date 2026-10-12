@@ -4,6 +4,7 @@ defmodule Dhc.DevSeeds do
   import Ecto.Query
 
   alias Dhc.Auth.{Principal, UserRole}
+  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Intake, IntakeCheckout, IntakePayment}
   alias Dhc.Invitations.Repository, as: InvitationRepository
   alias Dhc.Inventory
   alias Dhc.ClubCalendar
@@ -206,7 +207,7 @@ defmodule Dhc.DevSeeds do
 
   defp create_member(attrs) do
     with {:ok, principal} <- create_principal(attrs.email),
-         {:ok, waitlist} <- insert_waitlist(attrs.email, "completed"),
+         {:ok, waitlist} <- insert_waitlist(attrs.email, "joined"),
          {:ok, profile} <- insert_user_profile(attrs, principal.id, waitlist.id, true),
          :ok <- insert_member_profile(principal.id, profile.id, attrs),
          :ok <- insert_user_roles(principal.id, ["member"]),
@@ -384,7 +385,11 @@ defmodule Dhc.DevSeeds do
     do: raise("inventory seed transition failed: #{inspect(error)}")
 
   defp create_waitlist_entry(attrs) do
-    with {:ok, waitlist} <- insert_waitlist(attrs.email, "waiting"),
+    # Roughly one in eight seeded people has been removed, so the Waitlist
+    # view's `removed` filter has rows to show.
+    standing = if :rand.uniform(8) == 1, do: "removed", else: "waiting"
+
+    with {:ok, waitlist} <- insert_waitlist(attrs.email, standing),
          {:ok, profile} <- insert_user_profile(attrs, nil, waitlist.id, false),
          :ok <- maybe_insert_guardian(profile.id, attrs.date_of_birth) do
       :ok
@@ -397,8 +402,9 @@ defmodule Dhc.DevSeeds do
 
   defp create_invitation(attrs) do
     # Seeded invitations are direct member invites, so they deliberately have
-    # neither a waitlist entry nor an issuing administrator.
-    InvitationRepository.create_invitation_record(%{}, attrs, nil)
+    # neither a waitlist entry nor an issuing administrator, and send no
+    # email: they skip the issue rules in `Dhc.Onboarding.issue_invitation/3`.
+    InvitationRepository.insert_pending_invitation(attrs, nil, nil)
   end
 
   defp create_committee_member(record) do
@@ -430,6 +436,506 @@ defmodule Dhc.DevSeeds do
       {:error, reason} ->
         Mix.shell().error("Skipping committee member #{attrs.email}: #{inspect(reason)}")
     end
+  end
+
+  @doc """
+  Schedules `count` Beginners' Workshops through the
+  `Dhc.BeginnersWorkshops` boundary, two weeks apart from three weeks out, as
+  a dedicated beginners coordinator. They are all `scheduled`; later tickets
+  extend this seed with their lifecycle stages.
+
+  ALE-380: one more workshop, contacted from yesterday, has an **open Batch
+  window**: Batch 1 is sent through the boundary's `send_due_batch` pass at
+  yesterday's 10:00 Dublin, so its 7-day window is still open (waiting
+  Waitlist entries are seeded first when there are too few).
+
+  ALE-381: one more workshop, also contacted yesterday, has **paid and
+  mid-checkout Intakes**: two Intakes are paid through the boundary's
+  `complete_payment` (as `:stripe`, from a synthetic completed Checkout
+  Session) and two hold a live 30-minute Seat Hold. The seed writes those
+  four payment rows directly — the one deliberate exception to "holds are
+  taken by `start_payment`", because a dev seed must not need Stripe. The
+  holds have no Checkout Session, so the sweep's `reap_holds` settles them
+  30 minutes later (it replays the create, which Stripe refuses without a
+  secret key, and frees the seat).
+
+  ALE-385: one more workshop, two days out, is **past its Payment Cutoff**
+  (yesterday at 18:30 Dublin). It is scheduled and its Batch 1 sent at a
+  fixed clock ten days ago, two of its four Intakes are paid before the
+  cutoff, and the boundary's `pass_payment_cutoff` then runs on the wall
+  clock: the paid two get Pre-workshop info and the other two lapse (seats
+  were free), which removes them from the Waitlist.
+
+  ALE-391: one more workshop, three days ago, is **finalised**. It runs the
+  whole lifecycle through the boundary at fixed past clocks: Batch 1, three
+  of its four Intakes paid, the Payment Cutoff pass, two door check-ins by
+  the seeder (on its Staff as an assistant), the automatic
+  `finalise_attendance` at the end of that Dublin day (two attended, one
+  no-show, and its Staff list frozen) and `send_follow_ups` the next morning
+  at 10:00.
+
+  ALE-388: one more workshop, contacted yesterday, has a **deferred** Intake:
+  its first person pays (as above) and is then deferred through the
+  boundary's `defer`, so they are back on the Waitlist holding a `held`
+  Carried Fee. The next Batch of any upcoming workshop marks them
+  "confirms" and asks them to confirm instead of paying.
+
+  ALE-395: one more workshop, contacted yesterday, is **cancelled** through
+  the boundary's `cancel_workshop` with a reason: its two paid people are
+  deferred (each holding a `held` Carried Fee), one person mid-checkout has
+  their Seat Hold released and they and the other contacted person are
+  back on the Waitlist. It stays visible, read-only, in the past list.
+  """
+  @spec seed_beginners_workshops(pos_integer()) :: :ok
+  def seed_beginners_workshops(count) do
+    coordinator_id = ensure_beginners_coordinator()
+    first = Date.add(ClubCalendar.today(), 21)
+    venues = ["St. Andrew's Resource Centre", "Ringsend Community Hall", "DCU Sports Hall"]
+
+    workshops =
+      for index <- 0..(count - 1) do
+        %{
+          venue: Enum.at(venues, rem(index, length(venues))),
+          date: Date.add(first, index * 14),
+          start_time: ~T[18:30:00],
+          capacity: Enum.at([16, 12, 20], rem(index, 3)),
+          fee_cents: 4000,
+          # Batch 1 two weeks before each workshop, never in the past.
+          contact_from: Enum.max([ClubCalendar.today(), Date.add(first, index * 14 - 14)], Date)
+        }
+      end
+
+    workshops
+    |> Enum.chunk_every(20)
+    |> Enum.each(fn chunk ->
+      case Dhc.BeginnersWorkshops.execute(
+             {:staff, coordinator_id},
+             {:schedule_workshop, chunk}
+           ) do
+        {:ok, _views} ->
+          :ok
+
+        {:error, reason} ->
+          Mix.raise("Could not schedule Beginners' Workshops: #{inspect(reason)}")
+      end
+    end)
+
+    seed_open_batch_window(coordinator_id)
+    seed_paid_and_in_checkout(coordinator_id)
+    seed_past_cutoff(coordinator_id)
+    seed_finalised(coordinator_id)
+    seed_carried_fee(coordinator_id)
+    seed_cancelled(coordinator_id)
+  end
+
+  defp seed_cancelled(coordinator_id) do
+    capacity = 4
+    yesterday = Date.add(ClubCalendar.today(), -1)
+    batch_at = %{ClubCalendar.to_utc(yesterday, ~T[10:00:00]) | microsecond: {0, 6}}
+
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "DCU Sports Hall",
+             date: Date.add(yesterday, 22),
+             start_time: ~T[18:30:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: yesterday
+           }
+         ]}
+      )
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(batch_at)
+      )
+
+    intakes =
+      Repo.all(
+        from(i in Intake, where: i.workshop_id == ^workshop.id, order_by: [i.queue_date, i.id])
+      )
+
+    {paid, rest} = Enum.split(intakes, 2)
+    Enum.each(paid, &seed_pay!(&1, workshop, DateTime.add(batch_at, 3600, :second)))
+    for intake <- Enum.take(rest, 1),
+        do: insert_seed_hold!(intake, workshop, DateTime.utc_now(), nil)
+
+    {:ok, done} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:cancel_workshop, workshop.id, %{"reason" => "Venue unavailable (seeded)"}}
+      )
+
+    Mix.shell().info(
+      "Seeded the cancelled workshop on #{workshop.date}: #{done.deferred} deferred, " <>
+        "#{done.returned} returned, #{done.released} hold released"
+    )
+  end
+
+  defp seed_carried_fee(coordinator_id) do
+    capacity = 2
+    yesterday = Date.add(ClubCalendar.today(), -1)
+    batch_at = %{ClubCalendar.to_utc(yesterday, ~T[10:00:00]) | microsecond: {0, 6}}
+
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "Ringsend Community Hall",
+             date: Date.add(yesterday, 30),
+             start_time: ~T[18:30:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: yesterday
+           }
+         ]}
+      )
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(batch_at)
+      )
+
+    intake =
+      Repo.one!(
+        from(i in Intake,
+          where: i.workshop_id == ^workshop.id,
+          order_by: [i.queue_date, i.id],
+          limit: 1
+        )
+      )
+
+    seed_pay!(intake, workshop, DateTime.add(batch_at, 3600, :second))
+
+    {:ok, %{state: "deferred"}} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:defer, workshop.id, intake.id, %{"note" => "Can't make the date (seeded)"}}
+      )
+
+    Mix.shell().info(
+      "Seeded the workshop on #{workshop.date} with a deferred Intake: its person holds a Carried Fee"
+    )
+  end
+
+  defp seed_open_batch_window(coordinator_id) do
+    capacity = 8
+    yesterday = Date.add(ClubCalendar.today(), -1)
+    ensure_waiting(capacity)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "St. Andrew's Resource Centre",
+             date: Date.add(yesterday, 18),
+             start_time: ~T[18:30:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: yesterday
+           }
+         ]}
+      )
+
+    batch_clock = Dhc.BeginnersWorkshops.Clock.fixed(ClubCalendar.to_utc(yesterday, ~T[10:00:00]))
+
+    case Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+           clock: batch_clock
+         ) do
+      {:ok, %{outcome: :sent, batch: batch}} ->
+        Mix.shell().info(
+          "Sent Batch 1 (#{batch.size} contacted) for the workshop on #{workshop.date}"
+        )
+
+      other ->
+        Mix.shell().error("Batch 1 was not sent for the seeded workshop: #{inspect(other)}")
+    end
+  end
+
+  defp ensure_waiting(count) do
+    waiting = Repo.aggregate(from(w in WaitlistEntry, where: w.status == "waiting"), :count)
+    if waiting < count, do: seed_waitlist(count - waiting)
+  end
+
+  defp seed_paid_and_in_checkout(coordinator_id) do
+    capacity = 6
+    yesterday = Date.add(ClubCalendar.today(), -1)
+
+    # People already holding an open Intake are skipped by the Batch.
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "Ringsend Community Hall",
+             date: Date.add(yesterday, 25),
+             start_time: ~T[19:00:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: yesterday
+           }
+         ]}
+      )
+
+    batch_clock = Dhc.BeginnersWorkshops.Clock.fixed(ClubCalendar.to_utc(yesterday, ~T[10:00:00]))
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id}, clock: batch_clock)
+
+    intakes =
+      Repo.all(
+        from(i in Intake, where: i.workshop_id == ^workshop.id, order_by: [i.queue_date, i.id])
+      )
+
+    now = DateTime.utc_now()
+
+    {paid, rest} = Enum.split(intakes, 2)
+    {holding, _asked} = Enum.split(rest, 2)
+
+    for intake <- paid do
+      row = insert_seed_hold!(intake, workshop, now, "cs_seed_#{intake.id}")
+
+      {:ok, %{outcome: :paid}} =
+        Dhc.BeginnersWorkshops.execute(
+          :stripe,
+          {:complete_payment,
+           %{
+             "id" => row.stripe_checkout_session_id,
+             "status" => "complete",
+             "payment_status" => "paid",
+             "amount_total" => row.amount_cents,
+             "currency" => "eur",
+             "payment_intent" => "pi_seed_#{intake.id}",
+             "metadata" => %{"type" => "beginners_intake_payment", "payment_id" => row.id}
+           }}
+        )
+    end
+
+    for intake <- holding, do: %IntakePayment{} = insert_seed_hold!(intake, workshop, now, nil)
+
+    Mix.shell().info(
+      "Seeded the workshop on #{workshop.date}: #{length(paid)} paid, #{length(holding)} in checkout"
+    )
+  end
+
+  defp seed_past_cutoff(coordinator_id) do
+    capacity = 4
+    today = ClubCalendar.today()
+    contact_from = Date.add(today, -10)
+    # Microsecond precision, as the wall clock reads.
+    batch_at = %{ClubCalendar.to_utc(contact_from, ~T[10:00:00]) | microsecond: {0, 6}}
+    paid_at = DateTime.add(batch_at, 3600, :second)
+
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "DCU Sports Hall",
+             date: Date.add(today, 2),
+             start_time: ~T[18:30:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             payment_cutoff_date: Date.add(today, -1),
+             payment_cutoff_time: ~T[18:30:00],
+             contact_from: contact_from
+           }
+         ]},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(DateTime.add(batch_at, -3600, :second))
+      )
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(batch_at)
+      )
+
+    paid =
+      Repo.all(
+        from(i in Intake,
+          where: i.workshop_id == ^workshop.id,
+          order_by: [i.queue_date, i.id],
+          limit: 2
+        )
+      )
+
+    Enum.each(paid, &seed_pay!(&1, workshop, paid_at))
+
+    {:ok, %{outcome: :passed} = pass} =
+      Dhc.BeginnersWorkshops.execute(:system, {:pass_payment_cutoff, workshop.id})
+
+    Mix.shell().info(
+      "Seeded the workshop on #{workshop.date} past its cutoff: " <>
+        "#{pass.pre_workshop} sent Pre-workshop info, #{pass.lapsed} lapsed"
+    )
+  end
+
+  defp seed_finalised(coordinator_id) do
+    capacity = 4
+    date = Date.add(ClubCalendar.today(), -3)
+    contact_from = Date.add(date, -14)
+    fixed = &Dhc.BeginnersWorkshops.Clock.fixed/1
+    # Microsecond precision, as the wall clock reads.
+    batch_at = %{ClubCalendar.to_utc(contact_from, ~T[10:00:00]) | microsecond: {0, 6}}
+    during = %{ClubCalendar.to_utc(date, ~T[11:15:00]) | microsecond: {0, 6}}
+    day_ended = %{ClubCalendar.to_utc(Date.add(date, 1), ~T[00:00:00]) | microsecond: {0, 6}}
+    follow_up_at = Dhc.BeginnersWorkshops.WorkshopPolicy.follow_up_at(%{date: date})
+
+    open =
+      Repo.aggregate(from(i in Intake, where: i.state in ^Intake.open_states()), :count)
+
+    ensure_waiting(capacity + open)
+
+    {:ok, [workshop]} =
+      Dhc.BeginnersWorkshops.execute(
+        {:staff, coordinator_id},
+        {:schedule_workshop,
+         [
+           %{
+             venue: "St. Andrew's Resource Centre",
+             date: date,
+             start_time: ~T[11:00:00],
+             capacity: capacity,
+             fee_cents: 4000,
+             contact_from: contact_from,
+             assistant_principal_ids: [coordinator_id]
+           }
+         ]},
+        clock: fixed.(DateTime.add(batch_at, -3600, :second))
+      )
+
+    {:ok, %{outcome: :sent}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_due_batch, workshop.id},
+        clock: fixed.(batch_at)
+      )
+
+    paid =
+      Repo.all(
+        from(i in Intake,
+          where: i.workshop_id == ^workshop.id,
+          order_by: [i.queue_date, i.id],
+          limit: 3
+        )
+      )
+
+    Enum.each(paid, &seed_pay!(&1, workshop, DateTime.add(batch_at, 3600, :second)))
+
+    {:ok, %{outcome: :passed}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:pass_payment_cutoff, workshop.id},
+        clock: fixed.(workshop.payment_cutoff)
+      )
+
+    for intake <- Enum.take(paid, 2) do
+      {:ok, _record} =
+        Dhc.BeginnersWorkshops.execute(
+          {:staff, coordinator_id},
+          {:check_in, workshop.id, intake.id},
+          clock: fixed.(during)
+        )
+    end
+
+    {:ok, %{outcome: :finalised} = done} =
+      Dhc.BeginnersWorkshops.execute(:system, {:finalise_attendance, workshop.id},
+        clock: fixed.(day_ended)
+      )
+
+    {:ok, %{outcome: :sent, follow_ups: follow_ups}} =
+      Dhc.BeginnersWorkshops.execute(:system, {:send_follow_ups, workshop.id},
+        clock: fixed.(follow_up_at)
+      )
+
+    Mix.shell().info(
+      "Seeded the finalised workshop on #{workshop.date}: #{done.attended} attended, " <>
+        "#{done.no_show} no-show, #{follow_ups} sent the Follow-up"
+    )
+  end
+
+  # Pays one Intake through `complete_payment` from a synthetic completed
+  # Checkout Session (no Stripe key needed).
+  defp seed_pay!(intake, workshop, paid_at) do
+    row = insert_seed_hold!(intake, workshop, paid_at, "cs_seed_#{intake.id}")
+
+    {:ok, %{outcome: :paid}} =
+      Dhc.BeginnersWorkshops.execute(
+        :stripe,
+        {:complete_payment,
+         %{
+           "id" => row.stripe_checkout_session_id,
+           "status" => "complete",
+           "payment_status" => "paid",
+           "amount_total" => row.amount_cents,
+           "currency" => "eur",
+           "payment_intent" => "pi_seed_#{intake.id}",
+           "metadata" => %{"type" => "beginners_intake_payment", "payment_id" => row.id}
+         }},
+        clock: Dhc.BeginnersWorkshops.Clock.fixed(paid_at)
+      )
+  end
+
+  defp insert_seed_hold!(intake, workshop, now, session_id) do
+    entry = Repo.get!(WaitlistEntry, intake.waitlist_id)
+
+    BeginnersWorkshop
+    |> Repo.get!(workshop.id)
+    |> IntakeCheckout.hold_params(intake, entry, DateTime.add(now, 30 * 60, :second))
+    |> IntakePayment.hold_changeset()
+    |> Ecto.Changeset.put_change(:stripe_checkout_session_id, session_id)
+    |> Repo.insert!()
+  end
+
+  defp ensure_beginners_coordinator do
+    email = "beginners.seeder@example.com"
+    {:ok, %{id: id}} = create_principal(email)
+
+    unless Repo.exists?(from(p in UserProfile, where: p.principal_id == ^id)) do
+      attrs = %{
+        email: email,
+        first_name: "Beginners",
+        last_name: "Seeder",
+        phone_number: "+353800000001",
+        date_of_birth: ~D[1985-01-01],
+        pronouns: "they/them",
+        gender: "non-binary",
+        medical_conditions: nil,
+        social_media_consent: "no"
+      }
+
+      {:ok, profile} = insert_user_profile(attrs, id, nil, true, id)
+      :ok = insert_member_profile(id, profile.id, attrs)
+    end
+
+    :ok = insert_user_roles(id, ~w(member beginners_coordinator))
+
+    id
   end
 
   # ── Workshop seeding helpers ─────────────────────────────────────
@@ -731,7 +1237,9 @@ defmodule Dhc.DevSeeds do
   #     `text → preferred_weapon` cast (same path the test fixtures use).
 
   defp insert_waitlist(email, status) do
-    %WaitlistEntry{email: String.downcase(email), status: status}
+    removed_at = if status == "removed", do: DateTime.utc_now() |> DateTime.truncate(:second)
+
+    %WaitlistEntry{email: String.downcase(email), status: status, removed_at: removed_at}
     |> Repo.insert()
   rescue
     exception -> {:error, exception}

@@ -9,6 +9,8 @@
  * declare.
  */
 
+import { beginnersWorkshopActionTemplate } from "../emails/beginners-workshop-action";
+import { beginnersWorkshopNoticeTemplate } from "../emails/beginners-workshop-notice";
 import { magicLinkTemplate } from "../emails/magic-link";
 import { inviteMemberTemplate } from "../emails/invite-member";
 import { workshopAnnouncementTemplate } from "../emails/workshop-announcement";
@@ -39,6 +41,8 @@ export const TEMPLATES: Readonly<Record<EmailKind, TemplateMetadata>> = Object.f
   workshopRegistration: workshopRegistrationTemplate,
   workshopRegistrationError: workshopRegistrationErrorTemplate,
   magicLink: magicLinkTemplate,
+  beginnersWorkshopAction: beginnersWorkshopActionTemplate,
+  beginnersWorkshopNotice: beginnersWorkshopNoticeTemplate,
 });
 
 export function getTemplate(kind: EmailKind): TemplateMetadata {

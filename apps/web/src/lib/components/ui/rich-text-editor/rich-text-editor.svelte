@@ -22,7 +22,13 @@ export function emptyRichTextDocument(): RichTextDocument {
  *
  * `value` is the Tiptap JSON document (`editor.getJSON()`); it is written on
  * every content change. The editor is created on mount only, so it never runs
- * during SSR.
+ * during SSR, and its options are read once: remount it (`{#key}`) to change
+ * them.
+ *
+ * `placeholders` (Intake Email templates, ALE-383) enables the atomic
+ * placeholder chip node and an "Insert" row with one button per placeholder;
+ * only those placeholders can be inserted. Without it the vocabulary has no
+ * placeholder node, as a Member Announcement requires.
  */
 import { Editor } from "@tiptap/core";
 import { Placeholder } from "@tiptap/extensions";
@@ -50,6 +56,10 @@ import { Input } from "#lib/components/ui/input/index.js";
 import * as Popover from "#lib/components/ui/popover/index.js";
 import { Toggle } from "#lib/components/ui/toggle/index.js";
 import { cn } from "#lib/utils.js";
+import {
+	PlaceholderChip,
+	type RichTextPlaceholder,
+} from "./placeholder-chip.js";
 
 type Props = {
 	value?: RichTextDocument;
@@ -59,6 +69,7 @@ type Props = {
 	"aria-invalid"?: boolean;
 	disabled?: boolean;
 	class?: string;
+	placeholders?: readonly RichTextPlaceholder[];
 };
 
 let {
@@ -69,6 +80,7 @@ let {
 	"aria-invalid": ariaInvalid = false,
 	disabled = false,
 	class: className,
+	placeholders,
 }: Props = $props();
 
 const LINK_PATTERN = /^(https?:\/\/[^\s]+|mailto:[^\s]+)$/i;
@@ -113,7 +125,12 @@ onMount(() => {
 						ctx.defaultValidate(url) && LINK_PATTERN.test(url),
 				},
 			}),
-			Placeholder.configure({ placeholder }),
+			// Tiptap names its empty-editor hint "placeholder", which is the
+			// node type Phoenix expects for a placeholder chip.
+			Placeholder.extend({ name: "emptyHint" }).configure({ placeholder }),
+			...(placeholders
+				? [PlaceholderChip.configure({ placeholders: [...placeholders] })]
+				: []),
 		],
 		editorProps: { attributes: editorAttributes() },
 		onTransaction: ({ editor }) => {
@@ -334,6 +351,29 @@ function applyLink(event: SubmitEvent) {
 				<Redo />
 			</Button>
 		</div>
+		{#if placeholders?.length}
+			<div
+				class="flex flex-wrap items-center gap-1.5 border-b border-input px-2 py-1"
+				role="group"
+				aria-label={`${ariaLabel ?? "Text"} placeholders`}
+			>
+				<span class="text-xs text-muted-foreground">Insert:</span>
+				{#each placeholders as chip (chip.name)}
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						class="h-6 rounded-full px-2 text-xs font-medium"
+						aria-label={`Insert ${chip.label.toLowerCase()} into ${(ariaLabel ?? "text").toLowerCase()}`}
+						onclick={() =>
+							editor.chain().focus().insertPlaceholder(chip.name).run()}
+						{disabled}
+					>
+						{chip.label}
+					</Button>
+				{/each}
+			</div>
+		{/if}
 	{/if}
 	<div bind:this={element}></div>
 </div>
@@ -348,5 +388,25 @@ function applyLink(event: SubmitEvent) {
 	height: 0;
 	pointer-events: none;
 	color: var(--color-muted-foreground);
+}
+
+/* The atomic placeholder chip (ALE-383). */
+:global([data-slot="rich-text-editor"] .rich-text-placeholder) {
+	display: inline-block;
+	border-radius: 0.25rem;
+	background: hsl(var(--primary) / 0.1);
+	padding: 0 0.3rem;
+	color: hsl(var(--primary));
+	font-size: 0.75rem;
+	font-weight: 600;
+	line-height: 1.5rem;
+	vertical-align: baseline;
+	user-select: all;
+}
+
+:global(
+	[data-slot="rich-text-editor"] .rich-text-placeholder.ProseMirror-selectednode
+) {
+	outline: 2px solid hsl(var(--ring));
 }
 </style>

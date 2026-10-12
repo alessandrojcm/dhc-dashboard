@@ -2,7 +2,8 @@ defmodule Dhc.Invitations.AtomicReissueTest do
   use Dhc.DataCase, async: false
 
   alias Dhc.Invitations.Invitation
-  alias Dhc.Invitations.Repository
+  alias Dhc.Invitations.ProcessingLog
+  alias Dhc.Onboarding
   alias Ecto.Adapters.SQL.Sandbox
 
   @insert_barrier 7_310_042
@@ -11,16 +12,16 @@ defmodule Dhc.Invitations.AtomicReissueTest do
   # for the email. Re-inviting is allowed again once nothing is pending.
   # The partial unique index `invitations_email_pending_unique` remains the
   # concurrency backstop for racing inserts.
-  describe "create_invitation_record/3" do
+  describe "Onboarding.issue_invitation/3" do
     test "rejects the invite while a pending invitation exists for the email" do
       created_by_id = insert_principal!("admin@example.com")
       invite_data = invite_data("member@example.com")
 
       assert {:ok, invitation_id} =
-               Repository.create_invitation_record(invite_data, invite_data, created_by_id)
+               issue(invite_data, created_by_id)
 
-      assert {:error, {:create_invitation, :duplicate_pending_invitation}} =
-               Repository.create_invitation_record(invite_data, invite_data, created_by_id)
+      assert {:error, :duplicate_pending_invitation} =
+               issue(invite_data, created_by_id)
 
       # Exactly one row for the email, untouched, still pending.
       assert [%Invitation{id: ^invitation_id, status: "pending"}] =
@@ -31,18 +32,10 @@ defmodule Dhc.Invitations.AtomicReissueTest do
       created_by_id = insert_principal!("case-admin@example.com")
 
       assert {:ok, _original_id} =
-               Repository.create_invitation_record(
-                 invite_data("Member@Example.com"),
-                 invite_data("Member@Example.com"),
-                 created_by_id
-               )
+               issue(invite_data("Member@Example.com"), created_by_id)
 
-      assert {:error, {:create_invitation, :duplicate_pending_invitation}} =
-               Repository.create_invitation_record(
-                 invite_data("member@example.com"),
-                 invite_data("member@example.com"),
-                 created_by_id
-               )
+      assert {:error, :duplicate_pending_invitation} =
+               issue(invite_data("member@example.com"), created_by_id)
 
       assert 1 ==
                Repo.aggregate(
@@ -56,7 +49,7 @@ defmodule Dhc.Invitations.AtomicReissueTest do
       invite_data = invite_data("lapsed@example.com")
 
       assert {:ok, original_id} =
-               Repository.create_invitation_record(invite_data, invite_data, created_by_id)
+               issue(invite_data, created_by_id)
 
       Repo.update_all(
         from(i in Invitation, where: i.id == ^original_id),
@@ -64,7 +57,7 @@ defmodule Dhc.Invitations.AtomicReissueTest do
       )
 
       assert {:ok, replacement_id} =
-               Repository.create_invitation_record(invite_data, invite_data, created_by_id)
+               issue(invite_data, created_by_id)
 
       refute replacement_id == original_id
 
@@ -75,6 +68,8 @@ defmodule Dhc.Invitations.AtomicReissueTest do
     test "concurrent duplicate invites fail loud instead of creating two pending invitations" do
       email = "atomic-reissue-#{System.unique_integer([:positive])}@example.com"
       invite_data = invite_data(email)
+      admin_email = "atomic-admin-#{System.unique_integer([:positive])}@example.com"
+      created_by_id = outside_sandbox(fn -> insert_principal!(admin_email) end)
 
       # The trigger parks each matching INSERT on an advisory lock the test
       # holds, so both creates have finished their pre-insert reads before
@@ -102,6 +97,10 @@ defmodule Dhc.Invitations.AtomicReissueTest do
       on_exit(fn ->
         outside_sandbox(fn ->
           Repo.delete_all(from i in Invitation, where: i.email == ^email)
+          Repo.delete_all(from l in ProcessingLog, where: l.principal_id == ^created_by_id)
+          Repo.delete_all(from p in Dhc.Auth.Principal, where: p.id == ^created_by_id)
+
+          Repo.delete_all(from j in Oban.Job, where: fragment("?->>'email'", j.args) == ^email)
 
           Repo.query!(
             "DROP TRIGGER IF EXISTS park_pending_invitation_for_concurrency_test ON invitations"
@@ -129,7 +128,7 @@ defmodule Dhc.Invitations.AtomicReissueTest do
         for _ <- 1..2 do
           Task.async(fn ->
             outside_sandbox(fn ->
-              Repository.create_invitation_record(invite_data, invite_data, nil)
+              issue(invite_data, created_by_id)
             end)
           end)
         end
@@ -144,7 +143,7 @@ defmodule Dhc.Invitations.AtomicReissueTest do
       results = Enum.map(creates, &Task.await(&1, 10_000))
 
       assert 1 == Enum.count(results, &match?({:ok, _invitation_id}, &1))
-      assert 1 == Enum.count(results, &match?({:error, {:create_invitation, _reason}}, &1))
+      assert 1 == Enum.count(results, &match?({:error, _reason}, &1))
 
       assert 1 ==
                outside_sandbox(fn ->
@@ -157,6 +156,15 @@ defmodule Dhc.Invitations.AtomicReissueTest do
   end
 
   defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
+
+  defp issue(invite_data, created_by_id) do
+    Repo.transaction(fn ->
+      case Onboarding.issue_invitation(invite_data, created_by_id) do
+        {:ok, %{invitation_id: id}} -> id
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
 
   defp await_barrier_waiters(expected, attempts \\ 200) do
     waiting =

@@ -3,24 +3,19 @@ defmodule Dhc.Waitlist.Repository do
   Repository module for Waitlist persistence.
   """
 
-  import Ecto.Query
-
-  alias Dhc.Repo
-  alias Dhc.Waitlist.WaitlistEntry
+  alias Dhc.Waitlist
 
   @doc """
-  Marks a waitlist entry as invited.
+  Moves an `attended` Waitlist entry to `invited` through the Waitlist
+  standing function, inside the caller's Invitation transaction. Any other
+  standing is refused, so a waiting person cannot be invited directly.
   """
-  @spec mark_invited(String.t()) :: :ok
+  @spec mark_invited(String.t()) ::
+          :ok | {:error, {:waitlist_standing, atom() | Ecto.Changeset.t()}}
   def mark_invited(waitlist_id) when is_binary(waitlist_id) do
-    from(w in WaitlistEntry, where: w.id == ^waitlist_id)
-    |> Repo.update_all(
-      set: [
-        status: "invited",
-        last_status_change: DateTime.utc_now() |> DateTime.truncate(:second)
-      ]
-    )
-
-    :ok
+    case Waitlist.change_standing(waitlist_id, "invited") do
+      {:ok, _entry} -> :ok
+      {:error, reason} -> {:error, {:waitlist_standing, reason}}
+    end
   end
 end

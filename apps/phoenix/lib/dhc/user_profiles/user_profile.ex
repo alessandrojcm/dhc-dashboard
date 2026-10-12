@@ -24,8 +24,26 @@ defmodule Dhc.UserProfiles.UserProfile do
     timestamps(inserted_at: :created_at, type: :utc_datetime)
   end
 
+  @waitlist_intake_required [
+    :first_name,
+    :last_name,
+    :is_active,
+    :date_of_birth,
+    :gender,
+    :phone_number,
+    :social_media_consent,
+    :waitlist_id
+  ]
+
   @doc false
-  def waitlist_intake_changeset(profile, attrs) do
+  # `require_gender: false` is the spreadsheet import's exception
+  # (`Dhc.Waitlist.Import`): the sheet has no gender, so none is stored.
+  def waitlist_intake_changeset(profile, attrs, opts \\ []) do
+    required =
+      if Keyword.get(opts, :require_gender, true),
+        do: @waitlist_intake_required,
+        else: List.delete(@waitlist_intake_required, :gender)
+
     profile
     |> cast(attrs, [
       :first_name,
@@ -39,16 +57,7 @@ defmodule Dhc.UserProfiles.UserProfile do
       :social_media_consent,
       :waitlist_id
     ])
-    |> validate_required([
-      :first_name,
-      :last_name,
-      :is_active,
-      :date_of_birth,
-      :gender,
-      :phone_number,
-      :social_media_consent,
-      :waitlist_id
-    ])
+    |> validate_required(required)
     |> validate_inclusion(:gender, [
       "man (cis)",
       "woman (cis)",

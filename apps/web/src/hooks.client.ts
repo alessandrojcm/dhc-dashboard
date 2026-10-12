@@ -8,6 +8,11 @@ import {
 } from "@sentry/sveltekit";
 import posthog from "posthog-js";
 import { dev } from "$app/env";
+import {
+	redactPayload,
+	redactSentryEvent,
+	redactSentrySpan,
+} from "#lib/intake-link-redaction.js";
 
 Sentry.init({
 	enabled: !dev,
@@ -40,6 +45,10 @@ Sentry.init({
 	// every other dataCollection category already defaults to enabled, so user
 	// info is the only one to opt into explicitly.
 	dataCollection: { userInfo: true },
+	// ALE-381: Intake link tokens never reach Sentry.
+	beforeSend: (event) => redactSentryEvent(event),
+	beforeSendSpan: (span) => redactSentrySpan(span),
+	beforeBreadcrumb: (breadcrumb) => redactPayload(breadcrumb),
 	tracePropagationTargets: [
 		"localhost",
 		/^\/api\//,

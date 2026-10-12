@@ -17,9 +17,13 @@ import {
 import { browserPushManager } from "#lib/notifications/web-push/browser.js";
 import { forgetPushSubscription } from "#lib/notifications/web-push/workflow.js";
 import type { Snippet } from "svelte";
+import { isBeginnersWorkshopSection } from "#lib/beginners-workshops/sections.js";
 
 let { children, data }: { data: LayoutData; children: Snippet } = $props();
 let paths = $derived.by(() => page.url.pathname.split("/"));
+const isBeginnersWorkshopPage = $derived(
+	isBeginnersWorkshopSection(page.route.id),
+);
 const userDataQuery = createQuery(() => ({
 	...membersMeOptions(),
 	experimental_prefetchInRender: true,
@@ -98,6 +102,12 @@ const WORKSHOP_ID_ROUTES = new Set([
 ]);
 
 function getBreadcrumbLabel(item: string, index: number): string {
+	if (
+		item === page.params.workshopId &&
+		page.route.id?.startsWith("/dashboard/beginners-workshop/workshops/")
+	) {
+		return page.data.console?.workshop.date ?? "Workshop";
+	}
 	const isMemberProfile =
 		page.route.id === "/dashboard/members/[memberId]" &&
 		index === paths.length - 1;
@@ -148,11 +158,15 @@ function getBreadcrumbLabel(item: string, index: number): string {
 		userData={userDataQuery.promise}
 		navData={data.navData}
 	/>
-	<main id="dashboard-content" class="min-w-0 w-full">
+	<main
+		id="dashboard-content"
+		class="min-w-0 w-full"
+		class:h-dvh={isBeginnersWorkshopPage}
+	>
 		<header
-			class="sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-md sm:px-6"
+			class="sticky top-0 z-20 shrink-0 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-md sm:px-6"
 		>
-			<div class="mx-auto flex max-w-[90rem] items-center gap-4">
+			<div class="flex items-center gap-4">
 				<div
 					class="ml-14 hidden border-r border-border pr-4 text-xs font-bold uppercase tracking-[0.18em] text-primary sm:block md:ml-0"
 				>
@@ -182,7 +196,14 @@ function getBreadcrumbLabel(item: string, index: number): string {
 				</Breadcrumb.Root>
 			</div>
 		</header>
-		<div class="mx-auto w-full max-w-[90rem]">{@render children()}</div>
+		<div
+			class="w-full"
+			class:flex-1={isBeginnersWorkshopPage}
+			class:min-h-0={isBeginnersWorkshopPage}
+			class:overflow-hidden={isBeginnersWorkshopPage}
+		>
+			{@render children()}
+		</div>
 	</main>
 </SidebarProvider>
 

@@ -753,6 +753,34 @@ defmodule Dhc.Stripe.Operations do
   end
 
   @doc """
+  Expire a Checkout Session
+
+  <p>A Checkout Session can be expired when it is in one of these statuses: <code>open</code> </p>
+
+  <p>After it expires, a customer can’t complete a Checkout Session and customers loading the Checkout Session see a message saying the Checkout Session is expired.</p>
+
+  ## Request Body
+
+  **Content Types**: `application/x-www-form-urlencoded`
+  """
+  @spec post_checkout_sessions_session_expire(session :: String.t(), body :: map, opts :: keyword) ::
+          {:ok, Dhc.Stripe.CheckoutSession.t()} | {:error, Dhc.Stripe.Error.t()}
+  def post_checkout_sessions_session_expire(session, body, opts \\ []) do
+    client = opts[:client] || @default_client
+
+    client.request(%{
+      args: [session: session, body: body],
+      call: {Dhc.Stripe.Operations, :post_checkout_sessions_session_expire},
+      url: "/v1/checkout/sessions/#{session}/expire",
+      body: body,
+      method: :post,
+      request: [{"application/x-www-form-urlencoded", :map}],
+      response: [{200, {Dhc.Stripe.CheckoutSession, :t}}, default: {Dhc.Stripe.Error, :t}],
+      opts: opts
+    })
+  end
+
+  @doc """
   Create a credit note
 
   <p>Issue a credit note to adjust the amount of a finalized invoice. A credit note will first reduce the invoice’s <code>amount_remaining</code> (and <code>amount_due</code>), but not below zero.

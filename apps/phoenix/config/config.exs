@@ -99,6 +99,12 @@ config :dhc, Oban,
        # ALE-287: hourly rather than daily so a missed window is repaired
        # within the hour. A pass in an unchanged state delivers nothing.
        {"0 * * * *", Dhc.Inventory.Workers.LoanReminderWorker},
+       # ALE-380: the one Beginners' Workshop sweep. Batches go out at 10:00
+       # Dublin time, so a 5-minute tick sends them by 10:05.
+       {"*/5 * * * *", Dhc.BeginnersWorkshops.Workers.SweepWorker},
+       # ALE-382: repairs missed Beginners' Workshop checkout and refund
+       # events (the Workshop refund reconciliation shape, offset by 7 min).
+       {"7,22,37,52 * * * *", Dhc.BeginnersWorkshops.Workers.ReconcileWorker},
        # ALE-319: daily refresh of the Irish bank-holiday cache (current +
        # next Dublin year; upserts by date, deletes dates the source no
        # longer returns). Failures keep cached rows and are repaired by the
@@ -203,6 +209,8 @@ config :logger, :default_formatter,
 # The SDK is enabled only when SENTRY_DSN is present.
 config :sentry,
   dsn: System.get_env("SENTRY_DSN"),
+  # Redacts Intake link tokens from every event and transaction (ALE-381).
+  before_send: {DhcWeb.IntakeLinkPrivacy, :before_send},
   environment_name: config_env(),
   enable_source_code_context: true,
   root_source_code_paths: [File.cwd!()],
@@ -274,6 +282,8 @@ config :phoenix, :json_library, Jason
 config :phoenix, :filter_parameters, [
   "password",
   "token",
+  "success_url",
+  "cancel_url",
   "endpoint",
   "p256dh",
   "auth",

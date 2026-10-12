@@ -74,9 +74,7 @@ function handleInterestToggle(workshopId: string) {
 	<title>My workshops | Dublin HEMA Club</title>
 </svelte:head>
 
-<div
-	class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10"
->
+<div class="flex w-full flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
 	<header class="border-b border-border/80 pb-6">
 		<div class="max-w-3xl space-y-2">
 			<p class="text-xs font-bold tracking-[0.18em] text-primary uppercase">
