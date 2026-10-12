@@ -168,7 +168,7 @@ const refundHint = $derived(
 				{refundHint}
 			</Alert.Root>
 		{/if}
-		{#if buttonCommands.length || canWithdraw || canRefundCredit}
+		{#if buttonCommands.length}
 			<form
 				{...form.preflight(intakeCommandSchema).enhance(async (instance) => {
 					formError = null;
@@ -218,29 +218,35 @@ const refundHint = $derived(
 							disabled={!!form.pending}>{intakeCommandLabel(command)}</Button
 						>
 					{/each}
-					{#if canRefundCredit}
-						<RefundCredit
-							scope={workshopScope(workshopId)}
-							intakeId={intake.id}
-							amount={creditAmount}
-						/>
-					{/if}
-					{#if canWithdraw}
-						<Button
-							type="button"
-							size="sm"
-							variant="outline"
-							class="text-destructive"
-							onclick={() => (withdrawOpen = true)}
-							>{intakeCommandLabel("withdraw")}</Button
-						>
-					{/if}
 				</div>
 				{#if formError}
 					<p class="text-sm text-destructive" role="alert">{formError}</p>
 				{/if}
 			</form>
-		{:else if !canCorrect}
+		{/if}
+		{#if canRefundCredit || canWithdraw}
+			<!-- ALE-421: the refund module's commands carry their own note. -->
+			<div class="flex flex-wrap gap-2" data-testid="money-commands">
+				{#if canRefundCredit}
+					<RefundCredit
+						scope={workshopScope(workshopId)}
+						intakeId={intake.id}
+						amount={creditAmount}
+					/>
+				{/if}
+				{#if canWithdraw}
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						class="text-destructive"
+						onclick={() => (withdrawOpen = true)}
+						>{intakeCommandLabel("withdraw")}</Button
+					>
+				{/if}
+			</div>
+		{/if}
+		{#if !buttonCommands.length && !canRefundCredit && !canWithdraw && !canCorrect}
 			<p class="text-muted-foreground">
 				No actions are available for this workshop place.
 			</p>

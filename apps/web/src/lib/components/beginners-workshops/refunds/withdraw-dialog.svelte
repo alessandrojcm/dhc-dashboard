@@ -75,7 +75,17 @@ let refund = $state<"refund" | "forfeit" | undefined>(undefined);
 // Phoenix refused on `refund`: the read was stale, so ask now.
 let refused = $state(false);
 let formError = $state<string | null>(null);
-const asksChoice = $derived(choice !== null || refused);
+
+// A dialog reopened after Cancel starts without the last choice or refusal message.
+$effect(() => {
+	if (!open) {
+		refund = undefined;
+		formError = null;
+	}
+});
+const asksChoice = $derived(
+	choice !== null || refused || refundIssues.length > 0,
+);
 const hint = $derived(
 	choice && scope.kind === "workshop"
 		? refundTimingHint(refundTimingDaysToGo)

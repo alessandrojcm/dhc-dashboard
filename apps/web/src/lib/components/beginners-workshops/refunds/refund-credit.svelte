@@ -58,6 +58,11 @@ const noteId = $derived(
 );
 let formError = $state<string | null>(null);
 
+// A dialog reopened after Cancel starts without the last refusal message.
+$effect(() => {
+	if (!open) formError = null;
+});
+
 // svelte-ignore state_referenced_locally
 const submit = refundSubmit(scope, "refund_credit", client, {
 	done: () => (open = false),

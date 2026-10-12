@@ -47,6 +47,11 @@ const pending = $derived(!!(workshopForm?.pending || personForm?.pending));
 const noteId = $derived(`${refund.id}-manual-note`);
 let formError = $state<string | null>(null);
 
+// A dialog reopened after Cancel starts without the last refusal message.
+$effect(() => {
+	if (!open) formError = null;
+});
+
 // The scope and query client are fixed for the dialog's lifetime.
 // svelte-ignore state_referenced_locally
 const submit = refundSubmit(scope, "manual", queryClient, {

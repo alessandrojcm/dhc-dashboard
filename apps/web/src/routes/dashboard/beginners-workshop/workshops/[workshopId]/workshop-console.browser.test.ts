@@ -1055,7 +1055,15 @@ test("ALE-387: a paid Intake offers Cancel with refund and Withdraw, with the re
 	const buttons = detail.getByTestId("intake-commands").getByRole("button");
 	expect(
 		buttons.elements().map((button) => button.textContent?.trim()),
-	).toEqual(["Cancel with refund", "Resend link", "Replace link", "Withdraw…"]);
+	).toEqual(["Cancel with refund", "Resend link", "Replace link"]);
+	// ALE-421: Withdraw is the refund module's, beside the command form.
+	await expect
+		.element(
+			detail.getByTestId("money-commands").getByRole("button", {
+				name: "Withdraw…",
+			}),
+		)
+		.toBeVisible();
 	await expect
 		.element(detail.getByTestId("refund-timing-hint"))
 		.toHaveTextContent("Less than 3 days to go");
@@ -1122,7 +1130,7 @@ test("ALE-389/421: Refund credit is the refund module's confirmation, naming the
 		},
 	});
 	const detail = await openIntake(screen, /^Dara Nolan/);
-	const commands = detail.getByTestId("intake-commands");
+	const commands = detail.getByTestId("money-commands");
 	await commands.getByRole("button", { name: "Refund credit" }).click();
 
 	const dialog = screen.getByRole("dialog", { name: "Refund credit" });

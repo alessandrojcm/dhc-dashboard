@@ -30,7 +30,7 @@ import {
 	recordPersonManualRefundSchema,
 	refundIntakeCreditSchema,
 	refundPersonCreditSchema,
-	retryRefundSchema,
+	refundFollowUpSchema,
 	withdrawIntakeSchema,
 	withdrawPersonSchema,
 } from "#lib/schemas/beginnersWorkshop.js";
@@ -126,13 +126,16 @@ export const refundPersonCredit = form(
 );
 
 /** ALE-382: retry a failed refund from the console's Needs attention. */
-export const retryRefund = form(retryRefundSchema, async ({ id, refundId }) => {
-	const options = await beginnersWorkshopsManageOptions();
-	return beginnersWorkshopCommand(
-		beginnersWorkshopRefundsRetry({ ...options, path: { id, refundId } }),
-		{ fallback: FALLBACK.retry, formPath: noFormFields },
-	);
-});
+export const retryRefund = form(
+	refundFollowUpSchema,
+	async ({ id, refundId }) => {
+		const options = await beginnersWorkshopsManageOptions();
+		return beginnersWorkshopCommand(
+			beginnersWorkshopRefundsRetry({ ...options, path: { id, refundId } }),
+			{ fallback: FALLBACK.retry, formPath: noFormFields },
+		);
+	},
+);
 
 /** ALE-389: retry a person's failed refund from the Waitlist tab. */
 export const retryPersonRefund = form(
@@ -183,7 +186,7 @@ export const recordPersonManualRefund = form(
 
 /** ALE-389: forfeit workshop credit whose refund failed (no email). */
 export const forfeitCredit = form(
-	retryRefundSchema,
+	refundFollowUpSchema,
 	async ({ id, refundId }) => {
 		const options = await beginnersWorkshopsManageOptions();
 		return beginnersWorkshopCommand(

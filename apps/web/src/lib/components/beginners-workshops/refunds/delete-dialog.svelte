@@ -42,10 +42,22 @@ const scope = personScope(waitlistId);
 const client = scopeQueryClient(scope, queryClient);
 const form = $derived(deletePerson.for(waitlistId));
 
+const refundIssues = $derived(form.fields.refund.issues() ?? []);
+
 let refund = $state<"refund" | "forfeit" | undefined>(undefined);
 let refused = $state(false);
 let formError = $state<string | null>(null);
-const asksChoice = $derived(choice !== null || refused);
+
+// A dialog reopened after Cancel starts without the last choice or refusal message.
+$effect(() => {
+	if (!open) {
+		refund = undefined;
+		formError = null;
+	}
+});
+const asksChoice = $derived(
+	choice !== null || refused || refundIssues.length > 0,
+);
 
 const submit = refundSubmit(scope, "delete_person", client, {
 	done: () => (open = false),
@@ -79,7 +91,7 @@ const submit = refundSubmit(scope, "delete_person", client, {
 				{choice}
 				command="delete_person"
 				{refused}
-				issues={form.fields.refund.issues() ?? []}
+				issues={refundIssues}
 				bind:value={refund}
 			/>
 

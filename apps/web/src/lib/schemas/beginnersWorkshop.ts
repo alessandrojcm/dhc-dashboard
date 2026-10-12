@@ -287,8 +287,8 @@ export const inviteAttendeeSchema = v.object({
 	intakeId: v.pipe(v.string(), v.uuid("Unknown person.")),
 });
 
-/** ALE-382: Retry a failed refund from Needs attention. */
-export const retryRefundSchema = v.object({ id: workshopId, refundId });
+/** ALE-382/389: Retry or Forfeit a failed refund from Needs attention. */
+export const refundFollowUpSchema = v.object({ id: workshopId, refundId });
 
 /**
  * ALE-382: Record manual refund — the coordinator paid the person back
@@ -431,10 +431,12 @@ export const withdrawPersonSchema = v.pipe(
 );
 
 /** The refund-or-forfeit choice as Phoenix's `refund` flag, left out when not made. */
-function refundFlag(
-	refund: "refund" | "forfeit" | undefined,
-): BeginnersWorkshopDeletePersonRequest {
-	const body: BeginnersWorkshopDeletePersonRequest = {};
+/** Phoenix's `refund` flag, shared by the Withdraw and Delete requests. */
+type RefundFlag = Pick<BeginnersWorkshopWithdrawRequest, "refund"> &
+	Pick<BeginnersWorkshopDeletePersonRequest, "refund">;
+
+function refundFlag(refund: "refund" | "forfeit" | undefined): RefundFlag {
+	const body: RefundFlag = {};
 	if (refund) body.refund = refund === "refund";
 	return body;
 }
