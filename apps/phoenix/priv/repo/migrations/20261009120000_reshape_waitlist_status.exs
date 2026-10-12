@@ -44,6 +44,12 @@ defmodule Dhc.Repo.Migrations.ReshapeWaitlistStatus do
     $$;
     """
 
+    # Production inherited this Supabase RPC; fresh Ecto databases never had
+    # it. Standing writes now belong to Dhc.Waitlist.change_standing/3, and
+    # its enum argument otherwise prevents dropping the old type. Do not use
+    # CASCADE: any other unexpected dependency must still abort the swap.
+    execute "DROP FUNCTION IF EXISTS update_waitlist_status(uuid, waitlist_status, text)"
+
     swap_status_type(~w(waiting removed attended invited joined))
 
     alter table(:waitlist) do
