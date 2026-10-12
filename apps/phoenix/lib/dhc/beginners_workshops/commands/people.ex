@@ -89,7 +89,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     only: [live_fee_query: 1]
 
   import Dhc.BeginnersWorkshops.Commands.Facts,
-    only: [fee_refund: 1, fee_refunded?: 1, latest_fee: 1, read_locked: 2]
+    only: [fee_refund: 1, latest_fee: 1, read_locked: 2]
 
   alias Dhc.BeginnersWorkshops.{
     CarriedFee,
@@ -97,7 +97,6 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     Clock,
     Intake,
     IntakePayment,
-    IntakePolicy,
     IntakeRefunds,
     PersonPolicy
   }
@@ -213,8 +212,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     end
   end
 
-  # No open Intake: `IntakePolicy.check(:withdraw, _)` with no Intake
-  # (ALE-402) over the standing, under the entry lock, and (ALE-389) the
+  # No open Intake: `PersonPolicy.check(:withdraw, _)` — `IntakePolicy`'s
+  # no-Intake withdraw (ALE-402) — over the standing, under the entry lock,
+  # and (ALE-389) the
   # person's live Carried Fee, which needs the refund-or-forfeit choice even
   # when they are already removed. An Intake created since the peek (it
   # takes this lock too) is found here.
@@ -223,10 +223,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
 
   defp withdraw_standing(%{waitlist_entry: entry, carried_fee: fee}, waitlist_id, context, clock) do
     reading = Clock.read(clock)
-    facts = person_facts(entry, fee, reading)
+    facts = no_intake_facts(entry, fee, reading)
 
     with true <- peek_open_intake(waitlist_id) == nil || {:error, :concurrent_change},
-         :ok <- IntakePolicy.check(:withdraw, facts),
+         :ok <- PersonPolicy.check(:withdraw, facts),
          {:ok, _settled} <-
            Settlement.run(
              {:withdraw, :no_intake},
@@ -234,7 +234,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
              reading,
              actor: context.actor,
              choice: context.options.refund,
-             facts: facts
+             facts: facts.intake
            ) do
       {:ok, withdraw_person_view(Repo.reload!(entry), nil, :done)}
     else
@@ -243,20 +243,11 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     end
   end
 
-  # `IntakePolicy`'s facts of a person with no open Intake: their locked
-  # entry and live Carried Fee.
-  defp person_facts(entry, fee, reading) do
-    IntakePolicy.facts(
-      intake: nil,
-      entry: entry,
-      carried_fee: fee,
-      carried_fee_refund: fee_refund(fee),
-      latest_fee_refunded: fee == nil and fee_refunded?(entry.id),
-      workshop_status: nil,
-      correction: nil,
-      now: reading.now
-    )
-  end
+  # `PersonPolicy`'s facts of a person with no open Intake: their locked
+  # entry and live Carried Fee (the peek and the entry lock rule out an
+  # open Intake).
+  defp no_intake_facts(entry, fee, reading),
+    do: person_policy_facts(%{waitlist_entry: entry, intake: [], carried_fee: fee}, reading)
 
   defp withdraw_person_view(entry, intake_view),
     do: withdraw_person_view(entry, intake_view, intake_view.outcome)
@@ -484,8 +475,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     end
   end
 
-  # No open Intake: `CarriedFeePolicy.check(:refund, _)` over the person's
-  # live fee, else their latest (already done once it was refunded).
+  # No open Intake: `PersonPolicy.check(:refund_carried_fee, _)` —
+  # `CarriedFeePolicy.check(:refund, _)` over the person's live fee, else
+  # their latest (already done once it was refunded).
   defp refund_fee_alone(%{waitlist_entry: nil}, waitlist_id, _context, _clock) do
     if peek_open_intake(waitlist_id) == nil,
       do: {:error, :person_not_found},
@@ -493,10 +485,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
   end
 
   defp refund_fee_alone(%{waitlist_entry: entry, carried_fee: nil}, waitlist_id, _context, clock) do
-    case CarriedFeePolicy.check(
-           :refund,
-           person_fee_facts(entry, latest_fee(waitlist_id), Clock.read(clock))
-         ) do
+    case PersonPolicy.check(:refund_carried_fee, no_intake_facts(entry, nil, Clock.read(clock))) do
       :already_done -> {:ok, fee_command_view(waitlist_id, nil, :already_done)}
       {:error, reason} -> {:error, reason}
     end
@@ -506,7 +495,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     reading = Clock.read(clock)
 
     with true <- peek_open_intake(waitlist_id) == nil || {:error, :concurrent_change},
-         :ok <- CarriedFeePolicy.check(:refund, person_fee_facts(entry, fee, reading)),
+         :ok <- PersonPolicy.check(:refund_carried_fee, no_intake_facts(entry, fee, reading)),
          {:ok, _settled} <-
            Settlement.run(
              {:refund_carried_fee, :no_intake},
