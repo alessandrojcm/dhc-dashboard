@@ -4,12 +4,19 @@ import {
 	civilCalendarDate,
 	civilDateTile,
 	civilIsoDate,
+	dublinInstantTile,
 	dublinToday,
 	dublinTodayCalendarDate,
+	dublinWallClock,
 	formatCivilDate,
 	formatCivilDateLong,
+	formatDublinDate,
+	formatDublinDateLong,
+	formatDublinDayAndTime,
 	formatDublinInstant,
+	formatDublinSpan,
 	formatDublinTime,
+	formatDublinTime12h,
 	formatDublinTimestamp,
 } from "#lib/club-calendar.js";
 
@@ -62,6 +69,54 @@ describe("on the Dublin clock", () => {
 		expect(formatDublinTimestamp("2026-01-05T09:05:00Z")).toBe(
 			"5 Jan 2026, 09:05",
 		);
+	});
+});
+
+describe("club event instants on the Dublin clock", () => {
+	it("words an instant's Dublin day", () => {
+		expect(formatDublinDate("2026-10-12T13:30:00Z")).toBe("12 Oct 2026");
+		expect(formatDublinDate("2026-09-01T23:30:00Z")).toBe("2 Sep 2026");
+		expect(formatDublinDateLong("2026-10-20T17:30:00Z")).toBe(
+			"Tuesday, 20 October 2026",
+		);
+		expect(dublinInstantTile("2026-09-01T23:30:00Z")).toEqual({
+			weekday: "Wed",
+			day: "2",
+			month: "Sep",
+		});
+	});
+
+	it("words a time of day on the 12-hour clock", () => {
+		expect(formatDublinTime12h("2026-10-20T17:30:00Z")).toBe("6:30 PM");
+		expect(formatDublinTime12h("2026-10-20T11:05:00Z")).toBe("12:05 PM");
+		expect(formatDublinTime12h("2026-12-20T00:15:00Z")).toBe("12:15 AM");
+		expect(formatDublinTime12h("2026-12-20T09:00:00Z")).toBe("9:00 AM");
+	});
+
+	it("words a day and time, with the year when asked", () => {
+		expect(formatDublinDayAndTime("2026-10-20T17:30:00Z")).toBe(
+			"Tue, 20 Oct · 6:30 PM",
+		);
+		expect(
+			formatDublinDayAndTime("2026-10-20T17:30:00Z", { withYear: true }),
+		).toBe("Tue, 20 Oct 2026 · 6:30 PM");
+	});
+
+	it("words a span, naming the day once when it starts and ends on the same Dublin day", () => {
+		expect(
+			formatDublinSpan("2026-10-20T17:30:00Z", "2026-10-20T19:30:00Z"),
+		).toBe("Tue, 20 Oct · 6:30 PM–8:30 PM");
+		// 22:30–23:30 UTC is one UTC day but crosses midnight in Irish Summer Time.
+		expect(
+			formatDublinSpan("2026-07-14T22:30:00Z", "2026-07-14T23:30:00Z"),
+		).toBe("14 Jul · 11:30 PM–15 Jul · 12:30 AM");
+	});
+
+	it("places an event on the Dublin wall clock across the October change", () => {
+		expect(dublinWallClock("2026-10-24T09:00:00Z")).toBe("2026-10-24 10:00");
+		expect(dublinWallClock("2026-10-25T09:00:00Z")).toBe("2026-10-25 09:00");
+		expect(dublinWallClock("2026-03-29T00:30:00Z")).toBe("2026-03-29 00:30");
+		expect(dublinWallClock("2026-03-29T01:30:00Z")).toBe("2026-03-29 02:30");
 	});
 });
 
@@ -129,5 +184,19 @@ describe("on a host west of Dublin", () => {
 		expect(formatDublinInstant("2026-03-29T01:00:00Z")).toBe(
 			"Sun 29 Mar, 02:00",
 		);
+	});
+
+	it("still words a club event's day and time on the Dublin clock", () => {
+		// 18:30 Dublin is 10:30 in Los Angeles; 23:30 UTC is the next Dublin day.
+		expect(formatDublinDayAndTime("2026-10-20T17:30:00Z")).toBe(
+			"Tue, 20 Oct · 6:30 PM",
+		);
+		expect(formatDublinDate("2026-07-14T23:30:00Z")).toBe("15 Jul 2026");
+		expect(dublinInstantTile("2026-07-14T23:30:00Z")).toEqual({
+			weekday: "Wed",
+			day: "15",
+			month: "Jul",
+		});
+		expect(dublinWallClock("2026-10-25T09:00:00Z")).toBe("2026-10-25 09:00");
 	});
 });

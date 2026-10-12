@@ -26,9 +26,9 @@ tester.run("no-dublin-time-zone-literal", noDublinTimeZoneLiteralRule, {
       filename: "/repo/apps/web/src/routes/dashboard/prototype/calendar/fixtures.ts",
     },
     {
-      name: "importing the zone is allowed",
-      code: `import { CLUB_TIME_ZONE } from "#lib/club-calendar.js";
-const format = new Intl.DateTimeFormat("en-IE", { timeZone: CLUB_TIME_ZONE });`,
+      name: "importing a Club Calendar helper is allowed",
+      code: `import { formatDublinTime } from "#lib/club-calendar.js";
+const time = formatDublinTime(startsAt);`,
       filename: "/repo/apps/web/src/lib/beginners-workshops/console.ts",
     },
     {

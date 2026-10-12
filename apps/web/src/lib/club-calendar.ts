@@ -19,7 +19,7 @@ import {
 import dayjs from "dayjs";
 
 /** The Club Calendar's zone. */
-export const CLUB_TIME_ZONE = "Europe/Dublin";
+const CLUB_TIME_ZONE = "Europe/Dublin";
 
 const dublinDate = new Intl.DateTimeFormat("en-CA", {
 	timeZone: CLUB_TIME_ZONE,
@@ -111,6 +111,116 @@ const dublinTimestamp = new Intl.DateTimeFormat("en-IE", {
 /** An instant with its year on the Dublin clock: `12 Oct 2026, 14:30`. */
 export function formatDublinTimestamp(iso: string): string {
 	return dublinTimestamp.format(new Date(iso));
+}
+
+// en-US names match the English short and long names the dashboard has always
+// shown (`Sep`, not en-IE's `Sept`); the zone, not the locale, makes them
+// Dublin's.
+const dublinClockParts = new Intl.DateTimeFormat("en-US", {
+	timeZone: CLUB_TIME_ZONE,
+	year: "numeric",
+	month: "2-digit",
+	day: "2-digit",
+	hour: "2-digit",
+	minute: "2-digit",
+	hourCycle: "h23",
+});
+const dublinShortNames = new Intl.DateTimeFormat("en-US", {
+	timeZone: CLUB_TIME_ZONE,
+	weekday: "short",
+	month: "short",
+});
+const dublinLongNames = new Intl.DateTimeFormat("en-US", {
+	timeZone: CLUB_TIME_ZONE,
+	weekday: "long",
+	month: "long",
+});
+
+function partsOf(format: Intl.DateTimeFormat, iso: string) {
+	const byType = new Map(
+		format.formatToParts(new Date(iso)).map((part) => [part.type, part.value]),
+	);
+	return (type: Intl.DateTimeFormatPartTypes) => byType.get(type) ?? "";
+}
+
+/** The Dublin wall clock reading of an instant. */
+function dublinClock(iso: string) {
+	const clock = partsOf(dublinClockParts, iso);
+	const short = partsOf(dublinShortNames, iso);
+	const long = partsOf(dublinLongNames, iso);
+	const hour = Number(clock("hour"));
+	const minute = clock("minute");
+	return {
+		isoDate: `${clock("year")}-${clock("month")}-${clock("day")}`,
+		year: clock("year"),
+		day: String(Number(clock("day"))),
+		hour: clock("hour"),
+		minute,
+		time12h: `${((hour + 11) % 12) + 1}:${minute} ${hour < 12 ? "AM" : "PM"}`,
+		weekday: short("weekday"),
+		month: short("month"),
+		weekdayLong: long("weekday"),
+		monthLong: long("month"),
+	};
+}
+
+/** An instant's Dublin day: `12 Oct 2026`. */
+export function formatDublinDate(iso: string): string {
+	const { day, month, year } = dublinClock(iso);
+	return `${day} ${month} ${year}`;
+}
+
+/** An instant's Dublin day in full: `Tuesday, 20 October 2026`. */
+export function formatDublinDateLong(iso: string): string {
+	const { weekdayLong, day, monthLong, year } = dublinClock(iso);
+	return `${weekdayLong}, ${day} ${monthLong} ${year}`;
+}
+
+/** The calendar tile parts of an instant's Dublin day: `Tue` / `20` / `Oct`. */
+export function dublinInstantTile(iso: string) {
+	const { weekday, day, month } = dublinClock(iso);
+	return { weekday, day, month };
+}
+
+/** An instant as Dublin 12-hour time: `6:30 PM`. */
+export function formatDublinTime12h(iso: string): string {
+	return dublinClock(iso).time12h;
+}
+
+/**
+ * An instant's Dublin day and 12-hour time: `Tue, 20 Oct · 6:30 PM`, or
+ * `Tue, 20 Oct 2026 · 6:30 PM` with `withYear`.
+ */
+export function formatDublinDayAndTime(
+	iso: string,
+	{ withYear = false }: { withYear?: boolean } = {},
+): string {
+	const { weekday, day, month, year, time12h } = dublinClock(iso);
+	return `${weekday}, ${day} ${month}${withYear ? ` ${year}` : ""} · ${time12h}`;
+}
+
+/**
+ * A club event's span. One that starts and ends on the same Dublin day names
+ * it once (`Tue, 20 Oct · 6:30 PM–8:30 PM`); otherwise each end carries its
+ * own day (`14 Jul · 11:30 PM–15 Jul · 12:30 AM`).
+ */
+export function formatDublinSpan(startIso: string, endIso: string): string {
+	const start = dublinClock(startIso);
+	const end = dublinClock(endIso);
+	if (start.isoDate === end.isoDate) {
+		return `${start.weekday}, ${start.day} ${start.month} · ${start.time12h}–${end.time12h}`;
+	}
+	return `${start.day} ${start.month} · ${start.time12h}–${end.day} ${end.month} · ${end.time12h}`;
+}
+
+/**
+ * An instant as the zone-less Dublin wall clock reading `YYYY-MM-DD HH:mm`,
+ * which a calendar component reads as local time, so the event lands on the
+ * Dublin day and hour whatever the reader's own zone.
+ */
+export function dublinWallClock(iso: string): string {
+	const { isoDate, hour, minute } = dublinClock(iso);
+	return `${isoDate} ${hour}:${minute}`;
 }
 
 /** A civil `YYYY-MM-DD` as `Sat 14 Nov 2026`. */
