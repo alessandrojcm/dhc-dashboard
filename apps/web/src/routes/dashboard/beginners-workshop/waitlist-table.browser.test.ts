@@ -1,6 +1,7 @@
 import type {
 	BeginnersWorkshopPeople,
 	BeginnersWorkshopPersonCommand,
+	BeginnersWorkshopRefundChoice,
 	Options,
 	WaitlistEntriesData,
 	WaitlistEntriesResponse2,
@@ -40,6 +41,7 @@ function people(
 		{
 			commands: BeginnersWorkshopPersonCommand[];
 			carriedFee?: "held" | "applied";
+			refundChoice?: BeginnersWorkshopRefundChoice;
 		}
 	>,
 ) {
@@ -51,7 +53,7 @@ function people(
 					{
 						carriedFee: person.carriedFee ?? null,
 						availableCommands: person.commands,
-						refundChoice: null,
+						refundChoice: person.refundChoice ?? null,
 					},
 				]),
 			),
@@ -219,33 +221,27 @@ test("offers Restore only where Phoenix lists it on the entry", async () => {
 	);
 });
 
-test("ALE-387: Withdraw asks to refund or forfeit only when Phoenix says the person has paid", async () => {
+// ALE-421: the dialog is the refund module's (person scope); its own tests
+// cover the choice, the refusal and what goes stale.
+test("Withdraw opens the refund module's dialog, asking Phoenix's refund choice up front", async () => {
 	const ada = entry("a", { fullName: "Ada Paid" });
-	const withdrawEntry = vi
-		.fn()
-		.mockRejectedValueOnce({
-			errors: {
-				detail: "Choose whether to refund or forfeit their fee",
-				code: "refund_choice_required",
-				fields: { refund: ["Choose whether to refund or forfeit their fee"] },
-			},
-		})
-		.mockResolvedValueOnce({
-			data: {
-				waitlistId: "a",
-				status: "removed",
-				intake: null,
-				outcome: "done",
-			},
-		});
-	const success = vi.fn();
+	const bea = entry("b", { fullName: "Bea Unpaid", position: 2 });
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
-			listEntries: vi.fn(async () => page([ada])),
-			listPeople: people({ a: { commands: ["withdraw"] } }),
-			withdrawEntry,
-			notify: { success, error: () => {} },
+			listEntries: vi.fn(async () => page([ada, bea])),
+			listPeople: people({
+				a: {
+					commands: ["withdraw"],
+					refundChoice: {
+						source: "payment",
+						amountCents: 4000,
+						currency: "eur",
+					},
+				},
+				b: { commands: ["withdraw"] },
+			}),
+			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(BASE),
 			navigate: () => {},
 		},
@@ -254,35 +250,32 @@ test("ALE-387: Withdraw asks to refund or forfeit only when Phoenix says the per
 	const desktop = screen.getByRole("table");
 	await expect.element(desktop.getByText("Ada Paid")).toBeVisible();
 	await desktop
+		.getByRole("row")
+		.filter({ hasText: "Ada Paid" })
 		.getByRole("button", { name: "Withdraw from the Waitlist" })
 		.click();
 
-	const dialog = screen.getByRole("dialog", {
+	let dialog = screen.getByRole("dialog", {
 		name: "Withdraw Ada Paid from the Waitlist",
+	});
+	await expect
+		.element(dialog.getByTestId("refund-amount"))
+		.toHaveTextContent("Refund €40.00");
+	await expect
+		.element(dialog.getByRole("button", { name: "Withdraw", exact: true }))
+		.toBeDisabled();
+	await dialog.getByRole("button", { name: "Keep them" }).click();
+
+	await desktop
+		.getByRole("row")
+		.filter({ hasText: "Bea Unpaid" })
+		.getByRole("button", { name: "Withdraw from the Waitlist" })
+		.click();
+	dialog = screen.getByRole("dialog", {
+		name: "Withdraw Bea Unpaid from the Waitlist",
 	});
 	await expect.element(dialog).toBeVisible();
 	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
-
-	await dialog.getByRole("button", { name: "Withdraw", exact: true }).click();
-	await expect
-		.element(dialog.getByRole("alert"))
-		.toHaveTextContent("Choose whether to refund or forfeit their fee");
-	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
-	await expect.element(submit).toBeDisabled();
-
-	await dialog.getByRole("radio", { name: /Refund the full fee/ }).click();
-	await submit.click();
-
-	await expect.poll(() => success.mock.calls.length).toBe(1);
-	expect(withdrawEntry).toHaveBeenLastCalledWith(
-		expect.objectContaining({
-			path: { waitlistId: "a" },
-			body: { refund: true },
-		}),
-	);
-	expect(withdrawEntry.mock.calls[0][0]).toEqual(
-		expect.objectContaining({ body: {} }),
-	);
 });
 
 test("ALE-417: Withdraw and Delete render only for the people Phoenix offers them to", async () => {
@@ -364,29 +357,28 @@ test("shows a Carried Fee holder's fee on their entry", async () => {
 		.toBeVisible();
 });
 
-test("ALE-396: Delete removes a removed person, asking refund or forfeit first for a Carried Fee holder", async () => {
+test("ALE-396: Delete opens the refund module's dialog, asking about a holder's workshop credit up front", async () => {
 	const removed = entry("b", {
 		fullName: "Bea Removed",
 		status: "removed",
 		removedAt: "2026-09-01T10:00:00Z",
 	});
-	const deleteEntry = vi.fn(async () => ({
-		data: {
-			waitlistId: "b",
-			anonymisedIntakes: 1,
-			carriedFee: { id: "fee", status: "forfeited" as const },
-		},
-	}));
-	const success = vi.fn();
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([removed])),
 			listPeople: people({
-				b: { commands: ["delete_person"], carriedFee: "held" },
+				b: {
+					commands: ["delete_person"],
+					carriedFee: "held",
+					refundChoice: {
+						source: "carried_fee",
+						amountCents: 3500,
+						currency: "eur",
+					},
+				},
 			}),
-			deleteEntry,
-			notify: { success, error: () => {} },
+			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(`${BASE}?status=removed`),
 			navigate: () => {},
 		},
@@ -394,59 +386,13 @@ test("ALE-396: Delete removes a removed person, asking refund or forfeit first f
 
 	const desktop = screen.getByRole("table");
 	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
-	await expect
-		.element(desktop.getByText(/workshop credit/i).first())
-		.toBeVisible();
 	await desktop.getByRole("button", { name: "Delete this person" }).click();
 
 	const dialog = screen.getByRole("dialog", { name: "Delete Bea Removed" });
-	await expect.element(dialog).toBeVisible();
-	const submit = dialog.getByRole("button", { name: "Delete", exact: true });
-	await expect.element(submit).toBeDisabled();
-
-	await dialog.getByRole("radio", { name: /Keep the payment/ }).click();
-	await submit.click();
-
-	await expect.poll(() => success.mock.calls.length).toBe(1);
-	expect(deleteEntry).toHaveBeenCalledWith(
-		expect.objectContaining({
-			path: { waitlistId: "b" },
-			body: { refund: false },
-		}),
-	);
-});
-
-test("ALE-396: Delete shows Phoenix's refusal", async () => {
-	const ada = entry("a", { fullName: "Ada Contacted" });
-	const deleteEntry = vi.fn().mockRejectedValueOnce({
-		errors: {
-			detail: "This person already has an open workshop place",
-			code: "open_intake",
-		},
-	});
-
-	const screen = await render(WaitlistTableTestWrapper, {
-		deps: {
-			listEntries: vi.fn(async () => page([ada])),
-			listPeople: people({ a: { commands: ["delete_person"] } }),
-			deleteEntry,
-			notify: { success: () => {}, error: () => {} },
-			url: () => new URL(BASE),
-			navigate: () => {},
-		},
-	});
-
-	const desktop = screen.getByRole("table");
-	await expect.element(desktop.getByText("Ada Contacted")).toBeVisible();
-	await desktop.getByRole("button", { name: "Delete this person" }).click();
-
-	const dialog = screen.getByRole("dialog", { name: "Delete Ada Contacted" });
-	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
-	await dialog.getByRole("button", { name: "Delete", exact: true }).click();
 	await expect
-		.element(dialog.getByRole("alert"))
-		.toHaveTextContent("This person already has an open workshop place");
-	expect(deleteEntry).toHaveBeenCalledWith(
-		expect.objectContaining({ path: { waitlistId: "a" }, body: {} }),
-	);
+		.element(dialog.getByTestId("refund-amount"))
+		.toHaveTextContent("Refund their workshop credit: €35.00");
+	await expect
+		.element(dialog.getByRole("button", { name: "Delete", exact: true }))
+		.toBeDisabled();
 });

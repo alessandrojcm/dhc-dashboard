@@ -7,34 +7,25 @@
  * not editable here — it changes only through named commands — so the
  * writes are the entry's admin notes and `restore` (ALE-376), which returns a
  * removed person to the queue with their original date. Withdraw (ALE-387)
- * is the Beginners' Workshop boundary's command, not the Waitlist's — it may
- * close the person's open Intake — so it calls Phoenix's
- * `beginnersWorkshopIntakes.withdrawPerson`. Delete (ALE-396) is the
- * boundary's hard delete too (`beginnersWorkshopIntakes.deletePerson`): it
- * anonymises the person's Intakes and settles their Carried Fee.
+ * and Delete (ALE-396) are the Beginners' Workshop boundary's commands, not
+ * the Waitlist's — they may close the person's open Intake and settle their
+ * Carried Fee — so the refund module runs them (ALE-421, person scope), and
+ * invalidates this table's queries after a success.
  * Which of these a row offers is Phoenix's (ALE-417), never worked out
  * here: Restore from the entry's own `availableCommands` (the Waitlist's
  * retention rule), Withdraw and Delete — and each person's workshop credit
- * status — from Beginners' Workshops' person read
- * (`beginnersWorkshopPeople.index`), one extra query over the page's ids,
- * because the Waitlist API cannot know them. `offers` merges both lists.
- * The controller owns
- * the URL-backed list request, cache invalidation and the toasts; markup only
- * renders and calls these actions.
+ * status and refund-or-forfeit choice — from Beginners' Workshops' person
+ * read (`beginnersWorkshopPeople.index`), one extra query over the page's
+ * ids, because the Waitlist API cannot know them. `offers` merges both
+ * lists. The controller owns the URL-backed list request, cache
+ * invalidation and the toasts; markup only renders and calls these actions.
  */
 import {
 	beginnersWorkshopPeopleIndexOptions,
 	type BeginnersCarriedFeeStatus,
-	type BeginnersWorkshopDeletePersonRequest,
-	beginnersWorkshopIntakesDeletePersonMutation,
-	type BeginnersWorkshopIntakesDeletePersonData,
-	type BeginnersWorkshopIntakesDeletePersonResponse,
-	beginnersWorkshopIntakesWithdrawPersonMutation,
-	type BeginnersWorkshopIntakesWithdrawPersonData,
-	type BeginnersWorkshopIntakesWithdrawPersonResponse,
 	type BeginnersWorkshopPeople,
+	type BeginnersWorkshopRefundChoice,
 	type BeginnersWorkshopPersonCommand,
-	type BeginnersWorkshopWithdrawRequest,
 	waitlistEntriesOptions,
 	waitlistEntriesQueryKey,
 	waitlistRestoreEntryMutation,
@@ -100,12 +91,6 @@ export type WaitlistTableDeps = {
 	) => Promise<WaitlistRestoreEntryResponse>;
 	/** The page's people by entry id: credit and offered commands (ALE-417). */
 	listPeople?: (waitlistIds: string[]) => Promise<BeginnersWorkshopPeople>;
-	withdrawEntry?: (
-		options: Options<BeginnersWorkshopIntakesWithdrawPersonData>,
-	) => Promise<BeginnersWorkshopIntakesWithdrawPersonResponse>;
-	deleteEntry?: (
-		options: Options<BeginnersWorkshopIntakesDeletePersonData>,
-	) => Promise<BeginnersWorkshopIntakesDeletePersonResponse>;
 	/** ALE-389: the Carried Fee panel's requests, when a person's fee is managed. */
 	carriedFee?: CarriedFeePanelDeps;
 	/** Defaults to svelte-sonner's `toast`. */
@@ -120,11 +105,6 @@ export type WaitlistRowCommand =
 	| WaitlistEntryCommand
 	| BeginnersWorkshopPersonCommand;
 
-/** The outcome of a Withdraw or Delete: done, or Phoenix's reason and its code. */
-export type WithdrawOutcome =
-	| { ok: true }
-	| { ok: false; error: string; code: string | null };
-
 /** Prefix shared by every Waitlist page's query key. */
 const allWaitlistPages = () => waitlistEntriesQueryKey();
 
@@ -132,7 +112,7 @@ const allWaitlistPages = () => waitlistEntriesQueryKey();
 // `[{ _id: "<operation id>", … }]`, and TanStack matches a partial key.
 const allPeople = [{ _id: "beginnersWorkshopPeopleIndex" }];
 
-/** A person command or Restore changes the page and its people. */
+/** Restore changes the page and its people. */
 function invalidatePageAndPeople(queryClient: QueryClient) {
 	return Promise.all([
 		queryClient.invalidateQueries({ queryKey: allWaitlistPages() }),
@@ -245,40 +225,6 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		() => queryClient,
 	);
 
-	const withdrawWaitlistEntry = createMutation(
-		() => {
-			const options = beginnersWorkshopIntakesWithdrawPersonMutation();
-			const request = deps.withdrawEntry;
-			if (request) options.mutationFn = (vars) => request(vars);
-			return {
-				...options,
-				onSuccess: () => {
-					notify.success("Withdrawn from the Waitlist.");
-				},
-				onSettled: () => invalidatePageAndPeople(queryClient),
-			};
-		},
-		() => queryClient,
-	);
-
-	const deleteWaitlistEntry = createMutation(
-		() => {
-			const options = beginnersWorkshopIntakesDeletePersonMutation();
-			const request = deps.deleteEntry;
-			if (request) options.mutationFn = (vars) => request(vars);
-			return {
-				...options,
-				onSuccess: () => {
-					notify.success(
-						"Deleted. Their workshop places stay in the reports, anonymised.",
-					);
-				},
-				onSettled: () => invalidatePageAndPeople(queryClient),
-			};
-		},
-		() => queryClient,
-	);
-
 	return {
 		/** URL-backed search, page size, cursor paging and table sort state. */
 		url,
@@ -310,6 +256,13 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 			return people.data?.[id]?.carriedFee ?? null;
 		},
 		/**
+		 * The money an offered Withdraw or Delete must settle by refund or
+		 * forfeit (Phoenix's `refundChoice`), or `null` without (or until known).
+		 */
+		refundChoice(id: string): BeginnersWorkshopRefundChoice | null {
+			return people.data?.[id]?.refundChoice ?? null;
+		},
+		/**
 		 * Whether Phoenix offers `command` on this row: the entry's own
 		 * commands and the person's, merged (a person command is not offered
 		 * until the person read answers). Advisory — Phoenix decides again.
@@ -334,59 +287,6 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		},
 		get isRestoring() {
 			return restoreWaitlistEntry.isPending;
-		},
-		/**
-		 * Withdraws the person from the Waitlist (ALE-387). The dialog shows a
-		 * refusal itself — `refund_choice_required` under the refund choice —
-		 * so the outcome is returned rather than toasted.
-		 */
-		async withdraw(
-			id: string,
-			body: BeginnersWorkshopWithdrawRequest,
-		): Promise<WithdrawOutcome> {
-			try {
-				await withdrawWaitlistEntry.mutateAsync({
-					path: { waitlistId: id },
-					body,
-				});
-				return { ok: true };
-			} catch (error) {
-				const problem = apiProblem(error);
-				return {
-					ok: false,
-					error: problem?.detail ?? "Could not withdraw this person.",
-					code: problem?.code ?? null,
-				};
-			}
-		},
-		get isWithdrawing() {
-			return withdrawWaitlistEntry.isPending;
-		},
-		/**
-		 * Deletes the person (ALE-396). Like Withdraw, the dialog shows a
-		 * refusal itself (`refund_choice_required` under the refund choice).
-		 */
-		async deletePerson(
-			id: string,
-			body: BeginnersWorkshopDeletePersonRequest,
-		): Promise<WithdrawOutcome> {
-			try {
-				await deleteWaitlistEntry.mutateAsync({
-					path: { waitlistId: id },
-					body,
-				});
-				return { ok: true };
-			} catch (error) {
-				const problem = apiProblem(error);
-				return {
-					ok: false,
-					error: problem?.detail ?? "Could not delete this person.",
-					code: problem?.code ?? null,
-				};
-			}
-		},
-		get isDeleting() {
-			return deleteWaitlistEntry.isPending;
 		},
 	};
 }

@@ -545,7 +545,7 @@ test("ALE-392: without members.invite the attended list offers no Invite", async
 	).toHaveLength(0);
 });
 
-test("ALE-382: a failed refund needs attention with Retry and Record manual refund, and rows show refund status", async () => {
+test("ALE-382/421: each failed refund needs attention through the refund module, with Phoenix's follow-ups, and rows show refund status", async () => {
 	const base = view();
 	const failed = "9a3f5a8e-2b1c-4d7e-8f90-1a2b3c4d5e6f";
 	const screen = await render(WorkshopConsole, {
@@ -588,7 +588,7 @@ test("ALE-382: a failed refund needs attention with Retry and Record manual refu
 					reason: "policy_failed",
 					failedAt: "2026-10-22T12:00:00Z",
 					carriedFee: false,
-					forfeitable: false,
+					availableCommands: ["retry", "manual"],
 				},
 				{
 					id: "77777777-7777-4777-8777-777777777777",
@@ -600,58 +600,30 @@ test("ALE-382: a failed refund needs attention with Retry and Record manual refu
 					reason: "carried_fee_refunded",
 					failedAt: "2026-10-22T12:00:00Z",
 					carriedFee: true,
-					forfeitable: true,
-				},
-				{
-					id: "88888888-8888-4888-8888-888888888888",
-					intakeId: base.roster.asked[0].id,
-					firstName: "Fionn",
-					lastName: "Walsh",
-					amountCents: 4000,
-					currency: "eur",
-					reason: "carried_fee_refunded",
-					failedAt: "2026-10-22T12:00:00Z",
-					carriedFee: true,
-					forfeitable: false,
+					availableCommands: ["retry", "manual", "forfeit"],
 				},
 			],
 		}),
 	});
 
 	const attention = screen.getByRole("region", { name: "Needs attention" });
-	const [payment, carried, owed] = attention.getByTestId("failed-refund").all();
+	const [payment, carried] = attention.getByTestId("failed-refund").all();
 	await expect
 		.element(payment)
 		.toHaveTextContent("Refund of €35.00 to Dara Nolan failed");
 	await expect
-		.element(payment.getByRole("button", { name: "Retry" }))
+		.element(payment.getByRole("button", { name: "Retry", exact: true }))
 		.toBeVisible();
-	await expect
-		.element(payment.getByRole("button", { name: "Record manual refund" }))
-		.toBeVisible();
-	// Only a Carried Fee's failed refund can be forfeited (ALE-389).
 	expect(
 		payment
 			.getByRole("button", { name: "Remove credit, keep payment" })
 			.elements(),
 	).toEqual([]);
 	await expect
-		.element(carried)
-		.toHaveTextContent("Their workshop credit is available again");
-	await expect
 		.element(
 			carried.getByRole("button", { name: "Remove credit, keep payment" }),
 		)
 		.toBeVisible();
-	// A fee still owed back (the person has since paid) is not forfeitable.
-	await expect
-		.element(owed)
-		.toHaveTextContent("this payment is still owed back");
-	expect(
-		owed
-			.getByRole("button", { name: "Remove credit, keep payment" })
-			.elements(),
-	).toEqual([]);
 
 	await expect
 		.element(
@@ -1106,7 +1078,9 @@ test("ALE-387: no refund-timing hint more than 7 days out, nor on an unpaid Inta
 	await closeIntake(screen);
 });
 
-test("ALE-387: the Withdraw dialog asks to refund or forfeit a paid person's fee", async () => {
+// ALE-421: the dialog is the refund module's (workshop scope); its own tests
+// cover the choice up front, after a refusal and with no money.
+test("ALE-387/421: Withdraw opens the refund module's dialog with the row's refund choice", async () => {
 	const screen = await render(WorkshopConsole, { view: refundView(7) });
 	const detail = await openIntake(screen, /^Cian Doyle/);
 	await detail.getByRole("button", { name: "Withdraw…" }).click();
@@ -1114,43 +1088,19 @@ test("ALE-387: the Withdraw dialog asks to refund or forfeit a paid person's fee
 	const dialog = screen.getByRole("dialog", {
 		name: "Withdraw Cian Doyle from the Waitlist",
 	});
-	await expect.element(dialog).toBeVisible();
+	await expect
+		.element(dialog.getByTestId("refund-amount"))
+		.toHaveTextContent("Refund €40.00");
 	await expect
 		.element(dialog.getByTestId("refund-timing-hint"))
 		.toHaveTextContent("Less than 7 days to go");
-	await expect
-		.element(dialog.getByRole("radio", { name: /Refund €40\.00/ }))
-		.toBeVisible();
-	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
-	await expect.element(submit).toBeDisabled();
-
-	await dialog.getByRole("radio", { name: /Keep the payment/ }).click();
-	await expect.element(submit).toBeEnabled();
-
 	await dialog.getByRole("button", { name: "Keep them" }).click();
 	await expect.element(dialog).not.toBeInTheDocument();
 	await closeIntake(screen);
 });
 
-test("ALE-387: withdrawing a contacted person asks no money question", async () => {
-	const screen = await render(WorkshopConsole, { view: refundView(3) });
-	const detail = await openIntake(screen, /^Dara Nolan/);
-	await detail.getByRole("button", { name: "Withdraw…" }).click();
-
-	const dialog = screen.getByRole("dialog", {
-		name: "Withdraw Dara Nolan from the Waitlist",
-	});
-	await expect.element(dialog).toHaveTextContent("Their place is closed");
-	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
-	await expect
-		.element(dialog.getByRole("button", { name: "Withdraw", exact: true }))
-		.toBeEnabled();
-	await dialog.getByRole("button", { name: "Keep them" }).click();
-	await closeIntake(screen);
-});
-
-test("ALE-389: withdrawing a contacted Carried Fee holder asks to refund or forfeit what the fee originally took", async () => {
-	const base = refundView(3);
+test("ALE-389/421: Refund credit is the refund module's confirmation, naming the credit's amount", async () => {
+	const base = refundView(10);
 	const screen = await render(WorkshopConsole, {
 		view: {
 			...base,
@@ -1160,38 +1110,27 @@ test("ALE-389: withdrawing a contacted Carried Fee holder asks to refund or forf
 					{
 						...base.roster.asked[0]!,
 						carriedFee: "held",
+						availableCommands: ["decline", "withdraw", "refund_carried_fee"],
 						refundChoice: {
 							source: "carried_fee",
 							amountCents: 3500,
 							currency: "eur",
 						},
-						refundTimingDaysToGo: 3,
 					},
 				],
 			},
 		},
 	});
 	const detail = await openIntake(screen, /^Dara Nolan/);
-	await detail.getByRole("button", { name: "Withdraw…" }).click();
+	const commands = detail.getByTestId("intake-commands");
+	await commands.getByRole("button", { name: "Refund credit" }).click();
 
-	const dialog = screen.getByRole("dialog", {
-		name: "Withdraw Dara Nolan from the Waitlist",
-	});
+	const dialog = screen.getByRole("dialog", { name: "Refund credit" });
 	await expect
-		.element(
-			dialog.getByRole("radio", {
-				name: /Refund their workshop credit: €35\.00/,
-			}),
-		)
-		.toBeVisible();
-	await expect
-		.element(dialog.getByTestId("refund-timing-hint"))
-		.toHaveTextContent("Less than 3 days to go");
-	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
-	await expect.element(submit).toBeDisabled();
-	await dialog.getByRole("radio", { name: /Keep the payment/ }).click();
-	await expect.element(submit).toBeEnabled();
-	await dialog.getByRole("button", { name: "Keep them" }).click();
+		.element(dialog)
+		.toHaveTextContent("Refund €35.00 to the original payment?");
+	await dialog.getByRole("button", { name: "Keep it" }).click();
+	await expect.element(dialog).not.toBeInTheDocument();
 	await closeIntake(screen);
 });
 

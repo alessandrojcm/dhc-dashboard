@@ -8,9 +8,7 @@ import {
 	cancelPreviewLines,
 	consoleTimeline,
 	emailLogLine,
-	failedRefundText,
 	followUpLabel,
-	formatRefundAmount,
 	historyLine,
 	attendanceCorrectionDone,
 	attendanceCorrectionLabel,
@@ -23,8 +21,6 @@ import {
 	nextBatchSize,
 	nowCard,
 	refundLabel,
-	refundChoiceLabel,
-	refundTimingHint,
 	isIntakeButtonCommand,
 	rosterGroups,
 	unconfirmedCarriedFeeText,
@@ -515,64 +511,6 @@ describe("refundLabel (ALE-382)", () => {
 		);
 		expect(refundLabel({ refund: null })).toBeNull();
 	});
-
-	it("words a failed refund for Needs attention", () => {
-		expect(formatRefundAmount(1250, "gbp")).toBe("12.50 GBP");
-		expect(
-			failedRefundText({
-				id: "r",
-				intakeId: "i",
-				firstName: "Dara",
-				lastName: null,
-				amountCents: 3500,
-				currency: "eur",
-				reason: "paid_after_close",
-				failedAt: null,
-				carriedFee: false,
-				forfeitable: false,
-			}),
-		).toBe(
-			"Refund of €35.00 to Dara failed (they paid after their place was closed). Retry the refund or record a refund paid outside the app.",
-		);
-	});
-
-	it("ALE-389: a Carried Fee's failed refund offers forfeit too", () => {
-		expect(
-			failedRefundText({
-				id: "r",
-				intakeId: "i",
-				firstName: "Dara",
-				lastName: null,
-				amountCents: 4000,
-				currency: "eur",
-				reason: "carried_fee_refunded",
-				failedAt: null,
-				carriedFee: true,
-				forfeitable: true,
-			}),
-		).toBe(
-			"Refund of €40.00 to Dara failed (their workshop credit). Their workshop credit is available again. Retry the refund, record a refund paid outside the app, or keep the payment and remove the credit.",
-		);
-	});
-
-	it("a Carried Fee still owed back offers no forfeit", () => {
-		expect(
-			failedRefundText({
-				id: "r",
-				intakeId: "i",
-				firstName: "Dara",
-				lastName: null,
-				amountCents: 4000,
-				currency: "eur",
-				reason: "carried_fee_refunded",
-				failedAt: null,
-				carriedFee: true,
-				forfeitable: false,
-			}),
-		).toBe(
-			"Refund of €40.00 to Dara failed (their workshop credit). They have since paid or received another workshop credit, so this payment is still owed back. Retry the refund or record a refund paid outside the app.",
-		);
-	});
 });
 
 describe("Invitation handoff (ALE-392)", () => {
@@ -778,42 +716,10 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 	});
 });
 
-describe("ALE-387: the refund-timing hint", () => {
-	it("words the days Phoenix counted, and nothing without them", () => {
-		expect(refundTimingHint(null)).toBeNull();
-		expect(refundTimingHint(7)).toBe(
-			"Less than 7 days to go — there's no deadline; whether to refund is your call.",
-		);
-		expect(refundTimingHint(1)).toMatch(/^The workshop is tomorrow/);
-		expect(refundTimingHint(0)).toMatch(/^The workshop is today/);
-	});
-
-	it("names the money a refund returns: what it originally took", () => {
-		expect(
-			refundChoiceLabel({
-				source: "payment",
-				amountCents: 4000,
-				currency: "eur",
-			}),
-		).toBe("Refund €40.00");
-		expect(
-			refundChoiceLabel({
-				source: "carried_fee",
-				amountCents: 3500,
-				currency: "eur",
-			}),
-		).toBe("Refund their workshop credit: €35.00");
-		expect(
-			refundChoiceLabel({
-				source: "carried_fee",
-				amountCents: null,
-				currency: null,
-			}),
-		).toBe("Refund their workshop credit in full");
-	});
-
-	it("withdraw opens its own dialog; every other command is a button", () => {
+describe("ALE-387: the Intake detail's command buttons", () => {
+	it("withdraw and refund credit open the refund module's dialogs; every other command is a button", () => {
 		expect(isIntakeButtonCommand("withdraw")).toBe(false);
+		expect(isIntakeButtonCommand("refund_carried_fee")).toBe(false);
 		expect(isIntakeButtonCommand("cancel_with_refund")).toBe(true);
 	});
 });

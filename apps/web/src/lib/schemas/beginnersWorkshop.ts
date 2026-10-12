@@ -8,9 +8,11 @@
 import type {
 	BeginnersWorkshopCancelRequest,
 	BeginnersWorkshopCorrectAttendanceRequest,
+	BeginnersWorkshopDeletePersonRequest,
 	BeginnersWorkshopFastTrackRequest,
 	BeginnersWorkshopIntakeCommandRequest,
 	BeginnersWorkshopManualRefundRequest,
+	BeginnersWorkshopRefundCarriedFeeRequest,
 	BeginnersWorkshopRescheduleRequest,
 	BeginnersWorkshopScheduleRequest,
 	BeginnersWorkshopSettingsRequest,
@@ -379,6 +381,9 @@ const refundChoice = v.optional(
 	v.picklist(["refund", "forfeit"], "Choose refund or forfeit."),
 );
 
+/** ALE-421: the Waitlist tab's person, carried as a hidden field. */
+const waitlistId = v.pipe(v.string(), v.uuid("Unknown person."));
+
 const withdrawNote = v.optional(
 	v.pipe(
 		v.string(),
@@ -392,8 +397,7 @@ function withdrawBody(
 	refund: "refund" | "forfeit" | undefined,
 	note: string,
 ): BeginnersWorkshopWithdrawRequest {
-	const body: BeginnersWorkshopWithdrawRequest = {};
-	if (refund) body.refund = refund === "refund";
+	const body: BeginnersWorkshopWithdrawRequest = refundFlag(refund);
 	if (note) body.note = note;
 	return body;
 }
@@ -416,12 +420,69 @@ export const withdrawIntakeSchema = v.pipe(
 /** ALE-387: Withdraw from the Waitlist tab, which names the person. */
 export const withdrawPersonSchema = v.pipe(
 	v.object({
-		waitlistId: v.pipe(v.string(), v.uuid("Unknown person.")),
+		waitlistId,
 		refund: refundChoice,
 		note: withdrawNote,
 	}),
 	v.transform(({ waitlistId, refund, note }) => ({
 		waitlistId,
 		body: withdrawBody(refund, note),
+	})),
+);
+
+/** The refund-or-forfeit choice as Phoenix's `refund` flag, left out when not made. */
+function refundFlag(
+	refund: "refund" | "forfeit" | undefined,
+): BeginnersWorkshopDeletePersonRequest {
+	const body: BeginnersWorkshopDeletePersonRequest = {};
+	if (refund) body.refund = refund === "refund";
+	return body;
+}
+
+/**
+ * ALE-396/421: Delete from the Waitlist tab. Phoenix requires the
+ * refund-or-forfeit choice whenever the person holds workshop credit.
+ */
+export const deletePersonSchema = v.pipe(
+	v.object({ waitlistId, refund: refundChoice }),
+	v.transform(({ waitlistId, refund }) => ({
+		waitlistId,
+		body: refundFlag(refund) satisfies BeginnersWorkshopDeletePersonRequest,
+	})),
+);
+
+/** ALE-389/421: Refund credit from the console's workshop place, with its optional note. */
+export const refundIntakeCreditSchema = v.pipe(
+	v.object({ id: workshopId, intakeId, note: withdrawNote }),
+	v.transform(({ id, intakeId, note }) => ({
+		id,
+		intakeId,
+		body: (note
+			? { note }
+			: {}) satisfies BeginnersWorkshopIntakeCommandRequest,
+	})),
+);
+
+/** ALE-389/421: Refund credit from the Waitlist tab, with its optional note. */
+export const refundPersonCreditSchema = v.pipe(
+	v.object({ waitlistId, note: withdrawNote }),
+	v.transform(({ waitlistId, note }) => ({
+		waitlistId,
+		body: (note
+			? { note }
+			: {}) satisfies BeginnersWorkshopRefundCarriedFeeRequest,
+	})),
+);
+
+/** ALE-389/421: Retry or Forfeit a person's failed refund from the Waitlist tab. */
+export const personRefundFollowUpSchema = v.object({ waitlistId, refundId });
+
+/** ALE-389/421: Record manual refund from the Waitlist tab; a blank note is left out. */
+export const recordPersonManualRefundSchema = v.pipe(
+	v.object({ waitlistId, refundId, note: withdrawNote }),
+	v.transform(({ waitlistId, refundId, note }) => ({
+		waitlistId,
+		refundId,
+		body: (note ? { note } : {}) satisfies BeginnersWorkshopManualRefundRequest,
 	})),
 );

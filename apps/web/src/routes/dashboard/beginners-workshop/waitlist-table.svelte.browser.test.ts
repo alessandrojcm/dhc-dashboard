@@ -294,31 +294,12 @@ describe("createWaitlistTable", () => {
 		expect(table.offers(waiting, "refund_carried_fee")).toBe(true);
 		expect(table.carriedFee("w")).toBe("held");
 		expect(table.carriedFee("r")).toBeNull();
-	});
-
-	it("refreshes the page and its people after a withdraw", async () => {
-		const withdrawEntry = vi.fn(async () => ({
-			data: {
-				waitlistId: "a",
-				status: "removed" as const,
-				intake: null,
-				outcome: "done" as const,
-			},
-		}));
-		const { table, queryClient } = setup([entry("a")], {
-			withdrawEntry,
-			listPeople: vi.fn(async () => ({})),
+		// ALE-421: the refund module asks Phoenix's choice up front.
+		expect(table.refundChoice("w")).toEqual({
+			source: "carried_fee",
+			amountCents: 3500,
+			currency: "eur",
 		});
-		const invalidate = vi.spyOn(queryClient, "invalidateQueries");
-
-		expect(await table.withdraw("a", {})).toEqual({ ok: true });
-
-		await expect.poll(() => invalidate.mock.calls.length).toBe(2);
-		expect(invalidate).toHaveBeenCalledWith({
-			queryKey: waitlistEntriesQueryKey(),
-		});
-		expect(invalidate).toHaveBeenCalledWith({
-			queryKey: [{ _id: "beginnersWorkshopPeopleIndex" }],
-		});
+		expect(table.refundChoice("r")).toBeNull();
 	});
 });

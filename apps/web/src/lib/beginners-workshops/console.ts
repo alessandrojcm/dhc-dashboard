@@ -11,7 +11,6 @@ import type {
 	BeginnersWorkshopConsole,
 	BeginnersWorkshopConsoleInvitations,
 	BeginnersWorkshopFollowUp,
-	BeginnersWorkshopFailedRefund,
 	BeginnersWorkshopIntakeCommand,
 	BeginnersWorkshopIntakeEmailLogEntry,
 	BeginnersWorkshopIntakeHistoryCommand,
@@ -19,7 +18,6 @@ import type {
 	BeginnersWorkshopIntakeRefund,
 	BeginnersWorkshopIntakeState,
 	BeginnersWorkshopNextBatch,
-	BeginnersWorkshopRefundChoice,
 	BeginnersWorkshopRosterIntake,
 	BeginnersWorkshopUnconfirmedCarriedFee,
 	WaitlistStatus,
@@ -399,35 +397,6 @@ export function refundLabel(intake: {
 	return { text: `${kind} in progress`, tone: "progress" };
 }
 
-const REFUND_REASONS = new Map([
-	["policy_failed", "the payment didn't match the fee"],
-	["paid_after_close", "they paid after their place was closed"],
-	["cancelled_with_refund", "cancelled with a refund"],
-	["withdrawn", "withdrawn with a refund"],
-	["carried_fee_refunded", "their workshop credit"],
-]);
-
-/** A refund amount: `€40.00`, or `12.50 GBP` outside euro. */
-export function formatRefundAmount(cents: number, currency: string): string {
-	const amount = (cents / 100).toFixed(2);
-	return currency === "eur"
-		? `€${amount}`
-		: `${amount} ${currency.toUpperCase()}`;
-}
-
-/** The Needs attention line of a failed refund. */
-export function failedRefundText(
-	refund: BeginnersWorkshopFailedRefund,
-): string {
-	const reason = REFUND_REASONS.get(refund.reason);
-	const next = refund.forfeitable
-		? "Their workshop credit is available again. Retry the refund, record a refund paid outside the app, or keep the payment and remove the credit."
-		: refund.carriedFee
-			? "They have since paid or received another workshop credit, so this payment is still owed back. Retry the refund or record a refund paid outside the app."
-			: "Retry the refund or record a refund paid outside the app.";
-	return `Refund of ${formatRefundAmount(refund.amountCents, refund.currency)} to ${personName(refund)} failed${reason ? ` (${reason})` : ""}. ${next}`;
-}
-
 /** ALE-392: a finalised workshop's handoff line — `3 attended · 2 invited · 1 joined`. */
 export function invitationSummary({
 	attended,
@@ -587,16 +556,15 @@ export function attendanceCorrectionDone(
 
 /**
  * ALE-387: the commands that run straight from the Intake detail's command
- * buttons. `withdraw` needs the refund-or-forfeit choice, so it opens its
- * own dialog instead; (ALE-393) `correct_attendance` has a button per
- * correction in its own form.
+ * buttons. `withdraw` and (ALE-421) `refund_carried_fee` are the refund
+ * module's, with their own dialogs; (ALE-393) `correct_attendance` has a
+ * button per correction in its own form.
  */
 export const INTAKE_BUTTON_COMMANDS = [
 	"decline",
 	"defer",
 	"confirm",
 	"cancel_with_refund",
-	"refund_carried_fee",
 	"resend_link",
 	"rotate_link",
 ] as const satisfies readonly BeginnersWorkshopIntakeCommand[];
@@ -608,42 +576,6 @@ export function isIntakeButtonCommand(
 	command: BeginnersWorkshopIntakeCommand,
 ): command is IntakeButtonCommand {
 	return INTAKE_BUTTON_COMMANDS.some((button) => button === command);
-}
-
-/**
- * ALE-387 (story 77): the "less than N days to go" hint shown when choosing
- * between keeping the fee and refunding it. Phoenix works out the days left
- * on its own clock (`refundTimingDaysToGo`, 7 or fewer, `null` otherwise);
- * this only words them. There is no deadline: the club's policy is
- * informal, so this only reminds the coordinator how close the workshop is.
- */
-export function refundTimingHint(
-	daysToGo: number | null | undefined,
-): string | null {
-	if (daysToGo === null || daysToGo === undefined) return null;
-	const when =
-		daysToGo === 0
-			? "The workshop is today"
-			: daysToGo === 1
-				? "The workshop is tomorrow"
-				: `Less than ${daysToGo} days to go`;
-	return `${when} — there's no deadline; whether to refund is your call.`;
-}
-
-/**
- * ALE-387/389: the refund option of the refund-or-forfeit choice — the full
- * amount the money originally took (`refundChoice`, from Phoenix), which for
- * a Carried Fee may differ from this workshop's fee.
- */
-export function refundChoiceLabel(
-	choice: BeginnersWorkshopRefundChoice,
-): string {
-	const what = choice.source === "carried_fee" ? "their workshop credit" : "";
-	if (choice.amountCents === null || choice.currency === null) {
-		return what ? `Refund ${what} in full` : "Refund in full";
-	}
-	const amount = formatRefundAmount(choice.amountCents, choice.currency);
-	return what ? `Refund ${what}: ${amount}` : `Refund ${amount}`;
 }
 
 /** The button label of an Intake command. */

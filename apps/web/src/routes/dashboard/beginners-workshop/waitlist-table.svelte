@@ -29,11 +29,12 @@ import {
 	ToggleGroupItem,
 } from "#lib/components/ui/toggle-group/index.js";
 import { PAGE_SIZE_OPTIONS } from "#lib/cursor-query.js";
+import { personScope } from "#lib/beginners-workshops/refunds/scope.js";
+import DeleteDialog from "#lib/components/beginners-workshops/refunds/delete-dialog.svelte";
+import WithdrawDialog from "#lib/components/beginners-workshops/refunds/withdraw-dialog.svelte";
 import ActionButtons from "./actions-buttons.svelte";
 import WaitlistEntryDetails from "./waitlist-entry-details.svelte";
 import WaitlistStatusBadge from "./waitlist-status-badge.svelte";
-import WaitlistDeleteDialog from "./waitlist-delete-dialog.svelte";
-import WaitlistWithdrawDialog from "./waitlist-withdraw-dialog.svelte";
 import {
 	createWaitlistTable,
 	WAITLIST_STANDINGS,
@@ -638,11 +639,12 @@ const table = createSvelteTable(tableOptions);
 {#if withdrawing}
 	{@const person = withdrawing}
 	{#key person.id}
-		<WaitlistWithdrawDialog
-			entry={person}
+		<WithdrawDialog
+			scope={personScope(person.id)}
+			name={person.fullName}
+			choice={waitlist.refundChoice(person.id)}
+			queryClient={deps?.queryClient}
 			bind:open={withdrawOpen}
-			pending={waitlist.isWithdrawing}
-			onWithdraw={(body) => waitlist.withdraw(person.id, body)}
 		/>
 	{/key}
 {/if}
@@ -650,12 +652,12 @@ const table = createSvelteTable(tableOptions);
 {#if deleting}
 	{@const person = deleting}
 	{#key person.id}
-		<WaitlistDeleteDialog
-			entry={person}
-			carriedFee={waitlist.carriedFee(person.id)}
+		<DeleteDialog
+			waitlistId={person.id}
+			name={person.fullName}
+			choice={waitlist.refundChoice(person.id)}
+			queryClient={deps?.queryClient}
 			bind:open={deleteOpen}
-			pending={waitlist.isDeleting}
-			onDelete={(body) => waitlist.deletePerson(person.id, body)}
 		/>
 	{/key}
 {/if}
