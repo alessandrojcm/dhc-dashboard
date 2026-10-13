@@ -79,7 +79,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   Staff is `Commands.Staff`'s: `schedule_workshop` reads and applies
   optional Staff through `Staff.staff_input/1` and `Staff.apply_staff/4`,
   and the reschedule and cancel Notifications go through
-  `Staff.notify_each_staff/3` and `Staff.when_where/1`. A family never calls another family's private functions (ALE-405).
+  `Staff.notify_each_staff/3`, worded by `NotificationCopy`. A family never
+  calls another family's private functions (ALE-405).
   """
 
   import Ecto.Query
@@ -122,6 +123,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   alias Dhc.BeginnersWorkshops.Commands
 
   alias Dhc.BeginnersWorkshops.Commands.{
+    NotificationCopy,
     Settlement,
     Staff
   }
@@ -491,7 +493,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     Staff.notify_each_staff(
       workshop,
       key,
-      "The Beginners' Workshop you're on has moved to #{Staff.when_where(workshop)}."
+      NotificationCopy.rescheduled(workshop)
     )
   end
 
@@ -681,7 +683,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     Staff.notify_each_staff(
       workshop,
       "beginners-workshop:#{workshop.id}:cancelled",
-      "The Beginners' Workshop on #{Staff.when_where(workshop)} has been cancelled."
+      NotificationCopy.cancelled(workshop)
     )
   end
 

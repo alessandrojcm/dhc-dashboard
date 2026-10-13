@@ -391,7 +391,7 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
       assert contact_jobs() == []
     end
 
-    test "Batch sent goes to the coordinator-alert holders only, with its number and size",
+    test "offer round sent goes to the coordinator-alert holders only, with its number and size",
          %{workshop: w, coordinator: coordinator} do
       officer = staff_fixture("president")
       waiting_people_fixture(2)
@@ -400,8 +400,8 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
 
       assert [%Notification{body: body, notification_key: key}] = notifications(coordinator)
       assert key == "beginners-workshop:#{w.id}:batch:1"
-      assert body =~ "Batch 1 sent"
-      assert body =~ "2 people contacted"
+      assert body =~ "Offer round 1 sent"
+      assert body =~ "2 people offered a workshop place"
       assert notifications(officer) == []
     end
   end

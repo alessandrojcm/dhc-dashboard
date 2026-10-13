@@ -4,6 +4,8 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
   its field messages verbatim, so none of them may show a backend term.
   Walks the reason table of every `DhcWeb.BeginnersWorkshop*HTTP` family
   and every field message `DhcWeb.BeginnersWorkshopsHTTP.respond/4` builds.
+  ALE-425: Staff see every coordinator and Staff Notification too, so it
+  also renders each `Commands.NotificationCopy` function with fixture values.
 
   The banned phrases are `tools/oxlint/anti-slop/shared/backend-terms.json`,
   the list the frontend guards read too.
@@ -11,6 +13,7 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
 
   use ExUnit.Case, async: true
 
+  alias Dhc.BeginnersWorkshops.Commands.NotificationCopy
   alias Dhc.BeginnersWorkshops.IntakeEmails.EmailType
   alias Dhc.BeginnersWorkshops.IntakeEmails.Renderer
   alias DhcWeb.BeginnersWorkshopsHTTP
@@ -82,6 +85,25 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
         do: {"template #{field}", message}
   end
 
+  @workshop %{date: ~D[2026-11-14], start_time: ~T[18:30:00], venue: "St. Andrew's Hall"}
+
+  # Every Notification text, keyed by the function that builds it.
+  defp notifications do
+    [
+      {:batch_sent, NotificationCopy.batch_sent(@workshop.date, 1, 1)},
+      {:batch_sent, NotificationCopy.batch_sent(@workshop.date, 2, 5)},
+      {:nobody_waiting, NotificationCopy.nobody_waiting(@workshop.date)},
+      {:staff_assigned, NotificationCopy.staff_assigned("coach", @workshop)},
+      {:staff_assigned, NotificationCopy.staff_assigned("assistant", @workshop)},
+      {:staff_unassigned, NotificationCopy.staff_unassigned(@workshop)},
+      {:rescheduled, NotificationCopy.rescheduled(@workshop)},
+      {:cancelled, NotificationCopy.cancelled(@workshop)}
+    ] ++
+      for follow_up <- NotificationCopy.refund_follow_ups(),
+          {name, date} <- [{"Aoife", @workshop.date}, {nil, nil}],
+          do: {:refund_failed, NotificationCopy.refund_failed("€35.00", name, date, follow_up)}
+  end
+
   defp messages({:error, _reason, fields}), do: fields |> Map.values() |> List.flatten()
   defp messages({:error, [_ | _] = messages}), do: messages
   defp messages(_error), do: []
@@ -107,6 +129,21 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
     copy = field_messages() ++ template_messages()
     assert {"template subject", "can't be blank"} in copy
     assert Enum.any?(copy, &match?({"field message", _}, &1))
+    assert offences(copy) == []
+  end
+
+  test "every Notification builder is rendered" do
+    builders =
+      for {name, _arity} <- NotificationCopy.__info__(:functions),
+          name != :refund_follow_ups,
+          uniq: true,
+          do: name
+
+    assert Enum.sort(builders) == notifications() |> Keyword.keys() |> Enum.uniq() |> Enum.sort()
+  end
+
+  test "no Notification shows a backend term" do
+    copy = for {builder, text} <- notifications(), do: {"notification #{builder}", text}
     assert offences(copy) == []
   end
 

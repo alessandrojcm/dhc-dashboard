@@ -379,7 +379,8 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
       assert %CarriedFee{status: "held", applied_intake_id: nil} = fee!(person)
       assert [alert] = alerts(c)
       assert alert.notification_key == "beginners-workshop-refund:#{refund.id}:failed"
-      assert alert.body =~ "forfeit"
+      assert alert.body =~ "keeps their prepaid workshop place"
+      assert alert.body =~ "forfeit the credit"
 
       # Needs attention on the original workshop's console offers Forfeit too.
       workshop = %{id: deferred.workshop_id}

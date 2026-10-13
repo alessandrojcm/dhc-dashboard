@@ -20,8 +20,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Staff do
 
     * `staff_input/1` and `apply_staff/4` — `Commands.Schedule`
       (`schedule_workshop`'s optional Staff);
-    * `notify_each_staff/3` and `when_where/1` — `Commands.Schedule` (the
-      reschedule and cancel Notifications).
+    * `notify_each_staff/3` — `Commands.Schedule` (the reschedule and
+      cancel Notifications, worded by `Commands.NotificationCopy`).
 
   A family never calls another family's private functions (ALE-405).
   """
@@ -54,6 +54,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Staff do
   }
 
   alias Dhc.BeginnersWorkshops.Commands
+  alias Dhc.BeginnersWorkshops.Commands.NotificationCopy
 
   alias Dhc.Repo
 
@@ -205,20 +206,11 @@ defmodule Dhc.BeginnersWorkshops.Commands.Staff do
     |> create_keyed()
   end
 
-  defp staff_message(:assigned, "coach", workshop),
-    do: "You're the coach for the Beginners' Workshop on #{when_where(workshop)}."
-
-  defp staff_message(:assigned, "assistant", workshop),
-    do: "You're assisting at the Beginners' Workshop on #{when_where(workshop)}."
+  defp staff_message(:assigned, role, workshop),
+    do: NotificationCopy.staff_assigned(role, workshop)
 
   defp staff_message(:unassigned, _role, workshop),
-    do: "You're no longer on the Staff for the Beginners' Workshop on #{when_where(workshop)}."
-
-  @doc false
-  def when_where(workshop) do
-    "#{Calendar.strftime(workshop.date, "%a %-d %b %Y")} at " <>
-      "#{Calendar.strftime(workshop.start_time, "%H:%M")}, #{workshop.venue}"
-  end
+    do: NotificationCopy.staff_unassigned(workshop)
 
   # One keyed Notification to each person on the workshop's Staff.
   @doc false
