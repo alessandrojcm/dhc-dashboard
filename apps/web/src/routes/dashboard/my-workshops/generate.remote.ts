@@ -20,13 +20,14 @@ export const generateWorkshop = command(
 
 		try {
 			const result = await generateWorkshopData(prompt, request.signal);
-			const coerced = coerceToCreateWorkshopSchema(result.object);
-
-			if (!coerced.success) {
+			// Check the draft can become a workshop, but hand back the draft
+			// itself: the create page reads it from its URL and converts it
+			// once, on the Dublin clock, with the same function.
+			if (!coerceToCreateWorkshopSchema(result.object).success) {
 				return { success: false as const, error: "Generated data is invalid" };
 			}
 
-			return { success: true as const, data: coerced.output };
+			return { success: true as const, data: result.object };
 		} catch {
 			return {
 				success: false as const,

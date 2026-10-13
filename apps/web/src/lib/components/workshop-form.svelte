@@ -24,21 +24,21 @@ import {
 	Users,
 } from "@lucide/svelte";
 import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import type { CalendarDate } from "@internationalized/date";
 import {
-	type CalendarDate,
-	fromDate,
-	getLocalTimeZone,
-	toCalendarDate,
-	toCalendarDateTime,
-} from "@internationalized/date";
-import utc from "dayjs/plugin/utc";
-import timezone from "dayjs/plugin/timezone";
-import dayjs from "dayjs";
+	civilCalendarDate,
+	civilIsoDate,
+	dublinInstant,
+	dublinToday,
+	dublinWallClock,
+	formatCivilDate,
+} from "#lib/club-calendar.js";
 import { untrack } from "svelte";
 
-dayjs.extend(utc);
-dayjs.extend(timezone);
-dayjs.tz.setDefault(dayjs.tz.guess());
+// The form asks for the workshop's date and times on the Dublin clock,
+// whatever the organiser's own zone, so its defaults are Dublin times too.
+const DEFAULT_START_TIME = "10:00";
+const DEFAULT_END_TIME = "12:00";
 
 interface Props {
 	mode: "create" | "edit";
@@ -80,10 +80,10 @@ const baseInitialFormValue = $derived.by(() => ({
 	description: initialData?.description ?? "",
 	location: initialData?.location ?? "",
 	workshop_date: initialData?.workshop_date
-		? dayjs(initialData.workshop_date).toISOString()
+		? initialData.workshop_date.toISOString()
 		: "",
 	workshop_end_date: initialData?.workshop_end_date
-		? dayjs(initialData.workshop_end_date).toISOString()
+		? initialData.workshop_end_date.toISOString()
 		: "",
 	max_capacity: initialData?.max_capacity ?? 1,
 	price_member: initialData?.price_member ?? 0,
@@ -131,18 +131,28 @@ const announceEmail = $derived(
 	mode === "create" && Boolean(createWorkshop.fields.announce_email.value()),
 );
 
-const scheduleDate = $derived.by(() => {
-	if (!workshopDate || !dayjs(workshopDate).isValid()) return "Date not set";
-	return dayjs(workshopDate).format("ddd, D MMM YYYY");
-});
+/**
+ * A submitted instant as the Dublin civil date and `HH:MM` the form edits, or
+ * `undefined` when the field is empty or unreadable.
+ */
+function onDublinClock(iso: string | undefined) {
+	if (!iso || Number.isNaN(Date.parse(iso))) {
+		return undefined;
+	}
+	const [date, time] = dublinWallClock(iso).split(" ");
+	return { date, time };
+}
 
-const scheduleTime = $derived.by(() => {
-	if (!workshopDate || !workshopEndDate) return "Time not set";
-	const start = dayjs(workshopDate);
-	const end = dayjs(workshopEndDate);
-	if (!start.isValid() || !end.isValid()) return "Time not set";
-	return `${start.format("HH:mm")}–${end.format("HH:mm")}`;
-});
+const start = $derived(onDublinClock(workshopDate));
+const end = $derived(onDublinClock(workshopEndDate));
+
+const scheduleDate = $derived(
+	start ? formatCivilDate(start.date) : "Date not set",
+);
+
+const scheduleTime = $derived(
+	start && end ? `${start.time}–${end.time}` : "Time not set",
+);
 
 const setupChecklist = $derived([
 	{
@@ -170,78 +180,40 @@ function formatPrice(value: number) {
 	}).format(value);
 }
 
-// Derived date values for Calendar25
-const workshopDateValue = $derived.by(() => {
-	if (!workshopDate) return undefined;
-	const date = dayjs(workshopDate);
-	if (!date.isValid()) return undefined;
-	return toCalendarDate(fromDate(date.toDate(), getLocalTimeZone()));
-});
+// The date picker and time inputs read the instants on the Dublin clock.
+const workshopDateValue = $derived(
+	start ? civilCalendarDate(start.date) : undefined,
+);
+const startTime = $derived(start?.time ?? "");
+const endTime = $derived(end?.time ?? "");
 
-const startTime = $derived.by(() => {
-	if (!workshopDate) return "";
-	const date = dayjs(workshopDate);
-	return date.isValid() ? date.format("HH:mm") : "";
-});
-
-const endTime = $derived.by(() => {
-	if (!workshopEndDate) return "";
-	const date = dayjs(workshopEndDate);
-	return date.isValid() ? date.format("HH:mm") : "";
-});
-
-// Date update helper - updates form fields
+// A new time keeps its field's Dublin date: the start's own, else Dublin
+// today; the end's own, else the start's, else Dublin today.
 function updateWorkshopTime(time: string, field: "start" | "end") {
-	const [hour, minute] = time.split(":").map(Number);
 	if (field === "start") {
-		const baseDate = workshopDate ? dayjs(workshopDate) : dayjs();
-		remoteForm.fields.workshop_date.set(
-			baseDate.hour(hour).minute(minute).toISOString(),
-		);
+		const instant = dublinInstant(start?.date ?? dublinToday(), time);
+		if (instant) remoteForm.fields.workshop_date.set(instant);
 		return;
 	}
 
-	if (field === "end") {
-		const baseDate = workshopEndDate
-			? dayjs(workshopEndDate)
-			: workshopDate
-				? dayjs(workshopDate)
-				: dayjs();
-		remoteForm.fields.workshop_end_date.set(
-			baseDate.hour(hour).minute(minute).toISOString(),
-		);
-		return;
-	}
+	const instant = dublinInstant(
+		end?.date ?? start?.date ?? dublinToday(),
+		time,
+	);
+	if (instant) remoteForm.fields.workshop_end_date.set(instant);
 }
 
+// A new date keeps each field's Dublin time, or the Dublin defaults.
 function updateWorkshopDate(date: CalendarDate | undefined) {
-	if (!date) return;
-	const startDateDayjs = workshopDate ? dayjs(workshopDate) : null;
-	const startTimeVal = startDateDayjs?.isValid()
-		? {
-				hour: startDateDayjs.hour(),
-				minute: startDateDayjs.minute(),
-			}
-		: { hour: 10, minute: 0 };
-
-	const endDateDayjs = workshopEndDate ? dayjs(workshopEndDate) : null;
-	const endTimeVal = endDateDayjs?.isValid()
-		? { hour: endDateDayjs.hour(), minute: endDateDayjs.minute() }
-		: { hour: 12, minute: 0 };
-
-	remoteForm.fields.workshop_date.set(
-		toCalendarDateTime(date)
-			.set(startTimeVal)
-			.toDate(getLocalTimeZone())
-			.toISOString(),
+	const civilDate = civilIsoDate(date);
+	if (!civilDate) return;
+	const startInstant = dublinInstant(
+		civilDate,
+		start?.time ?? DEFAULT_START_TIME,
 	);
-
-	remoteForm.fields.workshop_end_date.set(
-		toCalendarDateTime(date)
-			.set(endTimeVal)
-			.toDate(getLocalTimeZone())
-			.toISOString(),
-	);
+	const endInstant = dublinInstant(civilDate, end?.time ?? DEFAULT_END_TIME);
+	if (startInstant) remoteForm.fields.workshop_date.set(startInstant);
+	if (endInstant) remoteForm.fields.workshop_end_date.set(endInstant);
 }
 
 // Edit permissions

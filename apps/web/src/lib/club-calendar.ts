@@ -222,6 +222,88 @@ export function dublinWallClock(iso: string): string {
 	return `${isoDate} ${hour}:${minute}`;
 }
 
+/**
+ * The instant at which Dublin's wall clock reads `time` (`HH:MM`, or
+ * `HH:MM:SS` as a `type="time"` input with seconds gives it) on the civil
+ * `date` (`YYYY-MM-DD`), as an ISO timestamp: the inverse of
+ * `dublinWallClock`.
+ *
+ * Clock changes use the `compatible` disambiguation (Temporal's default): a
+ * time the spring-forward night skips moves forward by the gap (01:30 on 29
+ * Mar 2026 is 02:30 IST), and a time the fall-back night repeats takes the
+ * earlier, summer offset (01:30 on 25 Oct 2026 is 01:30 IST). An empty or
+ * unreadable date or time returns `undefined` rather than throwing.
+ *
+ * Worked out with `Intl` alone: `@internationalized/date`'s `toZoned` takes a
+ * shortcut through the host's `Date` when the zone is the cached local one,
+ * so it answers wrongly once the host zone changes under it (as tests do).
+ */
+export function dublinInstant(date: string, time: string): string | undefined {
+	const wall = wallClockAsUtc(date, time);
+	if (wall === undefined) return undefined;
+	// Temporal's possible-instants rule: an offset in force a day either side
+	// covers every Dublin transition. Each offset that reproduces the wall
+	// clock gives a candidate; two mean a repeated hour, none a skipped one.
+	const before = dublinOffsetAt(wall - DAY_MS);
+	const after = dublinOffsetAt(wall + DAY_MS);
+	const candidates = [wall - before, wall - after].filter(
+		(instant) => wall - instant === dublinOffsetAt(instant),
+	);
+	// `compatible`: the earlier of a repeated time; a skipped time keeps the
+	// offset from before the gap, which lands it after the gap.
+	const instant =
+		candidates.length > 0 ? Math.min(...candidates) : wall - before;
+	return new Date(instant).toISOString();
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+const dublinOffsetParts = new Intl.DateTimeFormat("en-US", {
+	timeZone: CLUB_TIME_ZONE,
+	year: "numeric",
+	month: "2-digit",
+	day: "2-digit",
+	hour: "2-digit",
+	minute: "2-digit",
+	second: "2-digit",
+	hourCycle: "h23",
+});
+
+/** Dublin's offset from UTC at an instant, in milliseconds. */
+function dublinOffsetAt(instant: number): number {
+	const part = partsOf(dublinOffsetParts, new Date(instant).toISOString());
+	const wall = Date.UTC(
+		Number(part("year")),
+		Number(part("month")) - 1,
+		Number(part("day")),
+		Number(part("hour")),
+		Number(part("minute")),
+		Number(part("second")),
+	);
+	// The formatter reads whole seconds, so compare against the whole second.
+	return wall - Math.floor(instant / 1000) * 1000;
+}
+
+/**
+ * A civil date and wall-clock time as if it were UTC, in milliseconds, or
+ * `undefined` when either is not a real date or time. Built with `Date.UTC`,
+ * never the host's own zone.
+ */
+function wallClockAsUtc(date: string, time: string): number | undefined {
+	const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+	const clock = /^(\d{2}):(\d{2})(?::(\d{2}))?$/.exec(time);
+	if (!day || !clock) return undefined;
+	const [year, month, dayOfMonth] = day.slice(1).map(Number);
+	const [hour, minute, second = 0] = clock
+		.slice(1)
+		.filter((value) => value !== undefined)
+		.map(Number);
+	if (hour > 23 || minute > 59 || second > 59) return undefined;
+	const wall = Date.UTC(year, month - 1, dayOfMonth, hour, minute, second);
+	// Date.UTC rolls an impossible day (30 Feb) over; refuse it instead.
+	return new Date(wall).toISOString().startsWith(date) ? wall : undefined;
+}
+
 /** A civil `YYYY-MM-DD` as `Sat 14 Nov 2026`. */
 export function formatCivilDate(date: string): string {
 	return dayjs(date).format("ddd D MMM YYYY");
