@@ -2,6 +2,7 @@ import * as v from "valibot";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	BaseWorkshopSchema,
+	movesOntoDublinToday,
 	startsDublinToday,
 } from "#lib/schemas/workshop.js";
 
@@ -33,6 +34,65 @@ describe("startsDublinToday", () => {
 			startsDublinToday(
 				new Date("2026-07-15T23:15:00Z"),
 				new Date("2026-07-16T08:00:00Z"),
+			),
+		).toBe(true);
+	});
+});
+
+describe("movesOntoDublinToday", () => {
+	// 10:00 and 18:00 Dublin on Wednesday 15 July, and 18:00 on Thursday 16.
+	const todayMorning = new Date("2026-07-15T09:00:00Z");
+	const todayEvening = new Date("2026-07-15T17:00:00Z");
+	const tomorrowEvening = new Date("2026-07-16T17:00:00Z");
+
+	it("refuses a move from another day onto Dublin's today", () => {
+		expect(
+			movesOntoDublinToday(
+				todayEvening,
+				tomorrowEvening,
+				HALF_PAST_MIDNIGHT_IST,
+			),
+		).toBe(true);
+	});
+
+	it("lets a workshop already on Dublin's today keep its start", () => {
+		expect(
+			movesOntoDublinToday(todayEvening, todayEvening, HALF_PAST_MIDNIGHT_IST),
+		).toBe(false);
+	});
+
+	it("lets a workshop already on Dublin's today move its time within today", () => {
+		expect(
+			movesOntoDublinToday(todayMorning, todayEvening, HALF_PAST_MIDNIGHT_IST),
+		).toBe(false);
+	});
+
+	it("allows any move off today", () => {
+		expect(
+			movesOntoDublinToday(
+				tomorrowEvening,
+				todayEvening,
+				HALF_PAST_MIDNIGHT_IST,
+			),
+		).toBe(false);
+	});
+
+	it("judges the saved start on Dublin's day, not the UTC one", () => {
+		// 23:30 UTC on 14 July is 00:30 Dublin on 15 July: already today, so
+		// moving it to the evening is not a move onto today.
+		expect(
+			movesOntoDublinToday(
+				todayEvening,
+				new Date("2026-07-14T23:30:00Z"),
+				HALF_PAST_MIDNIGHT_IST,
+			),
+		).toBe(false);
+		// 22:30 UTC on 14 July is 23:30 Dublin on 14 July: yesterday.
+		expect(
+			movesOntoDublinToday(
+				todayEvening,
+				new Date("2026-07-14T22:30:00Z"),
+				HALF_PAST_MIDNIGHT_IST,
 			),
 		).toBe(true);
 	});

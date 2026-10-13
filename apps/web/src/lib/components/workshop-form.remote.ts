@@ -1,6 +1,7 @@
 import { form, getRequestEvent } from "$app/server";
 import {
 	workshopsCreate,
+	workshopsShow,
 	workshopsUpdate,
 	type WorkshopManagementRequest,
 	type WorkshopManagementUpdateRequest,
@@ -12,6 +13,7 @@ import { apiClientOptions } from "#lib/server/api-client.js";
 import {
 	CreateWorkshopRemoteSchema,
 	UpdateWorkshopRemoteSchema,
+	movesOntoDublinToday,
 	startsDublinToday,
 } from "#lib/schemas/workshop.js";
 
@@ -92,6 +94,33 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 
 	if (!workshopId) {
 		throw new Error("Workshop ID is required");
+	}
+
+	// The form submits the start on every save, so judge a start on Dublin's
+	// today against the saved one: moving a workshop onto today is refused,
+	// like scheduling it for today, but a workshop already taking place today
+	// can still be edited. Only a start on today costs the extra read.
+	if (data.workshop_date) {
+		const now = new Date();
+		const start = new Date(data.workshop_date);
+		if (startsDublinToday(start, now)) {
+			const current = await workshopsShow({
+				...apiClientOptions(event.cookies),
+				path: { workshopId },
+			});
+			if (current.error) {
+				throw new Error(
+					apiErrorMessage(
+						current.error,
+						"Failed to update workshop. Please try again later.",
+					),
+				);
+			}
+			const persisted = new Date(current.data.data.workshop.startDate);
+			if (movesOntoDublinToday(start, persisted, now)) {
+				throw new Error("Workshop cannot be scheduled for today");
+			}
+		}
 	}
 
 	// Transform form data to database format

@@ -11,6 +11,20 @@ export function startsDublinToday(start: Date, now: Date = new Date()) {
 	return dublinToday(start) === dublinToday(now);
 }
 
+/**
+ * Whether an edit that moves a workshop's start from `persisted` to `start`
+ * puts it on Dublin's today, as read at `now`. A workshop already taking
+ * place today may keep its day (and move its time within it): the edit form
+ * submits the start on every save, so only a move onto today is refused.
+ */
+export function movesOntoDublinToday(
+	start: Date,
+	persisted: Date,
+	now: Date = new Date(),
+) {
+	return startsDublinToday(start, now) && !startsDublinToday(persisted, now);
+}
+
 export const BaseWorkshopSchema = v.object({
 	title: v.pipe(
 		v.string(),
@@ -56,10 +70,7 @@ export const CreateWorkshopSchema = v.pipe(
 	),
 );
 
-export const UpdateWorkshopSchema = v.partial(BaseWorkshopSchema);
-
 export type CreateWorkshopInput = v.InferOutput<typeof CreateWorkshopSchema>;
-export type UpdateWorkshopInput = v.InferOutput<typeof UpdateWorkshopSchema>;
 
 /**
  * Coerces string "true"/"false" to boolean for hidden input fields.
