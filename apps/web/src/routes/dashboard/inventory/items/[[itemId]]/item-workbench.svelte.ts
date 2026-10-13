@@ -16,7 +16,9 @@
  * `form.preflight(schema).enhance(workbench.enhance.<command>)`, so the
  * controller sees each submission's `{ ok, data | error }` result. Phoenix
  * stays the only authority on an item: a success adopts the item Phoenix
- * answered with, never a locally edited copy.
+ * answered with, never a locally edited copy. Only the submitting form's drafts
+ * start again from that answer; an unsaved edit in another form survives unless
+ * the answer changed what that form edits (`rebasedDrafts`).
  */
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
@@ -221,6 +223,68 @@ function itemDrafts(item: InventoryOperatorItem) {
 	return { item, fields };
 }
 
+type ItemDrafts = ReturnType<typeof itemDrafts>;
+
+/** The management forms an Item command's success answers for. */
+type DraftGroup = Exclude<FlashedForm, "create"> | "archive";
+
+/** Whether each item-backed form's draft differs from the item it started from. */
+function dirtyOf({ item, fields }: ItemDrafts) {
+	const stored = draftFromItem(item);
+	return {
+		details:
+			fields.notes.trim() !== (item.notes ?? "") ||
+			!sameDraft(fields.values, stored),
+		placement: fields.containerId !== (item.containerId ?? ""),
+		category:
+			fields.categoryId !== item.categoryId ||
+			!sameDraft(fields.categoryValues, stored),
+	};
+}
+
+/**
+ * The drafts once a command answered with `item` (ALE-416 follow-up). The
+ * submitting form (`own`) starts again from the answer. Another form keeps
+ * what the operator typed but has not saved yet, so a slow command cannot wipe
+ * an edit made while it ran: the maintenance and archive notes always, and an
+ * item-backed draft while it is unsaved and the answer left the facts it edits
+ * unchanged. Every other draft follows the answer.
+ */
+function rebasedDrafts(
+	current: ItemDrafts | undefined,
+	item: InventoryOperatorItem,
+	own: DraftGroup,
+): ItemDrafts {
+	const next = itemDrafts(item);
+	if (!current || current.item.id !== item.id) return next;
+	const before = current.item;
+	const sameValues = sameDraft(draftFromItem(before), draftFromItem(item));
+	const dirty = dirtyOf(current);
+	const keeps = (group: keyof typeof dirty, unchanged: boolean) =>
+		group !== own && dirty[group] && unchanged;
+	const { fields } = current;
+
+	if (
+		keeps("details", (before.notes ?? "") === (item.notes ?? "") && sameValues)
+	) {
+		next.fields.notes = fields.notes;
+		next.fields.values = fields.values;
+	}
+	if (keeps("placement", before.containerId === item.containerId)) {
+		next.fields.containerId = fields.containerId;
+	}
+	if (keeps("category", before.categoryId === item.categoryId && sameValues)) {
+		next.fields.categoryId = fields.categoryId;
+		next.fields.categoryValues = fields.categoryValues;
+	}
+	if (own !== "maintenance") {
+		next.fields.maintenanceReason = fields.maintenanceReason;
+		next.fields.maintenanceEndNote = fields.maintenanceEndNote;
+	}
+	if (own !== "archive") next.fields.archiveReason = fields.archiveReason;
+	return next;
+}
+
 export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 	const queryClient = deps.queryClient ?? useQueryClient();
 	const client = () => queryClient;
@@ -410,8 +474,8 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		create.values = {};
 	}
 
-	// Reset whenever another item is selected; a command's success replaces
-	// them with drafts of the item Phoenix answered with.
+	// Reset whenever another item is selected; a command's success rebases
+	// them on the item Phoenix answered with (`rebasedDrafts`).
 	let drafts = $derived.by(() => {
 		if (!selectedSlug) return undefined;
 		return untrack(() => (selected ? itemDrafts(selected) : undefined));
@@ -431,20 +495,11 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 	const detailsDefinitions = definitionsOf(() => drafts?.item.categoryId);
 	const categoryDefinitions = definitionsOf(() => drafts?.fields.categoryId);
 
-	const dirty = $derived.by(() => {
-		if (!drafts) return { details: false, placement: false, category: false };
-		const { item, fields } = drafts;
-		const stored = draftFromItem(item);
-		return {
-			details:
-				fields.notes.trim() !== (item.notes ?? "") ||
-				!sameDraft(fields.values, stored),
-			placement: fields.containerId !== (item.containerId ?? ""),
-			category:
-				fields.categoryId !== item.categoryId ||
-				!sameDraft(fields.categoryValues, stored),
-		};
-	});
+	const dirty = $derived.by(() =>
+		drafts
+			? dirtyOf(drafts)
+			: { details: false, placement: false, category: false },
+	);
 
 	function setValue(
 		target: DraftTarget,
@@ -513,15 +568,18 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		]);
 	}
 
-	/** Adopts the item Phoenix answered with: detail, drafts, then lists. */
-	async function adopt(item: InventoryOperatorItem) {
+	/**
+	 * Adopts the item Phoenix answered `own`'s command with: detail, drafts
+	 * (only `own`'s start again; see `rebasedDrafts`), then lists.
+	 */
+	async function adopt(item: InventoryOperatorItem, own: DraftGroup) {
 		if (managedId) {
 			queryClient.setQueryData<InventoryItemsShowResponse>(
 				inventoryItemsShowQueryKey({ path: { slugOrId: managedId } }),
 				{ data: item },
 			);
 		}
-		drafts = itemDrafts(item);
+		drafts = rebasedDrafts(drafts, item, own);
 		await invalidateLists(item.slug);
 	}
 
@@ -543,11 +601,11 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 	 * A management form's command. A refusal stays inline in the form; a
 	 * success adopts the item and flashes the form's button.
 	 */
-	function edited(form: FlashedForm) {
+	function edited(form: Exclude<FlashedForm, "create">) {
 		return submitted(async (result) => {
 			if (!result.ok) return;
 			flash(form);
-			await adopt(result.data);
+			await adopt(result.data, form);
 		});
 	}
 
@@ -559,7 +617,7 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 				return;
 			}
 			notify.success(success);
-			await adopt(result.data);
+			await adopt(result.data, "archive");
 		});
 	}
 
