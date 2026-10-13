@@ -2,6 +2,7 @@ import { faker } from "@faker-js/faker";
 import { expect, type Page, test } from "@playwright/test";
 import dayjs from "dayjs";
 import { loginAsUser } from "./auth";
+import { stubEmbeddedCheckout } from "./beginners-workshop-checkout";
 import {
 	addClubDays,
 	deleteE2EFixture,
@@ -10,7 +11,6 @@ import {
 	seedE2EScenario,
 } from "./e2eApi";
 import { gotoHydrated } from "./hydration";
-import { stripeClient } from "./setupFunctions";
 
 // ALE-398: the Beginners' Workshop flow end to end, from scheduling to
 // Invitation. Named harness scenarios (`Dhc.E2EHarness.BeginnersWorkshops`)
@@ -78,42 +78,6 @@ async function pickDate(page: Page, label: string, isoDate: string) {
 		.getByRole("button", { name: date.format("dddd, MMMM D,") })
 		.click();
 	await expect(page.getByLabel("Select a year")).toHaveCount(0);
-}
-
-async function stubEmbeddedCheckout(page: Page) {
-	const sessions = new Set<string>();
-	await page.exposeFunction("recordIntakeCheckoutSession", (id: string) => {
-		if (!id.startsWith("cs_test_")) throw new Error("Expected test session");
-		sessions.add(id);
-	});
-	await page.route("https://js.stripe.com/**", (route) =>
-		route.fulfill({
-			contentType: "application/javascript",
-			body: `window.Stripe = () => ({
-				initEmbeddedCheckout: async ({ clientSecret, onComplete }) => {
-					if (!/^cs_test_.*_secret_/.test(clientSecret)) throw new Error('Expected test session');
-					await window.recordIntakeCheckoutSession(clientSecret.split('_secret_')[0]);
-					let button;
-					return {
-						mount(container) {
-							button = document.createElement('button');
-							button.textContent = 'Complete test payment';
-							button.onclick = onComplete;
-							container.append(button);
-						},
-						destroy() { button?.remove(); }
-					};
-				}
-			});`,
-		}),
-	);
-	return async () => {
-		for (const id of sessions) {
-			const session = await stripeClient.checkout.sessions.retrieve(id);
-			if (session.status === "open")
-				await stripeClient.checkout.sessions.expire(id);
-		}
-	};
 }
 
 test.describe("Beginners' Workshop journey", () => {

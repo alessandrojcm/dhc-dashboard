@@ -13,7 +13,16 @@ defmodule Dhc.E2EHarness.BeginnersWorkshops do
 
   alias Dhc.BeginnersWorkshopFixtures
   alias Dhc.BeginnersWorkshops
-  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Clock, Intake, IntakeLink, IntakePayment}
+
+  alias Dhc.BeginnersWorkshops.{
+    BeginnersWorkshop,
+    CarriedFee,
+    Clock,
+    Intake,
+    IntakeLink,
+    IntakePayment
+  }
+
   alias Dhc.ClubCalendar
   alias Dhc.Invitations.Invitation
   alias Dhc.Repo
@@ -95,11 +104,16 @@ defmodule Dhc.E2EHarness.BeginnersWorkshops do
   # Stands in for Stripe's hosted Checkout page: the person's live Seat
   # Hold completes with exactly the amount it holds, through the same
   # `complete_payment` command the `checkout.session.completed` webhook runs.
-  def seed("beginnersWorkshopPayment", %{"waitlistId" => waitlist_id}) do
+  # The session names `paymentIntentId` when given (ALE-426: a real
+  # test-mode PaymentIntent the spec created, so a later refund reaches a
+  # real payment), else a made-up `pi_e2e_<id>` that Stripe refuses to
+  # refund.
+  def seed("beginnersWorkshopPayment", %{"waitlistId" => waitlist_id} = attrs) do
     with %Intake{} = intake <- open_intake(waitlist_id),
          %IntakePayment{} = payment <- recorded_hold(intake.id),
+         session = completed_session(payment, Map.get(attrs, "paymentIntentId")),
          {:ok, %{outcome: outcome}} <-
-           BeginnersWorkshops.execute(:stripe, {:complete_payment, completed_session(payment)}) do
+           BeginnersWorkshops.execute(:stripe, {:complete_payment, session}) do
       %{outcome: Atom.to_string(outcome), sessionId: payment.stripe_checkout_session_id}
     end
   end
@@ -119,11 +133,16 @@ defmodule Dhc.E2EHarness.BeginnersWorkshops do
   end
 
   # A `held` Carried Fee, as the spreadsheet import records one ("Paid" =
-  # Yes), through the boundary's import command.
-  def seed("beginnersWorkshopCarriedFee", %{"waitlistId" => waitlist_id}) do
-    with {:ok, %{id: id, status: status}} <-
-           BeginnersWorkshops.execute(:system, {:import_carried_fee, waitlist_id, "Yes"}) do
-      %{carriedFeeId: id, status: status}
+  # Yes), through the boundary's import command. With `paymentIntentId`
+  # (a succeeded test-mode PaymentIntent) and `actorId` (a
+  # `beginners.workshops.manage` holder) the fee is then linked to that
+  # payment as staff would link it (ALE-426), so it has an amount and can
+  # be refunded.
+  def seed("beginnersWorkshopCarriedFee", %{"waitlistId" => waitlist_id} = attrs) do
+    with {:ok, %{id: id}} <-
+           BeginnersWorkshops.execute(:system, {:import_carried_fee, waitlist_id, "Yes"}),
+         {:ok, fee} <- link_fee_payment(waitlist_id, attrs) do
+      %{carriedFeeId: id, status: fee.status, amountCents: fee.amount_cents}
     end
   end
 
@@ -172,7 +191,26 @@ defmodule Dhc.E2EHarness.BeginnersWorkshops do
     end
   end
 
-  defp completed_session(%IntakePayment{} = payment) do
+  defp link_fee_payment(waitlist_id, %{"paymentIntentId" => pi, "actorId" => actor_id}) do
+    BeginnersWorkshops.execute(
+      {:staff, actor_id},
+      {:link_carried_fee_payment, waitlist_id, %{"payment_intent_id" => pi}}
+    )
+  end
+
+  defp link_fee_payment(waitlist_id, _attrs) do
+    case Repo.one(
+           from(f in CarriedFee,
+             where: f.waitlist_id == ^waitlist_id and f.status == "held",
+             limit: 1
+           )
+         ) do
+      nil -> {:error, :no_carried_fee}
+      fee -> {:ok, fee}
+    end
+  end
+
+  defp completed_session(%IntakePayment{} = payment, payment_intent_id) do
     %{
       "id" => payment.stripe_checkout_session_id,
       "object" => "checkout.session",
@@ -180,7 +218,7 @@ defmodule Dhc.E2EHarness.BeginnersWorkshops do
       "payment_status" => "paid",
       "amount_total" => payment.amount_cents,
       "currency" => payment.currency,
-      "payment_intent" => "pi_e2e_#{payment.id}",
+      "payment_intent" => payment_intent_id || "pi_e2e_#{payment.id}",
       "metadata" => %{"type" => "beginners_intake_payment", "payment_id" => payment.id}
     }
   end

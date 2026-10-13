@@ -395,7 +395,15 @@ type BeginnersWorkshopIntakeLinkSeed = {
 
 /** Stands in for Stripe's hosted Checkout: completes the live Seat Hold. */
 type BeginnersWorkshopPaymentSeed = {
-	attrs: { waitlistId: string };
+	attrs: {
+		waitlistId: string;
+		/**
+		 * ALE-426: a succeeded test-mode PaymentIntent the spec created, so a
+		 * later refund reaches a real payment. Without it the session names a
+		 * made-up `pi_e2e_<id>`, whose refund Stripe refuses (`Refund failed`).
+		 */
+		paymentIntentId?: string;
+	};
 	/** `complete_payment`'s outcome (`BeginnersWorkshops.Commands`). */
 	result: {
 		outcome:
@@ -414,10 +422,19 @@ type BeginnersWorkshopDoorOpenSeed = {
 	result: { workshopId: string; date: string; startTime: string };
 };
 
-/** A `held` Carried Fee, as the Waitlist import records one. */
+/**
+ * A `held` Carried Fee, as the Waitlist import records one. ALE-426: with
+ * `paymentIntentId` (a succeeded test-mode PaymentIntent) and `actorId` (a
+ * `beginners.workshops.manage` holder) it is linked to that payment, so it
+ * has an amount and can be refunded.
+ */
 type BeginnersWorkshopCarriedFeeSeed = {
-	attrs: { waitlistId: string };
-	result: { carriedFeeId: string; status: BeginnersCarriedFeeStatus };
+	attrs: { waitlistId: string; paymentIntentId?: string; actorId?: string };
+	result: {
+		carriedFeeId: string;
+		status: BeginnersCarriedFeeStatus;
+		amountCents: number | null;
+	};
 };
 
 /** The Invitation the handoff issued to a Waitlist person (for cleanup). */
