@@ -97,7 +97,8 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
       {:staff_assigned, NotificationCopy.staff_assigned("assistant", @workshop)},
       {:staff_unassigned, NotificationCopy.staff_unassigned(@workshop)},
       {:rescheduled, NotificationCopy.rescheduled(@workshop)},
-      {:cancelled, NotificationCopy.cancelled(@workshop)}
+      {:cancelled, NotificationCopy.cancelled(@workshop)},
+      {:reply_waiting, NotificationCopy.reply_waiting(Ecto.UUID.generate())}
     ] ++
       for follow_up <- NotificationCopy.refund_follow_ups(),
           {name, date} <- [{"Aoife", @workshop.date}, {nil, nil}],

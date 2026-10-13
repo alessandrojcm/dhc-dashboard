@@ -84,6 +84,12 @@ end
 config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verification"
 
+# Intake Replies (ALE-409): tests stub Resend's receiving API with
+# `Req.Test.stub(Dhc.Resend, plug)` and sign webhooks with this secret.
+config :dhc, :resend_req_options, plug: {Req.Test, Dhc.Resend}
+config :dhc, :resend_receiving_api_key, "re_test_receiving_key"
+config :dhc, :resend_webhook_secret, "whsec_" <> Base.encode64("resend-webhook-test-secret")
+
 config :dhc,
        :invitation_acceptance_subject_fingerprint_secret,
        "acceptance-subject-fingerprint-test"

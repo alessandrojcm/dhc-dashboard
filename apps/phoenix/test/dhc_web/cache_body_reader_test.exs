@@ -10,12 +10,13 @@ defmodule DhcWeb.CacheBodyReaderTest do
     |> Plug.Conn.put_req_header("content-type", "application/json")
   end
 
-  test "caches the raw body for the Stripe webhook path" do
-    assert {:ok, @body, conn} =
-             CacheBodyReader.read_body(raw_conn("/api/webhooks/stripe", @body), [])
+  for path <- ["/api/webhooks/stripe", "/api/webhooks/resend"] do
+    test "caches the raw body for #{path}" do
+      assert {:ok, @body, conn} = CacheBodyReader.read_body(raw_conn(unquote(path), @body), [])
 
-    assert conn.assigns.raw_body == @body
-    assert {:ok, @body, ^conn} = CacheBodyReader.read_body(conn, [])
+      assert conn.assigns.raw_body == @body
+      assert {:ok, @body, ^conn} = CacheBodyReader.read_body(conn, [])
+    end
   end
 
   test "does not keep a copy of the body for any other path" do

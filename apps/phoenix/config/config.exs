@@ -67,6 +67,11 @@ config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
 # Optional until Resend Inbound is configured; unset keeps Intake Emails on
 # the shared contact address.
 config :dhc, :intake_reply_domain, nil
+# Intake Replies (ALE-409): where replies are forwarded, and the Resend
+# receiving API the forward reads them from (RESEND_RECEIVING_API_KEY and
+# RESEND_WEBHOOK_SIGNING_SECRET are set in runtime.exs).
+config :dhc, :intake_reply_forward_to, "contact@dublinhemaclub.com"
+config :dhc, :resend_api_url, "https://api.resend.com"
 
 # Configure Oban for background job processing
 config :dhc, Oban,
@@ -192,6 +197,7 @@ config :logger, :default_formatter,
     :reason,
     :recipient_count,
     :request_id,
+    :resend_email_id,
     :resume_date,
     :scanned,
     :stale_before,
@@ -272,7 +278,9 @@ config :sentry,
       # Discord guild-join worker (Dhc.Discord.Workers.GuildJoinWorker)
       :grant_id,
       :attempt_id,
-      :status
+      :status,
+      # Intake Reply forwarding (Dhc.BeginnersWorkshops.IntakeReplies)
+      :resend_email_id
     ]
   ]
 

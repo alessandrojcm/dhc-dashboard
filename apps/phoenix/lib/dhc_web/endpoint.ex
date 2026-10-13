@@ -65,7 +65,9 @@ defmodule DhcWeb.Endpoint do
     json_decoder: Phoenix.json_library(),
     body_reader: {DhcWeb.CacheBodyReader, :read_body, []}
 
-  plug Sentry.PlugContext, url_scrubber: {DhcWeb.IntakeLinkPrivacy, :scrub_url}
+  plug Sentry.PlugContext,
+    url_scrubber: {DhcWeb.IntakeLinkPrivacy, :scrub_url},
+    body_scrubber: {DhcWeb.IntakeLinkPrivacy, :scrub_body}
 
   plug Plug.MethodOverride
   plug Plug.Head

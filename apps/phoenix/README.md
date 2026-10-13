@@ -95,6 +95,9 @@ Optional, after Resend Inbound is configured for Intake Replies (ALE-413):
 | Variable | Value | Purpose |
 | --- | --- | --- |
 | `INTAKE_REPLY_DOMAIN` | `reply.dublinhemaclub.com` | Domain for per-email Intake Reply addresses; leave unset until inbound receiving is ready |
+| `RESEND_WEBHOOK_SIGNING_SECRET` | `whsec_…` from the Resend webhook for `POST /api/webhooks/resend` | Verifies the Svix signature of `email.received` deliveries |
+| `RESEND_RECEIVING_API_KEY` | full-access Resend API key | Reads received emails and attachments (`RESEND_API_KEY` is send-only) |
+| `INTAKE_REPLY_FORWARD_TO` | `contact@dublinhemaclub.com` (default) | Inbox every Intake Reply is forwarded to |
 
 ### 3. 1Password items referenced by fnox
 

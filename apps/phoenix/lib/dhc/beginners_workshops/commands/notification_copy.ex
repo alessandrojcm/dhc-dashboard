@@ -34,6 +34,17 @@ defmodule Dhc.BeginnersWorkshops.Commands.NotificationCopy do
   end
 
   @doc """
+  An Intake Reply that could not be forwarded to the club inbox (ALE-409).
+  `resend_email_id` lets the coordinator find it among Resend's received
+  emails, which Resend keeps for 30 days.
+  """
+  @spec reply_waiting(String.t()) :: String.t()
+  def reply_waiting(resend_email_id) do
+    "A reply to a Beginners' Workshop email could not be forwarded to the club inbox. " <>
+      "It is waiting in Resend's received emails for 30 days (email #{resend_email_id})."
+  end
+
+  @doc """
   A refund Stripe could not complete. `date` is the workshop's, when the
   refund belongs to one; `first_name` is `nil` once the person is anonymised.
   """

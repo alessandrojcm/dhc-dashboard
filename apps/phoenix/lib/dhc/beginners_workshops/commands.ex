@@ -73,7 +73,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     * `Commands.Attendance` — `check_in`, `undo_check_in`,
       `pass_payment_cutoff`, `finish_workshop`, `finalise_attendance`,
       `send_follow_ups`, `invite`;
-    * `Commands.Staff` — `set_staff` and the Staff Notifications.
+    * `Commands.Staff` — `set_staff` and the Staff Notifications;
+    * `Commands.Replies` — `alert_reply_waiting` (an Intake Reply that could
+      not be forwarded, ALE-409).
 
   To add a command: its capability in `@staff_capabilities` (or its actor
   list), its name in `@families`, a `run/3` clause in its family module, and
@@ -102,6 +104,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     People,
     Protocol,
     Refunds,
+    Replies,
     Schedule,
     Staff
   }
@@ -167,6 +170,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:invite, workshop_id :: binary(), intake_id :: binary()}
           | {:delete_person, waitlist_id :: binary(), map()}
           | {:purge_retention, waitlist_id :: binary()}
+          | {:alert_reply_waiting, resend_email_id :: String.t()}
           | {IntakePolicy.command(), workshop_id :: binary(), intake_id :: binary(), map()}
 
   @typedoc """
@@ -321,7 +325,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     :finalise_attendance,
     :send_follow_ups,
     :import_carried_fee,
-    :purge_retention
+    :purge_retention,
+    :alert_reply_waiting
   ]
 
   # The person's Intake-page commands (`{:intake_link, token}`).
@@ -368,7 +373,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     finalise_attendance: Attendance,
     send_follow_ups: Attendance,
     invite: Attendance,
-    set_staff: Staff
+    set_staff: Staff,
+    alert_reply_waiting: Replies
   }
 
   @doc """

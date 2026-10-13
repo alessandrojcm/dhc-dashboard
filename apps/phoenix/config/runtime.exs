@@ -63,6 +63,10 @@ end
 config :dhc, DhcWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 config :dhc, :intake_reply_domain, System.get_env("INTAKE_REPLY_DOMAIN")
 
+config :dhc,
+       :intake_reply_forward_to,
+       System.get_env("INTAKE_REPLY_FORWARD_TO", "contact@dublinhemaclub.com")
+
 cors_allowed_origins =
   case System.get_env("CORS_ALLOWED_ORIGINS") do
     nil -> []
@@ -206,6 +210,12 @@ if config_env() == :prod do
   config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
   config :dhc, :stripe_api_version, "2025-10-29.clover"
   config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
+
+  # Intake Replies (ALE-409): Resend Inbound's webhook signing secret and the
+  # full-access key that reads received emails (RESEND_API_KEY is send-only).
+  # Both are optional until Resend receiving is configured (ALE-413).
+  config :dhc, :resend_webhook_secret, System.get_env("RESEND_WEBHOOK_SIGNING_SECRET")
+  config :dhc, :resend_receiving_api_key, System.get_env("RESEND_RECEIVING_API_KEY")
 
   # Irish bank-holiday source (ALE-319). Optional override; the compiled
   # default in config.exs is the public OpenHolidays API.
@@ -376,7 +386,9 @@ if config_env() == :prod do
            # Discord guild-join worker (Dhc.Discord.Workers.GuildJoinWorker)
            :grant_id,
            :attempt_id,
-           :status
+           :status,
+           # Intake Reply forwarding (Dhc.BeginnersWorkshops.IntakeReplies)
+           :resend_email_id
          ],
          # Bandit emits unhandled request exceptions as crash reports. Keep
          # that domain enabled so the logger handler creates Sentry issues;
