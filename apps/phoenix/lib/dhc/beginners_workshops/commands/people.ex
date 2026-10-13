@@ -97,6 +97,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     Clock,
     Intake,
     IntakePayment,
+    IntakeReplies,
     IntakeRefunds,
     PersonPolicy
   }
@@ -355,6 +356,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     outcome = invitation_outcome(entry)
 
     with {:ok, anonymised} <- anonymise_intakes(intakes, outcome, reading),
+         _deleted_reply_addresses <- IntakeReplies.delete_for_person(entry.id),
          {_count, _rows} <-
            Repo.update_all(from(f in CarriedFee, where: f.waitlist_id == ^entry.id),
              set: [waitlist_id: nil, updated_at: reading.now]

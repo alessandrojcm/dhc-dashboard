@@ -5,14 +5,17 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
   that the ledger queries name the same occasions as the constructors.
   """
 
-  use Dhc.DataCase, async: true
+  use Dhc.DataCase, async: false
   use Oban.Testing, repo: Dhc.Repo
 
+  import Swoosh.TestAssertions
   import Dhc.BeginnersWorkshopFixtures
   import Ecto.Query
 
   alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, CarriedFee, Clock, Intake, IntakeEmailLog}
   alias Dhc.BeginnersWorkshops.IntakeEmails
+  alias Dhc.BeginnersWorkshops.IntakeReplies
+  alias Dhc.BeginnersWorkshops.IntakeReplyAddress
   alias Dhc.BeginnersWorkshops.IntakeEmails.Occasion
   alias Dhc.Email.Worker
   alias Dhc.Waitlist.WaitlistEntry
@@ -40,6 +43,21 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  defp with_reply_domain(domain, fun) do
+    original = Application.get_env(:dhc, :intake_reply_domain)
+    Application.put_env(:dhc, :intake_reply_domain, domain)
+
+    try do
+      fun.()
+    after
+      if is_nil(original) do
+        Application.delete_env(:dhc, :intake_reply_domain)
+      else
+        Application.put_env(:dhc, :intake_reply_domain, original)
+      end
+    end
   end
 
   describe "variants" do
@@ -220,6 +238,130 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
     assert [%{args: %{"email" => email}}] = jobs()
     assert email == ctx.person.email
     assert Repo.all(IntakeEmailLog) == []
+  end
+
+  describe "Intake Reply addresses" do
+    test "each queued email has a distinct address bound to its entry, type and Intake", ctx do
+      with_reply_domain("reply.example.test", fn ->
+        assert {:ok, :queued} =
+                 IntakeEmails.deliver(
+                   {:intake, ctx.intake, ctx.workshop},
+                   :contact,
+                   Occasion.contact(),
+                   @reading
+                 )
+
+        assert {:ok, :queued} =
+                 IntakeEmails.deliver(
+                   {:intake, ctx.intake, ctx.workshop},
+                   :link,
+                   Occasion.resend_link(Ecto.UUID.generate()),
+                   @reading
+                 )
+
+        assert [%{args: first_args}, %{args: second_args}] = jobs()
+
+        for args <- [first_args, second_args] do
+          assert is_binary(args["sealed_reply_to"])
+          refute Map.has_key?(args, "reply_to")
+          refute String.contains?(inspect(args), "@reply.example.test")
+        end
+
+        first_address = deliver_job_and_capture_reply_to(first_args)
+        second_address = deliver_job_and_capture_reply_to(second_args)
+        assert first_address != second_address
+
+        for address <- [first_address, second_address] do
+          assert address =~ ~r/^[a-z0-9]{32}@reply\.example\.test$/
+          assert {:ok, %IntakeReplyAddress{} = binding} = IntakeReplies.resolve(address)
+          assert binding.waitlist_entry.id == ctx.person.id
+          assert binding.intake.id == ctx.intake.id
+          assert binding.email_type == "contact_pay"
+          assert byte_size(binding.token_hash) == 32
+          [local_part, _domain] = String.split(address, "@")
+          refute binding.token_hash == local_part
+        end
+
+        [first_local, domain] = String.split(first_address, "@")
+        assert {:ok, _binding} = IntakeReplies.resolve("#{String.upcase(first_local)}@#{domain}")
+        assert :unknown = IntakeReplies.resolve("#{first_local}@elsewhere.example")
+      end)
+    end
+
+    test "a Waitlist notice without an Intake is bound to the person only", ctx do
+      with_reply_domain("reply.example.test", fn ->
+        assert {:ok, :queued} =
+                 IntakeEmails.deliver(
+                   {:person, ctx.person, nil},
+                   "withdrawn_forfeited",
+                   Occasion.withdrawn(Ecto.UUID.generate()),
+                   @reading
+                 )
+
+        assert [%{args: args}] = jobs()
+        assert is_binary(args["sealed_reply_to"])
+        address = deliver_job_and_capture_reply_to(args)
+        assert {:ok, binding} = IntakeReplies.resolve(address)
+        assert binding.waitlist_entry.id == ctx.person.id
+        assert binding.intake == nil
+        assert binding.email_type == "withdrawn_forfeited"
+        assert Repo.all(IntakeEmailLog) == []
+      end)
+    end
+
+    test "the domain being unset keeps the global Reply-To and creates no binding", ctx do
+      with_reply_domain(nil, fn ->
+        assert {:ok, :queued} =
+                 IntakeEmails.deliver(
+                   {:intake, ctx.intake, ctx.workshop},
+                   :contact,
+                   Occasion.contact(),
+                   @reading
+                 )
+
+        assert [%{args: args}] = jobs()
+        refute Map.has_key?(args, "sealed_reply_to")
+        assert Repo.all(IntakeReplyAddress) == []
+
+        assert :ok = Worker.perform(%Oban.Job{id: 100, args: args})
+
+        assert_email_sent(fn email ->
+          assert email.reply_to == {"", "contact@dublinhemaclub.com"}
+        end)
+      end)
+    end
+
+    test "the binding and email job roll back with the caller transaction", ctx do
+      with_reply_domain("reply.example.test", fn ->
+        assert {:error, :test_rollback} =
+                 Repo.transaction(fn ->
+                   assert {:ok, :queued} =
+                            IntakeEmails.deliver(
+                              {:intake, ctx.intake, ctx.workshop},
+                              :contact,
+                              Occasion.contact(),
+                              @reading
+                            )
+
+                   Repo.rollback(:test_rollback)
+                 end)
+
+        assert Repo.all(IntakeReplyAddress) == []
+        assert jobs() == []
+      end)
+    end
+  end
+
+  defp deliver_job_and_capture_reply_to(args) do
+    assert :ok = Worker.perform(%Oban.Job{id: System.unique_integer([:positive]), args: args})
+
+    assert_email_sent(fn email ->
+      send(self(), {:reply_to, email.reply_to})
+      true
+    end)
+
+    assert_receive {:reply_to, {"", address}}
+    address
   end
 
   test "the Pre-workshop info occasion in SQL is the constructor's, for every schedule" do

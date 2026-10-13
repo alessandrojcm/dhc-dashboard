@@ -61,6 +61,7 @@ if System.get_env("PHX_SERVER") do
 end
 
 config :dhc, DhcWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+config :dhc, :intake_reply_domain, System.get_env("INTAKE_REPLY_DOMAIN")
 
 cors_allowed_origins =
   case System.get_env("CORS_ALLOWED_ORIGINS") do

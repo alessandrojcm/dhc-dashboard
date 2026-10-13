@@ -90,6 +90,12 @@ Optional, once Web Push is enabled (see [Enabling Web Push](#5-enabling-web-push
 | `WEB_PUSH_VAPID_PUBLIC_KEY` | base64url key from `mix web_push_ex.vapid` | VAPID public key browsers use as `applicationServerKey` |
 | `WEB_PUSH_VAPID_SUBJECT` | `mailto:contact@dublinhemaclub.com` | VAPID contact the push services may use to reach us |
 
+Optional, after Resend Inbound is configured for Intake Replies (ALE-413):
+
+| Variable | Value | Purpose |
+| --- | --- | --- |
+| `INTAKE_REPLY_DOMAIN` | `reply.dublinhemaclub.com` | Domain for per-email Intake Reply addresses; leave unset until inbound receiving is ready |
+
 ### 3. 1Password items referenced by fnox
 
 Create one item per variable in the `Production-phoenix-api` vault. For simple references like `DATABASE_URL`, fnox reads the item's `password` field.

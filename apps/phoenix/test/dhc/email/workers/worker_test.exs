@@ -65,6 +65,19 @@ defmodule Dhc.Email.WorkerTest do
       end)
     end
 
+    test "uses the sealed per-job Reply-To without exposing it in errors or metadata" do
+      reply_to = "randomtoken1234567890@reply.example.test"
+
+      args =
+        Map.put(@valid_args, "sealed_reply_to", Worker.seal_reply_to(reply_to))
+
+      assert Worker.perform(job(args)) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.reply_to == {"", reply_to}
+      end)
+    end
+
     test "carries an Idempotency-Key derived from the Oban job id" do
       assert Worker.perform(job(@valid_args)) == :ok
 

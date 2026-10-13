@@ -64,6 +64,9 @@ config :swoosh, :finch_name, Swoosh.Finch
 # and satisfy Swoosh's addressing requirements.
 config :dhc, :email_from, "dev@dhc.local"
 config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
+# Optional until Resend Inbound is configured; unset keeps Intake Emails on
+# the shared contact address.
+config :dhc, :intake_reply_domain, nil
 
 # Configure Oban for background job processing
 config :dhc, Oban,

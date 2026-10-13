@@ -32,6 +32,9 @@ defmodule Dhc.Email.Worker do
       must not silently drop the email. An expired or tampered value cancels
       the job.
       Sealed variables override plain ones with the same key.
+    * `sealed_reply_to` (optional) — a credential-bearing Reply-To address,
+      encrypted separately and used only as the email header. Intake Emails
+      set this when their per-email reply-address domain is configured.
 
   ## Delivery
 
@@ -91,6 +94,8 @@ defmodule Dhc.Email.Worker do
     "beginnersWorkshopNotice" => 24 * 60 * 60
   }
   @sealed_salt "dhc.email.worker sealed_data_variables v1"
+  @sealed_reply_to_salt "dhc.email.worker sealed_reply_to v1"
+  @sealed_reply_to_max_age_seconds 24 * 60 * 60
 
   @doc """
   Encrypts template variables for the `sealed_data_variables` job arg.
@@ -102,12 +107,19 @@ defmodule Dhc.Email.Worker do
     Plug.Crypto.encrypt(secret_key_base(), @sealed_salt, variables)
   end
 
+  @doc "Encrypts a per-job Reply-To credential for storage in Oban args."
+  @spec seal_reply_to(String.t()) :: String.t()
+  def seal_reply_to(reply_to) when is_binary(reply_to) do
+    Plug.Crypto.encrypt(secret_key_base(), @sealed_reply_to_salt, %{"reply_to" => reply_to})
+  end
+
   @impl Worker
   def perform(%Oban.Job{args: args} = job) do
     ctx = job_log_context(job)
 
     with :ok <- validate_args(args, ctx),
          {:ok, args} <- unseal_data_variables(args, ctx),
+         {:ok, args} <- unseal_reply_to(args, ctx),
          :ok <- deliver(args, job, ctx) do
       :ok
     else
@@ -127,6 +139,7 @@ defmodule Dhc.Email.Worker do
       |> validate_transactional_id(args)
       |> validate_data_variables(args)
       |> validate_sealed_data_variables(args)
+      |> validate_reply_to(args)
       |> validate_subject(args)
 
     case errors do
@@ -202,6 +215,17 @@ defmodule Dhc.Email.Worker do
 
   defp validate_sealed_data_variables(errors, _args), do: errors
 
+  defp validate_reply_to(errors, args) do
+    errors =
+      case args["sealed_reply_to"] do
+        nil -> errors
+        sealed when is_binary(sealed) -> errors
+        _invalid -> ["sealed_reply_to must be a string" | errors]
+      end
+
+    if Map.has_key?(args, "reply_to"), do: ["reply_to must be sealed" | errors], else: errors
+  end
+
   defp validate_subject(errors, %{"subject" => subject}) do
     if is_binary(subject) and String.trim(subject) != "" do
       errors
@@ -237,6 +261,35 @@ defmodule Dhc.Email.Worker do
 
   defp unseal_data_variables(args, _ctx), do: {:ok, args}
 
+  defp unseal_reply_to(%{"sealed_reply_to" => sealed} = args, ctx) when is_binary(sealed) do
+    case Plug.Crypto.decrypt(secret_key_base(), @sealed_reply_to_salt, sealed,
+           max_age: @sealed_reply_to_max_age_seconds
+         ) do
+      {:ok, %{"reply_to" => reply_to}} when is_binary(reply_to) ->
+        {:ok, Map.put(args, "reply_to", reply_to)}
+
+      {:ok, _invalid} ->
+        cancel_unsealable_reply_to(args, :invalid_values, ctx)
+
+      {:error, reason} ->
+        cancel_unsealable_reply_to(args, reason, ctx)
+    end
+  end
+
+  defp unseal_reply_to(args, _ctx), do: {:ok, args}
+
+  defp cancel_unsealable_reply_to(args, reason, ctx) do
+    message = "Could not unseal email Reply-To (#{reason})"
+
+    Logger.error(
+      "[email-worker] #{message}",
+      Keyword.merge(ctx, email: args["email"], transactional_id: args["transactional_id"])
+    )
+
+    capture_deterministic_failure(message, ctx, args: redact_args(args))
+    {:cancel, {:sealed_reply_to, reason}}
+  end
+
   defp sealed_max_age_seconds(kind),
     do: Map.get(@sealed_max_age_seconds_by_kind, kind, @sealed_max_age_seconds)
 
@@ -269,7 +322,8 @@ defmodule Dhc.Email.Worker do
       email: args["email"],
       transactional_id: args["transactional_id"],
       data_variable_keys: variable_keys(args["data_variables"]),
-      sealed_data_variables: Map.has_key?(args, "sealed_data_variables")
+      sealed_data_variables: Map.has_key?(args, "sealed_data_variables"),
+      sealed_reply_to: Map.has_key?(args, "sealed_reply_to")
     }
   end
 
@@ -286,15 +340,15 @@ defmodule Dhc.Email.Worker do
     data_variables = Map.get(args, "data_variables", %{})
 
     recipient
-    |> build_email(kind, data_variables, args["subject"], job.id)
+    |> build_email(kind, data_variables, args["subject"], args["reply_to"], job.id)
     |> deliver_email(kind, ctx)
   end
 
-  defp build_email(recipient, kind, data_variables, subject, oban_job_id) do
+  defp build_email(recipient, kind, data_variables, subject, reply_to, oban_job_id) do
     email =
       Email.new()
       |> Email.from(email_from())
-      |> Email.reply_to(email_reply_to())
+      |> Email.reply_to(reply_to || email_reply_to())
       |> Email.to(recipient)
       |> Email.put_provider_option(:template, %{
         id: template_alias(kind),

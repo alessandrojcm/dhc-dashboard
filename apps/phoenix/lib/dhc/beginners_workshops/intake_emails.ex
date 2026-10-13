@@ -21,14 +21,17 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
       `BUTTON_LABEL`;
     * `sealed_data_variables` — `BUTTON_URL`, the Intake link, which is a
       credential. These Kinds keep their seal for 24 hours.
+    * `sealed_reply_to` — this email's Intake Reply address, when
+      `INTAKE_REPLY_DOMAIN` is configured.
 
   A template that passed the save-time measure always queues: should
   escaping push the filled body over Resend's limit, each value is
   shortened until its escaped HTML fits its placeholder maximum.
 
   Because the template is read and filled at queue time, a later edit
-  affects only emails queued afterwards. Reply-To is the global contact
-  address (`Dhc.Email.Worker`), and the recipient is always the person's own
+  affects only emails queued afterwards. When `INTAKE_REPLY_DOMAIN` is set,
+  each email gets its own Reply-To binding; otherwise it uses the global
+  contact address. The recipient is always the person's own
   Waitlist email: Guardians have no email address in the system.
 
   ## Delivering an Intake Email (ALE-401)
@@ -67,6 +70,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   alias Dhc.BeginnersWorkshops.IntakeEmails.Renderer
   alias Dhc.BeginnersWorkshops.IntakeEmails.Template
   alias Dhc.BeginnersWorkshops.IntakeEmails.Values
+  alias Dhc.BeginnersWorkshops.IntakeReplies
   alias Dhc.Email.RichText
   alias Dhc.Email.Worker
   alias Dhc.Repo
@@ -187,7 +191,14 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
          :ok <- not_yet_owed(about, occasion) do
       type = pick(email, about, person)
 
-      with {:ok, _job} <- queue(type, person, values(type, about, person, opts), button(about)),
+      with {:ok, reply_to} <- IntakeReplies.reply_to(person, ledger_intake_id(about), type),
+           {:ok, _job} <-
+             queue(
+               type,
+               person,
+               values(type, about, person, opts),
+               Keyword.put(button(about), :reply_to, reply_to)
+             ),
            :ok <- log(ledger_intake_id(about), type, occasion, reading) do
         {:ok, :queued}
       end
@@ -406,6 +417,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
         "data_variables" => Map.merge(%{"MESSAGE_HTML" => html}, button.plain)
       }
       |> put_sealed(button.sealed)
+      |> put_sealed_reply_to(Keyword.get(opts, :reply_to))
       |> Worker.new()
       |> Oban.insert()
     end
@@ -472,4 +484,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
 
   defp put_sealed(args, sealed),
     do: Map.put(args, "sealed_data_variables", Worker.seal_data_variables(sealed))
+
+  defp put_sealed_reply_to(args, nil), do: args
+
+  defp put_sealed_reply_to(args, reply_to) when is_binary(reply_to),
+    do: Map.put(args, "sealed_reply_to", Worker.seal_reply_to(reply_to))
 end
