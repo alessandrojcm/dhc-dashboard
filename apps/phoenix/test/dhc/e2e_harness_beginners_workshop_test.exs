@@ -128,6 +128,51 @@ defmodule Dhc.E2EHarnessBeginnersWorkshopTest do
     assert IntakeLink.hash(token(link.path)) == Repo.get!(Intake, link.intakeId).link_token_hash
   end
 
+  test "ALE-426: a Carried Fee linked to a payment, and a payment naming its PaymentIntent", %{
+    coordinator: coordinator
+  } do
+    holder = person("Linked", "1999-01-01T09:00:00Z")
+    Stripe.stub_payment_intent("pi_linked_e2e", %{"amount_received" => 3500})
+
+    fee =
+      E2EHarness.seed("beginnersWorkshopCarriedFee", %{
+        "waitlistId" => holder.waitlistId,
+        "paymentIntentId" => "pi_linked_e2e",
+        "actorId" => coordinator
+      })
+
+    assert %{status: "held", amountCents: 3500} = fee
+
+    assert Repo.get!(Dhc.BeginnersWorkshops.CarriedFee, fee.carriedFeeId).stripe_payment_intent_id ==
+             "pi_linked_e2e"
+
+    assert %{status: "held", amountCents: 3500} =
+             E2EHarness.seed("beginnersWorkshopCarriedFee", %{"waitlistId" => holder.waitlistId})
+
+    payer = person("Payer", "1990-01-01T09:00:00Z")
+    workshop = E2EHarness.seed("beginnersWorkshop", %{"actorId" => coordinator})
+
+    assert %{contactedWaitlistIds: [id]} =
+             E2EHarness.seed("beginnersWorkshopBatch", %{"workshopId" => workshop.workshopId})
+
+    assert id == payer.waitlistId
+    link = E2EHarness.seed("beginnersWorkshopIntakeLink", %{"waitlistId" => payer.waitlistId})
+    Stripe.stub_create()
+
+    assert {:ok, _checkout} =
+             BeginnersWorkshops.execute({:intake_link, token(link.path)}, :start_payment)
+
+    assert %{outcome: "paid"} =
+             E2EHarness.seed("beginnersWorkshopPayment", %{
+               "waitlistId" => payer.waitlistId,
+               "paymentIntentId" => "pi_real_e2e"
+             })
+
+    assert Repo.one!(
+             from(p in Dhc.BeginnersWorkshops.IntakePayment, where: p.intake_id == ^link.intakeId)
+           ).stripe_payment_intent_id == "pi_real_e2e"
+  end
+
   test "the Invitation scenario finds the handoff's Invitation" do
     seeded = person("Invitee", "2000-01-01T09:00:00Z")
 
