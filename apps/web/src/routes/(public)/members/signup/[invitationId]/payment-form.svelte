@@ -46,8 +46,6 @@ let currentCoupon = $state("");
 // Machine input is fixed for the component's lifetime: a complimentary
 // invitation never mounts Stripe, a paid one always does.
 const complimentary = data.complimentary === true;
-const nextMonthlyBillingDate = $derived(data.nextMonthlyBillingDate);
-const nextAnnualBillingDate = $derived(data.nextAnnualBillingDate);
 
 let formElement: HTMLFormElement | undefined = $state();
 
@@ -278,11 +276,7 @@ const enhancedForm = processPayment.enhance(async ({ submit }) => {
 				</p>
 			</div>
 			<svelte:boundary>
-				<PricingDisplay
-					bind:currentCoupon
-					{nextMonthlyBillingDate}
-					{nextAnnualBillingDate}
-				/>
+				<PricingDisplay bind:currentCoupon />
 				{#snippet failed(error, reset)}
 					<Alert.Root variant="destructive" class="w-full mb-4">
 						<Alert.Title>Error loading pricing information</Alert.Title>

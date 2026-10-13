@@ -1,9 +1,14 @@
 import { expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
-import { getLocalTimeZone, today } from "@internationalized/date";
-import dayjs from "dayjs";
+import { formatCivilDate } from "#lib/club-calendar.js";
+import { reactivationStartWindow } from "#lib/membership/reactivation-start-window.js";
+import { onHostTimeZone } from "#lib/testing/host-time-zone.js";
 import ReactivateMembershipModal from "./reactivate-membership-modal.svelte";
+
+// West of UTC, a civil date read as an instant in the reader's zone shows the
+// day before; every date below must still read as Phoenix sent it.
+onHostTimeZone("America/Los_Angeles");
 
 const savedMethod = {
 	id: "pm_sepa_saved",
@@ -19,6 +24,10 @@ const amounts = {
 	proratedAnnualPrice: { amount: 31500, currency: "EUR", precision: 2 },
 	monthlyFee: { amount: 4200, currency: "EUR", precision: 2 },
 	annualFee: { amount: 36000, currency: "EUR", precision: 2 },
+	// Phoenix's billing anchors, deliberately unlike anything the browser
+	// could work out from the start date or its own clock.
+	monthlyBillingStart: "2031-03-01",
+	annualBillingStart: "2032-01-07",
 };
 
 const fullyLapsedCoverage = {
@@ -295,8 +304,10 @@ test("shows the Stripe-computed amounts before confirmation", async () => {
 		.toBeVisible();
 	await expect.element(block.getByText("Then monthly")).toBeVisible();
 	await expect.element(block.getByText("€42.00")).toBeVisible();
+	await expect.element(block.getByText("From Sat 1 Mar 2031")).toBeVisible();
 	await expect.element(block.getByText("Then annually")).toBeVisible();
 	await expect.element(block.getByText("€360.00")).toBeVisible();
+	await expect.element(block.getByText("From Wed 7 Jan 2032")).toBeVisible();
 
 	// Amounts never block the operator from confirming.
 	await expect
@@ -305,7 +316,7 @@ test("shows the Stripe-computed amounts before confirmation", async () => {
 });
 
 test("separates a future monthly charge from the amount due today", async () => {
-	const futureDate = today(getLocalTimeZone()).add({ days: 10 });
+	const futureDate = reactivationStartWindow().earliest.add({ days: 10 });
 	const screen = await render(ReactivateMembershipModal, {
 		open: true,
 		isPending: false,
@@ -322,9 +333,7 @@ test("separates a future monthly charge from the amount due today", async () => 
 	await expect.element(block.getByText("€315.00").first()).toBeVisible();
 	await expect
 		.element(
-			block.getByText(
-				`Due on ${dayjs(futureDate.toString()).format("D MMM YYYY")}`,
-			),
+			block.getByText(`Due on ${formatCivilDate(futureDate.toString())}`),
 		)
 		.toBeVisible();
 	await expect
@@ -336,22 +345,28 @@ test("separates a future monthly charge from the amount due today", async () => 
 		.not.toBeInTheDocument();
 });
 
-test("reports its selected start date so amounts can be fetched for it", async () => {
+test("starts on the window's first day and states the window Phoenix accepts", async () => {
 	const onSelectionChange = vi.fn();
-	const onConfirm = vi.fn();
-	await render(ReactivateMembershipModal, {
+	const { earliest, latest } = reactivationStartWindow();
+	const screen = await render(ReactivateMembershipModal, {
 		open: true,
 		isPending: false,
 		savedPaymentMethod: savedMethod,
 		onSelectionChange,
-		onConfirm,
+		onConfirm: vi.fn(),
 	});
 
 	expect(onSelectionChange).toHaveBeenCalledWith(
-		expect.objectContaining({
-			startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-		}),
+		expect.objectContaining({ startDate: earliest.toString() }),
 	);
+	await expect
+		.element(
+			screen.getByText(
+				`Allowed window: ${formatCivilDate(earliest.toString())} to ${formatCivilDate(latest.toString())}.`,
+				{ exact: false },
+			),
+		)
+		.toBeVisible();
 });
 
 test("shows a calculating state while the amounts are being computed", async () => {

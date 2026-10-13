@@ -8,8 +8,6 @@ function complimentaryData(): PageServerData {
 	return {
 		state: "paymentReady",
 		complimentary: true,
-		nextMonthlyBillingDate: new Date("2026-10-01"),
-		nextAnnualBillingDate: new Date("2027-01-07"),
 	};
 }
 

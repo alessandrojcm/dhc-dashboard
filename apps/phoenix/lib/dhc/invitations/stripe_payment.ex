@@ -12,6 +12,7 @@ defmodule Dhc.Invitations.StripePayment do
   """
 
   alias Dhc.Invitations.Pricing
+  alias Dhc.Membership.BillingAnchors
   alias Dhc.Stripe.Failure
   alias Dhc.Stripe.Operations
   alias Dhc.Stripe.SubscriptionPayment
@@ -306,14 +307,9 @@ defmodule Dhc.Invitations.StripePayment do
     end
   end
 
-  defp add_billing_anchor(form, :monthly),
-    do: [{"billing_cycle_anchor_config[day_of_month]", "1"} | form]
-
-  defp add_billing_anchor(form, :annual),
-    do: [
-      {"billing_cycle_anchor_config[month]", "1"},
-      {"billing_cycle_anchor_config[day_of_month]", "7"} | form
-    ]
+  # Stripe resolves the config at creation time; the pricing preview mirrors
+  # that resolution through the same owner (ALE-423).
+  defp add_billing_anchor(form, kind), do: BillingAnchors.subscription_anchor_config(kind) ++ form
 
   defp maybe_add_discount(form, %{migration?: true}, _kind), do: form
 

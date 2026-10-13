@@ -245,6 +245,112 @@ defmodule Dhc.Membership.ReactivationTest do
     end
   end
 
+  # ALE-423: the amounts read tells the operator the dates each subscription
+  # is anchored to; they must be the anchors the command sends Stripe.
+  describe "preview_amounts/4 billing starts" do
+    test "names the dates the previews anchor to, on a pinned clock" do
+      test_pid = self()
+      stub_previews(test_pid)
+
+      assert {:ok, %{monthlyBillingStart: "2027-01-01", annualBillingStart: "2027-01-07"}} =
+               Reactivation.preview_amounts(
+                 ~D[2026-12-20],
+                 :prorated_now,
+                 [],
+                 ~U[2026-12-15 23:30:05Z]
+               )
+
+      previews = drain_previews()
+
+      assert anchor_date(previews, "price_monthly", "billing_cycle_anchor") == ~D[2027-01-01]
+      assert anchor_date(previews, "price_annual", "billing_cycle_anchor") == ~D[2027-01-07]
+    end
+
+    test "moves the annual start to next year from 7 January, in both annual fee modes" do
+      stub_previews(self())
+
+      for mode <- [:prorated_now, :deferred_next_year] do
+        assert {:ok, %{monthlyBillingStart: "2027-02-01", annualBillingStart: "2028-01-07"}} =
+                 Reactivation.preview_amounts(~D[2027-01-07], mode, [], ~U[2027-01-07 08:00:00Z]),
+               inspect(mode)
+
+        previews = drain_previews()
+        annual_key = if mode == :prorated_now, do: "billing_cycle_anchor", else: "start_date"
+        assert anchor_date(previews, "price_annual", annual_key) == ~D[2028-01-07]
+      end
+    end
+
+    for mode <- [:prorated_now, :deferred_next_year], offset <- [0, 10] do
+      test "matches the anchors activate/1 sends (#{mode}, start in #{offset} days)" do
+        mode = unquote(mode)
+        test_pid = self()
+        start_date = Date.add(Date.utc_today(), unquote(offset))
+        stub_previews(test_pid)
+
+        assert {:ok, %{monthlyBillingStart: monthly_start, annualBillingStart: annual_start}} =
+                 Reactivation.preview_amounts(start_date, mode, [])
+
+        stub_subscriptions(fn kind, params ->
+          send(test_pid, {:subscription, kind, params})
+          incomplete_subscription(kind, "pi_#{kind}")
+        end)
+
+        stub_confirm(fn id, _params -> %{"id" => id, "status" => "succeeded"} end)
+
+        assert {:ok, _result} = activate(start_date: start_date, annual_fee_mode: mode)
+
+        assert_received {:subscription, "monthly", monthly}
+        assert unix_date(monthly["billing_cycle_anchor"]) == Date.from_iso8601!(monthly_start)
+
+        assert_received {:subscription, "annual", annual}
+        annual_start = Date.from_iso8601!(annual_start)
+
+        case mode do
+          :deferred_next_year ->
+            assert unix_date(annual["trial_end"]) == annual_start
+
+          :prorated_now ->
+            # Stripe resolves the config to the next 7 January at creation;
+            # the prorated preview sends that resolution explicitly.
+            assert annual["billing_cycle_anchor_config[month]"] == "1"
+            assert annual["billing_cycle_anchor_config[day_of_month]"] == "7"
+            assert {annual_start.month, annual_start.day} == {1, 7}
+            assert Date.after?(annual_start, Date.utc_today())
+
+            assert anchor_date(drain_previews(), "price_annual", "billing_cycle_anchor") ==
+                     annual_start
+        end
+      end
+    end
+  end
+
+  defp stub_previews(test_pid) do
+    StripeHTTPStub.stub("POST", "/v1/invoices/create_preview", fn conn ->
+      params = StripeHTTPStub.form(conn)
+      send(test_pid, {:preview, params})
+      StripeHTTPStub.json(conn, %{"amount_due" => 100, "subtotal" => 100})
+    end)
+  end
+
+  defp drain_previews(previews \\ []) do
+    receive do
+      {:preview, params} -> drain_previews([params | previews])
+    after
+      0 -> previews
+    end
+  end
+
+  defp anchor_date(previews, price_id, key) do
+    previews
+    |> Enum.filter(&(&1["subscription_details[items][0][price]"] == price_id))
+    |> Enum.find_value(& &1["subscription_details[#{key}]"])
+    |> String.to_integer()
+    |> unix_date()
+  end
+
+  defp unix_date(unix) when is_binary(unix), do: unix |> String.to_integer() |> unix_date()
+  defp unix_date(unix), do: unix |> DateTime.from_unix!() |> DateTime.to_date()
+
   defp activate(overrides \\ []) do
     %{customer_id: @customer_id, member_id: @member_id, start_date: Date.utc_today()}
     |> Map.merge(Map.new(overrides))

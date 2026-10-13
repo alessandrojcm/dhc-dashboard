@@ -534,11 +534,19 @@ defmodule Dhc.Onboarding.AcceptanceTest do
       assert_received {:preview_membership, {:coupon, "DHC_STUDENT_TIER", [:monthly]}}
     end
 
-    test "a coach tier is complimentary without touching Stripe" do
+    test "a coach tier is complimentary without touching Stripe, with the club's billing starts" do
       invitation = insert_invitation!(pricing_tier: "coach")
       {:ok, handle, _subject} = ready(invitation, "pricing-coach")
 
-      assert {:ok, %{complimentary: true}} = Acceptance.preview_pricing(handle)
+      assert {:ok, %{complimentary: true} = pricing} = Acceptance.preview_pricing(handle)
+      today = Date.utc_today()
+
+      assert pricing.monthlyBillingStart ==
+               Date.to_iso8601(Dhc.Membership.BillingAnchors.monthly_start(today))
+
+      assert pricing.annualBillingStart ==
+               Date.to_iso8601(Dhc.Membership.BillingAnchors.annual_start(today))
+
       refute_received {:preview_membership, _}
     end
 
