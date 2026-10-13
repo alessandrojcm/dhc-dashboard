@@ -62,7 +62,15 @@ end
 
 config :dhc, DhcWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 config :dhc, :intake_reply_domain, System.get_env("INTAKE_REPLY_DOMAIN")
-config :dhc, :typesafe_api_key, System.get_env("TYPESAFE_API_KEY")
+
+# Jev classifier (ALE-410). Optional until Reply Actions ship; set only when
+# present so config/test.exs keeps its fixed test key.
+typesafe_api_key = System.get_env("TYPESAFE_API_KEY")
+
+if config_env() != :test and is_binary(typesafe_api_key) and
+     String.trim(typesafe_api_key) != "" do
+  config :dhc, :typesafe_api_key, typesafe_api_key
+end
 
 config :dhc,
        :intake_reply_forward_to,

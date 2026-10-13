@@ -21,7 +21,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Eval do
     "moneybackyesno" => :money_back
   }
   @thresholds Enum.map(50..95//5, &(&1 / 100))
-  @actionable_intents ~w(cant_make_date leaving_waitlist wants_refund wants_to_come_back link_problem)
 
   @type sample :: %{
           intent: String.t(),
@@ -29,14 +28,16 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Eval do
           result: Classifier.result() | nil
         }
 
-  @doc "Reads a labelled file, classifies extracted replies and returns aggregate-only metrics."
-  @spec run(Path.t(), keyword()) :: {:ok, map()} | {:error, String.t()}
-  def run(path, opts \\ []) do
-    classifier = Keyword.get(opts, :classify, &Classifier.classify/3)
-
+  @doc """
+  Reads a labelled file, classifies each extracted reply with
+  `Classifier.classify/3` (the production path, offering every intent the
+  answered email type can lead to) and returns aggregate-only metrics.
+  """
+  @spec run(Path.t()) :: {:ok, map()} | {:error, String.t()}
+  def run(path) do
     with {:ok, contents} <- read_file(path),
          {:ok, rows} <- parse(contents),
-         {:ok, samples} <- classify_rows(rows, classifier) do
+         {:ok, samples} <- classify_rows(rows) do
       {:ok, summarize(samples)}
     end
   end
@@ -117,11 +118,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Eval do
     end
   end
 
-  defp classify_rows(rows, classifier) when is_function(classifier, 3) do
+  defp classify_rows(rows) do
     rows
     |> Enum.with_index(2)
     |> Enum.reduce_while({:ok, []}, fn {row, row_number}, {:ok, samples} ->
-      case classify_row(row, row_number, classifier) do
+      case classify_row(row, row_number) do
         {:ok, sample} -> {:cont, {:ok, [sample | samples]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -132,37 +133,23 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Eval do
     end
   end
 
-  defp classify_rows(_rows, _classifier),
-    do: {:error, "the classifier must be a three-argument function"}
-
-  defp classify_row(row, row_number, classifier) do
+  defp classify_row(row, row_number) do
     case ReplyText.extract(%{text: row.reply, html: nil}) do
       :empty ->
         {:ok, Map.put(row, :result, nil)}
 
       {:ok, text} ->
         allowed = Classifier.allowed_intents_for_email_type(row.email_type)
-        result = classifier.(text, row.email_type, allowed)
-        classify_result(result, row, row_number)
+
+        case Classifier.classify(text, row.email_type, allowed) do
+          {:ok, result} ->
+            {:ok, Map.put(row, :result, result)}
+
+          {:error, reason} ->
+            {:error, "row #{row_number} could not be classified (#{safe_reason(reason)})"}
+        end
     end
   end
-
-  defp classify_result(
-         {:ok, %{intent: intent, confidence: confidence, money_back: money_back} = result},
-         row,
-         row_number
-       )
-       when is_binary(intent) and is_number(confidence) and is_number(money_back) do
-    if intent in Classifier.intents(),
-      do: {:ok, Map.put(row, :result, result)},
-      else: {:error, "row #{row_number} returned an invalid classification"}
-  end
-
-  defp classify_result({:error, reason}, _row, row_number),
-    do: {:error, "row #{row_number} could not be classified (#{safe_reason(reason)})"}
-
-  defp classify_result(_invalid, _row, row_number),
-    do: {:error, "row #{row_number} returned an invalid classification"}
 
   defp summarize(samples) do
     total = length(samples)
@@ -229,11 +216,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Eval do
     end)
   end
 
-  defp actions_for_intent(intent, samples, threshold) when intent in @actionable_intents do
-    Enum.filter(samples, &action_for_intent?(&1, intent, threshold))
-  end
+  defp actions_for_intent("something_else", _samples, _threshold), do: []
 
-  defp actions_for_intent(_intent, _samples, _threshold), do: []
+  defp actions_for_intent(intent, samples, threshold),
+    do: Enum.filter(samples, &action_for_intent?(&1, intent, threshold))
 
   defp action_for_intent?(
          %{result: %{intent: predicted_intent, confidence: confidence}},
