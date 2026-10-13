@@ -495,6 +495,8 @@ describe("Invitation Acceptance workflow", () => {
 			},
 			monthlyFee: { amount: 4200, currency: "EUR" as const, precision: 2 },
 			annualFee: { amount: 36000, currency: "EUR" as const, precision: 2 },
+			monthlyBillingStart: "2026-11-01",
+			annualBillingStart: "2027-01-07",
 		};
 		const { api, calls } = inMemoryAcceptanceApi({
 			previewPricing: { kind: "pricing", pricing },

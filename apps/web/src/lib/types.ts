@@ -49,6 +49,9 @@ export type PlanPricing = {
 	// Discount information
 	coupon?: string;
 	discountPercentage?: number;
+	// Billing start civil dates (`YYYY-MM-DD`), decided by Phoenix (ALE-423)
+	monthlyBillingStart: string;
+	annualBillingStart: string;
 };
 
 export type WorkshopCalendarEvent = {

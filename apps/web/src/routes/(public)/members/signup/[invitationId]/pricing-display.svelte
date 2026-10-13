@@ -1,25 +1,21 @@
 <script lang="ts">
-import dayjs from "dayjs";
-import advancedFormat from "dayjs/plugin/advancedFormat";
 import Dinero from "dinero.js";
-import * as Alert from "#lib/components/ui/alert/index.js";
 import * as Accordion from "#lib/components/ui/accordion/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Card from "#lib/components/ui/card/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import { formatCivilDate } from "#lib/club-calendar.js";
+import type { PlanPricing } from "#lib/types.js";
 import { getPricingDetail } from "./pricing.remote";
-
-dayjs.extend(advancedFormat);
 
 let {
 	currentCoupon = $bindable(""),
-	nextMonthlyBillingDate,
-	nextAnnualBillingDate,
+	// The pricing read; tests pass a faithful stand-in for the remote query.
+	readPricing = getPricingDetail,
 }: {
 	currentCoupon: string | undefined;
-	nextMonthlyBillingDate: Date;
-	nextAnnualBillingDate: Date;
+	readPricing?: (input: { code?: string }) => PromiseLike<PlanPricing>;
 } = $props();
 let applyCouponError: string | null = $state(null);
 let couponCode = $state(currentCoupon ?? "");
@@ -31,7 +27,7 @@ async function handleApplyCoupon() {
 
 	try {
 		const code = couponCode.trim();
-		await getPricingDetail({ code });
+		await readPricing({ code });
 		currentCoupon = code;
 	} catch (error) {
 		applyCouponError =
@@ -42,7 +38,7 @@ async function handleApplyCoupon() {
 }
 </script>
 
-{#await getPricingDetail({ code: currentCoupon })}
+{#await readPricing({ code: currentCoupon })}
 	<!-- Loading state -->
 	<Card.Root class="bg-muted">
 		<Card.Content class="py-8">
@@ -116,7 +112,7 @@ async function handleApplyCoupon() {
 								{/if}
 							</div>
 							<p class="mt-1 text-xs text-muted-foreground">
-								From {dayjs(nextMonthlyBillingDate).format("D MMM YYYY")}
+								From {formatCivilDate(planPricing.monthlyBillingStart)}
 							</p>
 						</div>
 						<div>
@@ -135,7 +131,7 @@ async function handleApplyCoupon() {
 								{/if}
 							</div>
 							<p class="mt-1 text-xs text-muted-foreground">
-								From {dayjs(nextAnnualBillingDate).format("D MMM YYYY")}
+								From {formatCivilDate(planPricing.annualBillingStart)}
 							</p>
 						</div>
 					</div>

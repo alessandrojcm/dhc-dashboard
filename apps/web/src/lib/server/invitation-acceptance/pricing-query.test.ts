@@ -41,6 +41,8 @@ describe("read-only pricing query", () => {
 			proratedAnnualPrice: money,
 			monthlyFee: money,
 			annualFee: money,
+			monthlyBillingStart: "2026-11-01",
+			annualBillingStart: "2027-01-07",
 		};
 		const { api, calls } = inMemoryAcceptanceApi({
 			previewPricing: { kind: "pricing", pricing },

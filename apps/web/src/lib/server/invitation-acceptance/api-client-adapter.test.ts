@@ -89,6 +89,8 @@ describe("interpretPricingResponse", () => {
 			proratedAnnualPrice: { amount: 1800, currency: "EUR", precision: 2 },
 			monthlyFee: { amount: 4200, currency: "EUR", precision: 2 },
 			annualFee: { amount: 36000, currency: "EUR", precision: 2 },
+			monthlyBillingStart: "2026-11-01",
+			annualBillingStart: "2027-01-07",
 		};
 
 		expect(
@@ -97,6 +99,25 @@ describe("interpretPricingResponse", () => {
 				response: response(200),
 			}),
 		).toEqual({ kind: "pricing", pricing });
+	});
+
+	it("does not read a preview without Phoenix's billing start dates as pricing", () => {
+		const { annualBillingStart: _annual, ...withoutAnnual } = {
+			proratedPrice: { amount: 0, currency: "EUR", precision: 2 },
+			proratedMonthlyPrice: { amount: 0, currency: "EUR", precision: 2 },
+			proratedAnnualPrice: { amount: 0, currency: "EUR", precision: 2 },
+			monthlyFee: { amount: 0, currency: "EUR", precision: 2 },
+			annualFee: { amount: 0, currency: "EUR", precision: 2 },
+			monthlyBillingStart: "2026-11-01",
+			annualBillingStart: "2027-01-07",
+		};
+
+		expect(
+			interpretPricingResponse({
+				data: { data: withoutAnnual },
+				response: response(200),
+			}).kind,
+		).not.toBe("pricing");
 	});
 
 	it("treats a 409 restart_verification body as an acceptance view", () => {

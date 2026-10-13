@@ -115,6 +115,9 @@ const planPricingSchema = v.object({
 	discountedAnnualFee: v.optional(dineroAmountSchema),
 	coupon: v.optional(v.string()),
 	discountPercentage: v.optional(v.number()),
+	// Phoenix owns the billing anchors; the page only words its dates.
+	monthlyBillingStart: v.pipe(v.string(), v.isoDate()),
+	annualBillingStart: v.pipe(v.string(), v.isoDate()),
 });
 
 const planPricingResponseSchema = v.object({
