@@ -334,6 +334,166 @@ defmodule Dhc.E2EHarness do
     end
   end
 
+  # ALE-288 IMPL-02: frozen `inventoryItem` scenario. Routes through
+  # `Dhc.Inventory` only; returns plain camelCase maps, never `*JSON.render/2`
+  # output. Creates one physical unit (or a duplicate-label pair) with typed
+  # values validated in-transaction, then applies the `inMaintenance` /
+  # `archived` presets in that order via `OperatorItemLifecycle` (archive
+  # atomically ends the open period). Structure ids come from the
+  # `inventoryStructure` seed — never names. `deletable` is a seed-time
+  # cleanup signal: `false` once a preset ran (maintenance history is
+  # retained; an archived row asserts archived, never absence), `true` for
+  # history-free units.
+  def seed("inventoryItem", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_item!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # ALE-288 IMPL-03: frozen `inventoryLoan` scenario. Single scenario with a
+  # `preset` enum, never one scenario per state. Routes through
+  # `Dhc.Inventory` only (member request/cancel via `MemberLoans`,
+  # approve/reject/cancel/checkout/return via `OperatorLoans`,
+  # notification-free — exposure attaches `create_keyed/3` after return,
+  # `Notifications.create/2` here). Returns plain camelCase maps with
+  # viewer-neutral ids, never `*JSON.render/2` output. `overdue` is derived
+  # in club-calendar days, never a stored flag; the seed fabricates elapsed
+  # time with a harness-only backdate. `reminderState` (IMPL-04) pins the
+  # due-date geometry in-transaction and — for `weekly` only — earns its
+  # delivered history via one domain `run` *after* commit, because
+  # `create_keyed/3` refuses to write inside a transaction.
+  def seed("inventoryLoan", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_loan_transaction!(attrs) end) do
+      {:ok, {:single_loan, loan_id, preset}} -> finish_single_loan_seed!(loan_id, preset, attrs)
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # ALE-288 IMPL-04: frozen `inventoryMaintenance` scenario. One scenario
+  # with a `preset` enum (`open` | `closed`). Routes through
+  # `Dhc.Inventory` only (`OperatorItemLifecycle`), never around it.
+  # Returns plain camelCase maps, never `*JSON.render/2` output. At most
+  # one open period per item (partial unique index); start rejects pending,
+  # blocked by live loans — all surfaced, never papered over.
+  def seed("inventoryMaintenance", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_maintenance!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # ALE-288 IMPL-04: frozen `inventoryArchive` scenario. One scenario, no
+  # enum. Retires one item via `OperatorItemLifecycle` (ends any open
+  # period atomically, rejects pending, blocked by live loans). Catalog
+  # hides (`:not_found`), own-loan history keeps its snapshot. Already-
+  # archived is a no-op success (idempotent).
+  def seed("inventoryArchive", attrs) when is_map(attrs) do
+    case Repo.transaction(fn -> do_seed_archive!(attrs) end) do
+      {:ok, result} -> result
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def seed("registration", attrs) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    registration =
+      %Registration{}
+      |> Registration.fixture_changeset(%{
+        club_activity_id: Map.fetch!(attrs, "workshopId"),
+        member_user_id: Map.get(attrs, "memberUserId"),
+        # ALE-181: display_name is NOT NULL on the registration row.
+        display_name: Map.get(attrs, "displayName", "E2E Member"),
+        amount_paid: Map.get(attrs, "amountPaid", 0),
+        currency: Map.get(attrs, "currency", "eur"),
+        status: Map.get(attrs, "status", "confirmed"),
+        registered_at: now,
+        confirmed_at: now,
+        attendance_status: Map.get(attrs, "attendanceStatus", "pending"),
+        attendance_notes: Map.get(attrs, "attendanceNotes")
+      })
+      |> Repo.insert!()
+
+    registration_dto(registration)
+  end
+
+  def seed("waitlistStatus", %{"isOpen" => is_open}) do
+    {:ok, status} = Waitlist.set_open(is_open)
+    %{isOpen: status.is_open}
+  end
+
+  def seed("setting", %{"key" => key, "value" => value}) do
+    {:ok, setting} = Dhc.Settings.update(key, value)
+    %{key: setting.key, value: setting.value}
+  end
+
+  # ALE-334: `trainingAnnouncement` scenario. Routes announcement creation
+  # through `Dhc.TrainingAnnouncements.create/2` (actor-first, so `actorId`
+  # must be a live active management-role principal — seed one via the
+  # `member` scenario), then inserts one past `delivered` delivery row as
+  # durable evidence, the way the worker's freeze would have left it. The
+  # past date is the most recent past occurrence of the announcement's
+  # weekday, so the `window` read model serves it as a past item with
+  # inspector evidence. Returns plain camelCase maps, never `*JSON.render/2`
+  # output. Teardown hard-deletes the evidence and the announcement row
+  # directly (retention says attempted rows are permanent; E2E teardown
+  # breaks this deliberately and narrowly, like the loan teardown).
+  def seed("trainingAnnouncement", attrs) when is_map(attrs) do
+    actor_id = Map.get(attrs, "actorId")
+
+    if actor_id in [nil, ""] do
+      raise ArgumentError,
+            "trainingAnnouncement seed requires actorId of a management-role operator"
+    end
+
+    kind = Map.get(attrs, "kind", "roll_call")
+
+    unless kind in ~w(roll_call sparring) do
+      raise ArgumentError, "trainingAnnouncement kind must be roll_call/sparring"
+    end
+
+    today = ClubCalendar.today()
+    {schedule_attrs, _weekday} = training_schedule!(attrs, today)
+    post_time = parse_time!(Map.get(attrs, "postTime", "19:00"))
+    {title, message} = training_copy!(attrs, kind)
+    mention_everyone = Map.get(attrs, "mentionEveryone", true)
+
+    create_attrs =
+      Map.merge(
+        %{
+          "kind" => kind,
+          "post_time" => post_time,
+          "title" => title,
+          "message" => message,
+          "mention_everyone" => mention_everyone
+        },
+        schedule_attrs
+      )
+
+    case TrainingAnnouncements.create(actor_id, create_attrs) do
+      {:ok, %{announcement: announcement}} ->
+        evidence = insert_past_evidence!(announcement, today, kind, mention_everyone)
+
+        %{
+          announcementId: announcement.id,
+          kind: announcement.kind,
+          title: announcement.title,
+          postTime: Time.to_iso8601(announcement.post_time),
+          weekday: announcement.weekday,
+          oneOffDate:
+            if(announcement.one_off_date, do: Date.to_iso8601(announcement.one_off_date)),
+          occurrenceDate: Date.to_iso8601(evidence.occurrence_date),
+          deliveryId: evidence.id,
+          threadName: evidence.thread_name
+        }
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp do_seed_structure!(attrs) do
     category_name = Map.fetch!(attrs, "categoryName")
     definitions = Map.get(attrs, "definitions", []) || []
@@ -487,23 +647,6 @@ defmodule Dhc.E2EHarness do
     end)
   end
 
-  # ALE-288 IMPL-02: frozen `inventoryItem` scenario. Routes through
-  # `Dhc.Inventory` only; returns plain camelCase maps, never `*JSON.render/2`
-  # output. Creates one physical unit (or a duplicate-label pair) with typed
-  # values validated in-transaction, then applies the `inMaintenance` /
-  # `archived` presets in that order via `OperatorItemLifecycle` (archive
-  # atomically ends the open period). Structure ids come from the
-  # `inventoryStructure` seed — never names. `deletable` is a seed-time
-  # cleanup signal: `false` once a preset ran (maintenance history is
-  # retained; an archived row asserts archived, never absence), `true` for
-  # history-free units.
-  def seed("inventoryItem", attrs) when is_map(attrs) do
-    case Repo.transaction(fn -> do_seed_item!(attrs) end) do
-      {:ok, result} -> result
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   defp do_seed_item!(attrs) do
     actor_id = Map.get(attrs, "actorId")
 
@@ -594,26 +737,6 @@ defmodule Dhc.E2EHarness do
 
       {:error, :not_found} ->
         Repo.rollback(:item_not_found)
-    end
-  end
-
-  # ALE-288 IMPL-03: frozen `inventoryLoan` scenario. Single scenario with a
-  # `preset` enum, never one scenario per state. Routes through
-  # `Dhc.Inventory` only (member request/cancel via `MemberLoans`,
-  # approve/reject/cancel/checkout/return via `OperatorLoans`,
-  # notification-free — exposure attaches `create_keyed/3` after return,
-  # `Notifications.create/2` here). Returns plain camelCase maps with
-  # viewer-neutral ids, never `*JSON.render/2` output. `overdue` is derived
-  # in club-calendar days, never a stored flag; the seed fabricates elapsed
-  # time with a harness-only backdate. `reminderState` (IMPL-04) pins the
-  # due-date geometry in-transaction and — for `weekly` only — earns its
-  # delivered history via one domain `run` *after* commit, because
-  # `create_keyed/3` refuses to write inside a transaction.
-  def seed("inventoryLoan", attrs) when is_map(attrs) do
-    case Repo.transaction(fn -> do_seed_loan_transaction!(attrs) end) do
-      {:ok, {:single_loan, loan_id, preset}} -> finish_single_loan_seed!(loan_id, preset, attrs)
-      {:ok, result} -> result
-      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -1204,19 +1327,6 @@ defmodule Dhc.E2EHarness do
 
   defp loan_member_container_path(%Loan{}), do: nil
 
-  # ALE-288 IMPL-04: frozen `inventoryMaintenance` scenario. One scenario
-  # with a `preset` enum (`open` | `closed`). Routes through
-  # `Dhc.Inventory` only (`OperatorItemLifecycle`), never around it.
-  # Returns plain camelCase maps, never `*JSON.render/2` output. At most
-  # one open period per item (partial unique index); start rejects pending,
-  # blocked by live loans — all surfaced, never papered over.
-  def seed("inventoryMaintenance", attrs) when is_map(attrs) do
-    case Repo.transaction(fn -> do_seed_maintenance!(attrs) end) do
-      {:ok, result} -> result
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   defp do_seed_maintenance!(attrs) do
     preset = Map.get(attrs, "preset")
     item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
@@ -1298,18 +1408,6 @@ defmodule Dhc.E2EHarness do
     }
   end
 
-  # ALE-288 IMPL-04: frozen `inventoryArchive` scenario. One scenario, no
-  # enum. Retires one item via `OperatorItemLifecycle` (ends any open
-  # period atomically, rejects pending, blocked by live loans). Catalog
-  # hides (`:not_found`), own-loan history keeps its snapshot. Already-
-  # archived is a no-op success (idempotent).
-  def seed("inventoryArchive", attrs) when is_map(attrs) do
-    case Repo.transaction(fn -> do_seed_archive!(attrs) end) do
-      {:ok, result} -> result
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
   defp do_seed_archive!(attrs) do
     item_ref = Map.get(attrs, "itemId") || Map.get(attrs, "itemSlug")
     operator_id = Map.get(attrs, "operatorActorId")
@@ -1372,104 +1470,6 @@ defmodule Dhc.E2EHarness do
           false
       end
     end)
-  end
-
-  def seed("registration", attrs) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    registration =
-      %Registration{}
-      |> Registration.fixture_changeset(%{
-        club_activity_id: Map.fetch!(attrs, "workshopId"),
-        member_user_id: Map.get(attrs, "memberUserId"),
-        # ALE-181: display_name is NOT NULL on the registration row.
-        display_name: Map.get(attrs, "displayName", "E2E Member"),
-        amount_paid: Map.get(attrs, "amountPaid", 0),
-        currency: Map.get(attrs, "currency", "eur"),
-        status: Map.get(attrs, "status", "confirmed"),
-        registered_at: now,
-        confirmed_at: now,
-        attendance_status: Map.get(attrs, "attendanceStatus", "pending"),
-        attendance_notes: Map.get(attrs, "attendanceNotes")
-      })
-      |> Repo.insert!()
-
-    registration_dto(registration)
-  end
-
-  def seed("waitlistStatus", %{"isOpen" => is_open}) do
-    {:ok, status} = Waitlist.set_open(is_open)
-    %{isOpen: status.is_open}
-  end
-
-  def seed("setting", %{"key" => key, "value" => value}) do
-    {:ok, setting} = Dhc.Settings.update(key, value)
-    %{key: setting.key, value: setting.value}
-  end
-
-  # ALE-334: `trainingAnnouncement` scenario. Routes announcement creation
-  # through `Dhc.TrainingAnnouncements.create/2` (actor-first, so `actorId`
-  # must be a live active management-role principal — seed one via the
-  # `member` scenario), then inserts one past `delivered` delivery row as
-  # durable evidence, the way the worker's freeze would have left it. The
-  # past date is the most recent past occurrence of the announcement's
-  # weekday, so the `window` read model serves it as a past item with
-  # inspector evidence. Returns plain camelCase maps, never `*JSON.render/2`
-  # output. Teardown hard-deletes the evidence and the announcement row
-  # directly (retention says attempted rows are permanent; E2E teardown
-  # breaks this deliberately and narrowly, like the loan teardown).
-  def seed("trainingAnnouncement", attrs) when is_map(attrs) do
-    actor_id = Map.get(attrs, "actorId")
-
-    if actor_id in [nil, ""] do
-      raise ArgumentError,
-            "trainingAnnouncement seed requires actorId of a management-role operator"
-    end
-
-    kind = Map.get(attrs, "kind", "roll_call")
-
-    unless kind in ~w(roll_call sparring) do
-      raise ArgumentError, "trainingAnnouncement kind must be roll_call/sparring"
-    end
-
-    today = ClubCalendar.today()
-    {schedule_attrs, _weekday} = training_schedule!(attrs, today)
-    post_time = parse_time!(Map.get(attrs, "postTime", "19:00"))
-    {title, message} = training_copy!(attrs, kind)
-    mention_everyone = Map.get(attrs, "mentionEveryone", true)
-
-    create_attrs =
-      Map.merge(
-        %{
-          "kind" => kind,
-          "post_time" => post_time,
-          "title" => title,
-          "message" => message,
-          "mention_everyone" => mention_everyone
-        },
-        schedule_attrs
-      )
-
-    case TrainingAnnouncements.create(actor_id, create_attrs) do
-      {:ok, %{announcement: announcement}} ->
-        evidence = insert_past_evidence!(announcement, today, kind, mention_everyone)
-
-        %{
-          announcementId: announcement.id,
-          kind: announcement.kind,
-          title: announcement.title,
-          postTime: Time.to_iso8601(announcement.post_time),
-          weekday: announcement.weekday,
-          oneOffDate:
-            if(announcement.one_off_date, do: Date.to_iso8601(announcement.one_off_date)),
-          occurrenceDate: Date.to_iso8601(evidence.occurrence_date),
-          deliveryId: evidence.id,
-          threadName: evidence.thread_name
-        }
-
-      {:error, reason} ->
-        {:error, reason}
-    end
   end
 
   defp training_schedule!(attrs, today) do
@@ -1659,6 +1659,132 @@ defmodule Dhc.E2EHarness do
     end
   end
 
+  # Teardown for the frozen item scenario. History-free items hard-delete via
+  # `delete_operator_item/2` with explicit confirmation (value rows + item
+  # row; asserts row absence). Items with retained loan or maintenance rows
+  # archive instead — `archive_operator_item/3` is idempotent, so an already
+  # archived seed is a no-op and teardown asserts `archived_at`, never row
+  # absence. A live loan blocking archival surfaces `:loan_active`; the
+  # caller closes loans first. Pair seeds delete each `items[]` entry
+  # individually. Loans, periods, categories, and containers are never
+  # deleted on the caller's behalf.
+  def delete_fixture("inventoryItem", id) when is_binary(id) do
+    case Inventory.delete_operator_item(id, %{"confirm" => true}) do
+      {:ok, _} ->
+        if Repo.get(Item, id) == nil, do: :ok, else: {:error, :not_deleted}
+
+      {:error, :has_history} ->
+        archive_seed_teardown!(id)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  # Teardown for the frozen loan scenario. Retention says loan records are
+  # permanent with no domain delete — E2E teardown breaks this deliberately
+  # and narrowly: hard-deletes the loan row directly (both `competingPair`
+  # entries deleted individually — no bulk pair delete) and asserts row
+  # absence. Reminder ledger rows for the loan are deleted alongside
+  # (claimed-but-undelivered first, then delivered) — otherwise a re-seeded
+  # loan with the same id geometry would inherit another loan's delivered
+  # history. Notification rows are left untouched (per-user facts another
+  # spec may still assert; keyed idempotency makes leftovers harmless).
+  # Never cascades: items, members, periods, categories, and containers are
+  # left untouched. Production retention is unaffected — no domain delete
+  # function is created to serve this.
+  def delete_fixture("inventoryLoan", id) when is_binary(id) do
+    case Repo.get(Loan, id) do
+      nil -> {:error, :not_found}
+      loan -> delete_seed_loan!(loan)
+    end
+  end
+
+  # Teardown for the frozen maintenance scenario. Retention says periods are
+  # permanent with no domain delete — E2E teardown breaks this deliberately
+  # and narrowly: an open period is ended via
+  # `end_operator_item_maintenance/3` with the canned note
+  # `"E2E teardown: closing open maintenance."`, attributed to the seed's
+  # `started_by` actor. Asserts `open: false`, not row absence. A closed
+  # period is a no-op success (retained history; the item stays
+  # non-deletable → archived on item cleanup). The helper never deletes
+  # period rows.
+  def delete_fixture("inventoryMaintenance", id) when is_binary(id) do
+    case Repo.get(MaintenancePeriod, id) do
+      nil ->
+        {:error, :not_found}
+
+      %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) ->
+        :ok
+
+      %MaintenancePeriod{} = period ->
+        close_seed_maintenance!(period)
+    end
+  end
+
+  # Teardown for the frozen archive scenario. The only legal "un-archive"
+  # is a restore via `restore_operator_item/2`. An archived item restores
+  # (surfacing `:archived_category` / `:archived_container` /
+  # `:invalid_values` when dependencies drifted); an active item is a no-op
+  # success. Never hard-deletes: a with-history item stays under the item
+  # contract's archive path; a history-free item stays under its hard-delete
+  # path. This fixture never deletes items.
+  def delete_fixture("inventoryArchive", id) when is_binary(id) do
+    case Inventory.resolve_operator_item(id) do
+      {:error, :not_found} = error ->
+        error
+
+      {:ok, %{archived_at: nil}} ->
+        :ok
+
+      {:ok, %{archived_at: _archived, archived_by_principal_id: nil}} ->
+        {:error, :missing_actor}
+
+      {:ok, %{archived_at: _archived, archived_by_principal_id: actor_id}} ->
+        restore_seed_archive!(id, actor_id)
+    end
+  end
+
+  def delete_fixture("registration", id) do
+    case Repo.get(Registration, id) do
+      nil -> {:error, :not_found}
+      registration -> Repo.delete(registration)
+    end
+  end
+
+  # Teardown for the ALE-334 `trainingAnnouncement` scenario. Retention says
+  # attempted delivery rows are permanent with no domain delete — E2E
+  # teardown breaks this deliberately and narrowly: deletes the announcement's
+  # Oban drivers, delivery rows, and exception rows directly, then the
+  # announcement row itself (bypassing the attempted guard, like the loan
+  # teardown bypasses loan retention). Asserts row absence.
+  def delete_fixture("trainingAnnouncement", id) when is_binary(id) do
+    case Repo.get(Announcement, id) do
+      nil ->
+        {:error, :not_found}
+
+      announcement ->
+        from(job in "oban_jobs",
+          where: fragment("?->>'announcement_id' = ?", field(job, :args), ^id)
+        )
+        |> Repo.delete_all()
+
+        from(d in DiscordAnnouncementDelivery, where: d.announcement_id == ^id)
+        |> Repo.delete_all()
+
+        from(s in AnnouncementSuppression, where: s.announcement_id == ^id)
+        |> Repo.delete_all()
+
+        from(o in AnnouncementOverride, where: o.announcement_id == ^id)
+        |> Repo.delete_all()
+
+        case Repo.delete(announcement) do
+          {:ok, _} -> ensure_absent(Announcement, id, :not_deleted)
+          {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
   defp delete_structure_category!(category_id) do
     with :ok <- retire_structure_definitions!(category_id),
          :ok <- hard_delete_value_free_definitions!(category_id),
@@ -1766,28 +1892,6 @@ defmodule Dhc.E2EHarness do
     |> Repo.exists?()
   end
 
-  # Teardown for the frozen item scenario. History-free items hard-delete via
-  # `delete_operator_item/2` with explicit confirmation (value rows + item
-  # row; asserts row absence). Items with retained loan or maintenance rows
-  # archive instead — `archive_operator_item/3` is idempotent, so an already
-  # archived seed is a no-op and teardown asserts `archived_at`, never row
-  # absence. A live loan blocking archival surfaces `:loan_active`; the
-  # caller closes loans first. Pair seeds delete each `items[]` entry
-  # individually. Loans, periods, categories, and containers are never
-  # deleted on the caller's behalf.
-  def delete_fixture("inventoryItem", id) when is_binary(id) do
-    case Inventory.delete_operator_item(id, %{"confirm" => true}) do
-      {:ok, _} ->
-        if Repo.get(Item, id) == nil, do: :ok, else: {:error, :not_deleted}
-
-      {:error, :has_history} ->
-        archive_seed_teardown!(id)
-
-      {:error, _} = error ->
-        error
-    end
-  end
-
   defp archive_seed_teardown!(id) do
     case Inventory.resolve_operator_item(id) do
       {:error, :not_found} = error -> error
@@ -1813,25 +1917,6 @@ defmodule Dhc.E2EHarness do
     loans? or periods?
   end
 
-  # Teardown for the frozen loan scenario. Retention says loan records are
-  # permanent with no domain delete — E2E teardown breaks this deliberately
-  # and narrowly: hard-deletes the loan row directly (both `competingPair`
-  # entries deleted individually — no bulk pair delete) and asserts row
-  # absence. Reminder ledger rows for the loan are deleted alongside
-  # (claimed-but-undelivered first, then delivered) — otherwise a re-seeded
-  # loan with the same id geometry would inherit another loan's delivered
-  # history. Notification rows are left untouched (per-user facts another
-  # spec may still assert; keyed idempotency makes leftovers harmless).
-  # Never cascades: items, members, periods, categories, and containers are
-  # left untouched. Production retention is unaffected — no domain delete
-  # function is created to serve this.
-  def delete_fixture("inventoryLoan", id) when is_binary(id) do
-    case Repo.get(Loan, id) do
-      nil -> {:error, :not_found}
-      loan -> delete_seed_loan!(loan)
-    end
-  end
-
   defp delete_seed_loan!(loan) do
     delete_loan_reminder_ledger!(loan.id)
 
@@ -1855,28 +1940,6 @@ defmodule Dhc.E2EHarness do
     :ok
   end
 
-  # Teardown for the frozen maintenance scenario. Retention says periods are
-  # permanent with no domain delete — E2E teardown breaks this deliberately
-  # and narrowly: an open period is ended via
-  # `end_operator_item_maintenance/3` with the canned note
-  # `"E2E teardown: closing open maintenance."`, attributed to the seed's
-  # `started_by` actor. Asserts `open: false`, not row absence. A closed
-  # period is a no-op success (retained history; the item stays
-  # non-deletable → archived on item cleanup). The helper never deletes
-  # period rows.
-  def delete_fixture("inventoryMaintenance", id) when is_binary(id) do
-    case Repo.get(MaintenancePeriod, id) do
-      nil ->
-        {:error, :not_found}
-
-      %MaintenancePeriod{ended_at: ended_at} when not is_nil(ended_at) ->
-        :ok
-
-      %MaintenancePeriod{} = period ->
-        close_seed_maintenance!(period)
-    end
-  end
-
   defp close_seed_maintenance!(%MaintenancePeriod{started_by_principal_id: nil}),
     do: {:error, :missing_actor}
 
@@ -1898,75 +1961,12 @@ defmodule Dhc.E2EHarness do
     end
   end
 
-  # Teardown for the frozen archive scenario. The only legal "un-archive"
-  # is a restore via `restore_operator_item/2`. An archived item restores
-  # (surfacing `:archived_category` / `:archived_container` /
-  # `:invalid_values` when dependencies drifted); an active item is a no-op
-  # success. Never hard-deletes: a with-history item stays under the item
-  # contract's archive path; a history-free item stays under its hard-delete
-  # path. This fixture never deletes items.
-  def delete_fixture("inventoryArchive", id) when is_binary(id) do
-    case Inventory.resolve_operator_item(id) do
-      {:error, :not_found} = error ->
-        error
-
-      {:ok, %{archived_at: nil}} ->
-        :ok
-
-      {:ok, %{archived_at: _archived, archived_by_principal_id: nil}} ->
-        {:error, :missing_actor}
-
-      {:ok, %{archived_at: _archived, archived_by_principal_id: actor_id}} ->
-        restore_seed_archive!(id, actor_id)
-    end
-  end
-
   defp restore_seed_archive!(id, actor_id) do
     case Inventory.restore_operator_item(id, actor_id) do
       {:ok, %{archived_at: nil}} -> :ok
       {:ok, _} -> {:error, :not_restored}
       {:error, :invalid_values, _} = error -> error
       {:error, _} = error -> error
-    end
-  end
-
-  def delete_fixture("registration", id) do
-    case Repo.get(Registration, id) do
-      nil -> {:error, :not_found}
-      registration -> Repo.delete(registration)
-    end
-  end
-
-  # Teardown for the ALE-334 `trainingAnnouncement` scenario. Retention says
-  # attempted delivery rows are permanent with no domain delete — E2E
-  # teardown breaks this deliberately and narrowly: deletes the announcement's
-  # Oban drivers, delivery rows, and exception rows directly, then the
-  # announcement row itself (bypassing the attempted guard, like the loan
-  # teardown bypasses loan retention). Asserts row absence.
-  def delete_fixture("trainingAnnouncement", id) when is_binary(id) do
-    case Repo.get(Announcement, id) do
-      nil ->
-        {:error, :not_found}
-
-      announcement ->
-        from(job in "oban_jobs",
-          where: fragment("?->>'announcement_id' = ?", field(job, :args), ^id)
-        )
-        |> Repo.delete_all()
-
-        from(d in DiscordAnnouncementDelivery, where: d.announcement_id == ^id)
-        |> Repo.delete_all()
-
-        from(s in AnnouncementSuppression, where: s.announcement_id == ^id)
-        |> Repo.delete_all()
-
-        from(o in AnnouncementOverride, where: o.announcement_id == ^id)
-        |> Repo.delete_all()
-
-        case Repo.delete(announcement) do
-          {:ok, _} -> ensure_absent(Announcement, id, :not_deleted)
-          {:error, changeset} -> {:error, changeset}
-        end
     end
   end
 
@@ -2010,6 +2010,30 @@ defmodule Dhc.E2EHarness do
         {:error, :not_found} = error ->
           error
       end
+    end
+  end
+
+  # Partial update for the frozen item scenario. Accepts `notes` + `values`
+  # only, mapping to `OperatorItems.update_operator_item/3`: supplying
+  # `values` replaces the complete set, omitting it leaves stored values
+  # untouched. `containerId` / `categoryId` / preset flags are never applied
+  # (movement and reclassification are handoff 04 commands, not generic
+  # edits). Edits on an archived item (`:archived`) and value failures
+  # (`:invalid_values`) pass through. Returns the flat seed row; `deletable`
+  # reflects retained history and archive state.
+  def update_fixture("inventoryItem", id, attrs) when is_map(attrs) do
+    case Inventory.resolve_operator_item(id) do
+      {:error, :not_found} = error ->
+        error
+
+      {:ok, current} ->
+        actor_id = Map.get(attrs, "actorId") || current.created_by
+
+        if actor_id == nil do
+          {:error, :missing_actor}
+        else
+          update_seed_item!(id, attrs, actor_id)
+        end
     end
   end
 
@@ -2161,30 +2185,6 @@ defmodule Dhc.E2EHarness do
       parent_id ->
         {:ok, parent} = Inventory.get_container(parent_id)
         structure_container_path!(parent) ++ [container.name]
-    end
-  end
-
-  # Partial update for the frozen item scenario. Accepts `notes` + `values`
-  # only, mapping to `OperatorItems.update_operator_item/3`: supplying
-  # `values` replaces the complete set, omitting it leaves stored values
-  # untouched. `containerId` / `categoryId` / preset flags are never applied
-  # (movement and reclassification are handoff 04 commands, not generic
-  # edits). Edits on an archived item (`:archived`) and value failures
-  # (`:invalid_values`) pass through. Returns the flat seed row; `deletable`
-  # reflects retained history and archive state.
-  def update_fixture("inventoryItem", id, attrs) when is_map(attrs) do
-    case Inventory.resolve_operator_item(id) do
-      {:error, :not_found} = error ->
-        error
-
-      {:ok, current} ->
-        actor_id = Map.get(attrs, "actorId") || current.created_by
-
-        if actor_id == nil do
-          {:error, :missing_actor}
-        else
-          update_seed_item!(id, attrs, actor_id)
-        end
     end
   end
 

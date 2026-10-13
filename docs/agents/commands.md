@@ -253,6 +253,12 @@ cd apps/phoenix && mix ecto.migrations   # Show migration status
 cd apps/phoenix && mix test --include integration
 cd apps/phoenix && mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
 
+# The repo `.env` (loaded by mise) already holds a Stripe test-mode
+# STRIPE_SECRET_KEY, so the real-Stripe suites need no exported key under mise.
+# Check the key starts with sk_test_ without printing it, then run:
+cd apps/phoenix && mise exec -- env MIX_ENV=test POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres \
+  mix test test/dhc/membership/reactivation_integration_test.exs --include integration
+
 # Stripe sync integration test hits Stripe test mode and creates its own
 # customers/subscriptions. Required: STRIPE_SECRET_KEY. STRIPE_SYNC_TEST_PRICE_ID
 # is optional when lookup_key=standard_membership_fee exists in Stripe test mode.

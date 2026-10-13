@@ -28,11 +28,21 @@ test("workshop management exposes offer settings and staff without returning to 
 	await screen.getByRole("button", { name: "Settings", exact: true }).click();
 	const settings = screen.getByRole("dialog");
 	await expect
-		.element(settings.getByRole("heading", { name: "Places, fee and payment deadline" }))
+		.element(
+			settings.getByRole("heading", {
+				name: "Places, fee and payment deadline",
+			}),
+		)
 		.toBeVisible();
-	await expect.element(settings.getByLabelText("Capacity", { exact: true })).toHaveValue(3);
-	await expect.element(settings.getByLabelText("Fee (€)", { exact: true })).toHaveValue(40);
-	await expect.element(settings.getByLabelText("Reply period (days)")).toHaveValue(7);
+	await expect
+		.element(settings.getByLabelText("Capacity", { exact: true }))
+		.toHaveValue(3);
+	await expect
+		.element(settings.getByLabelText("Fee (€)", { exact: true }))
+		.toHaveValue(40);
+	await expect
+		.element(settings.getByLabelText("Reply period (days)"))
+		.toHaveValue(7);
 	await settings.getByRole("button", { name: "Cancel", exact: true }).click();
 	await screen.getByRole("button", { name: "Add staff", exact: true }).click();
 	const dialog = screen.getByRole("dialog");

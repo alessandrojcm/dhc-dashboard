@@ -237,7 +237,10 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
           email: "#{run_id}@example.com"
         )
 
-      start_date = Date.utc_today() |> Date.add(3)
+      # Start today: the monthly charge must settle now for the member to stay
+      # active below. A future start defers the monthly billing to that date
+      # (signup alignment), which the first test covers.
+      start_date = Date.utc_today()
 
       conn =
         build_conn()
