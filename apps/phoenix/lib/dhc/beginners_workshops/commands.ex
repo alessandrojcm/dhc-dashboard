@@ -36,7 +36,15 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       workshop (`:not_found`);
     * `{:intake_link, token}` — the person's Intake page;
     * `:stripe` — webhook and success-return completions;
-    * `:system` — time-driven passes and workers.
+    * `:system` — time-driven passes and workers;
+    * `{:intake_reply, intake_reply_id}` (ALE-411) — a Reply Action: the
+      command an Intake Reply asked for, run by
+      `IntakeReplies.forward/2`. Authorized for exactly
+      `@intake_reply_commands` (`decline`, `defer`, `cancel_with_refund`,
+      `withdraw` with `refund: true` only, `refund_carried_fee`,
+      `resend_link`) and only for a recorded Intake Reply; it never reaches
+      `forfeit_carried_fee`. The boundary's locked policy re-check still
+      decides, and the Intake history row names the reply, not a Principal.
 
   ## Clock
 
@@ -78,7 +86,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       not be forwarded, ALE-409).
 
   To add a command: its capability in `@staff_capabilities` (or its actor
-  list), its name in `@families`, a `run/3` clause in its family module, and
+  list; a Reply Action also joins `@intake_reply_commands`), its name in `@families`, a `run/3` clause in its family module, and
   its docs in that family's moduledoc. A family never calls another
   family's private functions: shared helpers are public `@doc false`
   functions of the module that owns their concept (each family's moduledoc
@@ -94,7 +102,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   alias Dhc.Auth
   alias Dhc.Auth.{Capabilities, Principal}
-  alias Dhc.BeginnersWorkshops.{Clock, IntakePolicy, StaffAssignment}
+  alias Dhc.BeginnersWorkshops.{Clock, IntakePolicy, IntakeReply, StaffAssignment}
 
   alias Dhc.BeginnersWorkshops.Commands.{
     Attendance,
@@ -118,6 +126,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:intake_link, token :: String.t()}
           | :stripe
           | :system
+          | {:intake_reply, intake_reply_id :: binary()}
 
   @typedoc """
   Schedule attributes use internal keys (string or atom): `venue`, `date`,
@@ -332,6 +341,17 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   # The person's Intake-page commands (`{:intake_link, token}`).
   @intake_link_commands [:start_payment, :confirm]
 
+  # ALE-411: the Reply Actions an Intake Reply may run. Never a forfeit:
+  # `withdraw` must carry `refund: true` (`authorize_intake_reply/2`).
+  @intake_reply_commands [
+    :decline,
+    :defer,
+    :cancel_with_refund,
+    :withdraw,
+    :refund_carried_fee,
+    :resend_link
+  ]
+
   # Stripe-driven commands (webhooks and the success return).
   @stripe_commands [:complete_payment, :release_payment, :apply_refund_event]
 
@@ -431,6 +451,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   defp authorize({:intake_link, _token} = actor, command) when command in @intake_link_commands,
     do: authorize_intake_link(actor)
 
+  defp authorize({:intake_reply, _reply_id} = actor, command),
+    do: authorize_intake_reply(actor, command)
+
   defp authorize(actor, command) do
     name = command_name(command)
 
@@ -453,6 +476,27 @@ defmodule Dhc.BeginnersWorkshops.Commands do
        do: :ok
 
   defp authorize_intake_link(_actor), do: {:error, :forbidden}
+
+  # A recorded Intake Reply, asking for one of its Reply Actions; a
+  # withdrawal only with its refund (a Reply Action never forfeits).
+  defp authorize_intake_reply({:intake_reply, reply_id}, command) do
+    with true <- command_name(command) in @intake_reply_commands,
+         true <- refund_given?(command),
+         {:ok, reply_id} <- Ecto.UUID.cast(reply_id),
+         true <- Repo.exists?(from(r in IntakeReply, where: r.id == ^reply_id)) do
+      :ok
+    else
+      _ -> {:error, :forbidden}
+    end
+  end
+
+  defp refund_given?(command) when is_tuple(command) and elem(command, 0) == :withdraw,
+    do: command |> Tuple.to_list() |> List.last() |> refund_true?()
+
+  defp refund_given?(_command), do: true
+
+  defp refund_true?(%{} = attrs), do: Map.get(attrs, :refund, Map.get(attrs, "refund")) == true
+  defp refund_true?(_attrs), do: false
 
   defp authorize_stripe(:stripe), do: :ok
   defp authorize_stripe(_actor), do: {:error, :forbidden}

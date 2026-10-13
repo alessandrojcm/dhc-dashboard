@@ -146,7 +146,8 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
             actor: entry.actor,
             occurredAt: entry.occurred_at,
             note: entry.note,
-            correction: entry.correction
+            correction: entry.correction,
+            byEmailReply: entry.by_email_reply
           }
         end),
       availableCommands: row.available_commands,

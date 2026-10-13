@@ -9780,10 +9780,10 @@ components:
       type: object
       description: |
         One console command run on an Intake. `actor` is null once the person
-        who ran it is gone, and for a `confirm` the person made themselves
-        on their Intake page. `note` is the command's note, or the
-        cancellation's reason.
-      required: [command, actor, occurredAt, note, correction]
+        who ran it is gone, for a `confirm` the person made themselves
+        on their Intake page, and for a Reply Action (`byEmailReply`). `note`
+        is the command's note, or the cancellation's reason.
+      required: [command, actor, occurredAt, note, correction, byEmailReply]
       properties:
         command: {$ref: "#/components/schemas/BeginnersWorkshopIntakeHistoryCommand"}
         actor: {type: string, nullable: true}
@@ -9793,6 +9793,11 @@ components:
           allOf: [{$ref: "#/components/schemas/BeginnersWorkshopAttendanceCorrection"}]
           nullable: true
           description: The state a `correct_attendance` corrected the Intake to (null for every other command).
+        byEmailReply:
+          type: boolean
+          description: |
+            ALE-411: the command was a Reply Action, run because the person
+            asked for it by replying to an Intake Email (no staff actor).
     BeginnersWorkshopIntakeCommandRequest:
       type: object
       properties:

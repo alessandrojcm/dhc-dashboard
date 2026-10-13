@@ -79,6 +79,21 @@ config :dhc,
   typesafe_model: "jev-1.13.0",
   typesafe_api_url: "https://api.typesafe.ai"
 
+# ALE-411: Reply Actions, one switch per intent. Every intent is off until
+# the offline eval (ALE-414, `mix dhc.intake_replies.eval`) sets its
+# confidence threshold; there is no shadow mode. `money_back` reads Jev's
+# "asking for their money back?" answer: at or above `yes` is yes, at or
+# below `no` is no, between them unclear (a Deferral on "can't make it",
+# the coordinator on "leaving"). See IntakeReplies.ReplyActions.
+config :dhc, Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions,
+  intents: %{
+    "cant_make_date" => [enabled: false, threshold: 0.9],
+    "leaving_waitlist" => [enabled: false, threshold: 0.9],
+    "wants_refund" => [enabled: false, threshold: 0.9],
+    "link_problem" => [enabled: false, threshold: 0.9]
+  },
+  money_back: [yes: 0.8, no: 0.2]
+
 # Configure Oban for background job processing
 config :dhc, Oban,
   repo: Dhc.Repo,

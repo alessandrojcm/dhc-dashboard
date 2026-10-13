@@ -9,11 +9,13 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
   (`config :dhc, :intake_reply_forward_to`, default
   `contact@dublinhemaclub.com`), with Reply-To set to the reply's original
   From so a coordinator can answer the person directly, a subject tag
-  (`[Needs you]` or `[Unrecognised]`), and the idempotency key
-  `intake-reply-forward:<resend email id>`. A one-line, HTML-escaped banner
-  — who replied, which email they answered, and a link to their workshop's
-  Manage page (or the Waitlist) — sits above the original. It comes in three
-  shapes, from best to barest:
+  saying what happened (ALE-411: `[Done: Declined]` and the other Reply
+  Actions, `[Needs you]`, `[Auto-reply]` or `[Unrecognised]`), and the
+  idempotency key `intake-reply-forward:<resend email id>`. A short,
+  HTML-escaped banner — who replied, which email they answered, what was
+  done or why nothing was, and a link to their workshop's Manage page (or
+  the Waitlist) — sits above the original. It comes in three shapes, from
+  best to barest:
 
     * `rebuilt/3` — the original HTML and text, with every attachment
       re-attached (inline ones keep their `content_id`, so `cid:` images
@@ -50,6 +52,45 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
     "cancelled_unpaid" => "Workshop cancelled — unpaid"
   }
 
+  # ALE-411: each Reply Action's subject tag and banner sentence (staff
+  # copy: the ALE-420 vocabulary).
+  @done %{
+    "decline" => {"Declined", "Done by email reply: their workshop place was declined."},
+    "defer" =>
+      {"Moved to a later workshop",
+       "Done by email reply: their place was moved to a later workshop and their payment kept as workshop credit."},
+    "cancel_with_refund" =>
+      {"Cancelled with refund",
+       "Done by email reply: their place was cancelled and a refund requested."},
+    "withdraw" =>
+      {"Withdrawn",
+       "Done by email reply: they were withdrawn from the Waitlist, with a refund requested for any payment."},
+    "refund_carried_fee" =>
+      {"Credit refunded", "Done by email reply: a refund of their workshop credit was requested."},
+    "resend_link" =>
+      {"Link resent", "Done by email reply: their workshop place link was sent again."}
+  }
+
+  # Why nothing was done, by recorded reason.
+  @needs_you %{
+    "sender_mismatch" =>
+      "Needs you: it came from a different address from the one on the Waitlist, so nothing was done.",
+    "empty_reply" => "Needs you: no new text was found in it, so nothing was done.",
+    "money_unclear" =>
+      "Needs you: it is not clear whether they want their money back, so nothing was done.",
+    "money_not_asked" => "Needs you: they did not ask for their money back, so nothing was done.",
+    "intake_not_open" =>
+      "Needs you: it answers an older email about a place that is no longer open, so nothing was done.",
+    "already_done" => "Needs you: what they asked for had already been done.",
+    "classifier_failed" =>
+      "Needs you: the reply could not be read automatically, so nothing was done.",
+    "classifier_unavailable" =>
+      "Needs you: the reply could not be read automatically, so nothing was done."
+  }
+
+  @needs_you_default "Needs you: nothing was done automatically."
+  @refused "Needs you: the automatic action could not be run, because their record has changed. Nothing was done."
+
   @typedoc """
   Who the reply came from, as the banner names them: `nil` for a reply to an
   address that resolved to nothing.
@@ -61,9 +102,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
         }
 
   @type context :: %{
-          resend_email_id: String.t(),
-          tag: :needs_you | :unrecognised,
-          person: person() | nil
+          required(:resend_email_id) => String.t(),
+          required(:tag) => {:done, String.t()} | :needs_you | :automated | :unrecognised,
+          optional(:reason) => String.t() | nil,
+          optional(:refused) => boolean(),
+          required(:person) => person() | nil
         }
 
   @type note :: :too_large | :unavailable
@@ -78,8 +121,14 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
 
   @doc "The forward's subject tag."
   @spec tag(context()) :: String.t()
+  def tag(%{tag: {:done, command}}), do: "[Done: #{@done |> Map.fetch!(command) |> elem(0)}]"
   def tag(%{tag: :needs_you}), do: "[Needs you]"
+  def tag(%{tag: :automated}), do: "[Auto-reply]"
   def tag(%{tag: :unrecognised}), do: "[Unrecognised]"
+
+  @doc "The Reply Actions a forward can report as done."
+  @spec done_commands() :: [String.t()]
+  def done_commands, do: Map.keys(@done)
 
   @doc """
   The size the rebuilt forward would have: its bodies plus every attachment
@@ -199,10 +248,26 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
       {"This reply was sent to a reply address that matches nobody, for example " <>
          "because the person has since been deleted.", nil, note}
 
-  defp banner(%{person: person}, note) do
+  defp banner(%{person: person} = context, note) do
     label = Map.get(@email_labels, person.email_type, person.email_type)
 
-    {"Reply from #{person.name} to the “#{label}” email.", link(person), note}
+    {"Reply from #{person.name} to the “#{label}” email. " <> outcome(context), link(person),
+     note}
+  end
+
+  defp outcome(%{tag: {:done, command}}), do: @done |> Map.fetch!(command) |> elem(1)
+
+  defp outcome(%{tag: :automated}),
+    do: "It looks like an automatic reply, such as an out-of-office, so nothing was done."
+
+  defp outcome(%{tag: :needs_you} = context) do
+    reason = Map.get(context, :reason)
+
+    cond do
+      Map.has_key?(@needs_you, reason) -> Map.fetch!(@needs_you, reason)
+      Map.get(context, :refused, false) -> @refused
+      true -> @needs_you_default
+    end
   end
 
   defp link(%{workshop_id: nil}),

@@ -627,10 +627,12 @@ function historyLabel(command: BeginnersWorkshopIntakeHistoryCommand): string {
 export function historyLine(
 	entry: BeginnersWorkshopIntakeHistoryEntry,
 ): string {
-	// A confirm without an actor is the person's own, from their Intake page.
-	const actor =
-		entry.actor ??
-		(entry.command === "confirm" ? "by the person" : "a former member");
+	// ALE-411: a Reply Action was asked for by email and names no one. A
+	// confirm without an actor is the person's own, from their Intake page.
+	const actor = entry.byEmailReply
+		? "by email reply"
+		: (entry.actor ??
+			(entry.command === "confirm" ? "by the person" : "a former member"));
 	return [
 		entry.correction
 			? ATTENDANCE_CORRECTION_COPY[entry.correction].history

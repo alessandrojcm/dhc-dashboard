@@ -131,7 +131,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplyForwardTest do
       assert %{filename: "logo.png", type: :inline, cid: "img001", data: "png-bytes"} = inline
       assert %{filename: "letter.pdf", type: :attachment, data: "pdf-bytes"} = file
 
-      assert %IntakeReply{outcome: "needs_you", outcome_reason: "reply_actions_off"} =
+      assert %IntakeReply{outcome: "needs_you", outcome_reason: "sender_mismatch"} =
                row = reply(id)
 
       assert %DateTime{} = row.forwarded_at

@@ -15,6 +15,15 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
   removes the standing (`IntakePolicy.check(:withdraw, _)` with no Intake).
   A held Carried Fee needs the refund-or-forfeit choice either way.
 
+  ## Reply Actions (ALE-411)
+
+  The person intents of an Intake Reply run exactly these Waitlist-tab
+  commands as `{:intake_reply, intake_reply_id}`: `{:withdraw, waitlist_id,
+  %{refund: true}}` (a Reply Action never forfeits; `Commands` refuses a
+  withdrawal without the refund) and `{:refund_carried_fee, waitlist_id,
+  %{}}`. They have no Principal (a refund's `requested_by` is `nil`), and an
+  open Intake's history row names the reply.
+
   ## Carried Fees (ALE-388, ALE-389)
 
   `import_carried_fee` (`:system`) creates a `held` Carried Fee from the
@@ -145,6 +154,17 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
   # ALE-387: the Waitlist tab's withdraw names the person, not an Intake.
   def run({:staff, principal_id}, {:withdraw, waitlist_id, attrs}, clock) when is_map(attrs),
     do: withdraw_person(principal_id, waitlist_id, attrs, clock)
+
+  # ALE-411: the person intents of a Reply Action — leaving (always with
+  # its refund, which `Commands` checks) and refunding a held Carried Fee —
+  # run exactly the Waitlist tab's commands, whichever email was answered.
+  def run({:intake_reply, _id} = actor, {:withdraw, waitlist_id, attrs}, clock)
+      when is_map(attrs),
+      do: withdraw_person(actor, waitlist_id, attrs, clock)
+
+  def run({:intake_reply, _id} = actor, {:refund_carried_fee, waitlist_id, attrs}, clock)
+      when is_map(attrs),
+      do: refund_person_fee(actor, waitlist_id, attrs, clock)
 
   def run(_actor, _command, _clock), do: {:error, :unknown_command}
 

@@ -21,8 +21,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
   and its attachments through `Dhc.Resend.Receiving`, sends under the key
   `intake-reply-forward:<resend email id>` and records the forward's sent id
   and time, so a retried job never sends a second forward. Every recognised
-  reply is `[Needs you]` until Reply Actions exist (ALE-411); a reply to an
-  address that resolves to nothing is `[Unrecognised]`. On the job's last
+  reply is first decided (`IntakeReplies.Decision`, ALE-411): a Reply Action
+  that ran is `[Done: …]`, an auto-reply `[Auto-reply]`, a reply to an
+  address that resolves to nothing `[Unrecognised]`, and everything else
+  `[Needs you]`. On the job's last
   attempt a reply that still cannot be read is forwarded as the banner alone,
   and a forward that cannot be sent at all raises a keyed coordinator alert
   (`{:alert_reply_waiting, resend_email_id}`) saying a reply is waiting in
@@ -38,7 +40,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
 
   alias Dhc.BeginnersWorkshops
   alias Dhc.BeginnersWorkshops.{IntakeReply, IntakeReplyAddress}
-  alias Dhc.BeginnersWorkshops.IntakeReplies.Forward
+  alias Dhc.BeginnersWorkshops.IntakeReplies.{Decision, Forward}
   alias Dhc.BeginnersWorkshops.Workers.ReplyWorker
   alias Dhc.Email.Mailer
   alias Dhc.Repo
@@ -191,12 +193,15 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
   # ── Forwarding (ALE-409) ────────────────────────────────────────
 
   @doc """
-  Forwards the recorded reply once. Options:
+  Decides the recorded reply's Reply Action (`IntakeReplies.Decision`,
+  ALE-411), then forwards it once, tagged with what happened. Options:
 
     * `:final` — this is the job's last attempt: a reply that cannot be read
-      is forwarded as the banner alone, and a forward that cannot be sent
-      raises the coordinator alert instead of failing;
-    * `:max_bytes` — the size limit (default Resend's 40 MB).
+      is forwarded as the banner alone (`[Needs you]`), a classifier that
+      still fails is `[Needs you]`, and a forward that cannot be sent raises
+      the coordinator alert instead of failing;
+    * `:max_bytes` — the size limit (default Resend's 40 MB);
+    * `:clock` — the boundary clock a Reply Action runs with.
 
   Returns `{:error, reason}` only when another attempt should try again.
   """
@@ -214,13 +219,31 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
         {:ok, :already_forwarded}
 
       %IntakeReply{} = reply ->
-        context = context(reply)
+        forward_reply(reply, opts, max_bytes, final?)
+    end
+  end
 
-        case build(context, max_bytes) do
-          {:ok, email} -> send_forward(reply, context, email, final?)
-          {:error, reason} when final? -> forward_unreadable(reply, context, reason)
-          {:error, _reason} = error -> error
-        end
+  defp forward_reply(reply, opts, max_bytes, final?) do
+    case Receiving.get_email(reply.resend_email_id) do
+      {:ok, received} ->
+        with {:ok, reply} <- Decision.decide(reply, received, opts),
+             do: forward_received(reply, received, max_bytes, final?)
+
+      {:error, reason} when final? ->
+        reply |> Decision.unread() |> forward_unreadable(reason)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp forward_received(reply, received, max_bytes, final?) do
+    context = context(reply)
+
+    case build(context, received, max_bytes) do
+      {:ok, email} -> send_forward(reply, context, email, final?)
+      {:error, reason} when final? -> forward_unreadable(reply, reason)
+      {:error, _reason} = error -> error
     end
   end
 
@@ -228,18 +251,21 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
     Repo.one(
       from(reply in IntakeReply,
         where: reply.resend_email_id == ^resend_email_id,
-        preload: [reply_address: :intake]
+        preload: [reply_address: [:intake, :waitlist_entry]]
       )
     )
   end
 
+  # The forward's tag follows the recorded outcome.
   defp context(%IntakeReply{resend_email_id: id, reply_address: nil}),
-    do: %{resend_email_id: id, tag: :unrecognised, person: nil}
+    do: %{resend_email_id: id, tag: :unrecognised, reason: "unknown_address", person: nil}
 
-  defp context(%IntakeReply{resend_email_id: id, reply_address: binding}) do
+  defp context(%IntakeReply{resend_email_id: id, reply_address: binding} = reply) do
     %{
       resend_email_id: id,
-      tag: :needs_you,
+      tag: tag(reply),
+      reason: reply.outcome_reason,
+      refused: reply.outcome == "refused",
       person: %{
         name: person_name(binding.waitlist_id),
         email_type: binding.email_type,
@@ -267,14 +293,19 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
     end
   end
 
+  defp tag(%IntakeReply{outcome: "done", command: command}) when is_binary(command),
+    do: {:done, command}
+
+  defp tag(%IntakeReply{outcome: "automated"}), do: :automated
+  defp tag(%IntakeReply{outcome: "unrecognised"}), do: :unrecognised
+  defp tag(%IntakeReply{}), do: :needs_you
+
   # The best forward that fits: rebuilt, else the original as `.eml`, else
   # the banner alone when even the original is too large.
-  defp build(context, max_bytes) do
-    with {:ok, received} <- Receiving.get_email(context.resend_email_id) do
-      case rebuild(context, received, max_bytes) do
-        {:ok, email} -> {:ok, email}
-        {:error, _cannot_rebuild} -> with_original(context, received, max_bytes)
-      end
+  defp build(context, received, max_bytes) do
+    case rebuild(context, received, max_bytes) do
+      {:ok, email} -> {:ok, email}
+      {:error, _cannot_rebuild} -> with_original(context, received, max_bytes)
     end
   end
 
@@ -317,21 +348,20 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
   defp fits(bytes, max_bytes) when bytes <= max_bytes, do: :ok
   defp fits(_bytes, _max_bytes), do: {:error, :too_large}
 
-  defp forward_unreadable(reply, context, reason) do
+  defp forward_unreadable(reply, reason) do
     Logger.warning("[intake-replies] Reply could not be read; forwarding the banner alone",
       resend_email_id: reply.resend_email_id,
       reason: inspect(reason)
     )
 
-    send_forward(reply, context, Forward.banner_only(context, nil, :unavailable), true,
-      reason: "retries_exhausted"
-    )
+    context = context(reply)
+    send_forward(reply, context, Forward.banner_only(context, nil, :unavailable), true)
   end
 
-  defp send_forward(reply, context, email, final?, opts \\ []) do
+  defp send_forward(reply, _context, email, final?) do
     case deliver(email) do
       {:ok, sent_id} ->
-        record_forward(reply, context, sent_id, Keyword.get(opts, :reason))
+        record_forward(reply, sent_id)
         {:ok, :forwarded}
 
       {:error, reason} when final? ->
@@ -359,18 +389,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
     end
   end
 
-  defp record_forward(reply, context, sent_id, reason) do
-    {outcome, default_reason} =
-      case context.tag do
-        :unrecognised -> {"unrecognised", "unknown_address"}
-        # Reply Actions are not available yet (ALE-411).
-        :needs_you -> {"needs_you", "reply_actions_off"}
-      end
-
-    set_outcome(reply, outcome, reason || default_reason,
-      forward_sent_id: sent_id,
-      forwarded_at: DateTime.utc_now()
-    )
+  defp record_forward(reply, sent_id) do
+    set_forward(reply, forward_sent_id: sent_id, forwarded_at: DateTime.utc_now())
   end
 
   defp alert(reply, reason) do
@@ -381,7 +401,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
 
     case BeginnersWorkshops.execute(:system, {:alert_reply_waiting, reply.resend_email_id}) do
       {:ok, _outcome} ->
-        set_outcome(reply, "needs_you", "forward_failed", [])
+        # The decided outcome (and any Reply Action) stands; the reason now
+        # says the forward is the coordinators' to find in Resend.
+        set_forward(reply, outcome_reason: "forward_failed")
         {:ok, :alerted}
 
       {:error, _reason} = error ->
@@ -389,10 +411,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
     end
   end
 
-  defp set_outcome(reply, outcome, reason, changes) do
+  defp set_forward(reply, changes) do
     Repo.update_all(
       from(r in IntakeReply, where: r.id == ^reply.id and is_nil(r.forwarded_at)),
-      set: [outcome: outcome, outcome_reason: reason, updated_at: DateTime.utc_now()] ++ changes
+      set: changes ++ [updated_at: DateTime.utc_now()]
     )
   end
 

@@ -794,6 +794,7 @@ function commandsView(): BeginnersWorkshopConsole {
 							occurredAt: "2026-10-22T11:00:00Z",
 							note: "Forwarded the email to a friend",
 							correction: null,
+							byEmailReply: false,
 						},
 					],
 				},
@@ -933,6 +934,7 @@ test("ALE-393: the finalised roster offers the corrections Phoenix allows", asyn
 								occurredAt: "2026-11-16T11:00:00Z",
 								note: "Door mix-up",
 								correction: "no_show",
+								byEmailReply: false,
 							},
 						],
 					},
@@ -1170,6 +1172,7 @@ test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
 				correction: null,
+				byEmailReply: false,
 			},
 		],
 	};

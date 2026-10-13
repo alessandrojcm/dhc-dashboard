@@ -1,7 +1,8 @@
 defmodule Dhc.BeginnersWorkshops.Commands.IntakeHistory do
   @moduledoc """
   The Intake history (`IntakeEvent`): one row per command that acted on an
-  Intake — command, actor, time, optional note, a correction's target — in
+  Intake — command, actor (a Principal, or an Intake Reply for a Reply
+  Action, ALE-411), time, optional note, a correction's target — in
   the command's transaction (ALE-386, ALE-405), and the note bound every
   history note shares.
 
@@ -33,6 +34,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeHistory do
       actor_principal_id: actor,
       note: note,
       correction: Map.get(options, :to),
+      intake_reply_id: Map.get(context, :intake_reply_id),
       occurred_at: reading.now
     }
     |> IntakeEvent.changeset()

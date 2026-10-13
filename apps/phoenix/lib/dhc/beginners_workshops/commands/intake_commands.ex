@@ -58,6 +58,16 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
       or, with none, only removes the standing. A Carried-Fee-paid Intake
       refunds or forfeits its Carried Fee instead (ALE-389).
 
+  ## Reply Actions (ALE-411)
+
+  `{:intake_reply, intake_reply_id}` runs `decline`, `defer`,
+  `cancel_with_refund` and `resend_link` on the Intake an answered email
+  was about, through the same `intake_command/6` and `IntakePolicy.check/2`
+  as the console; `Commands` limits it to those (and the person-level
+  `withdraw`/`refund_carried_fee`, `Commands.People`). Its context has no
+  Principal (`actor: nil`) and carries `intake_reply_id`, which the history
+  row records, so the console shows it as done "by email reply".
+
   ## Carried Fees (ALE-388)
 
   A Carried Fee is a prepaid seat owned by the person (`CarriedFee`); a
@@ -201,6 +211,12 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
       when command in @intake_commands and is_map(attrs),
       do: intake_command(command, principal_id, workshop_id, intake_id, attrs, clock)
 
+  # ALE-411: a Reply Action on the Intake the reply was about. `Commands`
+  # has already limited the actor to its Reply Action commands.
+  def run({:intake_reply, _id} = actor, {command, workshop_id, intake_id, attrs}, clock)
+      when command in @intake_commands and is_map(attrs),
+      do: intake_command(command, actor, workshop_id, intake_id, attrs, clock)
+
   def run(_actor, _command, _clock), do: {:error, :unknown_command}
 
   # ── Console Intake commands (ALE-386) ───────────────────────────
@@ -223,14 +239,19 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
   end
 
   # Who runs the command, their optional note, and the command's own
-  # options, all checked before any lock.
+  # options, all checked before any lock. `by` is the Principal's id (`nil`
+  # for the person themself) or, for a Reply Action (ALE-411),
+  # `{:intake_reply, id}`: no Principal, and the history row names the reply.
   @doc false
-  def intake_command_context(command, principal_id, attrs) do
+  def intake_command_context(command, by, attrs) do
     with {:ok, note} <- command_note(attrs),
          {:ok, options} <- command_options(command, attrs) do
-      {:ok, %{actor: principal_id, note: note, options: options}}
+      {:ok, Map.merge(%{note: note, options: options}, by(by))}
     end
   end
+
+  defp by({:intake_reply, reply_id}), do: %{actor: nil, intake_reply_id: reply_id}
+  defp by(principal_id), do: %{actor: principal_id, intake_reply_id: nil}
 
   # `withdraw` (ALE-387) takes the refund-or-forfeit choice: absent, or a
   # boolean. Whether it is *required* depends on the locked Intake.
