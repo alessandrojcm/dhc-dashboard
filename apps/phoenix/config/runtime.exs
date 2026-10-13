@@ -62,6 +62,7 @@ end
 
 config :dhc, DhcWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 config :dhc, :intake_reply_domain, System.get_env("INTAKE_REPLY_DOMAIN")
+config :dhc, :typesafe_api_key, System.get_env("TYPESAFE_API_KEY")
 
 config :dhc,
        :intake_reply_forward_to,

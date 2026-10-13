@@ -90,6 +90,14 @@ config :dhc, :resend_req_options, plug: {Req.Test, Dhc.Resend}
 config :dhc, :resend_receiving_api_key, "re_test_receiving_key"
 config :dhc, :resend_webhook_secret, "whsec_" <> Base.encode64("resend-webhook-test-secret")
 
+# Jev classifier tests stub the TypeSafe endpoint and set retry_delay to zero
+# so the retry policy can be asserted without sleeping.
+config :dhc, :typesafe_req_options,
+  plug: {Req.Test, Dhc.TypeSafe},
+  retry_delay: fn _retry_count -> 0 end
+
+config :dhc, :typesafe_api_key, "typesafe-test-key"
+
 config :dhc,
        :invitation_acceptance_subject_fingerprint_secret,
        "acceptance-subject-fingerprint-test"

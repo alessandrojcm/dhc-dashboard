@@ -73,6 +73,12 @@ config :dhc, :intake_reply_domain, nil
 config :dhc, :intake_reply_forward_to, "contact@dublinhemaclub.com"
 config :dhc, :resend_api_url, "https://api.resend.com"
 
+# ALE-410: pin evaluation to a concrete Jev release so measured confidence
+# thresholds do not silently drift when the provider updates its aliases.
+config :dhc,
+  typesafe_model: "jev-1.13.0",
+  typesafe_api_url: "https://api.typesafe.ai"
+
 # Configure Oban for background job processing
 config :dhc, Oban,
   repo: Dhc.Repo,
@@ -332,6 +338,14 @@ config :oapi_generator,
       base_module: Dhc.Stripe,
       location: "lib/dhc/stripe/generated",
       default_client: Dhc.Stripe.Client,
+      field_casing: :snake
+    ]
+  ],
+  typesafe: [
+    output: [
+      base_module: Dhc.TypeSafe,
+      location: "lib/dhc/typesafe/generated",
+      default_client: Dhc.TypeSafe.Client,
       field_casing: :snake
     ]
   ]

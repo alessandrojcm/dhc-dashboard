@@ -235,6 +235,36 @@ bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv", dry_run: 
 bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv")'
 ```
 
+### Intake Reply classifier eval (ALE-410)
+
+The classifier eval consumes a hand-labelled CSV/TSV export with columns
+`email type answered`, `reply as pasted`, `intent`, and `money back yes/no`.
+Quoted reply cells may span multiple lines. Set `TYPESAFE_API_KEY`, keep the
+export under the ignored `apps/phoenix/priv/intake_reply_eval/` directory, and
+run:
+
+```bash
+cd apps/phoenix
+TYPESAFE_API_KEY=... mix dhc.intake_replies.eval priv/intake_reply_eval/labelled.csv
+```
+
+It prints aggregate per-intent counts and threshold results (0.50–0.95),
+money-back agreement, and recommendations only. It never prints or stores the
+reply text. The request uses the committed concrete Jev model ID, not a moving
+alias; tests stub TypeSafe with `Req.Test`.
+
+Regenerate the typed TypeSafe operation and schemas from the official OpenAPI
+description with:
+
+```bash
+cd apps/phoenix
+mise exec -- mix typesafe.gen
+```
+
+This downloads `https://api.typesafe.ai/openapi.json`; generated modules are
+tracked under `lib/dhc/typesafe/generated/`. Keep the Req transport policy in
+`Dhc.TypeSafe.Client`, not in generated output.
+
 # Code quality
 mise run phx-format         # Format all Elixir files
 mise run phx-format-check   # Check formatting (CI)
