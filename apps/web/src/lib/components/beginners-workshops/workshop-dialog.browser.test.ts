@@ -61,15 +61,15 @@ for (const dark of [false, true]) {
 			await expect
 				.poll(() => element.getBoundingClientRect().top)
 				.toBeGreaterThanOrEqual(0);
-			await expect
-				.poll(() => element.getAnimations().length)
-				.toBe(0);
+			await expect.poll(() => element.getAnimations().length).toBe(0);
 			const box = element.getBoundingClientRect();
 			if (viewport.width < 640) {
 				expect(box.left).toBe(0);
 				expect(box.width).toBe(viewport.width);
 				expect(box.bottom).toBe(viewport.height);
-				expect(getComputedStyle(element).animationName).toBe("workshop-sheet-in");
+				expect(getComputedStyle(element).animationName).toBe(
+					"workshop-sheet-in",
+				);
 			} else {
 				expect(box.left).toBeGreaterThan(0);
 				expect(box.bottom).toBeLessThan(viewport.height);
