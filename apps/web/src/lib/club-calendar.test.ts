@@ -4,6 +4,7 @@ import {
 	civilCalendarDate,
 	civilDateTile,
 	civilIsoDate,
+	dublinInstant,
 	dublinInstantTile,
 	dublinToday,
 	dublinTodayCalendarDate,
@@ -120,6 +121,69 @@ describe("club event instants on the Dublin clock", () => {
 	});
 });
 
+describe("a Dublin date and time as an instant", () => {
+	it("reads the time on the Dublin clock in winter and summer", () => {
+		expect(dublinInstant("2026-01-14", "18:30")).toBe(
+			"2026-01-14T18:30:00.000Z",
+		);
+		expect(dublinInstant("2026-10-20", "18:30")).toBe(
+			"2026-10-20T17:30:00.000Z",
+		);
+		// Seconds, as a `type="time"` input with a step may send them.
+		expect(dublinInstant("2026-10-20", "18:30:00")).toBe(
+			"2026-10-20T17:30:00.000Z",
+		);
+		// 00:30 IST is still the previous UTC day.
+		expect(dublinInstant("2026-07-15", "00:30")).toBe(
+			"2026-07-14T23:30:00.000Z",
+		);
+	});
+
+	it("moves a time the March change skips forward", () => {
+		expect(dublinInstant("2026-03-29", "00:59")).toBe(
+			"2026-03-29T00:59:00.000Z",
+		);
+		// 01:00–01:59 never happens in Dublin that night; 01:30 becomes 02:30 IST.
+		expect(dublinInstant("2026-03-29", "01:30")).toBe(
+			"2026-03-29T01:30:00.000Z",
+		);
+		expect(dublinInstant("2026-03-29", "02:30")).toBe(
+			"2026-03-29T01:30:00.000Z",
+		);
+	});
+
+	it("takes the earlier, summer reading of a time the October change repeats", () => {
+		// 01:30 happens at 00:30 UTC (IST) and again at 01:30 UTC (GMT).
+		expect(dublinInstant("2026-10-25", "01:30")).toBe(
+			"2026-10-25T00:30:00.000Z",
+		);
+		expect(dublinInstant("2026-10-25", "02:00")).toBe(
+			"2026-10-25T02:00:00.000Z",
+		);
+	});
+
+	it("is the inverse of the Dublin wall clock", () => {
+		for (const iso of [
+			"2026-01-14T18:30:00.000Z",
+			"2026-07-14T23:30:00.000Z",
+			"2026-10-25T01:30:00.000Z",
+			"2026-03-29T01:00:00.000Z",
+		]) {
+			const [date, time] = dublinWallClock(iso).split(" ");
+			const back = dublinInstant(date, time);
+			// The repeated October hour reads back as its summer instant.
+			expect(dublinWallClock(back ?? "")).toBe(dublinWallClock(iso));
+		}
+	});
+
+	it("leaves an empty or unreadable date or time unset instead of throwing", () => {
+		expect(dublinInstant("", "18:30")).toBeUndefined();
+		expect(dublinInstant("2026-10-20", "")).toBeUndefined();
+		expect(dublinInstant("2026-02-30", "18:30")).toBeUndefined();
+		expect(dublinInstant("2026-10-20", "25:00")).toBeUndefined();
+	});
+});
+
 describe("civil dates", () => {
 	it("words a civil date as given", () => {
 		expect(formatCivilDate("2026-11-14")).toBe("Sat 14 Nov 2026");
@@ -198,5 +262,11 @@ describe("on a host west of Dublin", () => {
 			month: "Jul",
 		});
 		expect(dublinWallClock("2026-10-25T09:00:00Z")).toBe("2026-10-25 09:00");
+	});
+
+	it("still reads a date and time entered as Dublin's", () => {
+		expect(dublinInstant("2026-10-20", "18:30")).toBe(
+			"2026-10-20T17:30:00.000Z",
+		);
 	});
 });

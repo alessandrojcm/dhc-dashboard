@@ -1,7 +1,15 @@
 import * as v from "valibot";
-import dayjs from "dayjs";
+import { dublinToday } from "#lib/club-calendar.js";
 
-const isToday = (date: Date) => dayjs(date).isSame(dayjs(), "day");
+/**
+ * Whether a workshop starting at `start` would start on Dublin's today, as
+ * read at `now`. Both sides are Dublin days, so the check holds between
+ * midnight and 01:00 in Irish Summer Time, when the UTC date is still
+ * yesterday's.
+ */
+export function startsDublinToday(start: Date, now: Date = new Date()) {
+	return dublinToday(start) === dublinToday(now);
+}
 
 export const BaseWorkshopSchema = v.object({
 	title: v.pipe(
@@ -13,7 +21,10 @@ export const BaseWorkshopSchema = v.object({
 	location: v.pipe(v.string(), v.minLength(1, "Location is required")),
 	workshop_date: v.pipe(
 		v.date(),
-		v.check((date) => !isToday(date), "Workshop cannot be scheduled for today"),
+		v.check(
+			(date) => !startsDublinToday(date),
+			"Workshop cannot be scheduled for today",
+		),
 	),
 	workshop_end_date: v.date(),
 	max_capacity: v.pipe(
@@ -38,7 +49,7 @@ export const CreateWorkshopSchema = v.pipe(
 		v.partialCheck(
 			[["workshop_date"], ["workshop_end_date"]],
 			({ workshop_date, workshop_end_date }) =>
-				dayjs(workshop_end_date).isAfter(dayjs(workshop_date)),
+				workshop_end_date.getTime() > workshop_date.getTime(),
 			"End time cannot be before start time",
 		),
 		["workshop_end_date"],

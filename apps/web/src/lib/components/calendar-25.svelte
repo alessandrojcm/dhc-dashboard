@@ -5,7 +5,7 @@ import * as Popover from "#lib/components/ui/popover/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import { Calendar } from "#lib/components/ui/calendar/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
-import { getLocalTimeZone } from "@internationalized/date";
+import { civilIsoDate, formatCivilDate } from "#lib/club-calendar.js";
 import { ChevronDownIcon } from "@lucide/svelte";
 import { onMount } from "svelte";
 
@@ -62,9 +62,7 @@ function handleDateChange(newDate: CalendarDate | undefined) {
 						id="{id}-date"
 						{disabled}
 					>
-						{date
-							? date.toDate(getLocalTimeZone()).toLocaleDateString()
-							: "Select date"}
+						{date ? formatCivilDate(civilIsoDate(date)) : "Select date"}
 						<ChevronDownIcon />
 					</Button>
 				{/snippet}

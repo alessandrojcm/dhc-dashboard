@@ -12,26 +12,26 @@ import { apiClientOptions } from "#lib/server/api-client.js";
 import {
 	CreateWorkshopRemoteSchema,
 	UpdateWorkshopRemoteSchema,
+	startsDublinToday,
 } from "#lib/schemas/workshop.js";
-import dayjs from "dayjs";
 
 export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
 	await authorize(event.locals, "workshops.manage");
 
 	// Cross-field validations
-	const startDate = dayjs(data.workshop_date);
-	const endDate = dayjs(data.workshop_end_date);
+	const startDate = new Date(data.workshop_date);
+	const endDate = new Date(data.workshop_end_date);
 
-	if (startDate.isSame(dayjs(), "day")) {
+	if (startsDublinToday(startDate)) {
 		throw new Error("Workshop cannot be scheduled for today");
 	}
 
-	if (!endDate.isAfter(startDate)) {
+	if (!(endDate.getTime() > startDate.getTime())) {
 		throw new Error("End time cannot be before start time");
 	}
 
-	// Transform string dates to ISO strings and prices to cents
+	// Normalise the submitted instants to ISO strings and prices to cents
 	const startDateTime = startDate.toISOString();
 	const endDateTime = endDate.toISOString();
 
@@ -105,10 +105,10 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 		// silently drops a midnight rollover whenever the Workshop crosses days,
 		// producing an end_date before start_date.
 		startDate: data.workshop_date
-			? dayjs(data.workshop_date).toISOString()
+			? new Date(data.workshop_date).toISOString()
 			: undefined,
 		endDate: data.workshop_end_date
-			? dayjs(data.workshop_end_date).toISOString()
+			? new Date(data.workshop_end_date).toISOString()
 			: undefined,
 		maxCapacity: data.max_capacity,
 		isPublic: data.is_public,
