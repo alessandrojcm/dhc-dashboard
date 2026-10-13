@@ -553,6 +553,70 @@ describe("createItemWorkbench", () => {
 			},
 		);
 
+		// The E2E race: a note typed in another tab while a command was still
+		// running survived only until that command's success replaced every
+		// draft, which left "Start maintenance" disabled.
+		it("keeps a note typed while another command ran, and clears it once its own command succeeds", async () => {
+			const h = await managing();
+			h.workbench.drafts!.containerId = CUPBOARD;
+			h.workbench.drafts!.maintenanceReason = "Inspect strap";
+			h.workbench.drafts!.archiveReason = "Retired";
+
+			await h.workbench.enhance.move(
+				submission({ ok: true, data: item({ containerId: CUPBOARD }) }),
+			);
+			expect(h.workbench.drafts).toMatchObject({
+				containerId: CUPBOARD,
+				maintenanceReason: "Inspect strap",
+				archiveReason: "Retired",
+			});
+			expect(h.workbench.dirty.placement).toBe(false);
+
+			await h.workbench.enhance.startMaintenance(
+				submission({
+					ok: true,
+					data: item({
+						containerId: CUPBOARD,
+						availability: { available: false, status: "maintenance" },
+					}),
+				}),
+			);
+			expect(h.workbench.drafts).toMatchObject({
+				maintenanceReason: "",
+				archiveReason: "Retired",
+			});
+		});
+
+		it("keeps another form's unsaved edit unless the answer changed what it edits", async () => {
+			const h = await managing();
+			h.workbench.drafts!.notes = "Sharpened";
+
+			await h.workbench.enhance.move(
+				submission({ ok: true, data: item({ containerId: CUPBOARD }) }),
+			);
+			expect(h.workbench.drafts?.notes).toBe("Sharpened");
+			expect(h.workbench.dirty.details).toBe(true);
+
+			// A new category replaces the properties the details form edits, so
+			// its draft follows the answer.
+			await h.workbench.enhance.changeCategory(
+				submission({
+					ok: true,
+					data: item({ containerId: CUPBOARD, categoryId: MASKS, values: [] }),
+				}),
+			);
+			expect(h.workbench.drafts).toMatchObject({
+				notes: "Training loaner",
+				values: {},
+				categoryId: MASKS,
+			});
+			expect(h.workbench.dirty).toEqual({
+				details: false,
+				placement: false,
+				category: false,
+			});
+		});
+
 		it("adds an item, then opens it once the button has flashed", async () => {
 			const h = harness({
 				path: `${LIST}/new?availability=on_loan`,
