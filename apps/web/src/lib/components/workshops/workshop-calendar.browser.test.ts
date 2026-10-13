@@ -70,13 +70,12 @@ test("places a Workshop on its Dublin day and time", async () => {
 	const steps = monthIndex("October 2026") - monthIndex(calendarTitle());
 	for (let step = 0; step < Math.abs(steps); step += 1) {
 		const before = calendarTitle();
-		// The arrows have no accessible name (the shared calendar options
-		// replace `buttonText`), so find them by event-calendar's own classes.
-		document
-			.querySelector<HTMLButtonElement>(
-				steps > 0 ? "button.ec-next" : "button.ec-prev",
-			)
-			?.click();
+		await screen
+			.getByRole("button", {
+				name: steps > 0 ? "Next month" : "Previous month",
+				exact: true,
+			})
+			.click();
 		await expect.poll(calendarTitle).not.toBe(before);
 	}
 	expect(calendarTitle()).toBe("October 2026");
