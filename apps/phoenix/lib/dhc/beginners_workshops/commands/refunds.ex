@@ -108,6 +108,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Refunds do
   }
 
   alias Dhc.BeginnersWorkshops.Commands
+  alias Dhc.BeginnersWorkshops.Commands.NotificationCopy
 
   alias Dhc.BeginnersWorkshops.Commands.{
     Payments
@@ -527,31 +528,18 @@ defmodule Dhc.BeginnersWorkshops.Commands.Refunds do
   # (the money is still owed back, so there is nothing to forfeit).
   defp notify_if_failed(%IntakeRefund{status: "failed"} = refund, fee) do
     %{first_name: first_name, date: date} = refund_person(refund)
-    workshop = if date, do: " for the Beginners' Workshop on #{Values.date(date)}", else: ""
 
     follow_up =
       case {refund.carried_fee_id, fee} do
-        {nil, _fee} ->
-          "Retry it or record a manual refund from the workshop console."
-
-        {_fee_id, %CarriedFee{status: "held"}} ->
-          "It was a Carried Fee refund, so the fee is held again: retry it, record a manual " <>
-            "refund or forfeit the fee from the workshop console or the Waitlist."
-
-        {_fee_id, %CarriedFee{status: "refunded"}} ->
-          "It was a Carried Fee refund and the person has since paid or holds another fee, so " <>
-            "the money is still owed back: retry it or record a manual refund from the " <>
-            "workshop console or the Waitlist."
-
-        {_fee_id, _fee} ->
-          "It was a Carried Fee refund: retry it or record a manual refund from the workshop " <>
-            "console or the Waitlist."
+        {nil, _fee} -> nil
+        {_fee_id, %CarriedFee{status: "held"}} -> :credit_held
+        {_fee_id, %CarriedFee{status: "refunded"}} -> :credit_still_owed
+        {_fee_id, _fee} -> :credit
       end
 
     alert(
       "beginners-workshop-refund:#{refund.id}:failed",
-      "A refund of #{Values.refund_amount(refund)} to #{first_name || "an anonymised person"}" <>
-        "#{workshop} failed. " <> follow_up
+      NotificationCopy.refund_failed(Values.refund_amount(refund), first_name, date, follow_up)
     )
   end
 

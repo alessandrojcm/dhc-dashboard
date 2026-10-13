@@ -112,6 +112,7 @@
          "Dhc.BeginnersWorkshops.Commands.IntakeHistory.*",
          "Dhc.BeginnersWorkshops.Commands.IntakeNotices.*",
          "Dhc.BeginnersWorkshops.Commands.LockSpecs.*",
+         "Dhc.BeginnersWorkshops.Commands.NotificationCopy.*",
          "Dhc.BeginnersWorkshops.Commands.WorkshopRules.*"
        ], except: ["Dhc.BeginnersWorkshops.Commands", "Dhc.BeginnersWorkshops.Commands.*"]},
       # ... and the context opens a transaction only through that core.

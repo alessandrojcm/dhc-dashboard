@@ -5,8 +5,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.CoordinatorAlerts do
   transaction and signalled by the caller after commit (ALE-405).
 
   Callers: `Commands.Batches` ("Batch sent", "nobody waiting") and
-  `Commands.Refunds` (a failed refund). Reach lets only `Commands` and
-  `Commands.*` call this module.
+  `Commands.Refunds` (a failed refund); their text comes from
+  `Commands.NotificationCopy`. Reach lets only `Commands` and `Commands.*`
+  call this module.
   """
 
   import Dhc.BeginnersWorkshops.Commands.Protocol, only: [create_keyed: 1]

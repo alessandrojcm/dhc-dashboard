@@ -87,8 +87,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
   }
 
   alias Dhc.BeginnersWorkshops.Commands
+  alias Dhc.BeginnersWorkshops.Commands.NotificationCopy
 
-  alias Dhc.BeginnersWorkshops.IntakeEmails.{Occasion, Values}
+  alias Dhc.BeginnersWorkshops.IntakeEmails.Occasion
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist
@@ -376,16 +377,14 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
   defp notify_batch_sent(workshop, batch) do
     alert(
       "beginners-workshop:#{workshop.id}:batch:#{batch.number}",
-      "Batch #{batch.number} sent for the Beginners' Workshop on #{Values.date(workshop.date)}: " <>
-        "#{batch.size} #{if batch.size == 1, do: "person", else: "people"} contacted."
+      NotificationCopy.batch_sent(workshop.date, batch.number, batch.size)
     )
   end
 
   defp notify_nobody_waiting(workshop) do
     alert(
       "beginners-workshop:#{workshop.id}:nobody-waiting",
-      "The Beginners' Workshop on #{Values.date(workshop.date)} has free seats, " <>
-        "but nobody is left waiting on the Waitlist."
+      NotificationCopy.nobody_waiting(workshop.date)
     )
   end
 end

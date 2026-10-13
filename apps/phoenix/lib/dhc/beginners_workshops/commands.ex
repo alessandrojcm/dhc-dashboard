@@ -82,8 +82,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   functions of the module that owns their concept (each family's moduledoc
   lists the ones it offers and uses) or of the small internal modules
   `Commands.Input`, `Commands.WorkshopRules`, `Commands.LockSpecs`,
-  `Commands.Facts`, `Commands.IntakeHistory`, `Commands.IntakeNotices` and
-  `Commands.CoordinatorAlerts`. Reach lets only `Commands` and `Commands.*`
+  `Commands.Facts`, `Commands.IntakeHistory`, `Commands.IntakeNotices`,
+  `Commands.CoordinatorAlerts` and `Commands.NotificationCopy` (the text of
+  every Notification). Reach lets only `Commands` and `Commands.*`
   call any of them.
   """
 
