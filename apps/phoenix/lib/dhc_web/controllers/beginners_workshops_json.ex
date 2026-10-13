@@ -215,7 +215,7 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       reason: refund.reason,
       failedAt: refund.failed_at,
       carriedFee: refund.carried_fee,
-      forfeitable: refund.forfeitable
+      availableCommands: refund.available_commands
     }
   end
 

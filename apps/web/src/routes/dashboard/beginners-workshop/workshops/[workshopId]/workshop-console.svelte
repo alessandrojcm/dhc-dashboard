@@ -45,7 +45,6 @@ import { toast } from "svelte-sonner";
 import { resolve } from "$app/paths";
 import {
 	consoleTimeline,
-	formatDublinInstant,
 	holdLabel,
 	intakeOrigin,
 	intakeStateLabel,
@@ -62,13 +61,18 @@ import {
 	type TimelineStep,
 	unpaidAfterWindowText,
 } from "#lib/beginners-workshops/console.js";
-import { doorTime } from "#lib/beginners-workshops/door.js";
 import {
 	formatCivilDate,
+	formatDublinInstant,
+	formatDublinTime,
+} from "#lib/club-calendar.js";
+import {
 	formatFee,
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
 import { rescheduleRecipients } from "#lib/beginners-workshops/reschedule.js";
+import { workshopScope } from "#lib/beginners-workshops/refunds/scope.js";
+import FailedRefundFollowUp from "#lib/components/beginners-workshops/refunds/failed-refund-follow-up.svelte";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
 import * as Alert from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
@@ -79,7 +83,6 @@ import { cn } from "#lib/utils.js";
 import InviteButton from "../../invite-button.svelte";
 import SeatMeter from "../../seat-meter.svelte";
 import { pauseBatches, resumeBatches } from "./console.remote";
-import FailedRefundItem from "./failed-refund-item.svelte";
 import FastTrackDialog from "./fast-track-dialog.svelte";
 import IntakeDetail from "./intake-detail.svelte";
 import RescheduleDialog from "./reschedule-dialog.svelte";
@@ -392,7 +395,12 @@ const attentionClass =
 						</div>
 					{/if}
 					{#each view.failedRefunds as refund (refund.id)}
-						<FailedRefundItem workshopId={workshop.id} {refund} />
+						<FailedRefundFollowUp
+							scope={workshopScope(workshop.id)}
+							{refund}
+							availableCommands={refund.availableCommands}
+							name={personName(refund)}
+						/>
 					{/each}
 					{#each view.unpaidAfterWindow as person (person.id)}
 						{@render attentionPerson(
@@ -578,7 +586,7 @@ const attentionClass =
 												variant="outline"
 												class="border-emerald-600 text-emerald-800"
 												data-testid="checked-in"
-												>In {doorTime(intake.checkedInAt)}</Badge
+												>In {formatDublinTime(intake.checkedInAt)}</Badge
 											>{/if}
 										<Badge variant="secondary"
 											>{intakeStateLabel(intake.state)}</Badge

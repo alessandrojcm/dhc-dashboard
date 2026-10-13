@@ -50,6 +50,8 @@ export type CursorTableUrlOptions<
 	};
 	/** Free-form string filters, written under the prefixed key. */
 	filters?: readonly Filter[];
+	/** Page size when the URL names none; defaults to the shared default. */
+	defaultPageSize?: PageSize;
 	/** Search debounce in milliseconds. */
 	debounceMs?: number;
 	/** URL source; defaults to `page.url` from `$app/state`. */
@@ -85,6 +87,8 @@ export type CursorTableUrl<
 	submitSearch(): void;
 	filter(key: Filter): string | null;
 	setFilter(key: Filter, value: string | null): void;
+	/** Writes several filters in one replace (a reset, say). */
+	setFilters(values: Partial<Record<Filter, string | null>>): void;
 	readonly pageSize: PageSize;
 	setPageSize(pageSize: number): void;
 	/** Moves to a page; a missing cursor is ignored. */
@@ -141,7 +145,9 @@ export function createCursorTableUrl<
 	const params = $derived(readUrl().searchParams);
 	const urlSearch = $derived(params.get(keys.q) ?? "");
 	const cursor = $derived(params.get(keys.cursor));
-	const pageSize = $derived(parsePageSize(params, keys.pageSize));
+	const pageSize = $derived(
+		parsePageSize(params, keys.pageSize, options.defaultPageSize),
+	);
 	const sortId = $derived.by(() => {
 		const requested = params.get(keys.sort);
 		return isSortId(requested) ? requested : options.sort.default;
@@ -271,6 +277,15 @@ export function createCursorTableUrl<
 		filter: filterValue,
 		setFilter: (name, value) => {
 			void replaceWith({ [key(name)]: value || null });
+		},
+		setFilters: (values) => {
+			void replaceWith(
+				Object.fromEntries(
+					filters.flatMap((name) =>
+						name in values ? [[key(name), values[name] || null]] : [],
+					),
+				),
+			);
 		},
 		get pageSize() {
 			return pageSize;

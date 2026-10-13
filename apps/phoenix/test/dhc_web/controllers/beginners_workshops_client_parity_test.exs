@@ -7,7 +7,13 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
   """
   use ExUnit.Case, async: true
 
-  alias Dhc.BeginnersWorkshops.{Intake, IntakePolicy, WorkshopPolicy}
+  alias Dhc.BeginnersWorkshops.{
+    CarriedFeePolicy,
+    Intake,
+    IntakePolicy,
+    PersonPolicy,
+    WorkshopPolicy
+  }
 
   @repo_root Path.expand("../../../../..", __DIR__)
   @client_root Path.join(@repo_root, "packages/api-client")
@@ -40,7 +46,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     assert operations |> Enum.map(&elem(&1, 1)["operationId"]) |> Enum.sort() ==
              ~w(beginnersWorkshopAssignments.list beginnersWorkshopBatches.pause
                 beginnersWorkshopBatches.resume beginnersWorkshopCarriedFees.forfeit
-                beginnersWorkshopCarriedFees.index beginnersWorkshopCarriedFees.linkPayment
+                beginnersWorkshopCarriedFees.linkPayment
                 beginnersWorkshopCarriedFees.recordManualRefund beginnersWorkshopCarriedFees.refund
                 beginnersWorkshopCarriedFees.retryRefund beginnersWorkshopCarriedFees.show
                 beginnersWorkshopDoor.checkIn
@@ -56,6 +62,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshopIntakes.rotateLink beginnersWorkshopIntakes.withdraw
                 beginnersWorkshopIntakes.withdrawPerson
                 beginnersWorkshopInvitations.invitable beginnersWorkshopInvitations.invite
+                beginnersWorkshopPeople.index
                 beginnersWorkshopRefunds.forfeit beginnersWorkshopRefunds.recordManual
                 beginnersWorkshopRefunds.retry
                 beginnersWorkshopReport.show
@@ -134,6 +141,19 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     assert schemas["BeginnersWorkshopIntakeHistoryCommand"]["enum"] ==
              Enum.map(IntakePolicy.commands(), &Atom.to_string/1) ++
                ["cancel_workshop", "check_in", "undo_check_in"]
+
+    # ALE-417: the Waitlist tab's person commands.
+    assert schemas["BeginnersWorkshopPersonCommand"]["enum"] ==
+             Enum.map(PersonPolicy.commands(), &Atom.to_string/1)
+
+    # ALE-421: the console's and the Waitlist tab's failed-refund follow-ups.
+    assert schemas["BeginnersWorkshopFailedRefundCommand"]["enum"] ==
+             Enum.map(CarriedFeePolicy.follow_ups(), &Atom.to_string/1)
+
+    assert MapSet.subset?(
+             MapSet.new(schemas["BeginnersWorkshopFailedRefundCommand"]["enum"]),
+             MapSet.new(schemas["BeginnersWorkshopCarriedFeeCommand"]["enum"])
+           )
 
     # ALE-393: the states an attendance correction may name.
     assert schemas["BeginnersWorkshopAttendanceCorrection"]["enum"] ==

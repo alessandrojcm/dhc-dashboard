@@ -143,7 +143,7 @@ test("payment_in_progress refreshes on its own until Phoenix reports paid", asyn
 	);
 });
 
-test("full: seats may free up, so check again", async () => {
+test("full: places may free up, so check again", async () => {
 	const refresh = vi.fn();
 	const screen = await render(IntakePage, {
 		page: page({ state: "full", action: "check_again" }),
@@ -156,7 +156,7 @@ test("full: seats may free up, so check again", async () => {
 			screen.getByRole("heading", { name: "The workshop is full right now" }),
 		)
 		.toBeVisible();
-	await expect.element(screen.getByText(/Seats can free up/)).toBeVisible();
+	await expect.element(screen.getByText(/Places can free up/)).toBeVisible();
 	await screen.getByRole("button", { name: "Check again" }).click();
 	expect(refresh).toHaveBeenCalledOnce();
 });
@@ -244,7 +244,7 @@ test("a Carried Fee holder who finds the workshop full keeps their fee and check
 	});
 
 	await expect
-		.element(screen.getByText(/Your Carried Fee is kept/))
+		.element(screen.getByText(/Your workshop credit is kept/))
 		.toBeVisible();
 	await screen.getByRole("button", { name: "Check again" }).click();
 	expect(refresh).toHaveBeenCalledOnce();
@@ -260,7 +260,7 @@ test("paid by a Carried Fee: confirmed, with no fee shown", async () => {
 		.element(screen.getByRole("heading", { name: "Your place is confirmed" }))
 		.toBeVisible();
 	await expect
-		.element(screen.getByText(/Your Carried Fee covers your place/))
+		.element(screen.getByText(/Your workshop credit covers your place/))
 		.toBeVisible();
 	expect(screen.getByText(/paid$/).elements()).toHaveLength(0);
 	expect(screen.getByRole("button").elements()).toHaveLength(0);

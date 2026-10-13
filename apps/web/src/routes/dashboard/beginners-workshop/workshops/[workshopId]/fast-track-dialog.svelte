@@ -18,7 +18,7 @@ import { Search } from "@lucide/svelte";
 import { createQuery } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
 import { personName } from "#lib/beginners-workshops/console.js";
-import { formatCivilDate } from "#lib/beginners-workshops/presentation.js";
+import { formatCivilDate } from "#lib/club-calendar.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";

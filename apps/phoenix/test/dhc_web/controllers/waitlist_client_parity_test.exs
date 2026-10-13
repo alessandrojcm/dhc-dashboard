@@ -43,6 +43,8 @@ defmodule DhcWeb.WaitlistClientParityTest do
 
     [_, entry] = Regex.run(~r/export type WaitlistEntry = \{(.*?)\n\};/s, types)
     assert entry =~ "removedAt: string | null;"
+    # ALE-417: the row's Restore comes from Phoenix.
+    assert entry =~ "availableCommands: Array<WaitlistEntryCommand>;"
 
     [_, data] = Regex.run(~r/export type WaitlistEntriesData = \{(.*?)\n\};/s, types)
     assert data =~ "status?: 'waiting' | 'removed';"
@@ -80,7 +82,8 @@ defmodule DhcWeb.WaitlistClientParityTest do
     assert types =~ "'beginners.waitlist.manage'"
     refute types =~ "beginners.workshop.read"
 
-    for name <- ~w(WaitlistStatus WaitlistEntry WaitlistEntryUpdateRequest AuthCapability) do
+    for name <-
+          ~w(WaitlistStatus WaitlistEntry WaitlistEntryCommand WaitlistEntryUpdateRequest AuthCapability) do
       assert public =~ ~r/\n\t#{name},\n/, "#{name} is not re-exported from src/index.ts"
     end
   end

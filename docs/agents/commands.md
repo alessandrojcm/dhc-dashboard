@@ -83,6 +83,10 @@ Oxfmt covers `apps/web` and `packages/email-templates`.
 The shared config loads the project-local anti-slop plugin from
 `tools/oxlint/anti-slop/`; keep `oxlint` and `@oxlint/plugins` on the same pinned
 version when upgrading it, and leave all anti-slop rules enabled at error severity.
+Rule tests sit beside their rule as `tools/oxlint/anti-slop/rules/<rule>.test.ts`
+(Oxlint's `RuleTester` from `oxlint/plugins-dev`, wired to Vitest's
+`describe`/`it`) and run in the `apps/web` unit project, whose include reaches
+`../../tools/oxlint/**/*.test.ts`.
 
 Playwright starts its Phoenix and SvelteKit processes through the internal
 `e2e-phoenix-server` and `e2e-web-server` mise tasks. Their task-local environment

@@ -331,7 +331,7 @@ async function finish() {
 					{search.trim()
 						? "No one by that name. No walk-ins."
 						: count.total === 0
-							? "Nobody has a seat yet."
+							? "Nobody has a place yet."
 							: filter === "to_arrive"
 								? "Everyone's in."
 								: "Nobody in yet."}

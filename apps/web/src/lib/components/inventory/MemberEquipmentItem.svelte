@@ -1,9 +1,6 @@
 <script lang="ts">
 import { createQuery } from "@tanstack/svelte-query";
-import {
-	inventoryCatalogShowItemOptions,
-	type InventoryOperatorItemValue,
-} from "@dhc/api-client";
+import { inventoryCatalogShowItemOptions } from "@dhc/api-client";
 import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -19,7 +16,7 @@ import {
 	Package,
 	RefreshCw,
 } from "@lucide/svelte";
-import { parseDate } from "@internationalized/date";
+import { civilCalendarDate } from "#lib/club-calendar.js";
 import {
 	availabilityLabel,
 	createRequestLoan,
@@ -28,6 +25,7 @@ import {
 	REQUEST_FAILED,
 	type RequestLoanFn,
 } from "#lib/inventory/member-loans.svelte.js";
+import { formatPropertyValue } from "#lib/inventory/property-values.js";
 
 let {
 	slug,
@@ -50,8 +48,8 @@ let startsOn = $state(defaults.startsOn);
 let dueOn = $state(defaults.dueOn);
 let note = $state("");
 let requestSent = $state(false);
-const startsOnValue = $derived(parseDate(startsOn));
-const dueOnValue = $derived(parseDate(dueOn));
+const startsOnValue = $derived(civilCalendarDate(startsOn));
+const dueOnValue = $derived(civilCalendarDate(dueOn));
 
 const requestMutation = createRequestLoan(
 	() => slug,
@@ -62,19 +60,6 @@ const requestMutation = createRequestLoan(
 		},
 	}),
 );
-
-function renderValue(value: InventoryOperatorItemValue): string | null {
-	switch (value.valueType) {
-		case "text":
-			return value.text;
-		case "decimal":
-			return value.decimal;
-		case "boolean":
-			return value.boolean === null ? null : value.boolean ? "Yes" : "No";
-		case "single_select":
-			return value.optionLabel;
-	}
-}
 </script>
 
 <svelte:head>
@@ -155,7 +140,7 @@ function renderValue(value: InventoryOperatorItemValue): string | null {
 					</div>
 					<dl class="min-w-0 flex-1 space-y-2">
 						{#each item.values as value (value.definitionId)}
-							{@const rendered = renderValue(value)}
+							{@const rendered = formatPropertyValue(value)}
 							{#if rendered}
 								<div class="flex items-baseline justify-between gap-3 text-sm">
 									<dt class="text-muted-foreground">{value.definitionLabel}</dt>

@@ -6,9 +6,14 @@ defmodule DhcWeb.DiscordDoctorController do
   action_fallback DhcWeb.DiscordDoctorHTTP
 
   def report(conn, params) do
-    case Discord.doctor_report(refresh: params["refresh"] == "true") do
+    principal = conn.assigns.current_session.principal
+
+    case Discord.doctor_report(principal.id, refresh: params["refresh"] == "true") do
       {:ok, report} ->
         render(conn, :report, report: report)
+
+      {:error, :admin_not_found} = error ->
+        error
 
       {:error, _reason} ->
         {:error, :discord_unavailable}

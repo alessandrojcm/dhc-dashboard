@@ -70,6 +70,10 @@ defmodule DhcWeb.Problem do
 
       @problem_config DhcWeb.Problem.config(opts)
 
+      @doc false
+      # The reason table and field mapping, for tests that walk a family's copy.
+      def problem_config, do: @problem_config
+
       @impl Plug
       def init(opts), do: opts
 

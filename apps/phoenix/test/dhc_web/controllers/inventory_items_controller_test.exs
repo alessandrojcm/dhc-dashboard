@@ -187,6 +187,35 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       assert slug == item.slug
     end
 
+    test "filters by a comma-separated availability subset", %{conn: _conn} do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, free} = create_item(container_id, category.id)
+      {:ok, serviced} = create_item(container_id, category.id)
+
+      {:ok, _} =
+        Inventory.start_operator_item_maintenance(
+          serviced.slug,
+          %{"reason" => "Bent"},
+          @actor_id
+        )
+
+      for {availability, expected} <- [
+            {"maintenance", [serviced.slug]},
+            {"on_loan", []},
+            {"on_loan,available", [free.slug]},
+            {"", Enum.sort([free.slug, serviced.slug])}
+          ] do
+        response =
+          build_conn()
+          |> auth_conn("quartermaster")
+          |> get("/api/inventory/items", %{"availability" => availability})
+          |> json_response(200)
+
+        assert response["data"]["items"] |> Enum.map(& &1["slug"]) |> Enum.sort() == expected
+        assert response["data"]["totalCount"] == length(expected)
+      end
+    end
+
     test "400s an invalid limit, filter, or mismatched cursor", %{conn: conn} do
       %{category: category, container_id: container_id} = fixture()
       for _ <- 1..12, do: create_item(container_id, category.id)
@@ -206,6 +235,18 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
       assert %{"errors" => %{"detail" => "archived must be exclude, include, or only"}} =
                json_response(bad_archived, 400)
+
+      bad_availability =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", %{"availability" => "available,archived"})
+
+      assert %{
+               "errors" => %{
+                 "detail" =>
+                   "availability must be comma-separated available, maintenance, or on_loan"
+               }
+             } = json_response(bad_availability, 400)
 
       bad_property =
         build_conn()

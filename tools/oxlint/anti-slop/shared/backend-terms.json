@@ -1,0 +1,24 @@
+{
+	"$comment": "ALE-420: Beginners' Workshop backend terms banned from staff- and person-facing copy, each with the copy word to use instead. Read by tools/oxlint/anti-slop/shared/backend-terms.ts (Oxlint rule and Svelte markup test) and by apps/phoenix/test/dhc_web/controllers/beginners_workshop_copy_test.exs. Patterns are case-insensitive, whole-phrase, and must mean the same in JavaScript and PCRE. A longer phrase precedes the word it contains.",
+	"terms": [
+		{ "term": "Intake", "copy": "workshop place", "pattern": "\\bintakes?\\b" },
+		{ "term": "Batch", "copy": "offer round", "pattern": "\\bbatch(?:es)?\\b" },
+		{ "term": "Carried Fee", "copy": "workshop credit", "pattern": "\\bcarried[\\s-]+fees?\\b" },
+		{ "term": "Payment Cutoff", "copy": "payment deadline", "pattern": "\\bcut-?offs?\\b" },
+		{ "term": "Finalisation", "copy": "attendance confirmed", "pattern": "\\bfinali[sz]ations?\\b" },
+		{
+			"term": "Seat Hold",
+			"copy": "place (reserved during checkout)",
+			"pattern": "\\bseat[\\s-]+holds?\\b"
+		},
+		{ "term": "seat", "copy": "place", "pattern": "\\bseats?\\b" },
+		{
+			"term": "Fast-track",
+			"copy": "add to this workshop",
+			"pattern": "\\bfast[\\s-]?track(?:s|ed|ing)?\\b"
+		},
+		{ "term": "Waitlist entry", "copy": "person", "pattern": "\\bwaitlist[\\s-]+entr(?:y|ies)\\b" },
+		{ "term": "contact-from", "copy": "offers start", "pattern": "\\bcontact[\\s-]+from\\b" },
+		{ "term": "Console", "copy": "Manage", "pattern": "\\bconsoles?\\b" }
+	]
+}

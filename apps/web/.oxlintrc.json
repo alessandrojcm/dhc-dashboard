@@ -63,6 +63,7 @@
 				"src/lib/schemas/beginnersIntake*"
 			],
 			"rules": {
+				"anti-slop/no-backend-terms-in-copy": "error",
 				"no-restricted-imports": [
 					"error",
 					{

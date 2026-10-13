@@ -36,7 +36,7 @@ import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import { Ban, Pencil, Plus, Trash2 } from "@lucide/svelte";
 import { apiErrorMessage } from "#lib/api-error.js";
 import { toast } from "svelte-sonner";
-import { announcementDateLabel } from "#lib/training-announcements/announcement.js";
+import { formatCivilDateLong } from "#lib/club-calendar.js";
 import {
 	cappedExceptions,
 	EXCEPTION_LIST_LIMIT,
@@ -227,7 +227,7 @@ function overrideRows(
 					Next post: <span class="font-semibold text-foreground"
 						>{resolvedTitle}</span
 					>
-					on {announcementDateLabel(nextDate)}
+					on {formatCivilDateLong(nextDate)}
 				</p>
 			{:else}
 				<p class="mt-1 text-sm text-muted-foreground">No upcoming posts.</p>

@@ -19,12 +19,12 @@ import {
 } from "@lucide/svelte";
 import { resolve } from "$app/paths";
 import {
-	dateTile,
 	formatFee,
 	stageLabel,
 	staffSummary,
 	stageTone,
 } from "#lib/beginners-workshops/presentation.js";
+import { civilDateTile } from "#lib/club-calendar.js";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -68,7 +68,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 </script>
 
 {#snippet row(workshop: BeginnersWorkshop)}
-	{@const tile = dateTile(workshop.date)}
+	{@const tile = civilDateTile(workshop.date)}
 	<li
 		class="grid grid-cols-[4.5rem_1fr] items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-[4px_4px_0_rgb(18_24_39/12%)] sm:grid-cols-[4.5rem_1fr_14rem_auto]"
 		data-testid="beginners-workshop-row"

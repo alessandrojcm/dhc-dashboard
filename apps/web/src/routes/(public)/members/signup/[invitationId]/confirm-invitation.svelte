@@ -1,7 +1,4 @@
 <script lang="ts">
-import { parseDate } from "@internationalized/date";
-import dayjs from "dayjs";
-import utc from "dayjs/plugin/utc";
 import { ArrowRightIcon } from "@lucide/svelte";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
@@ -12,11 +9,10 @@ import DatePicker from "#lib/components/ui/date-picker.svelte";
 import * as Field from "#lib/components/ui/field/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import { civilCalendarDate, dublinToday } from "#lib/club-calendar.js";
 import { inviteValidationSchema } from "#lib/schemas/inviteValidationSchema.js";
 import { initForm } from "#lib/utils/init-form.svelte.js";
 import { validateInvitation } from "./data.remote";
-
-dayjs.extend(utc);
 
 const invitationId = $derived(page.params.invitationId);
 
@@ -27,17 +23,11 @@ initForm(validateInvitation, () => {
 		dateOfBirth: "",
 	};
 });
-// Date picker value — force UTC to avoid ±1 day timezone drift
+// The picker shows nothing for an unset, unreadable or today's date.
 const dobValue = $derived.by(() => {
 	const dob = validateInvitation.fields.dateOfBirth.value();
-	if (
-		!dob ||
-		!dayjs(dob).isValid() ||
-		dayjs.utc(dob).isSame(dayjs.utc(), "day")
-	) {
-		return undefined;
-	}
-	return parseDate(dob);
+	if (!dob || dob === dublinToday()) return undefined;
+	return civilCalendarDate(dob);
 });
 </script>
 

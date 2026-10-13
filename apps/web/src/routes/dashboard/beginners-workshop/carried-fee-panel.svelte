@@ -1,17 +1,20 @@
 <!--
 	ALE-389: the Waitlist tab's Carried Fee panel for one person — the fee, the
 	payment it refunds against, a failed refund — with the commands Phoenix
-	offers now: Refund Carried Fee, Link Stripe payment (an imported fee),
-	and Retry / Record manual refund / Forfeit for a failed refund. Mounted
-	only when a coordinator opens it, so the Waitlist needs no extra request
-	until then.
+	offers now: Link Stripe payment (an imported fee) is the panel's own;
+	Refund credit and Retry / Record manual refund / Forfeit for a failed
+	refund are the refund module's, mounted in the person scope (ALE-421).
+	Mounted only when a coordinator opens it, so the Waitlist needs no extra
+	request until then.
 -->
 <script lang="ts">
-import { formatRefundAmount } from "#lib/beginners-workshops/console.js";
+import { personScope } from "#lib/beginners-workshops/refunds/scope.js";
+import { formatRefundAmount } from "#lib/beginners-workshops/refunds/wording.js";
+import FailedRefundFollowUp from "#lib/components/beginners-workshops/refunds/failed-refund-follow-up.svelte";
+import RefundCredit from "#lib/components/beginners-workshops/refunds/refund-credit.svelte";
 import { Button } from "#lib/components/ui/button/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import { Label } from "#lib/components/ui/label/index.js";
-import { Textarea } from "#lib/components/ui/textarea/index.js";
 import {
 	createCarriedFeePanel,
 	type CarriedFeeOutcome,
@@ -24,10 +27,10 @@ let { waitlistId, deps }: { waitlistId: string; deps?: CarriedFeePanelDeps } =
 // The person and deps are fixed for the panel's lifetime.
 // svelte-ignore state_referenced_locally
 const panel = createCarriedFeePanel(() => waitlistId, deps);
+// svelte-ignore state_referenced_locally
+const scope = personScope(waitlistId);
 
-let confirmingRefund = $state(false);
 let paymentIntentId = $state("");
-let manualNote = $state("");
 let error = $state<string | null>(null);
 
 const amount = $derived(
@@ -39,11 +42,7 @@ const amount = $derived(
 async function settle(outcome: Promise<CarriedFeeOutcome>) {
 	const result = await outcome;
 	error = result.ok ? null : result.error;
-	if (result.ok) {
-		confirmingRefund = false;
-		paymentIntentId = "";
-		manualNote = "";
-	}
+	if (result.ok) paymentIntentId = "";
 }
 </script>
 
@@ -70,84 +69,18 @@ async function settle(outcome: Promise<CarriedFeeOutcome>) {
 		{/if}
 
 		{#if fee.failedRefund}
-			<p class="text-destructive" data-testid="carried-fee-failed-refund">
-				The refund of {formatRefundAmount(
-					fee.failedRefund.amountCents,
-					fee.failedRefund.currency,
-				)} failed{fee.failedRefund.lastError
-					? ` (${fee.failedRefund.lastError})`
-					: ""}. {panel.can("forfeit")
-					? "The credit is available again. Retry the refund, record a refund paid outside the app, or keep the payment and remove the credit."
-					: "This payment is still owed back. Retry the refund or record a refund paid outside the app."}
-			</p>
+			<FailedRefundFollowUp
+				{scope}
+				refund={{ ...fee.failedRefund, carriedFee: true }}
+				availableCommands={fee.availableCommands}
+				queryClient={deps?.queryClient}
+			/>
 		{/if}
 
-		<div class="flex flex-wrap items-center gap-2">
-			{#if panel.can("refund")}
-				{#if confirmingRefund}
-					<span>Refund {amount ?? "the fee"} to the original payment?</span>
-					<Button
-						size="sm"
-						disabled={panel.pending}
-						onclick={() => settle(panel.refund())}>Refund</Button
-					>
-					<Button
-						size="sm"
-						variant="ghost"
-						onclick={() => (confirmingRefund = false)}>Keep it</Button
-					>
-				{:else}
-					<Button
-						size="sm"
-						variant="outline"
-						onclick={() => (confirmingRefund = true)}>Refund credit</Button
-					>
-				{/if}
-			{/if}
-			{#if panel.can("retry")}
-				<Button
-					size="sm"
-					variant="outline"
-					disabled={panel.pending}
-					onclick={() => settle(panel.retry())}>Retry refund</Button
-				>
-			{/if}
-			{#if panel.can("forfeit")}
-				<Button
-					size="sm"
-					variant="outline"
-					class="text-destructive"
-					disabled={panel.pending}
-					onclick={() => settle(panel.forfeit())}
-					>Remove credit, keep payment</Button
-				>
-			{/if}
-		</div>
-
-		{#if panel.can("manual")}
-			<form
-				class="flex flex-col gap-1"
-				onsubmit={(event) => {
-					event.preventDefault();
-					settle(panel.recordManual(manualNote));
-				}}
-			>
-				<Label for={`manual-note-${waitlistId}`}>
-					How they were paid back (optional)
-				</Label>
-				<Textarea
-					id={`manual-note-${waitlistId}`}
-					bind:value={manualNote}
-					maxlength={500}
-				/>
-				<Button
-					type="submit"
-					size="sm"
-					variant="outline"
-					class="self-start"
-					disabled={panel.pending}>Record manual refund</Button
-				>
-			</form>
+		{#if panel.can("refund")}
+			<div class="flex flex-wrap items-center gap-2">
+				<RefundCredit {scope} {amount} queryClient={deps?.queryClient} />
+			</div>
 		{/if}
 
 		{#if panel.can("link_payment")}

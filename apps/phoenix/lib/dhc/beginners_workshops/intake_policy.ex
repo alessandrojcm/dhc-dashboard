@@ -175,7 +175,9 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       not withdrawn, and like every other state is `:intake_closed`.
       With no open Intake (`state: nil`, the Waitlist tab, ALE-402) the
       person is removed; that is already done when they are `removed` and
-      hold no live Carried Fee. Whether the refund choice was given
+      hold no live Carried Fee, and (ALE-417) refused as `:already_invited`
+      once they are `invited` or `joined` (the Settlement's withdrawal
+      rule). Whether the refund choice was given
       (`refund_choice_required?/1`) is the command's own input, not the
       Intake's state, so the boundary checks it;
     * `refund_carried_fee` (ALE-389) — the person's `held` Carried Fee is
@@ -225,6 +227,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
   defp decide(:cancel_with_refund, %{state: _closed}), do: {:error, :intake_closed}
 
   defp decide(:withdraw, %{state: nil, standing: "removed", carried_fee: nil}), do: :already_done
+
+  defp decide(:withdraw, %{state: nil, standing: standing}) when standing in ~w(invited joined),
+    do: {:error, :already_invited}
+
   defp decide(:withdraw, %{state: nil}), do: :ok
   defp decide(:withdraw, %{state: "contacted"}), do: :ok
   defp decide(:withdraw, %{state: "paid"}), do: :ok

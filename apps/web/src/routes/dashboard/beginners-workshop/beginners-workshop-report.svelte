@@ -13,8 +13,7 @@ import type {
 import { ChevronDown, ChevronRight, PanelsTopLeft } from "@lucide/svelte";
 import { resolve } from "$app/paths";
 import { SvelteSet } from "svelte/reactivity";
-import { formatCivilDate } from "#lib/beginners-workshops/presentation.js";
-import { formatDublinInstant } from "#lib/beginners-workshops/console.js";
+import { formatCivilDate, formatDublinInstant } from "#lib/club-calendar.js";
 import {
 	carriedFeesNote,
 	countWithRate,
@@ -45,7 +44,7 @@ const months = $derived(report.twelveMonths);
 
 const planning = $derived([
 	{
-		label: "Time to a seat",
+		label: "Time to a place",
 		value: formatDays(queue.medianDaysToSeat),
 		note: "Typical wait from joining the waitlist to the workshop date, for automatic place offers",
 	},

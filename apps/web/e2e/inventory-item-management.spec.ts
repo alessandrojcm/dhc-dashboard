@@ -82,7 +82,18 @@ test.describe("ALE-284 operator inventory items", () => {
 		});
 		await expect(filters).toBeVisible();
 		await filters.getByRole("button", { name: "Availability" }).click();
+		// The filter is applied by Phoenix across the whole list, not to the
+		// page already loaded.
+		const filtered = page.waitForResponse((response) => {
+			const url = new URL(response.url());
+			return (
+				url.pathname === "/api/inventory/items" &&
+				url.searchParams.get("availability") === "maintenance"
+			);
+		});
 		await page.getByRole("option", { name: "Maintenance" }).click();
+		await filtered;
+		await expect(item).toBeHidden();
 		await filters.getByRole("button", { name: "Show items" }).click();
 		await expect(
 			page.getByRole("button", { name: "Filters, 1 active", exact: true }),
@@ -111,7 +122,10 @@ test.describe("ALE-284 operator inventory items", () => {
 		await searched;
 		await expect(item).toBeVisible();
 		await item.getByRole("link", { name: "Manage" }).click();
-		await expect(page).toHaveURL(/\/dashboard\/inventory\/items\/item-\d+$/);
+		// The item's route carries the list's search, so "All items" returns to it.
+		await expect(page).toHaveURL(
+			/\/dashboard\/inventory\/items\/item-\d+\?q=Training\+loaner$/,
+		);
 
 		await page.getByRole("tab", { name: "Placement" }).click();
 		await page.getByLabel("Move to container").click();
@@ -152,6 +166,20 @@ test.describe("ALE-284 operator inventory items", () => {
 		await expect(page.getByText("Archived", { exact: true })).toBeVisible();
 		await page.getByRole("button", { name: "Restore item" }).click();
 		await expect(page.getByText("Available", { exact: true })).toBeVisible();
+
+		// Its maintenance history keeps it: the delete is refused, and the
+		// confirmation stays open for another choice.
+		await page.getByRole("button", { name: "Delete item" }).click();
+		const confirmDelete = page.getByRole("alertdialog");
+		await confirmDelete
+			.getByRole("button", { name: "Delete permanently" })
+			.click();
+		await expect(
+			page.getByText(
+				"The item has loan or maintenance history — archive it instead",
+			),
+		).toBeVisible();
+		await expect(confirmDelete).toBeVisible();
 
 		// No fixture cleanup: this lifecycle intentionally retains item, structure,
 		// and actor references. The E2E run owns a disposable database.

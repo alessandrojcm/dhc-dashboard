@@ -1,20 +1,12 @@
 <script lang="ts">
 import {
-	discordDoctorKickMutation,
 	discordDoctorReportOptions,
-	membersMeOptions,
-	type DiscordDoctorKickRequest,
 	type DiscordDoctorKickResult,
 	type DiscordDoctorMemberSummary,
 	type DiscordDoctorServerMember,
-	type DiscordDoctorServerMembers,
 	type MembershipStatus,
 } from "@dhc/api-client";
-import {
-	createMutation,
-	createQuery,
-	keepPreviousData,
-} from "@tanstack/svelte-query";
+import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
 import {
 	getCoreRowModel,
 	getFilteredRowModel,
@@ -35,8 +27,8 @@ import {
 	Users,
 	X,
 } from "@lucide/svelte";
-import { toast } from "svelte-sonner";
 import { onMount } from "svelte";
+import { formatDublinDate } from "#lib/club-calendar.js";
 import * as AlertDialog from "#lib/components/ui/alert-dialog/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -53,14 +45,9 @@ import {
 } from "#lib/components/ui/toggle-group/index.js";
 import { Textarea } from "#lib/components/ui/textarea/index.js";
 import { cn } from "#lib/utils.js";
+import { createKickReview, type ServerBucket } from "./kick-review.svelte.js";
 
 type DoctorView = "server" | "members";
-type ServerBucket = keyof DiscordDoctorServerMembers;
-type KickReview = {
-	bucket: ServerBucket;
-	targets: DiscordDoctorServerMember[];
-	skipped: DiscordDoctorServerMember[];
-};
 
 const buckets = [
 	{
@@ -104,13 +91,6 @@ const linkStatusLabels = {
 	never_linked: "Never linked",
 } as const;
 
-const auditBucketNames = {
-	linkedActive: "linked_active",
-	linkedInactive: "linked_inactive",
-	pendingLink: "pending_link",
-	unrecognized: "unrecognized",
-} satisfies Record<ServerBucket, string>;
-
 const outcomeLabels = {
 	kicked: "Kicked",
 	already_left: "Already left",
@@ -122,11 +102,6 @@ let view = $state<DoctorView>("server");
 let selectedBucket = $state<ServerBucket>("linkedActive");
 let bypassCache = $state(false);
 let now = $state(Date.now());
-let kickDialogOpen = $state(false);
-let kickReview = $state<KickReview | null>(null);
-let kickNote = $state("");
-let kickResults = $state<Record<string, DiscordDoctorKickResult>>({});
-let latestKickRows = $state<DiscordDoctorServerMember[]>([]);
 let globalFilter = $state("");
 let sorting = $state<SortingState>([{ id: "serverAccount", desc: true }]);
 
@@ -145,19 +120,8 @@ const bucket = $derived(
 	buckets.find((candidate) => candidate.key === selectedBucket) ?? buckets[0],
 );
 const rows = $derived(report?.serverMembers[bucket.key] ?? []);
-const currentUserQuery = createQuery(() => ({
-	...membersMeOptions(),
-	refetchOnWindowFocus: false,
-}));
-const adminName = $derived.by(() => {
-	const member = currentUserQuery.data?.data;
-	return member ? `${member.firstName} ${member.lastName}` : "";
-});
-const auditReasonPreview = $derived.by(() => {
-	if (!kickReview || !adminName) return "Loading admin name…";
-	const base = `DHC Doctor — ${adminName}: ${auditBucketNames[kickReview.bucket]}`;
-	const note = kickNote.trim();
-	return note ? `${base} — ${note}` : base;
+const kick = createKickReview(() => report, {
+	onKicked: () => void reportQuery.refetch(),
 });
 const cacheAgeSeconds = $derived.by(() => {
 	if (!report?.cache.fetchedAt) return 0;
@@ -169,26 +133,6 @@ const cacheAgeSeconds = $derived.by(() => {
 const cacheIsStale = $derived(
 	Boolean(report) && cacheAgeSeconds >= (report?.cache.ttlSeconds ?? 0),
 );
-
-const kickMutation = createMutation(() => ({
-	...discordDoctorKickMutation(),
-	onSuccess: (response) => {
-		const nextResults = { ...kickResults };
-		for (const result of response.data.results) {
-			nextResults[result.discordUserId] = result;
-		}
-		kickResults = nextResults;
-		latestKickRows = kickReview?.targets ?? [];
-		kickDialogOpen = false;
-		kickReview = null;
-		kickNote = "";
-		toast.success("Kick request completed");
-		void reportQuery.refetch();
-	},
-	onError: (error) => {
-		toast.error(error.errors?.detail ?? "Failed to kick server accounts");
-	},
-}));
 
 const doctorColumns: ColumnDef<DiscordDoctorServerMember>[] = [
 	{
@@ -287,78 +231,7 @@ function formatJoinedAt(value: string | null): string {
 	if (!value) return "Join date unavailable";
 	const date = new Date(value);
 	if (Number.isNaN(date.valueOf())) return "Join date unavailable";
-	return `Joined ${new Intl.DateTimeFormat("en-IE", {
-		day: "numeric",
-		month: "short",
-		year: "numeric",
-	}).format(date)}`;
-}
-
-function canKick(
-	bucket: ServerBucket,
-	row: DiscordDoctorServerMember,
-): boolean {
-	return bucket !== "linkedActive" && row.kickable && !row.protected;
-}
-
-function bulkActionLabel(bucket: ServerBucket): string | null {
-	switch (bucket) {
-		case "linkedInactive":
-			return "Kick all inactive";
-		case "unrecognized":
-			return "Kick all unrecognized";
-		case "linkedActive":
-		case "pendingLink":
-			return null;
-	}
-}
-
-function startSingleKick(bucket: ServerBucket, row: DiscordDoctorServerMember) {
-	if (!canKick(bucket, row)) return;
-	kickReview = { bucket, targets: [row], skipped: [] };
-	kickNote = "";
-	kickDialogOpen = true;
-}
-
-function startBulkKick(
-	bucket: ServerBucket,
-	rows: DiscordDoctorServerMember[],
-) {
-	if (!bulkActionLabel(bucket)) return;
-	const targets = rows.filter((row) => canKick(bucket, row));
-	if (targets.length === 0) return;
-	kickReview = {
-		bucket,
-		targets,
-		skipped: rows.filter((row) => !canKick(bucket, row)),
-	};
-	kickNote = "";
-	kickDialogOpen = true;
-}
-
-function updateKickDialog(open: boolean) {
-	if (!open && kickMutation.isPending) return;
-	kickDialogOpen = open;
-	if (!open) {
-		kickReview = null;
-		kickNote = "";
-	}
-}
-
-function submitKick() {
-	if (!kickReview || kickReview.targets.length === 0 || !adminName) return;
-	const note = kickNote.trim();
-	const body: DiscordDoctorKickRequest = {
-		discordUserIds: kickReview.targets.map((row) => row.discordUserId),
-	};
-	if (note) body.note = note;
-	kickMutation.mutate({ body });
-}
-
-function skipReason(row: DiscordDoctorServerMember): string {
-	if (row.protected) return "Protected member";
-	if (row.membershipStatus === "paused") return "Paused member";
-	return "Not eligible for removal";
+	return `Joined ${formatDublinDate(value)}`;
 }
 
 function outcomeStyle(outcome: DiscordDoctorKickResult["outcome"]): string {
@@ -509,7 +382,7 @@ async function refreshMembers() {
 			</section>
 		{:else if report}
 			{#if view === "server"}
-				{#if latestKickRows.length > 0}
+				{#if kick.latestRows.length > 0}
 					<section
 						class="mb-4 rounded-2xl border border-border bg-card p-4 shadow-[4px_4px_0_hsl(var(--secondary)/0.25)] sm:p-5"
 						aria-live="polite"
@@ -522,8 +395,8 @@ async function refreshMembers() {
 							Latest kick results
 						</h2>
 						<div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-							{#each latestKickRows as row (row.discordUserId)}
-								{@const outcome = kickResults[row.discordUserId]}
+							{#each kick.latestRows as row (row.discordUserId)}
+								{@const outcome = kick.results[row.discordUserId]}
 								{#if outcome}
 									<div
 										class="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/20 p-3"
@@ -538,6 +411,13 @@ async function refreshMembers() {
 											{#if outcome.reason || outcome.error}
 												<p class="mt-1 text-xs text-muted-foreground">
 													{outcome.reason ?? outcome.error}
+												</p>
+											{/if}
+											{#if outcome.auditReason}
+												<p
+													class="mt-1 font-mono text-xs break-words text-muted-foreground"
+												>
+													Audit reason: {outcome.auditReason}
 												</p>
 											{/if}
 										</div>
@@ -585,14 +465,14 @@ async function refreshMembers() {
 										{bucket.blurb}
 									</p>
 								</div>
-								{#if bulkActionLabel(bucket.key) && rows.some( (row) => canKick(bucket.key, row) )}
+								{#if kick.bulkLabel(bucket.key)}
 									<Button
 										variant="destructive"
 										class="min-h-11 self-start sm:self-center"
-										onclick={() => startBulkKick(bucket.key, rows)}
+										onclick={() => kick.startBulk(bucket.key)}
 									>
 										<UserMinus aria-hidden="true" />
-										{bulkActionLabel(bucket.key)}
+										{kick.bulkLabel(bucket.key)}
 									</Button>
 								{/if}
 							</header>
@@ -680,7 +560,7 @@ async function refreshMembers() {
 											<Table.Body>
 												{#each table.getRowModel().rows as tableRow (tableRow.id)}
 													{@const row = tableRow.original}
-													{@const outcome = kickResults[row.discordUserId]}
+													{@const outcome = kick.results[row.discordUserId]}
 													<Table.Row>
 														<Table.Cell class="p-4 sm:p-5">
 															<div class="flex min-w-0 items-center gap-3">
@@ -780,15 +660,15 @@ async function refreshMembers() {
 															</div>
 														</Table.Cell>
 														<Table.Cell class="p-4 text-right sm:p-5">
-															{#if canKick(bucket.key, row)}
+															{#if kick.canKick(row)}
 																<Button
 																	variant="destructive"
 																	size="sm"
 																	class="min-h-11"
 																	aria-label={`Kick ${row.displayName}`}
-																	disabled={kickMutation.isPending}
+																	disabled={kick.pending}
 																	onclick={() =>
-																		startSingleKick(bucket.key, row)}
+																		kick.startSingle(bucket.key, row)}
 																>
 																	<UserMinus aria-hidden="true" />
 																	Kick
@@ -907,8 +787,9 @@ async function refreshMembers() {
 	</div>
 </div>
 
-<AlertDialog.Root open={kickDialogOpen} onOpenChange={updateKickDialog}>
-	{#if kickReview}
+<AlertDialog.Root open={kick.open} onOpenChange={kick.setOpen}>
+	{#if kick.review}
+		{@const kickReview = kick.review}
 		<AlertDialog.Content
 			class="max-h-[calc(100svh-2rem)] overflow-y-auto rounded-2xl border-border/80 sm:max-w-2xl"
 		>
@@ -982,7 +863,7 @@ async function refreshMembers() {
 						</p>
 					{:else}
 						<ul class="mt-3 space-y-2">
-							{#each kickReview.skipped as row (row.discordUserId)}
+							{#each kickReview.skipped as { row, reason } (row.discordUserId)}
 								<li class="rounded-lg border border-border bg-background p-3">
 									<div class="flex items-start justify-between gap-3">
 										<div>
@@ -993,7 +874,9 @@ async function refreshMembers() {
 												@{row.username}
 											</p>
 										</div>
-										<Badge variant="outline">{skipReason(row)}</Badge>
+										{#if reason}
+											<Badge variant="outline">{reason}</Badge>
+										{/if}
 									</div>
 								</li>
 							{/each}
@@ -1009,31 +892,29 @@ async function refreshMembers() {
 						class="mt-2 block break-words rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs leading-5 text-foreground"
 						aria-live="polite"
 					>
-						{auditReasonPreview}
+						{kick.preview}
 					</code>
 				</div>
 				<div class="space-y-2">
 					<Label for="discord-kick-note">Audit note (optional)</Label>
 					<Textarea
 						id="discord-kick-note"
-						bind:value={kickNote}
+						bind:value={() => kick.note, (value) => (kick.note = value)}
 						rows={2}
 						placeholder="Add context for the Discord audit log"
-						disabled={kickMutation.isPending}
+						disabled={kick.pending}
 					/>
 				</div>
 			</div>
 
 			<AlertDialog.Footer>
-				<AlertDialog.Cancel disabled={kickMutation.isPending}>
-					Cancel
-				</AlertDialog.Cancel>
+				<AlertDialog.Cancel disabled={kick.pending}>Cancel</AlertDialog.Cancel>
 				<Button
 					variant="destructive"
-					disabled={kickMutation.isPending || !adminName}
-					onclick={submitKick}
+					disabled={kick.pending}
+					onclick={kick.submit}
 				>
-					{#if kickMutation.isPending}
+					{#if kick.pending}
 						<LoaderCircle aria-hidden="true" class="animate-spin" />
 						Kicking…
 					{:else}

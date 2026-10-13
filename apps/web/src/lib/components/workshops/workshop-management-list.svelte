@@ -22,7 +22,10 @@ import {
 	UserRoundCheck,
 	Users,
 } from "@lucide/svelte";
-import dayjs from "dayjs";
+import {
+	dublinInstantTile,
+	formatDublinDayAndTime,
+} from "#lib/club-calendar.js";
 import WorkshopEventModal from "./workshop-event-modal.svelte";
 
 type StatusFilter = "all" | WorkshopCalendarItem["status"];
@@ -67,15 +70,17 @@ const filteredWorkshops = $derived.by(() => {
 			return matchesStatus && matchesSearch;
 		})
 		.sort((first, second) => {
-			const firstIsPast = dayjs(first.endDate).isBefore(dayjs());
-			const secondIsPast = dayjs(second.endDate).isBefore(dayjs());
+			const firstIsPast = hasEnded(first);
+			const secondIsPast = hasEnded(second);
 
 			if (firstIsPast !== secondIsPast) return firstIsPast ? 1 : -1;
-			return (
-				dayjs(first.startDate).valueOf() - dayjs(second.startDate).valueOf()
-			);
+			return Date.parse(first.startDate) - Date.parse(second.startDate);
 		});
 });
+
+function hasEnded(workshop: WorkshopCalendarItem) {
+	return Date.parse(workshop.endDate) < Date.now();
+}
 
 function getCapacityPercentage(workshop: WorkshopCalendarItem) {
 	if (workshop.isAtCapacity) return 100;
@@ -208,7 +213,8 @@ function clearFilters() {
 		<div class="space-y-3">
 			{#each filteredWorkshops as workshop (workshop.id)}
 				{@const registrationCount = workshop.registrationCount}
-				{@const isPast = dayjs(workshop.endDate).isBefore(dayjs())}
+				{@const isPast = hasEnded(workshop)}
+				{@const tile = dublinInstantTile(workshop.startDate)}
 				<article
 					class="grid gap-5 rounded-2xl border border-border/80 bg-card p-4 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/40 hover:shadow-md sm:p-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.7fr)_auto] lg:items-center"
 				>
@@ -218,10 +224,10 @@ function clearFilters() {
 							aria-hidden="true"
 						>
 							<span class="text-[0.65rem] font-bold tracking-wider uppercase">
-								{dayjs(workshop.startDate).format("MMM")}
+								{tile.month}
 							</span>
 							<span class="text-2xl font-bold leading-none">
-								{dayjs(workshop.startDate).format("D")}
+								{tile.day}
 							</span>
 						</div>
 
@@ -251,7 +257,7 @@ function clearFilters() {
 								<span class="flex min-w-0 items-center gap-2">
 									<Clock3 aria-hidden="true" class="size-4 shrink-0" />
 									<span>
-										{dayjs(workshop.startDate).format("ddd, D MMM · h:mm A")}
+										{formatDublinDayAndTime(workshop.startDate)}
 									</span>
 								</span>
 								<span class="flex min-w-0 items-center gap-2">

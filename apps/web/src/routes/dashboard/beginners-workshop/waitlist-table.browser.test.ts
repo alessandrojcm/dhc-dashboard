@@ -1,4 +1,7 @@
 import type {
+	BeginnersWorkshopPeople,
+	BeginnersWorkshopPersonCommand,
+	BeginnersWorkshopRefundChoice,
 	Options,
 	WaitlistEntriesData,
 	WaitlistEntriesResponse2,
@@ -26,8 +29,35 @@ function entry(id: string, overrides: Partial<WaitlistEntry>): WaitlistEntry {
 		adminNotes: null,
 		socialMediaConsent: "no",
 		removedAt: null,
+		availableCommands: [],
 		...overrides,
 	};
+}
+
+/** Phoenix's person read for the page: each id's offered commands and credit. */
+function people(
+	offered: Record<
+		string,
+		{
+			commands: BeginnersWorkshopPersonCommand[];
+			carriedFee?: "held" | "applied";
+			refundChoice?: BeginnersWorkshopRefundChoice;
+		}
+	>,
+) {
+	return vi.fn(
+		async (_ids: string[]): Promise<BeginnersWorkshopPeople> =>
+			Object.fromEntries(
+				Object.entries(offered).map(([id, person]) => [
+					id,
+					{
+						carriedFee: person.carriedFee ?? null,
+						availableCommands: person.commands,
+						refundChoice: person.refundChoice ?? null,
+					},
+				]),
+			),
+	);
 }
 
 function page(entries: WaitlistEntry[]): WaitlistEntriesResponse2 {
@@ -60,6 +90,7 @@ test("lists the waiting queue by default and removed people behind the filter", 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries,
+			listPeople: people({}),
 			notify: { success: () => {}, error: () => {} },
 			url: () => url,
 			navigate,
@@ -68,7 +99,7 @@ test("lists the waiting queue by default and removed people behind the filter", 
 
 	// Tailwind is not loaded, so both layouts render side by side.
 	const desktop = screen.getByRole("table");
-	const mobile = screen.getByRole("list", { name: "Waitlist entries" });
+	const mobile = screen.getByRole("list", { name: "People on the waitlist" });
 
 	await expect
 		.element(screen.getByRole("heading", { name: "Waitlist", exact: true }))
@@ -124,6 +155,7 @@ test("renders a removed person's removal date from the URL filter", async () => 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries,
+			listPeople: people({}),
 			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(`${BASE}?status=removed`),
 			navigate: () => {},
@@ -147,11 +179,12 @@ test("renders a removed person's removal date from the URL filter", async () => 
 		.toBeVisible();
 });
 
-test("offers restore from the removed filter for a recent removal only", async () => {
+test("offers Restore only where Phoenix lists it on the entry", async () => {
 	const recent = entry("b", {
 		fullName: "Bea Recent",
 		status: "removed",
 		removedAt: "2026-09-01T10:00:00Z",
+		availableCommands: ["restore"],
 	});
 	const old = entry("c", {
 		fullName: "Cal Old",
@@ -165,8 +198,8 @@ test("offers restore from the removed filter for a recent removal only", async (
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([recent, old])),
+			listPeople: people({}),
 			restoreEntry,
-			now: () => new Date("2026-10-09T12:00:00Z"),
 			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(`${BASE}?status=removed`),
 			navigate: () => {},
@@ -188,32 +221,27 @@ test("offers restore from the removed filter for a recent removal only", async (
 	);
 });
 
-test("ALE-387: Withdraw asks to refund or forfeit only when Phoenix says the person has paid", async () => {
+// ALE-421: the dialog is the refund module's (person scope); its own tests
+// cover the choice, the refusal and what goes stale.
+test("Withdraw opens the refund module's dialog, asking Phoenix's refund choice up front", async () => {
 	const ada = entry("a", { fullName: "Ada Paid" });
-	const withdrawEntry = vi
-		.fn()
-		.mockRejectedValueOnce({
-			errors: {
-				detail: "Choose whether to refund or forfeit their fee",
-				code: "refund_choice_required",
-				fields: { refund: ["Choose whether to refund or forfeit their fee"] },
-			},
-		})
-		.mockResolvedValueOnce({
-			data: {
-				waitlistId: "a",
-				status: "removed",
-				intake: null,
-				outcome: "done",
-			},
-		});
-	const success = vi.fn();
+	const bea = entry("b", { fullName: "Bea Unpaid", position: 2 });
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
-			listEntries: vi.fn(async () => page([ada])),
-			withdrawEntry,
-			notify: { success, error: () => {} },
+			listEntries: vi.fn(async () => page([ada, bea])),
+			listPeople: people({
+				a: {
+					commands: ["withdraw"],
+					refundChoice: {
+						source: "payment",
+						amountCents: 4000,
+						currency: "eur",
+					},
+				},
+				b: { commands: ["withdraw"] },
+			}),
+			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(BASE),
 			navigate: () => {},
 		},
@@ -222,60 +250,74 @@ test("ALE-387: Withdraw asks to refund or forfeit only when Phoenix says the per
 	const desktop = screen.getByRole("table");
 	await expect.element(desktop.getByText("Ada Paid")).toBeVisible();
 	await desktop
+		.getByRole("row")
+		.filter({ hasText: "Ada Paid" })
 		.getByRole("button", { name: "Withdraw from the Waitlist" })
 		.click();
 
-	const dialog = screen.getByRole("dialog", {
+	let dialog = screen.getByRole("dialog", {
 		name: "Withdraw Ada Paid from the Waitlist",
+	});
+	await expect
+		.element(dialog.getByTestId("refund-amount"))
+		.toHaveTextContent("Refund €40.00");
+	await expect
+		.element(dialog.getByRole("button", { name: "Withdraw", exact: true }))
+		.toBeDisabled();
+	await dialog.getByRole("button", { name: "Keep them" }).click();
+
+	await desktop
+		.getByRole("row")
+		.filter({ hasText: "Bea Unpaid" })
+		.getByRole("button", { name: "Withdraw from the Waitlist" })
+		.click();
+	dialog = screen.getByRole("dialog", {
+		name: "Withdraw Bea Unpaid from the Waitlist",
 	});
 	await expect.element(dialog).toBeVisible();
 	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
-
-	await dialog.getByRole("button", { name: "Withdraw", exact: true }).click();
-	await expect
-		.element(dialog.getByRole("alert"))
-		.toHaveTextContent("Choose whether to refund or forfeit their fee");
-	const submit = dialog.getByRole("button", { name: "Withdraw", exact: true });
-	await expect.element(submit).toBeDisabled();
-
-	await dialog.getByRole("radio", { name: /Refund the full fee/ }).click();
-	await submit.click();
-
-	await expect.poll(() => success.mock.calls.length).toBe(1);
-	expect(withdrawEntry).toHaveBeenLastCalledWith(
-		expect.objectContaining({
-			path: { waitlistId: "a" },
-			body: { refund: true },
-		}),
-	);
-	expect(withdrawEntry.mock.calls[0][0]).toEqual(
-		expect.objectContaining({ body: {} }),
-	);
 });
 
-test("ALE-387: Withdraw is offered to waiting people, not removed ones", async () => {
-	const removed = entry("b", {
-		fullName: "Bea Removed",
-		status: "removed",
-		removedAt: "2026-09-01T10:00:00Z",
+test("ALE-417: Withdraw and Delete render only for the people Phoenix offers them to", async () => {
+	const ada = entry("a", { fullName: "Ada Offered" });
+	const bea = entry("b", { fullName: "Bea Withheld", position: 2 });
+	const listPeople = people({
+		a: { commands: ["withdraw", "delete_person"] },
+		b: { commands: [] },
 	});
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
-			listEntries: vi.fn(async () => page([removed])),
-			now: () => new Date("2026-10-09T12:00:00Z"),
+			listEntries: vi.fn(async () => page([ada, bea])),
+			listPeople,
 			notify: { success: () => {}, error: () => {} },
-			url: () => new URL(`${BASE}?status=removed`),
+			url: () => new URL(BASE),
 			navigate: () => {},
 		},
 	});
 
 	const desktop = screen.getByRole("table");
-	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
+	const mobile = screen.getByRole("list", { name: "People on the waitlist" });
+	await expect.element(desktop.getByText("Bea Withheld")).toBeVisible();
+	expect(listPeople).toHaveBeenCalledWith(["a", "b"]);
+
+	// The desktop row and the mobile card each render one of each, for Ada.
+	for (const layout of [desktop, mobile]) {
+		for (const name of ["Withdraw from the Waitlist", "Delete this person"]) {
+			await expect.element(layout.getByRole("button", { name })).toBeVisible();
+			expect(layout.getByRole("button", { name }).elements()).toHaveLength(1);
+		}
+	}
+	await expect
+		.element(
+			desktop
+				.getByRole("row")
+				.filter({ hasText: "Ada Offered" })
+				.getByRole("button", { name: "Delete this person" }),
+		)
+		.toBeVisible();
 	expect(
-		desktop
-			.getByRole("button", { name: "Withdraw from the Waitlist" })
-			.elements(),
+		desktop.getByRole("button", { name: "Restore to the Waitlist" }).elements(),
 	).toHaveLength(0);
 });
 
@@ -283,14 +325,15 @@ test("ALE-387: Withdraw is offered to waiting people, not removed ones", async (
 test("shows a Carried Fee holder's fee on their entry", async () => {
 	const holder = entry("a", { fullName: "Ada Holder" });
 	const other = entry("b", { fullName: "Bea Payer", position: 2 });
-	const listCarriedFees = vi.fn(async (_ids: string[]) => ({
-		a: "held" as const,
-	}));
+	const listPeople = people({
+		a: { commands: ["withdraw"], carriedFee: "held" },
+		b: { commands: ["withdraw"] },
+	});
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([holder, other])),
-			listCarriedFees,
+			listPeople,
 			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(BASE),
 			navigate: () => {},
@@ -301,41 +344,41 @@ test("shows a Carried Fee holder's fee on their entry", async () => {
 	await expect
 		.element(desktop.getByText("Waiting · Workshop credit"))
 		.toBeVisible();
-	expect(listCarriedFees).toHaveBeenCalledWith(["a", "b"]);
+	expect(listPeople).toHaveBeenCalledWith(["a", "b"]);
 	expect(
 		desktop.getByText("Waiting · Workshop credit").elements(),
 	).toHaveLength(1);
 	await expect
 		.element(
 			screen
-				.getByRole("list", { name: "Waitlist entries" })
+				.getByRole("list", { name: "People on the waitlist" })
 				.getByText("Waiting · Workshop credit"),
 		)
 		.toBeVisible();
 });
 
-test("ALE-396: Delete removes a removed person, asking refund or forfeit first for a Carried Fee holder", async () => {
+test("ALE-396: Delete opens the refund module's dialog, asking about a holder's workshop credit up front", async () => {
 	const removed = entry("b", {
 		fullName: "Bea Removed",
 		status: "removed",
 		removedAt: "2026-09-01T10:00:00Z",
 	});
-	const deleteEntry = vi.fn(async () => ({
-		data: {
-			waitlistId: "b",
-			anonymisedIntakes: 1,
-			carriedFee: { id: "fee", status: "forfeited" as const },
-		},
-	}));
-	const success = vi.fn();
 
 	const screen = await render(WaitlistTableTestWrapper, {
 		deps: {
 			listEntries: vi.fn(async () => page([removed])),
-			listCarriedFees: vi.fn(async () => ({ b: "held" as const })),
-			deleteEntry,
-			now: () => new Date("2026-10-09T12:00:00Z"),
-			notify: { success, error: () => {} },
+			listPeople: people({
+				b: {
+					commands: ["delete_person"],
+					carriedFee: "held",
+					refundChoice: {
+						source: "carried_fee",
+						amountCents: 3500,
+						currency: "eur",
+					},
+				},
+			}),
+			notify: { success: () => {}, error: () => {} },
 			url: () => new URL(`${BASE}?status=removed`),
 			navigate: () => {},
 		},
@@ -343,58 +386,13 @@ test("ALE-396: Delete removes a removed person, asking refund or forfeit first f
 
 	const desktop = screen.getByRole("table");
 	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
-	await expect
-		.element(desktop.getByText(/workshop credit/i).first())
-		.toBeVisible();
 	await desktop.getByRole("button", { name: "Delete this person" }).click();
 
 	const dialog = screen.getByRole("dialog", { name: "Delete Bea Removed" });
-	await expect.element(dialog).toBeVisible();
-	const submit = dialog.getByRole("button", { name: "Delete", exact: true });
-	await expect.element(submit).toBeDisabled();
-
-	await dialog.getByRole("radio", { name: /Keep the payment/ }).click();
-	await submit.click();
-
-	await expect.poll(() => success.mock.calls.length).toBe(1);
-	expect(deleteEntry).toHaveBeenCalledWith(
-		expect.objectContaining({
-			path: { waitlistId: "b" },
-			body: { refund: false },
-		}),
-	);
-});
-
-test("ALE-396: Delete shows Phoenix's refusal", async () => {
-	const ada = entry("a", { fullName: "Ada Contacted" });
-	const deleteEntry = vi.fn().mockRejectedValueOnce({
-		errors: {
-			detail: "This person already has an open Intake",
-			code: "open_intake",
-		},
-	});
-
-	const screen = await render(WaitlistTableTestWrapper, {
-		deps: {
-			listEntries: vi.fn(async () => page([ada])),
-			deleteEntry,
-			notify: { success: () => {}, error: () => {} },
-			url: () => new URL(BASE),
-			navigate: () => {},
-		},
-	});
-
-	const desktop = screen.getByRole("table");
-	await expect.element(desktop.getByText("Ada Contacted")).toBeVisible();
-	await desktop.getByRole("button", { name: "Delete this person" }).click();
-
-	const dialog = screen.getByRole("dialog", { name: "Delete Ada Contacted" });
-	expect(dialog.getByRole("radio").elements()).toHaveLength(0);
-	await dialog.getByRole("button", { name: "Delete", exact: true }).click();
 	await expect
-		.element(dialog.getByRole("alert"))
-		.toHaveTextContent("This person already has an open Intake");
-	expect(deleteEntry).toHaveBeenCalledWith(
-		expect.objectContaining({ path: { waitlistId: "a" }, body: {} }),
-	);
+		.element(dialog.getByTestId("refund-amount"))
+		.toHaveTextContent("Refund their workshop credit: €35.00");
+	await expect
+		.element(dialog.getByRole("button", { name: "Delete", exact: true }))
+		.toBeDisabled();
 });

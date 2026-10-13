@@ -44,7 +44,7 @@ defmodule DhcWeb.InventoryItemsController do
   GET /inventory/items
   """
   def index(conn, params) do
-    with {:ok, page} <- Inventory.list_operator_items(params) do
+    with {:ok, page} <- params |> Inventory.list_operator_items() |> list_error() do
       conn |> put_view(@view) |> render(:index, page: page)
     end
   end
@@ -163,6 +163,11 @@ defmodule DhcWeb.InventoryItemsController do
   # This slice's `:not_found` is always the addressed Item.
   defp item_error({:error, :not_found}), do: {:error, :item_not_found}
   defp item_error(result), do: result
+
+  # The operator list's `availability` names operator statuses, so its
+  # refusal cannot share the member catalog's detail.
+  defp list_error({:error, :invalid_availability}), do: {:error, :invalid_item_availability}
+  defp list_error(result), do: result
 
   defp actor_id(conn), do: conn.assigns.current_session.principal.id
 end

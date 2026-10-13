@@ -15,9 +15,10 @@ export function isPageSize(value: number): value is PageSize {
 export function parsePageSize(
 	searchParams: ReadableSearchParams,
 	pageSizeKey: string,
+	fallback: PageSize = DEFAULT_PAGE_SIZE,
 ): PageSize {
 	const requestedPageSize = Number(searchParams.get(pageSizeKey));
-	return isPageSize(requestedPageSize) ? requestedPageSize : DEFAULT_PAGE_SIZE;
+	return isPageSize(requestedPageSize) ? requestedPageSize : fallback;
 }
 
 type CursorAdvance = {

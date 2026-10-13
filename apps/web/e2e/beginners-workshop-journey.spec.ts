@@ -426,7 +426,7 @@ test.describe("Beginners' Workshop journey", () => {
 				holderPage.getByRole("heading", { name: "Your place is confirmed" }),
 			).toBeVisible();
 			await expect(
-				holderPage.getByText(/Your Carried Fee covers your place/),
+				holderPage.getByText(/Your workshop credit covers your place/),
 			).toBeVisible();
 		} finally {
 			await holderContext.close();

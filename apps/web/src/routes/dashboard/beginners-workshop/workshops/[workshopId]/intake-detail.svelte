@@ -8,10 +8,11 @@
 	under the lock, answering a stale command with its named reason. All
 	commands are submit buttons of one form, so the optional note goes with
 	whichever is pressed. There is no copy-link: a link is only ever resent
-	or rotated. (ALE-387) Withdraw needs the refund-or-forfeit choice, so its
-	button opens `withdraw-dialog.svelte`; a paid Intake shows the
-	refund-timing hint Phoenix works out (`refundTimingDaysToGo`) when the
-	workshop is 7 days away or closer.
+	or rotated. (ALE-387) Withdraw needs the refund-or-forfeit choice and
+	(ALE-389) Refund credit a confirmation, so both are the refund module's
+	(ALE-421) in the workshop scope; a paid Intake shows the refund-timing
+	hint Phoenix works out (`refundTimingDaysToGo`) when the workshop is 7
+	days away or closer.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopRosterIntake } from "@dhc/api-client";
@@ -20,7 +21,6 @@ import { toast } from "svelte-sonner";
 import {
 	carriedFeeLabel,
 	emailLogLine,
-	formatDublinInstant,
 	historyLine,
 	holdLabel,
 	intakeCommandDone,
@@ -30,10 +30,17 @@ import {
 	isIntakeButtonCommand,
 	personName,
 	refundLabel,
-	refundTimingHint,
 	attendanceCorrectionDone,
 	attendanceCorrectionLabel,
 } from "#lib/beginners-workshops/console.js";
+import { workshopScope } from "#lib/beginners-workshops/refunds/scope.js";
+import {
+	formatRefundAmount,
+	refundTimingHint,
+} from "#lib/beginners-workshops/refunds/wording.js";
+import RefundCredit from "#lib/components/beginners-workshops/refunds/refund-credit.svelte";
+import WithdrawDialog from "#lib/components/beginners-workshops/refunds/withdraw-dialog.svelte";
+import { formatDublinInstant } from "#lib/club-calendar.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Field from "#lib/components/ui/field/index.js";
@@ -43,7 +50,6 @@ import {
 	intakeCommandSchema,
 } from "#lib/schemas/beginnersWorkshop.js";
 import { correctAttendance, runIntakeCommand } from "./console.remote";
-import WithdrawDialog from "./withdraw-dialog.svelte";
 import * as Alert from "#lib/components/ui/alert/index.js";
 
 let {
@@ -70,6 +76,20 @@ const buttonCommands = $derived(
 	intake.availableCommands.filter(isIntakeButtonCommand),
 );
 const canWithdraw = $derived(intake.availableCommands.includes("withdraw"));
+const canRefundCredit = $derived(
+	intake.availableCommands.includes("refund_carried_fee"),
+);
+// The credit's amount, when Phoenix's refund choice is the credit.
+const creditAmount = $derived(
+	intake.refundChoice?.source === "carried_fee" &&
+		intake.refundChoice.amountCents !== null &&
+		intake.refundChoice.currency !== null
+		? formatRefundAmount(
+				intake.refundChoice.amountCents,
+				intake.refundChoice.currency,
+			)
+		: null,
+);
 // Story 77: the hint for the defer-or-refund choice on a paid Intake.
 const refundHint = $derived(
 	intake.state === "paid" &&
@@ -128,7 +148,8 @@ const refundHint = $derived(
 			class="rounded-lg border border-sky-600/40 bg-sky-50 p-2.5 text-sky-900"
 			data-testid="hold-expiry"
 		>
-			{holdLabel(intake)}. The seat is held until Stripe ends the checkout.
+			{holdLabel(intake)}. Their place stays reserved until Stripe ends the
+			checkout.
 		</p>
 	{/if}
 
@@ -147,7 +168,7 @@ const refundHint = $derived(
 				{refundHint}
 			</Alert.Root>
 		{/if}
-		{#if buttonCommands.length || canWithdraw}
+		{#if buttonCommands.length}
 			<form
 				{...form.preflight(intakeCommandSchema).enhance(async (instance) => {
 					formError = null;
@@ -197,22 +218,35 @@ const refundHint = $derived(
 							disabled={!!form.pending}>{intakeCommandLabel(command)}</Button
 						>
 					{/each}
-					{#if canWithdraw}
-						<Button
-							type="button"
-							size="sm"
-							variant="outline"
-							class="text-destructive"
-							onclick={() => (withdrawOpen = true)}
-							>{intakeCommandLabel("withdraw")}</Button
-						>
-					{/if}
 				</div>
 				{#if formError}
 					<p class="text-sm text-destructive" role="alert">{formError}</p>
 				{/if}
 			</form>
-		{:else if !canCorrect}
+		{/if}
+		{#if canRefundCredit || canWithdraw}
+			<!-- ALE-421: the refund module's commands carry their own note. -->
+			<div class="flex flex-wrap gap-2" data-testid="money-commands">
+				{#if canRefundCredit}
+					<RefundCredit
+						scope={workshopScope(workshopId)}
+						intakeId={intake.id}
+						amount={creditAmount}
+					/>
+				{/if}
+				{#if canWithdraw}
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						class="text-destructive"
+						onclick={() => (withdrawOpen = true)}
+						>{intakeCommandLabel("withdraw")}</Button
+					>
+				{/if}
+			</div>
+		{/if}
+		{#if !buttonCommands.length && !canRefundCredit && !canWithdraw && !canCorrect}
 			<p class="text-muted-foreground">
 				No actions are available for this workshop place.
 			</p>
@@ -331,5 +365,12 @@ const refundHint = $derived(
 </div>
 
 {#if canWithdraw}
-	<WithdrawDialog {workshopId} {intake} bind:open={withdrawOpen} />
+	<WithdrawDialog
+		scope={workshopScope(workshopId)}
+		intakeId={intake.id}
+		name={personName(intake)}
+		choice={intake.refundChoice}
+		refundTimingDaysToGo={intake.refundTimingDaysToGo}
+		bind:open={withdrawOpen}
+	/>
 {/if}

@@ -74,18 +74,6 @@ export function keptContactFrom(
 	return kept > cutoffDate ? today : kept;
 }
 
-const dublinDate = new Intl.DateTimeFormat("en-CA", {
-	timeZone: "Europe/Dublin",
-	year: "numeric",
-	month: "2-digit",
-	day: "2-digit",
-});
-
-/** Today's Dublin civil date, `YYYY-MM-DD`. */
-export function dublinToday(now: Date = new Date()): string {
-	return dublinDate.format(now);
-}
-
 /** Who a reschedule emails: every open Intake (paid or asked). */
 export function rescheduleRecipients(view: BeginnersWorkshopConsole): number {
 	return view.roster.seated.length + view.roster.asked.length;

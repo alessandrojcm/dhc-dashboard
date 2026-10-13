@@ -30,7 +30,7 @@ export const load: PageServerLoad = async ({ locals, cookies, params }) => {
 	if (!response.data) {
 		if (response.response?.status === 404)
 			error(404, "Beginners' Workshop not found");
-		error(502, "Could not load the workshop console");
+		error(502, "Could not load this workshop");
 	}
 
 	return {

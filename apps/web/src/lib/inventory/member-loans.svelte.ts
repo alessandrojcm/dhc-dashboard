@@ -39,16 +39,10 @@ import {
 	type MutationOptions,
 	type QueryClient,
 } from "@tanstack/svelte-query";
-import {
-	fromAbsolute,
-	toCalendarDate,
-	type CalendarDate,
-} from "@internationalized/date";
+import type { CalendarDate } from "@internationalized/date";
 import { toast } from "svelte-sonner";
 import { apiProblem } from "#lib/api-error.js";
-
-/** The Club Calendar's zone; every Loan date is a civil date here. */
-export const CLUB_TIME_ZONE = "Europe/Dublin";
+import { dublinTodayCalendarDate } from "#lib/club-calendar.js";
 
 const DEFAULT_LOAN_DAYS = 7;
 
@@ -226,7 +220,7 @@ export function createCancelLoan(
 
 /** Today and the default one-week window, in Club Calendar days. */
 export function defaultLoanDates(now: number = Date.now()): LoanDates {
-	const today = toCalendarDate(fromAbsolute(now, CLUB_TIME_ZONE));
+	const today = dublinTodayCalendarDate(new Date(now));
 	return {
 		today,
 		startsOn: today.toString(),

@@ -14,6 +14,11 @@ defmodule DhcWeb.DiscordDoctorJSON do
         cache: %{
           fetchedAt: report.cache.fetched_at,
           ttlSeconds: report.cache.ttl_seconds
+        },
+        kickReasons: %{
+          linkedInactive: report.kick_reasons.linked_inactive,
+          pendingLink: report.kick_reasons.pending_link,
+          unrecognized: report.kick_reasons.unrecognized
         }
       }
     }
@@ -28,7 +33,8 @@ defmodule DhcWeb.DiscordDoctorJSON do
               discordUserId: result.discord_user_id,
               outcome: result.outcome,
               reason: result.reason,
-              error: result.error
+              error: result.error,
+              auditReason: result.audit_reason
             }
           end)
       }
@@ -45,7 +51,8 @@ defmodule DhcWeb.DiscordDoctorJSON do
       member: member(row.member),
       membershipStatus: row.membership_status,
       protected: row.protected,
-      kickable: row.kickable
+      kick: row.kick,
+      kickRefusal: row.kick_refusal
     }
   end
 

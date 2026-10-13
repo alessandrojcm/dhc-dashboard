@@ -102,7 +102,7 @@ test("ALE-397: planning cards show the 12-month figures and the liabilities", as
 	const card = (label: string) =>
 		screen.getByTestId("report-card").filter({ hasText: label });
 
-	await expect.element(card("Time to a seat")).toHaveTextContent("274.5 days");
+	await expect.element(card("Time to a place")).toHaveTextContent("274.5 days");
 	await expect
 		.element(card("Workshops to clear the queue"))
 		.toHaveTextContent("4 waiting ÷ 4 attendees per workshop");

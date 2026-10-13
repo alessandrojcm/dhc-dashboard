@@ -24,10 +24,7 @@ import {
 	TITLE_TOKENS,
 } from "#lib/training-announcements/copy.js";
 import DatePicker from "#lib/components/ui/date-picker.svelte";
-import {
-	draftCalendarDate,
-	draftIsoDate,
-} from "#lib/training-announcements/announcement.js";
+import { civilCalendarDate, civilIsoDate } from "#lib/club-calendar.js";
 import {
 	hasDraftErrors,
 	newOverrideDraft,
@@ -157,11 +154,11 @@ async function save() {
 					<Field.Label for="override-from-date">First date</Field.Label>
 					<DatePicker
 						id="override-from-date"
-						value={draftCalendarDate(draft.fromDate)}
-						minValue={draftCalendarDate(today)}
+						value={civilCalendarDate(draft.fromDate)}
+						minValue={civilCalendarDate(today)}
 						ariaInvalid={fieldMessage("fromDate") !== undefined}
 						onValueChange={(value) => {
-							draft.fromDate = draftIsoDate(value);
+							draft.fromDate = civilIsoDate(value);
 						}}
 					/>
 					{#if fieldMessage("fromDate")}
@@ -172,11 +169,11 @@ async function save() {
 					<Field.Label for="override-to-date">Last date, inclusive</Field.Label>
 					<DatePicker
 						id="override-to-date"
-						value={draftCalendarDate(draft.toDate)}
-						minValue={draftCalendarDate(draft.fromDate || today)}
+						value={civilCalendarDate(draft.toDate)}
+						minValue={civilCalendarDate(draft.fromDate || today)}
 						ariaInvalid={fieldMessage("toDate") !== undefined}
 						onValueChange={(value) => {
-							draft.toDate = draftIsoDate(value);
+							draft.toDate = civilIsoDate(value);
 						}}
 					/>
 					{#if fieldMessage("toDate")}

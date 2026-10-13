@@ -67,50 +67,6 @@ describe("createCarriedFeePanel (ALE-389)", () => {
 		expect(panel.can("forfeit")).toBe(false);
 	});
 
-	it("refunds, says so and refetches the fee", async () => {
-		const refund = vi.fn(async () => {});
-		const { panel, notify, show } = setup(fee(), { refund });
-		await expect.poll(() => panel.fee?.id).toBe("fee-1");
-
-		await expect(panel.refund()).resolves.toEqual({ ok: true });
-		expect(refund).toHaveBeenCalledWith("person-1");
-		expect(notify.success).toHaveBeenCalledWith(
-			"Credit refund requested. They will need to pay for their next workshop.",
-		);
-		await expect.poll(() => show.mock.calls.length).toBe(2);
-	});
-
-	it("follows up a failed refund by its id", async () => {
-		const failed = fee({
-			failedRefund: {
-				id: "refund-9",
-				workshopId: null,
-				amountCents: 3500,
-				currency: "eur",
-				reason: "carried_fee_refunded",
-				lastError: "card closed",
-				failedAt: "2026-10-22T12:00:00Z",
-			},
-			availableCommands: ["retry", "manual", "forfeit"],
-		});
-		const retry = vi.fn(async () => {});
-		const recordManual = vi.fn(async () => {});
-		const forfeit = vi.fn(async () => {});
-		const { panel } = setup(failed, { retry, recordManual, forfeit });
-		await expect.poll(() => panel.fee?.id).toBe("fee-1");
-
-		await panel.retry();
-		await panel.recordManual("  Cash at training ");
-		await panel.forfeit();
-		expect(retry).toHaveBeenCalledWith("person-1", "refund-9");
-		expect(recordManual).toHaveBeenCalledWith(
-			"person-1",
-			"refund-9",
-			"Cash at training",
-		);
-		expect(forfeit).toHaveBeenCalledWith("person-1", "refund-9");
-	});
-
 	it("links an imported fee and returns Phoenix's refusal for the panel to show", async () => {
 		const linkPayment = vi.fn(async () => {
 			throw {

@@ -60,14 +60,15 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       already_cancelled: {409, "This workshop is cancelled"},
       invalid_reason: {422, "Keep the reason under 500 characters"},
       contact_from_locked:
-        {409, "Batch 1 has gone out, so the contact-from date can no longer change"},
+        {409, "The first offer round has gone out, so the date offers start can no longer change"},
       fee_locked: {409, "People have been contacted at this fee, so it can no longer change"},
       capacity_below_taken:
-        {409, "Capacity can't go below the seats already paid or held by people paying now"},
+        {409,
+         "Capacity can't go below the places already paid for or reserved by people paying now"},
       invalid_workshop: {422, "Check the workshop details"},
       start_in_past: {422, "The workshop must start in the future"},
-      invalid_payment_cutoff: {422, "The Payment Cutoff must be before the workshop starts"},
-      invalid_contact_from: {422, "The contact-from date must be on or before the cutoff date"},
+      invalid_payment_cutoff: {422, "The payment deadline must be before the workshop starts"},
+      invalid_contact_from: {422, "Offers must start on or before the payment deadline"},
       no_workshops: {422, "Add at least one workshop"},
       invalid_staff: {422, "Check the Staff"},
       not_a_coach: {422, "The coach must be a Member with the coach role"},
@@ -76,12 +77,13 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       too_many_workshops: {422, "Schedule at most 20 workshops at once"},
       # Fast-track (ALE-384).
       person_not_found: {404, "Waitlist person not found"},
-      open_intake: {409, "This person already has an open Intake"},
+      open_intake: {409, "This person already has an open workshop place"},
       not_eligible:
-        {409, "Only someone waiting, or removed in the last 3 months, can be fast-tracked"},
+        {409,
+         "Only someone waiting, or removed in the last 3 months, can be added to this workshop"},
       after_cutoff:
         {409,
-         "Payment is closed for this workshop, so only Carried Fee holders can be fast-tracked"},
+         "Payment is closed for this workshop, so only people with a workshop credit can be added"},
       email_on_waitlist: {409, "This email is already on the Waitlist; search for them instead"},
       email_is_principal: {409, "This email belongs to a Member or former Member"},
       email_has_pending_invitation: {409, "This email already has a pending Invitation"},
@@ -103,45 +105,47 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       not_attended: {409, "Only people who attended can be invited"},
       already_invited: {409, "This person has already been sent an Invitation"},
       already_joined: {409, "This person has already joined the club"},
-      not_invitable: {409, "This person is no longer Invitable"},
+      not_invitable: {409, "This person can no longer be invited"},
       incomplete_details:
         {422, "This person's Waitlist details are incomplete, so no Invitation can be sent"},
       concurrent_change: {409, "Something changed at the same time; try again"},
       # Console Intake commands (ALE-386).
-      intake_not_found: {404, "Intake not found in this workshop"},
+      intake_not_found: {404, "This person has no place in this workshop"},
       already_paid:
         {409, "This person has paid; defer, cancel with refund or withdraw them instead"},
-      intake_closed: {409, "This Intake is already closed"},
+      intake_closed: {409, "This workshop place is already closed"},
       invalid_note: {422, "Keep the note under 500 characters"},
       # Cancel with refund and withdraw (ALE-387).
       intake_not_paid:
         {409,
-         "Only a paid Intake can be cancelled with a refund or deferred; decline or withdraw instead"},
-      nothing_to_refund: {409, "There is no Stripe payment to refund for this Intake"},
+         "Only a paid workshop place can be cancelled with a refund or deferred; decline or withdraw instead"},
+      nothing_to_refund: {409, "There is no Stripe payment to refund for this workshop place"},
       refund_choice_required: {422, "Choose whether to refund or forfeit their fee"},
       invalid_refund_choice: {422, "Refund must be true or false"},
       # Carried Fees (ALE-388).
-      no_carried_fee: {409, "This person holds no Carried Fee"},
-      carried_fee_not_found: {404, "This person has never held a Carried Fee"},
-      full: {409, "Every seat is taken; the Carried Fee stays held"},
-      payment_not_found: {409, "The payment that paid this Intake can't be found"},
-      invalid_ids: {422, "Pass at most 100 Waitlist entry ids"},
+      no_carried_fee: {409, "This person holds no workshop credit"},
+      carried_fee_not_found: {404, "This person has never held a workshop credit"},
+      full: {409, "Every place is taken; the workshop credit stays held"},
+      payment_not_found: {409, "The payment for this workshop place can't be found"},
+      invalid_ids: {422, "Select at most 100 people at once"},
       # Carried Fee refunds and forfeits (ALE-389).
       fee_not_refundable:
         {409,
-         "Only someone waiting, or removed in the last 3 months, can have a Carried Fee refunded"},
+         "Only someone waiting, or removed in the last 3 months, can have a workshop credit refunded"},
       carried_fee_applied:
         {409,
-         "This Carried Fee paid for a place; cancel with refund or withdraw that Intake instead"},
-      carried_fee_not_held: {409, "This Carried Fee is no longer held, so it can't be forfeited"},
-      not_a_carried_fee_refund: {409, "Only a Carried Fee's failed refund can be forfeited"},
+         "This workshop credit paid for a place; cancel that place with a refund or withdraw them instead"},
+      carried_fee_not_held:
+        {409, "This workshop credit is no longer held, so it can't be forfeited"},
+      not_a_carried_fee_refund: {409, "Only a workshop credit's failed refund can be forfeited"},
       payment_not_linked:
         {409,
-         "This imported Carried Fee isn't linked to its Stripe payment yet; link the payment first"},
-      not_imported: {409, "Only an imported Carried Fee is linked to a payment by hand"},
-      already_linked: {409, "This Carried Fee is already linked to a different Stripe payment"},
+         "This imported workshop credit isn't linked to its Stripe payment yet; link the payment first"},
+      not_imported: {409, "Only an imported workshop credit is linked to a payment by hand"},
+      already_linked:
+        {409, "This workshop credit is already linked to a different Stripe payment"},
       payment_already_linked:
-        {409, "That Stripe payment already belongs to another Carried Fee or Intake payment"},
+        {409, "That Stripe payment already belongs to another workshop credit or workshop place"},
       invalid_payment_reference:
         {422, "Enter the Stripe payment's PaymentIntent id (it starts with pi_)"},
       stripe_payment_not_found: {409, "Stripe has no payment with that id"},

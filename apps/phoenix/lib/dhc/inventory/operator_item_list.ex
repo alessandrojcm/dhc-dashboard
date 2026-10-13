@@ -15,6 +15,13 @@ defmodule Dhc.Inventory.OperatorItemList do
       filtered set, never an estimate (ADR 0005 / spec ALE-280).
     * **Archive is opt-in.** Archived items are absent by default and
       reachable only through the explicit `archived` filter (story 54).
+    * **Availability** (ALE-415). `availability` is a subset of
+      `available`, `maintenance`, and `on_loan`; absent or empty means all.
+      It filters before paging with the same precedence as
+      `Dhc.Inventory.ItemProjection` (archived, maintenance, on loan,
+      available), so a filtered row always displays the status it was
+      filtered by — and an archived item, whose status is `archived`, is
+      never in an availability-filtered page whatever `archived` says.
     * **Search.** Case-insensitive text search over the immutable slug,
       derived-label ingredients, Container name, and operator notes.
     * **Filters.** Category (multi-value) and typed property values
@@ -30,8 +37,9 @@ defmodule Dhc.Inventory.OperatorItemList do
 
   The common parameters, the category and property filters, and the page
   itself belong to `Dhc.Inventory.ItemQuery` (ALE-347), shared with the
-  member catalog. This module supplies only the `archived` parameter, its
-  scope, the operator full-text search, and the projection.
+  member catalog. This module supplies only the `archived` and
+  `availability` parameters, their scope, the operator full-text search, and
+  the projection.
   """
 
   import Ecto.Query
@@ -43,6 +51,13 @@ defmodule Dhc.Inventory.OperatorItemList do
   alias Dhc.Inventory.ItemQuery.ReadModel
 
   @allowed_archived ~w(exclude include only)
+
+  # Every operator status but `archived`, which stays on `archived`.
+  @availability_statuses %{
+    "available" => :available,
+    "maintenance" => :maintenance,
+    "on_loan" => :on_loan
+  }
 
   @type page :: %{
           items: [Item.t()],
@@ -56,6 +71,7 @@ defmodule Dhc.Inventory.OperatorItemList do
           :invalid_limit
           | :invalid_direction
           | :invalid_archived
+          | :invalid_availability
           | :invalid_category
           | :invalid_property
           | :bad_cursor
@@ -66,7 +82,10 @@ defmodule Dhc.Inventory.OperatorItemList do
   @spec list_operator_items(map()) :: {:ok, page()} | {:error, error()}
   def list_operator_items(params \\ %{}) when is_map(params) or is_list(params) do
     ItemQuery.list(params, %ReadModel{
-      param: {:archived, ["archived"], &parse_archived/1},
+      params: [
+        {:archived, ["archived"], &parse_archived/1},
+        {:availability, ["availability"], &parse_availability/1}
+      ],
       scope: &scope/2,
       search: &apply_search/2,
       project: &ItemProjection.project_all/1
@@ -75,11 +94,46 @@ defmodule Dhc.Inventory.OperatorItemList do
 
   # ── Query ───────────────────────────────────────────────────────
 
-  defp scope(query, opts), do: filter_archived(query, opts.archived)
+  defp scope(query, opts) do
+    query
+    |> filter_archived(opts.archived)
+    |> filter_availability(opts.availability)
+  end
 
   defp filter_archived(query, "exclude"), do: where(query, [i], is_nil(i.archived_at))
   defp filter_archived(query, "only"), do: where(query, [i], not is_nil(i.archived_at))
   defp filter_archived(query, "include"), do: query
+
+  # Availability is a projection, never a stored column, so the filter
+  # decides each status from the same facts and precedence as
+  # `ItemProjection`: an archived item is never one of these statuses, open
+  # maintenance outranks an active loan, and a pending request is not an
+  # input. The statuses OR together.
+  defp filter_availability(query, []), do: query
+
+  defp filter_availability(query, statuses) do
+    matches =
+      Enum.reduce(statuses, dynamic(false), fn status, acc ->
+        dynamic(^acc or ^availability_match(status))
+      end)
+
+    where(query, ^dynamic([i], is_nil(i.archived_at) and ^matches))
+  end
+
+  defp availability_match(:maintenance), do: ItemProjection.open_maintenance_exists()
+
+  defp availability_match(:on_loan) do
+    dynamic(
+      not (^ItemProjection.open_maintenance_exists()) and ^ItemProjection.active_loan_exists()
+    )
+  end
+
+  defp availability_match(:available) do
+    dynamic(
+      not (^ItemProjection.open_maintenance_exists()) and
+        not (^ItemProjection.active_loan_exists())
+    )
+  end
 
   # Correlated per-row expression; promote to an indexed generated
   # column if list/count profiling shows this slowing the page.
@@ -217,4 +271,27 @@ defmodule Dhc.Inventory.OperatorItemList do
   end
 
   defp parse_archived(_archived), do: {:error, :invalid_archived}
+
+  # A comma-separated subset, held as a sorted set so `a,b` and `b,a` are the
+  # same query (and the same cursor).
+  defp parse_availability(nil), do: {:ok, []}
+
+  defp parse_availability(raw) when is_binary(raw) do
+    raw
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
+      case Map.fetch(@availability_statuses, entry) do
+        {:ok, status} -> {:cont, {:ok, [status | acc]}}
+        :error -> {:halt, {:error, :invalid_availability}}
+      end
+    end)
+    |> case do
+      {:ok, statuses} -> {:ok, statuses |> Enum.uniq() |> Enum.sort()}
+      error -> error
+    end
+  end
+
+  defp parse_availability(_raw), do: {:error, :invalid_availability}
 end

@@ -14,8 +14,7 @@ import type {
 	TrainingAnnouncementKind,
 	TrainingAnnouncementWarning,
 } from "@dhc/api-client";
-import { CalendarDate, type DateValue } from "@internationalized/date";
-import dayjs from "dayjs";
+import { formatCivilDateLong } from "#lib/club-calendar.js";
 import { COPY_PRESETS, WEEKDAY_NAMES } from "./copy";
 
 /** Live, paused by an Announcement Disablement, or terminally retired. */
@@ -38,54 +37,6 @@ export type AnnouncementSave = {
 	announcement: TrainingAnnouncement;
 	warnings: TrainingAnnouncementWarning[];
 };
-
-/**
- * Europe/Dublin's today — the club's civil day. The page reads announcements
- * in the browser, so the server hands the sheet this date instead of letting a
- * reader's own time zone pick the default dates.
- */
-export function dublinToday(now: Date = new Date()): string {
-	// en-CA formats as an ISO date, so the result never depends on the host's
-	// locale settings.
-	return new Intl.DateTimeFormat("en-CA", {
-		timeZone: "Europe/Dublin",
-		year: "numeric",
-		month: "2-digit",
-		day: "2-digit",
-	}).format(now);
-}
-
-/**
- * The `DateValue` the shared `date-picker.svelte` speaks, for a draft's
- * `YYYY-MM-DD`.
- *
- * Every announcement date is a Dublin *civil* day, never an instant, so this
- * goes through dayjs, which parses a bare ISO date as local midnight. Going via
- * `new Date(iso)` would read that instant back in the reader's own zone and
- * shift the day for anyone west of UTC. An empty or unparseable draft returns
- * `undefined` rather than throwing, so a cleared field still reaches Phoenix's
- * own refusal instead of crashing the picker.
- */
-export function draftCalendarDate(isoDate: string): CalendarDate | undefined {
-	const day = dayjs(isoDate);
-	if (!day.isValid()) return undefined;
-	// Built from dayjs's own Y/M/D parts rather than a Date instant: this keeps
-	// the civil day the string named. toCalendarDate/fromDate would read an
-	// instant in the reader's zone and shift it for anyone west of UTC.
-	return new CalendarDate(day.year(), day.month() + 1, day.date());
-}
-
-/**
- * The draft's `YYYY-MM-DD` back from a picked calendar date.
- *
- * `Calendar` is configured `type="single"` without a time zone, so what comes
- * back is a `CalendarDate` whose `toString()` is already the ISO date. The
- * narrowing is the guard, not a cast: a `ZonedDateTime` or `Time` reaching here
- * would stringify to something the API's `format: date` rejects.
- */
-export function draftIsoDate(value: DateValue | undefined): string {
-	return value instanceof CalendarDate ? value.toString() : "";
-}
 
 /** The side sheet's editable copy of one announcement's schedule and copy. */
 export type AnnouncementDraft = {
@@ -132,30 +83,6 @@ function addDays(isoDate: string, days: number): string {
 }
 
 /**
- * `Thursday 8 October 2026` in Europe/Dublin civil terms. Built from parts
- * rather than `format()` because en-GB inserts a comma after the weekday,
- * while Phoenix renders `{{date}}` as `Thursday 25 September` — the sheet
- * shows both, so they should read alike.
- */
-export function announcementDateLabel(isoDate: string): string {
-	const parts = new Intl.DateTimeFormat("en-GB", {
-		weekday: "long",
-		day: "numeric",
-		month: "long",
-		year: "numeric",
-		timeZone: "UTC",
-	}).formatToParts(civilDate(isoDate));
-	const byType = new Map(parts.map((part) => [part.type, part.value]));
-	const order: Intl.DateTimeFormatPartTypes[] = [
-		"weekday",
-		"day",
-		"month",
-		"year",
-	];
-	return order.map((type) => byType.get(type) ?? "").join(" ");
-}
-
-/**
  * The next occurrence date of a weekly announcement: today when today is the
  * chosen weekday, otherwise the first such day after it. Which of those slots
  * has already elapsed today is Phoenix's to decide.
@@ -172,7 +99,7 @@ export function scheduleLabel(announcement: TrainingAnnouncement): string {
 	}
 	const date = announcement.oneOffDate;
 	return date
-		? `One-off on ${announcementDateLabel(date)} at ${time}`
+		? `One-off on ${formatCivilDateLong(date)} at ${time}`
 		: `One-off at ${time}`;
 }
 

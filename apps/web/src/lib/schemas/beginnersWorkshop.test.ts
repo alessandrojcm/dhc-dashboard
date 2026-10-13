@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import * as v from "valibot";
 import {
+	deletePersonSchema,
 	fastTrackNewPersonSchema,
 	fastTrackWaitlistPersonSchema,
 	scheduleWorkshopsSchema,
 	workshopSettingsSchema,
+	recordPersonManualRefundSchema,
+	refundPersonCreditSchema,
+	withdrawPersonSchema,
 	workshopStaffSchema,
 } from "#lib/schemas/beginnersWorkshop.js";
 
@@ -238,5 +242,53 @@ describe("fast-track schemas (ALE-384)", () => {
 			gender: "woman (cis)",
 		});
 		expect(result.success).toBe(false);
+	});
+});
+
+describe("ALE-421: the Waitlist tab's money commands", () => {
+	const waitlistId = "6d9e6110-fc8c-4dcf-b64f-db21b20d5140";
+	const refundId = "0b0c3b2e-8a43-4a8d-9a39-5b9d8a2ab001";
+
+	it("sends the refund-or-forfeit choice as Phoenix's flag, and nothing unchosen", () => {
+		expect(
+			v.parse(withdrawPersonSchema, {
+				waitlistId,
+				refund: "refund",
+				note: " Moved away ",
+			}),
+		).toEqual({ waitlistId, body: { refund: true, note: "Moved away" } });
+		expect(v.parse(withdrawPersonSchema, { waitlistId })).toEqual({
+			waitlistId,
+			body: {},
+		});
+		expect(
+			v.parse(deletePersonSchema, { waitlistId, refund: "forfeit" }),
+		).toEqual({ waitlistId, body: { refund: false } });
+		expect(v.parse(deletePersonSchema, { waitlistId })).toEqual({
+			waitlistId,
+			body: {},
+		});
+	});
+
+	it("checks the 500-character note like the console does", () => {
+		const long = "x".repeat(501);
+		for (const [schema, input] of [
+			[withdrawPersonSchema, { waitlistId, note: long }],
+			[refundPersonCreditSchema, { waitlistId, note: long }],
+			[recordPersonManualRefundSchema, { waitlistId, refundId, note: long }],
+		] as const) {
+			const result = v.safeParse(schema, input);
+			expect(result.success).toBe(false);
+			expect(result.issues?.[0]?.message).toBe(
+				"Keep the note under 500 characters.",
+			);
+		}
+		expect(
+			v.parse(recordPersonManualRefundSchema, {
+				waitlistId,
+				refundId,
+				note: "  ",
+			}),
+		).toEqual({ waitlistId, refundId, body: {} });
 	});
 });

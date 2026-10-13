@@ -26,7 +26,7 @@ import { useQueryClient } from "@tanstack/svelte-query";
 import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Sheet from "#lib/components/ui/sheet/index.js";
-import { announcementDateLabel } from "#lib/training-announcements/announcement.js";
+import { formatCivilDateLong } from "#lib/club-calendar.js";
 import { KIND_CHANNEL_LABELS } from "#lib/training-announcements/copy.js";
 import {
 	evidenceCheckpoints,
@@ -118,7 +118,7 @@ function refreshOccurrenceReads() {
 		<Sheet.Header>
 			<Sheet.Title>{title}</Sheet.Title>
 			<Sheet.Description>
-				{announcementDateLabel(item.date)} · {status.label}{#if item.postTime}
+				{formatCivilDateLong(item.date)} · {status.label}{#if item.postTime}
 					· {item.postTime.slice(0, 5)}{/if}
 			</Sheet.Description>
 		</Sheet.Header>

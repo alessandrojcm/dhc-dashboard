@@ -4,7 +4,7 @@ import { Button } from "#lib/components/ui/button/index.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
 import WorkshopExpressCheckout from "./workshop-express-checkout.svelte";
 import WorkshopCancellationDialog from "./workshop-cancellation-dialog.svelte";
-import dayjs from "dayjs";
+import { dublinInstantTile, formatDublinSpan } from "#lib/club-calendar.js";
 import Dinero from "dinero.js";
 import { useQueryClient } from "@tanstack/svelte-query";
 import type { UserData } from "#lib/types.js";
@@ -43,7 +43,7 @@ const userData = queryClient.getQueryData<UserData>(["logged_in_user_data"]);
 const sortedWorkshops = $derived(
 	[...workshops].sort(
 		(first, second) =>
-			dayjs(first.startDate).valueOf() - dayjs(second.startDate).valueOf(),
+			Date.parse(first.startDate) - Date.parse(second.startDate),
 	),
 );
 
@@ -98,17 +98,6 @@ function hasActiveRegistration(workshop: Workshop) {
 
 function formatPrice(price: number) {
 	return Dinero({ amount: price, currency: "EUR" }).toFormat();
-}
-
-function formatWorkshopTime(workshop: Workshop) {
-	const start = dayjs(workshop.startDate);
-	const end = dayjs(workshop.endDate);
-
-	if (start.isSame(end, "day")) {
-		return `${start.format("ddd, D MMM · h:mm A")}–${end.format("h:mm A")}`;
-	}
-
-	return `${start.format("D MMM · h:mm A")}–${end.format("D MMM · h:mm A")}`;
 }
 
 function getMemberState(workshop: Workshop) {
@@ -213,6 +202,7 @@ function handleRegistrationSuccess() {
 
 				<div class="space-y-3">
 					{#each group.workshops as workshop (workshop.id)}
+						{@const tile = dublinInstantTile(workshop.startDate)}
 						<article
 							class="grid gap-4 rounded-2xl border border-border/80 bg-card p-4 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/40 hover:shadow-md sm:p-5 lg:grid-cols-[4.5rem_minmax(0,1fr)_minmax(12rem,auto)] lg:items-center lg:gap-5"
 						>
@@ -223,13 +213,13 @@ function handleRegistrationSuccess() {
 								<span
 									class="text-[0.65rem] font-bold tracking-[0.16em] uppercase"
 								>
-									{dayjs(workshop.startDate).format("MMM")}
+									{tile.month}
 								</span>
 								<span class="text-2xl font-bold leading-none">
-									{dayjs(workshop.startDate).format("D")}
+									{tile.day}
 								</span>
 								<span class="mt-0.5 text-[0.6rem] font-semibold uppercase">
-									{dayjs(workshop.startDate).format("ddd")}
+									{tile.weekday}
 								</span>
 							</div>
 
@@ -267,7 +257,12 @@ function handleRegistrationSuccess() {
 											aria-hidden="true"
 											class="size-4 shrink-0 text-primary"
 										/>
-										<span>{formatWorkshopTime(workshop)}</span>
+										<span
+											>{formatDublinSpan(
+												workshop.startDate,
+												workshop.endDate,
+											)}</span
+										>
 									</span>
 									<span class="flex min-w-0 items-center gap-2">
 										<MapPin

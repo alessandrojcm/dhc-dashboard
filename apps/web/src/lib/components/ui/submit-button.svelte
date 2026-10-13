@@ -13,6 +13,8 @@ import type { Snippet } from "svelte";
 
 type Props = {
 	type?: "submit" | "button";
+	/** The `id` of the form it submits, when it sits outside that form. */
+	form?: string;
 	variant?: ButtonVariant;
 	size?: ButtonSize;
 	class?: string;

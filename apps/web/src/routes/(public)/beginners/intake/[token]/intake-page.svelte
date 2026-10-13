@@ -12,7 +12,7 @@ import type { BeginnersIntakePage } from "@dhc/api-client";
 import { CalendarDays, Clock, MapPin, RefreshCw } from "@lucide/svelte";
 import { goto, invalidateAll } from "$app/navigation";
 import IntakeCheckout from "#lib/components/beginners-workshops/intake-checkout.svelte";
-import { formatDublinInstant } from "#lib/beginners-workshops/console.js";
+import { formatDublinInstant } from "#lib/club-calendar.js";
 import {
 	confirmsWithCarriedFee,
 	intakeActionLabel,

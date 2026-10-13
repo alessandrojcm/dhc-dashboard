@@ -62,8 +62,6 @@ defmodule Dhc.Inventory.MemberCatalog do
   alias Dhc.Inventory.ItemQuery
   alias Dhc.Inventory.ItemQuery.ReadModel
   alias Dhc.Inventory.ItemValues
-  alias Dhc.Inventory.Loan
-  alias Dhc.Inventory.MaintenancePeriod
   alias Dhc.Inventory.PropertyDefinition
   alias Dhc.Inventory.PropertyOption
   alias Dhc.Repo
@@ -107,7 +105,7 @@ defmodule Dhc.Inventory.MemberCatalog do
   @spec list_catalog_items(map()) :: {:ok, page()} | {:error, error()}
   def list_catalog_items(params \\ %{}) when is_map(params) or is_list(params) do
     ItemQuery.list(params, %ReadModel{
-      param: {:availability, ["availability"], &parse_availability/1},
+      params: [{:availability, ["availability"], &parse_availability/1}],
       scope: &scope/2,
       search: &apply_search/2,
       project: &project_member_rows/1
@@ -206,48 +204,19 @@ defmodule Dhc.Inventory.MemberCatalog do
   defp filter_availability(query, :all), do: query
 
   defp filter_availability(query, :available) do
-    statuses = ItemProjection.active_loan_statuses()
-
     where(
       query,
-      [i],
-      not exists(
-        from(p in MaintenancePeriod,
-          where: p.item_id == parent_as(:item).id,
-          where: is_nil(p.ended_at),
-          select: 1
-        )
-      ) and
-        not exists(
-          from(l in Loan,
-            where: l.item_id == parent_as(:item).id,
-            where: l.status in ^statuses,
-            select: 1
-          )
-        )
+      ^dynamic(
+        not (^ItemProjection.open_maintenance_exists()) and
+          not (^ItemProjection.active_loan_exists())
+      )
     )
   end
 
   defp filter_availability(query, :unavailable) do
-    statuses = ItemProjection.active_loan_statuses()
-
     where(
       query,
-      [i],
-      exists(
-        from(p in MaintenancePeriod,
-          where: p.item_id == parent_as(:item).id,
-          where: is_nil(p.ended_at),
-          select: 1
-        )
-      ) or
-        exists(
-          from(l in Loan,
-            where: l.item_id == parent_as(:item).id,
-            where: l.status in ^statuses,
-            select: 1
-          )
-        )
+      ^dynamic(^ItemProjection.open_maintenance_exists() or ^ItemProjection.active_loan_exists())
     )
   end
 

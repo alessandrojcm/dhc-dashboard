@@ -439,7 +439,13 @@ paths:
       tags:
         - DiscordDoctor
       summary: Get the Discord Doctor reconciliation report
-      description: Returns every human server account in exactly one reconciliation bucket and every Member not known to be in the server.
+      description: |
+        Returns every human server account in exactly one reconciliation
+        bucket and every Member not known to be in the server. Each server
+        account says whether it can be kicked (`kick`) and, when not, why
+        (`kickRefusal`), from the same rule the kick operation enforces.
+        `kickReasons` gives the Discord audit-log reason prefix for the
+        requesting administrator, per kickable bucket.
       security:
         - cookieSession: []
       parameters:
@@ -465,6 +471,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "403":
           description: Discord Doctor role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: The requesting administrator has no profile to name in the audit reason.
           content:
             application/json:
               schema:
@@ -4763,16 +4775,19 @@ paths:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
 
-  /beginners-workshops/carried-fees:
+  /beginners-workshops/people:
     get:
-      operationId: beginnersWorkshopCarriedFees.index
+      operationId: beginnersWorkshopPeople.index
       tags: [BeginnersWorkshops]
-      summary: Carried Fee status of Waitlist people
+      summary: The Waitlist tab's people
       description: |
-        For the Waitlist view: the status of each listed person's live
-        Carried Fee (`held` or `applied`), keyed by Waitlist entry id; people
-        without one are absent. At most 100 ids. Requires
-        `beginners.waitlist.manage`.
+        For the Waitlist view (ALE-417): each listed person as Beginners'
+        Workshops sees them, keyed by Waitlist entry id — their live workshop
+        credit status, the person commands the tab may offer and the
+        refund-or-forfeit choice an offered Withdraw or Delete needs. Every
+        requested id that names a Waitlist entry is present; unknown ids are
+        absent. Advisory: the commands decide again by the same rules. At
+        most 100 ids. Requires `beginners.waitlist.manage`.
       security: [{cookieSession: []}]
       parameters:
         - name: waitlistIds
@@ -4782,10 +4797,10 @@ paths:
           schema: {type: string}
       responses:
         "200":
-          description: The live Carried Fees of the given people
+          description: The given people
           content:
             application/json:
-              schema: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFeesResponse"}
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopPeopleResponse"}
         "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
         "403":
           description: The `beginners.waitlist.manage` capability is required
@@ -6131,7 +6146,9 @@ paths:
         command can change. `totalCount` is an exact count over the same
         filtered set.
 
-        Archived Items are absent unless `archived` asks for them. Search
+        Archived Items are absent unless `archived` asks for them;
+        `availability` narrows to a subset of `available`, `maintenance`, and
+        `on_loan` before paging. Search
         (`q`) covers the immutable slug, the derived label through its
         Category and property-value ingredients, Container name, and operator
         notes. Filters: `categoryId` (comma-separated) and `property` (comma-separated
@@ -6180,6 +6197,19 @@ paths:
           description: |
             `exclude` (default) hides archived Items, `only` returns just
             them, `include` returns both.
+        - name: availability
+          in: query
+          schema:
+            type: string
+          description: |
+            Comma-separated subset of `available`, `maintenance`, and
+            `on_loan`. Absent or empty returns every availability. The
+            filter applies before paging and `totalCount` counts the filtered
+            set. It uses the projection's precedence (archived, maintenance,
+            on loan, available), so a returned row's `availability.status`
+            is always one of the requested statuses, and an archived Item is
+            never returned while this filter is set. An unknown value
+            returns `400`.
         - name: q
           in: query
           schema:
@@ -9798,11 +9828,13 @@ components:
       type: object
       description: |
         A refund that failed and has not been retried or recorded as manual.
-        `carriedFee`: it refunds a Carried Fee. `forfeitable`: that fee is
-        held again and may be forfeited instead; false while the fee stays
-        `refunded` because the person has since paid an open Intake through
-        Stripe or holds another fee (the money is still owed back).
-      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt, carriedFee, forfeitable]
+        `carriedFee`: it refunds a Carried Fee. `availableCommands`: the
+        follow-ups `CarriedFeePolicy` allows (advisory; Phoenix decides
+        again) — `retry` and `manual` always, `forfeit` only while the fee is
+        held again, not while it stays `refunded` because the person has since
+        paid an open Intake through Stripe or holds another fee (the money is
+        still owed back).
+      required: [id, intakeId, firstName, lastName, amountCents, currency, reason, failedAt, carriedFee, availableCommands]
       properties:
         id: {type: string, format: uuid}
         intakeId: {type: string, format: uuid}
@@ -9813,7 +9845,16 @@ components:
         reason: {type: string, description: "Why the refund was owed, e.g. `policy_failed`, `paid_after_close`."}
         failedAt: {type: string, format: date-time, nullable: true}
         carriedFee: {type: boolean}
-        forfeitable: {type: boolean}
+        availableCommands:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopFailedRefundCommand"}
+    BeginnersWorkshopFailedRefundCommand:
+      type: string
+      description: |
+        A follow-up to a failed refund (`CarriedFeePolicy.follow_ups/0`):
+        `retry` (a new Stripe refund), `manual` (record a refund paid outside
+        Stripe), `forfeit` (keep the payment and remove the Carried Fee).
+      enum: [retry, manual, forfeit]
     BeginnersWorkshopRefund:
       type: object
       required: [id, intakeId, followsRefundId, status, method, reason, amountCents, currency, requestedAt, completedAt]
@@ -10513,17 +10554,41 @@ components:
                     - payment_not_linked
                     - already_requested
                     - concurrent_change
-    BeginnersWorkshopCarriedFees:
-      type: object
+    BeginnersWorkshopPersonCommand:
+      type: string
       description: |
-        The status of each person's live Carried Fee, keyed by Waitlist entry
-        id. People without one are absent.
-      additionalProperties: {$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}
-    BeginnersWorkshopCarriedFeesResponse:
+        What the Waitlist tab may offer for a person (advisory; Phoenix
+        decides again by the same rules): `withdraw`, `delete_person`, and
+        `refund_carried_fee` (refund their held workshop credit).
+      enum: [withdraw, delete_person, refund_carried_fee]
+    BeginnersWorkshopPerson:
+      type: object
+      required: [carriedFee, availableCommands, refundChoice]
+      properties:
+        carriedFee:
+          allOf: [{$ref: "#/components/schemas/BeginnersCarriedFeeStatus"}]
+          nullable: true
+          description: The status of the person's live Carried Fee (null without one).
+        availableCommands:
+          type: array
+          items: {$ref: "#/components/schemas/BeginnersWorkshopPersonCommand"}
+        refundChoice:
+          allOf: [{$ref: "#/components/schemas/BeginnersWorkshopRefundChoice"}]
+          nullable: true
+          description: |
+            The money an offered Withdraw or Delete must settle by refund or
+            forfeit — the payment that paid a Stripe-paid open Intake, else
+            the live Carried Fee — or null when neither needs the choice. The
+            commands require it by the same rule (`refund_choice_required`).
+    BeginnersWorkshopPeople:
+      type: object
+      description: The given people, keyed by Waitlist entry id.
+      additionalProperties: {$ref: "#/components/schemas/BeginnersWorkshopPerson"}
+    BeginnersWorkshopPeopleResponse:
       type: object
       required: [data]
       properties:
-        data: {$ref: "#/components/schemas/BeginnersWorkshopCarriedFees"}
+        data: {$ref: "#/components/schemas/BeginnersWorkshopPeople"}
     BeginnersWorkshopCarriedFeeCommand:
       type: string
       description: |
@@ -11372,7 +11437,7 @@ components:
           $ref: "#/components/schemas/DiscordDoctorReport"
     DiscordDoctorReport:
       type: object
-      required: [serverMembers, missingMembers, cache]
+      required: [serverMembers, missingMembers, cache, kickReasons]
       properties:
         serverMembers:
           $ref: "#/components/schemas/DiscordDoctorServerMembers"
@@ -11382,6 +11447,31 @@ components:
             $ref: "#/components/schemas/DiscordDoctorMissingMember"
         cache:
           $ref: "#/components/schemas/DiscordDoctorCacheMetadata"
+        kickReasons:
+          $ref: "#/components/schemas/DiscordDoctorKickReasons"
+    DiscordDoctorKickReasons:
+      type: object
+      description: |
+        The Discord audit-log reason prefix a kick from each kickable bucket
+        writes for the requesting administrator, e.g.
+        `DHC Doctor — Aoife Byrne: Linked – inactive`. A kick appends
+        ` — <note>` when a note is given.
+      required: [linkedInactive, pendingLink, unrecognized]
+      additionalProperties: false
+      properties:
+        linkedInactive:
+          type: string
+        pendingLink:
+          type: string
+        unrecognized:
+          type: string
+    DiscordDoctorKick:
+      type: string
+      enum: [bulk, single, none]
+      description: |
+        Whether the account can be kicked: `bulk` (alone or with others),
+        `single` (only as the one account of a kick request; a pending link),
+        or `none`.
     DiscordDoctorServerMembers:
       type: object
       required: [linkedActive, linkedInactive, pendingLink, unrecognized]
@@ -11404,7 +11494,7 @@ components:
             $ref: "#/components/schemas/DiscordDoctorServerMember"
     DiscordDoctorServerMember:
       type: object
-      required: [discordUserId, username, displayName, avatar, joinedAt, member, membershipStatus, protected, kickable]
+      required: [discordUserId, username, displayName, avatar, joinedAt, member, membershipStatus, protected, kick, kickRefusal]
       properties:
         discordUserId:
           type: string
@@ -11429,8 +11519,12 @@ components:
           nullable: true
         protected:
           type: boolean
-        kickable:
-          type: boolean
+        kick:
+          $ref: "#/components/schemas/DiscordDoctorKick"
+        kickRefusal:
+          type: string
+          nullable: true
+          description: Staff-facing reason the account cannot be kicked, when `kick` is `none`.
     DiscordDoctorMemberSummary:
       type: object
       required: [id, firstName, lastName]
@@ -11500,7 +11594,7 @@ components:
                 $ref: "#/components/schemas/DiscordDoctorKickResult"
     DiscordDoctorKickResult:
       type: object
-      required: [discordUserId, outcome, reason, error]
+      required: [discordUserId, outcome, reason, error, auditReason]
       properties:
         discordUserId:
           type: string
@@ -11510,7 +11604,11 @@ components:
         reason:
           type: string
           nullable: true
-          description: Server-side safety reason when the outcome is refused.
+          description: Staff-facing safety reason when the outcome is refused.
+        auditReason:
+          type: string
+          nullable: true
+          description: The reason written to the Discord audit log when the outcome is kicked.
         error:
           type: string
           nullable: true
@@ -11856,6 +11954,7 @@ components:
         - insuranceFormSubmitted
         - lastStatusChange
         - removedAt
+        - availableCommands
       properties:
         id:
           type: string
@@ -11912,6 +12011,16 @@ components:
           description: |
             When the entry's current `removed` standing started, which starts
             the 3-month retention clock; `null` unless the status is `removed`.
+        availableCommands:
+          type: array
+          description: |
+            ALE-417: the Waitlist commands the entry offers now (advisory;
+            `restore` decides again): `restore` for someone removed within
+            the 3-month retention window.
+          items: {$ref: "#/components/schemas/WaitlistEntryCommand"}
+    WaitlistEntryCommand:
+      type: string
+      enum: [restore]
     NotificationsListResponse:
       type: object
       required:

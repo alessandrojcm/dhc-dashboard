@@ -18,12 +18,12 @@ type Props = {
 	onEdit: (newValue: string) => void;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
-	/** Offered only for a person removed within the restore window. */
+	/** Each action is passed only when Phoenix offers it (ALE-417). */
 	onRestore?: () => void;
 	restoreDisabled?: boolean;
-	/** ALE-387: offered for someone still on the Waitlist. */
+	/** ALE-387. */
 	onWithdraw?: () => void;
-	/** ALE-396: a hard delete, offered until the Invitation handoff. */
+	/** ALE-396: a hard delete. */
 	onDelete?: () => void;
 };
 let isEdit = $state(false);

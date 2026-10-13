@@ -14,11 +14,8 @@ import PhoneInput from "#lib/components/ui/phone-input.svelte";
 import { Separator } from "#lib/components/ui/separator/index.js";
 import * as Sheet from "#lib/components/ui/sheet/index.js";
 import * as RadioGroup from "#lib/components/ui/radio-group/index.js";
-import {
-	parseDate,
-	toCalendarDate,
-	type DateValue,
-} from "@internationalized/date";
+import type { DateValue } from "@internationalized/date";
+import { civilCalendarDate, civilIsoDate } from "#lib/club-calendar.js";
 import { isHttpError } from "@sveltejs/kit";
 import dayjs from "dayjs";
 import { Info, Loader, Pencil, Plus, Trash2 } from "@lucide/svelte";
@@ -96,13 +93,11 @@ let formMessage = $state<{ success?: string; failure?: string } | null>(null);
 
 // The date of birth stays a `YYYY-MM-DD` string; only the picker sees a
 // CalendarDate. The string is empty or one the picker wrote.
-const dobValue = $derived(
-	inviteFields.dateOfBirth ? parseDate(inviteFields.dateOfBirth) : undefined,
-);
+const dobValue = $derived(civilCalendarDate(inviteFields.dateOfBirth));
 
 function setDateOfBirth(date: DateValue | undefined) {
 	if (!date) return;
-	inviteFields.dateOfBirth = toCalendarDate(date).toString();
+	inviteFields.dateOfBirth = civilIsoDate(date);
 	clearFieldError("dateOfBirth");
 }
 

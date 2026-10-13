@@ -116,7 +116,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
     assert %{
              "errors" => %{
                "code" => "invalid_contact_from",
-               "detail" => "The contact-from date must be on or before the cutoff date",
+               "detail" => "Offers must start on or before the payment deadline",
                "fields" => %{"workshops.1.contactFromDate" => [_]}
              }
            } =

@@ -411,6 +411,12 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           {:ok, Dhc.BeginnersWorkshops.CarriedFeePolicy.t()} | {:error, term()}
   defdelegate locked_carried_fee_facts(waitlist_id, clock), to: People
 
+  @doc false
+  # ALE-417 parity seam (`Commands.People`).
+  @spec locked_person_facts(binary(), Clock.t()) ::
+          {:ok, Dhc.BeginnersWorkshops.PersonPolicy.t()} | {:error, term()}
+  defdelegate locked_person_facts(waitlist_id, clock), to: People
+
   # ── Authorization ───────────────────────────────────────────────
 
   # `confirm` is both a console command and the person's own (ALE-388): the

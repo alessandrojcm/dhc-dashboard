@@ -383,7 +383,10 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
 
       # Needs attention on the original workshop's console offers Forfeit too.
       workshop = %{id: deferred.workshop_id}
-      assert [%{id: id, carried_fee: true, forfeitable: true}] = console(workshop).failed_refunds
+
+      assert [%{id: id, carried_fee: true, available_commands: [:retry, :manual, :forfeit]}] =
+               console(workshop).failed_refunds
+
       assert id == refund.id
 
       assert {:ok, %{status: "pending", follows_refund_id: follows}} =
@@ -416,7 +419,7 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
 
       original = %{id: deferred.workshop_id}
 
-      assert [%{id: id, carried_fee: true, forfeitable: false}] =
+      assert [%{id: id, carried_fee: true, available_commands: [:retry, :manual]}] =
                console(original).failed_refunds
 
       assert id == refund.id
@@ -517,7 +520,8 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeeRefundsTest do
       assert {:error, :not_a_carried_fee_refund} =
                execute({:staff, c}, {:forfeit_carried_fee, workshop.id, refund.id})
 
-      assert [%{carried_fee: false}] = console(workshop).failed_refunds
+      assert [%{carried_fee: false, available_commands: [:retry, :manual]}] =
+               console(workshop).failed_refunds
     end
 
     test "a holder who confirms after the failure keeps the seat; the refund is no longer followed up",

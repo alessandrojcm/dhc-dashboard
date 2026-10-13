@@ -109,6 +109,14 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicyFactsTest do
 
       assert IntakePolicy.check(:withdraw, facts(intake: nil)) == :ok
       assert IntakePolicy.check(:withdraw, facts(intake: nil, latest_fee_refunded: true)) == :ok
+
+      # ALE-417: Onboarding's people, as the Settlement's withdrawal refuses them.
+      for standing <- ~w(invited joined) do
+        entry = %{status: standing, removed_at: nil}
+
+        assert IntakePolicy.check(:withdraw, facts(intake: nil, entry: entry)) ==
+                 {:error, :already_invited}
+      end
     end
 
     test "needs the refund-or-forfeit choice exactly when a live fee exists" do

@@ -7,11 +7,14 @@
 -->
 <script lang="ts">
 import type { BeginnersWorkshop } from "@dhc/api-client";
-import { parseDate, type DateValue } from "@internationalized/date";
+import type { DateValue } from "@internationalized/date";
 import { toast } from "svelte-sonner";
-import { formatCivilDate } from "#lib/beginners-workshops/presentation.js";
 import {
+	civilCalendarDate,
 	dublinToday,
+	formatCivilDate,
+} from "#lib/club-calendar.js";
+import {
 	keptContactFrom,
 	keptCutoff,
 	rescheduleWarning,
@@ -57,11 +60,7 @@ function current(key: "date" | "startTime"): string {
 }
 
 function pickerValue(key: DateKey, fallback: string): DateValue | undefined {
-	try {
-		return parseDate(form.fields[key].value() || fallback);
-	} catch {
-		return undefined;
-	}
+	return civilCalendarDate(form.fields[key].value() || fallback);
 }
 
 // The kept offsets for the date and start time now in the form.
