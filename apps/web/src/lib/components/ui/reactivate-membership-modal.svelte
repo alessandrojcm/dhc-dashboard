@@ -10,14 +10,12 @@ import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import CreditCard from "@lucide/svelte/icons/credit-card";
 import ExternalLink from "@lucide/svelte/icons/external-link";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+import type { DateValue } from "@internationalized/date";
+import { civilIsoDate, formatCivilDate } from "#lib/club-calendar.js";
 import {
-	type DateValue,
-	fromDate,
-	getLocalTimeZone,
-	today,
-	toCalendarDate,
-} from "@internationalized/date";
-import dayjs from "dayjs";
+	isFutureStart,
+	reactivationStartWindow,
+} from "#lib/membership/reactivation-start-window.js";
 import Dinero from "dinero.js";
 import { untrack } from "svelte";
 import type {
@@ -93,37 +91,24 @@ let {
 	onSelectionChange,
 }: Props = $props();
 
-// The server accepts today up to one year ahead (Membership's
-// @max_start_date_days_ahead); the picker enforces the same window.
-const MAX_START_DAYS_AHEAD = 366;
-
-const minDate = $derived(today(getLocalTimeZone()));
-const maxDate = $derived(minDate.add({ days: MAX_START_DAYS_AHEAD }));
-// Fresh per mount: the page mounts the modal inside {#if} only while open.
+// Phoenix accepts a start date from its (UTC) today up to 366 days ahead;
+// the window module reconciles that with Dublin's today. Read once per mount:
+// the page mounts the modal inside {#if} only while open.
+const { earliest: minDate, latest: maxDate } = reactivationStartWindow();
 let selectedDate = $state<DateValue>(
-	untrack(() => initialStartDate ?? today(getLocalTimeZone())),
+	untrack(() => initialStartDate ?? minDate),
 );
 // ALE-253: default keeps the initial-release semantics (annual charged
 // prorated for the remainder of this year).
 let annualFeeMode = $state<AnnualFeeMode>("prorated_now");
 
-const startDateIso = $derived(toCalendarDate(selectedDate).toString());
+const startDateIso = $derived(civilIsoDate(selectedDate));
 const deferredAnnual = $derived(annualFeeMode === "deferred_next_year");
 const monthlyActive = $derived(membershipCoverage.monthly === "active");
 const annualActive = $derived(membershipCoverage.annual === "active");
 const completeCoverage = $derived(monthlyActive && annualActive);
-const futureStart = $derived(dayjs(startDateIso).isAfter(dayjs(), "day"));
-const formattedStartDate = $derived(dayjs(startDateIso).format("D MMM YYYY"));
-const nextMonthlyBillingDate = $derived(
-	dayjs(startDateIso).add(1, "month").startOf("month").format("D MMM YYYY"),
-);
-const nextAnnualBillingDate = $derived.by(() => {
-	const now = dayjs();
-	const thisJanuary = dayjs(`${now.year()}-01-07`);
-	return (
-		thisJanuary.isAfter(now, "day") ? thisJanuary : thisJanuary.add(1, "year")
-	).format("D MMM YYYY");
-});
+const futureStart = $derived(isFutureStart(startDateIso));
+const formattedStartDate = $derived(formatCivilDate(startDateIso));
 // Distinguishes "Stripe says there is nothing to charge" (fallback applies)
 // from "the preview lookup itself failed" (plain error, retry by reopening).
 const methodUnavailable = $derived(
@@ -160,8 +145,8 @@ function formatMoney(money: ReactivationAmounts["dueToday"]) {
 	return Dinero(money as Dinero.DineroObject).toFormat();
 }
 
-function handleDateChange(date: Date) {
-	selectedDate = toCalendarDate(fromDate(date, getLocalTimeZone()));
+function handleDateChange(date: DateValue | undefined) {
+	if (date) selectedDate = date;
 }
 </script>
 
@@ -279,7 +264,7 @@ function handleDateChange(date: Date) {
 						value={selectedDate}
 						minValue={minDate}
 						maxValue={maxDate}
-						onDateChange={handleDateChange}
+						onValueChange={handleDateChange}
 					/>
 					<p class="text-xs leading-4 text-muted-foreground">
 						Billing starts on this date.
@@ -292,9 +277,9 @@ function handleDateChange(date: Date) {
 								? "The annual fee isn’t charged today; annual billing begins next January."
 								: "The annual fee is charged prorated for the rest of this year."}
 						{/if}
-						Allowed window: {dayjs().format("MMM D, YYYY")} to {dayjs()
-							.add(MAX_START_DAYS_AHEAD, "day")
-							.format("MMM D, YYYY")}.
+						Allowed window: {formatCivilDate(minDate.toString())} to {formatCivilDate(
+							maxDate.toString(),
+						)}.
 					</p>
 				</div>
 
@@ -424,7 +409,7 @@ function handleDateChange(date: Date) {
 												{formatMoney(amounts.monthlyFee)}
 											</p>
 											<p class="mt-1 text-xs text-muted-foreground">
-												From {nextMonthlyBillingDate}
+												From {formatCivilDate(amounts.monthlyBillingStart)}
 											</p>
 										</div>
 									{/if}
@@ -435,7 +420,7 @@ function handleDateChange(date: Date) {
 												{formatMoney(amounts.annualFee)}
 											</p>
 											<p class="mt-1 text-xs text-muted-foreground">
-												From {nextAnnualBillingDate}
+												From {formatCivilDate(amounts.annualBillingStart)}
 											</p>
 										</div>
 									{/if}
