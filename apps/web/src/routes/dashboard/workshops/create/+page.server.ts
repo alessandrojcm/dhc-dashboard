@@ -1,5 +1,9 @@
 import { authorize } from "#lib/server/auth.js";
-import { coerceToCreateWorkshopSchema } from "#lib/server/workshop-generator.js";
+import * as v from "valibot";
+import {
+	coerceToCreateWorkshopSchema,
+	LLMCreateWorkshopSchema,
+} from "#lib/server/workshop-generator.js";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -26,10 +30,15 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	if (generatedParam && generatedParam !== "true") {
 		try {
-			const result = coerceToCreateWorkshopSchema(
+			// The quick-create draft: a Dublin date and times, prices in cents.
+			const draft = v.safeParse(
+				LLMCreateWorkshopSchema,
 				JSON.parse(decodeURIComponent(generatedParam)),
 			);
-			if (result.success && result.output) {
+			const result = draft.success
+				? coerceToCreateWorkshopSchema(draft.output)
+				: { success: false as const };
+			if (result.success) {
 				const parsed = result.output;
 				initialData = {
 					title: parsed.title,
