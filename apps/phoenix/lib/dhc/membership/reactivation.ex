@@ -47,17 +47,13 @@ defmodule Dhc.Membership.Reactivation do
   persistence.
   """
 
+  alias Dhc.Membership.BillingAnchors
   alias Dhc.Stripe.LookupKeys
   alias Dhc.Stripe.Operations
   alias Dhc.Stripe.SubscriptionPayment
 
   require Logger
 
-  @annual_anchor_month "1"
-  @annual_anchor_day "7"
-  # Integer twins for date math (the string pair above feeds form encoding).
-  @annual_anchor_month_int 1
-  @annual_anchor_day_int 7
   @metadata_purpose "membership-reactivation"
   @currency "EUR"
 
@@ -384,43 +380,19 @@ defmodule Dhc.Membership.Reactivation do
   # the subscription's creation time-of-day UTC (verified against real Stripe
   # in the integration test); mirroring it here keeps the prorated preview
   # within cents of the actual charge.
-  defp next_annual_anchor_unix do
-    now = Time.utc_now()
-
-    DateTime.new!(next_annual_anchor_date(), %{now | microsecond: {0, 0}}, "Etc/UTC")
-    |> DateTime.to_unix()
-  end
+  defp next_annual_anchor_unix,
+    do: BillingAnchors.config_anchor_unix(:annual, DateTime.utc_now())
 
   # Deferred annual's trial_end must be byte-stable across retries: a
   # repeated request encoding a different timestamp under the same
   # idempotency key is rejected by Stripe with 400 (caught by the real-Stripe
   # integration test). Midnight UTC keeps the renewal on the same January
   # anchor while making the form deterministic for the whole billing year.
-  defp next_annual_trial_end_unix do
-    date = next_annual_anchor_date()
+  defp next_annual_trial_end_unix,
+    do: BillingAnchors.midnight_unix(BillingAnchors.annual_start(Date.utc_today()))
 
-    DateTime.new!(date, ~T[00:00:00], "Etc/UTC")
-    |> DateTime.to_unix()
-  end
-
-  defp next_annual_anchor_date do
-    today = Date.utc_today()
-    candidate = Date.new!(today.year, @annual_anchor_month_int, @annual_anchor_day_int)
-
-    if Date.compare(candidate, today) == :gt,
-      do: candidate,
-      else: Date.new!(today.year + 1, @annual_anchor_month_int, @annual_anchor_day_int)
-  end
-
-  defp monthly_anchor_unix(start_date) do
-    date =
-      case start_date.month do
-        12 -> Date.new!(start_date.year + 1, 1, 1)
-        month -> Date.new!(start_date.year, month + 1, 1)
-      end
-
-    date_to_unix(date)
-  end
+  defp monthly_anchor_unix(start_date),
+    do: BillingAnchors.midnight_unix(BillingAnchors.monthly_start(start_date))
 
   # Lists the customer's saved SEPA debit methods. Any listed method is
   # usable: it carries the mandate from when the member paid by card-free
@@ -598,11 +570,7 @@ defmodule Dhc.Membership.Reactivation do
   end
 
   defp add_billing_anchor(form, :annual, _start_date, :prorated_now) do
-    [
-      {"billing_cycle_anchor_config[month]", @annual_anchor_month},
-      {"billing_cycle_anchor_config[day_of_month]", @annual_anchor_day}
-      | form
-    ]
+    BillingAnchors.subscription_anchor_config(:annual) ++ form
   end
 
   defp maybe_confirm_first_invoice(subscription, payment_method_id, attrs) do

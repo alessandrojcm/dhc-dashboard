@@ -9,26 +9,36 @@ defmodule Dhc.Invitations.Pricing do
   prospective subscription without creating or persisting a Stripe Customer.
   """
 
+  alias Dhc.Membership.BillingAnchors
   alias Dhc.Stripe.LookupKeys
   alias Dhc.Stripe.Operations
 
   @migration_code "DHCDASHBOARD"
   @currency "EUR"
 
-  @doc false
-  def preview_membership(coupon_code \\ nil) do
+  @doc """
+  The signup pricing preview for a subscription created at `now`.
+
+  Its invoice previews anchor exactly where Stripe will resolve the
+  subscriptions' `billing_cycle_anchor_config` at `now`, and it carries the
+  billing start dates a person is shown, both from
+  `Dhc.Membership.BillingAnchors` (ALE-423).
+  """
+  def preview_membership(coupon_code \\ nil, now \\ DateTime.utc_now()) do
     with {:ok, prices} <- membership_price_ids(),
          {:ok, promotion} <- resolve_promotion(coupon_code),
-         {:ok, details} <- pricing_details(prices, promotion) do
-      {:ok, generate_pricing_info(details)}
+         {:ok, details} <- pricing_details(prices, promotion, now) do
+      {:ok, Map.merge(generate_pricing_info(details), BillingAnchors.billing_starts(now))}
     end
   end
 
   @doc false
-  def complimentary_preview do
+  def complimentary_preview(now \\ DateTime.utc_now()) do
     zero = money(0)
 
-    %{
+    now
+    |> BillingAnchors.billing_starts()
+    |> Map.merge(%{
       complimentary: true,
       proratedPrice: zero,
       proratedMonthlyPrice: zero,
@@ -36,7 +46,7 @@ defmodule Dhc.Invitations.Pricing do
       monthlyFee: zero,
       annualFee: zero,
       discountPercentage: 100
-    }
+    })
   end
 
   def membership_payment_plan(coupon_code \\ nil)
@@ -61,7 +71,7 @@ defmodule Dhc.Invitations.Pricing do
   def membership_payment_plan(coupon_code) do
     with {:ok, prices} <- membership_price_ids(),
          {:ok, promotion} <- resolve_promotion(coupon_code),
-         {:ok, details} <- pricing_details(prices, promotion) do
+         {:ok, details} <- pricing_details(prices, promotion, DateTime.utc_now()) do
       complimentary? =
         migration_promotion?(promotion) or
           Enum.all?(
@@ -261,9 +271,12 @@ defmodule Dhc.Invitations.Pricing do
 
   defp validate_complimentary_coupon(_coupon), do: {:error, :invalid_complimentary_coupon}
 
-  defp pricing_details(prices, promotion) do
-    next_month = next_month_anchor()
-    next_january = next_january_anchor()
+  # The initial previews send the anchor Stripe resolves the creation-time
+  # config to, so they prorate like the real subscriptions; the recurring ones
+  # start a full period at that same anchor.
+  defp pricing_details(prices, promotion, now) do
+    next_month = BillingAnchors.config_anchor_unix(:monthly, now)
+    next_january = BillingAnchors.config_anchor_unix(:annual, now)
 
     calls = [
       monthly_initial: fn ->
@@ -497,25 +510,5 @@ defmodule Dhc.Invitations.Pricing do
 
   defp migration_code do
     Application.get_env(:dhc, :dashboard_migration_code, @migration_code)
-  end
-
-  defp next_month_anchor do
-    today = Date.utc_today()
-    {year, month} = add_month(today.year, today.month)
-    date_to_unix!(Date.new!(year, month, 1))
-  end
-
-  defp next_january_anchor do
-    today = Date.utc_today()
-    date_to_unix!(Date.new!(today.year + 1, 1, 6))
-  end
-
-  defp add_month(year, 12), do: {year + 1, 1}
-  defp add_month(year, month), do: {year, month + 1}
-
-  defp date_to_unix!(date) do
-    date
-    |> DateTime.new!(~T[00:00:00], "Etc/UTC")
-    |> DateTime.to_unix()
   end
 end

@@ -610,7 +610,14 @@ defmodule DhcWeb.OnboardingControllerTest do
       |> recycle()
       |> get("/api/onboarding/invitation-acceptance/pricing", %{"code" => "WELCOME"})
 
-    assert %{"data" => %{"proratedPrice" => %{"amount" => 0}}} = json_response(priced, 200)
+    assert %{
+             "data" => %{
+               "proratedPrice" => %{"amount" => 0},
+               "monthlyBillingStart" => "2026-11-01",
+               "annualBillingStart" => "2027-01-07"
+             }
+           } = json_response(priced, 200)
+
     assert_received {:preview_membership, "WELCOME"}
 
     # ADR-0019: an invalid coupon candidate is a 422, not a 4xx of its own.

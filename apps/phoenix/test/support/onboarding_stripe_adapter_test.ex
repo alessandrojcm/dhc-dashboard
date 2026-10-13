@@ -10,7 +10,12 @@ defmodule Dhc.Onboarding.StripeAdapter.Test do
     Application.get_env(
       :dhc,
       :onboarding_stripe_preview_result,
-      {:ok, %{proratedPrice: %{amount: 0}}}
+      {:ok,
+       Map.put(
+         Dhc.Membership.BillingAnchors.billing_starts(~U[2026-10-13 12:00:00Z]),
+         :proratedPrice,
+         %{amount: 0}
+       )}
     )
   end
 

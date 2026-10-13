@@ -11039,6 +11039,8 @@ components:
         - monthlyFee
         - annualFee
         - discountPercentage
+        - monthlyBillingStart
+        - annualBillingStart
       properties:
         complimentary:
           type: boolean
@@ -11061,6 +11063,20 @@ components:
           type: string
         discountPercentage:
           type: number
+        monthlyBillingStart:
+          type: string
+          format: date
+          description: |
+            UTC civil date (YYYY-MM-DD) the monthly subscription first bills
+            in full: the 1st of next month. Owned by
+            `Dhc.Membership.BillingAnchors`, the same anchor the preview and
+            the real subscription use.
+        annualBillingStart:
+          type: string
+          format: date
+          description: |
+            UTC civil date (YYYY-MM-DD) the annual subscription first bills in
+            full: the next 7 January (this year's while it is still ahead).
     InvitationPricingResponse:
       type: object
       required:
