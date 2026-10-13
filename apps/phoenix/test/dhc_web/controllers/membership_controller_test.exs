@@ -756,11 +756,16 @@ defmodule DhcWeb.MembershipControllerTest do
                    "amount" => @annual_recurring_amount,
                    "currency" => "EUR",
                    "precision" => 2
-                 }
+                 },
+                 "monthlyBillingStart" => monthly_billing_start,
+                 "annualBillingStart" => annual_billing_start
                }
              } = json_response(conn, 200)
 
       assert due_today == expected_due_today
+      # The dates the stubbed previews were asserted to anchor at (ALE-423).
+      assert monthly_billing_start == Date.to_iso8601(monthly_anchor_date(Date.utc_today()))
+      assert annual_billing_start == Date.to_iso8601(january_anchor_date())
     end
 
     test "previews only the monthly subscription when annual coverage is active", %{conn: conn} do
@@ -868,11 +873,13 @@ defmodule DhcWeb.MembershipControllerTest do
                "data" => %{
                  "dueToday" => %{"amount" => due_today},
                  "proratedMonthlyPrice" => %{"amount" => @monthly_initial_amount},
-                 "proratedAnnualPrice" => %{"amount" => @annual_initial_amount}
+                 "proratedAnnualPrice" => %{"amount" => @annual_initial_amount},
+                 "monthlyBillingStart" => monthly_billing_start
                }
              } = json_response(conn, 200)
 
       assert due_today == @annual_initial_amount
+      assert monthly_billing_start == Date.to_iso8601(monthly_anchor_date(start_date))
     end
 
     test "excludes the annual fee from dueToday in deferred_next_year mode", %{conn: conn} do
@@ -902,9 +909,13 @@ defmodule DhcWeb.MembershipControllerTest do
                  "dueToday" => %{"amount" => @monthly_initial_amount},
                  "proratedMonthlyPrice" => %{"amount" => @monthly_initial_amount},
                  "proratedAnnualPrice" => %{"amount" => 0},
-                 "annualFee" => %{"amount" => @annual_recurring_amount}
+                 "annualFee" => %{"amount" => @annual_recurring_amount},
+                 "annualBillingStart" => annual_billing_start
                }
              } = json_response(conn, 200)
+
+      # The deferred annual subscription's trial ends on this date.
+      assert annual_billing_start == Date.to_iso8601(january_anchor_date())
     end
 
     test "returns 422 when annualFeeMode is not a known mode", %{conn: conn} do
@@ -1371,14 +1382,13 @@ defmodule DhcWeb.MembershipControllerTest do
       else: Date.new!(today.year + 1, 1, 7)
   end
 
-  defp monthly_anchor_unix(start_date) do
-    date =
-      case start_date.month do
-        12 -> Date.new!(start_date.year + 1, 1, 1)
-        month -> Date.new!(start_date.year, month + 1, 1)
-      end
+  defp monthly_anchor_unix(start_date), do: midnight_unix(monthly_anchor_date(start_date))
 
-    midnight_unix(date)
+  defp monthly_anchor_date(start_date) do
+    case start_date.month do
+      12 -> Date.new!(start_date.year + 1, 1, 1)
+      month -> Date.new!(start_date.year, month + 1, 1)
+    end
   end
 
   defp assert_optional_unix(nil, nil), do: :ok

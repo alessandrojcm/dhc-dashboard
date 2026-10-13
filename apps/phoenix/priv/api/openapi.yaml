@@ -11829,6 +11829,8 @@ components:
             - proratedAnnualPrice
             - monthlyFee
             - annualFee
+            - monthlyBillingStart
+            - annualBillingStart
           properties:
             dueToday:
               description: |
@@ -11857,6 +11859,23 @@ components:
                 either as a prorated remainder now plus renewals, or first at
                 next January in deferred mode.
               $ref: "#/components/schemas/DineroAmount"
+            monthlyBillingStart:
+              type: string
+              format: date
+              description: |
+                UTC civil date (YYYY-MM-DD) the monthly subscription is
+                anchored to and first bills in full: the 1st of the month
+                after startDate. Owned by `Dhc.Membership.BillingAnchors`,
+                the same anchor the reactivation command sends Stripe.
+            annualBillingStart:
+              type: string
+              format: date
+              description: |
+                UTC civil date (YYYY-MM-DD) the annual subscription is
+                anchored to and first bills in full: the next 7 January after
+                today (this year's while it is still ahead), in both
+                annualFeeModes — the prorated anchor resolves to it and the
+                deferred trial ends on it.
 
     OptionsResponse:
       type: object

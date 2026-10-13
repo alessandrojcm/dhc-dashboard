@@ -184,7 +184,9 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
                "data" => %{
                  "dueToday" => %{"amount" => due_today, "currency" => "EUR"},
                  "monthlyFee" => %{"amount" => monthly_fee, "currency" => "EUR"},
-                 "annualFee" => %{"amount" => annual_fee, "currency" => "EUR"}
+                 "annualFee" => %{"amount" => annual_fee, "currency" => "EUR"},
+                 "monthlyBillingStart" => monthly_billing_start,
+                 "annualBillingStart" => annual_billing_start
                }
              } = json_response(preview_conn, 200)
 
@@ -203,8 +205,14 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
 
       assert %{"data" => data} = json_response(charge_conn, 200)
 
-      monthly_invoice = fetch_subscription!(data["monthlySubscriptionId"])["latest_invoice"]
-      annual_invoice = fetch_subscription!(data["annualSubscriptionId"])["latest_invoice"]
+      monthly_subscription = fetch_subscription!(data["monthlySubscriptionId"])
+      annual_subscription = fetch_subscription!(data["annualSubscriptionId"])
+      monthly_invoice = monthly_subscription["latest_invoice"]
+      annual_invoice = annual_subscription["latest_invoice"]
+
+      # ALE-423: the dates the preview names are the days Stripe anchored.
+      assert anchor_iso_date(monthly_subscription) == monthly_billing_start
+      assert anchor_iso_date(annual_subscription) == annual_billing_start
 
       actual_due_today =
         monthly_invoice["amount_due"] + annual_invoice["amount_due"]
@@ -434,6 +442,9 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
     assert get_in(monthly, ["metadata", "kind"]) == "monthly"
     assert get_in(annual, ["metadata", "kind"]) == "annual"
   end
+
+  defp anchor_iso_date(%{"billing_cycle_anchor" => anchor}),
+    do: anchor |> DateTime.from_unix!() |> DateTime.to_date() |> Date.to_iso8601()
 
   defp membership_subscription_ids(customer_id) do
     price_ids = membership_price_ids!()
