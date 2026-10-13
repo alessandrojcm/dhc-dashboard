@@ -29,6 +29,7 @@ import { createQuery } from "@tanstack/svelte-query";
 import { Calendar, DayGrid, Interaction, List } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
 import "#lib/components/calendar/dhc-calendar.css";
+import { calendarButtonText } from "#lib/components/calendar/button-text.js";
 import "./occurrence-tone.css";
 import {
 	Alert,
@@ -139,7 +140,7 @@ const options = $derived({
 	// Full weekday names would wrap to two lines in a ~48px phone column; the
 	// narrow header stays one line. Month cells carry the day number instead.
 	dayHeaderFormat: { weekday: "short" as const },
-	buttonText: { today: "Today" },
+	buttonText: calendarButtonText,
 	// Month rows must grow with the shared day-cell minimum height, as in the
 	// workshop calendar. A fixed height squeezes rows below their cells and
 	// exposes both the row border and the overflowing cell border.

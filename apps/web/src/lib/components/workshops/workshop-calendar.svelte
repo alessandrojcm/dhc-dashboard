@@ -2,6 +2,7 @@
 import { Calendar, DayGrid, Interaction } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
 import "#lib/components/calendar/dhc-calendar.css";
+import { calendarButtonText } from "#lib/components/calendar/button-text.js";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
 import { dublinWallClock, formatDublinTime } from "#lib/club-calendar.js";
 import WorkshopEventModal from "./workshop-event-modal.svelte";
@@ -122,9 +123,7 @@ const options = $derived({
 		center: "",
 		end: "today prev,next",
 	},
-	buttonText: {
-		today: "Today",
-	},
+	buttonText: calendarButtonText,
 	height: "auto",
 	eventClick: handleEventClick,
 	eventContent: (info: Calendar.EventContentInfo) => {

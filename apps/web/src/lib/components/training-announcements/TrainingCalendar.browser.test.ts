@@ -236,6 +236,14 @@ test("week view renders the same posts without refetch loops", async () => {
 	// what a two-option exclusive choice should announce.
 	await screen.getByRole("radio", { name: "Week" }).click();
 
+	// The toolbar arrows are named after what they move by in each view.
+	await expect
+		.element(screen.getByRole("button", { name: "Previous week", exact: true }))
+		.toBeVisible();
+	await expect
+		.element(screen.getByRole("button", { name: "Next week", exact: true }))
+		.toBeVisible();
+
 	// The week asks for its own (narrower) range exactly once, and shows only
 	// the posts whose send date falls inside it.
 	await expect
@@ -256,6 +264,9 @@ test("week view renders the same posts without refetch loops", async () => {
 
 	await screen.getByRole("radio", { name: "Month" }).click();
 	await expect
+		.element(screen.getByRole("button", { name: "Next month", exact: true }))
+		.toBeVisible();
+	await expect
 		.element(screen.getByText("Roll call Thursday 8 October 2026").first())
 		.toBeVisible();
 	// …and returning to a seen range serves the cache instead of refetching.
@@ -274,10 +285,9 @@ test("navigation before the retention horizon is refused without calling the api
 
 	// One step back starts late July, before the horizon — refused with an
 	// explanation instead of empty or recomputed history.
-	const prev = screen.container.querySelector(".ec-prev");
-	expect(prev).not.toBeNull();
-	// SAFETY: asserted non-null above; the toolbar always renders prev/next.
-	(prev as HTMLElement).click();
+	await screen
+		.getByRole("button", { name: "Previous month", exact: true })
+		.click();
 	await expect
 		.element(screen.getByText(/History is available from/))
 		.toBeVisible();
