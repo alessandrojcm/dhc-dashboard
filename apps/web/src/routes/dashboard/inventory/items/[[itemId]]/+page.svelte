@@ -51,6 +51,7 @@ import { Textarea } from "#lib/components/ui/textarea/index.js";
 import InventoryPageHeader from "#lib/components/inventory/InventoryPageHeader.svelte";
 import SubmitButton from "#lib/components/ui/submit-button.svelte";
 import { apiErrorMessage } from "#lib/api-error.js";
+import { formatDublinTimestamp } from "#lib/club-calendar.js";
 import {
 	Archive,
 	ArrowLeft,
@@ -1320,7 +1321,7 @@ function booleanLabel(input: string) {
 								<div class="rounded-xl bg-muted/45 p-3 text-sm">
 									<div class="font-medium">{period.startReason}</div>
 									<div class="mt-1 text-muted-foreground">
-										{new Date(period.startedAt).toLocaleString()} · {period.open
+										{formatDublinTimestamp(period.startedAt)} · {period.open
 											? "Open"
 											: "Ended"}
 									</div>
