@@ -60,9 +60,7 @@ const save = createMutation(() => ({
 					),
 				},
 		);
-		toast.success(
-			`${INTAKE_EMAIL_TYPES[saved.emailType].label} saved. Emails queued from now on use it.`,
-		);
+		toast.success(`${saved.label} saved. Emails queued from now on use it.`);
 	},
 	onError: (error) => {
 		problem = apiProblem(error) ?? {
@@ -132,8 +130,7 @@ const detailClass = (current: boolean) =>
 						<NativeSelect.OptGroup label={group.title}>
 							{#each rows.filter((row) => row.kind === group.kind) as row (row.emailType)}
 								<NativeSelect.Option value={row.emailType}
-									>{INTAKE_EMAIL_TYPES[row.emailType]
-										.label}</NativeSelect.Option
+									>{row.label}</NativeSelect.Option
 								>
 							{/each}
 						</NativeSelect.OptGroup>
@@ -166,7 +163,7 @@ const detailClass = (current: boolean) =>
 								aria-current={current ? "true" : undefined}
 								onclick={() => pick(row.emailType)}
 							>
-								<span class="font-medium">{copy.label}</span>
+								<span class="font-medium">{row.label}</span>
 								<span class={detailClass(current)}>
 									{copy.sentWhen}
 								</span>

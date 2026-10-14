@@ -23,7 +23,6 @@ import type {
 	WaitlistStatus,
 	BeginnersWorkshopUnpaidAfterWindow,
 } from "@dhc/api-client";
-import { INTAKE_EMAIL_TYPES } from "#lib/beginners-workshops/intake-emails/presentation.js";
 import { stageLabel } from "#lib/beginners-workshops/presentation.js";
 import { formatDublinInstant, formatDublinTime } from "#lib/club-calendar.js";
 
@@ -678,7 +677,7 @@ export function emailLogLine(
 	entry: BeginnersWorkshopIntakeEmailLogEntry,
 	now: Date = new Date(),
 ): EmailLogLine {
-	const label = INTAKE_EMAIL_TYPES[entry.emailType].label;
+	const { label } = entry;
 	if (!entry.scheduled)
 		return { label, when: formatDublinInstant(entry.at), scheduled: false };
 	const due = new Date(entry.at).getTime() <= now.getTime();

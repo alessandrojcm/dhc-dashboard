@@ -17,6 +17,7 @@ defmodule DhcWeb.BeginnersWorkshopEmailTemplatesJSON do
 
     %{
       emailType: template.email_type,
+      label: email_type.label,
       kind: email_type.kind,
       buttonLabel: email_type.button_label,
       placeholders: email_type.placeholders,

@@ -103,6 +103,28 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplyActionsTest do
 
   defp person(intake), do: Repo.get!(WaitlistEntry, intake.waitlist_id)
 
+  # A person removed at `removed_at` (through the one standing seam).
+  defp removed_person!(removed_at) do
+    person = waiting_person_fixture(~U[2025-01-01 12:00:00Z])
+
+    {:ok, {:ok, removed}} =
+      Repo.transaction(fn ->
+        Dhc.Waitlist.change_standing(person.id, "removed", now: removed_at)
+      end)
+
+    removed
+  end
+
+  # The "Back on the Waitlist" emails queued for `person`.
+  defp back_on_waitlist_emails(person) do
+    subject = Repo.get!(Dhc.BeginnersWorkshops.IntakeEmails.Template, "back_on_waitlist").subject
+
+    Enum.filter(
+      all_enqueued(worker: Dhc.Email.Worker),
+      &(&1.args["email"] == person.email and &1.args["subject"] == subject)
+    )
+  end
+
   # ── Replies ─────────────────────────────────────────────────────
 
   # A reply from the person (or `from:`) to an email about `intake`
@@ -376,6 +398,139 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplyActionsTest do
              } = row(id)
 
       assert [%CarriedFee{status: "held"}] = fees(person)
+    end
+  end
+
+  describe "wants to come back (ALE-412)" do
+    test "a removed person within retention is restored and told once", %{coordinator: _c} do
+      person = removed_person!(~U[2026-09-01 12:00:00Z])
+      id = reply!(person, nil, "withdrawn_forfeited", "Could I come back onto the waitlist?")
+      jev("wants_to_come_back")
+
+      email = forward!(id)
+      assert email.subject =~ "[Done: Restored]"
+      assert email.html_body =~ "Done by email reply: they were put back on the Waitlist"
+      assert offered() == ~w(something_else wants_to_come_back)
+
+      assert %IntakeReply{outcome: "done", command: "restore_person"} = row(id)
+
+      restored = Repo.reload!(person)
+      assert %WaitlistEntry{status: "waiting", removed_at: nil} = restored
+      # Original priority: the queue position is the first registration.
+      assert restored.initial_registration_date == person.initial_registration_date
+      assert [_one] = back_on_waitlist_emails(person)
+    end
+
+    test "someone past retention needs the coordinator and Jev is not called" do
+      person = removed_person!(~U[2026-07-01 12:00:00Z])
+      id = reply!(person, nil, "withdrawn_forfeited", "Could I come back onto the waitlist?")
+      jev("wants_to_come_back")
+
+      assert forward!(id).subject =~ "[Needs you]"
+      refute_received {:jev, _request}
+      assert %IntakeReply{outcome: "needs_you", outcome_reason: "no_reply_action"} = row(id)
+      assert %WaitlistEntry{status: "removed"} = Repo.reload!(person)
+      assert back_on_waitlist_emails(person) == []
+    end
+
+    test "a retried job finds the restore committed and does not run it again" do
+      person = removed_person!(~U[2026-09-01 12:00:00Z])
+      id = reply!(person, nil, "withdrawn_forfeited", "Could I come back onto the waitlist?")
+      jev("wants_to_come_back")
+      _forward = forward!(id)
+      assert_received {:jev, _first_request}
+      assert %IntakeReply{action_committed_at: %DateTime{}} = row(id)
+
+      # As if the job crashed after the restore committed: no Intake history
+      # row names the reply, and the person is already waiting.
+      Repo.update_all(from(r in IntakeReply, where: r.resend_email_id == ^id),
+        set: [outcome: "pending", outcome_reason: nil, decided_at: nil, forwarded_at: nil]
+      )
+
+      assert forward!(id).subject =~ "[Done: Restored]"
+      assert %IntakeReply{outcome: "done", outcome_reason: nil} = row(id)
+      assert [_one] = back_on_waitlist_emails(person)
+      refute_received {:jev, _second_request}
+    end
+  end
+
+  describe "restore_person through execute/3 (ALE-412)" do
+    setup do
+      person = removed_person!(~U[2026-09-01 12:00:00Z])
+      id = reply!(person, nil, "withdrawn_forfeited", "Hello")
+      %{person: person, actor: {:intake_reply, row(id).id}}
+    end
+
+    test "restores within retention and emails the person once", %{person: person, actor: actor} do
+      assert {:ok, %{waitlist_id: waitlist_id, status: "waiting", outcome: :done}} =
+               execute(actor, {:restore_person, person.id})
+
+      assert waitlist_id == person.id
+
+      assert [%{args: %{"email" => email, "data_variables" => %{"MESSAGE_HTML" => html}}}] =
+               back_on_waitlist_emails(person)
+
+      assert email == person.email
+      assert html =~ "back on the waitlist"
+
+      # A second request finds them waiting: refused, and nobody is emailed again.
+      assert {:error, :not_restorable} = execute(actor, {:restore_person, person.id})
+      assert [_one] = back_on_waitlist_emails(person)
+    end
+
+    test "a person who comes back twice is told twice", %{person: person, actor: actor} do
+      assert {:ok, %{outcome: :done}} = execute(actor, {:restore_person, person.id})
+
+      {:ok, _} =
+        Repo.transaction(fn ->
+          Dhc.Waitlist.change_standing(person.id, "removed", now: ~U[2026-10-01 12:00:00Z])
+        end)
+
+      assert {:ok, %{outcome: :done}} = execute(actor, {:restore_person, person.id})
+      assert [_first, _second] = back_on_waitlist_emails(person)
+    end
+
+    test "refuses someone past retention", %{actor: actor} do
+      person = removed_person!(~U[2026-07-01 12:00:00Z])
+
+      assert {:error, :not_restorable} = execute(actor, {:restore_person, person.id})
+      assert %WaitlistEntry{status: "removed"} = Repo.reload!(person)
+      assert back_on_waitlist_emails(person) == []
+    end
+
+    test "refuses someone who is not removed", %{actor: actor} do
+      person = waiting_person_fixture(~U[2025-01-01 12:00:00Z])
+
+      assert {:error, :not_restorable} = execute(actor, {:restore_person, person.id})
+      assert back_on_waitlist_emails(person) == []
+    end
+
+    test "refuses a removed person whose Intake is still open",
+         %{coordinator: c, actor: actor} do
+      %{person: person} = contacted!(c)
+
+      {:ok, _} =
+        Repo.transaction(fn ->
+          Dhc.Waitlist.change_standing(person.id, "removed", now: ~U[2026-10-20 12:00:00Z])
+        end)
+
+      assert {:error, :open_intake} = execute(actor, {:restore_person, person.id})
+      assert %WaitlistEntry{status: "removed"} = Repo.reload!(person)
+      assert back_on_waitlist_emails(person) == []
+    end
+
+    test "refuses an unknown person", %{actor: actor} do
+      assert {:error, :person_not_found} = execute(actor, {:restore_person, Ecto.UUID.generate()})
+    end
+
+    test "only an Intake Reply may run it", %{person: person, coordinator: c} do
+      assert {:error, :unknown_command} = execute({:staff, c}, {:restore_person, person.id})
+      assert {:error, :unknown_command} = execute(:system, {:restore_person, person.id})
+
+      assert {:error, :forbidden} =
+               execute({:intake_reply, Ecto.UUID.generate()}, {:restore_person, person.id})
+
+      assert %WaitlistEntry{status: "removed"} = Repo.reload!(person)
     end
   end
 

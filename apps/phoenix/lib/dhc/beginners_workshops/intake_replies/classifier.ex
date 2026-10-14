@@ -9,6 +9,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Classifier do
   deliberately not logged because the state contains personal correspondence.
   """
 
+  alias Dhc.BeginnersWorkshops.IntakeEmails.EmailType
   alias Dhc.TypeSafe.{Operations, SystemOneRequest}
 
   @model "jev-1.13.0"
@@ -21,30 +22,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Classifier do
     "link_problem" => "The person's Intake link is lost, broken or not working.",
     "something_else" => "The reply does not clearly express one of the listed intents."
   }
-
-  @email_type_words %{
-    "contact_pay" => "Contact — pay for your place",
-    "contact_confirm" => "Contact — confirm your place",
-    "place_confirmed_paid" => "Place confirmed after payment",
-    "place_confirmed_carried" => "Place confirmed with a workshop fee already paid",
-    "pre_workshop" => "Pre-workshop information",
-    "rescheduled" => "Workshop rescheduled",
-    "follow_up" => "Follow-up after the workshop",
-    "declined" => "Declined from the workshop",
-    "deferred" => "Deferred to a later workshop",
-    "cancelled_with_refund" => "Workshop cancelled and refund requested",
-    "withdrawn_refunded" => "Waitlist withdrawal with refund",
-    "withdrawn_forfeited" => "Waitlist withdrawal",
-    "carried_fee_refunded" => "Workshop fee refunded",
-    "payment_refunded" => "Payment refunded",
-    "cancelled_paid" => "Workshop cancelled after payment",
-    "cancelled_unpaid" => "Workshop cancelled before payment"
-  }
-
-  @action_email_types ~w(
-    contact_pay contact_confirm place_confirmed_paid place_confirmed_carried
-    pre_workshop rescheduled
-  )
 
   @type result :: %{
           intent: String.t(),
@@ -81,7 +58,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Classifier do
   @doc "Every intent an answered Intake Email type can lead to in an offline eval."
   @spec allowed_intents_for_email_type(String.t()) :: [String.t()]
   def allowed_intents_for_email_type(email_type) do
-    if email_type in @action_email_types do
+    if match?({:ok, %{kind: :action}}, EmailType.fetch(email_type)) do
       ~w(cant_make_date leaving_waitlist wants_refund wants_to_come_back link_problem)
     else
       ~w(leaving_waitlist wants_refund wants_to_come_back)
@@ -183,8 +160,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Classifier do
   defp normalize_intent(_intent), do: nil
 
   defp email_type_words(email_type) when is_binary(email_type) do
-    case Map.fetch(@email_type_words, email_type) do
-      {:ok, words} -> {:ok, words}
+    case EmailType.fetch(email_type) do
+      {:ok, %{description: words}} -> {:ok, words}
       :error -> {:error, :invalid_input}
     end
   end

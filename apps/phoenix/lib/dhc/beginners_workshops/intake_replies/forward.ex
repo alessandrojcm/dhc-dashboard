@@ -28,29 +28,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
       be read at all.
   """
 
+  alias Dhc.BeginnersWorkshops.IntakeEmails.EmailType
   alias Swoosh.{Attachment, Email}
 
   # Resend's limit for one email, attachments included (base64-encoded).
   @max_bytes 40_000_000
-
-  @email_labels %{
-    "contact_pay" => "Place offer: payment needed",
-    "contact_confirm" => "Place offer: use workshop credit",
-    "place_confirmed_paid" => "Place confirmed — paid",
-    "place_confirmed_carried" => "Place confirmed: credit used",
-    "pre_workshop" => "Pre-workshop info",
-    "rescheduled" => "Workshop rescheduled",
-    "follow_up" => "Follow-up",
-    "declined" => "Declined",
-    "deferred" => "Moved to a later workshop",
-    "cancelled_with_refund" => "Place cancelled: refund requested",
-    "withdrawn_refunded" => "Withdrawn — refunded",
-    "withdrawn_forfeited" => "Withdrawn: payment kept",
-    "carried_fee_refunded" => "Workshop credit: refund requested",
-    "payment_refunded" => "Automatic refund requested",
-    "cancelled_paid" => "Workshop cancelled — paid",
-    "cancelled_unpaid" => "Workshop cancelled — unpaid"
-  }
 
   # ALE-411: each Reply Action's subject tag and banner sentence (staff
   # copy: the ALE-420 vocabulary).
@@ -68,7 +50,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
     "refund_carried_fee" =>
       {"Credit refunded", "Done by email reply: a refund of their workshop credit was requested."},
     "resend_link" =>
-      {"Link resent", "Done by email reply: their workshop place link was sent again."}
+      {"Link resent", "Done by email reply: their workshop place link was sent again."},
+    "restore_person" =>
+      {"Restored",
+       "Done by email reply: they were put back on the Waitlist with their original priority, and told so."}
   }
 
   # Why nothing was done, by recorded reason.
@@ -114,10 +99,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
   @doc "Resend's size limit for one email."
   @spec max_bytes() :: pos_integer()
   def max_bytes, do: @max_bytes
-
-  @doc "The banner's label for each Intake Email type (staff copy)."
-  @spec email_labels() :: %{String.t() => String.t()}
-  def email_labels, do: @email_labels
 
   @doc "The forward's subject tag."
   @spec tag(context()) :: String.t()
@@ -249,7 +230,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
          "because the person has since been deleted.", nil, note}
 
   defp banner(%{person: person} = context, note) do
-    label = Map.get(@email_labels, person.email_type, person.email_type)
+    label =
+      case EmailType.fetch(person.email_type) do
+        {:ok, %{label: label}} -> label
+        :error -> person.email_type
+      end
 
     {"Reply from #{person.name} to the “#{label}” email. " <> outcome(context), link(person),
      note}

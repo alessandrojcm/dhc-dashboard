@@ -148,6 +148,13 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
     assert offences(copy) == []
   end
 
+  # ALE-412: EmailType owns each type's staff label, which the dashboard
+  # shows verbatim (Email templates, the console's email log).
+  test "no Intake Email label shows a backend term" do
+    labels = for type <- EmailType.all(), do: {"email label #{type.id}", type.label}
+    assert offences(labels) == []
+  end
+
   test "the banned phrases match whole phrases only" do
     assert offences([{"x", "Their Intakes stay"}, {"x", "Could not pause Batches"}]) != []
 

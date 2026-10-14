@@ -8857,6 +8857,7 @@ components:
         - payment_refunded
         - cancelled_paid
         - cancelled_unpaid
+        - back_on_waitlist
     IntakeEmailKind:
       type: string
       description: |
@@ -8887,9 +8888,12 @@ components:
             additionalProperties: true
     IntakeEmailTemplate:
       type: object
-      required: [emailType, kind, buttonLabel, placeholders, subject, body, updatedAt]
+      required: [emailType, label, kind, buttonLabel, placeholders, subject, body, updatedAt]
       properties:
         emailType: {$ref: "#/components/schemas/IntakeEmailType"}
+        label:
+          type: string
+          description: The type's name as staff see it (`EmailType`'s label).
         kind: {$ref: "#/components/schemas/IntakeEmailKind"}
         buttonLabel:
           type: string
@@ -9763,9 +9767,12 @@ components:
         One Intake Email. `scheduled: false` — queued at `at`. `scheduled:
         true` — not queued yet; a time-driven pass sends it at `at` (a past
         `at` means at the next sweep).
-      required: [emailType, at, scheduled]
+      required: [emailType, label, at, scheduled]
       properties:
         emailType: {$ref: "#/components/schemas/IntakeEmailType"}
+        label:
+          type: string
+          description: The email type's name as staff see it (`EmailType`'s label).
         at: {type: string, format: date-time}
         scheduled: {type: boolean}
     BeginnersWorkshopIntakeHistoryCommand:

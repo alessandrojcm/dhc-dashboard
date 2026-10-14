@@ -49,6 +49,7 @@ function template(
 	const action = ACTION_TYPES.has(emailType);
 	return {
 		emailType,
+		label: `The ${emailType} email`,
 		kind: action ? "action" : "notice",
 		buttonLabel: action ? "Pay for your place" : null,
 		placeholders: PLACEHOLDERS[emailType],

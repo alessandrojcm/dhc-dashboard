@@ -98,6 +98,14 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Occasion do
   @spec carried_fee_refunded(Ecto.UUID.t()) :: t()
   def carried_fee_refunded(refund_id), do: event("carried_fee_refunded:#{refund_id}")
 
+  @doc """
+  "Back on the Waitlist" (ALE-412), named by the removal the restore
+  reverses (the entry's `removed_at`), so each restore is its own occasion.
+  """
+  @spec back_on_waitlist(DateTime.t()) :: t()
+  def back_on_waitlist(%DateTime{} = removed_at),
+    do: event("back_on_waitlist:#{DateTime.to_iso8601(removed_at)}")
+
   @doc "\"Payment refunded (automatic)\", once per payment."
   @spec payment_refunded(Ecto.UUID.t()) :: t()
   def payment_refunded(payment_id), do: event("payment_refunded:#{payment_id}")

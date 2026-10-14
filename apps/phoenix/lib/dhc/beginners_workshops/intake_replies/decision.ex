@@ -32,7 +32,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
   refusal is `refused` with the reason. A retry that finds the Intake
   history row naming this reply knows the action already ran. (A person
   command with no open Intake writes no history row; a retry after a crash
-  between its commit and the row update finds it `already_done`.)
+  between its commit and the row update finds it `already_done`. A restore
+  writes no history row either, so it stamps the reply's
+  `action_committed_at` in its own transaction and a retry reports it done.)
 
   A Jev failure returns `{:error, :classifier_failed}` so the job retries;
   on the last attempt (`final: true`) it is `needs_you` /
@@ -45,9 +47,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
   import Ecto.Query
 
   alias Dhc.BeginnersWorkshops
-  alias Dhc.BeginnersWorkshops.{CarriedFee, Intake, IntakeEvent, IntakeReply}
+  alias Dhc.BeginnersWorkshops.{CarriedFee, Clock, Intake, IntakeEvent, IntakeReply}
   alias Dhc.BeginnersWorkshops.IntakeReplies.{Classifier, ReplyActions, ReplyText}
   alias Dhc.Repo
+  alias Dhc.Waitlist
+  alias Dhc.Waitlist.WaitlistEntry
 
   @automated_precedence ~w(auto_reply bulk junk)
 
@@ -100,7 +104,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
   # ── Classifying ─────────────────────────────────────────────────
 
   defp classify(%IntakeReply{reply_address: binding} = reply, text, opts) do
-    facts = person_facts(binding)
+    facts = person_facts(binding, opts)
     offered = ReplyActions.offered(facts)
     config = ReplyActions.config()
 
@@ -149,9 +153,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
   end
 
   # The person's state for the table, read without a lock: the boundary's
-  # locked re-check decides.
-  defp person_facts(binding) do
+  # locked re-check decides (retention on the same clock it is passed).
+  defp person_facts(binding, opts) do
     waitlist_id = binding.waitlist_id
+    entry = binding.waitlist_entry
 
     open =
       Repo.one(
@@ -169,9 +174,15 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
         Repo.exists?(
           from(f in CarriedFee, where: f.waitlist_id == ^waitlist_id and f.status == "held")
         ),
-      standing: binding.waitlist_entry.status
+      standing: entry.status,
+      restorable: restorable?(entry, opts)
     }
   end
+
+  defp restorable?(%WaitlistEntry{status: "removed", removed_at: %DateTime{} = at}, opts),
+    do: Waitlist.restorable?(at, Clock.read(Clock.from_opts(opts)).now)
+
+  defp restorable?(_entry, _opts), do: false
 
   # ── Acting ──────────────────────────────────────────────────────
 
@@ -181,16 +192,18 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
     "cancel_with_refund" => {:intake, :cancel_with_refund},
     "resend_link" => {:intake, :resend_link},
     "withdraw" => {:person, :withdraw},
-    "refund_carried_fee" => {:person, :refund_carried_fee}
+    "refund_carried_fee" => {:person, :refund_carried_fee},
+    "restore_person" => {:person, :restore_person}
   }
 
   defp chosen(%IntakeReply{command: command}), do: Map.fetch!(@commands, command)
 
-  # The Intake history row naming this reply means an earlier attempt's
-  # Reply Action committed.
+  # The Intake history row naming this reply, or the reply's own
+  # `action_committed_at` (a restore, which writes no history row), means an
+  # earlier attempt's Reply Action committed.
   defp act(reply, action, opts) do
     {outcome, reason} =
-      if history_names?(reply), do: {"done", nil}, else: reply |> run(action, opts) |> outcome()
+      if committed?(reply), do: {"done", nil}, else: reply |> run(action, opts) |> outcome()
 
     record(reply, outcome, reason)
   end
@@ -222,6 +235,14 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
         clock_opts(opts)
       )
 
+  defp run(%IntakeReply{id: id, reply_address: binding}, {:person, :restore_person}, opts),
+    do:
+      BeginnersWorkshops.execute(
+        {:intake_reply, id},
+        {:restore_person, binding.waitlist_id},
+        clock_opts(opts)
+      )
+
   defp clock_opts(opts), do: Keyword.take(opts, [:clock])
 
   defp outcome({:ok, %{outcome: :already_done}}), do: {"refused", "already_done"}
@@ -229,7 +250,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
   defp outcome({:error, reason}) when is_atom(reason), do: {"refused", Atom.to_string(reason)}
   defp outcome({:error, _changeset}), do: {"refused", "invalid"}
 
-  defp history_names?(%IntakeReply{id: id}),
+  defp committed?(%IntakeReply{action_committed_at: %DateTime{}}), do: true
+
+  defp committed?(%IntakeReply{id: id}),
     do: Repo.exists?(from(e in IntakeEvent, where: e.intake_reply_id == ^id))
 
   # ── Recording ───────────────────────────────────────────────────

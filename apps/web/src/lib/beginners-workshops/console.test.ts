@@ -660,7 +660,12 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 		const now = new Date("2026-11-01T12:00:00Z");
 		expect(
 			emailLogLine(
-				{ emailType: "declined", at: "2026-10-22T11:00:00Z", scheduled: false },
+				{
+					emailType: "declined",
+					label: "Declined",
+					at: "2026-10-22T11:00:00Z",
+					scheduled: false,
+				},
 				now,
 			),
 		).toEqual({
@@ -672,6 +677,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			emailLogLine(
 				{
 					emailType: "pre_workshop",
+					label: "Pre-workshop info",
 					at: "2026-11-11T18:30:00Z",
 					scheduled: true,
 				},
@@ -686,6 +692,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			emailLogLine(
 				{
 					emailType: "pre_workshop",
+					label: "Pre-workshop info",
 					at: "2026-10-30T18:30:00Z",
 					scheduled: true,
 				},

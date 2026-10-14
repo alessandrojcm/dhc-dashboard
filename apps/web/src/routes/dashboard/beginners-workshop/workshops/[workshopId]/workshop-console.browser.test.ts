@@ -773,16 +773,19 @@ function commandsView(): BeginnersWorkshopConsole {
 					emailLog: [
 						{
 							emailType: "contact_pay",
+							label: "Place offer: payment needed",
 							at: "2026-10-20T09:00:00Z",
 							scheduled: false,
 						},
 						{
 							emailType: "place_confirmed_paid",
+							label: "Place confirmed — paid",
 							at: "2026-10-21T18:00:00Z",
 							scheduled: false,
 						},
 						{
 							emailType: "pre_workshop",
+							label: "Pre-workshop info",
 							at: "2099-11-11T18:30:00Z",
 							scheduled: true,
 						},

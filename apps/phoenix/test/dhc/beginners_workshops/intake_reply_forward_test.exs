@@ -340,9 +340,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplyForwardTest do
                byte_size(text) + byte_size(String.duplicate("&lt;", 30))
     end
 
-    test "every Intake Email type has a banner label" do
-      assert Map.keys(Forward.email_labels()) |> Enum.sort() ==
-               Enum.sort(Dhc.BeginnersWorkshops.IntakeEmails.EmailType.ids())
+    test "every Intake Email type has a staff label and plain words for the classifier" do
+      for type <- Dhc.BeginnersWorkshops.IntakeEmails.EmailType.all() do
+        assert is_binary(type.label) and type.label != ""
+        assert is_binary(type.description) and type.description != ""
+      end
     end
   end
 

@@ -10,7 +10,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeReply do
   holds Jev's answers (`intent`, `intent_probabilities`,
   `intent_confidence`, `money_back`, `model`), the command chosen
   (`command`, written before it runs) and when the outcome was decided
-  (`decided_at`). It stores no body, subject or address. It is deleted with
+  (`decided_at`), and, for a Reply Action that leaves no Intake history row
+  (ALE-412's restore), when it committed (`action_committed_at`, stamped in
+  the command's transaction). It stores no body, subject or address. It is deleted with
   the person (`IntakeReplies.delete_for_person/1`).
 
   Outcomes: `pending` (recorded, not yet decided), `done` (a Reply Action
@@ -45,7 +47,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeReply do
           money_back: float() | nil,
           model: String.t() | nil,
           command: String.t() | nil,
-          decided_at: DateTime.t() | nil
+          decided_at: DateTime.t() | nil,
+          action_committed_at: DateTime.t() | nil
         }
 
   schema "beginners_workshop_intake_replies" do
@@ -63,9 +66,19 @@ defmodule Dhc.BeginnersWorkshops.IntakeReply do
     field :model, :string
     field :command, :string
     field :decided_at, :utc_datetime_usec
+    field :action_committed_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime_usec)
   end
+
+  @doc """
+  Stamps that the reply's Reply Action committed (ALE-412), for a command
+  that writes no Intake history row naming the reply. The command persists
+  it in its own transaction; `IntakeReplies.Decision` reads it on a retry.
+  """
+  @spec action_committed_changeset(t(), DateTime.t()) :: Ecto.Changeset.t()
+  def action_committed_changeset(%__MODULE__{} = reply, %DateTime{} = now),
+    do: Ecto.Changeset.change(reply, action_committed_at: now)
 
   @doc "Every outcome a reply can have."
   @spec outcomes() :: [String.t()]
