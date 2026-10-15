@@ -18,38 +18,11 @@ env:
   FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
 jobs:
-  changes:
-    name: Detect changes
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      phoenix: ${{ steps.filter.outputs.phoenix }}
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Check for changes
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            phoenix:
-              - 'apps/phoenix/**'
-              - 'packages/email-templates/**'
-              - 'package.json'
-              - 'pnpm-workspace.yaml'
-              - 'pnpm-lock.yaml'
-              - '.mise.toml'
-              - '.dockerignore'
-              - 'fly.toml'
-              - 'fnox.toml'
-              - '.github/workflows/deploy-phoenix-fly.yml'
-
+  # Deploy every main push, not only commits whose own diff touches Phoenix.
+  # GitHub replaces pending runs even with cancel-in-progress: false. During
+  # a merge burst, the surviving frontend-only commit must also deploy the
+  # API changes from cancelled runs. Manual recovery must never be filtered.
   deploy:
-    needs: changes
-    if: needs.changes.outputs.phoenix == 'true'
     runs-on: ubuntu-latest
     environment: production
 
@@ -68,6 +41,9 @@ jobs:
         with:
           node-version: 26
           cache: pnpm
+
+      - name: Check deployment workflow invariants
+        run: node --test tools/deployment-workflow.test.mjs
 
       - name: Install email template dependencies
         run: pnpm install --frozen-lockfile --filter @dhc/email-templates... --ignore-scripts
