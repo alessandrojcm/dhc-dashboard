@@ -123,6 +123,8 @@ config :dhc, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 0 * * *", Dhc.StripeSync.Worker},
+       # Deletes notifications older than three months (read or unread).
+       {"0 0 * * *", Dhc.Notifications.Workers.RetentionWorker},
        {"0 * * * *", Dhc.Discord.Workers.JoinGrantCleanupWorker},
        {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker},
        {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker},
