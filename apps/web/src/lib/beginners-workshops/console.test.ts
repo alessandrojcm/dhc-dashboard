@@ -588,6 +588,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				occurredAt: "2026-11-16T11:00:00Z",
 				note: null,
 				correction: "deferred",
+				byEmailReply: false,
 			}),
 		).toBe(
 			"Non-attendance changed to a later workshop · Clare Coord · Mon 16 Nov, 11:00",
@@ -602,6 +603,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				occurredAt: "2026-11-14T18:45:00Z",
 				note: null,
 				correction: null,
+				byEmailReply: false,
 			}),
 		).toBe("Checked in at the door · Aoife Coach · Sat 14 Nov, 18:45");
 		expect(
@@ -611,6 +613,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				occurredAt: "2026-11-14T18:46:00Z",
 				note: null,
 				correction: null,
+				byEmailReply: false,
 			}),
 		).toBe("Check-in undone · a former member · Sat 14 Nov, 18:46");
 	});
@@ -625,6 +628,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
 				correction: null,
+				byEmailReply: false,
 			}),
 		).toBe(
 			"Place confirmed using workshop credit · by the person · Thu 22 Oct, 12:00",
@@ -636,6 +640,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
 				correction: null,
+				byEmailReply: false,
 			}),
 		).toBe("Moved to a later workshop · a former member · Thu 22 Oct, 12:00");
 		expect(
@@ -655,7 +660,12 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 		const now = new Date("2026-11-01T12:00:00Z");
 		expect(
 			emailLogLine(
-				{ emailType: "declined", at: "2026-10-22T11:00:00Z", scheduled: false },
+				{
+					emailType: "declined",
+					label: "Declined",
+					at: "2026-10-22T11:00:00Z",
+					scheduled: false,
+				},
 				now,
 			),
 		).toEqual({
@@ -667,6 +677,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			emailLogLine(
 				{
 					emailType: "pre_workshop",
+					label: "Pre-workshop info",
 					at: "2026-11-11T18:30:00Z",
 					scheduled: true,
 				},
@@ -681,6 +692,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			emailLogLine(
 				{
 					emailType: "pre_workshop",
+					label: "Pre-workshop info",
 					at: "2026-10-30T18:30:00Z",
 					scheduled: true,
 				},
@@ -697,8 +709,22 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
 				correction: null,
+				byEmailReply: false,
 			}),
 		).toBe("Declined · a former member · Thu 22 Oct, 12:00");
+	});
+
+	it("ALE-411: words a Reply Action as done by email reply", () => {
+		expect(
+			historyLine({
+				command: "decline",
+				actor: null,
+				occurredAt: "2026-10-22T11:00:00Z",
+				note: null,
+				correction: null,
+				byEmailReply: true,
+			}),
+		).toBe("Declined · by email reply · Thu 22 Oct, 12:00");
 	});
 
 	it("words someone unpaid after a fast-track window", () => {

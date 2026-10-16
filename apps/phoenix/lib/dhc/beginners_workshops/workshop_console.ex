@@ -460,7 +460,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     |> Enum.map(&Map.merge(&1, %{occasion: nil, scheduled: true}))
   end
 
-  # Each Intake's history, oldest first, the actor named by their profile.
+  # Each Intake's history, oldest first, the actor named by their profile;
+  # a Reply Action (ALE-411) is "by email reply" and names no one.
   defp histories(workshop_id) do
     from(e in IntakeEvent,
       join: i in Intake,
@@ -476,7 +477,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
            actor: fragment("nullif(trim(concat_ws(' ', ?, ?)), '')", p.first_name, p.last_name),
            occurred_at: e.occurred_at,
            note: e.note,
-           correction: e.correction
+           correction: e.correction,
+           by_email_reply: not is_nil(e.intake_reply_id)
          }}
     )
     |> Repo.all()

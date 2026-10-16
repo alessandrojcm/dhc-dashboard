@@ -7,7 +7,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeEvent do
   corrected the Intake to — plus (ALE-395) the workshop's cancellation and
   (ALE-390, story 97) every door `check_in` and `undo_check_in`, so the
   attendance record keeps who did what and when after an undo or an
-  unassignment. A repeated command that found nothing to do writes no
+  unassignment. A Reply Action (ALE-411) names its Intake Reply
+  (`intake_reply_id`, no Principal): the console shows it as done "by email
+  reply". A repeated command that found nothing to do writes no
   row. Rows are only ever inserted, by the boundary, in the command's own
   transaction.
   """
@@ -29,6 +31,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeEvent do
     field :note, :string
     # ALE-393: the state a `correct_attendance` row corrected the Intake to.
     field :correction, :string
+    # ALE-411: the Intake Reply whose Reply Action this is (no foreign key:
+    # it outlives the reply row, which is deleted with the person).
+    field :intake_reply_id, :binary_id
     field :occurred_at, :utc_datetime_usec
   end
 
@@ -47,6 +52,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEvent do
       :actor_principal_id,
       :note,
       :correction,
+      :intake_reply_id,
       :occurred_at
     ])
     |> validate_required([:intake_id, :command, :occurred_at])

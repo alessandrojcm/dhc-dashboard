@@ -90,6 +90,15 @@ Optional, once Web Push is enabled (see [Enabling Web Push](#5-enabling-web-push
 | `WEB_PUSH_VAPID_PUBLIC_KEY` | base64url key from `mix web_push_ex.vapid` | VAPID public key browsers use as `applicationServerKey` |
 | `WEB_PUSH_VAPID_SUBJECT` | `mailto:contact@dublinhemaclub.com` | VAPID contact the push services may use to reach us |
 
+Optional, after Resend Inbound is configured for Intake Replies (ALE-413):
+
+| Variable | Value | Purpose |
+| --- | --- | --- |
+| `INTAKE_REPLY_DOMAIN` | `reply.dublinhemaclub.com` | Domain for per-email Intake Reply addresses; leave unset until inbound receiving is ready |
+| `RESEND_WEBHOOK_SIGNING_SECRET` | `whsec_…` from the Resend webhook for `POST /api/webhooks/resend` | Verifies the Svix signature of `email.received` deliveries |
+| `RESEND_RECEIVING_API_KEY` | optional override (defaults to `RESEND_API_KEY`) | Only needed if receiving reads ever move off the main full-access key |
+| `INTAKE_REPLY_FORWARD_TO` | `contact@dublinhemaclub.com` (default) | Inbox every Intake Reply is forwarded to |
+
 ### 3. 1Password items referenced by fnox
 
 Create one item per variable in the `Production-phoenix-api` vault. For simple references like `DATABASE_URL`, fnox reads the item's `password` field.
@@ -101,7 +110,7 @@ Required production items:
 | `DATABASE_URL` | Yes | Production Postgres connection URL |
 | `SECRET_KEY_BASE` | Yes | Phoenix signing/encryption secret |
 | `DISCORD_WEBHOOK_URL` | Yes | Discord webhook target |
-| `RESEND_API_KEY` | Yes | Resend send-only transactional email API key |
+| `RESEND_API_KEY` | Yes | Resend full-access API key (sending + Intake Reply receiving reads) |
 | `STRIPE_SECRET_KEY` | Yes | Stripe API key |
 | `STRIPE_WEBHOOK_SIGNING_SECRET` | Yes | Stripe webhook signature secret |
 | `SUPABASE_URL` | No/low sensitivity | Supabase project URL used for auth/service clients |

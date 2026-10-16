@@ -4,6 +4,8 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
   `HH:MM` Europe/Dublin; the cutoff instant is ISO 8601 UTC.
   """
 
+  alias Dhc.BeginnersWorkshops.IntakeEmails.EmailType
+
   def index(%{result: %{upcoming: upcoming, past: past}}),
     do: %{data: %{upcoming: Enum.map(upcoming, &workshop/1), past: Enum.map(past, &workshop/1)}}
 
@@ -137,7 +139,12 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       linkGeneration: row.link_generation,
       emailLog:
         Enum.map(row.email_log, fn entry ->
-          %{emailType: entry.email_type, at: entry.at, scheduled: entry.scheduled}
+          %{
+            emailType: entry.email_type,
+            label: EmailType.fetch!(entry.email_type).label,
+            at: entry.at,
+            scheduled: entry.scheduled
+          }
         end),
       history:
         Enum.map(row.history, fn entry ->
@@ -146,7 +153,8 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
             actor: entry.actor,
             occurredAt: entry.occurred_at,
             note: entry.note,
-            correction: entry.correction
+            correction: entry.correction,
+            byEmailReply: entry.by_email_reply
           }
         end),
       availableCommands: row.available_commands,

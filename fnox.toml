@@ -37,3 +37,8 @@ WEB_PUSH_VAPID_SUBJECT= { provider = "1Password", value = "WEB_PUSH_VAPID_SUBJEC
 # FNOX_IF_MISSING=error, so create the 1Password item before deploying.
 # Must equal the web app's TRUSTED_FORWARDING_SECRET (Cloudflare Worker secret).
 TRUSTED_FORWARDING_SECRET = { provider = "1Password", value = "TRUSTED_FORWARDING_SECRET" }
+# Jev classifier for Intake Replies (ALE-410). Optional to Phoenix, but
+# FNOX_IF_MISSING=error, so create the 1Password item before deploying.
+TYPESAFE_API_KEY = { provider = "1Password", value = "TYPESAFE_API_KEY" }
+RESEND_WEBHOOK_SIGNING_SECRET= { provider = "1Password", value = "RESEND_WEBHOOK_SIGNING_SECRET" }
+INTAKE_REPLY_DOMAIN= { provider = "1Password", value = "reply.dublinhemaclub.com" }

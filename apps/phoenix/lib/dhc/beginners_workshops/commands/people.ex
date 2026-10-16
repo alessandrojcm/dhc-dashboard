@@ -3,7 +3,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
   The person-level commands of the Waitlist tab and the sweep (ALE-405):
   `withdraw` and `refund_carried_fee` naming a person (`{command,
   waitlist_id, attrs}`), `link_carried_fee_payment`, `delete_person`,
-  `purge_retention` and `import_carried_fee`.
+  `purge_retention`, `import_carried_fee` and `restore_person`.
   `Dhc.BeginnersWorkshops.Commands` authorizes the actor and routes here.
 
   ## Withdraw from the Waitlist tab (ALE-387)
@@ -14,6 +14,30 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
   Batch or Fast-track contacted them meanwhile), or, with none, only
   removes the standing (`IntakePolicy.check(:withdraw, _)` with no Intake).
   A held Carried Fee needs the refund-or-forfeit choice either way.
+
+  ## Reply Actions (ALE-411)
+
+  The person intents of an Intake Reply run exactly these Waitlist-tab
+  commands as `{:intake_reply, intake_reply_id}`: `{:withdraw, waitlist_id,
+  %{refund: true}}` (a Reply Action never forfeits; `Commands` refuses a
+  withdrawal without the refund) and `{:refund_carried_fee, waitlist_id,
+  %{}}`. They have no Principal (a refund's `requested_by` is `nil`), and an
+  open Intake's history row names the reply.
+
+  ## Back on the Waitlist from a reply (ALE-412)
+
+  `{:restore_person, waitlist_id}` (only `{:intake_reply, id}`: "wants to
+  come back") restores, under the person's Waitlist entry lock, someone
+  `removed` within retention (`Waitlist.restorable?/2` on the boundary
+  clock) with no open Intake, through `Dhc.Waitlist.restore/2` inside the
+  command's transaction (the Fast-track way), so they keep their original
+  priority. It queues "Back on the Waitlist" (`back_on_waitlist`) as
+  `{:person, entry, nil}`, its occasion named by the removal it reverses, so
+  someone who comes back twice is told twice. It stamps the reply's
+  `action_committed_at` in the same transaction (it writes no Intake
+  history row for a retry to find). Anyone else is
+  `:not_restorable` (`:open_intake` with an open Intake). The Waitlist tab's
+  own restore (`Dhc.Waitlist.restore/2` from its controller) sends nothing.
 
   ## Carried Fees (ALE-388, ALE-389)
 
@@ -97,9 +121,14 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     Clock,
     Intake,
     IntakePayment,
+    IntakeEmails,
+    IntakeReplies,
+    IntakeReply,
     IntakeRefunds,
     PersonPolicy
   }
+
+  alias Dhc.BeginnersWorkshops.IntakeEmails.Occasion
 
   alias Dhc.BeginnersWorkshops.Commands
 
@@ -145,7 +174,82 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
   def run({:staff, principal_id}, {:withdraw, waitlist_id, attrs}, clock) when is_map(attrs),
     do: withdraw_person(principal_id, waitlist_id, attrs, clock)
 
+  # ALE-411: the person intents of a Reply Action — leaving (always with
+  # its refund, which `Commands` checks) and refunding a held Carried Fee —
+  # run exactly the Waitlist tab's commands, whichever email was answered.
+  def run({:intake_reply, _id} = actor, {:withdraw, waitlist_id, attrs}, clock)
+      when is_map(attrs),
+      do: withdraw_person(actor, waitlist_id, attrs, clock)
+
+  def run({:intake_reply, _id} = actor, {:refund_carried_fee, waitlist_id, attrs}, clock)
+      when is_map(attrs),
+      do: refund_person_fee(actor, waitlist_id, attrs, clock)
+
+  # ALE-412: "wants to come back" puts the person back on the Waitlist.
+  def run({:intake_reply, reply_id}, {:restore_person, waitlist_id}, clock),
+    do: restore_person(reply_id, waitlist_id, clock)
+
   def run(_actor, _command, _clock), do: {:error, :unknown_command}
+
+  # ── Back on the Waitlist (ALE-412) ─────────────────────────────
+
+  # Under the person's entry lock, which every Intake writer takes, so the
+  # open-Intake read and the retention judgement hold until commit. Checked
+  # before `Waitlist.restore/2` (which runs in this transaction) so it
+  # cannot refuse and leave the transaction marked for rollback.
+  defp restore_person(reply_id, waitlist_id, clock) do
+    with {:ok, waitlist_id} <- cast_person_id(waitlist_id) do
+      transact(fn ->
+        with_locked(
+          %{waitlist_entry: from(e in WaitlistEntry, where: e.id == ^waitlist_id)},
+          &restore_locked(&1, reply_id, clock)
+        )
+      end)
+    end
+  end
+
+  defp restore_locked(%{waitlist_entry: nil}, _reply_id, _clock),
+    do: {:error, :person_not_found}
+
+  # The restore writes no Intake history row, so the reply is stamped in
+  # this transaction: a retried job then knows it committed.
+  defp restore_locked(%{waitlist_entry: entry}, reply_id, clock) do
+    reading = Clock.read(clock)
+
+    with :ok <- restorable(entry, reading),
+         :ok <- no_open_intake(entry.id),
+         {:ok, _view} <- Waitlist.restore(entry.id, now: reading.now),
+         restored = Repo.reload!(entry),
+         {:ok, _sent} <-
+           IntakeEmails.deliver(
+             {:person, restored, nil},
+             "back_on_waitlist",
+             Occasion.back_on_waitlist(entry.removed_at),
+             reading
+           ),
+         {:ok, _reply} <- stamp_reply(reply_id, reading.now) do
+      {:ok, %{waitlist_id: restored.id, status: restored.status, outcome: :done}}
+    end
+  end
+
+  # A reply deleted since authorization went with its person (hard
+  # delete), whose entry lock this command holds: a concurrent change.
+  defp stamp_reply(reply_id, now) do
+    case Repo.get(IntakeReply, reply_id) do
+      nil -> {:error, :concurrent_change}
+      reply -> reply |> IntakeReply.action_committed_changeset(now) |> persist()
+    end
+  end
+
+  defp restorable(%WaitlistEntry{status: "removed", removed_at: %DateTime{} = at}, reading) do
+    if Waitlist.restorable?(at, reading.now), do: :ok, else: {:error, :not_restorable}
+  end
+
+  defp restorable(%WaitlistEntry{}, _reading), do: {:error, :not_restorable}
+
+  defp no_open_intake(waitlist_id) do
+    if peek_open_intake(waitlist_id) == nil, do: :ok, else: {:error, :open_intake}
+  end
 
   # ── withdraw from the Waitlist tab (ALE-387) ───────────────────
 
@@ -355,6 +459,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
     outcome = invitation_outcome(entry)
 
     with {:ok, anonymised} <- anonymise_intakes(intakes, outcome, reading),
+         _deleted_reply_addresses <- IntakeReplies.delete_for_person(entry.id),
          {_count, _rows} <-
            Repo.update_all(from(f in CarriedFee, where: f.waitlist_id == ^entry.id),
              set: [waitlist_id: nil, updated_at: reading.now]

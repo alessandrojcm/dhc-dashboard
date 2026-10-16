@@ -6,8 +6,9 @@ defmodule Dhc.Email.Mailer do
   The adapter is chosen per environment purely through configuration under
   `config :dhc, Dhc.Email.Mailer`:
 
-    * **prod** — `Swoosh.Adapters.Resend` with the send-only
-      `RESEND_API_KEY` (ADR 0022).
+    * **prod** — `Swoosh.Adapters.Resend` with the full-access
+      `RESEND_API_KEY` (ADR 0022; the same key also serves Intake Reply
+      receiving reads).
     * **dev** — `Swoosh.Adapters.Mailpit` over HTTP (`base_url:` pointing at
       the local Mailpit API, default `http://localhost:8025`).
     * **test** — `Swoosh.Adapters.Test`, asserted via `Swoosh.TestAssertions`.

@@ -116,14 +116,14 @@ function save(event: SubmitEvent) {
 
 <form
 	class="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-card"
-	aria-label={`${copy.label} template`}
+	aria-label={`${template.label} template`}
 	onsubmit={save}
 >
 	<header
 		class="flex shrink-0 flex-col gap-2 border-b border-border bg-muted/20 p-4 sm:p-5"
 	>
 		<div class="flex flex-wrap items-center gap-2">
-			<h3 class="font-heading text-xl text-foreground">{copy.label}</h3>
+			<h3 class="font-heading text-xl text-foreground">{template.label}</h3>
 			<Badge variant="outline">
 				{template.kind === "action" ? "With a button" : "Notice"}
 			</Badge>

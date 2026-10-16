@@ -9,11 +9,14 @@ import { render } from "vitest-browser-svelte";
 import { INTAKE_EMAIL_TYPES } from "#lib/beginners-workshops/intake-emails/presentation.js";
 import IntakeEmailTemplatesTestWrapper from "./intake-email-templates.test-wrapper.svelte";
 
+// Phoenix's EmailType labels, as the API sends them.
 const row = (
 	emailType: IntakeEmailTemplate["emailType"],
 	kind: IntakeEmailTemplate["kind"],
+	label: string,
 ): IntakeEmailTemplate => ({
 	emailType,
+	label,
 	kind,
 	buttonLabel: kind === "action" ? "Pay for your place" : null,
 	placeholders: [],
@@ -30,7 +33,10 @@ test("the type list shows who receives each email", async () => {
 	queryClient.setQueryData<BeginnersWorkshopEmailTemplatesListResponse>(
 		beginnersWorkshopEmailTemplatesListQueryKey(),
 		{
-			data: [row("contact_pay", "action"), row("follow_up", "notice")],
+			data: [
+				row("contact_pay", "action", "Place offer: payment needed"),
+				row("follow_up", "notice", "Follow-up"),
+			],
 		},
 	);
 	const screen = await render(IntakeEmailTemplatesTestWrapper, {

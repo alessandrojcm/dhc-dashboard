@@ -104,6 +104,7 @@
          "Dhc.BeginnersWorkshops.Commands.Payments.*",
          "Dhc.BeginnersWorkshops.Commands.People.*",
          "Dhc.BeginnersWorkshops.Commands.Refunds.*",
+         "Dhc.BeginnersWorkshops.Commands.Replies.*",
          "Dhc.BeginnersWorkshops.Commands.Schedule.*",
          "Dhc.BeginnersWorkshops.Commands.Staff.*",
          "Dhc.BeginnersWorkshops.Commands.CoordinatorAlerts.*",

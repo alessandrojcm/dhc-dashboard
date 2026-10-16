@@ -1,15 +1,16 @@
 defmodule DhcWeb.CacheBodyReader do
   @moduledoc """
   The `Plug.Parsers` body reader. It caches the raw request body in
-  `conn.assigns.raw_body` for the Stripe webhook only.
+  `conn.assigns.raw_body` for the signed webhooks only: Stripe and Resend
+  (ALE-409).
 
-  Stripe webhook signature verification needs the exact bytes Stripe sent.
+  Webhook signature verification needs the exact bytes the provider sent.
   `Plug.Parsers` decodes the body (e.g. JSON), but re-encoding it would change
   whitespace and ordering, breaking the HMAC-SHA256 signature check.
 
   ## How it works
 
-    * For `POST /api/webhooks/stripe`, a complete read (`{:ok, body, conn}`)
+    * For `POST /api/webhooks/stripe` and `/api/webhooks/resend`, a complete read (`{:ok, body, conn}`)
       is stored in `conn.assigns[:raw_body]` before the body goes to the
       parser. A later read returns the cached body.
     * Every other request reads straight through `Plug.Conn.read_body/2`, so no
@@ -34,15 +35,15 @@ defmodule DhcWeb.CacheBodyReader do
       payload = conn.assigns[:raw_body]
   """
 
-  @stripe_webhook_path "/api/webhooks/stripe"
+  @webhook_paths ["/api/webhooks/stripe", "/api/webhooks/resend"]
 
   @doc """
   Reads the request body, caching it in `conn.assigns[:raw_body]` for the
-  Stripe webhook path only.
+  signed webhook paths only.
   """
   @spec read_body(Plug.Conn.t(), keyword()) ::
           {:ok, binary(), Plug.Conn.t()} | {:more, binary(), Plug.Conn.t()} | {:error, term()}
-  def read_body(%Plug.Conn{request_path: @stripe_webhook_path} = conn, opts) do
+  def read_body(%Plug.Conn{request_path: path} = conn, opts) when path in @webhook_paths do
     case conn.assigns[:raw_body] do
       nil -> conn |> Plug.Conn.read_body(opts) |> cache()
       cached -> {:ok, cached, conn}

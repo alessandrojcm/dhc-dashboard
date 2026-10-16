@@ -64,6 +64,36 @@ config :swoosh, :finch_name, Swoosh.Finch
 # and satisfy Swoosh's addressing requirements.
 config :dhc, :email_from, "dev@dhc.local"
 config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
+# Optional until Resend Inbound is configured; unset keeps Intake Emails on
+# the shared contact address.
+config :dhc, :intake_reply_domain, nil
+# Intake Replies (ALE-409): where replies are forwarded, and the Resend
+# receiving API the forward reads them from (authenticated with the
+# full-access RESEND_API_KEY unless RESEND_RECEIVING_API_KEY overrides it;
+# RESEND_WEBHOOK_SIGNING_SECRET is set in runtime.exs).
+config :dhc, :intake_reply_forward_to, "contact@dublinhemaclub.com"
+config :dhc, :resend_api_url, "https://api.resend.com"
+
+# ALE-410: pin evaluation to a concrete Jev release so measured confidence
+# thresholds do not silently drift when the provider updates its aliases.
+config :dhc,
+  typesafe_model: "jev-1.13.0",
+  typesafe_api_url: "https://api.typesafe.ai"
+
+# ALE-411: Reply Actions, one switch per intent. Every intent is off until
+# the offline eval (ALE-414, `mix dhc.intake_replies.eval`) sets its
+# confidence threshold; there is no shadow mode. `money_back` reads Jev's
+# "asking for their money back?" answer: at or above `yes` is yes, at or
+# below `no` is no, between them unclear (a Deferral on "can't make it",
+# the coordinator on "leaving"). See IntakeReplies.ReplyActions.
+config :dhc, Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions,
+  intents: %{
+    "cant_make_date" => [enabled: false, threshold: 0.9],
+    "leaving_waitlist" => [enabled: false, threshold: 0.9],
+    "wants_refund" => [enabled: false, threshold: 0.9],
+    "link_problem" => [enabled: false, threshold: 0.9]
+  },
+  money_back: [yes: 0.8, no: 0.2]
 
 # Configure Oban for background job processing
 config :dhc, Oban,
@@ -189,6 +219,7 @@ config :logger, :default_formatter,
     :reason,
     :recipient_count,
     :request_id,
+    :resend_email_id,
     :resume_date,
     :scanned,
     :stale_before,
@@ -269,7 +300,9 @@ config :sentry,
       # Discord guild-join worker (Dhc.Discord.Workers.GuildJoinWorker)
       :grant_id,
       :attempt_id,
-      :status
+      :status,
+      # Intake Reply forwarding (Dhc.BeginnersWorkshops.IntakeReplies)
+      :resend_email_id
     ]
   ]
 
@@ -321,6 +354,14 @@ config :oapi_generator,
       base_module: Dhc.Stripe,
       location: "lib/dhc/stripe/generated",
       default_client: Dhc.Stripe.Client,
+      field_casing: :snake
+    ]
+  ],
+  typesafe: [
+    output: [
+      base_module: Dhc.TypeSafe,
+      location: "lib/dhc/typesafe/generated",
+      default_client: Dhc.TypeSafe.Client,
       field_casing: :snake
     ]
   ]

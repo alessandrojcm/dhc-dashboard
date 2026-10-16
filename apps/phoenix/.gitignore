@@ -29,3 +29,6 @@ dhc-*.tar
 # used by Docker/Fly before `mix release`.
 /rel/*
 !/rel/env.sh.eex
+
+# Hand-labelled email exports for the offline Jev eval contain correspondence.
+/priv/intake_reply_eval/

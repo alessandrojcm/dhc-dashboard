@@ -355,6 +355,9 @@ defmodule DhcWeb.Router do
     get("/waitlist/status", WaitlistController, :index)
     post("/waitlist/entries", WaitlistController, :create)
     post("/webhooks/stripe", StripeWebhooksController, :create)
+    # ALE-409: the payload's `to` holds Intake Reply addresses (credentials),
+    # so the route never logs its parameters.
+    post("/webhooks/resend", ResendWebhooksController, :create, log: false)
     get("/workshops/:id/external-registration", WorkshopsController, :external_registration_gate)
 
     post(

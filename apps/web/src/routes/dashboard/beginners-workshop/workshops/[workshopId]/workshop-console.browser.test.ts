@@ -773,16 +773,19 @@ function commandsView(): BeginnersWorkshopConsole {
 					emailLog: [
 						{
 							emailType: "contact_pay",
+							label: "Place offer: payment needed",
 							at: "2026-10-20T09:00:00Z",
 							scheduled: false,
 						},
 						{
 							emailType: "place_confirmed_paid",
+							label: "Place confirmed — paid",
 							at: "2026-10-21T18:00:00Z",
 							scheduled: false,
 						},
 						{
 							emailType: "pre_workshop",
+							label: "Pre-workshop info",
 							at: "2099-11-11T18:30:00Z",
 							scheduled: true,
 						},
@@ -794,6 +797,7 @@ function commandsView(): BeginnersWorkshopConsole {
 							occurredAt: "2026-10-22T11:00:00Z",
 							note: "Forwarded the email to a friend",
 							correction: null,
+							byEmailReply: false,
 						},
 					],
 				},
@@ -933,6 +937,7 @@ test("ALE-393: the finalised roster offers the corrections Phoenix allows", asyn
 								occurredAt: "2026-11-16T11:00:00Z",
 								note: "Door mix-up",
 								correction: "no_show",
+								byEmailReply: false,
 							},
 						],
 					},
@@ -1170,6 +1175,7 @@ test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need
 				occurredAt: "2026-10-22T11:00:00Z",
 				note: null,
 				correction: null,
+				byEmailReply: false,
 			},
 		],
 	};

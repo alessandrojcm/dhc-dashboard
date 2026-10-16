@@ -23,7 +23,6 @@ import type {
 	WaitlistStatus,
 	BeginnersWorkshopUnpaidAfterWindow,
 } from "@dhc/api-client";
-import { INTAKE_EMAIL_TYPES } from "#lib/beginners-workshops/intake-emails/presentation.js";
 import { stageLabel } from "#lib/beginners-workshops/presentation.js";
 import { formatDublinInstant, formatDublinTime } from "#lib/club-calendar.js";
 
@@ -627,10 +626,12 @@ function historyLabel(command: BeginnersWorkshopIntakeHistoryCommand): string {
 export function historyLine(
 	entry: BeginnersWorkshopIntakeHistoryEntry,
 ): string {
-	// A confirm without an actor is the person's own, from their Intake page.
-	const actor =
-		entry.actor ??
-		(entry.command === "confirm" ? "by the person" : "a former member");
+	// ALE-411: a Reply Action was asked for by email and names no one. A
+	// confirm without an actor is the person's own, from their Intake page.
+	const actor = entry.byEmailReply
+		? "by email reply"
+		: (entry.actor ??
+			(entry.command === "confirm" ? "by the person" : "a former member"));
 	return [
 		entry.correction
 			? ATTENDANCE_CORRECTION_COPY[entry.correction].history
@@ -676,7 +677,7 @@ export function emailLogLine(
 	entry: BeginnersWorkshopIntakeEmailLogEntry,
 	now: Date = new Date(),
 ): EmailLogLine {
-	const label = INTAKE_EMAIL_TYPES[entry.emailType].label;
+	const { label } = entry;
 	if (!entry.scheduled)
 		return { label, when: formatDublinInstant(entry.at), scheduled: false };
 	const due = new Date(entry.at).getTime() <= now.getTime();

@@ -13,6 +13,11 @@ defmodule DhcWeb.IntakeLinkPrivacy do
       `:url_scrubber`;
     * Sentry events and transactions (spans carry `url.path`) —
       `before_send/1` is Sentry's `:before_send` and redacts every string.
+
+  Intake Reply addresses (ALE-409) are credentials too, and arrive in the
+  body of the Resend webhook (`POST /api/webhooks/resend`): its route is
+  `log: false`, and `scrub_body/1`, `Sentry.PlugContext`'s `:body_scrubber`,
+  sends Sentry none of that body.
   """
 
   @segment ~r{(beginners/intake/)[^/?#\s"']+}
@@ -35,6 +40,14 @@ defmodule DhcWeb.IntakeLinkPrivacy do
   @spec scrub_url(Plug.Conn.t()) :: String.t()
   def scrub_url(%Plug.Conn{} = conn),
     do: conn |> Sentry.PlugContext.default_url_scrubber() |> redact()
+
+  @doc """
+  `Sentry.PlugContext` body scrubber: nothing for the Resend webhook, whose
+  body holds Intake Reply addresses; the default scrubber elsewhere.
+  """
+  @spec scrub_body(Plug.Conn.t()) :: map()
+  def scrub_body(%Plug.Conn{request_path: "/api/webhooks/resend"}), do: %{}
+  def scrub_body(%Plug.Conn{} = conn), do: Sentry.PlugContext.default_body_scrubber(conn)
 
   @doc "Sentry `:before_send`: redacts every string of an event or transaction."
   @spec before_send(struct()) :: struct()

@@ -97,7 +97,8 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
       {:staff_assigned, NotificationCopy.staff_assigned("assistant", @workshop)},
       {:staff_unassigned, NotificationCopy.staff_unassigned(@workshop)},
       {:rescheduled, NotificationCopy.rescheduled(@workshop)},
-      {:cancelled, NotificationCopy.cancelled(@workshop)}
+      {:cancelled, NotificationCopy.cancelled(@workshop)},
+      {:reply_waiting, NotificationCopy.reply_waiting(Ecto.UUID.generate())}
     ] ++
       for follow_up <- NotificationCopy.refund_follow_ups(),
           {name, date} <- [{"Aoife", @workshop.date}, {nil, nil}],
@@ -145,6 +146,13 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
   test "no Notification shows a backend term" do
     copy = for {builder, text} <- notifications(), do: {"notification #{builder}", text}
     assert offences(copy) == []
+  end
+
+  # ALE-412: EmailType owns each type's staff label, which the dashboard
+  # shows verbatim (Email templates, the console's email log).
+  test "no Intake Email label shows a backend term" do
+    labels = for type <- EmailType.all(), do: {"email label #{type.id}", type.label}
+    assert offences(labels) == []
   end
 
   test "the banned phrases match whole phrases only" do
