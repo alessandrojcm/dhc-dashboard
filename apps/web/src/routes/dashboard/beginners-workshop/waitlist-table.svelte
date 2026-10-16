@@ -301,7 +301,7 @@ const table = createSvelteTable(tableOptions);
 <section
 	aria-labelledby="waitlist-title"
 	aria-busy={waitlist.isFetching}
-	class="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[4px_4px_0_hsl(var(--secondary)/0.35)]"
+	class="flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-[4px_4px_0_hsl(var(--secondary)/0.35)] lg:h-full lg:min-h-0"
 >
 	<header class="shrink-0 border-b border-border bg-muted/20 p-4 sm:p-5">
 		<div class="flex flex-wrap items-start justify-between gap-3">
@@ -469,7 +469,7 @@ const table = createSvelteTable(tableOptions);
 	</div>
 
 	<!-- Mobile Card View (hidden on desktop) -->
-	<div class="min-h-0 flex-1 overflow-y-auto lg:hidden">
+	<div class="lg:hidden">
 		{#if table.getRowCount() === 0}
 			{@render emptyState()}
 		{/if}
