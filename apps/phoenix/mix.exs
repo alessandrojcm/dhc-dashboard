@@ -68,7 +68,7 @@ defmodule Dhc.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.12.5"},
+      {:bandit, "~> 1.13.1"},
       {:oban, "~> 2.19"},
       {:sentry, "~> 13.4"},
       {:opentelemetry, "~> 1.5"},
