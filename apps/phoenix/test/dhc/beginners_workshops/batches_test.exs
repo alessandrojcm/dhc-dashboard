@@ -398,10 +398,18 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
 
       assert {:ok, %{outcome: :sent}} = send_due(w, @batch_1_at)
 
-      assert [%Notification{body: body, notification_key: key}] = notifications(coordinator)
+      assert [%Notification{id: id, body: body, notification_key: key}] =
+               notifications(coordinator)
+
       assert key == "beginners-workshop:#{w.id}:batch:1"
       assert body =~ "Offer round 1 sent"
       assert body =~ "2 people offered a workshop place"
+
+      assert_enqueued(
+        worker: Dhc.Notifications.Workers.WebPushWorker,
+        args: %{notification_id: id}
+      )
+
       assert notifications(officer) == []
     end
   end

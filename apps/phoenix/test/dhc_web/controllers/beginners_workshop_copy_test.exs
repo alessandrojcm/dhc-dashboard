@@ -93,6 +93,8 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
       {:batch_sent, NotificationCopy.batch_sent(@workshop.date, 1, 1)},
       {:batch_sent, NotificationCopy.batch_sent(@workshop.date, 2, 5)},
       {:nobody_waiting, NotificationCopy.nobody_waiting(@workshop.date)},
+      {:place_paid, NotificationCopy.place_paid("Aoife", @workshop.date)},
+      {:place_paid, NotificationCopy.place_paid(nil, @workshop.date)},
       {:staff_assigned, NotificationCopy.staff_assigned("coach", @workshop)},
       {:staff_assigned, NotificationCopy.staff_assigned("assistant", @workshop)},
       {:staff_unassigned, NotificationCopy.staff_unassigned(@workshop)},
