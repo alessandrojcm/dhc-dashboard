@@ -10,6 +10,11 @@ defmodule DhcWeb.ResendWebhooksController do
   `RESEND_WEBHOOK_SIGNING_SECRET` by `Dhc.Resend.Webhook`. A stale timestamp
   is refused.
 
+  With Intake Replies parked (`IntakeReplies.enabled?/0` off, ALE-414) the
+  signature is still verified and the delivery is still acknowledged, but
+  nothing is recorded: `handled` is `false`. No reply address is minted while
+  the feature is off, so no reply can be dropped by this.
+
   The payload's `to` holds reply addresses, which are credentials, so it is
   never logged: the route is `log: false` (no router "Parameters" line) and
   `DhcWeb.IntakeLinkPrivacy.scrub_body/1` keeps it out of Sentry.
@@ -84,9 +89,13 @@ defmodule DhcWeb.ResendWebhooksController do
   end
 
   defp handle(%{"type" => "email.received", "data" => %{} = data}) do
-    case IntakeReplies.record_received(data) do
-      {:ok, _recorded_or_duplicate} -> {:ok, true}
-      {:error, reason} -> {:error, reason}
+    if IntakeReplies.enabled?() do
+      case IntakeReplies.record_received(data) do
+        {:ok, _recorded_or_duplicate} -> {:ok, true}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:ok, false}
     end
   end
 

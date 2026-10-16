@@ -85,10 +85,13 @@ config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verification"
 
 # Intake Replies (ALE-409): tests stub Resend's receiving API with
-# `Req.Test.stub(Dhc.Resend, plug)` and sign webhooks with this secret.
+# `Req.Test.stub(Dhc.Resend, plug)` and sign webhooks with this secret. The
+# feature is on here so the suite exercises the live path; the parked state
+# (ALE-414) is set per test.
 config :dhc, :resend_req_options, plug: {Req.Test, Dhc.Resend}
 config :dhc, :resend_receiving_api_key, "re_test_receiving_key"
 config :dhc, :resend_webhook_secret, "whsec_" <> Base.encode64("resend-webhook-test-secret")
+config :dhc, Dhc.BeginnersWorkshops.IntakeReplies, enabled: true
 
 # Jev classifier tests stub the TypeSafe endpoint and set retry_delay to zero
 # so the retry policy can be asserted without sleeping.

@@ -148,6 +148,25 @@ defmodule DhcWeb.ResendWebhooksControllerTest do
     assert [] = all_enqueued(worker: ReplyWorker)
   end
 
+  test "acknowledges a reply without recording it while Intake Replies is parked", %{conn: conn} do
+    original = Application.get_env(:dhc, IntakeReplies)
+    Application.put_env(:dhc, IntakeReplies, enabled: false)
+    on_exit(fn -> Application.put_env(:dhc, IntakeReplies, original) end)
+
+    email_id = Ecto.UUID.generate()
+    payload = received_event(email_id, "nobody@#{@domain}")
+
+    assert %{"data" => %{"received" => true, "handled" => false}} =
+             json_response(deliver(conn, payload), 200)
+
+    assert Repo.aggregate(IntakeReply, :count) == 0
+    assert [] = all_enqueued(worker: ReplyWorker)
+
+    # Parking the feature does not open the endpoint: the signature is still
+    # verified before anything is decided.
+    assert json_response(deliver(build_conn(), payload, []), 401)
+  end
+
   test "refuses an invalid signature", %{conn: conn} do
     payload = received_event(Ecto.UUID.generate(), "nobody@#{@domain}")
 
