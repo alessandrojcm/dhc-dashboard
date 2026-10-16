@@ -160,8 +160,7 @@ function getBreadcrumbLabel(item: string, index: number): string {
 	/>
 	<main
 		id="dashboard-content"
-		class="min-w-0 w-full"
-		class:h-dvh={isBeginnersWorkshopPage}
+		class={["min-w-0 w-full", isBeginnersWorkshopPage && "lg:h-dvh"]}
 	>
 		<header
 			class="sticky top-0 z-20 shrink-0 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-md sm:px-6"
@@ -197,10 +196,10 @@ function getBreadcrumbLabel(item: string, index: number): string {
 			</div>
 		</header>
 		<div
-			class="w-full"
-			class:flex-1={isBeginnersWorkshopPage}
-			class:min-h-0={isBeginnersWorkshopPage}
-			class:overflow-hidden={isBeginnersWorkshopPage}
+			class={[
+				"w-full",
+				isBeginnersWorkshopPage && "lg:min-h-0 lg:flex-1 lg:overflow-hidden",
+			]}
 		>
 			{@render children()}
 		</div>

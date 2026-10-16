@@ -120,6 +120,8 @@ The Beginners' Workshop report (ALE-397) is the Dashboard tab's read model, `Dhc
 
 ## Navigation
 
+- Beginners' Workshop section pages scroll as a document below `lg`; only desktop constrains the dashboard and panels to the viewport. Keep the responsive height/overflow chain aligned in the dashboard layout, `section-shell.svelte`, and list panels: fixed phone heights let filters squeeze the list to zero. `section-layout.browser.test.ts` covers initial and scrolled views with tracked Chromium/macOS screenshot baselines; review updates, then rerun without `-u`.
+
 - Beginners' Workshop dialogs share `lib/components/beginners-workshops/workshop-dialog.svelte`: below 640px they slide up as full-width bottom sheets; desktop stays centered. Keep the existing Dialog/AlertDialog roots so focus handling and destructive-confirmation semantics survive, and put responsive layout changes in this shared wrapper.
 
 - Form controls use `bg-field` (`--field-background` in `apps/web/src/app.css`) for an opaque white light-mode surface and a themed dark-mode surface, including date and phone picker triggers; keep this separate from the page background and the `--input` border token.

@@ -3,6 +3,11 @@ playwright-report
 vitest-attachments
 .vitest-attachments
 __screenshots__
+!apps/web/src/routes/dashboard/beginners-workshop/__screenshots__/
+apps/web/src/routes/dashboard/beginners-workshop/__screenshots__/*
+!apps/web/src/routes/dashboard/beginners-workshop/__screenshots__/section-layout.browser.test.ts/
+apps/web/src/routes/dashboard/beginners-workshop/__screenshots__/section-layout.browser.test.ts/*
+!apps/web/src/routes/dashboard/beginners-workshop/__screenshots__/section-layout.browser.test.ts/*-chromium-darwin.png
 node_modules
 
 # Output
