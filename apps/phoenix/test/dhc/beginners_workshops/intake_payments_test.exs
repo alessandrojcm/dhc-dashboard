@@ -21,6 +21,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
   alias Dhc.BeginnersWorkshops
   alias Dhc.BeginnersWorkshops.{Clock, Commands, Intake, IntakeEmailLog, IntakePayment}
   alias Dhc.Email.Worker
+  alias Dhc.Notifications.Notification
+  alias Dhc.Notifications.Workers.WebPushWorker
   alias Dhc.Repo
   alias Dhc.StripeWebhooks
 
@@ -423,6 +425,33 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
                    where: l.intake_id == ^intake.id and l.occasion == "place_confirmed"
                  )
                )
+    end
+
+    test "notifies the coordinator-alert holders once, with a Web Push", %{
+      coordinator: coordinator
+    } do
+      {_workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
+      officer = staff_fixture("quartermaster")
+      Stripe.stub_create()
+      assert {:ok, _} = pay(token)
+      session = Stripe.session(payment!(intake))
+
+      assert {:ok, %{outcome: :paid}} = complete(session)
+      assert {:ok, %{outcome: :already_recorded}} = complete(session)
+
+      assert [%Notification{id: id, body: body, notification_key: key}] =
+               Repo.all(
+                 from(n in Notification,
+                   where:
+                     n.principal_id == ^coordinator and
+                       like(n.notification_key, "beginners-intake:%")
+                 )
+               )
+
+      assert key == "beginners-intake:#{intake.id}:paid"
+      assert body =~ "paid for a place at the Beginners' Workshop on"
+      assert_enqueued(worker: WebPushWorker, args: %{notification_id: id})
+      assert Repo.all(from(n in Notification, where: n.principal_id == ^officer)) == []
     end
 
     test "the success return retrieves the session server-side", %{coordinator: coordinator} do

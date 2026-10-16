@@ -4,7 +4,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.CoordinatorAlerts do
   holder of `beginners.workshops.alerts.receive`, inserted in the command's
   transaction and signalled by the caller after commit (ALE-405).
 
-  Callers: `Commands.Batches` ("Batch sent", "nobody waiting") and
+  Callers: `Commands.Batches` ("Batch sent", "nobody waiting"),
+  `Commands.Payments` (an Intake paid through Stripe) and
   `Commands.Refunds` (a failed refund); their text comes from
   `Commands.NotificationCopy`. Reach lets only `Commands` and `Commands.*`
   call this module.

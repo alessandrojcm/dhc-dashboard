@@ -26,6 +26,15 @@ defmodule Dhc.BeginnersWorkshops.Commands.NotificationCopy do
       "#{size} #{if size == 1, do: "person", else: "people"} offered a workshop place."
   end
 
+  @doc """
+  A person paid for their workshop place through Stripe. `first_name` is
+  `nil` when the person has no profile name.
+  """
+  @spec place_paid(String.t() | nil, Date.t()) :: String.t()
+  def place_paid(first_name, %Date{} = date) do
+    "#{first_name || "Someone"} paid for a place at the Beginners' Workshop on #{Values.date(date)}."
+  end
+
   @doc false
   @spec nobody_waiting(Date.t()) :: String.t()
   def nobody_waiting(%Date{} = date) do

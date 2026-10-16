@@ -29,7 +29,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
       `policy_failed`, leaves the Intake `contacted` and requests the
       automatic refund (ALE-382). Otherwise the row becomes `paid`; an open
       Intake becomes `paid` (`paid_via: stripe`) and "Place confirmed –
-      paid" is queued with its log row in the same transaction, while a
+      paid" is queued with its log row in the same transaction, and the
+      coordinator-alert holders get a keyed "place paid" Notification
+      (`beginners-intake:<id>:paid`, signalled after commit, so also a Web
+      Push), while a
       completion for an Intake that already closed (or a `releasing` hold)
       requests the automatic refund instead.
     * `release_payment` (`:stripe`) runs on `checkout.session.expired`.
@@ -76,10 +79,13 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
     only: [
       persist: 1,
       required: 1,
+      signal_after_commit: 1,
       transact: 1,
       transition: 3,
       with_locked: 2
     ]
+
+  import Dhc.BeginnersWorkshops.Commands.CoordinatorAlerts, only: [alert: 2]
 
   import Dhc.BeginnersWorkshops.Commands.WorkshopRules,
     only: [facts_for: 1]
@@ -111,10 +117,12 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
 
   alias Dhc.BeginnersWorkshops.Commands.{
     IntakeCommands,
+    NotificationCopy,
     Refunds
   }
 
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
 
   # How many expired holds one `reap_holds` pass settles; the next sweep
   # takes the rest.
@@ -344,6 +352,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
         transact(fn ->
           with_locked(payment_spec(row), &complete_locked(&1, session, clock))
         end)
+        |> signal_after_commit()
     end
   end
 
@@ -352,7 +361,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
 
     case {payment.status, IntakeCheckout.outcome(session)} do
       {status, _outcome} when status in ~w(paid policy_failed released) ->
-        {:ok, %{outcome: :already_recorded}}
+        {:ok, {%{outcome: :already_recorded}, []}}
 
       {_status, {:complete, details}} ->
         if details.amount == payment.amount_cents and details.currency == payment.currency,
@@ -360,7 +369,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
           else: record_policy_failure(locked, details, reading)
 
       {_status, _not_paid} ->
-        {:ok, %{outcome: :not_paid}}
+        {:ok, {%{outcome: :not_paid}, []}}
     end
   end
 
@@ -381,7 +390,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
              "policy_failed",
              reading
            ),
-         do: {:ok, %{outcome: :policy_failed}}
+         do: {:ok, {%{outcome: :policy_failed}, []}}
   end
 
   defp record_paid(%{payment: payment, intake: intake, workshop: workshop}, details, reading) do
@@ -407,15 +416,36 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
   # releasing): the payment is recorded and refunded in full at once.
   defp refund_after_close(locked, reading) do
     with {:ok, _refund} <- Refunds.request_automatic_refund(locked, "paid_after_close", reading),
-         do: {:ok, %{outcome: :paid_after_close}}
+         do: {:ok, {%{outcome: :paid_after_close}, []}}
   end
 
   defp pay_intake(intake, workshop, reading) do
     with {:ok, intake} <-
            transition(:intake, intake, Intake.paid_changeset(intake, "stripe", reading.now)),
-         :ok <- place_confirmed(intake, workshop, reading) do
-      {:ok, %{outcome: :paid}}
+         :ok <- place_confirmed(intake, workshop, reading),
+         {:ok, created} <- notify_paid(intake, workshop) do
+      {:ok, {%{outcome: :paid}, created}}
     end
+  end
+
+  # A keyed Notification (and so a Web Push) to the coordinator-alert holders
+  # for each Intake paid through Stripe, inserted in this transaction and
+  # signalled after commit; the key makes a replayed completion notify once.
+  defp notify_paid(intake, workshop) do
+    first_name =
+      intake.waitlist_id &&
+        Repo.one(
+          from(p in UserProfile,
+            where: p.waitlist_id == ^intake.waitlist_id,
+            limit: 1,
+            select: p.first_name
+          )
+        )
+
+    alert(
+      "beginners-intake:#{intake.id}:paid",
+      NotificationCopy.place_paid(first_name, workshop.date)
+    )
   end
 
   defp release_payment(%{"id" => session_id} = session, clock) do
