@@ -157,6 +157,45 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyTextTest do
       assert {:ok, "I’d like my money back please."} = ReplyText.extract(%{text: "", html: html})
     end
 
+    test "Apple Mail in French: the attribution wraps over two lines" do
+      text = """
+      Bonjour, je ne peux pas venir à cette date.
+
+      Le mar. 25 août 2026 à 13:47, #{@club} <
+      #{@sender}> a écrit :
+
+      #{quoted(intake_email_text())}
+      """
+
+      assert {:ok, result} = ReplyText.extract(%{text: text, html: nil})
+      assert result == "Bonjour, je ne peux pas venir à cette date."
+      refute_leaks(result)
+    end
+
+    test "German and Spanish clients name the attribution in their own words" do
+      german = """
+      Ich kann an diesem Termin leider nicht teilnehmen.
+
+      Am 25.08.2026 um 13:47 schrieb #{@club} <#{@sender}>:
+
+      #{quoted(intake_email_text())}
+      """
+
+      spanish = """
+      Lo siento, no puedo asistir a esa fecha.
+
+      El 25 de agosto de 2026 a las 13:47, #{@club} <#{@sender}> escribió:
+
+      #{quoted(intake_email_text())}
+      """
+
+      assert {:ok, "Ich kann an diesem Termin leider nicht teilnehmen."} =
+               ReplyText.extract(%{text: german, html: nil})
+
+      assert {:ok, "Lo siento, no puedo asistir a esa fecha."} =
+               ReplyText.extract(%{text: spanish, html: nil})
+    end
+
     test "Outlook desktop: the From/Sent/To/Subject header block and its rule" do
       text = """
       Hello,

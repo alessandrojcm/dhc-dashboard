@@ -11,10 +11,12 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyText do
      dropped whole.
   2. **Quoted history.** `>`-quoted lines are dropped. The first attribution
      cuts the reply there, with everything after it: "On … wrote:" (also when
-     Gmail wraps it over two lines), Outlook's From/Sent/To/Subject header
-     block, "-----Original Message-----", forwarded-message markers, the
-     signature delimiter `-- `, and mobile footers ("Sent from my iPhone",
-     "Get Outlook for …"). A separator rule right above the cut goes with it.
+     Gmail wraps it over two lines) and its French, German and Spanish
+     equivalents ("… a écrit :", "… schrieb …:", "… escribió:"), Outlook's
+     From/Sent/To/Subject header block, "-----Original Message-----",
+     forwarded-message markers, the signature delimiter `-- `, and mobile
+     footers ("Sent from my iPhone", "Get Outlook for …"). A separator rule
+     right above the cut goes with it.
   3. **Redaction.** Every URL becomes `[link]` and every email address
      `[email]`, so the Intake link and addresses never leave Phoenix even when
      quoting slips past step 2. A link counts with a scheme, with `www.`, or as
@@ -25,7 +27,16 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyText do
 
   @limit 2_000
 
-  @wrote ~r/\AOn\s.+\swrote:\z/i
+  # The attribution a client writes above the message it quotes. It is in the
+  # reader's language, and clients wrap it over two lines as often as not, so
+  # `wrote?/2` also matches a line joined to the one after it.
+  @attributions [
+    ~r/\AOn\s.+\swrote:\z/i,
+    ~r/\A(?:Le|Ce)\s.+\sa\sécrit\s*:\z/i,
+    ~r/\AAm\s.+\sschrieb\s.+\s*:\z/i,
+    ~r/\AEl\s.+\sescribió\s*:\z/i
+  ]
+  @attribution_starts ["On ", "Le ", "Ce ", "Am ", "El "]
   @markers [
     ~r/\A-{2,}\s*Original Message\s*-{2,}\z/i,
     ~r/\A-{2,}\s*Forwarded message\s*-{2,}\z/i,
@@ -131,10 +142,12 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyText do
   end
 
   defp wrote?(line, next) do
-    Regex.match?(@wrote, line) or
-      (is_binary(next) and String.starts_with?(line, "On ") and
-         Regex.match?(@wrote, line <> " " <> next))
+    attribution?(line) or
+      (is_binary(next) and String.starts_with?(line, @attribution_starts) and
+         attribution?(line <> " " <> next))
   end
+
+  defp attribution?(line), do: Enum.any?(@attributions, &Regex.match?(&1, line))
 
   defp header_block?(line, index, lines) do
     Regex.match?(@header_from, line) and
