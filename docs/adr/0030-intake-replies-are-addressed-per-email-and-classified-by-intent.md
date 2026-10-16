@@ -34,6 +34,8 @@ We want a reply to an Intake Email — and only those — to run the command the
 
 - Replies to emails sent before this ships still reach the inbox as they do today.
 - Reply addresses stay in people's inboxes indefinitely, so the receiving subdomain and the address format are hard to change later.
-- TypeSafe receives reply text under its standard DPA, without zero data retention. Resend keeps received emails and offers no API to delete them.
+- TypeSafe receives reply text under its standard DPA, without zero data retention. Resend keeps received emails for its standard 30 days and offers no API to delete one sooner.
+- Each Intake Reply counts twice against the Resend quota: once received, once forwarded.
+- Reading received emails needs a full-access Resend API key; the existing production key is send-only.
 - A wrong Reply Action is fixed with existing commands (Fast-track, restore, refund). A wrong refund cannot be undone, which is why money defaults to a Deferral.
 - `Dhc.Email.Worker` must accept a Reply-To per email, and the boundary gains an actor for Reply Actions, which Intake history shows as done by email reply.
