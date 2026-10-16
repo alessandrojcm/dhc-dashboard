@@ -40,3 +40,5 @@ TRUSTED_FORWARDING_SECRET = { provider = "1Password", value = "TRUSTED_FORWARDIN
 # Jev classifier for Intake Replies (ALE-410). Optional to Phoenix, but
 # FNOX_IF_MISSING=error, so create the 1Password item before deploying.
 TYPESAFE_API_KEY = { provider = "1Password", value = "TYPESAFE_API_KEY" }
+RESEND_WEBHOOK_SIGNING_SECRET= { provider = "1Password", value = "RESEND_WEBHOOK_SIGNING_SECRET" }
+INTAKE_REPLY_DOMAIN= { provider = "1Password", value = "reply.dublinhemaclub.com" }

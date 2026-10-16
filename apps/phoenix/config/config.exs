@@ -68,8 +68,9 @@ config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
 # the shared contact address.
 config :dhc, :intake_reply_domain, nil
 # Intake Replies (ALE-409): where replies are forwarded, and the Resend
-# receiving API the forward reads them from (RESEND_RECEIVING_API_KEY and
-# RESEND_WEBHOOK_SIGNING_SECRET are set in runtime.exs).
+# receiving API the forward reads them from (authenticated with the
+# full-access RESEND_API_KEY unless RESEND_RECEIVING_API_KEY overrides it;
+# RESEND_WEBHOOK_SIGNING_SECRET is set in runtime.exs).
 config :dhc, :intake_reply_forward_to, "contact@dublinhemaclub.com"
 config :dhc, :resend_api_url, "https://api.resend.com"
 

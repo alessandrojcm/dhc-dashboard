@@ -132,8 +132,7 @@ pnpm --filter @dhc/email-templates verify:html-variable
                              # one real send to delivered@resend.dev: is {{{MESSAGE_HTML}}} inserted unescaped?
 ```
 
-The sync, smoke and verify commands need a Full Access key as `RESEND_API_KEY` (`fnox` holds the send-only
-key under that name in the `production` profile, read through the 1Password `op` CLI with the desktop app integration turned on; use the `RESEND_API_KEY_CI` value, a GitHub Actions secret that fnox does not hold, for syncs and the verify send). The GitHub
+The sync, smoke and verify commands need a Full Access key as `RESEND_API_KEY` (`fnox` reads that name in the `production` profile through the 1Password `op` CLI with the desktop app integration turned on; the production key is now full-access, and `RESEND_API_KEY_CI`, a GitHub Actions secret that fnox does not hold, also works for syncs and the verify send). The GitHub
 Actions workflow `.github/workflows/email-templates.yml` runs the same pipeline:
 drafts on pull requests, publish + smoke on main, gated by change detection on
 `packages/email-templates/**`.

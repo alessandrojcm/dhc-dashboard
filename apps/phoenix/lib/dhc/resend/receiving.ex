@@ -2,9 +2,9 @@ defmodule Dhc.Resend.Receiving do
   @moduledoc """
   Reads received emails from Resend's receiving API over Req (ALE-409).
 
-  Uses `RESEND_RECEIVING_API_KEY` (`config :dhc, :resend_receiving_api_key`),
-  a full-access key: the production sending key (`RESEND_API_KEY`) is
-  send-only and cannot read received mail. Sending stays on the Swoosh seam
+  Uses `config :dhc, :resend_receiving_api_key`, which reuses the
+  full-access production sending key (`RESEND_API_KEY`) unless
+  `RESEND_RECEIVING_API_KEY` overrides it. Sending stays on the Swoosh seam
   (`Dhc.Email.Mailer`, ADR 0021).
 
     * `get_email/1` — `GET /emails/receiving/:id?html_format=cid`, so inline

@@ -205,7 +205,8 @@ if config_env() == :prod do
          )
 
   # Transactional email transport (ADRs 0021 and 0022). Production uses the
-  # send-only Resend key; template aliases are derived from Email Kinds.
+  # full-access Resend key (also reused for Intake Reply receiving reads);
+  # template aliases are derived from Email Kinds.
   config :dhc, Dhc.Email.Mailer,
     adapter: Swoosh.Adapters.Resend,
     api_key: System.fetch_env!("RESEND_API_KEY")
@@ -221,10 +222,15 @@ if config_env() == :prod do
   config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
 
   # Intake Replies (ALE-409): Resend Inbound's webhook signing secret and the
-  # full-access key that reads received emails (RESEND_API_KEY is send-only).
-  # Both are optional until Resend receiving is configured (ALE-413).
+  # key that reads received emails. Receiving reuses the full-access
+  # RESEND_API_KEY; RESEND_RECEIVING_API_KEY remains as an optional override
+  # (unset in production). Both are optional until Resend receiving is
+  # configured (ALE-413).
   config :dhc, :resend_webhook_secret, System.get_env("RESEND_WEBHOOK_SIGNING_SECRET")
-  config :dhc, :resend_receiving_api_key, System.get_env("RESEND_RECEIVING_API_KEY")
+
+  config :dhc,
+         :resend_receiving_api_key,
+         System.get_env("RESEND_RECEIVING_API_KEY", System.fetch_env!("RESEND_API_KEY"))
 
   # Irish bank-holiday source (ALE-319). Optional override; the compiled
   # default in config.exs is the public OpenHolidays API.
