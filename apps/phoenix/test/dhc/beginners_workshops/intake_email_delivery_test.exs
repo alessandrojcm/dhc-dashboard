@@ -60,6 +60,21 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
     end
   end
 
+  defp with_intake_replies(enabled, fun) do
+    original = Application.get_env(:dhc, IntakeReplies)
+    Application.put_env(:dhc, IntakeReplies, enabled: enabled)
+
+    try do
+      fun.()
+    after
+      if is_nil(original) do
+        Application.delete_env(:dhc, IntakeReplies)
+      else
+        Application.put_env(:dhc, IntakeReplies, original)
+      end
+    end
+  end
+
   describe "variants" do
     test "a contacted person is asked to pay, a holder of a held Carried Fee to confirm", ctx do
       assert {:ok, :queued} =
@@ -327,6 +342,30 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
 
         assert_email_sent(fn email ->
           assert email.reply_to == {"", "contact@dublinhemaclub.com"}
+        end)
+      end)
+    end
+
+    test "parked Intake Replies keep the global Reply-To and create no binding", ctx do
+      with_reply_domain("reply.example.test", fn ->
+        with_intake_replies(false, fn ->
+          assert {:ok, :queued} =
+                   IntakeEmails.deliver(
+                     {:intake, ctx.intake, ctx.workshop},
+                     :contact,
+                     Occasion.contact(),
+                     @reading
+                   )
+
+          assert [%{args: args}] = jobs()
+          refute Map.has_key?(args, "sealed_reply_to")
+          assert Repo.all(IntakeReplyAddress) == []
+
+          assert :ok = Worker.perform(%Oban.Job{id: 101, args: args})
+
+          assert_email_sent(fn email ->
+            assert email.reply_to == {"", "contact@dublinhemaclub.com"}
+          end)
         end)
       end)
     end

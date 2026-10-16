@@ -30,6 +30,15 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
   (`{:alert_reply_waiting, resend_email_id}`) saying a reply is waiting in
   Resend.
 
+  ## Parking the feature
+
+  `enabled?/0` is the one switch, off by default (ALE-414). While it is off,
+  no reply address is minted, so Intake Emails keep the club's global contact
+  address as Reply-To, and the Resend webhook acknowledges `email.received`
+  without recording or forwarding anything. The two move together so a reply
+  can never be dropped: an address is live only while the webhook that
+  receives it is.
+
   Reply addresses and bodies never reach a log, Sentry or Oban args: logs
   carry only the Resend email id and closed reasons.
   """
@@ -52,29 +61,37 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies do
   @domain_regex ~r/\A[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\z/
   @local_part_regex ~r/\A[a-zA-Z0-9]+\z/
 
+  @doc """
+  Whether the Intake Replies feature is switched on, from
+  `config :dhc, Dhc.BeginnersWorkshops.IntakeReplies`. Off unless configured
+  on: see "Parking the feature" above.
+  """
+  @spec enabled?() :: boolean()
+  def enabled?,
+    do: Keyword.get(Application.get_env(:dhc, __MODULE__, []), :enabled, false) == true
+
   @doc false
   @spec reply_to(WaitlistEntry.t(), Ecto.UUID.t() | nil, String.t()) ::
           {:ok, String.t() | nil} | {:error, Ecto.Changeset.t()}
   def reply_to(%WaitlistEntry{id: waitlist_id}, intake_id, email_type)
       when is_binary(email_type) do
-    case reply_domain() do
-      nil ->
-        {:ok, nil}
+    with true <- enabled?(),
+         domain when is_binary(domain) <- reply_domain() do
+      token = random_token()
 
-      domain ->
-        token = random_token()
+      binding = %IntakeReplyAddress{
+        waitlist_id: waitlist_id,
+        intake_id: intake_id,
+        email_type: email_type,
+        token_hash: token_hash(token)
+      }
 
-        binding = %IntakeReplyAddress{
-          waitlist_id: waitlist_id,
-          intake_id: intake_id,
-          email_type: email_type,
-          token_hash: token_hash(token)
-        }
-
-        case binding |> IntakeReplyAddress.changeset() |> Repo.insert() do
-          {:ok, _binding} -> {:ok, "#{token}@#{domain}"}
-          {:error, changeset} -> {:error, changeset}
-        end
+      case binding |> IntakeReplyAddress.changeset() |> Repo.insert() do
+        {:ok, _binding} -> {:ok, "#{token}@#{domain}"}
+        {:error, changeset} -> {:error, changeset}
+      end
+    else
+      _parked_or_unconfigured -> {:ok, nil}
     end
   end
 

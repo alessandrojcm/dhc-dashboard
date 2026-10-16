@@ -74,6 +74,12 @@ config :dhc, :intake_reply_domain, nil
 config :dhc, :intake_reply_forward_to, "contact@dublinhemaclub.com"
 config :dhc, :resend_api_url, "https://api.resend.com"
 
+# ALE-414: Intake Replies is parked — labelled replies are too few to decide
+# which intents may act (see IntakeReplies.ReplyActions), so the feature is
+# inert end to end: no reply address is minted and the Resend webhook records
+# nothing. Switch it on to mint addresses and receive replies again.
+config :dhc, Dhc.BeginnersWorkshops.IntakeReplies, enabled: false
+
 # ALE-410: pin evaluation to a concrete Jev release so measured confidence
 # thresholds do not silently drift when the provider updates its aliases.
 config :dhc,
