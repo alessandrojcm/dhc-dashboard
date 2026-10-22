@@ -1,0 +1,1061 @@
+[
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "DhcWeb.Plugs.ClientIp.fly-client-ip-fallback",
+  "title": "The magic-link IP limiter relies on Fly to protect its client-IP fallback",
+  "description": "ClientIp accepts a parseable fly-client-ip header without the shared-secret check used for x-dhc-client-ip, and the public magic-link endpoint uses the resolved address for an IP rate-limit bucket. The strongest source-visible protections are constant-time authentication of the SvelteKit forwarding header and separate per-email and per-IP limits; neither authenticates the Fly header itself. A caller who can reach Phoenix without the trusted Fly edge, or whose supplied header is not overwritten by that edge, could choose the IP bucket. The repository config declares a Fly HTTP service and source comments document the edge assumptions, but neither establishes the effective deployed listener paths or header handling.",
+  "claimed_root_cause": "ClientIp accepts fly-client-ip as a fallback without authenticating it; the optional shared secret authenticates only x-dhc-client-ip. The fallback therefore depends on Phoenix being reachable only through Fly and Fly overwriting caller-supplied fly-client-ip values.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 668,
+    "scope": "POST /api/auth/magic-link",
+    "description": "The public magic-link route is placed in the magic-link request scope, which uses the rate-limited pipeline."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 276,
+    "scope": ":magic_link_request_api",
+    "description": "The pipeline invokes MagicLinkRateLimit for this route."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/plugs/client_ip.ex",
+    "line": 35,
+    "scope": "ClientIp.resolve/1",
+    "description": "After the secret-protected forwarded header, the resolver accepts a parseable fly-client-ip header without a secret check, then falls back to conn.remote_ip."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 96,
+    "scope": "ip_window_key/1",
+    "description": "The resolved address is interpolated into the magic_link:ip bucket key."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 127,
+    "scope": "increment_window/2",
+    "description": "The bucket key is inserted into auth_rate_limit_windows, where it selects the persistent per-IP rate-limit window."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/client_ip.ex",
+    "line": 18,
+    "description": "The module documents that Fly overwrites fly-client-ip and Phoenix must remain reachable only through Fly; these are stated assumptions, not proof of the deployed configuration."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/client_ip.ex",
+    "line": 35,
+    "description": "The resolver uses trusted_forwarded_ip(conn) or a parsed fly-client-ip value or conn.remote_ip, in that order."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/client_ip.ex",
+    "line": 52,
+    "description": "The shared forwarding secret is checked with secure_compare for the trusted SvelteKit forwarding path."
+   },
+   {
+    "file": "apps/phoenix/config/runtime.exs",
+    "line": 113,
+    "description": "The shared secret is configured only when it is a nonblank value; the runtime comment says it authenticates x-dhc-client-ip and that the fallback is fly-client-ip/remote_ip."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 55,
+    "description": "The plug checks the per-IP window and then the per-email window, so the IP bucket is one of two source-visible limits."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 96,
+    "description": "The IP bucket key is built from ClientIp.to_string(conn)."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 127,
+    "description": "The rate-limit key is persisted in auth_rate_limit_windows."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/plugs/client_ip_test.exs",
+    "line": 47,
+    "description": "A Plug.Test case presents a fly-client-ip value with a wrong forwarding secret and asserts that the Fly header determines the resolved address."
+   },
+   {
+    "file": "fly.toml",
+    "line": 33,
+    "description": "The repository declares a Fly http_service, but this config alone does not establish every active route to the Phoenix process or the deployed edge's header behavior."
+   }
+  ],
+  "blockers": [
+   "The effective production listener and network attachments are not established by the repository sources; whether any caller can reach the Phoenix process without passing through Fly remains decisive.",
+   "The deployed Fly ingress behavior for caller-supplied fly-client-ip values on every active route is not established by local source or configuration."
+  ],
+  "validation_plan": {
+   "deployment": "Have the service owner inspect the effective production Fly service/listener and network attachments to establish whether every path to the Phoenix process passes through the trusted Fly edge. Separately verify from the active Fly ingress configuration or owner-observed platform behavior that caller-supplied fly-client-ip is overwritten or removed on every active route. Do not probe the live endpoint."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "MagicLinkRateLimit:ClientIp:forwarded-address-fallback",
+  "title": "Optional forwarding secret can collapse the magic-link IP quota onto shared egress",
+  "description": "The public magic-link request is rate-limited by the IP returned from ClientIp. The SvelteKit server adds the forwarded client address and secret only when both its secret and request address are available; Phoenix trusts that address only when the secret matches. Otherwise Phoenix uses fly-client-ip or remote_ip. If server-side requests therefore share a fallback IP, ten requests in the aligned one-hour window exhaust that IP's quota, and subsequent requests from the same IP receive the generic success response without reaching the controller. Source and tests establish this conditional behavior, but the deployed secret match and actual fallback IP attribution are unknown. Phoenix's production container is configured to fail startup when a fnox item is missing, so a missing Phoenix secret is not the ordinary intended deployment case; a missing web secret or a mismatch remains possible.",
+  "claimed_root_cause": "The SvelteKit forwarding secret is optional at runtime, and a missing or mismatched web/Phoenix secret causes ClientIp to use its fallback address as the shared IP-wide quota key. The source has no web-side startup guard requiring this secret; whether production configuration permits the fallback to become shared is not established.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 668,
+    "scope": "POST /api/auth/magic-link",
+    "description": "The public magic-link endpoint is routed through the magic-link request pipeline."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 54,
+    "scope": "MagicLinkRateLimit.call/2",
+    "description": "The plug derives the IP key from ClientIp and checks the IP window before the email window."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/plugs/client_ip.ex",
+    "line": 35,
+    "scope": "ClientIp.resolve/1",
+    "description": "The resolver uses the authenticated forwarded address when available; otherwise it tries fly-client-ip and then conn.remote_ip."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 77,
+    "scope": "MagicLinkRateLimit.generic_ok/1",
+    "description": "When the IP quota is exceeded, the plug returns the generic 200 response and halts before the controller can send a link."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 663,
+    "description": "The /api/auth scope routes the public magic-link POST through the rate-limited request pipeline."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 47,
+    "description": "The per-IP window limit is ten requests per 60-minute aligned window."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 57,
+    "description": "For a usable email, the plug derives the IP key and checks its quota before checking the email quota."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/magic_link_rate_limit.ex",
+    "line": 77,
+    "description": "The over-limit path responds with HTTP 200 and the generic sent body, then halts the pipeline."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/client_ip.ex",
+    "line": 34,
+    "description": "The resolver's fallback order is the trusted forwarded address, fly-client-ip, then conn.remote_ip."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/plugs/client_ip.ex",
+    "line": 48,
+    "description": "The forwarded address is trusted only when a nonblank configured secret constant-time matches the request header."
+   },
+   {
+    "file": "apps/phoenix/config/runtime.exs",
+    "line": 106,
+    "description": "The runtime configuration documents the forwarding secret as optional and says an unset or blank value leaves Phoenix using fly-client-ip or remote_ip."
+   },
+   {
+    "file": "apps/phoenix/config/runtime.exs",
+    "line": 111,
+    "description": "Phoenix reads TRUSTED_FORWARDING_SECRET from the environment and configures it only when it is nonblank."
+   },
+   {
+    "file": "apps/web/src/lib/server/api-client.ts",
+    "line": 98,
+    "description": "SvelteKit adds both forwarding headers only when its secret and the request's client address are available; otherwise it sends neither."
+   },
+   {
+    "file": "apps/web/src/routes/auth/data.remote.ts",
+    "line": 25,
+    "description": "The public magic-link form calls Phoenix server-side using the centralized apiClientOptions."
+   },
+   {
+    "file": "apps/web/wrangler.jsonc",
+    "line": 37,
+    "description": "The web Worker configuration sets the production API_BASE_URL to the public Phoenix API host; it does not declare the forwarding secret in vars."
+   },
+   {
+    "file": "fnox.toml",
+    "line": 39,
+    "description": "The Phoenix forwarding secret is a fnox/1Password reference intended to equal the Cloudflare Worker secret."
+   },
+   {
+    "file": "apps/phoenix/Dockerfile",
+    "line": 92,
+    "description": "The production container sets FNOX_IF_MISSING=error, making an absent referenced fnox item a startup failure in the intended container path."
+   },
+   {
+    "file": "apps/web/src/lib/server/api-client.test.ts",
+    "line": 31,
+    "description": "The web unit test establishes that an unset forwarding secret results in no forwarding headers."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/plugs/client_ip_test.exs",
+    "line": 37,
+    "description": "Phoenix tests establish that a wrong or missing forwarding secret ignores x-dhc-client-ip and uses the fallback."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/plugs/magic_link_rate_limit_test.exs",
+    "line": 73,
+    "description": "The limiter test models wrong or missing secrets behind one proxy address and checks that requests eventually hit that proxy's IP quota."
+   },
+   {
+    "file": "apps/phoenix/Dockerfile",
+    "line": 114,
+    "description": "The production container starts Phoenix through fnox exec using the production profile."
+   }
+  ],
+  "blockers": [
+   "The deployed Cloudflare Worker secret's presence and equality with Phoenix's configured production secret are not observable from repository source. Phoenix's production Dockerfile guards against a missing fnox item, but does not establish that the web Worker secret is present or that the values match.",
+   "The actual IP Phoenix assigns to server-to-server requests when forwarding headers are absent or rejected is not established locally; specifically, it is unknown whether fly-client-ip or remote_ip resolves those requests to a shared address across users."
+  ],
+  "validation_plan": {
+   "deployment": "Without disclosing either secret or generating requests, have the service owner verify that the deployed Worker has a nonblank TRUSTED_FORWARDING_SECRET equal to Phoenix's effective configured value. Separately, using existing operational telemetry and deployment/network configuration only, have the owner establish the fly-client-ip or remote_ip Phoenix observes for Worker-originated requests and whether requests for distinct clients resolve to a shared IP quota key. Do not probe production or staging."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "auth.roles.last-active-editor-race",
+  "title": "Concurrent membership deactivation may defeat last-editor preservation",
+  "description": "The source shows that role edits serialize with one another and check for an active role editor, while member-access deactivation locks the profiles it changes without taking the role-editor advisory lock. A concurrent self-demotion and deactivation therefore appear capable of leaving no active role editor, but this transaction interleaving has not been reproduced against PostgreSQL.",
+  "claimed_root_cause": "Roles.replace_roles!/2 checks for an active editor without locking all editor profiles or sharing a lock with Auth.apply_member_access/2. Role edits take a dedicated advisory lock and lock the actor and target profiles; deactivation locks only the profiles it changes.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 263,
+    "scope": "PATCH /api/members/:memberId/roles",
+    "description": "The role-edit API route runs in the scope piped through the members.roles.edit session capability."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/controllers/member_roles_controller.ex",
+    "line": 14,
+    "scope": "update/2",
+    "description": "The controller passes the authenticated principal ID, target member ID, and request body to Roles.update/3."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/auth/roles.ex",
+    "line": 41,
+    "scope": "update_locked/4",
+    "description": "The role edit opens a transaction, takes the role-editor advisory lock, and locks only the actor and target profiles."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/auth/roles.ex",
+    "line": 79,
+    "scope": "replace_roles!/2",
+    "description": "After replacing the target's role rows, the function checks whether an active role editor remains."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc/auth/roles.ex",
+    "line": 83,
+    "scope": "replace_roles!/2",
+    "description": "The active-editor guard reads the capability holder list and rolls back only if that query returns no active editors; it does not lock other editors' profiles."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc/auth/roles.ex",
+    "line": 42,
+    "description": "Role edits take a dedicated transaction-scoped advisory lock, then lock only the actor and target UserProfile rows at lines 44-49."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth/roles.ex",
+    "line": 79,
+    "description": "A changed role set is written before the active-editor guard; the guard rolls back if no active editor is found at lines 83-85."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth/capabilities.ex",
+    "line": 239,
+    "description": "principal_ids_with/2 queries role rows joined to active profiles and returns the result without locking those profiles, at lines 244-255."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth.ex",
+    "line": 624,
+    "description": "Member-access changes open a separate transaction and lock the supplied profile IDs before updating is_active, at lines 627-638; this path does not take the role-editor advisory lock."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/stripe_sync/repository.ex",
+    "line": 85,
+    "description": "Stripe membership sync's inactive-customer path calls Auth.apply_member_access(profile_ids, false) at lines 86-92."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/stripe_sync.ex",
+    "line": 320,
+    "description": "Stripe sync invokes Repository.mark_customer_inactive/1 when it processes an inactive membership, at lines 320-323."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/controllers/member_roles_controller_test.exs",
+    "line": 124,
+    "description": "Existing tests verify the sequential last-editor guard, including self-demotion when another active editor is absent, but do not exercise concurrent deactivation."
+   }
+  ],
+  "blockers": [
+   "The decisive concurrent commit schedule has not been observed against PostgreSQL. Confirming whether the guard can use a result that still includes an editor whose profile is concurrently being deactivated requires a database-backed concurrency test; the assigned sandbox boundary prohibits Mix, app startup, and DB-dependent execution. The source does not specify a non-default transaction isolation level, so the relevant database behavior remains unverified here."
+  ],
+  "validation_plan": {
+   "local": "In an approved isolated PostgreSQL test environment, create two active editor principals A and B. Start a role update by A targeting A with expected roles [\"admin\", \"member\"] and desired roles [\"member\"]. Use a test-only barrier after the principal_ids_with(\"members.roles.edit\") query returns B but before Roles.replace_roles!/2 continues. On a second connection, call Auth.apply_member_access/2 to deactivate B's profile and commit; then release the role update and let it commit. Assert both outcomes and query the final active editor set. The regression expectation is that the operation cannot leave that set empty; do not run this against a shared or production database."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "dhc.auth.logout.does-not-revoke-socket-tokens",
+  "title": "Current-device logout may leave its socket credential and established socket active",
+  "description": "Source shows that current-device logout deletes the session-context token and clears the cookie, while socket credentials are separate, valid for up to 60 seconds, and are not explicitly disconnected by that route. The socket transport rechecks its socket credential after subscribing, and the notification channel emits empty, principal-scoped invalidation events. The prescribed local check generated the independent session and socket query shapes, but did not execute logout against a database or observe post-logout socket delivery; that boundary result remains unvalidated.",
+  "claimed_root_cause": "Socket credentials are stored independently of their originating session, and current-device logout deletes only the session token without revoking the socket token or disconnecting its established socket. The principal-wide disconnect path used for access revocation is not called by current-device logout.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 698,
+    "scope": "Authenticated DELETE /api/auth/session route",
+    "description": "The authenticated session pipeline exposes current-device logout; GET /api/auth/socket-token is in the same scope."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/controllers/auth_session_controller.ex",
+    "line": 345,
+    "scope": "socket_token/2",
+    "description": "The socket-token action exchanges the authenticated session for a separately created socket token."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/controllers/auth_session_controller.ex",
+    "line": 364,
+    "scope": "delete_session/2",
+    "description": "Logout calls Auth.delete_session_token/1 for the current session token, then clears the session cookie; it does not call the socket-revocation or disconnect functions."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/auth.ex",
+    "line": 581,
+    "scope": "delete_session_token/1",
+    "description": "Deletion matches the hashed token with context=session, not socket-context rows."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/auth/principal_token.ex",
+    "line": 187,
+    "scope": "verify_socket_token_query/1",
+    "description": "Socket authentication queries a socket-context token and checks its 60-second age window independently of the session token."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/channels/user_socket.ex",
+    "line": 78,
+    "scope": "transport init/1",
+    "description": "After subscribing to socket revocations, transport initialization rechecks the socket-token row by reference; if that row remains valid, it retains the authenticated projection."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc_web/channels/notification_channel.ex",
+    "line": 79,
+    "scope": "notification_created event delivery",
+    "description": "The channel pushes notification_created events received for the verified principal's topic; the documented payload is empty."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 693,
+    "description": "The session-token exchange and current-device logout routes both use the authenticated_session_api pipeline."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/auth_session_controller.ex",
+    "line": 345,
+    "description": "The exchange creates a socket token using the authenticated principal and current session token."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/auth_session_controller.ex",
+    "line": 364,
+    "description": "Logout deletes only the current session token and clears the cookie."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth.ex",
+    "line": 581,
+    "description": "delete_session_token/1 deletes the matching token only when context=session."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth.ex",
+    "line": 645,
+    "description": "The access-loss path, unlike current-device logout, deletes both session and socket tokens for affected principals."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth.ex",
+    "line": 657,
+    "description": "The access-loss path broadcasts a principal-scoped socket disconnect after the transaction commits."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth.ex",
+    "line": 694,
+    "description": "Socket-token exchange checks that the session is valid and belongs to the principal at issuance, then creates a separate socket token."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth/principal_token.ex",
+    "line": 95,
+    "description": "The socket token row stores context=socket and principal_id, with no originating session reference."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/auth/principal_token.ex",
+    "line": 187,
+    "description": "The socket token verifier checks its own context and 60-second age window."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/channels/user_socket.ex",
+    "line": 71,
+    "description": "Transport initialization rechecks the socket reference after subscription to catch a revocation race."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/channels/user_socket.ex",
+    "line": 88,
+    "description": "After initialization, ordinary input is delegated to Phoenix; the only special input handling shown is for a socket already marked revoked."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/channels/notification_channel.ex",
+    "line": 19,
+    "description": "The channel contract documents notification_created with an empty payload and HTTP refetch for authoritative state."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/channels/notification_channel.ex",
+    "line": 79,
+    "description": "The channel pushes notification_created events received for the verified principal's topic."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/controllers/auth_session_controller_test.exs",
+    "line": 778,
+    "description": "The logout controller test verifies the session becomes unusable, but does not assert that an issued socket token or established socket is revoked."
+   },
+   {
+    "file": "apps/phoenix/test/dhc/auth/auth_test.exs",
+    "line": 273,
+    "description": "The access-loss test covers token deletion and principal-wide disconnect, but not current-device logout."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/channels/user_socket_test.exs",
+    "line": 80,
+    "description": "The socket test covers revocation between connect and transport subscription, not logout after initialization."
+   }
+  ],
+  "blockers": [
+   "The prescribed sandboxed check generated the session and socket verifier query shapes for dummy-token, but did not start the Phoenix app or access a database. It therefore did not observe socket-token issuance, session deletion, post-logout socket-token verification, or event delivery on an established socket. Those observations are decisive to confirming the claimed boundary result."
+  ],
+  "validation_plan": {
+   "local": "In an isolated Phoenix test fixture using the test Repo and PubSub, create an active principal and session, obtain a socket token through the authenticated exchange, establish a socket and join notifications:self, then call DELETE /api/auth/session. Assert the session is rejected, determine whether the socket token still authenticates during its 60-second window, and whether the established socket receives a subsequent empty notification_created event. Keep all activity within the local test environment."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "dhc.resend.receiving.download-unrestricted-https",
+  "title": "Receiving downloads accept unrestricted HTTPS destinations",
+  "description": "When Intake Replies is enabled, the forwarding worker passes attachment and raw-message download URLs returned by Resend to a fetcher that checks only for an HTTPS scheme and a host. The source does not establish that an inbound sender can influence those URLs or that deployed egress permits access to internal destinations. The feature is disabled in the repository's default configuration, so deployment reachability also needs verification.",
+  "claimed_root_cause": "Receiving.download/1 checks that a URL has an HTTPS scheme and a host, but does not constrain its destination; the forwarding workflow passes Resend-returned attachment and raw-message download URLs to it. Whether inbound email senders can influence those URLs, and whether the deployed feature and network configuration permit an exploitable request, is not established by source.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/controllers/resend_webhooks_controller.ex",
+    "line": 32,
+    "scope": "create/2",
+    "description": "A Resend email.received webhook for an inbound message enters here. Phoenix verifies the provider's signature before handling the event; this identifies the inbound-email path, not proof that the sender controls Resend's later download URLs."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/beginners_workshops/intake_replies.ex",
+    "line": 155,
+    "scope": "record_received/2",
+    "description": "For an enabled feature, the received event's Resend email ID is recorded and a worker job is queued; the job carries the ID, not a download URL."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/beginners_workshops/workers/reply_worker.ex",
+    "line": 21,
+    "scope": "perform/1",
+    "description": "The worker passes the recorded Resend email ID to IntakeReplies.forward/2; it does not check the feature switch before running the job."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/beginners_workshops/intake_replies.ex",
+    "line": 244,
+    "scope": "forward_reply/4",
+    "description": "The worker retrieves the received email from Resend before building the forward."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/beginners_workshops/intake_replies.ex",
+    "line": 339,
+    "scope": "download_all/1",
+    "description": "For attachments, the forwarding workflow takes each returned download_url and passes it to Receiving.download/1. The raw-message fallback uses the same downloader at lines 352-354."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc/resend/receiving.ex",
+    "line": 62,
+    "scope": "download/1",
+    "description": "The downloader accepts a URL with an HTTPS scheme and binary host, then sends the original URL through Req."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/resend_webhooks_controller.ex",
+    "line": 35,
+    "description": "The webhook controller verifies the event before handling it; lines 91-99 handle email.received only when Intake Replies is enabled."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/resend/webhook.ex",
+    "line": 37,
+    "description": "Webhook verification checks the signed payload and freshness of its timestamp; this authenticates Resend's delivery, not the inbound email sender's control over provider API responses."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/beginners_workshops/intake_replies.ex",
+    "line": 177,
+    "description": "After validating the Resend email ID, record_received/2 queues a job whose argument is that ID, rather than a sender-supplied download URL."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/resend/receiving.ex",
+    "line": 47,
+    "description": "list_attachments/1 returns the attachment data from the Resend API response; its documentation describes each attachment as having a signed download_url."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/beginners_workshops/intake_replies.ex",
+    "line": 339,
+    "description": "An attachment's returned download_url is passed directly to Receiving.download/1; the raw-message URL follows the same path at lines 352-354."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/resend/receiving.ex",
+    "line": 62,
+    "description": "download/1's URL predicate checks for scheme https and a binary host, without constraining hostname, resolved address, or port."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/resend/receiving.ex",
+    "line": 65,
+    "description": "The original URL is supplied to the request options; request construction at lines 95-100 sets no source-visible destination allowlist or redirect-destination restriction."
+   },
+   {
+    "file": "apps/phoenix/config/config.exs",
+    "line": 77,
+    "description": "The repository configuration says Intake Replies is parked and sets enabled: false; IntakeReplies.enabled?/0 reads that setting, and the webhook does not record or queue received messages while it is off."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/beginners_workshops/workers/reply_worker.ex",
+    "line": 21,
+    "description": "The worker calls IntakeReplies.forward/2 for its queued email ID without checking enabled?; queued jobs can therefore run independently of the webhook's feature-switch check."
+   }
+  ],
+  "blockers": [
+   "The effective deployed IntakeReplies.enabled? value and current ReplyWorker job state are not established by source. Source shows that the default is false and the webhook queues no new jobs while disabled, but already queued jobs can still run through ReplyWorker.",
+   "Repository source does not establish whether Resend's Receiving API guarantees that attachment and raw-message download URLs are provider-controlled and cannot be influenced by an inbound sender.",
+   "Repository source does not establish whether deployed egress or redirect handling prevents requests to private, loopback, or link-local destinations."
+  ],
+  "validation_plan": {
+   "deployment": "Without sending test traffic, have the service owner inspect the deployed release's effective IntakeReplies.enabled? setting and whether any ReplyWorker jobs are queued, executing, scheduled, or retryable. If any forwarding job can execute, have the owner review Resend's Receiving API guarantee for attachment and raw-message download_url provenance, and inspect deployed egress and redirect policy for private, loopback, and link-local destinations. Treat the candidate as not reachable through this path if the feature is off and no ReplyWorker job can execute; do not probe production destinations."
+  }
+ },
+ {
+  "verdict": "rejected",
+  "fingerprint": "inventory.container-detail-item-location-disclosure",
+  "title": "Member-accessible container details disclose item locations (claim disproved by re-hunt)",
+  "description": "The wave-2 hunt claimed that any authenticated member reading a container detail receives its contained item IDs, and that correlating them with the member catalog (which withholds location) recovers item-to-container locations, violating the catalog's location-withholding policy. A fresh wave-3 re-hunt of the same source disproved the claim as an authorization defect: the behavior is an explicitly documented product contract, not a missing control.",
+  "claimed_root_cause": "The container detail route was claimed to be available to any active session and to return item-to-container associations without applying the inventory.manage capability or a member-safe projection.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 530,
+    "scope": "GET /api/inventory/containers/:id",
+    "description": "The container detail route is registered in the authenticated_api route group available to any active member."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/controllers/inventory_containers_controller.ex",
+    "line": 7,
+    "scope": "ALE-106 controller contract",
+    "description": "The controller moduledoc explicitly documents that detail includes child containers and items with category summaries for any authenticated member."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc_web/controllers/inventory_containers_json.ex",
+    "line": 50,
+    "scope": "render_detail/1",
+    "description": "The documented member-facing detail renderer emits the container and its items, including each item's ID and category summary."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 528,
+    "description": "Container list and detail routes are both in the authenticated_api scope (route comment: any authenticated member may read inventory containers)."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/inventory_containers_controller.ex",
+    "line": 7,
+    "description": "The ALE-106 controller contract states detail includes items with category summaries for any authenticated member, by design."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/controllers/inventory_containers_controller_test.exs",
+    "line": 179,
+    "description": "The controller test explicitly requests detail as a member and asserts the item/category shape, showing the disclosure is intended and regression-protected."
+   },
+   {
+    "file": "apps/phoenix/priv/api/openapi.yaml",
+    "line": 8117,
+    "description": "The OpenAPI contract documents container detail with items and access for any authenticated member."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/inventory/member_catalog.ex",
+    "line": 8,
+    "description": "The member catalog is a separate projection that withholds location only for ordinary browsing; the two contracts coexist deliberately."
+   }
+  ],
+  "reason": "Source review by the fresh wave-3 owner established the disclosed shape is the documented ALE-106 member-readable API contract (router scope comment, controller moduledoc, member-role controller test, and OpenAPI documentation all state it), so no authorization control is missing. The wave-2 claim's premise that this violates the catalog's location-withholding policy is a product-policy question, not a boundary failure; the catalog and container-detail contracts deliberately coexist. The claim is rejected as a vulnerability without changed evidence."
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "invitations.verify_credentials.dob-oracle",
+  "title": "Public invitation verification exposes a DOB oracle without application-level throttling",
+  "description": "Phoenix source routes POST /api/invitations/:id/verify through the public JSON API pipeline without an application-level rate limiter. For a pending, eligible invitation, the credential check compares the supplied date of birth along with the invitation ID and normalized email; a successful check returns verified:true, while invalid credentials map to HTTP 422. This exposes whether a guessed DOB matches when the caller knows the invitation ID and email, but does not issue bearer material or authorize acceptance. The effective rate limiting, if any, at the deployed ingress is not established by repository source.",
+  "claimed_root_cause": "The public invitation verification route invokes credential matching without a route-level rate limit, while returning observably different success and failure responses.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 354,
+    "scope": "POST /invitations/:id/verify",
+    "description": "This route is inside the /api scope, which uses only the general :api pipeline (lines 324-325); it does not require a session or use the separate magic-link rate-limit pipeline."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/controllers/invitations_controller.ex",
+    "line": 40,
+    "scope": "verify/2",
+    "description": "The public controller passes the path ID, email, and dateOfBirth to Onboarding.verify_credentials/3."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/onboarding.ex",
+    "line": 35,
+    "scope": "verify_credentials/3",
+    "description": "The wrapper rejects invitations with a protected acceptance continuation already started; otherwise it delegates to Invitations.verify_credentials/3."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/invitations.ex",
+    "line": 96,
+    "scope": "verify_credentials/3",
+    "description": "The function parses the supplied date and returns :ok only when credentials_match?/3 succeeds; otherwise it returns invalid_credentials."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc_web/controllers/invitations_http.ex",
+    "line": 18,
+    "scope": "invalid_credentials HTTP response",
+    "description": "A failed check maps to HTTP 422. The success branch renders verified:true, so the two outcomes are observably different."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 324,
+    "description": "The /api scope pipes routes through :api; the verification route is at line 354 in this scope, with no session or capability pipeline."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 6,
+    "description": "The general :api pipeline only accepts JSON and requires JSON bodies; it does not apply a rate limiter."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 270,
+    "description": "The dedicated magic-link pipeline adds MagicLinkRateLimit for /api/auth/magic-link (lines 273-277); the invitation verification route does not use it."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/endpoint.ex",
+    "line": 53,
+    "description": "The Phoenix endpoint plugs shown through router dispatch contain no general request rate limiter."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/onboarding.ex",
+    "line": 27,
+    "description": "The source-visible guard refuses this compatibility check once a protected acceptance session has started, but otherwise delegates to credential matching; it does not prevent probing of eligible invitations before that point."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/invitations.ex",
+    "line": 546,
+    "description": "The strongest matching constraints are an exact invitation ID, normalized email, pending status, eligible expiry/attempt state, and exact DOB match. These constrain which invitation can be tested but still distinguish DOB matches from non-matches."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/invitations_controller.ex",
+    "line": 39,
+    "description": "The success branch renders the verify view after :ok; other credential-check results flow through the controller fallback."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/invitations_json.ex",
+    "line": 24,
+    "description": "The success response body contains data.verified=true."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/invitations_http.ex",
+    "line": 18,
+    "description": "The invalid_credentials problem maps to HTTP 422."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/controllers/invitations_controller_test.exs",
+    "line": 429,
+    "description": "The test source asserts a matching credential request returns 200 with verified:true and no verification token; the mismatch test at lines 447-459 asserts 422 for a wrong email, not specifically a wrong DOB."
+   },
+   {
+    "file": "apps/phoenix/priv/api/openapi.yaml",
+    "line": 1192,
+    "description": "The API contract describes this as a compatibility-only credential check that never returns a bearer token; new acceptance flows use the protected Onboarding Continuation endpoint."
+   }
+  ],
+  "blockers": [
+   "Repository source establishes no application-level limiter on this route and distinguishes matching from invalid credentials, but it cannot establish whether the deployed ingress or any upstream proxy applies an effective rate limit to POST /api/invitations/:id/verify. That deployment fact is decisive to the claim that the reachable oracle is unthrottled."
+  ],
+  "validation_plan": {
+   "deployment": "Have the deployment owner inspect the effective ingress/proxy policy, including any CDN or DNS-fronted layer, for POST /api/invitations/:id/verify and determine whether a request limit applies and how it is keyed. If runtime confirmation is needed, use only a non-production environment with a seeded dummy invitation and a small approved sequence of wrong and correct DOB requests; observe whether requests continue reaching Phoenix and whether the 422 versus 200 outcomes remain distinguishable. Do not send audit traffic to production."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "waitlist.create_entry.email-timing-oracle",
+  "title": "Public Waitlist registration may reveal email presence through response timing",
+  "description": "When registration is open and the submitted details are valid, the public endpoint returns the same accepted response for successful registration and the documented email refusals. The source nevertheless shows state-dependent database paths: an existing non-removed Waitlist entry is refused after its locked lookup, Principal and pending-Invitation checks can short-circuit in sequence, and an unknown address proceeds to insertion. This establishes a work asymmetry, not a remotely distinguishable timing signal; that signal and the deployed ingress controls remain unmeasured.",
+  "claimed_root_cause": "Public registration performs email-state-dependent database reads and writes without equalizing the work. Its route uses the general JSON API pipeline rather than the separate magic-link rate-limit plug; whether ingress controls limit repeated probes is not established by the application source.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 356,
+    "scope": "POST /api/waitlist/entries",
+    "description": "The public route is in the general :api pipeline, which requires JSON but does not add authentication or the separate MagicLinkRateLimit plug."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/controllers/waitlist_controller.ex",
+    "line": 67,
+    "scope": "create/2",
+    "description": "The controller delegates the submitted registration to Waitlist.create_entry/1."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/waitlist.ex",
+    "line": 204,
+    "scope": "create_entry/2",
+    "description": "The context checks that registration is open, normalizes and validates the submitted details, then starts the registration transaction."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/waitlist.ex",
+    "line": 708,
+    "scope": "register/3",
+    "description": "Registration validates the person, performs a locked Waitlist lookup by email, checks whether an existing entry is registrable, then checks for a Principal or pending Invitation before inserting or reopening."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/invitations/email_refusals.ex",
+    "line": 35,
+    "scope": "principal_or_pending_invitation/2",
+    "description": "The helper checks for a Principal first and returns immediately on a match; only otherwise does it check for a pending Invitation."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc_web/controllers/waitlist_controller.ex",
+    "line": 70,
+    "scope": "create/2 refusal response",
+    "description": "A documented email refusal calls render_received/1, the same accepted-response path used for successful creation at line 69; this equalizes the application response, not the preceding work."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 356,
+    "description": "The Waitlist creation route is in the general API scope; its :api pipeline is defined at lines 6-9 and only configures JSON acceptance and JSON-body enforcement. The distinct magic-link rate-limit pipeline is defined at lines 270-276 and is not applied to this route."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/waitlist_controller.ex",
+    "line": 67,
+    "description": "The controller maps successful creation and the three documented refusal reasons to render_received/1."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/waitlist.ex",
+    "line": 204,
+    "description": "create_entry/2 checks registration status and normalizes attributes before beginning the transaction."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/waitlist.ex",
+    "line": 708,
+    "description": "The ordered registration path validates the person before looking up or refusing the email."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/waitlist.ex",
+    "line": 720,
+    "description": "The Waitlist lookup is a query by email with FOR UPDATE; a non-removed match is refused by ensure_registrable/2 at lines 732-735 before the shared Principal and Invitation checks."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/invitations/email_refusals.ex",
+    "line": 35,
+    "description": "principal_or_pending_invitation/2 queries Principal first and skips the pending-Invitation query on a Principal match."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/waitlist.ex",
+    "line": 714,
+    "description": "When the locked lookup returns nil and both Principal and pending-Invitation checks pass, registration calls insert_person/3; that path inserts a Waitlist entry and profile and may insert a Guardian (lines 738-754)."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/waitlist_controller.ex",
+    "line": 70,
+    "description": "Refusal branches render the same received response as the successful branch at line 69."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/waitlist_json.ex",
+    "line": 31,
+    "description": "The create JSON view returns only data.received=true, with no entry data."
+   },
+   {
+    "file": "apps/phoenix/test/dhc/waitlist/registration_test.exs",
+    "line": 126,
+    "description": "The test source verifies malformed known and unknown addresses are validated before duplicate checks; it does not measure timing."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/controllers/waitlist_controller_test.exs",
+    "line": 847,
+    "description": "The controller test checks an identical status and response body for successful creation and a duplicate, and verifies no additional persistence; it does not measure timing."
+   }
+  ],
+  "blockers": [
+   "The source establishes state-dependent work but cannot establish whether its latency distributions are distinguishable to a remote caller; reproducing that fact requires a running Phoenix/PostgreSQL environment, which was outside this verifier's permitted execution boundary.",
+   "The application source shows no route-specific application limiter on this endpoint, but does not establish whether the deployed staging or production ingress applies an effective request limit to this path."
+  ],
+  "validation_plan": {
+   "local": "In an isolated, disposable non-production Phoenix/PostgreSQL environment, open registration and seed synthetic records for one non-removed Waitlist email, one Principal email, and one pending-Invitation email. Send one warm-up request per class, then 10 randomized blocks of identical valid adult-registration requests: one request to each seeded email and one request to a fresh unique synthetic email per block (44 requests total including warm-ups). Record end-to-end latency, status, and body; compare per-class distributions while confirming the response remains identical. Use only synthetic data and discard the environment afterward.",
+   "deployment": "Without sending audit traffic, ask the service owner to inspect the effective staging/production ingress configuration for POST /api/waitlist/entries, including any edge/WAF or proxy request limits and the route/origin to which they apply. Record whether repeated requests from one client are bounded on this path; this observation does not substitute for the isolated latency measurement."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "workshops.external_checkout.return_url",
+  "title": "Public external checkout forwards a caller-selected return destination",
+  "description": "The anonymous external-registration checkout endpoint accepts a caller-provided returnUrl when it contains {CHECKOUT_SESSION_ID}, then forwards it in an embedded Stripe Checkout Session request. A local controller contract test uses an example.com URL and asserts that the same value reaches the fake Stripe boundary. Whether Stripe accepts an unrelated host and navigates a payer there after checkout is not established locally, so the proposed post-payment phishing impact remains conditional.",
+  "claimed_root_cause": "The public checkout-session path checks that returnUrl contains the Checkout Session placeholder but applies no source-visible trusted-host or scheme policy before forwarding the value unchanged to Stripe.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 364,
+    "scope": "POST /api/workshops/:id/external-registration/checkout-session",
+    "description": "The route is declared in the public API scope, which applies the JSON pipeline but no session or capability pipeline."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex",
+    "line": 221,
+    "scope": "create_external_checkout_session/2",
+    "description": "After UUID parsing, the handler passes the caller's returnUrl to Workshops.create_external_checkout_session/3."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 287,
+    "scope": "run/2 for start_external_payment",
+    "description": "The command checks only that return_url contains {CHECKOUT_SESSION_ID}, then passes the same value to external_checkout_session/3."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 1470,
+    "scope": "external_checkout_session/3 request body",
+    "description": "The Checkout Session body assigns return_url directly from the caller-provided return_url."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc/workshops/stripe_adapter/live.ex",
+    "line": 35,
+    "scope": "create_checkout_session/1",
+    "description": "The live adapter submits the request body, including return_url, to Stripe's Checkout Session creation operation."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 325,
+    "description": "The route's scope applies only the :api pipeline; it does not apply a session or capability pipeline."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex",
+    "line": 221,
+    "description": "The handler forwards the parsed request's returnUrl to the Workshops command."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 287,
+    "description": "The return URL check requires only the Checkout Session placeholder."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 1470,
+    "description": "The Checkout Session request body uses the caller-provided URL directly as return_url."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 1540,
+    "description": "External completion separately validates that the retrieved session is complete and paid and has matching registration metadata; these checks do not constrain the return destination."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/stripe_adapter/live.ex",
+    "line": 35,
+    "description": "The production adapter sends the body to Stripe without another source-visible destination check."
+   },
+   {
+    "file": "apps/phoenix/test/dhc_web/controllers/workshops_controller_test.exs",
+    "line": 1657,
+    "description": "The controller contract test asserts that its example.com return URL reaches the fake Stripe boundary unchanged; this does not establish Stripe's acceptance or redirect behavior."
+   }
+  ],
+  "blockers": [
+   "The unresolved decisive fact is Stripe's handling of an unrelated return_url host for this embedded Checkout flow: repository source and the local fake-boundary test do not establish whether Stripe accepts it or whether completing checkout actually navigates the payer to that destination. The source-visible workshop eligibility, UUID, placeholder, and paid-session checks do not resolve this provider behavior."
+  ],
+  "validation_plan": {
+   "deployment": "An authorized Stripe account owner should inspect the effective API version and applicable embedded Checkout policy/configuration, without creating a session or making API calls, and determine whether an unrelated HTTPS return_url host is accepted and followed after successful payment. Report the policy/configuration basis for the answer; if it does not settle the behavior, retain this blocker."
+  }
+ },
+ {
+  "verdict": "needs_validation",
+  "fingerprint": "workshops.member-payment.customer-id-binding",
+  "title": "Member payment request can select an unbound Stripe Customer",
+  "description": "Source confirms that an authenticated member's request-supplied customerId is forwarded to Stripe when creating a Workshop PaymentIntent, without checking that the Customer belongs to that member. Completion checks the PaymentIntent's status, metadata, amount, and member-owned attempt, but does not bind its Stripe Customer to the member's stored Customer. A cross-member payment-method effect is not established: the actual Stripe.js/Stripe behavior and a realistic way for a member to obtain another member's Customer ID remain unresolved.",
+  "claimed_root_cause": "The authenticated member payment flow accepts customerId from request attributes, forwards it to Stripe without deriving it from or checking it against the member's server-side profile, and does not compare the PaymentIntent Customer with the member or attempt during completion.",
+  "trace": [
+   {
+    "kind": "entrypoint",
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 507,
+    "scope": "POST /api/workshops/:id/registration/payment-intent in the authenticated_api scope",
+    "description": "The route dispatches to the member payment-intent controller action; its enclosing scope uses the session-required authenticated_api pipeline."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex",
+    "line": 165,
+    "scope": "create_registration_payment_intent/2",
+    "description": "The controller takes the principal ID from the current session but forwards the full request params map to the payment operation."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/workshops.ex",
+    "line": 352,
+    "scope": "create_member_payment_intent/3",
+    "description": "The context reads customerId/customer_id from caller-supplied attributes and passes it alongside the server-derived member ID to PaymentCommands, without an ownership lookup."
+   },
+   {
+    "kind": "propagation",
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 260,
+    "scope": "run/2 for start_member_payment",
+    "description": "The command creates or retrieves the authenticated member's attempt and passes the supplied customer ID to member_payment_intent/3."
+   },
+   {
+    "kind": "sink",
+    "file": "apps/phoenix/lib/dhc/workshops/stripe_adapter/live.ex",
+    "line": 25,
+    "scope": "create_payment_intent/1 calling Operations.post_payment_intents/2",
+    "description": "The live adapter submits the Stripe request form; its optional customer field is added from the supplied customer ID by maybe_put_customer/2."
+   }
+  ],
+  "evidence": [
+   {
+    "file": "apps/phoenix/lib/dhc_web/router.ex",
+    "line": 486,
+    "description": "The API scope containing the payment-intent route runs the authenticated_api pipeline, which requires a session."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex",
+    "line": 165,
+    "description": "The controller passes the current session principal ID separately from the request parameters."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops.ex",
+    "line": 352,
+    "description": "customerId/customer_id is extracted from request attributes without a server-side ownership check."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 1445,
+    "description": "PaymentIntent parameters use the supplied customer_id while metadata user_id comes from the member attempt at line 1448."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/stripe_adapter/live.ex",
+    "line": 23,
+    "description": "The adapter applies maybe_put_customer to the form before submitting it to Stripe."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/stripe_adapter/live.ex",
+    "line": 67,
+    "description": "A nonempty supplied customer ID becomes the Stripe customer form field."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 1526,
+    "description": "Completion validates succeeded status and the listed type, actor, workshop, and user metadata; it does not compare the provider Customer with the member's stored Customer."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc/workshops/payment_commands.ex",
+    "line": 1322,
+    "description": "The member attempt candidate query scopes open attempts by workshop, member, and actor type, while also considering an attempt associated with the supplied PaymentIntent ID."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/members_controller.ex",
+    "line": 35,
+    "description": "The /members/me handler loads the user using the current session principal ID."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/members_json.ex",
+    "line": 28,
+    "description": "The current-user serializer returns customerId for that current user."
+   },
+   {
+    "file": "apps/phoenix/lib/dhc_web/controllers/members_json.ex",
+    "line": 54,
+    "description": "The ordinary member serializer used for member records does not include customerId."
+   },
+   {
+    "file": "apps/web/src/lib/components/workshops/workshop-list.svelte",
+    "line": 374,
+    "description": "The normal UI supplies the current user's customerId to the checkout component."
+   },
+   {
+    "file": "apps/web/src/lib/components/workshops/workshop-express-checkout.svelte",
+    "line": 115,
+    "description": "The checkout component sends its customerId prop in the payment-intent request body, so this client-side default does not prevent a caller from altering the request."
+   },
+   {
+    "file": "apps/web/src/lib/components/workshops/workshop-express-checkout.svelte",
+    "line": 136,
+    "description": "The Payment Element is initialized with the returned client secret; whether this exposes or permits use of saved methods for the selected Customer is not determined by this source."
+   }
+  ],
+  "blockers": [
+   "The repository does not establish whether a PaymentIntent created for another Customer, when confirmed through this app's client-secret and Stripe.js Payment Element flow, exposes or permits use of that Customer's saved payment methods or otherwise causes a material cross-customer effect.",
+   "The reviewed ordinary member API returns customerId for the current user through /members/me, while its member-record serializer omits customerId; the repository does not establish a realistic in-scope or out-of-band way for a member to obtain another member's Customer ID."
+  ],
+  "validation_plan": {
+   "deployment": "Ask the Stripe integration owner to review any existing authorized test-mode observations/configuration for the PaymentIntent and Payment Element flow, using only synthetic test Customers, to determine whether a PaymentIntent bound to another Customer exposes or enables that Customer's saved methods; do not send new audit requests to deployed or live targets. Ask the application identity/API owner to review the configured member-facing routes, authorization, and identity data sources to determine whether an ordinary member can realistically obtain another member's Customer ID. Record the observed test-mode behavior and applicable identity/access path; do not use production Customers, credentials, or payment methods."
+  }
+ }
+]
