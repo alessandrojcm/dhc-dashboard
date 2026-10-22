@@ -151,6 +151,7 @@ Training Announcement lifecycle, drivers and first-freeze stamping (ALE-323/325/
 - Issue tracker: Linear issues via the `linear` MCP server; see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 - Triage labels: canonical labels/status strings; see [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 - Domain docs: single-context monorepo with `CONTEXT.md` and `docs/adr/`; see [docs/agents/domain.md](docs/agents/domain.md).
+- Security audits: `security-audit` skill full-audit runs write to `~/security-audit-skill/dhc-dashboard/run-N/` (outside the repo). Run-1 (2026-10-22, `apps/phoenix` scoped, ref `4de8bf54`): 57 ledger units all terminal, **0 confirmed** findings, 9 `needs_validation` leads (public-oracle/throttling, deployed-edge trust, caller-controlled Stripe values) + 1 rejected claim, full reports and per-fingerprint records in that run dir. A future run must read `run-1/coverage-ledger.json` + `run-1/findings.json` as prior-run input and re-verify any lead whose source changed.
 
 ## See also
 
