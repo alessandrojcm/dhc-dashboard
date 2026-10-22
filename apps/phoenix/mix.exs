@@ -11,18 +11,22 @@ defmodule Dhc.MixProject do
       aliases: aliases(),
       deps: deps(),
       hex: [
-        # Bypass and Testcontainers pull Hackney into tests. Nostrum's stable
-        # REST client pulls Gun and Cowlib into production. Their latest
-        # compatible releases have no upstream fixes for these advisories.
-        # Discord adapter inputs are constrained to snowflakes, and audit-log
-        # reasons reject CR/LF before reaching Gun's header encoder. The app
-        # does not serialize Link response headers through `cow_link:link/1`,
-        # so untrusted Link targets, rel values, or attribute keys cannot reach
-        # the serializer affected by CVE-2026-43971.
+        # Hackney is test-only (Bypass and Testcontainers pull it in), and its
+        # four advisories have no 1.x fixes: CVE-2026-47069/47071/47075/47076
+        # are fixed only in the 4.0.1+ line, while Testcontainers still
+        # requires Hackney ~> 1.20. Keep these four exceptions until
+        # Testcontainers supports Hackney 4, and re-check on every
+        # Testcontainers release.
+        #
+        # CVE-2026-43966 (cow_http_struct_hd response splitting) has no fixed
+        # Cowlib release: upstream treats the surrounding guards as the fix —
+        # cowboy 2.16+ `invalid_response_headers` (server side) and gun 2.4+
+        # `invalid_request_headers` (client side, defaults to `raise`). Gun is
+        # floored at 2.7.0 in deps/0 below, so Nostrum's REST calls go through
+        # the guarded client, and the app builds no structured-field headers
+        # from untrusted input. Keep ignoring until a fixed Cowlib ships.
         ignore_advisories: [
           "CVE-2026-43966",
-          "CVE-2026-43969",
-          "CVE-2026-43971",
           "CVE-2026-47069",
           "CVE-2026-47071",
           "CVE-2026-47075",
@@ -97,6 +101,17 @@ defmodule Dhc.MixProject do
       # process. The app's one sanctioned date/time dependency.
       {:tz, "~> 0.28"},
       {:nostrum, "~> 0.10.4"},
+      # Gun is Nostrum's REST/WebSocket transport, transitive through the entry
+      # above. Direct floor constraint because `mix deps.update` has no
+      # per-version form: 2.7.0 pulls in Cowlib 2.21, the fixed release for
+      # CVE-2026-43971 (Link-header directive smuggling, fixed in Cowlib
+      # 2.20.0) and CVE-2026-43969 (Cookie-header injection, fixed in Cowlib
+      # 2.21.0), and gun 2.4+ rejects CR/LF in outgoing request headers by
+      # default (`invalid_request_headers`), the client-side guard for
+      # CVE-2026-43966. Note gun 2.7 defaults `max_frame_size` to 1MB on
+      # incoming WebSocket frames; the Discord gateway (Nostrum's consumer)
+      # is not used here — only the REST API — so the cap cannot bite.
+      {:gun, "~> 2.7"},
       {:assent, "~> 0.3.1"},
       # Email transport seam for transactional emails (ADR 0021). First-party
       # adapters per environment: Resend in prod, Mailpit over HTTP in dev,
