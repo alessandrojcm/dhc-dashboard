@@ -1,0 +1,37 @@
+{
+ "run_id": "dhc-dashboard-phoenix-run-1",
+ "repo": "dhc-dashboard",
+ "target": "/Users/alessandro.cuppari/repos/dhc-dashboard/apps/phoenix",
+ "source_ref": "4de8bf54833a5cf38d7f6eda06bf93525278a628",
+ "worktree_state": "dirty: 3 paths (skills-lock.json, .agents/skills/security-audit/, docs/research/alchemy-run-iac.md); none under apps/phoenix - target subtree clean at 4de8bf54",
+ "profile": "standard",
+ "scope_paths": [
+  "apps/phoenix"
+ ],
+ "scoped_run": true,
+ "budget": null,
+ "execution_policy": "sandboxed-source-and-local-only",
+ "companion_files_selected": [
+  "WEB-PROTOCOL-AND-AUTH.md",
+  "PROTOCOLS-RPC-AND-MESSAGING.md",
+  "RESOURCE-EXHAUSTION-AND-AVAILABILITY.md",
+  "DATA-ISOLATION-AND-LIFECYCLE.md",
+  "AI-AND-LLM.md",
+  "CLOUD-AND-DEPLOYMENT.md",
+  "CLIENT-SIDE.md"
+ ],
+ "prior_run_paths": [],
+ "shared_file_owners": {
+  "run-metadata.json": "parent",
+  "architecture.md": "parent",
+  "coverage-ledger.json": "parent",
+  "findings.json": "parent",
+  "REPORT.md": "parent",
+  "FINDINGS-DETAIL.md": "parent",
+  "NEEDS-VALIDATION.md": "parent"
+ },
+ "agents_root": "agents/",
+ "run_status": "complete",
+ "agents_spent": 49,
+ "terminal_state": "all artifacts written; both validators PASS; final critics stop=true"
+}
