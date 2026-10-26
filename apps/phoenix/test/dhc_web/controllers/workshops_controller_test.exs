@@ -36,7 +36,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       )
 
     Req.Test.stub(Dhc.Stripe, WorkshopStripeClient)
-    insert_auth_user_and_profile(@member_user_id, "Current", "Member")
+    insert_auth_user_and_profile(@member_user_id, "Current", "Member", "cus_own")
     insert_auth_user_and_profile(@other_user_id, "Other", "Member")
     insert_auth_user_and_profile(@coordinator_user_id, "Workshop", "Coordinator")
 
@@ -62,6 +62,12 @@ defmodule DhcWeb.WorkshopsControllerTest do
   defp to_uuid(value) when is_binary(value), do: value
 
   defp auth_conn(conn, role), do: put_req_header(conn, "authorization", "Bearer #{role}-token")
+
+  # Stripe's embedded Checkout returns the payer to the dashboard's own
+  # origin (`Dhc.Stripe.ReturnUrl`); the test app URL is the dashboard.
+  defp app_return_url(path \\ "/workshops/c/confirmation") do
+    Application.fetch_env!(:dhc, :app_url) <> path <> "?session_id={CHECKOUT_SESSION_ID}"
+  end
 
   # ── Calendar ──────────────────────────────────────────────────────────
 
@@ -1390,7 +1396,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
   # ── Member registration ───────────────────────────────────────────────
 
   describe "member registration" do
-    test "creates a PaymentIntent using the authoritative Workshop price", %{conn: conn} do
+    test "creates a PaymentIntent bound to the member's own Stripe Customer", %{conn: conn} do
       workshop = insert_workshop(status: "published", max_capacity: 2)
 
       conn =
@@ -1399,7 +1405,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{
           "amount" => 1,
           "currency" => "usd",
-          "customerId" => "cus_test"
+          # A spoofed customerId is ignored: the Customer on the PaymentIntent
+          # is read from the member's own User Profile inside the boundary.
+          "customerId" => "cus_attacker"
         })
 
       assert %{
@@ -1414,7 +1422,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert body["amount"] == "1000"
       assert body["currency"] == "eur"
-      assert body["customer"] == "cus_test"
+      assert body["customer"] == "cus_own"
       assert body["metadata[workshop_id]"] == to_uuid(workshop.id)
       assert body["metadata[user_id]"] == @member_user_id
     end
@@ -1631,8 +1639,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           price_non_member: 2500.0
         )
 
-      return_url =
-        "https://example.com/workshops/#{to_uuid(workshop.id)}/confirmation?session_id={CHECKOUT_SESSION_ID}"
+      return_url = app_return_url("/workshops/#{to_uuid(workshop.id)}/confirmation")
 
       payment_attempt_id = Ecto.UUID.generate()
 
@@ -1656,6 +1663,38 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert body["ui_mode"] == "embedded"
       assert body["return_url"] == return_url
       assert body["line_items[0][price_data][unit_amount]"] == "2500"
+    end
+
+    # Security-audit run-1, lead 1: Stripe may navigate the payer to the
+    # return URL after the session completes, so a foreign origin is refused.
+    test "refuses a checkout session whose return URL is off the dashboard's own origin", %{
+      conn: conn
+    } do
+      workshop = insert_workshop(status: "published", is_public: true)
+      Application.delete_env(:dhc, :last_workshop_checkout_request)
+
+      for url <- [
+            "https://evil.example/confirmation?session_id={CHECKOUT_SESSION_ID}",
+            "not-a-url?session_id={CHECKOUT_SESSION_ID}"
+          ] do
+        conn =
+          post(
+            conn,
+            "/api/workshops/#{to_uuid(workshop.id)}/external-registration/checkout-session",
+            %{"paymentAttemptId" => Ecto.UUID.generate(), "returnUrl" => url}
+          )
+
+        assert json_response(conn, 422) == %{
+                 "errors" => %{
+                   "code" => "invalid_return_url",
+                   "detail" =>
+                     "Return URL must be on the dashboard's own origin and include the Checkout Session placeholder"
+                 }
+               }
+      end
+
+      # No Checkout Session request left for Stripe.
+      assert Application.get_env(:dhc, :last_workshop_checkout_request) == nil
     end
 
     test "completes paid Checkout into an external user and confirmed registration", %{conn: conn} do
@@ -1775,7 +1814,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           "/api/workshops/#{to_uuid(workshop.id)}/external-registration/checkout-session",
           %{
             "paymentAttemptId" => Ecto.UUID.generate(),
-            "returnUrl" => "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+            "returnUrl" => app_return_url()
           }
         )
 
@@ -2168,7 +2207,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
     |> Map.merge(overrides)
   end
 
-  defp insert_auth_user_and_profile(user_id, first_name, last_name) do
+  defp insert_auth_user_and_profile(user_id, first_name, last_name, customer_id \\ nil) do
     email =
       "#{String.downcase(first_name)}-#{System.unique_integer([:positive])}@example.com"
 
@@ -2187,6 +2226,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         gender: "man (cis)",
         pronouns: "he/him",
         is_active: true,
+        customer_id: customer_id,
         social_media_consent: "no"
       }
       |> Repo.insert()

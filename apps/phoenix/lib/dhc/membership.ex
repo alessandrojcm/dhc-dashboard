@@ -233,27 +233,14 @@ defmodule Dhc.Membership do
   end
 
   # Stripe sends the member back to `return_url` after the portal, so only
-  # URLs on the dashboard's own origin (scheme + host + port of `:app_url`)
-  # are accepted; any path on that origin is fine. Userinfo is refused so
-  # `https://app@evil.com`-style links cannot look like the dashboard.
+  # URLs on the dashboard's own origin (`Dhc.Stripe.ReturnUrl`) are accepted.
   defp validate_return_url(return_url) when is_binary(return_url) do
-    with {:ok, %URI{userinfo: nil} = uri} <- URI.new(return_url),
-         {:ok, app_uri} <- URI.new(Application.fetch_env!(:dhc, :app_url)),
-         {:ok, app_origin} <- origin(app_uri),
-         {:ok, ^app_origin} <- origin(uri) do
-      :ok
-    else
-      _ -> {:error, :invalid_payload}
-    end
+    if Dhc.Stripe.ReturnUrl.same_origin?(return_url),
+      do: :ok,
+      else: {:error, :invalid_payload}
   end
 
   defp validate_return_url(_return_url), do: {:error, :invalid_payload}
-
-  defp origin(%URI{scheme: scheme, host: host, port: port})
-       when scheme in ["http", "https"] and is_binary(host) and host != "",
-       do: {:ok, {scheme, String.downcase(host), port}}
-
-  defp origin(_uri), do: :error
 
   defp parse_pause_until(value) do
     with {:ok, datetime, _offset} <- DateTime.from_iso8601(value),

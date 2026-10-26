@@ -19,10 +19,17 @@ defmodule Dhc.BeginnersWorkshops.Workers.ReplyWorker do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"resend_email_id" => id}} = job) when is_binary(id) do
-    case IntakeReplies.forward(id, final: job.attempt >= job.max_attempts) do
-      {:ok, _outcome} -> :ok
-      {:error, :reply_not_found} -> {:discard, :reply_not_found}
-      {:error, reason} -> {:error, reason}
+    # The parked feature must never run its jobs (audit run-1, lead 8):
+    # the webhook is gated on `enabled?/0` too, but a job already queued
+    # when the switch turns off would otherwise still forward.
+    if IntakeReplies.enabled?() do
+      case IntakeReplies.forward(id, final: job.attempt >= job.max_attempts) do
+        {:ok, _outcome} -> :ok
+        {:error, :reply_not_found} -> {:discard, :reply_not_found}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      {:discard, :feature_disabled}
     end
   end
 

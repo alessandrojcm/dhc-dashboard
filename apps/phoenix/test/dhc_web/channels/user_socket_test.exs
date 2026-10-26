@@ -48,15 +48,16 @@ defmodule DhcWeb.UserSocketTest do
       ])
 
       principal = principal_fixture(id: auth_user_id, email: email)
-      {:ok, token} = Dhc.Auth.create_socket_token(principal)
+      {token, session_token_id} = socket_token(principal)
       encoded = Base.url_encode64(token, padding: false)
 
-      {:ok, principal: principal, encoded: encoded}
+      {:ok, principal: principal, encoded: encoded, session_token_id: session_token_id}
     end
 
     test "a valid socket token authenticates the socket and assigns the principal", %{
       principal: principal,
-      encoded: encoded
+      encoded: encoded,
+      session_token_id: session_token_id
     } do
       assert {:ok, socket} =
                connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: encoded})
@@ -64,11 +65,13 @@ defmodule DhcWeb.UserSocketTest do
       assert socket.assigns.current_session.principal.id == principal.id
       assert socket.assigns.current_session.principal.email == principal.email
       assert "member" in socket.assigns.current_session.roles
-      assert socket.id == "users_socket:#{principal.id}"
+
+      assert socket.id ==
+               Dhc.Auth.session_socket_topic(principal.id, session_token_id)
     end
 
     test "an expired socket token is rejected", %{principal: principal} do
-      {:ok, token} = Dhc.Auth.create_socket_token(principal)
+      {token, _session_token_id} = socket_token(principal)
       encoded = Base.url_encode64(token, padding: false)
 
       # Age the row beyond the socket validity window.
@@ -118,6 +121,54 @@ defmodule DhcWeb.UserSocketTest do
     test "a garbage authToken that does not decode is rejected" do
       assert :error =
                connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: "not-base64-or-real"})
+    end
+
+    test "deleting the originating session revokes the socket token", %{principal: principal} do
+      session = session_token(principal)
+      {:ok, token} = Dhc.Auth.create_socket_token(principal, session)
+      encoded = Base.url_encode64(token, padding: false)
+
+      assert {:ok, _} = connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: encoded})
+
+      assert :ok = Dhc.Auth.delete_session_token(session)
+
+      # The established socket's credential is dead for any new connection.
+      assert {:error, :invalid} = Dhc.Auth.get_principal_by_socket_token(token)
+      assert :error = connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: encoded})
+    end
+
+    test "a current-device logout disconnects that session's socket only", %{principal: principal} do
+      a_session = session_token(principal)
+      {:ok, a_token} = Dhc.Auth.create_socket_token(principal, a_session)
+      a_encoded = Base.url_encode64(a_token, padding: false)
+
+      assert {:ok, a_socket} =
+               connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: a_encoded})
+
+      topic_a = a_socket.id
+
+      # Another device: its own session, its own socket, still signed in.
+      b_session = session_token(principal)
+      {:ok, b_token} = Dhc.Auth.create_socket_token(principal, b_session)
+      b_encoded = Base.url_encode64(b_token, padding: false)
+
+      assert {:ok, b_socket} =
+               connect(DhcWeb.UserSocket, %{}, connect_info: %{auth_token: b_encoded})
+
+      topic_b = b_socket.id
+
+      refute topic_a == topic_b
+      :ok = DhcWeb.Endpoint.subscribe(topic_a)
+      :ok = DhcWeb.Endpoint.subscribe(topic_b)
+
+      # Sign out device A only.
+      assert :ok = Dhc.Auth.delete_session_token(a_session)
+
+      assert_receive %Phoenix.Socket.Broadcast{topic: ^topic_a, event: "disconnect"}
+      refute_received %Phoenix.Socket.Broadcast{topic: ^topic_b, event: "disconnect"}
+
+      assert {:error, :invalid} = Dhc.Auth.get_principal_by_socket_token(a_token)
+      assert {:ok, _, _, _} = Dhc.Auth.get_socket_projection(b_token)
     end
   end
 end

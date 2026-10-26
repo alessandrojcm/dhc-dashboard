@@ -275,8 +275,8 @@ defmodule Dhc.AuthTest do
       principal = active_principal_fixture()
       profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
       session_token = session_token(principal)
-      {:ok, socket_token} = Auth.create_socket_token(principal)
-      socket_id = DhcWeb.UserSocket.socket_id(principal.id)
+      {socket_token, session_token_id} = socket_token(principal)
+      socket_id = Dhc.Auth.session_socket_topic(principal.id, session_token_id)
       :ok = DhcWeb.Endpoint.subscribe(socket_id)
 
       assert :ok = Auth.apply_member_access(profile.id, false)
@@ -299,7 +299,7 @@ defmodule Dhc.AuthTest do
     test "revocation refuses a nested transaction so disconnect cannot precede commit" do
       principal = active_principal_fixture()
       profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
-      socket_id = DhcWeb.UserSocket.socket_id(principal.id)
+      socket_id = Dhc.Auth.session_socket_topic(principal.id, Ecto.UUID.generate())
       :ok = DhcWeb.Endpoint.subscribe(socket_id)
 
       assert {:ok, {:error, :nested_transaction}} =

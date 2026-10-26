@@ -334,9 +334,12 @@ defmodule Dhc.Workshops do
   @doc """
   Creates a Stripe PaymentIntent for the authenticated member's Workshop registration.
 
-  The member id is always derived from the Supabase JWT `sub` by the controller.
-  Capacity and duplicate active-registration checks happen before Stripe is
-  called, preserving the existing SvelteKit member-registration gate behavior.
+  The member id is always derived from the session Principal. The PaymentIntent
+  is bound to the Stripe Customer read **from the member's own User Profile**
+  inside the boundary; the caller's `customerId` is accepted for wire
+  compatibility but never used, so a member cannot start a payment attached to
+  another member's Customer. Capacity and duplicate active-registration checks
+  happen before Stripe is called, preserving the existing SvelteKit member-registration gate behavior.
   """
   @spec create_member_payment_intent(binary(), binary(), map()) ::
           {:ok, %{client_secret: String.t(), payment_intent_id: String.t()}}
@@ -347,13 +350,11 @@ defmodule Dhc.Workshops do
              | :full
              | :invalid_amount
              | :payment_failed}
-  def create_member_payment_intent(workshop_id, user_id, attrs)
-      when is_binary(workshop_id) and is_binary(user_id) and is_map(attrs) do
-    customer_id = Map.get(attrs, "customerId") || Map.get(attrs, :customer_id)
-
+  def create_member_payment_intent(workshop_id, user_id, _attrs)
+      when is_binary(workshop_id) and is_binary(user_id) do
     PaymentCommands.execute(
       {:member, user_id},
-      {:start_member_payment, workshop_id, customer_id}
+      {:start_member_payment, workshop_id}
     )
   end
 

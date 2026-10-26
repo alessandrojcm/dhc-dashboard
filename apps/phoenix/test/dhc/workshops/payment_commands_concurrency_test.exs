@@ -492,7 +492,8 @@ defmodule Dhc.Workshops.PaymentCommandsConcurrencyTest do
       Workshops.create_external_checkout_session(
         workshop.id,
         attempt_id,
-        "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+        Application.fetch_env!(:dhc, :app_url) <>
+          "/confirmation?session_id={CHECKOUT_SESSION_ID}"
       )
 
     StripeStub.put_object(

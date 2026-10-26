@@ -39,10 +39,17 @@ defmodule DhcWeb.MemberRolesControllerTest do
     principal = Auth.get_principal!(id)
     first = session_token(principal)
     second = session_token(principal)
-    {:ok, socket} = Auth.create_socket_token(principal)
+    {socket, socket_session_id} = socket_token(principal)
     other = session_token(Auth.get_principal!(actor))
     {login, _} = magic_link_token(principal)
-    Phoenix.PubSub.subscribe(Dhc.PubSub, DhcWeb.UserSocket.socket_id(id))
+
+    socket_topic = Dhc.Auth.session_socket_topic(id, socket_session_id)
+    Phoenix.PubSub.subscribe(Dhc.PubSub, socket_topic)
+
+    # The other member's session topic must hear nothing.
+    {:ok, other_session_id} = Dhc.Auth.get_session_reference(other)
+    other_topic = Dhc.Auth.session_socket_topic(actor, other_session_id)
+    Phoenix.PubSub.subscribe(Dhc.PubSub, other_topic)
 
     response =
       authenticated(actor)
@@ -58,7 +65,8 @@ defmodule DhcWeb.MemberRolesControllerTest do
     assert {:error, :invalid} = Auth.get_principal_by_session_token(second)
     assert {:error, :invalid} = Auth.get_principal_by_socket_token(socket)
     assert {:ok, _} = Auth.get_principal_by_session_token(other)
-    assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+    assert_receive %Phoenix.Socket.Broadcast{topic: ^socket_topic, event: "disconnect"}
+    refute_received %Phoenix.Socket.Broadcast{topic: ^other_topic, event: "disconnect"}
     assert {:error, :invalid} = Auth.create_socket_token(principal, first)
 
     # A fresh proof signs in with the new, live capabilities.
@@ -71,7 +79,8 @@ defmodule DhcWeb.MemberRolesControllerTest do
 
   test "no-op keeps sessions and sends no disconnect", %{actor: actor, target: id} do
     token = session_token(Auth.get_principal!(id))
-    Phoenix.PubSub.subscribe(Dhc.PubSub, DhcWeb.UserSocket.socket_id(id))
+    {:ok, session_id} = Dhc.Auth.get_session_reference(token)
+    Phoenix.PubSub.subscribe(Dhc.PubSub, Dhc.Auth.session_socket_topic(id, session_id))
 
     assert {:ok, _} =
              Roles.update(actor, id, %{"roles" => ["member"], "expectedRoles" => ["member"]})

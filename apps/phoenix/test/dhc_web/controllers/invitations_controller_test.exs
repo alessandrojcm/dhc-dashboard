@@ -457,6 +457,47 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert %{"errors" => %{"detail" => "Invalid invitation credentials"}} =
                json_response(conn, 422)
     end
+
+    # Security-audit run-1, lead 5: verification is a public DOB oracle, so
+    # attempts are limited per invitation. An over-limit request answers the
+    # same problem body as wrong credentials — indistinguishable.
+    test "POST /api/invitations/:id/verify is rate limited per invitation, without leaking", %{
+      conn: _conn
+    } do
+      invitation_id =
+        insert_invitation(email: "verify@example.com", date_of_birth: ~D[1990-01-01])
+
+      limited_body = %{
+        "errors" => %{
+          "code" => "invalid_credentials",
+          "detail" => "Invalid invitation credentials"
+        }
+      }
+
+      for _ <- 1..5 do
+        conn = post_verify(invitation_id, "wrong@example.com", "1990-01-01")
+        assert json_response(conn, 422) == limited_body
+      end
+
+      # The sixth attempt — even with correct credentials — is refused with
+      # the identical body.
+      conn = post_verify(invitation_id, "verify@example.com", "1990-01-01")
+      assert json_response(conn, 422) == limited_body
+
+      # A different invitation id is not affected by another's window.
+      other_id = insert_invitation(email: "other@example.com", date_of_birth: ~D[1990-01-01])
+
+      conn = post_verify(other_id, "other@example.com", "1990-01-01")
+      assert %{"data" => %{"verified" => true}} = json_response(conn, 200)
+    end
+  end
+
+  defp post_verify(invitation_id, email, date_of_birth) do
+    build_conn()
+    |> post("/api/invitations/#{invitation_id}/verify", %{
+      "email" => email,
+      "dateOfBirth" => date_of_birth
+    })
   end
 
   describe "POST /api/invitations/resend" do

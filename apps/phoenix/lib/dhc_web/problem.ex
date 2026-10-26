@@ -109,6 +109,16 @@ defmodule DhcWeb.Problem do
   end
 
   @doc """
+  Renders one of a domain family's declared reasons and halts — for the
+  plugs that stand in front of a family's routes (an over-limit request
+  answers the same problem the family's fallback would).
+  """
+  @spec send_reason(Plug.Conn.t(), atom(), config()) :: Plug.Conn.t()
+  def send_reason(conn, reason, %{} = config) do
+    conn |> render_result({:error, reason}, config) |> halt()
+  end
+
+  @doc """
   Renders a controller result through a configuration. Unknown reasons raise:
   an undeclared reason is a programming error, not a client error.
   """

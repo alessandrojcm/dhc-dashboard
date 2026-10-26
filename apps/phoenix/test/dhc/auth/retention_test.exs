@@ -78,11 +78,20 @@ defmodule Dhc.Auth.RetentionTest do
       case context do
         "login" -> PrincipalToken.build_magic_link_token(principal)
         "session" -> PrincipalToken.build_session_token(principal)
-        "socket" -> PrincipalToken.build_socket_token(principal)
+        # Socket tokens bind to a (still-live) session row, as the production
+        # flow mints them; retention measures them by their own `created_at`
+        # window.
+        "socket" -> PrincipalToken.build_socket_token(principal, insert_bound_session!(principal))
       end
 
     created_at = DateTime.add(now, -age_seconds)
     %{id: id} = Repo.insert!(%{token | created_at: created_at})
+    id
+  end
+
+  defp insert_bound_session!(principal) do
+    {_raw, session} = PrincipalToken.build_session_token(principal)
+    %{id: id} = Repo.insert!(session)
     id
   end
 

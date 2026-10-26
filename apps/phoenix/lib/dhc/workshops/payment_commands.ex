@@ -103,7 +103,7 @@ defmodule Dhc.Workshops.PaymentCommands do
   system).
   """
   @type command ::
-          {:start_member_payment, workshop_id :: binary(), customer_id :: String.t() | nil}
+          {:start_member_payment, workshop_id :: binary()}
           | {:start_external_payment, workshop_id :: binary(), payment_attempt_id :: binary(),
              return_url :: String.t()}
           | {:complete_member_payment, workshop_id :: binary(), payment_intent_id :: String.t()}
@@ -257,7 +257,11 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   # ── Starting a payment ──────────────────────────────────────────
 
-  defp run({:member, user_id}, {:start_member_payment, workshop_id, customer_id}) do
+  defp run({:member, user_id}, {:start_member_payment, workshop_id}) do
+    # The Stripe Customer on the PaymentIntent is the member's own, read
+    # from their User Profile inside the boundary; the caller's
+    # `customerId` is never trusted, so a member cannot start a payment
+    # attached to another member's Customer.
     with {:ok, {attempt, workshop}} <-
            transact(fn ->
              with_locked(
@@ -268,6 +272,7 @@ defmodule Dhc.Workshops.PaymentCommands do
                &open_member_attempt(&1, user_id)
              )
            end),
+         customer_id = member_customer_id(user_id),
          {:ok, payment_intent} <- member_payment_intent(attempt, workshop, customer_id),
          :ok <-
            record_identifier(attempt, :stripe_payment_intent_id, Map.fetch!(payment_intent, "id")) do
@@ -284,7 +289,13 @@ defmodule Dhc.Workshops.PaymentCommands do
          :external,
          {:start_external_payment, workshop_id, payment_attempt_id, return_url}
        ) do
+    # Stripe may navigate the payer to `return_url` after the session
+    # completes, so only URLs on the dashboard's own origin are accepted
+    # (`Dhc.Stripe.ReturnUrl`, the billing-portal policy); the literal
+    # `{CHECKOUT_SESSION_ID}` placeholder must still be present.
     with true <- String.contains?(return_url, "{CHECKOUT_SESSION_ID}") || :invalid_return_url,
+         true <- Dhc.Stripe.ReturnUrl.same_origin?(return_url) || :invalid_return_url,
+         true <- Dhc.Stripe.ReturnUrl.same_origin?(return_url) || :invalid_return_url,
          {:ok, {attempt, workshop}} <-
            transact(fn ->
              with_locked(
@@ -1426,6 +1437,17 @@ defmodule Dhc.Workshops.PaymentCommands do
   end
 
   # ── Stripe (never inside a transaction) ─────────────────────────
+
+  defp member_customer_id(user_id) do
+    UserProfile
+    |> where([p], p.principal_id == ^user_id)
+    |> select([p], p.customer_id)
+    |> Repo.one()
+    |> case do
+      customer_id when customer_id in [nil, ""] -> nil
+      customer_id -> customer_id
+    end
+  end
 
   defp member_payment_intent(%PaymentAttempt{stripe_payment_intent_id: id}, _workshop, _customer)
        when is_binary(id) do

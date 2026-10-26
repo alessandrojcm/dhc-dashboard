@@ -12503,7 +12503,7 @@ components:
       properties:
         customerId:
           type: string
-          description: Optional Stripe customer id to attach to the PaymentIntent.
+          description: Accepted for wire compatibility and ignored; the server derives the Stripe Customer from the member's own profile.
     WorkshopRegistrationPaymentIntentResponse:
       type: object
       required:
@@ -12621,7 +12621,7 @@ components:
         returnUrl:
           type: string
           format: uri
-          description: Must include the literal `{CHECKOUT_SESSION_ID}` placeholder.
+          description: Must be on the dashboard's own origin and include the literal `{CHECKOUT_SESSION_ID}` placeholder.
     WorkshopExternalCheckoutSessionResponse:
       type: object
       required:

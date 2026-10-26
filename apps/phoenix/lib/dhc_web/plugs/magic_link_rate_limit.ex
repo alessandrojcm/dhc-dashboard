@@ -97,8 +97,7 @@ defmodule DhcWeb.Plugs.MagicLinkRateLimit do
   end
 
   defp check_window(key, window_seconds, max, limit) do
-    window_start = current_window_start(window_seconds)
-    count = increment_window(key, window_start)
+    count = bump_window(key, window_start_for(window_seconds))
 
     if count <= max do
       :ok
@@ -107,20 +106,28 @@ defmodule DhcWeb.Plugs.MagicLinkRateLimit do
     end
   end
 
-  defp current_window_start(window_seconds) do
+  @doc false
+  # The epoch-aligned window start a key's count belongs to. Public so the
+  # other public-credential limiters (invitation verification) share the one
+  # `auth_rate_limit_windows` machinery — Reach only lets web code reach the
+  # Repo through this module.
+  @spec window_start_for(pos_integer()) :: DateTime.t()
+  def window_start_for(window_seconds) do
     now = System.system_time(:second)
     aligned = now - rem(now, window_seconds)
     DateTime.from_unix!(aligned)
   end
 
-  defp increment_window(key, window_start) do
-    # Atomic check-and-increment. `INSERT ... ON CONFLICT (key, window_start)
-    # DO UPDATE SET count = auth_rate_limit_windows.count + 1` returns the
-    # new count. We use a raw query because Ecto doesn't speak upsert with
-    # returning cleanly across the sandbox without a schema, and we don't
-    # want a schema here (this is the only read/write site). The table has
-    # only `created_at` (no `updated_at`) because window rows are immutable
-    # once written — `timestamps(updated_at: false)` in the migration.
+  @doc false
+  # Atomic check-and-increment. `INSERT ... ON CONFLICT (key, window_start)
+  # DO UPDATE SET count = auth_rate_limit_windows.count + 1` returns the new
+  # count. We use a raw query because Ecto doesn't speak upsert with
+  # returning cleanly across the sandbox without a schema, and we don't want
+  # a schema here (this is the only read/write site). The table has only
+  # `created_at` (no `updated_at`) because window rows are immutable once
+  # written — `timestamps(updated_at: false)` in the migration.
+  @spec bump_window(String.t(), DateTime.t()) :: integer()
+  def bump_window(key, window_start) do
     %{rows: [[count]]} =
       Repo.query!(
         """
