@@ -311,12 +311,95 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
     end
   end
 
+  describe "external Checkout return URL" do
+    test "a same-origin return URL with the placeholder creates the session" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          status: "published",
+          is_public: true,
+          price_non_member: 2400.0
+        )
+
+      attempt_id = Ecto.UUID.generate()
+
+      assert {:ok, %{checkout_session_id: "cs_" <> _}} =
+               Workshops.create_external_checkout_session(
+                 workshop.id,
+                 attempt_id,
+                 app_return_url()
+               )
+    end
+
+    test "a foreign origin is refused before any Stripe call" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          status: "published",
+          is_public: true,
+          price_non_member: 2400.0
+        )
+
+      StripeStub.put(:create_checkout_session, fn _params ->
+        raise "Stripe must not be called for an off-origin return URL"
+      end)
+
+      for url <- [
+            "https://evil.example/confirmation?session_id={CHECKOUT_SESSION_ID}",
+            "#{Application.fetch_env!(:dhc, :app_url)}@evil.example/confirmation?session_id={CHECKOUT_SESSION_ID}",
+            "not-a-url?session_id={CHECKOUT_SESSION_ID}",
+            "#{Application.fetch_env!(:dhc, :app_url)}/confirmation"
+          ] do
+        assert {:error, :invalid_return_url} =
+                 Workshops.create_external_checkout_session(
+                   workshop.id,
+                   Ecto.UUID.generate(),
+                   url
+                 )
+      end
+    end
+  end
+
+  describe "member payment Customer binding" do
+    test "the PaymentIntent carries the member's own Stripe Customer, never a caller's" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(status: "published", price_member: 1800.0)
+
+      %{auth_user_id: member_id, customer_id: own_customer} = WorkshopFixtures.member_fixture()
+
+      test_pid = self()
+
+      StripeStub.put(:create_payment_intent, fn params ->
+        send(test_pid, {:create_payment_intent, params})
+
+        id = "pi_" <> Ecto.UUID.generate()
+
+        {:ok,
+         %{
+           "id" => id,
+           "client_secret" => "#{id}_secret",
+           "amount" => params.amount,
+           "currency" => params.currency,
+           "status" => "requires_payment_method",
+           "metadata" => %{}
+         }}
+      end)
+
+      # The caller's customerId is ignored; the Customer is read from the
+      # member's own User Profile inside the boundary.
+      assert {:ok, _} =
+               Workshops.create_member_payment_intent(workshop.id, member_id, %{
+                 "customerId" => "cus_attacker"
+               })
+
+      assert_receive {:create_payment_intent, %{customer_id: ^own_customer}}
+    end
+  end
+
   describe "actors" do
     test "every command refuses the wrong actor before any read" do
       id = Ecto.UUID.generate()
 
       for {actor, command} <- [
-            {:external, {:start_member_payment, id, nil}},
+            {:external, {:start_member_payment, id}},
             {{:coordinator, id}, {:complete_member_payment, id, "pi_x"}},
             {{:member, id}, {:start_external_payment, id, id, "x"}},
             {{:member, id}, {:request_refund, id, id, "x"}},
@@ -468,7 +551,7 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
         Workshops.create_external_checkout_session(
           workshop.id,
           attempt_id,
-          "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+          app_return_url()
         )
 
       StripeStub.put_object(
@@ -542,7 +625,7 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
                Workshops.create_external_checkout_session(
                  workshop.id,
                  Ecto.UUID.generate(),
-                 "https://example.com/return?session={CHECKOUT_SESSION_ID}"
+                 app_return_url()
                )
 
       cs = "cs_archived_#{System.unique_integer([:positive])}"
@@ -708,6 +791,12 @@ defmodule Dhc.Workshops.PaymentCommandsTest do
 
   defp complete_member(workshop, member_id, pi),
     do: PaymentCommands.execute({:member, member_id}, {:complete_member_payment, workshop.id, pi})
+
+  # Stripe's embedded Checkout returns the payer to the dashboard's own
+  # origin (`Dhc.Stripe.ReturnUrl`); the test app URL is the dashboard.
+  defp app_return_url(path \\ "/workshops/c/confirmation") do
+    Application.fetch_env!(:dhc, :app_url) <> path <> "?session_id={CHECKOUT_SESSION_ID}"
+  end
 
   defp attempt_for(pi), do: Repo.get_by!(PaymentAttempt, stripe_payment_intent_id: pi)
 

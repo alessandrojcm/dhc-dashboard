@@ -40,7 +40,9 @@ defmodule DhcWeb.WorkshopsHTTP do
       payment_metadata_mismatch: {422, "Payment intent does not match workshop registration"},
       checkout_metadata_mismatch:
         {422, "Checkout session does not match workshop registration", :payment_metadata_mismatch},
-      invalid_return_url: {422, "Return URL must include the Checkout Session placeholder"},
+      invalid_return_url:
+        {422,
+         "Return URL must be on the dashboard's own origin and include the Checkout Session placeholder"},
       customer_details_missing: {422, "Checkout session is missing attendee details"},
       payment_intent_required: {422, "Payment intent ID required"},
       checkout_details_required: {422, "Payment attempt ID and return URL are required"},

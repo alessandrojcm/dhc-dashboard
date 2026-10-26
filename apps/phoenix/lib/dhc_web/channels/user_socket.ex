@@ -15,8 +15,10 @@ defmodule DhcWeb.UserSocket do
       JS client can pass via `authToken`. Verified through
       `Dhc.Auth.get_principal_by_socket_token/1`.
   The verified Session projection is assigned as `current_session`. `id/1`
-  scopes the socket to the verified Principal and lets access revocation
-  disconnect every established socket for that Principal.
+  scopes the socket to the verified Principal's **session** — the socket
+  token is bound to the session row it was exchanged from, so a current-device
+  logout (which deletes that session) disconnects this socket alone, and
+  access revocation disconnects every session's socket for the Principal.
 
   Only `notifications:*` topics are routed here, and long polling is disabled at
   the endpoint mount. See `docs/secure-phoenix-channel-browser-integration.md`
@@ -37,22 +39,15 @@ defmodule DhcWeb.UserSocket do
 
   ## Authentication
 
-  @doc false
-  def socket_id(principal_id), do: Dhc.Auth.socket_topic(principal_id)
-
-  @doc "Disconnects every established socket for an Authentication Principal."
-  def disconnect(principal_id) do
-    Dhc.Auth.disconnect_sockets(principal_id)
-  end
-
   @impl true
   def connect(_params, socket, connect_info) do
     with token when is_binary(token) and token != "" <- connect_info[:auth_token],
-         {:ok, projection, reference} <- authenticate(token) do
+         {:ok, projection, reference, session_token_id} <- authenticate(token) do
       {:ok,
        socket
        |> assign(:current_session, projection)
-       |> assign(:socket_reference, reference)}
+       |> assign(:socket_reference, reference)
+       |> assign(:session_token_id, session_token_id)}
     else
       # Missing/empty token: reject without logging token contents.
       token when token in [nil, ""] ->
@@ -76,7 +71,7 @@ defmodule DhcWeb.UserSocket do
     {:ok, {transport_state, socket}} = super(state)
 
     case Dhc.Auth.get_socket_projection_by_reference(socket.assigns.socket_reference) do
-      {:ok, projection, _reference} ->
+      {:ok, projection, _reference, _session_token_id} ->
         {:ok, {transport_state, assign(socket, :current_session, projection)}}
 
       {:error, _reason} ->
@@ -94,8 +89,9 @@ defmodule DhcWeb.UserSocket do
 
   defp authenticate(token) do
     with {:ok, decoded} <- safe_base64_decode(token),
-         {:ok, projection, reference} <- Dhc.Auth.get_socket_projection(decoded) do
-      {:ok, projection, reference}
+         {:ok, projection, reference, session_token_id} <-
+           Dhc.Auth.get_socket_projection(decoded) do
+      {:ok, projection, reference, session_token_id}
     else
       :not_base64 -> {:error, :invalid}
       {:error, :invalid} -> {:error, :invalid}
@@ -112,5 +108,10 @@ defmodule DhcWeb.UserSocket do
   end
 
   @impl true
-  def id(socket), do: socket_id(socket.assigns.current_session.principal.id)
+  def id(socket),
+    do:
+      Dhc.Auth.session_socket_topic(
+        socket.assigns.current_session.principal.id,
+        socket.assigns.session_token_id
+      )
 end

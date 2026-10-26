@@ -90,6 +90,9 @@ config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verific
 # (ALE-414) is set per test.
 config :dhc, :resend_req_options, plug: {Req.Test, Dhc.Resend}
 config :dhc, :resend_receiving_api_key, "re_test_receiving_key"
+# The ResendReceivingStub's download URLs are on test-only hosts (audit
+# run-1, lead 8: downloads are allowlisted to Resend's own hosts).
+config :dhc, :resend_download_allow_hosts, ["resend-raw.test", "resend-cdn.test"]
 config :dhc, :resend_webhook_secret, "whsec_" <> Base.encode64("resend-webhook-test-secret")
 config :dhc, Dhc.BeginnersWorkshops.IntakeReplies, enabled: true
 

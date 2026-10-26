@@ -347,7 +347,7 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
           max_capacity: 1
         )
 
-      return_url = "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+      return_url = app_return_url()
       payment_attempt_id = Ecto.UUID.generate()
       Application.put_env(:dhc, :durable_test_workshop_id, workshop.id)
 
@@ -410,7 +410,7 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
         )
 
       Application.put_env(:dhc, :durable_test_workshop_id, workshop.id)
-      return_url = "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+      return_url = app_return_url()
 
       assert {:ok, %{checkout_session_id: checkout_session_id}} =
                Workshops.create_external_checkout_session(
@@ -460,7 +460,7 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
         )
 
       Application.put_env(:dhc, :durable_test_workshop_id, workshop.id)
-      return_url = "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+      return_url = app_return_url()
 
       assert {:ok, %{checkout_session_id: checkout_session_id}} =
                Workshops.create_external_checkout_session(
@@ -486,7 +486,7 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
           price_non_member: 2400.0
         )
 
-      return_url = "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+      return_url = app_return_url()
 
       assert {:ok, _result} =
                Workshops.create_external_checkout_session(
@@ -689,5 +689,11 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
       Workshops.process_refund(workshop.id, registration.id, "Unable to attend", requested_by)
 
     {refund, registration}
+  end
+
+  # Stripe's embedded Checkout returns the payer to the dashboard's own
+  # origin (`Dhc.Stripe.ReturnUrl`); the test app URL is the dashboard.
+  defp app_return_url(path \\ "/workshops/c/confirmation") do
+    Application.fetch_env!(:dhc, :app_url) <> path <> "?session_id={CHECKOUT_SESSION_ID}"
   end
 end

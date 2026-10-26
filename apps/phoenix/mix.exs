@@ -12,11 +12,14 @@ defmodule Dhc.MixProject do
       deps: deps(),
       hex: [
         # Hackney is test-only (Bypass and Testcontainers pull it in), and its
-        # four advisories have no 1.x fixes: CVE-2026-47069/47071/47075/47076
-        # are fixed only in the 4.0.1+ line, while Testcontainers still
-        # requires Hackney ~> 1.20. Keep these four exceptions until
-        # Testcontainers supports Hackney 4, and re-check on every
-        # Testcontainers release.
+        # advisories have no 1.x fixes: CVE-2026-47069/47071/47075/47076 and
+        # CVE-2026-115693 are fixed only in the 4.0.1+ line, while
+        # Testcontainers still requires Hackney ~> 1.20. Keep these exceptions
+        # until Testcontainers supports Hackney 4, and re-check on every
+        # Testcontainers release. In tests Hackney talks to the local Docker
+        # socket over the Unix transport with default trust, never a proxy,
+        # never a custom CA, and no cross-scheme redirects, so these have no
+        # production exposure.
         #
         # CVE-2026-43966 (cow_http_struct_hd response splitting) has no fixed
         # Cowlib release: upstream treats the surrounding guards as the fix —
@@ -30,7 +33,8 @@ defmodule Dhc.MixProject do
           "CVE-2026-47069",
           "CVE-2026-47071",
           "CVE-2026-47075",
-          "CVE-2026-47076"
+          "CVE-2026-47076",
+          "CVE-2026-115693"
         ]
       ],
       listeners: [Phoenix.CodeReloader]
@@ -72,7 +76,7 @@ defmodule Dhc.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.13.1"},
+      {:bandit, "~> 1.14"},
       {:oban, "~> 2.19"},
       {:sentry, "~> 13.4"},
       {:opentelemetry, "~> 1.5"},

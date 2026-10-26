@@ -192,6 +192,30 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplyForwardTest do
       assert_no_email_sent()
     end
 
+    # Security-audit run-1, lead 8: a job queued while the feature was on is
+    # discarded, never forwarded, once the feature is parked again.
+    test "the parked feature runs no queued forward" do
+      original = Application.get_env(:dhc, IntakeReplies)
+
+      Application.put_env(:dhc, IntakeReplies, enabled: false)
+
+      on_exit(fn ->
+        if is_nil(original),
+          do: Application.delete_env(:dhc, IntakeReplies),
+          else: Application.put_env(:dhc, IntakeReplies, original)
+      end)
+
+      {_person, address} = person_with_address()
+      id = resend_id()
+      receive!(id, address)
+      ResendReceivingStub.stub(id)
+
+      assert {:discard, :feature_disabled} =
+               perform_job(ReplyWorker, %{"resend_email_id" => id})
+
+      assert_no_email_sent()
+    end
+
     test "records the sent id the provider returns" do
       original = Application.get_env(:dhc, Mailer)
 

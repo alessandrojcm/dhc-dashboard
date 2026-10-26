@@ -13,7 +13,8 @@ defmodule Dhc.Resend.Receiving do
     * `list_attachments/1` — `GET /emails/receiving/:id/attachments`, each
       with a signed `download_url`;
     * `download/1` — fetches a signed attachment or raw-email URL (no API key:
-      the URL is the credential).
+      the URL is the credential), only on Resend's own hosts
+      (`Receiving.DownloadUrl`) and without following redirects.
 
   Errors are closed atoms or `{:http_status, status}` so no URL, address or
   body can reach a log or Sentry through an error term. Req's own retry is
@@ -22,6 +23,8 @@ defmodule Dhc.Resend.Receiving do
   Tests stub Resend with `Req.Test.stub(Dhc.Resend, plug)`; `config/test.exs`
   sets `:resend_req_options` to `plug: {Req.Test, Dhc.Resend}`.
   """
+
+  alias Dhc.Resend.Receiving.DownloadUrl
 
   @id_format ~r/\A[0-9A-Za-z_-]{1,128}\z/
 
@@ -61,12 +64,19 @@ defmodule Dhc.Resend.Receiving do
   @spec download(String.t()) :: {:ok, binary()} | {:error, error()}
   def download(url) when is_binary(url) do
     case URI.new(url) do
-      {:ok, %URI{scheme: "https", host: host}} when is_binary(host) ->
-        [url: url, decode_body: false]
-        |> request()
-        |> body()
+      {:ok, %URI{scheme: "https", host: host, userinfo: nil}}
+      when is_binary(host) and host != "" ->
+        if DownloadUrl.allowed_host?(host) do
+          # The URL is the credential and its host was just checked, so a
+          # redirect to any other host is refused rather than followed.
+          [url: url, decode_body: false, redirect: false]
+          |> request()
+          |> body()
+        else
+          {:error, :invalid_response}
+        end
 
-      _not_https ->
+      _not_an_allowed_https_url ->
         {:error, :invalid_response}
     end
   end

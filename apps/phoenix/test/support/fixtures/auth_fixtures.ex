@@ -109,6 +109,19 @@ defmodule Dhc.AuthFixtures do
   end
 
   @doc """
+  Builds and inserts a session, then a socket token exchanged from it (the
+  production flow: `GET /api/auth/socket-token`). Returns
+  `{raw_socket_token, session_token_id}` — the session row id is the socket's
+  id scope (`Dhc.Auth.session_socket_topic/2`).
+  """
+  def socket_token(principal) do
+    session = session_token(principal)
+    {:ok, session_token_id} = Dhc.Auth.get_session_reference(session)
+    {:ok, token} = Dhc.Auth.create_socket_token(principal, session)
+    {token, session_token_id}
+  end
+
+  @doc """
   Ages a token row's `created_at` back or forward by `amount` `unit`, so
   expiry tests can run without real sleeps. `token` is the raw bytes (for
   session tokens) or the hashed bytes (for magic-link tokens — pass

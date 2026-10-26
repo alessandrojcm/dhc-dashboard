@@ -573,12 +573,33 @@ defmodule Dhc.Auth do
   second logout with the same cookie is a no-op.
 
   The incoming cookie is hashed (SHA-256) before lookup, matching
-  `Dhc.Auth.PrincipalToken.build_session_token/1`.
+  `Dhc.Auth.PrincipalToken.build_session_token/1`. The socket credentials
+  exchanged from the session die with it (they are bound to its row), and
+  the device's established socket is disconnected after the delete.
   """
   def delete_session_token(token) do
     hashed_token = Dhc.Auth.PrincipalToken.hash_token(token)
 
-    Repo.delete_all(from(PrincipalToken, where: [token: ^hashed_token, context: "session"]))
+    {_, session_rows} =
+      Repo.transaction(fn ->
+        rows =
+          Repo.all(
+            from(t in PrincipalToken,
+              where: t.token == ^hashed_token and t.context == "session",
+              select: %{id: t.id, principal_id: t.principal_id}
+            )
+          )
+
+        Repo.delete_all(
+          from t in PrincipalToken, where: t.token == ^hashed_token and t.context == "session"
+        )
+
+        rows
+      end)
+
+    Enum.each(session_rows || [], fn %{id: id, principal_id: principal_id} ->
+      disconnect_session_socket(principal_id, id)
+    end)
 
     :ok
   end
@@ -586,12 +607,33 @@ defmodule Dhc.Auth do
   @doc """
   Deletes every session for the given principal. Used by sign-out-everywhere
   and by email-change / access-loss revocation (per the spec).
+
+  The socket credentials exchanged from those sessions die with them (they
+  are bound to their session rows), and the devices' established sockets are
+  disconnected after the delete.
   """
   def delete_all_principal_sessions(%Principal{} = principal) do
-    Repo.delete_all(
-      from t in PrincipalToken,
-        where: t.principal_id == ^principal.id and t.context == "session"
-    )
+    {_, session_rows} =
+      Repo.transaction(fn ->
+        rows =
+          Repo.all(
+            from(t in PrincipalToken,
+              where: t.principal_id == ^principal.id and t.context == "session",
+              select: %{id: t.id, principal_id: t.principal_id}
+            )
+          )
+
+        Repo.delete_all(
+          from t in PrincipalToken,
+            where: t.principal_id == ^principal.id and t.context == "session"
+        )
+
+        rows
+      end)
+
+    Enum.each(session_rows || [], fn %{id: id, principal_id: principal_id} ->
+      disconnect_session_socket(principal_id, id)
+    end)
 
     :ok
   end
@@ -625,6 +667,12 @@ defmodule Dhc.Auth do
     profile_ids = Enum.uniq(profile_ids)
 
     Repo.transaction(fn ->
+      # Serialize with the role-editor boundary (`Dhc.Auth.Roles.update/3`):
+      # the last-active-editor guard counts editors without locking their
+      # profiles, so a concurrent deactivation must not interleave with a
+      # role edit that has already counted this editor.
+      unless is_active, do: lock_role_editors!()
+
       profiles =
         UserProfile
         |> where([profile], profile.id in ^profile_ids)
@@ -642,21 +690,20 @@ defmodule Dhc.Auth do
         |> Enum.map(& &1.principal_id)
         |> Enum.reject(&is_nil/1)
 
-      if not is_active and principal_ids != [] do
-        Repo.delete_all(
-          from t in PrincipalToken,
-            where: t.principal_id in ^principal_ids and t.context in ["session", "socket"]
-        )
-      end
-
-      principal_ids
-    end)
-    |> case do
-      {:ok, principal_ids} ->
-        if not is_active do
-          Enum.each(principal_ids, &disconnect_sockets/1)
+      # Captured before the deletion: the disconnected sockets are keyed by
+      # the session rows being deleted here (security-audit run-1 lead 4).
+      session_rows =
+        if not is_active and principal_ids != [] do
+          revoke_authentication_tokens(principal_ids)
+        else
+          []
         end
 
+      session_rows
+    end)
+    |> case do
+      {:ok, session_rows} ->
+        if not is_active, do: disconnect_session_sockets(session_rows)
         :ok
 
       {:error, reason} ->
@@ -664,46 +711,93 @@ defmodule Dhc.Auth do
     end
   end
 
+  # The role-editor boundary's advisory lock (`Dhc.Auth.Roles.update/3`).
+  defp lock_role_editors! do
+    Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended('dhc:member-role-editor', 0))")
+  end
+
+  # Deletes every Session and socket token of the principals and returns
+  # their session rows (for `disconnect_session_sockets/1` after commit).
+  defp revoke_authentication_tokens(principal_ids) do
+    session_rows =
+      Repo.all(
+        from t in PrincipalToken,
+          where: t.principal_id in ^principal_ids and t.context == "session",
+          select: %{id: t.id, principal_id: t.principal_id}
+      )
+
+    Repo.delete_all(
+      from t in PrincipalToken,
+        where: t.principal_id in ^principal_ids and t.context in ["session", "socket"]
+    )
+
+    session_rows
+  end
+
   ## Socket tokens (ALE-164)
 
   @doc "The principal-scoped socket topic used for revocation."
   def socket_topic(principal_id), do: "users_socket:#{principal_id}"
 
-  @doc "Disconnects established sockets after authentication changes commit."
-  def disconnect_sockets(principal_id) do
-    DhcWeb.Endpoint.broadcast(socket_topic(principal_id), "disconnect", %{})
+  @doc """
+  The topic of one device's socket: the principal's socket topic scoped to
+  the session row the socket token was exchanged from. Disconnecting is
+  therefore per device (a current-device logout does not disturb other
+  devices' sockets) while every session of a Principal can still be swept.
+  """
+  def session_socket_topic(principal_id, session_token_id),
+    do: "#{socket_topic(principal_id)}:#{session_token_id}"
+
+  @doc "Disconnects the established sockets opened with one session's socket token."
+  def disconnect_session_socket(principal_id, session_token_id) do
+    DhcWeb.Endpoint.broadcast(
+      session_socket_topic(principal_id, session_token_id),
+      "disconnect",
+      %{}
+    )
   end
 
   @doc """
-  Creates a short-lived socket token for the principal and returns the raw
-  opaque token.
+  Disconnects the established sockets opened with the given `%{id:,
+  principal_id:}` session rows (their tokens die with the sessions deleted in
+  the caller's transaction — capture the rows before deleting them).
+  """
+  def disconnect_session_sockets(session_rows) do
+    Enum.each(session_rows, fn %{id: id, principal_id: principal_id} ->
+      disconnect_session_socket(principal_id, id)
+    end)
+  end
+
+  @doc """
+  Exchanges a still-valid session for a short-lived socket token, under the
+  access lock, and returns the raw opaque token.
 
   The browser exchanges the `_dhc_session` cookie for this token via
   `GET /api/auth/socket-token` and passes it to the Phoenix JS socket as
   `authToken`. The socket verifies it through
   `get_principal_by_socket_token/1`. Single-use is not enforced — the
   `@socket_validity_in_seconds` window is the boundary — but only the hash is
-  stored.
+  stored, and the token is bound to the session row it was exchanged from, so
+  deleting the session revokes it.
   """
-  def create_socket_token(%Principal{} = principal) do
-    {token, row} = PrincipalToken.build_socket_token(principal)
-    {:ok, _} = Repo.insert(row)
-    {:ok, token}
-  end
-
-  @doc "Exchanges a still-valid session for a socket token under the access lock."
-  def create_socket_token(%Principal{} = principal, session_token) do
+  def create_socket_token(%Principal{} = principal, session_token)
+      when is_binary(session_token) do
     Repo.transaction(fn ->
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
 
-      case get_principal_by_session_token(session_token) do
-        {:ok, %{id: id}} when id == principal.id -> :ok
-        _ -> Repo.rollback(:invalid)
-      end
+      {:ok, query} = PrincipalToken.verify_session_token_query(session_token)
 
-      {:ok, token} = create_socket_token(principal)
-      token
+      case Repo.one(query) do
+        {%{id: principal_id}, session_row} when principal_id == principal.id ->
+          {token, row} = PrincipalToken.build_socket_token(principal, session_row.id)
+          {:ok, _} = Repo.insert(row)
+          token
+
+        _ ->
+          Repo.rollback(:invalid)
+      end
     end)
+    |> transaction_result()
   end
 
   @doc """
@@ -722,7 +816,7 @@ defmodule Dhc.Auth do
     end
   end
 
-  @doc "Socket authentication projection and its non-secret credential reference."
+  @doc "Socket authentication projection, its non-secret credential reference, and the session row it was exchanged from."
   def get_socket_projection(token) do
     {:ok, query} = PrincipalToken.verify_socket_token_query(token)
     socket_projection(query)
@@ -739,7 +833,7 @@ defmodule Dhc.Auth do
       {principal, row} ->
         with {:ok, projection} <- load_session_principal(principal),
              :ok <- Capabilities.authorize(projection, nil) do
-          {:ok, projection, row.id}
+          {:ok, projection, row.id, row.session_token_id}
         end
 
       nil ->

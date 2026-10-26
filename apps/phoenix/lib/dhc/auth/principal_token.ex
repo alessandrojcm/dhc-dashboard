@@ -54,6 +54,13 @@ defmodule Dhc.Auth.PrincipalToken do
     field :authenticated_at, :utc_datetime
     belongs_to :principal, Dhc.Auth.Principal
 
+    # A "socket" token's originating "session" row. The verifiers require
+    # the bound session to still exist, so deleting the session row (a
+    # logout, sign-out-everywhere, access loss) revokes the socket
+    # credentials exchanged from it. NULL on every other context, and on
+    # rows written before the binding existed (they no longer verify).
+    belongs_to :session_token, Dhc.Auth.PrincipalToken
+
     timestamps(type: :utc_datetime, updated_at: false, inserted_at: :created_at)
   end
 
@@ -79,14 +86,16 @@ defmodule Dhc.Auth.PrincipalToken do
   end
 
   @doc """
-  Builds a short-lived socket token and its DB row (ALE-164).
+  Builds a short-lived socket token and its DB row (ALE-164), bound to the
+  originating session row.
 
   The raw token (32 random bytes) is returned to the caller to be Base64-
   encoded for transport as the `authToken` subprotocol value; the row stores
   only the SHA-256 hash. Expiry is enforced by `verify_socket_token_query/1`
-  via `@socket_validity_in_seconds`.
+  via `@socket_validity_in_seconds`, and the binding by that query's join to
+  the still-existing session row.
   """
-  def build_socket_token(principal) do
+  def build_socket_token(principal, session_token_id) when is_binary(session_token_id) do
     token = :crypto.strong_rand_bytes(@rand_size)
     hashed_token = hash_token(token)
     dt = principal.authenticated_at || DateTime.utc_now(:second)
@@ -96,6 +105,7 @@ defmodule Dhc.Auth.PrincipalToken do
        token: hashed_token,
        context: "socket",
        principal_id: principal.id,
+       session_token_id: session_token_id,
        authenticated_at: dt
      }}
   end
@@ -177,8 +187,10 @@ defmodule Dhc.Auth.PrincipalToken do
 
   `token` is the raw bytes the browser received Base64-encoded from
   `GET /api/auth/socket-token`. Valid iff the (context="socket", hashed_token)
-  row exists, was created within `@socket_validity_in_seconds`, and the
-  principal still exists.
+  row exists, was created within `@socket_validity_in_seconds`, the principal
+  still exists, **and** the session row the token was exchanged from still
+  exists within its own 30-day window — so a logout (which deletes the
+  session row) revokes the socket credentials it minted.
   """
   def verify_socket_token_query(token) when is_binary(token) do
     hashed_token = hash_token(token)
@@ -186,7 +198,10 @@ defmodule Dhc.Auth.PrincipalToken do
     query =
       from t in by_token_and_context_query(hashed_token, "socket"),
         join: p in assoc(t, :principal),
+        join: s in PrincipalToken,
+        on: s.id == t.session_token_id and s.context == "session",
         where: t.created_at > ago(^@socket_validity_in_seconds, "second"),
+        where: s.created_at > ago(@session_validity_in_days, "day"),
         select: {p, t}
 
     {:ok, query}
@@ -197,8 +212,11 @@ defmodule Dhc.Auth.PrincipalToken do
     query =
       from(t in PrincipalToken,
         join: p in assoc(t, :principal),
+        join: s in PrincipalToken,
+        on: s.id == t.session_token_id and s.context == "session",
         where: t.id == ^reference and t.context == "socket",
         where: t.created_at > ago(^@socket_validity_in_seconds, "second"),
+        where: s.created_at > ago(@session_validity_in_days, "day"),
         select: {p, t}
       )
 
@@ -291,7 +309,7 @@ defmodule Dhc.Auth.PrincipalToken do
 
   @doc """
   Hashes a raw token (the cookie / URL-encoded value the caller holds) with
-  the same algorithm `build_session_token/1`, `build_socket_token/1`, and
+  the same algorithm `build_session_token/1`, `build_socket_token/2`, and
   `build_magic_link_token/1` use to store the digest. Public so the auth
   context can hash an incoming session cookie before a lookup or delete
   (`verify_session_token_query/1` already hashes internally; `delete_session_token/1`

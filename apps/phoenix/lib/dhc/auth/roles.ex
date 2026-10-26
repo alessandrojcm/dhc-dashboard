@@ -51,11 +51,8 @@ defmodule Dhc.Auth.Roles do
       apply_edit!(actor_id, id, desired, expected)
     end)
     |> case do
-      {:ok, {view, true}} ->
-        Auth.disconnect_sockets(id)
-        {:ok, view}
-
-      {:ok, {view, false}} ->
+      {:ok, {view, changed, session_rows}} ->
+        if changed, do: Auth.disconnect_session_sockets(session_rows)
         {:ok, view}
 
       {:error, reason} ->
@@ -69,8 +66,22 @@ defmodule Dhc.Auth.Roles do
       current = roles(id)
       if current != expected, do: Repo.rollback(:roles_changed)
       changed = current != desired
+
+      # The device sockets opened with the sessions being revoked are
+      # disconnected after commit; capture the rows before the deletion.
+      session_rows =
+        if changed,
+          do:
+            Repo.all(
+              from(t in PrincipalToken,
+                where: t.principal_id == ^id and t.context == "session",
+                select: %{id: t.id, principal_id: t.principal_id}
+              )
+            ),
+          else: []
+
       if changed, do: replace_roles!(id, desired)
-      {view(id), changed}
+      {view(id), changed, session_rows}
     else
       {:error, reason} -> Repo.rollback(reason)
     end
@@ -88,6 +99,8 @@ defmodule Dhc.Auth.Roles do
         where: t.principal_id == ^id and t.context in ["session", "socket"]
       )
     )
+
+    :ok
   end
 
   defp authorize(actor_id) do

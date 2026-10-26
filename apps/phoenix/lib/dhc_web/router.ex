@@ -351,7 +351,6 @@ defmodule DhcWeb.Router do
 
     get("/options", MembersController, :options)
     get("/invitations/:id", InvitationsController, :show)
-    post("/invitations/:id/verify", InvitationsController, :verify)
     get("/waitlist/status", WaitlistController, :index)
     post("/waitlist/entries", WaitlistController, :create)
     post("/webhooks/stripe", StripeWebhooksController, :create)
@@ -371,6 +370,21 @@ defmodule DhcWeb.Router do
       WorkshopsController,
       :complete_external_registration
     )
+  end
+
+  # Invitation credential verification is a public oracle (id + email + DOB
+  # must match exactly), so it is rate limited like the magic link — an
+  # over-limit request answers the same 422 problem as wrong credentials.
+  pipeline :invitation_verify_api do
+    plug(:accepts, ["json"])
+    plug(DhcWeb.Plugs.RequireJsonBody)
+    plug(DhcWeb.Plugs.InvitationVerifyLimit)
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through(:invitation_verify_api)
+
+    post("/invitations/:id/verify", InvitationsController, :verify)
   end
 
   scope "/api", DhcWeb do

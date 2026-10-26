@@ -136,7 +136,10 @@ defmodule Dhc.Stripe.Webhook do
   defp check_tolerance(timestamp, tolerance) do
     now = System.system_time(:second)
 
-    if timestamp >= now - tolerance do
+    # Both sides of the skew are bounded: an old timestamp is a replay, a
+    # future one has no legitimate sender (defense in depth — the HMAC
+    # binds the timestamp, so this only matters if a secret leaks).
+    if timestamp >= now - tolerance and timestamp <= now + tolerance do
       :ok
     else
       {:error, :timestamp_expired}
