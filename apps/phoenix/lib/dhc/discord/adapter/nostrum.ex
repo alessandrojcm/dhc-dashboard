@@ -22,7 +22,7 @@ defmodule Dhc.Discord.Adapter.Nostrum do
          {:ok, user_id} <- cast_snowflake(user_id, "user id") do
       options = [access_token: access_token, nick: nickname]
 
-      case Nostrum.Api.Guild.add_member(guild_id, user_id, options) do
+      case join_with_optional_nickname(guild_id, user_id, options) do
         {:ok, %Nostrum.Struct.Guild.Member{}} -> {:ok, :added}
         {:ok} -> {:ok, :already_member}
         {:error, error} -> {:error, normalize_error(error)}
@@ -39,6 +39,23 @@ defmodule Dhc.Discord.Adapter.Nostrum do
         {:ok} -> :ok
         {:error, error} -> {:error, normalize_error(error)}
       end
+    end
+  end
+
+  # A nickname requires MANAGE_NICKNAMES in addition to CREATE_INSTANT_INVITE.
+  # A deterministic 50013 rejection is safe to retry once without this optional
+  # decoration. Other denials (bans, missing access, invalid OAuth) stay denied.
+  defp join_with_optional_nickname(guild_id, user_id, options) do
+    case Nostrum.Api.Guild.add_member(guild_id, user_id, options) do
+      {:error, %NostrumApiError{status_code: 403, response: response}} = denied ->
+        if response_value(response, :code) == 50_013 do
+          Nostrum.Api.Guild.add_member(guild_id, user_id, Keyword.delete(options, :nick))
+        else
+          denied
+        end
+
+      outcome ->
+        outcome
     end
   end
 

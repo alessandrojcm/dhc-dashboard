@@ -29,7 +29,15 @@ defmodule Dhc.Email.ApiClient do
 
   @impl true
   def post(url, headers, body, %Swoosh.Email{} = email) do
-    Swoosh.ApiClient.Finch.post(url, idempotency_header(headers, email), body, email)
+    :ok = Dhc.Resend.RateLimit.await()
+    result = Swoosh.ApiClient.Finch.post(url, idempotency_header(headers, email), body, email)
+
+    case result do
+      {:ok, 429, response_headers, _body} -> Dhc.Resend.RateLimit.cooldown(response_headers)
+      _ -> :ok
+    end
+
+    result
   end
 
   @doc """

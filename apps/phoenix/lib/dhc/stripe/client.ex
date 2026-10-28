@@ -97,28 +97,60 @@ defmodule Dhc.Stripe.Client do
             req_opts
         )
 
-      handle_result(result)
+      handle_result(result, method, url)
     end
   end
 
-  defp handle_result({:ok, %Req.Response{status: status, body: body}})
+  defp handle_result({:ok, %Req.Response{status: status, body: body}}, _method, _url)
        when status in 200..299 do
     {:ok, body}
   end
 
-  defp handle_result({:ok, %Req.Response{status: status, body: body}}) do
-    Logger.error("[stripe-client] Stripe API returned #{status}",
+  defp handle_result({:ok, %Req.Response{status: status, body: body} = response}, method, url) do
+    error = if is_map(body), do: Map.get(body, "error", %{}), else: %{}
+    error = if is_map(error), do: error, else: %{}
+    endpoint = safe_endpoint(url)
+    request_id = safe_identifier(response.headers["request-id"] |> List.wrap() |> List.first())
+    code = safe_identifier(error["code"])
+    type = safe_identifier(error["type"])
+
+    Logger.error(
+      "[stripe-client] Stripe API returned #{status} " <>
+        "#{method} #{endpoint} code=#{code} type=#{type} request_id=#{request_id}",
       status: status,
-      body: inspect(body)
+      stripe_endpoint: endpoint,
+      stripe_method: method,
+      stripe_error_code: code,
+      stripe_error_type: type,
+      stripe_request_id: request_id
     )
 
     {:error, {:stripe_api, status, body}}
   end
 
-  defp handle_result({:error, exception}) do
-    Logger.error("[stripe-client] HTTP request failed: #{inspect(exception)}")
+  defp handle_result({:error, exception}, method, url) do
+    Logger.error("[stripe-client] HTTP request failed #{method} #{safe_endpoint(url)}")
     {:error, {:http_error, exception}}
   end
+
+  @endpoint_segments ~w(v1 customers subscriptions payment_intents setup_intents payment_methods invoices prices coupons promotion_codes refunds checkout sessions billing_portal create_preview cancel attach detach expire)
+
+  defp safe_endpoint(url) do
+    url
+    |> String.split("?", parts: 2)
+    |> hd()
+    |> String.split("/", trim: true)
+    |> Enum.map_join("/", fn segment ->
+      if segment in @endpoint_segments, do: segment, else: ":id"
+    end)
+    |> then(&("/" <> &1))
+  end
+
+  defp safe_identifier(value) when is_binary(value) do
+    if Regex.match?(~r/\A[a-zA-Z0-9_]{1,128}\z/, value), do: value, else: "unknown"
+  end
+
+  defp safe_identifier(_value), do: "unknown"
 
   defp maybe_add_idempotency_key(headers, call_opts) do
     request_opts = Keyword.get(call_opts, :opts, [])
