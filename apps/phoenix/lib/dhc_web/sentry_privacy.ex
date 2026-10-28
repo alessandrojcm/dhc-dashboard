@@ -7,8 +7,8 @@ defmodule DhcWeb.SentryPrivacy do
 
   alias DhcWeb.IntakeLinkPrivacy
 
-  @email_worker "Dhc.Email.Worker"
-  @safe_extra ~w(id attempt max_attempts queue worker tags oban_job_id oban_attempt oban_queue oban_worker transactional_id provider_status validation_errors)a
+  @email_workers ["Dhc.Email.Worker", "Dhc.Email.OfferRoundWorker"]
+  @safe_extra ~w(id attempt max_attempts queue worker tags oban_job_id oban_attempt oban_queue oban_worker transactional_id provider_status validation_errors round_id chunk count delivery_failure)a
   @safe_metadata ~w(file line oban_job_id oban_attempt oban_queue oban_worker transactional_id provider_status)a
 
   @doc "Filters expected email retries and scrubs retained reports."
@@ -27,8 +27,7 @@ defmodule DhcWeb.SentryPrivacy do
     extra = event.extra || %{}
     metadata = extra[:logger_metadata] || %{}
 
-    (tags["oban_worker"] || extra[:oban_worker] || extra[:worker] || metadata[:oban_worker]) ==
-      @email_worker
+    (tags["oban_worker"] || extra[:oban_worker] || extra[:worker] || metadata[:oban_worker]) in @email_workers
   end
 
   defp retrying_delivery?(%{
@@ -64,6 +63,7 @@ defmodule DhcWeb.SentryPrivacy do
     %{
       event
       | extra: safe,
+        message: safe_message(event.message),
         exception: exceptions,
         original_exception: nil,
         integration_meta: %{},
@@ -73,15 +73,22 @@ defmodule DhcWeb.SentryPrivacy do
     }
   end
 
+  defp safe_message(nil), do: nil
+  defp safe_message(_message), do: %Sentry.Interfaces.Message{formatted: "Email job failed"}
+
   defp safe_args(args) do
     args = string_keys(args)
 
-    %{
-      transactional_id: args["transactional_id"],
-      data_variable_keys: variable_keys(args),
-      sealed_data_variables: args["sealed_data_variables"] not in [nil, false],
-      sealed_reply_to: args["sealed_reply_to"] not in [nil, false]
-    }
+    if Map.has_key?(args, "sealed_envelopes") do
+      Map.take(args, ~w(round_id chunk count))
+    else
+      %{
+        transactional_id: args["transactional_id"],
+        data_variable_keys: variable_keys(args),
+        sealed_data_variables: args["sealed_data_variables"] not in [nil, false],
+        sealed_reply_to: args["sealed_reply_to"] not in [nil, false]
+      }
+    end
   end
 
   defp variable_keys(%{"data_variables" => variables}) when is_map(variables),

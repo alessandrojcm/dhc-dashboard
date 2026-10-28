@@ -228,8 +228,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeCommandsTest do
       assert [%{occasion: "contact"}, %{email_type: "contact_pay", occasion: ^occasion}] =
                logs(intake)
 
-      assert [_contact, _again] = jobs = jobs("beginnersWorkshopAction")
-      %{args: args} = Enum.max_by(jobs, & &1.id)
+      assert [%{args: args}] = jobs("beginnersWorkshopAction")
       assert args["data_variables"]["BUTTON_LABEL"] == "Pay for your place"
       assert :ok = perform_job(Worker, args)
 
@@ -280,8 +279,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeCommandsTest do
       assert {:ok, %{state: :pay}} = IntakePage.show(new_token, Clock.fixed(@now))
       assert {:error, :not_found} = execute({:intake_link, old_token}, :start_payment)
 
-      assert [_contact, _again] = jobs = jobs("beginnersWorkshopAction")
-      %{args: args} = Enum.max_by(jobs, & &1.id)
+      assert [%{args: args}] = jobs("beginnersWorkshopAction")
       assert :ok = perform_job(Worker, args)
 
       url = IntakeLink.url(new_token)

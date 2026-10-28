@@ -78,4 +78,46 @@ defmodule DhcWeb.SentryPrivacyTest do
     assert [%Sentry.Event{extra: %{id: 7}} = event] = Sentry.Test.pop_sentry_reports()
     refute inspect(event) =~ "private"
   end
+
+  test "actual Oban reports for nested offer-round args scrub errors, throws and exits" do
+    Sentry.Test.setup_sentry(dedup_events: false)
+
+    job = %Oban.Job{
+      id: 99,
+      worker: "Dhc.Email.OfferRoundWorker",
+      queue: "emails",
+      attempt: 1,
+      max_attempts: 5,
+      args: %{
+        "round_id" => "safe-round",
+        "chunk" => 0,
+        "count" => 2,
+        "sealed_envelopes" => "private ciphertext",
+        "envelopes" => [
+          %{
+            "email" => "private@example.test",
+            "reply_to" => "private@reply.example.test",
+            "body" => "private message"
+          }
+        ]
+      }
+    }
+
+    for kind <- [:error, :throw, :exit] do
+      reason =
+        if kind == :error, do: RuntimeError.exception("private exception"), else: "private reason"
+
+      Sentry.Integrations.Oban.ErrorReporter.handle_event(
+        [:oban, :job, :exception],
+        %{},
+        %{job: job, kind: kind, reason: reason, stacktrace: []},
+        []
+      )
+
+      assert [event] = Sentry.Test.pop_sentry_reports()
+      refute inspect(event) =~ "private"
+      assert event.extra.id == 99
+      assert event.extra.args == %{"round_id" => "safe-round", "chunk" => 0, "count" => 2}
+    end
+  end
 end

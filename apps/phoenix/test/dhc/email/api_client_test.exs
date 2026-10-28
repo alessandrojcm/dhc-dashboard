@@ -54,4 +54,11 @@ defmodule Dhc.Email.ApiClientTest do
              ) == base_headers
     end
   end
+
+  test "an elapsed delivery deadline prevents HTTP even at the final transport boundary" do
+    email = email_with(delivery_deadline: System.system_time(:second) - 1)
+    # No server exists here: a request would return a connection failure instead.
+    assert {:error, :delivery_window_expired} =
+             ApiClient.post("http://127.0.0.1:1/emails/batch", [], "[]", email)
+  end
 end
