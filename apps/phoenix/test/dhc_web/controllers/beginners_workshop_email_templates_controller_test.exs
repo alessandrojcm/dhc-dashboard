@@ -40,9 +40,11 @@ defmodule DhcWeb.BeginnersWorkshopEmailTemplatesControllerTest do
       for role <- @managers do
         assert %{"data" => templates} = role |> as() |> get(@path) |> json_response(200)
         assert Enum.map(templates, & &1["emailType"]) == EmailType.ids()
+        assert Enum.all?(templates, &(is_binary(&1["label"]) and &1["label"] != ""))
 
         assert %{
                  "kind" => "action",
+                 "label" => "Place offer: payment needed",
                  "buttonLabel" => "Pay for your place",
                  "placeholders" => [
                    "firstName",

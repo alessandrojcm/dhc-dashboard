@@ -6,7 +6,6 @@ import {
 	notificationsMarkAllReadMutation,
 	notificationsMarkReadMutation,
 	type Notification as ApiNotification,
-	authSessionSocketToken,
 } from "@dhc/api-client";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -105,16 +104,10 @@ onMount(() => {
 	if (!browser || !PUBLIC_PHOENIX_SOCKET_URL) return;
 
 	// The realtime bridge owns the socket-token fetch + reconnect cycle.
-	// We pass it a function that fetches a fresh socket token (the
-	// token is short-lived, so a reconnect after a long disconnect
-	// needs a fresh one).
+	// It fetches a fresh short-lived token on each attempt, and stops
+	// reconnecting if Phoenix reports that the session has ended.
 	const realtime = connectNotificationRealtime({
 		socketUrl: PUBLIC_PHOENIX_SOCKET_URL,
-		getSocketToken: async () => {
-			const { data, error } = await authSessionSocketToken();
-			if (error || !data) return null;
-			return data.data.socketToken;
-		},
 		invalidate: () =>
 			queryClient.invalidateQueries({ queryKey: notificationsQueryKey }),
 	});

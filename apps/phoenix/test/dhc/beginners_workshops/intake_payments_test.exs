@@ -587,8 +587,38 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
       Stripe.refuse_expire(Stripe.session_id(row))
       Stripe.stub_retrieve(Stripe.session(row))
 
-      assert {:ok, %{completed: 1}} = reap(@hold_ends)
+      log =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert {:ok, %{completed: 1}} = reap(@hold_ends)
+        end)
+
+      refute log =~ "req_intake_closed_checkout"
+
       assert %Intake{state: "paid"} = Repo.reload!(intake)
+    end
+
+    test "an already expired Stripe session releases its hold without an error report", %{
+      coordinator: coordinator
+    } do
+      {workshop, [{intake, token}]} = contacted_fixture(coordinator, 1)
+      Stripe.stub_create()
+      assert {:ok, _} = pay(token)
+      row = payment!(intake)
+      Stripe.refuse_expire(Stripe.session_id(row), "expired")
+
+      Stripe.stub_retrieve(
+        Stripe.session(row, %{"status" => "expired", "payment_status" => "unpaid"})
+      )
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert {:ok, %{released: 1}} = reap(@hold_ends)
+        end)
+
+      refute log =~ "req_intake_closed_checkout"
+
+      assert %IntakePayment{status: "released"} = Repo.reload!(row)
+      assert %{holds: 0} = seats(workshop)
     end
 
     test "a hold whose session was never recorded replays the create, or is freed when Stripe has none",

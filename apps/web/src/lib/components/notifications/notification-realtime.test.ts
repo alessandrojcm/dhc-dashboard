@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	connectNotificationRealtime,
+	socketSessionUnauthorized,
 	type RealtimeChannel,
 	type RealtimePush,
 	type RealtimeSocket,
 	type SocketFactory,
 } from "./notification-realtime.svelte";
 import type { PhoenixPayload } from "phoenix";
+import { getClient } from "@dhc/api-client";
 
 /**
  * Focused NotificationCenter realtime bridge tests (ALE-164).
@@ -213,6 +215,36 @@ afterEach(() => {
 });
 
 describe("connectNotificationRealtime (ALE-164 socket-token path)", () => {
+	it("stops reconnecting when Phoenix rejects the session", async () => {
+		vi.useFakeTimers();
+		const client = getClient();
+		const originalConfig = client.getConfig();
+		const fetch = vi
+			.fn<typeof globalThis.fetch>()
+			.mockImplementation(async () =>
+				Response.json({ errors: { detail: "Unauthorized" } }, { status: 401 }),
+			);
+		client.setConfig({
+			baseUrl: "https://api.example.test/api",
+			retry: 0,
+			kyOptions: { fetch },
+		});
+		const createSocket = createSocketFactory();
+		const handle = connectNotificationRealtime({
+			socketUrl: SOCKET_URL,
+			invalidate: vi.fn(),
+			createSocket,
+		});
+		try {
+			await vi.advanceTimersByTimeAsync(5 * RECONNECT_CEILING_MS);
+			expect(fetch).toHaveBeenCalledTimes(1);
+			expect(createdSockets).toHaveLength(0);
+		} finally {
+			handle.destroy();
+			client.setConfig(originalConfig);
+		}
+	});
+
 	it("fetches a socket token, supplies it as authToken, and joins notifications:self", async () => {
 		const createSocket = createSocketFactory();
 		const { handle } = setup({
@@ -230,6 +262,31 @@ describe("connectNotificationRealtime (ALE-164 socket-token path)", () => {
 		// it joins the `notifications:self` alias.
 		expect(createdSockets[0].channels[0].topic).toBe("notifications:self");
 
+		handle.destroy();
+	});
+
+	it("disconnects an existing bridge permanently when its session ends", async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const getSocketToken = vi
+			.fn()
+			.mockResolvedValueOnce("valid-token")
+			.mockResolvedValue(socketSessionUnauthorized);
+		const { handle } = setup({
+			getSocketToken,
+			createSocket: createSocketFactory(),
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		const socket = createdSockets[0];
+		socket.onCloseCb?.();
+		await vi.advanceTimersByTimeAsync(5 * RECONNECT_CEILING_MS);
+		expect(getSocketToken).toHaveBeenCalledTimes(2);
+		expect(createdSockets).toHaveLength(1);
+		expect(socket.disconnected).toBe(true);
+		socket.onOpenCb?.();
+		socket.onErrorCb?.();
+		await vi.advanceTimersByTimeAsync(RECONNECT_CEILING_MS);
+		expect(getSocketToken).toHaveBeenCalledTimes(2);
 		handle.destroy();
 	});
 

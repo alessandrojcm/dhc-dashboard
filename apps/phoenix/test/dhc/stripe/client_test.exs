@@ -10,6 +10,56 @@ defmodule Dhc.Stripe.ClientTest do
   alias Dhc.Stripe.Client
   alias Dhc.StripeHTTPStub
 
+  for state <- ~w(complete expired) do
+    test "expiring an already #{state} checkout is not an error report" do
+      state = unquote(state)
+      request_id = "req_closed_#{state}"
+
+      StripeHTTPStub.expect("POST", "/v1/checkout/sessions/cs_private/expire", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_header("request-id", request_id)
+        |> StripeHTTPStub.stripe_error(400, %{
+          "message" =>
+            ~s(Only Checkout Sessions with a status in ["open"] can be expired. This Checkout Session has a status of `#{state}`.)
+        })
+      end)
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          assert {:error, {:stripe_api, 400, _}} =
+                   Client.request(
+                     method: :post,
+                     url: "/v1/checkout/sessions/cs_private/expire",
+                     body: %{}
+                   )
+        end)
+
+      refute log =~ request_id
+    end
+  end
+
+  test "unexpected checkout expiry refusals remain errors without exposing their body" do
+    StripeHTTPStub.expect("POST", "/v1/checkout/sessions/cs_private/expire", fn conn ->
+      StripeHTTPStub.stripe_error(conn, 400, %{
+        "message" => "Unexpected refusal private@example.test",
+        "code" => "parameter_unknown"
+      })
+    end)
+
+    log =
+      ExUnit.CaptureLog.capture_log([level: :error], fn ->
+        assert {:error, {:stripe_api, 400, _}} =
+                 Client.request(
+                   method: :post,
+                   url: "/v1/checkout/sessions/cs_private/expire",
+                   body: %{}
+                 )
+      end)
+
+    assert log =~ "parameter_unknown"
+    refute log =~ "private"
+  end
+
   test "failure logs contain safe diagnostics, never Stripe response bodies or resource ids" do
     StripeHTTPStub.expect("POST", "/v1/customers/cus_private/subscriptions", fn conn ->
       conn
