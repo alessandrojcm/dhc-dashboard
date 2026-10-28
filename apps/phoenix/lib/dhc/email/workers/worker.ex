@@ -70,9 +70,10 @@ defmodule Dhc.Email.Worker do
   ## Logging
 
   Every log line carries the Oban job context (`oban_job_id`, `oban_attempt`,
-  `oban_queue`, `oban_worker`) plus `email` and `transactional_id`, so
-  failures can be correlated to a specific job. Data variable **values** are
-  never logged or sent to Sentry — only their keys.
+  `oban_queue`, `oban_worker`) plus `transactional_id`. Recipients, rendered
+  content and ciphertext are never logged. Sentry's final event hook also
+  scrubs Oban's automatic reports, suppresses ordinary retries and retains
+  exhausted jobs. Data variable **values** never leave — only their keys.
   """
 
   use Oban.Worker, queue: :emails, max_attempts: 5
@@ -152,7 +153,6 @@ defmodule Dhc.Email.Worker do
         Logger.error(
           "[email-worker] #{message}",
           Keyword.merge(ctx,
-            email: args["email"],
             transactional_id: args["transactional_id"],
             validation_errors: Enum.join(errors, ", ")
           )
@@ -283,7 +283,7 @@ defmodule Dhc.Email.Worker do
 
     Logger.error(
       "[email-worker] #{message}",
-      Keyword.merge(ctx, email: args["email"], transactional_id: args["transactional_id"])
+      Keyword.merge(ctx, transactional_id: args["transactional_id"])
     )
 
     capture_deterministic_failure(message, ctx, args: redact_args(args))
@@ -300,7 +300,7 @@ defmodule Dhc.Email.Worker do
 
     Logger.error(
       "[email-worker] #{message}",
-      Keyword.merge(ctx, email: args["email"], transactional_id: args["transactional_id"])
+      Keyword.merge(ctx, transactional_id: args["transactional_id"])
     )
 
     capture_deterministic_failure(message, ctx, args: redact_args(args))
@@ -314,12 +314,11 @@ defmodule Dhc.Email.Worker do
     end)
   end
 
-  # What may leave the worker about a job's args: the recipient and kind, plus
+  # What may leave the worker about a job's args: the kind, plus
   # the *names* of its template variables. Values (which can carry links,
   # names, or credentials) and ciphertext never do.
   defp redact_args(args) when is_map(args) do
     %{
-      email: args["email"],
       transactional_id: args["transactional_id"],
       data_variable_keys: variable_keys(args["data_variables"]),
       sealed_data_variables: Map.has_key?(args, "sealed_data_variables"),
@@ -398,13 +397,11 @@ defmodule Dhc.Email.Worker do
 
   defp deliver_email(%Email{} = email, kind, ctx) do
     case Mailer.deliver(email) do
-      {:ok, receipt} ->
+      {:ok, _receipt} ->
         Logger.info(
           "[email-worker] Email sent successfully",
           Keyword.merge(ctx,
-            email: recipient_address(email),
-            transactional_id: kind,
-            receipt: inspect(receipt)
+            transactional_id: kind
           )
         )
 
@@ -458,16 +455,20 @@ defmodule Dhc.Email.Worker do
   # with backoff. The Idempotency-Key makes those retries safe against
   # double-sends that were already accepted.
   defp classify_delivery_error(reason, kind, ctx) do
-    Logger.error(
+    Logger.warning(
       "[email-worker] Transient delivery failure; Oban will retry",
       Keyword.merge(ctx,
         transactional_id: kind,
-        reason: inspect(reason)
+        provider_status: provider_status(reason),
+        reason: "transient_delivery_failure"
       )
     )
 
     {:error, reason}
   end
+
+  defp provider_status({status, _}) when is_integer(status), do: status
+  defp provider_status(_reason), do: nil
 
   # -- Environment & helpers ---------------------------------------------------
 
@@ -508,11 +509,6 @@ defmodule Dhc.Email.Worker do
   defp email_reply_to do
     Application.get_env(:dhc, :email_reply_to, "contact@dublinhemaclub.com")
   end
-
-  defp recipient_address(%Email{to: [{_, recipient}]}) when is_binary(recipient),
-    do: recipient
-
-  defp recipient_address(%Email{to: to}), do: inspect(to)
 
   defp job_log_context(%Oban.Job{} = job) do
     [

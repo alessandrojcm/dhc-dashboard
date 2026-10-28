@@ -49,6 +49,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
 
   `owing/1` and `scheduled/3` answer "who still owes it" for the sweep and
   the console from the same occasions.
+
+  Automatic offer-round Contacts opt into an opaque plan instead of an
+  individual job (ALE-428). `enqueue_offer_round/2` freezes the ordered plans
+  into sealed delivery chunks in the same command transaction. Fast-track,
+  resends and every other occasion retain the individual queue path above.
   """
 
   import Ecto.Query
@@ -72,6 +77,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   alias Dhc.BeginnersWorkshops.IntakeEmails.Values
   alias Dhc.BeginnersWorkshops.IntakeReplies
   alias Dhc.Email.RichText
+  alias Dhc.Email.OfferRoundWorker
   alias Dhc.Email.Worker
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
@@ -81,6 +87,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
           Renderer.error()
           | :button_url_required
           | {:message_too_long, pos_integer()}
+          | :invalid_offer_round_envelope
           | Ecto.Changeset.t()
 
   @typedoc """
@@ -109,7 +116,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   @type email :: :contact | :place_confirmed | :link | EmailType.id()
 
   @type result ::
-          {:ok, :queued | :already_sent | :no_recipient}
+          {:ok, :queued | :already_sent | :no_recipient | OfferRoundWorker.plan()}
           | {:error, :concurrent_change | queue_error()}
 
   @doc "Every template, in `EmailType.all/0` order."
@@ -183,7 +190,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
       the ledger (a concurrent command sent it); roll back.
 
   `opts` takes `refund:` (an `IntakeRefund`) for the emails with a
-  `{{refundAmount}}` placeholder.
+  `{{refundAmount}}` placeholder. Only automatic Contact callers pass
+  `offer_round: true`: the result is an opaque `{:planned, envelope}` instead
+  of an individual job. They pass the ordered plans to `enqueue_offer_round/2`
+  before the same command transaction commits. Fast-track never opts in.
   """
   @spec deliver(about(), email(), Occasion.t(), Clock.reading(), keyword()) :: result()
   def deliver(about, email, %Occasion{} = occasion, reading, opts \\ []) do
@@ -192,18 +202,26 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
       type = pick(email, about, person)
 
       with {:ok, reply_to} <- IntakeReplies.reply_to(person, ledger_intake_id(about), type),
-           {:ok, _job} <-
+           {:ok, job_or_plan} <-
              queue(
                type,
                person,
                values(type, about, person, opts),
-               Keyword.put(button(about), :reply_to, reply_to)
+               button(about)
+               |> Keyword.put(:reply_to, reply_to)
+               |> Keyword.put(:offer_round, Keyword.get(opts, :offer_round, false))
              ),
            :ok <- log(ledger_intake_id(about), type, occasion, reading) do
-        {:ok, :queued}
+        planned_result(job_or_plan)
       end
     end
   end
+
+  defp planned_result({:planned, _email} = plan), do: {:ok, plan}
+  defp planned_result(_job), do: {:ok, :queued}
+
+  @doc false
+  def enqueue_offer_round(round_id, plans), do: OfferRoundWorker.enqueue(round_id, plans)
 
   defp recipient({:intake, %Intake{waitlist_id: nil}, _workshop}), do: {:ok, :no_recipient}
 
@@ -401,7 +419,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   require `button_url:` (the person's Intake link).
   """
   @spec queue(EmailType.id(), WaitlistEntry.t(), Renderer.values(), keyword()) ::
-          {:ok, Oban.Job.t()} | {:error, queue_error()}
+          {:ok, Oban.Job.t() | OfferRoundWorker.plan()} | {:error, queue_error()}
   def queue(type, %WaitlistEntry{email: email}, values, opts \\ []) when is_binary(email) do
     email_type = EmailType.fetch!(type)
     template = get_template!(type)
@@ -409,12 +427,26 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
     with {:ok, button} <- button(email_type, opts),
          {:ok, subject} <- Renderer.render_subject(type, template.subject, values),
          {:ok, html} <- render_within_limit(type, template.body, values) do
-      # String keys, so the returned job's args read like the stored ones.
+      queue_rendered(email, email_type, subject, html, button, opts)
+    end
+  end
+
+  defp queue_rendered(email, email_type, subject, html, button, opts) do
+    variables = Map.merge(%{"MESSAGE_HTML" => html}, button.plain)
+
+    if Keyword.get(opts, :offer_round, false) do
+      OfferRoundWorker.prepare(
+        email,
+        subject,
+        Map.merge(variables, button.sealed || %{}),
+        opts[:reply_to]
+      )
+    else
       %{
         "email" => email,
         "transactional_id" => EmailType.email_kind(email_type),
         "subject" => subject,
-        "data_variables" => Map.merge(%{"MESSAGE_HTML" => html}, button.plain)
+        "data_variables" => variables
       }
       |> put_sealed(button.sealed)
       |> put_sealed_reply_to(Keyword.get(opts, :reply_to))

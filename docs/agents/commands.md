@@ -333,6 +333,22 @@ Sentry captures:
 - `Logger.error/1` calls and process crashes (via `Sentry.LoggerHandler`)
 - Oban cron check-ins (optional, for cron monitoring)
 
+`DhcWeb.SentryPrivacy` is the final event hook: it preserves Intake-link
+redaction and strips email job arguments, provider bodies, recipient details
+and ciphertext from automatic Oban reports. Expected email delivery retries
+remain warning logs; only an exhausted delivery is an issue (unexpected
+exceptions still report immediately). Transactional sends, announcement batches
+and receiving API reads share `Dhc.Resend.RateLimit`'s database-backed 8/s budget;
+its additive `resend_request_gate` migration must run before the new code.
+
+Automatic Discord joining requires **Create Invite** on the bot's server role
+and a bot belonging to the same application as `DISCORD_CLIENT_ID`.
+**Manage Nicknames** is optional: a missing-permissions rejection of the
+nickname-bearing join is retried once without the nickname. Other denials stay
+terminal and report the numeric `discord_code` without the provider body. Grants
+already zeroized after a past denial cannot be replayed; the change applies to
+new acceptances. Tests never start the REST client with inherited bot credentials.
+
 ### Fly.io deployment (Phoenix API)
 
 Phoenix deploys to Fly.io as an Elixir release built by `apps/phoenix/Dockerfile`, with `fly.toml` at the repo root.

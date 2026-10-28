@@ -31,6 +31,7 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
     start_supervised!({TestAdapter, owner: self()})
 
     original_guild_id = Application.get_env(:dhc, :discord_guild_id)
+    original_adapter = Application.get_env(:dhc, :discord_adapter)
     original_stripe_adapter = Application.get_env(:dhc, :onboarding_stripe_adapter)
     original_stripe_result = Application.get_env(:dhc, :onboarding_stripe_result)
 
@@ -41,6 +42,7 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
 
     on_exit(fn ->
       restore_env(:discord_guild_id, original_guild_id)
+      restore_env(:discord_adapter, original_adapter)
       restore_env(:onboarding_stripe_adapter, original_stripe_adapter)
       restore_env(:onboarding_stripe_result, original_stripe_result)
       Application.delete_env(:dhc, :onboarding_test_pid)
@@ -61,6 +63,55 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
 
       assert Repo.get!(JoinGrant, grant.id).encrypted_access_token == nil
     end
+  end
+
+  test "nickname permission fallback joins an accepted member and zeroizes without a support alert" do
+    {grant, _discord_user_id} = accept_member_with_grant!()
+    Application.put_env(:dhc, :discord_adapter, Dhc.Discord.Adapter.Nostrum)
+    Application.put_env(:dhc, :discord_guild_id, "111")
+    start_supervised!(Nostrum.Api.RatelimiterGroup)
+
+    start_supervised!(
+      {Dhc.Discord.RatelimiterStub,
+       owner: self(),
+       respond: fn request ->
+         if Map.has_key?(request.body, :nick) do
+           {:error,
+            %Nostrum.Error.ApiError{
+              status_code: 403,
+              response: %{"code" => 50_013, "message" => "Missing Permissions"}
+            }}
+         else
+           {:ok, ~s({"user":{"id":"222"},"roles":[]})}
+         end
+       end}
+    )
+
+    Sentry.Test.setup_sentry()
+
+    assert :ok = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
+    assert Repo.get!(JoinGrant, grant.id).encrypted_access_token == nil
+    assert [] = Repo.all(Notification)
+    assert [] = Sentry.Test.pop_sentry_reports()
+    assert_receive {:discord_request, %{body: %{nick: "Ada"}}}
+    assert_receive {:discord_request, %{body: body}}
+    refute Map.has_key?(body, :nick)
+  end
+
+  test "a genuine denial reports Discord's numeric code without its response payload" do
+    {grant, _discord_user_id} = accept_member_with_grant!()
+
+    TestAdapter.script(:add_guild_member, [
+      {:error, %ApiError{status: 403, code: 50_001, message: "private provider payload"}}
+    ])
+
+    Sentry.Test.setup_sentry()
+    assert :ok = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
+
+    assert [%Sentry.Event{extra: %{discord_code: 50_001}} = event] =
+             Sentry.Test.pop_sentry_reports()
+
+    refute inspect(event) =~ "private provider payload"
   end
 
   for status <- [401, 403] do
@@ -230,7 +281,9 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
 
   defp accept_member_with_grant! do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
-    discord_user_id = "discord-user-#{System.unique_integer([:positive])}"
+
+    discord_user_id =
+      Integer.to_string(100_000_000_000_000_000 + System.unique_integer([:positive]))
 
     invitation =
       %Invitation{

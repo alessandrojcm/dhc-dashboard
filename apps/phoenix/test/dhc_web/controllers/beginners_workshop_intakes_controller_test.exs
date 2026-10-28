@@ -161,15 +161,20 @@ defmodule DhcWeb.BeginnersWorkshopIntakesControllerTest do
   test "Needs attention lists contacted people unpaid after their window",
        %{conn: conn, workshop: w, contacted: contacted} do
     coordinator = as_role(conn, "beginners_coordinator")
+    now = DateTime.utc_now()
+
+    # The HTTP read uses the real clock. Keep both sides of this assertion
+    # relative to that clock rather than the fixture's fixed October window.
+    batch = from(b in Dhc.BeginnersWorkshops.Batch, where: b.workshop_id == ^w.id)
+
+    Repo.update_all(batch,
+      set: [sent_at: DateTime.add(now, -2 * 86_400), window_ends_at: DateTime.add(now, 3_600)]
+    )
+
     assert %{"data" => %{"unpaidAfterWindow" => []}} = console(coordinator, w)
 
     # Move Batch 1 into the past: its window ended an hour ago (wall clock).
-    now = DateTime.utc_now()
-
-    Repo.update_all(
-      from(b in Dhc.BeginnersWorkshops.Batch, where: b.workshop_id == ^w.id),
-      set: [sent_at: DateTime.add(now, -2 * 86_400), window_ends_at: DateTime.add(now, -3_600)]
-    )
+    Repo.update_all(batch, set: [window_ends_at: DateTime.add(now, -3_600)])
 
     assert %{"data" => %{"unpaidAfterWindow" => [unpaid]}} = console(coordinator, w)
     assert %{"id" => id, "batchNumber" => 1, "windowEndsAt" => _} = unpaid

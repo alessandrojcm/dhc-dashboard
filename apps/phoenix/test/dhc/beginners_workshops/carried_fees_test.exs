@@ -243,7 +243,18 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeesTest do
       assert %IntakeEmailLog{email_type: "contact_confirm", occasion: "contact"} =
                List.first(logs(next))
 
-      assert List.last(button_labels(person)) == "Confirm my place"
+      job =
+        Repo.one!(
+          from(j in Oban.Job,
+            where:
+              j.worker == "Dhc.Email.OfferRoundWorker" and
+                fragment("?->>'round_id'", j.args) == ^next.batch_id
+          )
+        )
+
+      assert :ok = Dhc.Email.OfferRoundWorker.perform(job)
+      assert_received {:emails, [sent]}
+      assert sent.provider_options.template.variables["BUTTON_LABEL"] == "Confirm my place"
       assert {:ok, %{state: :confirm, action: :confirm, fee_cents: nil}} = page(token(next))
     end
   end

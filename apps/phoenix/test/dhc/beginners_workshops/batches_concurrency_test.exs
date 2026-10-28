@@ -62,6 +62,20 @@ defmodule Dhc.BeginnersWorkshops.BatchesConcurrencyTest do
                from(l in IntakeEmailLog, where: l.intake_id in ^Enum.map(intakes, & &1.id)),
                :count
              ) == 3
+
+      assert [%Oban.Job{args: %{"count" => 3}}] =
+               Repo.all(
+                 from(j in Oban.Job,
+                   where:
+                     j.worker == "Dhc.Email.OfferRoundWorker" and
+                       fragment("?->>'round_id'", j.args) in subquery(
+                         from(b in Batch,
+                           where: b.workshop_id == ^workshop.id,
+                           select: type(b.id, :string)
+                         )
+                       )
+                 )
+               )
     end)
   end
 
@@ -176,6 +190,20 @@ defmodule Dhc.BeginnersWorkshops.BatchesConcurrencyTest do
 
     Repo.delete_all(from(l in IntakeEmailLog, where: l.intake_id in ^intake_ids))
     Repo.delete_all(from(i in Intake, where: i.id in ^intake_ids))
+
+    batch_ids =
+      Repo.all(
+        from(b in Batch, where: b.workshop_id in ^workshop_ids, select: type(b.id, :string))
+      )
+
+    Repo.delete_all(
+      from(j in Oban.Job,
+        where:
+          j.worker == "Dhc.Email.OfferRoundWorker" and
+            fragment("?->>'round_id'", j.args) in ^batch_ids
+      )
+    )
+
     Repo.delete_all(from(b in Batch, where: b.workshop_id in ^workshop_ids))
     Repo.delete_all(from(w in BeginnersWorkshop, where: w.id in ^workshop_ids))
     Repo.delete_all(from(j in Oban.Job, where: fragment("?->>'email'", j.args) in ^emails))

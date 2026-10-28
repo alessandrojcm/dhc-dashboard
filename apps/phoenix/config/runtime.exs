@@ -1,6 +1,8 @@
 import Config
 
-discord_bot_token = System.get_env("DISCORD_BOT_TOKEN")
+# Test protocol probes own the REST limiter and must never use inherited bot
+# credentials (including the developer's .env).
+discord_bot_token = if config_env() == :test, do: nil, else: System.get_env("DISCORD_BOT_TOKEN")
 discord_guild_id = System.get_env("DISCORD_GUILD_ID")
 
 config :dhc, :discord_bot_token, discord_bot_token
@@ -293,6 +295,11 @@ if config_env() == :prod do
         :line,
         :customer_id,
         :stripe_customer_id,
+        :stripe_endpoint,
+        :stripe_method,
+        :stripe_error_code,
+        :stripe_error_type,
+        :stripe_request_id,
         :inactive_reason,
         :inactive_updated_count,
         :subscription_id,
@@ -311,11 +318,8 @@ if config_env() == :prod do
         :announcement_id,
         :recipient_count,
         # Email worker (Dhc.Email.Worker)
-        :email,
         :transactional_id,
         :provider_status,
-        :receipt,
-        :data_variables,
         :reason,
         :validation_errors,
         :http_error,
@@ -340,7 +344,8 @@ if config_env() == :prod do
         # Discord guild-join worker (Dhc.Discord.Workers.GuildJoinWorker)
         :grant_id,
         :attempt_id,
-        :status
+        :status,
+        :discord_code
       ]
     ],
     integrations: [
@@ -369,6 +374,11 @@ if config_env() == :prod do
            :request_id,
            :customer_id,
            :stripe_customer_id,
+           :stripe_endpoint,
+           :stripe_method,
+           :stripe_error_code,
+           :stripe_error_type,
+           :stripe_request_id,
            :inactive_reason,
            :inactive_updated_count,
            :profile_id,
@@ -379,10 +389,8 @@ if config_env() == :prod do
            :announcement_id,
            :recipient_count,
            # Email worker
-           :email,
            :transactional_id,
            :provider_status,
-           :receipt,
            :reason,
            :validation_errors,
            :http_error,
@@ -402,6 +410,7 @@ if config_env() == :prod do
            :grant_id,
            :attempt_id,
            :status,
+           :discord_code,
            # Intake Reply forwarding (Dhc.BeginnersWorkshops.IntakeReplies)
            :resend_email_id
          ],

@@ -16,7 +16,6 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
   use Oban.Testing, repo: Dhc.Repo
 
   import Dhc.BeginnersWorkshopFixtures
-  import Swoosh.TestAssertions
 
   alias Dhc.BeginnersWorkshops
 
@@ -30,7 +29,7 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
   }
 
   alias Dhc.BeginnersWorkshops.IntakeEmails.Template
-  alias Dhc.Email.Worker
+  alias Dhc.Email.OfferRoundWorker
   alias Dhc.Notifications.Notification
   alias Dhc.Repo
 
@@ -65,7 +64,7 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
         from(i in Intake, where: i.workshop_id == ^workshop.id, order_by: [i.queue_date, i.id])
       )
 
-  defp contact_jobs, do: all_enqueued(worker: Worker)
+  defp contact_jobs, do: all_enqueued(worker: OfferRoundWorker)
 
   defp notifications(principal_id),
     do:
@@ -155,29 +154,18 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
       assert {:ok, %{outcome: :sent, batch: %{size: 1}}} = send_due(w, @batch_1_at)
       assert [intake] = intakes(w)
 
-      assert [%{args: args}] = contact_jobs()
-
-      assert %{
-               "email" => email,
-               "transactional_id" => "beginnersWorkshopAction",
-               "data_variables" => %{
-                 "MESSAGE_HTML" => html,
-                 "BUTTON_LABEL" => "Pay for your place"
-               }
-             } = args
-
-      assert email == person.email
-      assert html =~ "Aoife"
-      refute Jason.encode!(args) =~ IntakeLink.token(intake.id, 1)
-
-      assert :ok = perform_job(Worker, args)
+      assert [job] = contact_jobs()
+      refute Jason.encode!(job.args) =~ IntakeLink.token(intake.id, 1)
+      assert :ok = OfferRoundWorker.perform(job)
 
       url = IntakeLink.url(IntakeLink.token(intake.id, 1))
       assert url =~ "/beginners/intake/"
 
-      assert_email_sent(fn sent ->
-        assert sent.provider_options.template.variables["BUTTON_URL"] == url
-      end)
+      assert_received {:emails, [sent]}
+      assert sent.to == [{"", person.email}]
+      assert sent.provider_options.template.variables["MESSAGE_HTML"] =~ "Aoife"
+      assert sent.provider_options.template.variables["BUTTON_LABEL"] == "Pay for your place"
+      assert sent.provider_options.template.variables["BUTTON_URL"] == url
 
       assert [
                %IntakeEmailLog{
@@ -210,9 +198,11 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
       waiting_people_fixture(1)
       assert {:ok, %{outcome: :sent}} = send_due(w, @batch_1_at)
 
-      assert [%{args: %{"data_variables" => %{"MESSAGE_HTML" => html}}}] = contact_jobs()
+      assert [job] = contact_jobs()
+      assert :ok = OfferRoundWorker.perform(job)
+      assert_received {:emails, [sent]}
 
-      assert html ==
+      assert sent.provider_options.template.variables["MESSAGE_HTML"] ==
                "<p>Tuesday 27 October 2026, 23:59 / Wednesday 11 November 2026, 18:30</p>"
     end
 
@@ -467,7 +457,7 @@ defmodule Dhc.BeginnersWorkshops.BatchesTest do
 
       assert Enum.count(batches(w)) == 1
       assert Enum.count(intakes(w)) == 3
-      assert Enum.count(contact_jobs()) == 3
+      assert Enum.count(contact_jobs()) == 1
       assert Repo.aggregate(IntakeEmailLog, :count) == 3
       assert Enum.count(notifications(coordinator)) == 1
     end

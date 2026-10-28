@@ -75,6 +75,7 @@
       {["Dhc.*", "DhcWeb.*"],
        [
          "Dhc.BeginnersWorkshops.IntakeEmails.deliver",
+         "Dhc.BeginnersWorkshops.IntakeEmails.enqueue_offer_round",
          "Dhc.BeginnersWorkshops.IntakeEmails.queue"
        ],
        except: [
@@ -82,6 +83,10 @@
          "Dhc.BeginnersWorkshops.Commands.*",
          "Dhc.BeginnersWorkshops.IntakeEmails"
        ]},
+      # ALE-428: offer-round envelopes can only be planned by IntakeEmails.
+      {["Dhc.*", "DhcWeb.*"],
+       ["Dhc.Email.OfferRoundWorker.prepare", "Dhc.Email.OfferRoundWorker.enqueue"],
+       except: ["Dhc.BeginnersWorkshops.IntakeEmails"]},
       # ADR 0029, second amendment (ALE-403): the Beginners' Workshop
       # protocol core (lock primitive, transition table, persist/1, transact/1,
       # keyed Notifications) is private to the Commands namespace. Everything

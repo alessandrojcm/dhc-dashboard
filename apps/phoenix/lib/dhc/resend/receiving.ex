@@ -93,6 +93,8 @@ defmodule Dhc.Resend.Receiving do
   defp api_get(path, params) do
     case api_key() do
       key when is_binary(key) and key != "" ->
+        :ok = Dhc.Resend.RateLimit.await()
+
         [base_url: api_url(), url: path, params: params, auth: {:bearer, key}]
         |> request()
         |> body()
@@ -103,12 +105,24 @@ defmodule Dhc.Resend.Receiving do
   end
 
   defp request(options) do
-    options
-    |> Keyword.merge(retry: false, receive_timeout: 30_000)
-    |> Keyword.merge(Application.get_env(:dhc, :resend_req_options, []))
-    |> Req.new()
-    |> Req.get()
+    result =
+      options
+      |> Keyword.merge(retry: false, receive_timeout: 30_000)
+      |> Keyword.merge(Application.get_env(:dhc, :resend_req_options, []))
+      |> Req.new()
+      |> Req.get()
+
+    record_cooldown(result, Keyword.has_key?(options, :auth))
+
+    result
   end
+
+  defp record_cooldown({:ok, %Req.Response{status: 429, headers: headers}}, true) do
+    headers = for {key, values} <- headers, value <- values, do: {key, value}
+    Dhc.Resend.RateLimit.cooldown(headers)
+  end
+
+  defp record_cooldown(_result, _api_request?), do: :ok
 
   defp body({:ok, %Req.Response{status: status, body: body}}) when status in 200..299,
     do: {:ok, body}

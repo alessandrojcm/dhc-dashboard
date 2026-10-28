@@ -29,8 +29,27 @@ defmodule Dhc.Email.ApiClient do
 
   @impl true
   def post(url, headers, body, %Swoosh.Email{} = email) do
-    Swoosh.ApiClient.Finch.post(url, idempotency_header(headers, email), body, email)
+    :ok = Dhc.Resend.RateLimit.await()
+
+    result =
+      if expired?(email) do
+        {:error, :delivery_window_expired}
+      else
+        Swoosh.ApiClient.Finch.post(url, idempotency_header(headers, email), body, email)
+      end
+
+    case result do
+      {:ok, 429, response_headers, _body} -> Dhc.Resend.RateLimit.cooldown(response_headers)
+      _ -> :ok
+    end
+
+    result
   end
+
+  defp expired?(%Swoosh.Email{provider_options: %{delivery_deadline: deadline}}),
+    do: System.system_time(:second) >= deadline
+
+  defp expired?(_email), do: false
 
   @doc """
   Prepends `{"Idempotency-Key", key}` to `headers` when `email` carries the

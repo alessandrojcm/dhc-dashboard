@@ -57,8 +57,8 @@ defmodule Dhc.Discord.Workers.GuildJoinWorker do
       {:ok, outcome} when outcome in [:added, :already_member] ->
         zeroize(join.grant)
 
-      {:error, %ApiError{status: status}} when status in @denied_statuses ->
-        zeroize_and_report(job, join.grant, status)
+      {:error, %ApiError{status: status} = error} when status in @denied_statuses ->
+        zeroize_and_report(job, join.grant, error)
 
       {:error, reason} ->
         retry_or_report(job, join.grant.id, join.grant.attempt_id, reason)
@@ -80,9 +80,9 @@ defmodule Dhc.Discord.Workers.GuildJoinWorker do
   # zeroize to report it is how a paying member ends up unjoined with no trace
   # of why. The notification is keyed, so reporting on both the failing attempt
   # and its retry costs the member nothing.
-  defp zeroize_and_report(job, grant, status) do
+  defp zeroize_and_report(job, grant, error) do
     zeroized = zeroize(grant)
-    emit(job, :denied, grant.id, grant.attempt_id, status)
+    emit(job, :denied, grant.id, grant.attempt_id, error.status, nil, discord_code(error))
     zeroized
   end
 
@@ -91,7 +91,15 @@ defmodule Dhc.Discord.Workers.GuildJoinWorker do
   # in silence with the reason recorded nowhere but `oban_jobs.errors`.
   defp retry_or_report(job, grant_id, attempt_id, reason) do
     if job.attempt >= job.max_attempts do
-      emit(job, :exhausted, grant_id, attempt_id, discord_status(reason), safe_reason(reason))
+      emit(
+        job,
+        :exhausted,
+        grant_id,
+        attempt_id,
+        discord_status(reason),
+        safe_reason(reason),
+        discord_code(reason)
+      )
     end
 
     {:error, reason}
@@ -107,7 +115,7 @@ defmodule Dhc.Discord.Workers.GuildJoinWorker do
   # log is a searchable record, the capture is the grouped Sentry issue a
   # responder actually sees. On the `:error` outcome `Sentry.LoggerHandler` also
   # forwards the log, which is redundancy rather than a second root cause.
-  defp emit(job, outcome, grant_id, attempt_id, status, reason \\ nil) do
+  defp emit(job, outcome, grant_id, attempt_id, status, reason, code) do
     spec = terminal_outcome(outcome)
     context = join_context(grant_id)
 
@@ -116,6 +124,7 @@ defmodule Dhc.Discord.Workers.GuildJoinWorker do
       attempt_id: attempt_id,
       invitation_id: context[:invitation_id],
       status: status,
+      discord_code: code,
       reason: reason || spec.reason,
       oban_job_id: job.id,
       oban_attempt: job.attempt
@@ -187,4 +196,7 @@ defmodule Dhc.Discord.Workers.GuildJoinWorker do
 
   defp discord_status(%ApiError{status: status}), do: status
   defp discord_status(_reason), do: nil
+
+  defp discord_code(%ApiError{code: code}) when is_integer(code), do: code
+  defp discord_code(_reason), do: nil
 end

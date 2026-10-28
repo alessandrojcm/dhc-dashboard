@@ -10,6 +10,37 @@ defmodule Dhc.Stripe.ClientTest do
   alias Dhc.Stripe.Client
   alias Dhc.StripeHTTPStub
 
+  test "failure logs contain safe diagnostics, never Stripe response bodies or resource ids" do
+    StripeHTTPStub.expect("POST", "/v1/customers/cus_private/subscriptions", fn conn ->
+      conn
+      |> Plug.Conn.put_resp_header("request-id", "req_test123")
+      |> StripeHTTPStub.json(400, %{
+        "error" => %{
+          "type" => "invalid_request_error",
+          "code" => "parameter_invalid_integer",
+          "message" => "private@example.test secret-body",
+          "param" => "quantity"
+        }
+      })
+    end)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        assert {:error, {:stripe_api, 400, _}} =
+                 Client.request(
+                   method: :post,
+                   url: "/v1/customers/cus_private/subscriptions",
+                   body: %{}
+                 )
+      end)
+
+    refute log =~ "private"
+    refute log =~ "secret-body"
+    assert log =~ "parameter_invalid_integer"
+    assert log =~ "req_test123"
+    assert log =~ "/v1/customers/:id/subscriptions"
+  end
+
   defp sent_query(query) do
     test_pid = self()
 

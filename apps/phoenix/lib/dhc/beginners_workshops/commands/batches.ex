@@ -15,7 +15,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
   Waitlist entries are locked and re-checked, and a person taken by a
   concurrent command makes the pass retry from a fresh proposal. Each new
   Intake queues its Contact email through `IntakeEmails.deliver/5`, which
-  writes the Intake Email ledger row in the same transaction, and the coordinator-alert
+  writes the Intake Email ledger row and prepares an opaque delivery plan in
+  the same transaction. `enqueue_offer_round/2` seals the plans into provider
+  chunks of at most 100 before commit, and the coordinator-alert
   holders get a keyed "Batch sent" Notification (signalled after commit).
   With free seats but nobody eligible waiting it sends one keyed
   Notification per workshop and nothing else. The Batch number's unique
@@ -69,9 +71,6 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
 
   import Dhc.BeginnersWorkshops.Commands.Facts,
     only: [held?: 1]
-
-  import Dhc.BeginnersWorkshops.Commands.IntakeNotices,
-    only: [emailed: 1]
 
   import Dhc.BeginnersWorkshops.Commands.CoordinatorAlerts, only: [alert: 2]
 
@@ -230,7 +229,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
          :ok <- payment_open(workshop, locked.carried_fee, reading),
          {:ok, entry, placed} <- fast_track_entry(person, entry, reading),
          :ok <- contactable(entry),
-         {:ok, intake} <- contact(workshop, :fast_track, entry, reading) do
+         {:ok, intake, _delivery} <- contact(workshop, :fast_track, entry, reading) do
       {:ok, fast_track_view(intake, placed)}
     end
   end
@@ -322,12 +321,16 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
   end
 
   defp contact_all(workshop, batch, people, reading) do
-    Enum.reduce_while(people, :ok, fn %{entry: entry}, :ok ->
+    Enum.reduce_while(people, {:ok, []}, fn %{entry: entry}, {:ok, plans} ->
       case contact(workshop, {:batch, batch}, entry, reading) do
-        {:ok, _intake} -> {:cont, :ok}
+        {:ok, _intake, plan} -> {:cont, {:ok, [plan | plans]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+    |> case do
+      {:ok, plans} -> IntakeEmails.enqueue_offer_round(batch.id, Enum.reverse(plans))
+      error -> error
+    end
   end
 
   # One new `contacted` Intake and its Contact email (with the person's own
@@ -355,16 +358,15 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
            }
            |> Intake.contact_changeset()
            |> persist(),
-         :ok <-
-           emailed(
-             IntakeEmails.deliver(
-               {:intake, intake, workshop},
-               :contact,
-               Occasion.contact(),
-               reading
-             )
+         {:ok, delivery} <-
+           IntakeEmails.deliver(
+             {:intake, intake, workshop},
+             :contact,
+             Occasion.contact(),
+             reading,
+             offer_round: not is_nil(batch_id)
            ) do
-      {:ok, intake}
+      {:ok, intake, delivery}
     end
   end
 
