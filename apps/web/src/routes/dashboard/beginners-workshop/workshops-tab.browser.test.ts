@@ -1,5 +1,6 @@
 import type { BeginnersWorkshop } from "@dhc/api-client";
 import { expect, test } from "vitest";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import WorkshopsTab from "./workshops-tab.svelte";
 
@@ -110,4 +111,46 @@ test("an empty list invites the coordinator to schedule", async () => {
 	await expect
 		.element(screen.getByRole("button", { name: "Schedule workshops" }))
 		.toBeVisible();
+});
+
+const actions = [
+	{ role: "link", label: "Check-in" },
+	{ role: "button", label: "Staff" },
+	{ role: "button", label: "Places, fee and payment deadline" },
+] as const;
+
+test.each(actions)(
+	"shows the $label tooltip on hover",
+	async ({ role, label }) => {
+		const screen = await render(WorkshopsTab, {
+			candidates: [],
+			workshops: { upcoming: [workshop({})], past: [] },
+		});
+		const trigger = screen.getByRole(role, { name: `${label} for 2026-11-14` });
+		await trigger.hover();
+		await expect.element(page.getByText(label, { exact: true })).toBeVisible();
+	},
+);
+
+test("shows action tooltips when tabbing through the workshop list", async () => {
+	const screen = await render(WorkshopsTab, {
+		candidates: [],
+		workshops: { upcoming: [workshop({})], past: [] },
+	});
+	// Schedule, Manage, then the three icon actions, in document order.
+	await userEvent.tab();
+	await userEvent.tab();
+	for (const { role, label } of actions) {
+		await userEvent.tab();
+		await expect
+			.element(screen.getByRole(role, { name: `${label} for 2026-11-14` }))
+			.toHaveFocus();
+		await expect.element(page.getByText(label, { exact: true })).toBeVisible();
+	}
+	await userEvent.keyboard("{Escape}");
+	await expect
+		.element(
+			page.getByText("Places, fee and payment deadline", { exact: true }),
+		)
+		.not.toBeInTheDocument();
 });

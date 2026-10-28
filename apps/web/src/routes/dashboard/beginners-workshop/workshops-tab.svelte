@@ -29,6 +29,7 @@ import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Empty from "#lib/components/ui/empty/index.js";
+import * as Tooltip from "#lib/components/ui/tooltip/index.js";
 import ScheduleWorkshopsDialog from "./schedule-workshops-dialog.svelte";
 import SeatMeter from "./seat-meter.svelte";
 import StaffDialog from "./staff-dialog.svelte";
@@ -116,101 +117,128 @@ function editStaff(workshop: BeginnersWorkshop) {
 			>
 				<PanelsTopLeft /> Manage
 			</Button>
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label={`Check-in for ${workshop.date}`}
-				href={resolve(
-					"/dashboard/beginners-workshop/workshops/[workshopId]/door",
-					{ workshopId: workshop.id },
-				)}
-			>
-				<DoorOpen />
-			</Button>
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<Button
+							{...props}
+							variant="ghost"
+							size="icon"
+							aria-label={`Check-in for ${workshop.date}`}
+							href={resolve(
+								"/dashboard/beginners-workshop/workshops/[workshopId]/door",
+								{ workshopId: workshop.id },
+							)}
+						>
+							<DoorOpen />
+						</Button>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>Check-in</Tooltip.Content>
+			</Tooltip.Root>
 			{#if workshop.status === "scheduled"}
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label={`Staff for ${workshop.date}`}
-					onclick={() => editStaff(workshop)}
-				>
-					<Users />
-				</Button>
-				<Button
-					variant="ghost"
-					size="icon"
-					aria-label={`Places, fee and payment deadline for ${workshop.date}`}
-					onclick={() => editSettings(workshop)}
-				>
-					<Settings2 />
-				</Button>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant="ghost"
+								size="icon"
+								aria-label={`Staff for ${workshop.date}`}
+								onclick={() => editStaff(workshop)}
+							>
+								<Users />
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>Staff</Tooltip.Content>
+				</Tooltip.Root>
+				<Tooltip.Root>
+					<Tooltip.Trigger>
+						{#snippet child({ props })}
+							<Button
+								{...props}
+								variant="ghost"
+								size="icon"
+								aria-label={`Places, fee and payment deadline for ${workshop.date}`}
+								onclick={() => editSettings(workshop)}
+							>
+								<Settings2 />
+							</Button>
+						{/snippet}
+					</Tooltip.Trigger>
+					<Tooltip.Content>Places, fee and payment deadline</Tooltip.Content>
+				</Tooltip.Root>
 			{/if}
 		</div>
 	</li>
 {/snippet}
 
-<div class="flex h-full min-h-0 flex-col">
-	<header
-		class="flex shrink-0 flex-wrap items-end justify-between gap-4 border-b border-border py-4"
-	>
-		<div>
-			<h2 class="font-heading text-3xl">Beginners' Workshops</h2>
-			<p class="text-sm text-muted-foreground">
-				Offer places to people on the waitlist and manage each workshop. These
-				workshops are not listed publicly.
-			</p>
-		</div>
-		<Button onclick={() => (scheduleOpen = true)}
-			><CalendarPlus /> Schedule workshops</Button
+<Tooltip.Provider>
+	<div class="flex h-full min-h-0 flex-col">
+		<header
+			class="flex shrink-0 flex-wrap items-end justify-between gap-4 border-b border-border py-4"
 		>
-	</header>
-
-	<section
-		class="min-h-0 flex-1 space-y-6 overflow-y-auto px-1 pt-4 pb-6"
-		aria-label="Workshop list"
-	>
-		<section class="flex flex-col gap-3" aria-labelledby="bw-upcoming">
-			<h3
-				id="bw-upcoming"
-				class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+			<div>
+				<h2 class="font-heading text-3xl">Beginners' Workshops</h2>
+				<p class="text-sm text-muted-foreground">
+					Offer places to people on the waitlist and manage each workshop. These
+					workshops are not listed publicly.
+				</p>
+			</div>
+			<Button onclick={() => (scheduleOpen = true)}
+				><CalendarPlus /> Schedule workshops</Button
 			>
-				Upcoming
-			</h3>
-			{#if workshops.upcoming.length}
-				<ul class="flex flex-col gap-3">
-					{#each workshops.upcoming as workshop (workshop.id)}{@render row(
-							workshop,
-						)}{/each}
-				</ul>
-			{:else}
-				<Empty.Root class="border">
-					<Empty.Header>
-						<Empty.Title>No upcoming workshops</Empty.Title>
-						<Empty.Description
-							>Schedule one or several to start filling them from the Waitlist.</Empty.Description
-						>
-					</Empty.Header>
-				</Empty.Root>
-			{/if}
-		</section>
+		</header>
 
-		{#if workshops.past.length}
-			<section class="flex flex-col gap-3" aria-labelledby="bw-past">
+		<section
+			class="min-h-0 flex-1 space-y-6 overflow-y-auto px-1 pt-4 pb-6"
+			aria-label="Workshop list"
+		>
+			<section class="flex flex-col gap-3" aria-labelledby="bw-upcoming">
 				<h3
-					id="bw-past"
+					id="bw-upcoming"
 					class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
 				>
-					Past and cancelled
+					Upcoming
 				</h3>
-				<ul class="flex flex-col gap-3 opacity-90">
-					{#each workshops.past as workshop (workshop.id)}{@render row(
-							workshop,
-						)}{/each}
-				</ul>
+				{#if workshops.upcoming.length}
+					<ul class="flex flex-col gap-3">
+						{#each workshops.upcoming as workshop (workshop.id)}{@render row(
+								workshop,
+							)}{/each}
+					</ul>
+				{:else}
+					<Empty.Root class="border">
+						<Empty.Header>
+							<Empty.Title>No upcoming workshops</Empty.Title>
+							<Empty.Description
+								>Schedule one or several to start filling them from the
+								Waitlist.</Empty.Description
+							>
+						</Empty.Header>
+					</Empty.Root>
+				{/if}
 			</section>
-		{/if}
-	</section>
-</div>
+
+			{#if workshops.past.length}
+				<section class="flex flex-col gap-3" aria-labelledby="bw-past">
+					<h3
+						id="bw-past"
+						class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+					>
+						Past and cancelled
+					</h3>
+					<ul class="flex flex-col gap-3 opacity-90">
+						{#each workshops.past as workshop (workshop.id)}{@render row(
+								workshop,
+							)}{/each}
+					</ul>
+				</section>
+			{/if}
+		</section>
+	</div>
+</Tooltip.Provider>
 
 <ScheduleWorkshopsDialog bind:open={scheduleOpen} {candidates} />
 {#if editing}
