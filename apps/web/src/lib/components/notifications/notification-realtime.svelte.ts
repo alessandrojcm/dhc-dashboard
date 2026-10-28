@@ -1,5 +1,6 @@
 import { Socket as PhoenixSocket } from "phoenix";
 import type { PhoenixPayload } from "phoenix";
+import { authSessionSocketToken } from "@dhc/api-client";
 
 /**
  * Notification realtime bridge for NotificationCenter (ALE-164).
@@ -32,7 +33,8 @@ import type { PhoenixPayload } from "phoenix";
  *
  * The bridge is best-effort: connection, authentication, join, and reconnect
  * failures never throw to the caller. They emit diagnostic warnings and are
- * retried with backoff (a failed or empty token fetch included). Channel
+ * retried with backoff (a failed or empty token fetch included), except a
+ * rejected HTTP session, which ends this bridge until it is mounted again. Channel
  * rejoin on a still-connected socket is left to Phoenix: it needs no token,
  * only schedules while the socket is connected, and the bridge leaves the
  * channel before retiring its socket, so the two never compete. HTTP queries and
@@ -42,11 +44,13 @@ import type { PhoenixPayload } from "phoenix";
 export type InvalidateNotifications = () => void;
 
 /**
- * Fetches a short-lived Phoenix socket token. Returns `null` on any failure
- * so the bridge can skip the connection attempt; the caller's HTTP queries
- * remain usable.
+ * Fetches a short-lived Phoenix socket token. `null` is temporarily unavailable;
+ * an unauthorized session ends recovery. HTTP queries remain independent.
  */
-export type SocketTokenFetcher = () => Promise<string | null>;
+export const socketSessionUnauthorized = Symbol("socket-session-unauthorized");
+export type SocketTokenFetcher = () => Promise<
+	string | null | typeof socketSessionUnauthorized
+>;
 
 /**
  * Factory that constructs a Phoenix `Socket`. Injected so tests can substitute
@@ -97,7 +101,7 @@ export interface NotificationRealtimeConfig {
 	/** Public Phoenix WebSocket socket URL, e.g. `wss://host/socket`. */
 	socketUrl: string;
 	/** Fetches a short-lived Phoenix socket token (via the session cookie). */
-	getSocketToken: SocketTokenFetcher;
+	getSocketToken?: SocketTokenFetcher;
 	/** Invalidates the Notifications infinite-query key (authoritative refetch). */
 	invalidate: InvalidateNotifications;
 	/** Constructs the Phoenix Socket. Defaults to the real `phoenix` client. */
@@ -134,6 +138,12 @@ const defaultCreateSocket: SocketFactory = (url, options) => {
 	return new PhoenixSocket(url, options);
 };
 
+const defaultGetSocketToken: SocketTokenFetcher = async () => {
+	const { data, error, response } = await authSessionSocketToken();
+	if (response?.status === 401) return socketSessionUnauthorized;
+	return error || !data ? null : data.data.socketToken;
+};
+
 function warn(context: string, cause: unknown): void {
 	console.warn(`NotificationCenter realtime: ${context}`, cause);
 }
@@ -159,7 +169,7 @@ export function connectNotificationRealtime(
 ): NotificationRealtimeHandle {
 	const {
 		socketUrl,
-		getSocketToken,
+		getSocketToken = defaultGetSocketToken,
 		invalidate,
 		createSocket = defaultCreateSocket,
 	} = config;
@@ -244,7 +254,7 @@ export function connectNotificationRealtime(
 			scheduleReconnect();
 		}, TOKEN_FETCH_TIMEOUT_MS);
 
-		let token: string | null;
+		let token: Awaited<ReturnType<SocketTokenFetcher>>;
 		try {
 			token = await getSocketToken();
 		} catch (error) {
@@ -256,6 +266,10 @@ export function connectNotificationRealtime(
 			clearTimeout(fetchTimeout);
 		}
 		if (isStale()) return;
+		if (token === socketSessionUnauthorized) {
+			destroy();
+			return;
+		}
 		if (!token) {
 			warn("socket token unavailable", undefined);
 			scheduleReconnect();
@@ -357,16 +371,15 @@ export function connectNotificationRealtime(
 	// Fire and forget; all failures are swallowed inside `connectWithFreshToken`.
 	void connectWithFreshToken();
 
-	return {
-		destroy() {
-			if (destroyed) return;
-			destroyed = true;
-			if (reconnectTimer) {
-				clearTimeout(reconnectTimer);
-				reconnectTimer = null;
-			}
-			teardownChannel();
-			disconnectSocket();
-		},
-	};
+	function destroy() {
+		if (destroyed) return;
+		destroyed = true;
+		if (reconnectTimer) {
+			clearTimeout(reconnectTimer);
+			reconnectTimer = null;
+		}
+		teardownChannel();
+		disconnectSocket();
+	}
+	return { destroy };
 }

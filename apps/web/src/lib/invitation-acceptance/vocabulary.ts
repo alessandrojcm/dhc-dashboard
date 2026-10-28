@@ -82,6 +82,12 @@ export const acceptanceStateResponseSchema = v.object({
 	data: acceptanceViewSchema,
 });
 
+/** The only safe view returned by a refused credential verification (422). */
+export const acceptanceVerificationRefusalSchema = v.pipe(
+	acceptanceStateResponseSchema,
+	v.check(({ data }) => data.state === "restartVerification"),
+);
+
 export function normalizeAcceptanceStatus(
 	raw: string,
 ): InvitationAcceptanceStatus | undefined {

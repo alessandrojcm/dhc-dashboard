@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as v from "valibot";
 import beginnersWaitlistSchema from "#lib/schemas/beginnersWaitlist.js";
+import * as Sentry from "@sentry/sveltekit";
 
 const adult = {
 	firstName: "Aoife",
@@ -39,6 +40,18 @@ describe("beginners waitlist form schema", () => {
 
 	afterEach(() => {
 		vi.useRealTimers();
+		vi.restoreAllMocks();
+	});
+
+	it("keeps invalid phone input as a field issue, not a Sentry event", () => {
+		const capture = vi.spyOn(Sentry.getCurrentScope(), "captureMessage");
+		expect(
+			issuePaths({ ...adult, phoneNumber: "not a number" }),
+		).toContainEqual({
+			path: "phoneNumber",
+			message: "Invalid phone number",
+		});
+		expect(capture).not.toHaveBeenCalled();
 	});
 
 	it("turns a valid adult submission into the exact waitlistCreateEntry body", () => {

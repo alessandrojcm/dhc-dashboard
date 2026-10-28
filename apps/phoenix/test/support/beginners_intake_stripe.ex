@@ -65,10 +65,13 @@ defmodule Dhc.BeginnersIntakeStripe do
   end
 
   @doc "Makes expiring a session fail as Stripe does for a session that is not open."
-  def refuse_expire(session_id) do
+  def refuse_expire(session_id, state \\ "complete") do
     StripeHTTPStub.stub("POST", "/v1/checkout/sessions/#{session_id}/expire", fn conn ->
-      StripeHTTPStub.stripe_error(conn, 400, %{
-        "message" => "Only Checkout Sessions with a status of open can be expired."
+      conn
+      |> Plug.Conn.put_resp_header("request-id", "req_intake_closed_checkout")
+      |> StripeHTTPStub.stripe_error(400, %{
+        "message" =>
+          ~s(Only Checkout Sessions with a status in ["open"] can be expired. This Checkout Session has a status of `#{state}`.)
       })
     end)
   end

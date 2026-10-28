@@ -44,6 +44,10 @@ defmodule Dhc.Stripe.Client do
 
   require Logger
 
+  @closed_checkout_messages Enum.map(~w(complete expired), fn state ->
+                              ~s(Only Checkout Sessions with a status in ["open"] can be expired. This Checkout Session has a status of `#{state}`.)
+                            end)
+
   @doc """
   Performs an HTTP request to the Stripe API.
 
@@ -114,7 +118,8 @@ defmodule Dhc.Stripe.Client do
     code = safe_identifier(error["code"])
     type = safe_identifier(error["type"])
 
-    Logger.error(
+    Logger.log(
+      error_level(status, method, endpoint, error),
       "[stripe-client] Stripe API returned #{status} " <>
         "#{method} #{endpoint} code=#{code} type=#{type} request_id=#{request_id}",
       status: status,
@@ -132,6 +137,18 @@ defmodule Dhc.Stripe.Client do
     Logger.error("[stripe-client] HTTP request failed #{method} #{safe_endpoint(url)}")
     {:error, {:http_error, exception}}
   end
+
+  # Only Stripe's explicit terminal-state refusal is expected. The caller
+  # still receives the error and retrieves the authoritative session; no
+  # other 400, message variant, endpoint or error type is downgraded.
+  defp error_level(400, :post, "/v1/checkout/sessions/:id/expire", %{
+         "type" => "invalid_request_error",
+         "message" => message
+       })
+       when message in @closed_checkout_messages,
+       do: :warning
+
+  defp error_level(_status, _method, _endpoint, _error), do: :error
 
   @endpoint_segments ~w(v1 customers subscriptions payment_intents setup_intents payment_methods invoices prices coupons promotion_codes refunds checkout sessions billing_portal create_preview cancel attach detach expire)
 

@@ -74,6 +74,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
   """
 
   import Ecto.Query
+  require Logger
 
   import Dhc.BeginnersWorkshops.Commands.Protocol,
     only: [
@@ -509,12 +510,18 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
     do: reap_session(session_id, clock)
 
   defp reap_session(session_id, clock) do
-    with {:error, _not_open} <- IntakeCheckout.expire(session_id),
-         {:error, _unavailable} <- IntakeCheckout.retrieve(session_id) do
-      :waiting
-    else
-      {:ok, session} -> settle(session, clock)
-    end
+    outcome =
+      with {:error, _not_open} <- IntakeCheckout.expire(session_id),
+           {:error, _unavailable} <- IntakeCheckout.retrieve(session_id) do
+        :waiting
+      else
+        {:ok, session} -> settle(session, clock)
+      end
+
+    # Log only the closed outcome, after the authoritative settlement. No
+    # session id, Intake link, customer details or provider body is disclosed.
+    Logger.info("[beginners-payments] Checkout cleanup outcome=#{outcome}")
+    outcome
   end
 
   @doc false

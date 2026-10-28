@@ -14,6 +14,7 @@ import dayjs from "dayjs";
 import {
 	formatIncompletePhoneNumber,
 	parsePhoneNumber,
+	ParseError,
 } from "libphonenumber-js/min";
 import * as v from "valibot";
 
@@ -34,10 +35,8 @@ const isValidPhoneNumber = (input: string) => {
 	try {
 		return Boolean(parsePhoneNumber(input, "IE")?.isValid());
 	} catch (error) {
-		Sentry.captureMessage(
-			`Phone number validation error: ${String(error)}`,
-			"warning",
-		);
+		// Parser refusals are ordinary invalid input, including while typing.
+		if (!(error instanceof ParseError)) Sentry.captureException(error);
 		return false;
 	}
 };
