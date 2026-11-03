@@ -8,6 +8,7 @@ defmodule Dhc.MixProject do
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
+      releases: [dhc: [include_erts: true]],
       aliases: aliases(),
       deps: deps(),
       hex: [

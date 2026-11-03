@@ -22,7 +22,7 @@
 The Supabase → Phoenix migration is complete (root `AGENTS.md`). Supabase Auth, Edge Functions, pgmq/pg_cron, Kysely and the Supabase JS client are gone; Postgres is owned and migrated by Ecto.
 
 - **Framework**: Phoenix 1.8.11, Bandit 1.12.5 (keep ≥ 1.12.5 — CVE-2026-74836 / CVE-2026-75484)
-- **Language**: Elixir 1.20, Erlang/OTP 29 (pinned in `.mise.toml`)
+- **Language**: Elixir 1.20.5, Erlang/OTP 29 (pinned in `.mise.toml`)
 - **Database**: Ecto SQL 3.14 + Postgrex 0.22.4
 - **Background Jobs**: Oban 2.23
 - **Email transport**: Swoosh 1.27 behind `Dhc.Email.Mailer` (ADR 0021) — `Swoosh.Adapters.Resend` in prod, Mailpit over HTTP in dev, `Swoosh.Adapters.Test` in tests; `gen_smtp` is gone. See [commands.md](commands.md) for the dev workflow.

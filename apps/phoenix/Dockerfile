@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 
 # Build on Debian and install the BEAM toolchain through mise so Docker builds
-# use the same versions pinned in the repo root `.mise.toml`.
+# use the same versions pinned in the repo root `.mise.toml`. The release
+# bundles this builder's ERTS, so the runner uses the pinned OTP runtime too.
 ARG BUILDER_IMAGE="debian:bookworm-20250520-slim"
 ARG RUNNER_IMAGE="debian:bookworm-20250520-slim"
 
@@ -9,6 +10,7 @@ FROM ${BUILDER_IMAGE} AS builder
 
 WORKDIR /app
 
+# kerl calls `ps` while compiling Erlang, provided by procps.
 RUN apt-get update  \
     && apt-get -y --no-install-recommends install  \
         autoconf \
@@ -21,6 +23,7 @@ RUN apt-get update  \
         locales \
         m4 \
         perl \
+        procps \
         unzip \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen \
@@ -107,6 +110,8 @@ WORKDIR /app
 COPY .mise.toml fnox.toml ./
 RUN mise trust -a && mise install fnox && chown -R nobody:root /mise /app
 
+# `include_erts: true` bundles the pinned OTP and Elixir runtime in the release;
+# the runner deliberately does not install a second BEAM toolchain.
 COPY --from=builder --chown=nobody:root /app/_build/prod/rel/dhc ./
 
 USER nobody
