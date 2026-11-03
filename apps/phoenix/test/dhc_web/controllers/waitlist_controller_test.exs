@@ -464,6 +464,24 @@ defmodule DhcWeb.WaitlistControllerTest do
                json_response(conn, 200)
     end
 
+    test "search preserves a person's position in the full queue", %{conn: conn} do
+      insert_waitlist_profile(status: "removed", seconds: -100)
+      insert_waitlist_profile(first_name: "Earlier", seconds: -50)
+      id = insert_waitlist_profile(first_name: "Needle", seconds: 0)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries", q: "Needle")
+
+      assert %{
+               "data" => %{
+                 "entries" => [%{"id" => ^id, "position" => 2}],
+                 "totalCount" => 1
+               }
+             } = json_response(conn, 200)
+    end
+
     test "returns 400 for invalid or mismatched cursors", %{conn: conn} do
       invalid_cursor_conn =
         conn

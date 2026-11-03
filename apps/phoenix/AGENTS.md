@@ -3,6 +3,7 @@ This is a web application written using the Phoenix web framework.
 ## Project guidelines
 
 - Use `mix precommit` when you are done and fix pending issues. Its alias must keep `hex.audit` first because dependency-provided tasks unload archived Hex tasks from the current Mix process; it then runs Credo, `reach.check --arch`, compilation, formatting, and tests.
+- Waitlist entry positions are numbered across the full selected standing before search or cursor filtering; `totalCount` still counts only search matches. Keep search outside `positioned_entries_query/1`'s subquery in `Dhc.Waitlist`.
 - Keep Bandit at `~> 1.14` or newer within the compatible minor line; 1.12.5 fixes CVE-2026-74836/75484 and 1.14.0 fixes the October-2026 HTTP/2 and WebSocket set (CVE-2026-108525, -109584, -110314, -110499, -111101, -111103, -113436, -114213, -114216, -115269). plug_crypto must stay at `~> 2.2.1` (CVE-2026-105963: guard failures leaked the secret key base into logs).
 - Run `mix credo --all` from `apps/phoenix` for static analysis; the project configuration also enables `ExSlop`
 - Reach enforces module boundaries in `.reach.exs`: web→Repo only via `DhcWeb.Plugs.MagicLinkRateLimit`, Stripe only via `Dhc.Stripe.Operations.*` (never `Dhc.Stripe.Client.request/1`), Nostrum only inside `Dhc.Discord.*`, Req as the only HTTP client, no `IO.puts` outside Mix tasks/`Dhc.Release`. New findings fail the build; baseline known transitional findings with `MIX_ENV=dev mix reach.check --arch --write-baseline .reach-baseline.json`
