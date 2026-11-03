@@ -482,6 +482,170 @@ defmodule DhcWeb.WaitlistControllerTest do
              } = json_response(conn, 200)
     end
 
+    test "workshop contact is reflected in the waitlist", %{conn: conn} do
+      staff = Dhc.BeginnersWorkshopFixtures.staff_fixture()
+      workshop = Dhc.BeginnersWorkshopFixtures.scheduled_fixture(staff)
+
+      %{id: id} =
+        Dhc.BeginnersWorkshopFixtures.waiting_person_fixture(~U[2025-01-01 12:00:00Z])
+
+      contacted_at = ~U[2026-10-20 12:00:00Z]
+
+      assert {:ok, %{state: "contacted"}} =
+               Dhc.BeginnersWorkshops.execute(
+                 {:staff, staff},
+                 {:fast_track, workshop.id, {:waitlist_entry, id}},
+                 clock: Dhc.BeginnersWorkshops.Clock.fixed(contacted_at)
+               )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries")
+
+      assert %{
+               "data" => %{
+                 "entries" => [%{"id" => ^id, "lastContacted" => "2026-10-20T12:00:00Z"}]
+               }
+             } = json_response(conn, 200)
+    end
+
+    test "resends keep the latest contact time in the list, its sort order and detail", %{
+      conn: conn
+    } do
+      staff = Dhc.BeginnersWorkshopFixtures.staff_fixture()
+      workshop = Dhc.BeginnersWorkshopFixtures.scheduled_fixture(staff)
+
+      %{id: first_id} =
+        Dhc.BeginnersWorkshopFixtures.waiting_person_fixture(~U[2025-01-01 12:00:00Z])
+
+      %{id: second_id} =
+        Dhc.BeginnersWorkshopFixtures.waiting_person_fixture(~U[2025-02-01 12:00:00Z])
+
+      never_id = insert_waitlist_profile()
+
+      assert {:ok, %{id: intake_id}} =
+               Dhc.BeginnersWorkshops.execute(
+                 {:staff, staff},
+                 {:fast_track, workshop.id, {:waitlist_entry, first_id}},
+                 clock: Dhc.BeginnersWorkshops.Clock.fixed(~U[2026-10-20 12:00:00Z])
+               )
+
+      assert {:ok, _} =
+               Dhc.BeginnersWorkshops.execute(
+                 {:staff, staff},
+                 {:fast_track, workshop.id, {:waitlist_entry, second_id}},
+                 clock: Dhc.BeginnersWorkshops.Clock.fixed(~U[2026-10-21 12:00:00Z])
+               )
+
+      for {command, at} <- [
+            {:resend_link, ~U[2026-10-22 12:00:00Z]},
+            {:rotate_link, ~U[2026-10-19 12:00:00Z]}
+          ] do
+        assert {:ok, _} =
+                 Dhc.BeginnersWorkshops.execute(
+                   {:staff, staff},
+                   {command, workshop.id, intake_id, %{}},
+                   clock: Dhc.BeginnersWorkshops.Clock.fixed(at)
+                 )
+      end
+
+      coordinator = put_req_header(conn, "authorization", "Bearer admin-token")
+
+      assert %{
+               "data" => %{
+                 "entries" => [
+                   %{
+                     "id" => ^first_id,
+                     "lastContacted" => "2026-10-22T12:00:00Z",
+                     "position" => 1
+                   },
+                   %{
+                     "id" => ^second_id,
+                     "lastContacted" => "2026-10-21T12:00:00Z",
+                     "position" => 2
+                   },
+                   %{"id" => ^never_id, "lastContacted" => nil, "position" => 3}
+                 ]
+               }
+             } =
+               coordinator
+               |> get("/api/waitlist/entries", sort: "lastContacted", direction: "desc")
+               |> json_response(200)
+
+      assert %{"data" => %{"lastContacted" => "2026-10-22T12:00:00Z"}} =
+               coordinator |> get("/api/waitlist/entries/#{first_id}") |> json_response(200)
+    end
+
+    test "historical email backfill restores contact times without losing later contacts", %{
+      conn: conn
+    } do
+      staff = Dhc.BeginnersWorkshopFixtures.staff_fixture()
+      workshop = Dhc.BeginnersWorkshopFixtures.scheduled_fixture(staff)
+
+      ids =
+        for existing <- [nil, ~U[2026-10-19 12:00:00Z], ~U[2026-10-22 12:00:00Z]] do
+          %{id: id} =
+            Dhc.BeginnersWorkshopFixtures.waiting_person_fixture(~U[2025-01-01 12:00:00Z])
+
+          assert {:ok, %{id: intake_id}} =
+                   Dhc.BeginnersWorkshops.execute(
+                     {:staff, staff},
+                     {:fast_track, workshop.id, {:waitlist_entry, id}},
+                     clock: Dhc.BeginnersWorkshops.Clock.fixed(~U[2026-10-20 12:00:00Z])
+                   )
+
+          assert {:ok, _} =
+                   Dhc.BeginnersWorkshops.execute(
+                     {:staff, staff},
+                     {:resend_link, workshop.id, intake_id, %{}},
+                     clock: Dhc.BeginnersWorkshops.Clock.fixed(~U[2026-10-21 12:00:00Z])
+                   )
+
+          # Recreate the pre-fix state; observe the correction only through HTTP.
+          Repo.update_all(from(w in WaitlistEntry, where: w.id == ^id),
+            set: [last_contacted: existing]
+          )
+
+          id
+        end
+
+      never_id = insert_waitlist_profile()
+      [missing_id, older_id, newer_id] = ids
+
+      Repo.query!("SET LOCAL TIME ZONE 'America/New_York'")
+
+      unless Code.ensure_loaded?(Dhc.Repo.Migrations.BackfillWaitlistLastContacted) do
+        Code.require_file(
+          "priv/repo/migrations/20261103212421_backfill_waitlist_last_contacted.exs"
+        )
+      end
+
+      Ecto.Migration.Runner.run(
+        Repo,
+        Repo.config(),
+        20_261_103_212_421,
+        Dhc.Repo.Migrations.BackfillWaitlistLastContacted,
+        :forward,
+        :up,
+        :up,
+        log: false
+      )
+
+      %{"data" => %{"entries" => entries}} =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries")
+        |> json_response(200)
+
+      assert Map.new(entries, &{&1["id"], &1["lastContacted"]}) == %{
+               missing_id => "2026-10-21T12:00:00Z",
+               older_id => "2026-10-21T12:00:00Z",
+               newer_id => "2026-10-22T12:00:00Z",
+               never_id => nil
+             }
+    end
+
     test "returns 400 for invalid or mismatched cursors", %{conn: conn} do
       invalid_cursor_conn =
         conn

@@ -45,6 +45,16 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
     end)
   end
 
+  defp deliver(person, about, email, occasion, reading \\ @reading) do
+    in_transaction(fn ->
+      if person do
+        Repo.one!(from(w in WaitlistEntry, where: w.id == ^person.id, lock: "FOR UPDATE"))
+      end
+
+      IntakeEmails.deliver(about, email, occasion, reading)
+    end)
+  end
+
   defp with_reply_domain(domain, fun) do
     original = Application.get_env(:dhc, :intake_reply_domain)
     Application.put_env(:dhc, :intake_reply_domain, domain)
@@ -78,7 +88,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
   describe "variants" do
     test "a contacted person is asked to pay, a holder of a held Carried Fee to confirm", ctx do
       assert {:ok, :queued} =
-               IntakeEmails.deliver(
+               deliver(
+                 ctx.person,
                  {:intake, ctx.intake, ctx.workshop},
                  :contact,
                  Occasion.contact(),
@@ -94,7 +105,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
       })
 
       assert {:ok, :queued} =
-               IntakeEmails.deliver(
+               deliver(
+                 ctx.person,
                  {:intake, ctx.intake, ctx.workshop},
                  :contact,
                  Occasion.resend_link(Ecto.UUID.generate()),
@@ -112,7 +124,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
       stripe = force_intake_state!(ctx.intake.id, "paid")
 
       assert {:ok, :queued} =
-               IntakeEmails.deliver(
+               deliver(
+                 ctx.person,
                  {:intake, stripe, ctx.workshop},
                  :place_confirmed,
                  Occasion.place_confirmed(),
@@ -124,7 +137,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
       carried = force_carried_fee_paid!(intake)
 
       assert {:ok, :queued} =
-               IntakeEmails.deliver(
+               deliver(
+                 other,
                  {:intake, carried, ctx.workshop},
                  :place_confirmed,
                  Occasion.place_confirmed(),
@@ -137,7 +151,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
 
     test "a link travels in the Contact email while contacted, Place confirmed once paid", ctx do
       assert {:ok, :queued} =
-               IntakeEmails.deliver(
+               deliver(
+                 ctx.person,
                  {:intake, ctx.intake, ctx.workshop},
                  :link,
                  Occasion.resend_link("a"),
@@ -147,7 +162,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
       paid = force_intake_state!(ctx.intake.id, "paid")
 
       assert {:ok, :queued} =
-               IntakeEmails.deliver(
+               deliver(
+                 ctx.person,
                  {:intake, paid, ctx.workshop},
                  :link,
                  Occasion.resend_link("b"),
@@ -167,10 +183,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
       about = {:intake, paid, ctx.workshop}
 
       assert {:ok, :queued} =
-               IntakeEmails.deliver(about, "pre_workshop", Occasion.pre_workshop(0), @reading)
+               deliver(ctx.person, about, "pre_workshop", Occasion.pre_workshop(0))
 
       assert {:ok, :already_sent} =
-               IntakeEmails.deliver(about, "pre_workshop", Occasion.pre_workshop(0), @reading)
+               deliver(ctx.person, about, "pre_workshop", Occasion.pre_workshop(0))
 
       assert [_one] = jobs()
       assert [%{occasion: "pre_workshop"}] = logged(paid)
@@ -181,12 +197,12 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
 
       assert {:ok, :queued} =
                in_transaction(fn ->
-                 IntakeEmails.deliver(about, "declined", Occasion.declined(), @reading)
+                 deliver(ctx.person, about, "declined", Occasion.declined())
                end)
 
       assert {:error, :concurrent_change} =
                in_transaction(fn ->
-                 IntakeEmails.deliver(about, "declined", Occasion.declined(), @reading)
+                 deliver(ctx.person, about, "declined", Occasion.declined())
                end)
 
       assert [_one] = jobs()
@@ -204,7 +220,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
             {"follow_up", Occasion.follow_up()}
           ] do
         assert {:ok, :no_recipient} =
-                 IntakeEmails.deliver(
+                 deliver(
+                   ctx.person,
                    {:intake, anonymised, ctx.workshop},
                    email,
                    occasion,
@@ -220,7 +237,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
       %WaitlistEntry{} = person = ctx.person
 
       assert {:ok, :no_recipient} =
-               IntakeEmails.deliver(
+               deliver(
+                 ctx.person,
                  {:person, %{person | email: nil}, ctx.intake.id},
                  "withdrawn_forfeited",
                  Occasion.withdrawn(Ecto.UUID.generate()),
@@ -228,7 +246,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
                )
 
       assert {:ok, :no_recipient} =
-               IntakeEmails.deliver(
+               deliver(
+                 nil,
                  {:person, nil, nil},
                  "withdrawn_forfeited",
                  Occasion.withdrawn(Ecto.UUID.generate()),
@@ -243,7 +262,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
     fee_id = Ecto.UUID.generate()
 
     assert {:ok, :queued} =
-             IntakeEmails.deliver(
+             deliver(
+               ctx.person,
                {:person, ctx.person, nil},
                "withdrawn_forfeited",
                Occasion.withdrawn(fee_id),
@@ -259,7 +279,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
     test "each queued email has a distinct address bound to its entry, type and Intake", ctx do
       with_reply_domain("reply.example.test", fn ->
         assert {:ok, :queued} =
-                 IntakeEmails.deliver(
+                 deliver(
+                   ctx.person,
                    {:intake, ctx.intake, ctx.workshop},
                    :contact,
                    Occasion.contact(),
@@ -267,7 +288,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
                  )
 
         assert {:ok, :queued} =
-                 IntakeEmails.deliver(
+                 deliver(
+                   ctx.person,
                    {:intake, ctx.intake, ctx.workshop},
                    :link,
                    Occasion.resend_link(Ecto.UUID.generate()),
@@ -306,7 +328,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
     test "a Waitlist notice without an Intake is bound to the person only", ctx do
       with_reply_domain("reply.example.test", fn ->
         assert {:ok, :queued} =
-                 IntakeEmails.deliver(
+                 deliver(
+                   ctx.person,
                    {:person, ctx.person, nil},
                    "withdrawn_forfeited",
                    Occasion.withdrawn(Ecto.UUID.generate()),
@@ -327,7 +350,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
     test "the domain being unset keeps the global Reply-To and creates no binding", ctx do
       with_reply_domain(nil, fn ->
         assert {:ok, :queued} =
-                 IntakeEmails.deliver(
+                 deliver(
+                   ctx.person,
                    {:intake, ctx.intake, ctx.workshop},
                    :contact,
                    Occasion.contact(),
@@ -350,7 +374,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
       with_reply_domain("reply.example.test", fn ->
         with_intake_replies(false, fn ->
           assert {:ok, :queued} =
-                   IntakeEmails.deliver(
+                   deliver(
+                     ctx.person,
                      {:intake, ctx.intake, ctx.workshop},
                      :contact,
                      Occasion.contact(),
@@ -375,7 +400,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
         assert {:error, :test_rollback} =
                  Repo.transaction(fn ->
                    assert {:ok, :queued} =
-                            IntakeEmails.deliver(
+                            deliver(
+                              ctx.person,
                               {:intake, ctx.intake, ctx.workshop},
                               :contact,
                               Occasion.contact(),
@@ -427,7 +453,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
     assert owing.() == [paid.id]
 
     {:ok, :queued} =
-      IntakeEmails.deliver(
+      deliver(
+        ctx.person,
         {:intake, paid, ctx.workshop},
         "pre_workshop",
         Occasion.pre_workshop(0),

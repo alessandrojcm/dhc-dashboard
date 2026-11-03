@@ -124,6 +124,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
 
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist.WaitlistEntry
 
   # How many expired holds one `reap_holds` pass settles; the next sweep
   # takes the rest.
@@ -351,10 +352,20 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
 
       row ->
         transact(fn ->
-          with_locked(payment_spec(row), &complete_locked(&1, session, clock))
+          with_locked(complete_payment_spec(row), &complete_locked(&1, session, clock))
         end)
         |> signal_after_commit()
     end
+  end
+
+  # Completion queues the paid notice, so lock its recipient before the
+  # Intake. Other payment paths do not send email and keep `payment_spec/1`.
+  defp complete_payment_spec(row) do
+    intake = from(i in Intake, where: i.id == ^row.intake_id, select: i.waitlist_id)
+
+    row
+    |> payment_spec()
+    |> Map.put(:waitlist_entry, from(e in WaitlistEntry, where: e.id in subquery(intake)))
   end
 
   defp complete_locked(%{payment: payment} = locked, session, clock) do
@@ -549,9 +560,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
     with {:ok, peek} <- peek_intake(token),
          {:ok, %{outcome: outcome}} <-
            transact(fn ->
-             peek
-             |> intake_spec(nil)
-             |> Map.put(:carried_fee, &locked_intake_fee/1)
+             IntakeCommands.intake_command_spec(:confirm, peek)
              |> with_locked(
                &IntakeCommands.intake_command_locked(
                  &1,
