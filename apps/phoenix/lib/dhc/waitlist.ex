@@ -907,6 +907,7 @@ defmodule Dhc.Waitlist do
   defp entries_total_count(opts) do
     opts
     |> base_entries_query()
+    |> filter_entries_search(opts.q)
     |> select([w, _p, _wg], count(w.id))
     |> Repo.one()
   end
@@ -916,6 +917,7 @@ defmodule Dhc.Waitlist do
 
     opts
     |> positioned_entries_query()
+    |> filter_entries_search(opts.q)
     |> CursorPagination.apply_cursor(cursor, opts, @entry_sort_specs)
     |> CursorPagination.apply_order(entry_order_field(opts.sort), query_direction)
     |> limit(^opts.limit + 1)
@@ -934,7 +936,6 @@ defmodule Dhc.Waitlist do
 
     base_query
     |> filter_entries_status(opts.status)
-    |> filter_entries_search(opts.q)
   end
 
   defp filter_entries_status(query, status), do: where(query, [w, _p, _wg], w.status == ^status)
@@ -942,13 +943,16 @@ defmodule Dhc.Waitlist do
   defp filter_entries_search(query, nil), do: query
 
   defp filter_entries_search(query, q) do
-    where(
-      query,
-      [_w, p, _wg],
-      fragment("? @@ websearch_to_tsquery('english', ?)", field(p, :search_text), ^q)
-    )
+    matching_entries =
+      from p in UserProfile,
+        where: fragment("? @@ websearch_to_tsquery('english', ?)", field(p, :search_text), ^q),
+        select: p.waitlist_id
+
+    where(query, [w], w.id in subquery(matching_entries))
   end
 
+  # Search and cursor filters apply outside this subquery so positions always
+  # describe the full standing, rather than just the matching results.
   defp positioned_entries_query(opts) do
     opts
     |> base_entries_query()
