@@ -40,7 +40,7 @@ Source: [Nostrum Hex package](https://hex.pm/packages/nostrum)
 
 #### Elixir/OTP compatibility
 
-The repo uses Elixir 1.20 and OTP 29 (`.mise.toml:14-15`). Nostrum v0.10.4 is compatible with these versions.
+The repo uses Elixir 1.20.5 and OTP 29 (`.mise.toml:14-15`). Nostrum v0.10.4 is compatible with these versions.
 
 Source: `.mise.toml`
 

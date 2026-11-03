@@ -12,6 +12,7 @@ LABEL description="Development environment for the DHC Phoenix API"
 
 WORKDIR /workspace
 
+# kerl calls `ps` while compiling Erlang, provided by procps.
 RUN apt-get update \
     && apt-get -y --no-install-recommends install \
         autoconf \
@@ -24,6 +25,7 @@ RUN apt-get update \
         locales \
         m4 \
         perl \
+        procps \
         unzip \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen \

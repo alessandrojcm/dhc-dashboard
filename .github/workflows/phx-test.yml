@@ -61,7 +61,8 @@ jobs:
       # The testcontainers harness (ADR 0006) drives the root docker-compose.yml
       # `testing` profile via `docker compose --profile testing up -d --wait
       # test-db`. ubuntu-latest ships Docker installed and running — no setup
-      # action needed. Mix deps + _build are cached keyed on mix.lock hash.
+      # action needed. Mix deps + _build are cached for this dependency lock and
+      # BEAM toolchain.
       - name: Setup mise (Erlang + Elixir pinned in .mise.toml)
         uses: jdx/mise-action@v2
 
@@ -71,9 +72,7 @@ jobs:
           path: |
             apps/phoenix/deps
             apps/phoenix/_build
-          key: ${{ runner.os }}-mix-${{ hashFiles('apps/phoenix/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-mix-
+          key: ${{ runner.os }}-mix-${{ hashFiles('apps/phoenix/mix.lock', '.mise.toml') }}
 
       - name: Install Hex & Rebar
         run: mix local.hex --force && mix local.rebar --force

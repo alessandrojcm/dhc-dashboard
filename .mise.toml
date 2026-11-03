@@ -11,8 +11,8 @@
 
 [tools]
 node = "26"          # SvelteKit + Cloudflare Workers
-erlang = "29"              # OTP 27 for Elixir
-elixir = "1.20"   # Phoenix (mix.exs requires ~> 1.15), matched to OTP 27
+erlang = "29"         # OTP 29 supported by Elixir 1.20.5
+elixir = "1.20.5"     # Phoenix (mix.exs requires ~> 1.15)
 pnpm = "12"
 fnox = "latest"
 
