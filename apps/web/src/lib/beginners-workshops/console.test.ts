@@ -1,6 +1,7 @@
 import type {
 	BeginnersWorkshopConsole,
 	BeginnersWorkshopNextBatch,
+	BeginnersWorkshopRosterIntake,
 } from "@dhc/api-client";
 import { describe, expect, it } from "vitest";
 import {
@@ -114,6 +115,39 @@ function view(
 		finalisation: null,
 		cancelPreview: null,
 		cancellation: null,
+		...overrides,
+	};
+}
+
+function rosterIntake(
+	id: string,
+	overrides: Partial<BeginnersWorkshopRosterIntake> = {},
+): BeginnersWorkshopRosterIntake {
+	return {
+		id,
+		state: "contacted",
+		origin: "batch",
+		batchNumber: 1,
+		firstName: "Aoife",
+		lastName: "Byrne",
+		minor: false,
+		queueDate: "2025-01-01T12:00:00Z",
+		contactedAt: "2026-10-20T09:00:00Z",
+		holdExpiresAt: null,
+		checkedInAt: null,
+		refund: null,
+		standing: "waiting",
+		medical: false,
+		windowEndsAt: "2026-10-27T22:59:59.999999Z",
+		linkGeneration: 1,
+		emailLog: [],
+		history: [],
+		availableCommands: [],
+		attendanceCorrections: [],
+		paidVia: null,
+		carriedFee: null,
+		refundChoice: null,
+		refundTimingDaysToGo: null,
 		...overrides,
 	};
 }
@@ -433,7 +467,7 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 				asked: [],
 				attended: [intake("a", "attended"), intake("b", "attended")],
 				noShow: [intake("c", "no_show")],
-				out: [],
+				out: [rosterIntake("d", { state: "returned" })],
 			},
 			finalisation: {
 				at: "2026-11-14T20:05:00Z",
@@ -444,21 +478,23 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 		});
 	}
 
-	it("groups the roster as Attended / No-show / Out", () => {
+	it("filters the roster as All / Attended / No-show / Out", () => {
 		expect(
 			rosterGroups(finalised()).map((group) => [
 				group.title,
 				group.intakes.length,
 			]),
 		).toEqual([
+			["All", 4],
 			["Attended", 2],
 			["Did not attend", 1],
-			["No longer attending", 0],
+			["No longer attending", 1],
 		]);
-		expect(rosterGroups(view()).map((group) => group.title)).toEqual([
-			"Confirmed places",
-			"Offered a place, awaiting payment or confirmation",
-			"No longer attending",
+		expect(rosterGroups(finalised())[0]?.intakes.map(({ id }) => id)).toEqual([
+			"a",
+			"b",
+			"c",
+			"d",
 		]);
 	});
 
@@ -485,6 +521,87 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 			{ label: "Follow-up email", when: "Sun 15 Nov, 10:00", state: "next" },
 		]);
 		expect(step("2026-11-15T10:00:00Z")[1]?.state).toBe("done");
+	});
+});
+
+describe("rosterGroups", () => {
+	it("partitions scheduled rows by confirmation and payment status", () => {
+		const groups = rosterGroups(
+			view({
+				roster: {
+					seated: [rosterIntake("confirmed", { state: "paid" })],
+					asked: [
+						rosterIntake("credit", { carriedFee: "held" }),
+						rosterIntake("payment"),
+						rosterIntake("payment-hold", {
+							holdExpiresAt: "2026-11-11T18:50:00Z",
+						}),
+					],
+					attended: [],
+					noShow: [],
+					out: [rosterIntake("out", { state: "returned" })],
+				},
+			}),
+		);
+
+		expect(groups.map(({ title, intakes }) => [title, intakes.length])).toEqual(
+			[
+				["All", 5],
+				["Confirmed", 1],
+				["Awaiting payment", 2],
+				["Awaiting confirmation", 1],
+				["No longer attending", 1],
+			],
+		);
+		expect(groups.map(({ key }) => key)).toEqual([
+			"all",
+			"seated",
+			"awaitingPayment",
+			"awaitingConfirmation",
+			"out",
+		]);
+		expect(groups[0]?.intakes.map(({ id }) => id)).toEqual([
+			"confirmed",
+			"credit",
+			"payment",
+			"payment-hold",
+			"out",
+		]);
+		const partitions = groups.slice(1).flatMap((group) => group.intakes);
+		expect(partitions.map(({ id }) => id).sort()).toEqual([
+			"confirmed",
+			"credit",
+			"out",
+			"payment",
+			"payment-hold",
+		]);
+		expect(new Set(partitions.map(({ id }) => id))).toHaveLength(5);
+	});
+
+	it("keeps every filter visible with a zero count for a cancelled workshop", () => {
+		const base = view();
+		const groups = rosterGroups(
+			view({
+				workshop: { ...base.workshop, status: "cancelled", stage: "cancelled" },
+			}),
+		);
+
+		expect(groups.map(({ title, intakes }) => [title, intakes.length])).toEqual(
+			[
+				["All", 0],
+				["Confirmed", 0],
+				["Awaiting payment", 0],
+				["Awaiting confirmation", 0],
+				["No longer attending", 0],
+			],
+		);
+		expect(groups.map(({ key }) => key)).toEqual([
+			"all",
+			"seated",
+			"awaitingPayment",
+			"awaitingConfirmation",
+			"out",
+		]);
 	});
 });
 
@@ -651,9 +768,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				batchNumber: 1,
 				contactedAt: "2026-10-20T09:00:00Z",
 			}),
-		).toMatch(
-			/^Dara Nolan has workshop credit but has not confirmed their place \(offered Tue 20 Oct, 10:00\)/,
-		);
+		).toBe("Offered Tue 20 Oct, 10:00");
 	});
 
 	it("shows a queued email's time and a scheduled one's due time or the next sweep", () => {
@@ -736,9 +851,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 				batchNumber: null,
 				windowEndsAt: "2026-11-11T18:30:00Z",
 			}),
-		).toMatch(
-			/^Personal details removed has not paid\. Their reply period ended Wed 11 Nov, 18:30\./,
-		);
+		).toBe("Reply period ended Wed 11 Nov, 18:30");
 	});
 });
 

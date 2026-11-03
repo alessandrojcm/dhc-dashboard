@@ -251,19 +251,45 @@ test("shows the Next Batch preview in priority order, minors badged, with Pause 
 		.toBeVisible();
 });
 
-test("groups the roster: seated, then asked, not paid yet", async () => {
+test("one People roster has visible status counts and filters without duplicate rows", async () => {
 	const screen = await render(WorkshopConsole, { view: view() });
-
+	const people = screen.getByRole("region", { name: "People" });
 	await expect
-		.element(
-			screen.getByRole("region", {
-				name: "Offered a place, awaiting payment or confirmation",
-			}),
-		)
+		.element(people.getByRole("tab", { name: "All 2" }))
+		.toHaveAttribute("aria-selected", "true");
+	await expect
+		.element(people.getByRole("tab", { name: "Confirmed 1" }))
+		.toBeVisible();
+	await expect
+		.element(people.getByRole("tab", { name: "Awaiting payment 1" }))
+		.toBeVisible();
+	await expect
+		.element(people.getByRole("tab", { name: "Awaiting confirmation 0" }))
+		.toBeVisible();
+	await expect
+		.element(people.getByRole("tab", { name: "No longer attending 0" }))
+		.toBeVisible();
+	expect(people.getByTestId("person-row").elements()).toHaveLength(2);
+	await people.getByRole("tab", { name: "Awaiting payment 1" }).click();
+	expect(people.getByTestId("person-row").elements()).toHaveLength(1);
+	await expect
+		.element(people.getByTestId("person-row"))
 		.toHaveTextContent("Dara Nolan");
 	await expect
-		.element(screen.getByRole("region", { name: "Confirmed places" }))
+		.element(people.getByTestId("reply-period"))
+		.toHaveTextContent("Reply period ends Tue 27 Oct, 22:59");
+	await people.getByRole("tab", { name: "Confirmed 1" }).click();
+	await expect
+		.element(people.getByTestId("person-row"))
 		.toHaveTextContent("Cian Doyle");
+	await expect
+		.element(people.getByTestId("payment-guidance"))
+		.not.toBeInTheDocument();
+	await people.getByRole("tab", { name: "Awaiting confirmation 0" }).click();
+	await expect.element(people).toHaveTextContent("No people in this group");
+	await expect.element(people).not.toHaveTextContent("Nobody contacted yet");
+	await people.getByRole("tab", { name: "All 2" }).click();
+	expect(people.getByTestId("person-row").elements()).toHaveLength(2);
 	await expect
 		.element(screen.getByRole("region", { name: "Now" }))
 		.toHaveTextContent(
@@ -303,8 +329,58 @@ test("ALE-381: the seat meter counts live holds and each Intake shows when its h
 		.element(screen.getByTestId("hold-expiry"))
 		.toHaveTextContent("Paying now · place reserved until 12:30");
 	await expect
-		.element(screen.getByRole("region", { name: "Confirmed places" }))
+		.element(screen.getByRole("region", { name: "People" }))
 		.toHaveTextContent("Cian Doyle");
+});
+
+test("People keeps empty status counts visible and handles a live workshop becoming finalised", async () => {
+	const base = view();
+	const screen = await render(WorkshopConsole, { view: base });
+	const people = screen.getByRole("region", { name: "People" });
+	await people.getByRole("tab", { name: "Awaiting payment 1" }).click();
+	await screen.rerender({
+		view: view({
+			workshop: { ...base.workshop, status: "finalised", stage: "finalised" },
+			roster: {
+				seated: [],
+				asked: [],
+				out: [],
+				noShow: [],
+				attended: [
+					{
+						...base.roster.seated[0]!,
+						state: "attended",
+						standing: "attended",
+					},
+				],
+			},
+		}),
+	});
+	await expect
+		.element(people.getByRole("tab", { name: "All 1" }))
+		.toHaveAttribute("aria-selected", "true");
+	await expect
+		.element(people.getByRole("tab", { name: "Attended 1" }))
+		.toBeVisible();
+	await expect
+		.element(people.getByRole("tab", { name: "Did not attend 0" }))
+		.toBeVisible();
+	await people.getByRole("tab", { name: "Did not attend 0" }).click();
+	await expect.element(people).toHaveTextContent("No people in this group");
+
+	await screen.rerender({
+		view: view({
+			roster: { seated: [], asked: [], attended: [], noShow: [], out: [] },
+		}),
+	});
+	await expect
+		.element(people.getByRole("tab", { name: "All 0" }))
+		.toHaveAttribute("aria-selected", "true");
+	await expect
+		.element(people.getByRole("tab", { name: "Awaiting payment 0" }))
+		.toBeVisible();
+	await expect.element(people).toHaveTextContent("Nobody contacted yet");
+	expect(people.getByTestId("person-row").elements()).toHaveLength(0);
 });
 
 test("paused Batches offer Resume and say who paused them", async () => {
@@ -443,10 +519,10 @@ test("ALE-391: a finalised workshop reads attended / no-show and is read-only", 
 		.element(screen.getByTestId("seat-meter"))
 		.toHaveTextContent("1 attended · 1 did not attend out of 3 places");
 	await expect
-		.element(screen.getByRole("region", { name: "Attended" }))
+		.element(screen.getByRole("region", { name: "People" }))
 		.toHaveTextContent("Cian Doyle");
 	await expect
-		.element(screen.getByRole("region", { name: "Did not attend" }))
+		.element(screen.getByRole("region", { name: "People" }))
 		.toHaveTextContent("Dara Nolan");
 	await expect
 		.element(screen.getByRole("region", { name: "Now" }))
@@ -502,7 +578,8 @@ test("ALE-392: a finalised console offers Invite to each Invitable attendee and 
 	await expect
 		.element(screen.getByTestId("invitation-summary"))
 		.toHaveTextContent("3 attended · 1 invited · 1 joined");
-	const attended = screen.getByRole("region", { name: "Attended" });
+	await screen.getByRole("tab", { name: "Attended 3" }).click();
+	const attended = screen.getByRole("region", { name: "People" });
 	expect(
 		attended.getByRole("button", { name: "Invite" }).elements(),
 	).toHaveLength(1);
@@ -548,7 +625,7 @@ test("ALE-392: without members.invite the attended list offers no Invite", async
 	});
 
 	await expect
-		.element(screen.getByRole("region", { name: "Attended" }))
+		.element(screen.getByRole("region", { name: "People" }))
 		.toHaveTextContent("Cian Doyle");
 	expect(
 		screen.getByRole("button", { name: "Invite" }).elements(),
@@ -638,16 +715,14 @@ test("ALE-382/421: each failed refund needs attention through the refund module,
 	await expect
 		.element(
 			screen
-				.getByRole("region", {
-					name: "Offered a place, awaiting payment or confirmation",
-				})
+				.getByRole("button", { name: /^Dara Nolan —/ })
 				.getByTestId("refund-status"),
 		)
 		.toHaveTextContent("Refund failed");
 	await expect
 		.element(
 			screen
-				.getByRole("region", { name: "Confirmed places" })
+				.getByRole("button", { name: /^Cian Doyle —/ })
 				.getByTestId("refund-status"),
 		)
 		.toHaveTextContent("Refunded manually");
@@ -750,7 +825,7 @@ test("ALE-395: a cancelled workshop is read-only, says who and why, and points t
 		.element(screen.getByRole("button", { name: /Add a person/ }))
 		.not.toBeInTheDocument();
 	await expect
-		.element(screen.getByRole("region", { name: "No longer attending" }))
+		.element(screen.getByRole("region", { name: "People" }))
 		.toHaveTextContent("Moved to a later workshop");
 	await expect
 		.element(screen.getByRole("listitem").filter({ hasText: "Cancelled" }))
@@ -982,7 +1057,8 @@ test("ALE-393: the finalised roster offers the corrections Phoenix allows", asyn
 	await closeIntake(screen);
 });
 
-test("ALE-386: contacted people unpaid after their window need attention", async () => {
+test("unpaid response guidance and dates live in the roster, not a separate dropdown", async () => {
+	const base = view();
 	const screen = await render(WorkshopConsole, {
 		view: view({
 			unpaidAfterWindow: [
@@ -997,15 +1073,120 @@ test("ALE-386: contacted people unpaid after their window need attention", async
 		}),
 	});
 
+	const people = screen.getByRole("region", { name: "People" });
 	await expect
-		.element(
-			screen
-				.getByRole("region", { name: "Needs attention" })
-				.getByTestId("unpaid-after-window"),
-		)
+		.element(screen.getByRole("region", { name: "Awaiting a response" }))
+		.not.toBeInTheDocument();
+	expect(people.getByTestId("person-row").elements()).toHaveLength(2);
+	await expect
+		.element(screen.getByRole("region", { name: "Needs attention" }))
+		.not.toBeInTheDocument();
+
+	// Arrow navigation activates the visible roster filters, not a disclosure.
+	people.getByRole("tab", { name: "Confirmed 1" }).element().focus();
+	await userEvent.keyboard("{ArrowRight}");
+	await expect
+		.element(people.getByRole("tab", { name: "Awaiting payment 1" }))
+		.toHaveAttribute("aria-selected", "true");
+	expect(people.getByTestId("person-row").elements()).toHaveLength(1);
+	await expect
+		.element(people.getByTestId("person-row"))
 		.toHaveTextContent(
-			"Dara Nolan has not paid. Their offer round 1 reply period ended Tue 27 Oct, 23:59.",
+			"Dara Nolan Offer round 1 reply period ended Tue 27 Oct, 22:59",
 		);
+	await expect
+		.element(people.getByTestId("payment-guidance"))
+		.toHaveTextContent("1 reply period has ended. No follow-up is required.");
+	await expect
+		.element(people)
+		.toHaveTextContent("or returned to it if the workshop is full");
+	await expect.element(people).toHaveTextContent("until checkout ends");
+	await people.getByRole("button", { name: /^Dara Nolan —/ }).click();
+	await expect
+		.element(screen.getByRole("dialog"))
+		.toHaveTextContent("Dara Nolan");
+	await closeIntake(screen);
+	// Counts and dates refresh without changing which people Phoenix returns.
+	await screen.rerender({ view: base });
+	await expect
+		.element(people.getByTestId("reply-period"))
+		.toHaveTextContent("Reply period ends");
+	await expect
+		.element(people.getByTestId("payment-guidance"))
+		.not.toHaveTextContent("reply period has ended");
+});
+
+test("a long unpaid roster is shown once and status counts stay visible beside genuine alerts", async () => {
+	const base = view();
+	const unpaid = Array.from({ length: 24 }, (_, index) => ({
+		id: `unpaid-${index}`,
+		firstName: `Person ${index + 1}`,
+		lastName: "Waiting",
+		batchNumber: 1,
+		windowEndsAt: "2026-10-27T23:59:59.999999Z",
+	}));
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			workshop: { ...base.workshop, alerts: ["unstaffed"] },
+			unpaidAfterWindow: unpaid,
+			roster: {
+				...base.roster,
+				asked: [
+					...unpaid.map((person) => ({ ...base.roster.asked[0]!, ...person })),
+					{ ...base.roster.asked[0]!, carriedFee: "held" },
+				],
+			},
+			unconfirmedCarriedFees: [
+				{
+					id: base.roster.asked[0]!.id,
+					firstName: "Dara",
+					lastName: "Nolan",
+					batchNumber: 1,
+					contactedAt: "2026-10-20T09:00:00Z",
+				},
+			],
+		}),
+	});
+	const attention = screen.getByRole("region", { name: "Needs attention" });
+	await expect
+		.element(attention)
+		.toHaveTextContent("No coach or assistants assigned");
+	expect(attention.getByTestId("person-row").elements()).toHaveLength(0);
+	const people = screen.getByRole("region", { name: "People" });
+	await expect
+		.element(people.getByRole("tab", { name: "All 26" }))
+		.toHaveAttribute("aria-selected", "true");
+	await expect
+		.element(people.getByRole("tab", { name: "Awaiting payment 24" }))
+		.toBeVisible();
+	await expect
+		.element(people.getByRole("tab", { name: "Awaiting confirmation 1" }))
+		.toBeVisible();
+	expect(people.getByTestId("person-row").elements()).toHaveLength(26);
+	expect(
+		people.getByRole("button", { name: /^Person 1 Waiting —/ }).elements(),
+	).toHaveLength(1);
+	const nextRound = screen
+		.getByRole("region", { name: "Next offer round" })
+		.element();
+	expect(
+		nextRound.compareDocumentPosition(people.element()) &
+			Node.DOCUMENT_POSITION_FOLLOWING,
+	).toBeTruthy();
+	await people.getByRole("tab", { name: "Awaiting payment 24" }).click();
+	expect(people.getByTestId("person-row").elements()).toHaveLength(24);
+	await expect
+		.element(people.getByTestId("payment-guidance"))
+		.toHaveTextContent("24 reply periods have ended");
+	await people.getByRole("tab", { name: "Awaiting confirmation 1" }).click();
+	expect(people.getByTestId("person-row").elements()).toHaveLength(1);
+	await expect
+		.element(people.getByTestId("confirmation-guidance"))
+		.toHaveTextContent("can confirm until the workshop is finished");
+	await expect
+		.element(people.getByTestId("payment-guidance"))
+		.not.toBeInTheDocument();
+	await expect.element(attention).toBeVisible();
 });
 
 /** ALE-387: a Dublin civil date `days` from today. */
@@ -1157,7 +1338,7 @@ test("ALE-389/421: Refund credit is the refund module's confirmation, naming the
 	await closeIntake(screen);
 });
 
-test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need attention until they confirm", async () => {
+test("ALE-388: credit holders await confirmation quietly and retain their detail commands", async () => {
 	const base = view();
 	const holder = {
 		...base.roster.asked[0]!,
@@ -1222,19 +1403,24 @@ test("ALE-388: Carried Fee holders are marked confirms, show their fee, and need
 		.element(proposed.getByRole("listitem").nth(0))
 		.toHaveTextContent("Has credit · confirmation needed");
 
+	const people = screen.getByRole("region", { name: "People" });
 	await expect
-		.element(
-			screen
-				.getByRole("region", { name: "Needs attention" })
-				.getByTestId("unconfirmed-carried-fee"),
-		)
-		.toHaveTextContent(
-			"Dara Nolan has workshop credit but has not confirmed their place",
-		);
-
+		.element(screen.getByRole("region", { name: "Needs attention" }))
+		.not.toBeInTheDocument();
 	await expect
 		.element(screen.getByRole("button", { name: /^Cian Doyle/ }))
 		.toHaveTextContent("Workshop credit used for this place");
+	await people.getByRole("tab", { name: "Awaiting confirmation 1" }).click();
+	expect(people.getByTestId("person-row").elements()).toHaveLength(1);
+	await expect
+		.element(people.getByTestId("person-row"))
+		.toHaveTextContent("Dara Nolan Offered Tue 20 Oct, 10:00");
+	await expect
+		.element(people.getByTestId("confirmation-guidance"))
+		.toHaveTextContent("can confirm until the workshop is finished");
+	await expect
+		.element(people.getByTestId("payment-guidance"))
+		.not.toBeInTheDocument();
 
 	const detail = await openIntake(screen, /^Dara Nolan — Place offered/);
 	await expect
