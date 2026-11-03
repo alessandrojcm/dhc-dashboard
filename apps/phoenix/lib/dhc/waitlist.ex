@@ -294,6 +294,29 @@ defmodule Dhc.Waitlist do
   defp with_available_commands(entry, now),
     do: Map.put(entry, :available_commands, available_commands(entry, now))
 
+  @doc """
+  Records the latest queued email to an already-locked Waitlist entry.
+
+  The caller owns the transaction and must lock the entry before any Intake
+  or payment rows. An older queueing clock never moves contact time backwards.
+  This is queueing history, not confirmation of email delivery.
+  """
+  @spec record_contact(WaitlistEntry.t(), DateTime.t()) :: :ok
+  def record_contact(%WaitlistEntry{id: id}, %DateTime{} = queued_at) do
+    unless Repo.in_transaction?() do
+      raise ArgumentError, "Dhc.Waitlist.record_contact/2 must run inside a transaction"
+    end
+
+    at = DateTime.truncate(queued_at, :second)
+
+    from(w in WaitlistEntry,
+      where: w.id == ^id and (is_nil(w.last_contacted) or w.last_contacted < ^at)
+    )
+    |> Repo.update_all(set: [last_contacted: at])
+
+    :ok
+  end
+
   @doc "The longest first name the Waitlist accepts: its Intake Email placeholder maximum."
   @spec first_name_max_length() :: pos_integer()
   def first_name_max_length, do: @first_name_max_length

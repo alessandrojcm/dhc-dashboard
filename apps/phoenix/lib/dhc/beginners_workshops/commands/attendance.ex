@@ -172,6 +172,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Attendance do
         with_locked(
           %{
             workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+            waitlist_entry: &follow_up_entries(&1, clock),
             intake: &follow_up_intakes(&1, clock)
           },
           &follow_ups_locked(&1, clock)
@@ -288,16 +289,17 @@ defmodule Dhc.BeginnersWorkshops.Commands.Attendance do
   # ── pass_payment_cutoff ─────────────────────────────────────────
 
   # Under the workshop lock: the Waitlist entries of its `contacted` people
-  # (whose standing a lapse changes). Nothing is locked before the cutoff.
+  # (whose standing a lapse changes) and `paid` people (who receive
+  # Pre-workshop info). Nothing is locked before the cutoff.
   defp cutoff_entries(%{workshop: workshop}, clock) do
     if cutoff_due?(workshop, Clock.read(clock)) do
-      contacted =
+      recipients =
         from(i in Intake,
-          where: i.workshop_id == ^workshop.id and i.state == "contacted",
+          where: i.workshop_id == ^workshop.id and i.state in ["contacted", "paid"],
           select: i.waitlist_id
         )
 
-      {:all, from(e in WaitlistEntry, where: e.id in subquery(contacted))}
+      {:all, from(e in WaitlistEntry, where: e.id in subquery(recipients))}
     end
   end
 
@@ -614,11 +616,28 @@ defmodule Dhc.BeginnersWorkshops.Commands.Attendance do
 
   # ── send_follow_ups ─────────────────────────────────────────────
 
-  defp follow_up_intakes(%{workshop: workshop}, clock) do
+  # The recipient's entry is locked before their Intake so the queued
+  # Follow-up records its monotonic contact timestamp under that entry lock.
+  defp follow_up_entries(%{workshop: workshop}, clock) do
+    if WorkshopPolicy.follow_up_due?(workshop, Clock.read(clock)) do
+      attended =
+        from(i in Intake,
+          where: i.workshop_id == ^workshop.id and i.state == "attended",
+          select: i.waitlist_id
+        )
+
+      {:all, from(e in WaitlistEntry, where: e.id in subquery(attended))}
+    end
+  end
+
+  defp follow_up_intakes(%{workshop: workshop, waitlist_entry: entries}, clock)
+       when is_list(entries) do
     if WorkshopPolicy.follow_up_due?(workshop, Clock.read(clock)),
       do:
         {:all, from(i in Intake, where: i.workshop_id == ^workshop.id and i.state == "attended")}
   end
+
+  defp follow_up_intakes(_locked, _clock), do: nil
 
   defp follow_ups_locked(%{intake: nil}, _clock), do: {:ok, %{outcome: :not_due}}
 

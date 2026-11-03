@@ -191,6 +191,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
         with_locked(
           %{
             workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id)),
+            waitlist_entry: &reschedule_entries/1,
             intake: &open_intakes/1
           },
           &reschedule_locked(&1, attrs, clock)
@@ -350,11 +351,27 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   # ── reschedule_workshop ─────────────────────────────────────────
 
+  # Every recipient's Waitlist entry is locked before their open Intake, so
+  # the reschedule email records contact under the entry lock.
+  defp reschedule_entries(%{workshop: workshop}) do
+    open = Intake.open_states()
+
+    people =
+      from(i in Intake,
+        where: i.workshop_id == ^workshop.id and i.state in ^open,
+        select: i.waitlist_id
+      )
+
+    {:all, from(e in WaitlistEntry, where: e.id in subquery(people))}
+  end
+
   # Every open Intake of the workshop: each is told about the move.
-  defp open_intakes(%{workshop: workshop}) do
+  defp open_intakes(%{workshop: workshop, waitlist_entry: entries}) when is_list(entries) do
     open = Intake.open_states()
     {:all, from(i in Intake, where: i.workshop_id == ^workshop.id and i.state in ^open)}
   end
+
+  defp open_intakes(_locked), do: nil
 
   defp reschedule_locked(%{workshop: workshop, intake: intakes}, attrs, clock) do
     reading = Clock.read(clock)

@@ -95,7 +95,7 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeesConcurrencyTest do
       assert LockTrace.writes_outside_transaction(events) == []
 
       assert LockTrace.transactions(events) == [
-               ~w(beginners_workshops beginners_workshop_intakes beginners_workshop_carried_fees)
+               ~w(beginners_workshops waitlist beginners_workshop_intakes beginners_workshop_carried_fees)
              ]
     end)
   end

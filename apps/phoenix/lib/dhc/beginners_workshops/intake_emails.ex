@@ -43,8 +43,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   the recipient, the first name and the Payment Window itself, picks the
   Contact and Place-confirmed variants, fills every placeholder of the type
   from its one source, queues the job and writes the ledger row
-  (`IntakeEmailLog`) in the caller's transaction, so a rolled-back command
-  sends nothing. Only `Dhc.BeginnersWorkshops.Commands.*` may call it or
+  (`IntakeEmailLog`) and advances the person's Waitlist contact time in the
+  caller's transaction, so a rolled-back command sends nothing. The caller
+  locks the Waitlist entry before the Intake and any payment rows. Only
+  `Dhc.BeginnersWorkshops.Commands.*` may call it or
   `queue/4` (Reach): an Intake Email is never sent by anything else.
 
   `owing/1` and `scheduled/3` answer "who still owes it" for the sweep and
@@ -211,7 +213,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
                |> Keyword.put(:reply_to, reply_to)
                |> Keyword.put(:offer_round, Keyword.get(opts, :offer_round, false))
              ),
-           :ok <- log(ledger_intake_id(about), type, occasion, reading) do
+           :ok <- log(ledger_intake_id(about), type, occasion, reading),
+           :ok <- Dhc.Waitlist.record_contact(person, reading.now) do
         planned_result(job_or_plan)
       end
     end

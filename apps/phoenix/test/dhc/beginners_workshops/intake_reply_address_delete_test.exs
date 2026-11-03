@@ -6,14 +6,27 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplyAddressDeleteTest do
 
   import Swoosh.TestAssertions
   import Dhc.BeginnersWorkshopFixtures
+  import Ecto.Query
 
   alias Dhc.BeginnersWorkshops
   alias Dhc.BeginnersWorkshops.{Clock, IntakeEmails, IntakeReplies}
   alias Dhc.BeginnersWorkshops.IntakeEmails.Occasion
   alias Dhc.Email.Worker
   alias Dhc.Repo
+  alias Dhc.Waitlist.WaitlistEntry
 
   @now ~U[2026-10-23 12:00:00.000000Z]
+
+  defp in_transaction(person, fun) do
+    Repo.transaction(fn ->
+      Repo.one!(from(w in WaitlistEntry, where: w.id == ^person.id, lock: "FOR UPDATE"))
+
+      case fun.() do
+        {:ok, result} -> result
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
 
   setup do
     original_domain = Application.get_env(:dhc, :intake_reply_domain)
@@ -32,12 +45,14 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplyAddressDeleteTest do
 
   defp issue_reply_address(person) do
     assert {:ok, :queued} =
-             IntakeEmails.deliver(
-               {:person, person, nil},
-               "withdrawn_forfeited",
-               Occasion.withdrawn(Ecto.UUID.generate()),
-               Clock.read(Clock.fixed(@now))
-             )
+             in_transaction(person, fn ->
+               IntakeEmails.deliver(
+                 {:person, person, nil},
+                 "withdrawn_forfeited",
+                 Occasion.withdrawn(Ecto.UUID.generate()),
+                 Clock.read(Clock.fixed(@now))
+               )
+             end)
 
     assert [%{args: args}] = all_enqueued(worker: Worker)
     assert is_binary(args["sealed_reply_to"])

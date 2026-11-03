@@ -406,11 +406,20 @@ defmodule Dhc.BeginnersWorkshops.RescheduleTest do
     end
   end
 
-  test "a Waitlist entry is never touched", %{coordinator: coordinator} do
+  test "a Waitlist entry keeps its standing and priority while contact time advances", %{
+    coordinator: coordinator
+  } do
     {workshop, [{intake, _}]} = contacted_fixture(coordinator, 1)
     before = Repo.get!(WaitlistEntry, intake.waitlist_id)
 
     assert {:ok, _} = reschedule(coordinator, workshop, %{"date" => "2026-11-21"})
-    assert Repo.get!(WaitlistEntry, intake.waitlist_id) == before
+    after_reschedule = Repo.get!(WaitlistEntry, intake.waitlist_id)
+
+    assert after_reschedule.status == before.status
+    assert after_reschedule.initial_registration_date == before.initial_registration_date
+    assert Map.drop(after_reschedule, [:last_contacted]) == Map.drop(before, [:last_contacted])
+    assert after_reschedule.last_contacted == DateTime.truncate(@now, :second)
+
+    assert DateTime.compare(after_reschedule.last_contacted, before.last_contacted) == :gt
   end
 end

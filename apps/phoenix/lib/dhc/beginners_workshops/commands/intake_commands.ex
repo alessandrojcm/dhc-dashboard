@@ -319,8 +319,12 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
     |> Map.put(:carried_fee, &locked_intake_fee/1)
   end
 
-  def intake_command_spec(:confirm, peek),
-    do: peek |> intake_spec(nil) |> Map.put(:carried_fee, &locked_intake_fee/1)
+  def intake_command_spec(:confirm, peek) do
+    peek
+    |> intake_spec(nil)
+    |> Map.put(:waitlist_entry, entry_query(peek))
+    |> Map.put(:carried_fee, &locked_intake_fee/1)
+  end
 
   # `cancel_with_refund` refunds the money that paid the Intake and puts
   # the person back to `waiting`, so it locks their entry, their Carried Fee
@@ -370,7 +374,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
     |> Map.put(:carried_fee, &correction_fee/1)
   end
 
-  def intake_command_spec(_link_command, peek), do: intake_spec(peek, nil)
+  # Resending or rotating a link queues email, so it must lock the recipient
+  # before the Intake just like every other email command.
+  def intake_command_spec(_link_command, peek),
+    do: peek |> intake_spec(nil) |> Map.put(:waitlist_entry, entry_query(peek))
 
   @doc false
   def intake_command_locked(%{intake: intake} = locked, command, context, clock) do
