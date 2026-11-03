@@ -122,6 +122,8 @@ The Beginners' Workshop report (ALE-397) is the Dashboard tab's read model, `Dhc
 
 ## Navigation
 
+- Workshop non-response is normal waiting, not an alert: `workshop-people.svelte` renders one People roster with visible counted status filters from `rosterGroups` and neutral payment/confirmation guidance; reserve “Needs attention” for workshop issues and failed refunds. Keep each person in one rendered list rather than adding a second response list or disclosure; payment deadlines and automatic outcomes stay Phoenix-owned.
+
 - Beginners' Workshop section pages scroll as a document below `lg`; only desktop constrains the dashboard and panels to the viewport. Keep the responsive height/overflow chain aligned in the dashboard layout, `section-shell.svelte`, and list panels: fixed phone heights let filters squeeze the list to zero. `section-layout.browser.test.ts` covers initial and scrolled views with tracked Chromium/macOS screenshot baselines; review updates, then rerun without `-u`.
 
 - Beginners' Workshop dialogs share `lib/components/beginners-workshops/workshop-dialog.svelte`: below 640px they slide up as full-width bottom sheets; desktop stays centered. Keep the existing Dialog/AlertDialog roots so focus handling and destructive-confirmation semantics survive, and put responsive layout changes in this shared wrapper.

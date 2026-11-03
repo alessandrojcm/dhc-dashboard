@@ -14,8 +14,8 @@
 	"N attended · N invited · N joined".
 	row shows its refund. (ALE-386) Each roster row opens its Intake — facts,
 	email log, history and only the commands Phoenix lists in
-	`availableCommands` — and Needs attention lists contacted people still
-	unpaid after their window. (ALE-395) Cancel opens a dialog with what it
+	`availableCommands` — while the People roster has visible status filters
+	and neutral response guidance. (ALE-395) Cancel opens a dialog with what it
 	would do; a cancelled workshop stays read-only, its timeline struck
 	through, with who cancelled it, the reason and where to go next.
 -->
@@ -45,27 +45,14 @@ import { toast } from "svelte-sonner";
 import { resolve } from "$app/paths";
 import {
 	consoleTimeline,
-	holdLabel,
-	intakeOrigin,
-	intakeStateLabel,
 	invitationSummary,
 	nextBatchHeadline,
 	nextBatchSize,
 	nowCard,
 	personName,
-	refundLabel,
-	rosterGroups,
-	carriedFeeLabel,
-	unconfirmedCarriedFeeText,
-	standingLabel,
 	type TimelineStep,
-	unpaidAfterWindowText,
 } from "#lib/beginners-workshops/console.js";
-import {
-	formatCivilDate,
-	formatDublinInstant,
-	formatDublinTime,
-} from "#lib/club-calendar.js";
+import { formatCivilDate, formatDublinInstant } from "#lib/club-calendar.js";
 import {
 	formatFee,
 	staffSummary,
@@ -77,10 +64,8 @@ import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.
 import * as Alert from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
-import * as Empty from "#lib/components/ui/empty/index.js";
 import * as Sheet from "#lib/components/ui/sheet/index.js";
 import { cn } from "#lib/utils.js";
-import InviteButton from "../../invite-button.svelte";
 import SeatMeter from "../../seat-meter.svelte";
 import { pauseBatches, resumeBatches } from "./console.remote";
 import FastTrackDialog from "./fast-track-dialog.svelte";
@@ -89,6 +74,7 @@ import RescheduleDialog from "./reschedule-dialog.svelte";
 import CancelWorkshopDialog from "./cancel-workshop-dialog.svelte";
 import StaffDialog from "../../staff-dialog.svelte";
 import WorkshopSettingsDialog from "../../workshop-settings-dialog.svelte";
+import WorkshopPeople from "./workshop-people.svelte";
 
 let {
 	view,
@@ -122,7 +108,6 @@ const workshop = $derived(view.workshop);
 const next = $derived(view.nextBatch);
 const steps = $derived(consoleTimeline(view));
 const now = $derived(nowCard(view));
-const groups = $derived(rosterGroups(view));
 const scheduled = $derived(workshop.status === "scheduled");
 const command = $derived(
 	view.pause.paused
@@ -139,20 +124,6 @@ const attention = $derived(
 const attentionClass =
 	"rounded-xl border-2 border-amber-500 bg-amber-50 p-3 text-foreground";
 </script>
-
-{#snippet attentionPerson(intakeId: string, text: string, testId: string)}
-	<Button
-		variant="outline"
-		class={cn(
-			attentionClass,
-			"h-auto justify-start gap-3 text-left font-normal whitespace-normal shadow-none hover:border-amber-600 hover:bg-amber-100",
-		)}
-		data-testid={testId}
-		onclick={() => (selectedIntakeId = intakeId)}
-	>
-		<AlertTriangle /><span>{text}</span>
-	</Button>
-{/snippet}
 
 {#snippet stepIcon(state: TimelineStep["state"])}
 	{#if state === "done"}<Check class="size-4 text-emerald-700" />
@@ -378,7 +349,7 @@ const attentionClass =
 				{/if}
 			</section>
 
-			{#if attention.length || workshop.alerts.length || view.failedRefunds.length || view.unpaidAfterWindow.length || view.unconfirmedCarriedFees.length}
+			{#if attention.length || workshop.alerts.length || view.failedRefunds.length}
 				<section
 					class="flex flex-col gap-3 rounded-2xl border border-amber-500/50 bg-amber-50/50 p-5"
 					aria-labelledby="bw-attention"
@@ -401,20 +372,6 @@ const attentionClass =
 							availableCommands={refund.availableCommands}
 							name={personName(refund)}
 						/>
-					{/each}
-					{#each view.unpaidAfterWindow as person (person.id)}
-						{@render attentionPerson(
-							person.id,
-							unpaidAfterWindowText(person),
-							"unpaid-after-window",
-						)}
-					{/each}
-					{#each view.unconfirmedCarriedFees as person (person.id)}
-						{@render attentionPerson(
-							person.id,
-							unconfirmedCarriedFeeText(person),
-							"unconfirmed-carried-fee",
-						)}
 					{/each}
 					{#each attention as item (item)}
 						<Alert.Root class={attentionClass}>
@@ -531,101 +488,11 @@ const attentionClass =
 				</section>
 			{/if}
 
-			{#each groups as group (group.key)}
-				{#if group.intakes.length}
-					<section
-						class="flex flex-col gap-3 rounded-2xl border bg-card p-5"
-						aria-label={group.title}
-					>
-						<h2
-							class="flex items-center gap-2 text-xs font-bold tracking-wider text-muted-foreground uppercase"
-						>
-							{group.title}
-							<Badge variant="outline">{group.intakes.length}</Badge>
-						</h2>
-						<ul class="flex flex-col gap-1.5">
-							{#each group.intakes as intake (intake.id)}
-								{@const refund = refundLabel(intake)}
-								<li class="flex items-center gap-2">
-									<Button
-										variant="outline"
-										class="h-auto min-h-11 min-w-0 flex-1 flex-wrap justify-start gap-3 rounded-xl bg-background/50 px-4 py-3 text-left font-normal whitespace-normal shadow-none focus-visible:border-primary"
-										aria-label={`${personName(intake)} — ${intakeStateLabel(intake.state)}`}
-										onclick={() => (selectedIntakeId = intake.id)}
-									>
-										<span class="flex-1 font-medium">{personName(intake)}</span>
-										{#if intake.minor}<Badge variant="outline">Minor</Badge
-											>{/if}
-										<span class="text-xs text-muted-foreground"
-											>{intakeOrigin(intake)}</span
-										>
-										{#if refund}<Badge
-												variant="outline"
-												class={cn(
-													refund.tone === "failed" &&
-														"border-destructive bg-destructive text-white",
-													refund.tone === "progress" &&
-														"border-amber-500 text-amber-900",
-													refund.tone === "done" &&
-														"border-emerald-700 text-emerald-900",
-												)}
-												data-testid="refund-status">{refund.text}</Badge
-											>{/if}
-										{#if carriedFeeLabel(intake.carriedFee)}<Badge
-												variant="outline"
-												data-testid="carried-fee"
-												class="capitalize"
-												>{carriedFeeLabel(intake.carriedFee)}</Badge
-											>{/if}
-										{#if holdLabel(intake)}<Badge
-												variant="outline"
-												class="border-sky-600 text-sky-800"
-												data-testid="hold-expiry">{holdLabel(intake)}</Badge
-											>{/if}
-										{#if intake.checkedInAt}<Badge
-												variant="outline"
-												class="border-emerald-600 text-emerald-800"
-												data-testid="checked-in"
-												>In {formatDublinTime(intake.checkedInAt)}</Badge
-											>{/if}
-										<Badge variant="secondary"
-											>{intakeStateLabel(intake.state)}</Badge
-										>
-									</Button>
-									{#if group.key === "attended"}
-										{#if intake.standing === "attended" && canInvite}
-											<InviteButton
-												workshopId={workshop.id}
-												intakeId={intake.id}
-												name={personName(intake)}
-											/>
-										{:else if standingLabel(intake.standing)}
-											<Badge
-												variant="outline"
-												class="border-emerald-700 text-emerald-900"
-												data-testid="invitation-standing"
-												>{standingLabel(intake.standing)}</Badge
-											>
-										{/if}
-									{/if}
-								</li>
-							{/each}
-						</ul>
-					</section>
-				{/if}
-			{/each}
-
-			{#if groups.every((group) => !group.intakes.length)}
-				<Empty.Root class="border">
-					<Empty.Header>
-						<Empty.Title>Nobody contacted yet</Empty.Title>
-						<Empty.Description
-							>People appear here after they receive a place offer,
-							automatically or from staff.</Empty.Description
-						>
-					</Empty.Header>
-				</Empty.Root>
-			{/if}
+			<WorkshopPeople
+				{view}
+				{canInvite}
+				onSelect={(id) => (selectedIntakeId = id)}
+			/>
 		</div>
 	</div>
 </div>

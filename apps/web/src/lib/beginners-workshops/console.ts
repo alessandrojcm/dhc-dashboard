@@ -299,30 +299,49 @@ function paymentClosedBody(
 	return `${parts.join(". ")}.`;
 }
 
-/**
- * The roster groups, in display order: Seated (paid) / Asked, not paid yet /
- * Out before Attendance Finalisation, and Attended / No-show / Out after it.
- */
+/** The roster's visible status filters, in display order. */
 export function rosterGroups(view: BeginnersWorkshopConsole): {
-	key: "seated" | "asked" | "attended" | "noShow" | "out";
+	key:
+		| "all"
+		| "seated"
+		| "awaitingPayment"
+		| "awaitingConfirmation"
+		| "attended"
+		| "noShow"
+		| "out";
 	title: string;
 	intakes: BeginnersWorkshopRosterIntake[];
 }[] {
 	if (view.workshop.status === "finalised") {
+		const { attended, noShow, out } = view.roster;
 		return [
-			{ key: "attended", title: "Attended", intakes: view.roster.attended },
-			{ key: "noShow", title: "Did not attend", intakes: view.roster.noShow },
-			{ key: "out", title: "No longer attending", intakes: view.roster.out },
+			{ key: "all", title: "All", intakes: [...attended, ...noShow, ...out] },
+			{ key: "attended", title: "Attended", intakes: attended },
+			{ key: "noShow", title: "Did not attend", intakes: noShow },
+			{ key: "out", title: "No longer attending", intakes: out },
 		];
 	}
+	const { seated, asked, out } = view.roster;
+	const awaitingConfirmation = asked.filter(
+		(intake) => intake.carriedFee === "held",
+	);
+	const awaitingPayment = asked.filter(
+		(intake) => intake.carriedFee !== "held",
+	);
 	return [
-		{ key: "seated", title: "Confirmed places", intakes: view.roster.seated },
+		{ key: "all", title: "All", intakes: [...seated, ...asked, ...out] },
+		{ key: "seated", title: "Confirmed", intakes: seated },
 		{
-			key: "asked",
-			title: "Offered a place, awaiting payment or confirmation",
-			intakes: view.roster.asked,
+			key: "awaitingPayment",
+			title: "Awaiting payment",
+			intakes: awaitingPayment,
 		},
-		{ key: "out", title: "No longer attending", intakes: view.roster.out },
+		{
+			key: "awaitingConfirmation",
+			title: "Awaiting confirmation",
+			intakes: awaitingConfirmation,
+		},
+		{ key: "out", title: "No longer attending", intakes: out },
 	];
 }
 
@@ -659,11 +678,11 @@ export function carriedFeeLabel(
 	return status ? CARRIED_FEE_LABELS[status] : null;
 }
 
-/** The Needs attention line of a Carried Fee holder who hasn't confirmed. */
+/** Compact offer date in the roster metadata. */
 export function unconfirmedCarriedFeeText(
 	person: BeginnersWorkshopUnconfirmedCarriedFee,
 ): string {
-	return `${personName(person)} has workshop credit but has not confirmed their place (offered ${formatDublinInstant(person.contactedAt)}). They can confirm until the workshop is finished. Confirm for them if they replied by email.`;
+	return `Offered ${formatDublinInstant(person.contactedAt)}`;
 }
 
 /** One line of an Intake's email log, as the console shows it. */
@@ -688,12 +707,12 @@ export function emailLogLine(
 	};
 }
 
-/** The Needs attention line of someone still unpaid after their window. */
+/** Compact reply-period date in the roster metadata. */
 export function unpaidAfterWindowText(
 	person: BeginnersWorkshopUnpaidAfterWindow,
 ): string {
 	const window = person.batchNumber
-		? `offer round ${person.batchNumber} reply period`
-		: "reply period";
-	return `${personName(person)} has not paid. Their ${window} ended ${formatDublinInstant(person.windowEndsAt)}. They can still pay until the payment deadline. Resend their link or decline the place if they have said no.`;
+		? `Offer round ${person.batchNumber} reply period`
+		: "Reply period";
+	return `${window} ended ${formatDublinInstant(person.windowEndsAt)}`;
 }
