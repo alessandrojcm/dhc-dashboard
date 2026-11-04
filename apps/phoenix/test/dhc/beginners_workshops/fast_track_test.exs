@@ -127,6 +127,29 @@ defmodule Dhc.BeginnersWorkshops.FastTrackTest do
                Repo.all(from(l in IntakeEmailLog, where: l.intake_id == ^intake_id))
     end
 
+    test "a coordinator can deliberately place a decliner in the same workshop again",
+         %{coordinator: c, workshop: w} do
+      person = waiting_person_fixture(~U[2025-01-01 12:00:00Z])
+      assert {:ok, %{id: first_id}} = fast_track(c, w, {:waitlist_entry, person.id})
+
+      assert {:ok, %{state: "declined"}} =
+               BeginnersWorkshops.execute({:staff, c}, {:decline, w.id, first_id, %{}},
+                 clock: Clock.fixed(@now)
+               )
+
+      assert BatchProposal.people(w.id, 5) == []
+
+      assert {:ok, [%{waitlist_id: candidate_id}]} =
+               BeginnersWorkshops.fast_track_candidates(w.id, nil, clock: Clock.fixed(@now))
+
+      assert candidate_id == person.id
+
+      assert {:ok, %{id: second_id, state: "contacted"}} =
+               fast_track(c, w, {:waitlist_entry, person.id})
+
+      refute second_id == first_id
+    end
+
     test "charges the workshop fee: no waiver, and the fee locks", %{coordinator: c, workshop: w} do
       person = waiting_person_fixture(~U[2025-06-01 12:00:00Z])
       contact_template!(~w(fee))
@@ -147,11 +170,11 @@ defmodule Dhc.BeginnersWorkshops.FastTrackTest do
 
     test "leaves the Batch proposal", %{coordinator: c, workshop: w} do
       person = waiting_person_fixture(~U[2025-01-01 12:00:00Z])
-      assert [%{waitlist_id: id}] = BatchProposal.people(5)
+      assert [%{waitlist_id: id}] = BatchProposal.people(w.id, 5)
       assert id == person.id
 
       assert {:ok, _} = fast_track(c, w, {:waitlist_entry, person.id})
-      assert BatchProposal.people(5) == []
+      assert BatchProposal.people(w.id, 5) == []
     end
   end
 

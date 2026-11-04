@@ -203,7 +203,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     people =
       if timing in [:full, :closed],
         do: [],
-        else: Enum.map(BatchProposal.people(size), &person(&1, workshop))
+        else: Enum.map(BatchProposal.people(workshop.id, size), &person(&1, workshop))
 
     {status, goes_out_at} =
       case timing do

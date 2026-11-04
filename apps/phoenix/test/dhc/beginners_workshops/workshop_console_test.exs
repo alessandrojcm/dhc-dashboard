@@ -97,6 +97,40 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsoleTest do
       assert sent == Enum.map(preview.people, & &1.queue_date)
     end
 
+    test "a later Batch skips a decliner for this workshop, but not a different workshop",
+         %{workshop: w, coordinator: coordinator} do
+      [first, second, third, fourth, fifth, sixth] = waiting_people_fixture(6)
+      assert {:ok, %{outcome: :sent}} = send_due(w, @batch_1_at)
+      [declining | _] = console(w, @batch_1_at).roster.asked
+
+      assert {:ok, %{state: "declined"}} =
+               BeginnersWorkshops.execute(
+                 {:staff, coordinator},
+                 {:decline, w.id, declining.id, %{}},
+                 clock: Clock.fixed(~U[2026-10-21 12:00:00Z])
+               )
+
+      later = ~U[2026-10-28 10:00:00Z]
+      preview = console(w, later).next_batch
+
+      assert Enum.map(preview.people, & &1.queue_date) ==
+               Enum.map([fourth, fifth, sixth], & &1.initial_registration_date)
+
+      assert {:ok, %{outcome: :sent, batch: %{number: 2, size: 3}}} = send_due(w, later)
+      roster = console(w, later).roster
+      assert Enum.map(roster.out, & &1.id) == [declining.id]
+
+      assert Enum.map(roster.asked, & &1.queue_date) ==
+               Enum.map([second, third, fourth, fifth, sixth], & &1.initial_registration_date)
+
+      other = scheduled_fixture(coordinator, %{"contact_from" => "2026-10-20"})
+      assert [person] = console(other, later).next_batch.people
+      assert person.queue_date == first.initial_registration_date
+      assert {:ok, %{outcome: :sent, batch: %{size: 1}}} = send_due(other, later)
+      assert [contacted] = console(other, later).roster.asked
+      assert contacted.queue_date == first.initial_registration_date
+    end
+
     test "during a window: the next Batch goes the morning after it ends, sized capacity − paid",
          %{workshop: w} do
       waiting_people_fixture(6)
