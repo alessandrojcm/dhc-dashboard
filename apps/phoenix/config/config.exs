@@ -104,10 +104,12 @@ config :dhc, Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions,
   money_back: [yes: 0.8, no: 0.2]
 
 # Configure Oban for background job processing
+config :dhc, Dhc.WorkshopCalendar, active: false
+
 config :dhc, Oban,
   repo: Dhc.Repo,
   prefix: "public",
-  # Queue concurrency is a ceiling on jobs running at once per node (here 36),
+  # Queue concurrency is a ceiling on jobs running at once per node (here 38),
   # and every job draws from the same Ecto pool as HTTP requests and Oban's own
   # notifier/plugins (POOL_SIZE, 10 in fly.toml). Jobs only hold a connection
   # while querying, and most of them wait on Stripe/Discord/email HTTP, so the
@@ -121,6 +123,7 @@ config :dhc, Oban,
     training_announcements: 1,
     stripe: 5,
     invitations: 5,
+    workshop_calendar: 2,
     # ALE-299: Web Push fan-out, one job per committed notification.
     notifications: 5
   ],
@@ -135,6 +138,7 @@ config :dhc, Oban,
        {"0 0 * * *", Dhc.Notifications.Workers.RetentionWorker},
        {"0 * * * *", Dhc.Discord.Workers.JoinGrantCleanupWorker},
        {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker},
+       {"*/5 * * * *", Dhc.WorkshopCalendar.Workers.RepairWorker},
        {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker},
        # ALE-287: hourly rather than daily so a missed window is repaired
        # within the hour. A pass in an unchanged state delivers nothing.

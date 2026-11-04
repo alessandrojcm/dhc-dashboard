@@ -297,6 +297,17 @@ cd apps/phoenix && \
   mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
 ```
 
+When using Colima, start the existing VM with `colima start`, then pass both
+socket paths explicitly from `apps/phoenix`:
+
+```sh
+mise exec -- env DOCKER_HOST=unix://$HOME/.colima/default/docker.sock \
+  TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mix test
+```
+
+Testcontainers does not discover the active Docker CLI context. Its cleanup
+container also needs the VM's `/var/run/docker.sock`, not the macOS socket path.
+
 Tests that use `Ecto.Adapters.SQL.Sandbox.unboxed_run/2` commit outside the
 per-test sandbox transaction and must explicitly delete every durable fixture
 in `on_exit/1`. If teardown must remove immutable Discord assignment audit rows,

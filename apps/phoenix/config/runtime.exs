@@ -1,5 +1,16 @@
 import Config
 
+# Supplying credentials does not activate sending. ALE-437 owns the separately
+# authorized launch. Test credentials remain isolated from the operator's env.
+unless config_env() == :test do
+  config :dhc, Dhc.WorkshopCalendar,
+    client_id: System.get_env("WORKSHOP_CALENDAR_CLIENT_ID"),
+    client_secret: System.get_env("WORKSHOP_CALENDAR_CLIENT_SECRET"),
+    refresh_token: System.get_env("WORKSHOP_CALENDAR_REFRESH_TOKEN"),
+    committee_calendar_id: System.get_env("WORKSHOP_CALENDAR_COMMITTEE_ID"),
+    participant_calendar_id: System.get_env("WORKSHOP_CALENDAR_PARTICIPANT_ID")
+end
+
 # Test protocol probes own the REST limiter and must never use inherited bot
 # credentials (including the developer's .env).
 discord_bot_token = if config_env() == :test, do: nil, else: System.get_env("DISCORD_BOT_TOKEN")
