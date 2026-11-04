@@ -4,15 +4,22 @@ import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import RescheduleDialog from "./reschedule-dialog.svelte";
 
+let nextWorkshopId = 1;
+
+function uniqueWorkshopId() {
+	return `6d9e6110-fc8c-4dcf-b64f-${String(nextWorkshopId++).padStart(12, "0")}`;
+}
+
 function workshop(
 	overrides: Partial<BeginnersWorkshop> = {},
 ): BeginnersWorkshop {
 	return {
-		id: "6d9e6110-fc8c-4dcf-b64f-db21b20d5140",
+		id: uniqueWorkshopId(),
 		status: "scheduled",
 		venue: "St. Andrew's Hall",
 		date: "2026-11-14",
 		startTime: "18:30",
+		endTime: "20:30",
 		capacity: 16,
 		feeCents: 4000,
 		paymentCutoff: "2026-11-11T18:30:00Z",
@@ -36,7 +43,10 @@ function workshop(
 	};
 }
 
-async function openDialog(recipients: number, overrides = {}) {
+async function openDialog(
+	recipients: number,
+	overrides: Partial<BeginnersWorkshop> = {},
+) {
 	const screen = await render(RescheduleDialog, {
 		workshop: workshop(overrides),
 		recipients,
@@ -78,6 +88,20 @@ test("prefills the kept cutoff and follows a new start time", async () => {
 	await expect
 		.element(screen.getByText("Start offering places", { exact: true }))
 		.not.toBeInTheDocument();
+});
+
+test("requires both times and rejects an end time equal to the start", async () => {
+	const { screen } = await openDialog(0);
+
+	await expect.element(screen.getByLabelText("End time")).toHaveValue("20:30");
+	await userEvent.fill(screen.getByLabelText("End time"), "18:30");
+	await userEvent.click(
+		screen.getByRole("button", { name: "Reschedule", exact: true }),
+	);
+
+	await expect
+		.element(screen.getByText("End time must be after start time."))
+		.toBeVisible();
 });
 
 test("offers the contact-from date while Batch 1 hasn't gone out", async () => {

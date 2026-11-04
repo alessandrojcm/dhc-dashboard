@@ -14,7 +14,7 @@ import type {
 	BeginnersIntakeState,
 } from "@dhc/api-client";
 import { formatFee } from "#lib/beginners-workshops/presentation.js";
-import { formatCivilDate } from "#lib/club-calendar.js";
+import { formatCivilDate, formatCivilTimeRange } from "#lib/club-calendar.js";
 
 /** What an unknown link shows: the same as a closed Intake. */
 export const INACTIVE_PAGE: BeginnersIntakePage = {
@@ -118,7 +118,7 @@ export function intakeDetails(page: BeginnersIntakePage) {
 	return {
 		greeting: page.firstName ? `Hi ${page.firstName},` : null,
 		date: formatCivilDate(page.workshop.date),
-		time: page.workshop.startTime,
+		time: formatCivilTimeRange(page.workshop.startTime, page.workshop.endTime),
 		venue: page.workshop.venue,
 		fee: page.feeCents === null ? null : formatFee(page.feeCents),
 	};

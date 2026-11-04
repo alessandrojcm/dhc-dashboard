@@ -130,7 +130,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
 
   @typedoc """
   Schedule attributes use internal keys (string or atom): `venue`, `date`,
-  `start_time`, `capacity`, `fee_cents`, and the optional
+  `start_time`, `end_time`, `capacity`, `fee_cents`, and the optional
   `payment_cutoff_date`, `payment_cutoff_time` (Dublin civil; default the
   start time 3 days before), `contact_from` (default the Dublin day it is
   scheduled) and `payment_window_days` (default 7), plus optional Staff.
@@ -138,9 +138,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   `payment_cutoff_date`, `payment_cutoff_time`, `contact_from`,
   `payment_window_days`.
 
-  Reschedule attributes are any of `venue`, `date`, `start_time`,
-  `payment_cutoff_date`, `payment_cutoff_time` and `contact_from`; at least
-  one of the date, start time and venue must change.
+  Reschedule attributes include explicit `start_time` and `end_time`, plus
+  optional `venue`, `date`, `payment_cutoff_date`, `payment_cutoff_time` and
+  `contact_from`; at least one schedule field must change.
 
   Staff attributes (`set_staff`, and optional on a schedule) are
   `coach_principal_id` (`nil` for no coach) and `assistant_principal_ids`
@@ -150,6 +150,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           {:schedule_workshop, [map()]}
           | {:update_workshop, workshop_id :: binary(), map()}
           | {:reschedule_workshop, workshop_id :: binary(), map()}
+          | {:backfill_end_time, workshop_id :: binary(), map()}
           | {:cancel_workshop, workshop_id :: binary(), map()}
           | {:pause_batches, workshop_id :: binary()}
           | {:resume_batches, workshop_id :: binary()}
@@ -206,6 +207,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :no_workshops
           | :too_many_workshops
           | :start_in_past
+          | :invalid_end_time
+          | :end_time_already_set
           | :invalid_payment_cutoff
           | :invalid_contact_from
           | :contact_from_locked
@@ -286,6 +289,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     schedule_workshop: :"beginners.workshops.manage",
     update_workshop: :"beginners.workshops.manage",
     reschedule_workshop: :"beginners.workshops.manage",
+    backfill_end_time: :"beginners.workshops.manage",
     cancel_workshop: :"beginners.workshops.manage",
     pause_batches: :"beginners.workshops.manage",
     resume_batches: :"beginners.workshops.manage",
@@ -365,6 +369,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     schedule_workshop: Schedule,
     update_workshop: Schedule,
     reschedule_workshop: Schedule,
+    backfill_end_time: Schedule,
     cancel_workshop: Schedule,
     pause_batches: Schedule,
     resume_batches: Schedule,

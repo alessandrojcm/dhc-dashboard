@@ -39,6 +39,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
         "venue" => "St. Andrew's Hall",
         "date" => Date.to_iso8601(Date.add(Date.utc_today(), 60)),
         "startTime" => "18:30",
+        "endTime" => "20:30",
         "capacity" => 16,
         "feeCents" => 4000
       },
@@ -90,6 +91,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              "status" => "scheduled",
              "venue" => "St. Andrew's Hall",
              "startTime" => "18:30",
+             "endTime" => "20:30",
              "capacity" => 16,
              "feeCents" => 4000,
              "paymentCutoffDate" => cutoff_date,
@@ -153,6 +155,32 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
                conn
                |> as_role("beginners_coordinator")
                |> post("/api/beginners-workshops", body)
+               |> json_response(422)
+    end
+
+    assert %{
+             "errors" => %{
+               "code" => "invalid_workshop",
+               "fields" => %{"workshops.0.endTime" => [_]}
+             }
+           } =
+             conn
+             |> as_role("beginners_coordinator")
+             |> post("/api/beginners-workshops", %{"workshops" => [Map.delete(item(), "endTime")]})
+             |> json_response(422)
+
+    for end_time <- ["18:30", "18:29"] do
+      assert %{
+               "errors" => %{
+                 "code" => "invalid_end_time",
+                 "fields" => %{"workshops.0.endTime" => [_]}
+               }
+             } =
+               conn
+               |> as_role("beginners_coordinator")
+               |> post("/api/beginners-workshops", %{
+                 "workshops" => [item(%{"endTime" => end_time})]
+               })
                |> json_response(422)
     end
 
@@ -220,6 +248,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              "data" => %{
                "date" => new_date,
                "startTime" => "19:00",
+               "endTime" => "21:00",
                "venue" => "The Hub",
                "paymentCutoffDate" => cutoff_date,
                "paymentCutoffTime" => "19:00"
@@ -229,6 +258,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              |> post(path, %{
                "date" => Date.to_iso8601(date),
                "startTime" => "19:00",
+               "endTime" => "21:00",
                "venue" => "The Hub"
              })
              |> json_response(200)
@@ -238,9 +268,17 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
     assert cutoff_date == date |> Date.add(-3) |> Date.to_iso8601()
 
     assert %{"errors" => %{"fields" => %{"date" => [_]}} = errors} =
-             coordinator |> post(path, %{"venue" => "The Hub"}) |> json_response(422)
+             coordinator
+             |> post(path, %{"venue" => "The Hub", "startTime" => "19:00", "endTime" => "21:00"})
+             |> json_response(422)
 
     refute Map.has_key?(errors, "code")
+
+    assert %{
+             "errors" => %{
+               "fields" => %{"startTime" => [_], "endTime" => [_]}
+             }
+           } = coordinator |> post(path, %{"venue" => "Elsewhere"}) |> json_response(422)
 
     assert %{
              "errors" => %{
@@ -251,6 +289,8 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              coordinator
              |> post(path, %{
                "venue" => "St. Andrew's Hall",
+               "startTime" => "19:00",
+               "endTime" => "21:00",
                "paymentCutoffDate" => Date.to_iso8601(Date.add(date, 1))
              })
              |> json_response(422)

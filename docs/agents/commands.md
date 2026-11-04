@@ -166,6 +166,16 @@ mise run phx-rollback       # Rollback last migration
 mise run phx-gen-migration NAME  # Generate a new migration
 ```
 
+### Beginners' Workshop end-time readiness
+
+```bash
+cd apps/phoenix
+mise exec -- mix dhc.beginners_workshops.end_times
+```
+
+This is a read-only launch-readiness report for upcoming scheduled Beginners'
+Workshops with a missing or invalid end time. It does not contact Google.
+
 The Compose `phoenix` profile uses `apps/phoenix/Dockerfile.dev`, bind-mounts
 the Phoenix source, and leaves Mix dependencies/build artifacts in the image so
 the source mount does not erase the dependency cache. It publishes Phoenix at

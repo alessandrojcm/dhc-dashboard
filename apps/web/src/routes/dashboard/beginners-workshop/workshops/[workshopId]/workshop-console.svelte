@@ -52,7 +52,11 @@ import {
 	personName,
 	type TimelineStep,
 } from "#lib/beginners-workshops/console.js";
-import { formatCivilDate, formatDublinInstant } from "#lib/club-calendar.js";
+import {
+	formatCivilDate,
+	formatCivilTimeRange,
+	formatDublinInstant,
+} from "#lib/club-calendar.js";
 import {
 	formatFee,
 	staffSummary,
@@ -162,7 +166,7 @@ const attentionClass =
 						<CalendarDays
 							class="size-4 text-primary"
 							aria-hidden="true"
-						/>{workshop.startTime}
+						/>{formatCivilTimeRange(workshop.startTime, workshop.endTime)}
 					</p>
 					<p class="flex items-center gap-2">
 						<MapPin
@@ -553,7 +557,7 @@ const attentionClass =
 		/>
 	{/if}
 	<!-- A reschedule remounts it, so the new values are the ones that follow. -->
-	{#key `${workshop.id}:${workshop.date}:${workshop.startTime}:${workshop.venue}`}
+	{#key `${workshop.id}:${workshop.date}:${workshop.startTime}:${workshop.endTime}:${workshop.venue}`}
 		<RescheduleDialog
 			{workshop}
 			recipients={rescheduleRecipients(view)}

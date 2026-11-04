@@ -9,7 +9,7 @@ import {
 	stageLabel,
 	staffRoleLabel,
 } from "#lib/beginners-workshops/presentation.js";
-import { formatCivilDate } from "#lib/club-calendar.js";
+import { formatCivilDate, formatCivilTimeRange } from "#lib/club-calendar.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Empty from "#lib/components/ui/empty/index.js";
@@ -34,7 +34,10 @@ const { data } = $props();
 				>
 					<div class="flex flex-col gap-1">
 						<span class="font-semibold"
-							>{formatCivilDate(assignment.date)} · {assignment.startTime}</span
+							>{formatCivilDate(assignment.date)} · {formatCivilTimeRange(
+								assignment.startTime,
+								assignment.endTime,
+							)}</span
 						>
 						<span class="text-sm text-muted-foreground">{assignment.venue}</span
 						>

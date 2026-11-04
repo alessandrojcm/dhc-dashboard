@@ -20,6 +20,7 @@ defmodule Dhc.BeginnersWorkshops do
     Clock,
     Commands,
     DoorView,
+    EndTimeReport,
     FastTrackCandidates,
     Intake,
     IntakeEmails,
@@ -77,6 +78,13 @@ defmodule Dhc.BeginnersWorkshops do
   """
   @spec report(keyword()) :: Report.t()
   def report(opts \\ []), do: Report.load(Clock.from_opts(opts))
+
+  @doc """
+  Read-only operational report of upcoming schedules with a missing or invalid
+  end time. Calendar work can use it before launch; it makes no Google call.
+  """
+  @spec end_time_report(keyword()) :: [EndTimeReport.row()]
+  def end_time_report(opts \\ []), do: EndTimeReport.load(Clock.from_opts(opts))
 
   @doc """
   The person's Intake page behind an Intake link (ALE-381), or

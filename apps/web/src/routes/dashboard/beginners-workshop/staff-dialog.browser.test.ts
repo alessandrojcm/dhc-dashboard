@@ -27,6 +27,7 @@ function workshop(
 		venue: "St. Andrew's Hall",
 		date: "2026-11-14",
 		startTime: "18:30",
+		endTime: null,
 		capacity: 16,
 		feeCents: 4000,
 		paymentCutoff: "2026-11-11T18:30:00Z",

@@ -63,6 +63,26 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
           DateTime.t()
   def starts_at(%{date: date, start_time: time}), do: ClubCalendar.to_utc(date, time)
 
+  @doc "Whether an explicit civil end time is strictly later in Dublin than the start."
+  @spec valid_end_time?(%{date: Date.t(), start_time: Time.t(), end_time: Time.t() | nil}) ::
+          boolean()
+  def valid_end_time?(%{end_time: nil}), do: false
+
+  def valid_end_time?(%{date: date, start_time: start_time, end_time: end_time}) do
+    Time.compare(end_time, start_time) == :gt and
+      DateTime.compare(ClubCalendar.to_utc(date, start_time), ClubCalendar.to_utc(date, end_time)) ==
+        :lt
+  end
+
+  @doc "Whether the Dublin start instant remains strictly in the future."
+  @spec starts_after?(
+          BeginnersWorkshop.t() | %{date: Date.t(), start_time: Time.t()},
+          DateTime.t()
+        ) ::
+          boolean()
+  def starts_after?(workshop, %DateTime{} = now),
+    do: DateTime.compare(starts_at(workshop), now) == :gt
+
   @doc """
   When an Intake's Payment Window ends (`CONTEXT.md`, **Payment Window**):
   the date its Intake Emails ask the person to pay or confirm by.

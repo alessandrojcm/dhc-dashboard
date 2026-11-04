@@ -81,6 +81,7 @@ async function pickDate(page: Page, label: string, isoDate: string) {
 }
 
 test.describe("Beginners' Workshop journey", () => {
+	test.use({ timezoneId: "America/Los_Angeles" });
 	let coordinatorEmail: string;
 	let coordinatorId: string;
 
@@ -103,6 +104,67 @@ test.describe("Beginners' Workshop journey", () => {
 		// both usually stay (409 `still_referenced`).
 		for (const memberId of memberIds)
 			await deleteE2EFixtureUnlessReferenced("member", memberId);
+	});
+
+	test("saves explicit Dublin end times in winter and summer from a non-Dublin browser", async ({
+		page,
+		context,
+	}) => {
+		test.slow();
+		const { today } = await fetchE2EStatus();
+		const year = Number(today.slice(0, 4)) + 1;
+		await loginAsUser(context, coordinatorEmail);
+
+		for (const month of ["01", "07"]) {
+			const workshopDate = `${year}-${month}-20`;
+			const venue = `Dublin times ${month} ${tag}`;
+			await gotoHydrated(page, WORKSHOPS_PATH);
+			await page.getByRole("button", { name: "Schedule workshops" }).click();
+			const dialog = page.getByRole("dialog", {
+				name: "Schedule Beginners' Workshops",
+			});
+			await dialog.getByLabel("Venue", { exact: true }).fill(venue);
+			await pickDate(page, "Workshop date 1", workshopDate);
+			await dialog.getByLabel("Start time", { exact: true }).fill("18:30");
+			await expect(dialog.getByLabel("End time", { exact: true })).toHaveValue(
+				"",
+			);
+			await dialog.getByLabel("End time", { exact: true }).fill("18:30");
+			await dialog
+				.getByRole("button", { name: "Schedule workshop", exact: true })
+				.click();
+			await expect(dialog.getByText(/end.*after.*start/i)).toBeVisible();
+			await dialog.getByLabel("End time", { exact: true }).fill("20:15");
+			await dialog
+				.getByRole("button", { name: "Schedule workshop", exact: true })
+				.click();
+			await expect(dialog).not.toBeVisible();
+
+			const row = page.getByRole("listitem").filter({ hasText: venue });
+			await expect(row).toContainText(/18:30.*20:15/);
+			await row
+				.getByRole("link", { name: `Manage workshop on ${workshopDate}` })
+				.click();
+			await expect(page).toHaveURL(
+				/\/dashboard\/beginners-workshop\/workshops\/[0-9a-f-]+$/,
+			);
+			const workshopUrl = page.url();
+			await page
+				.getByRole("button", { name: "Reschedule", exact: true })
+				.click();
+			const reschedule = page.getByRole("dialog", { name: /^Reschedule / });
+			await expect(
+				reschedule.getByLabel("End time", { exact: true }),
+			).toHaveValue("20:15");
+			await reschedule.getByLabel("Start", { exact: true }).fill("19:00");
+			await reschedule.getByLabel("End time", { exact: true }).fill("21:10");
+			await reschedule
+				.getByRole("button", { name: "Reschedule", exact: true })
+				.click();
+			await expect(reschedule).not.toBeVisible();
+			await gotoHydrated(page, workshopUrl);
+			await expect(page.getByText(/19:00.*21:10/)).toBeVisible();
+		}
 	});
 
 	test("embedded intake payment stays on the page and resumes its existing session", async ({
@@ -175,6 +237,8 @@ test.describe("Beginners' Workshop journey", () => {
 		});
 		await dialog.getByLabel("Venue").fill(venue);
 		await dialog.getByLabel("Capacity").fill("1");
+		await dialog.getByLabel("Start time", { exact: true }).fill("18:30");
+		await dialog.getByLabel("End time", { exact: true }).fill("20:15");
 		await pickDate(page, "Workshop date 1", workshopDate);
 		await pickDate(page, "Start offering places 1", today);
 		await dialog.getByRole("combobox", { name: "Assistants" }).click();
@@ -195,6 +259,7 @@ test.describe("Beginners' Workshop journey", () => {
 			.filter({ hasText: venue })
 			.filter({ has: page.getByRole("link", { name: consoleLink }) });
 		await expect(row).toContainText(assistantName);
+		await expect(row).toContainText(/18:30.*20:15/);
 		await row.getByRole("link", { name: consoleLink }).click();
 		await expect(page).toHaveURL(
 			/\/dashboard\/beginners-workshop\/workshops\/[0-9a-f-]+$/,
@@ -310,20 +375,20 @@ test.describe("Beginners' Workshop journey", () => {
 			page,
 			`/dashboard/beginners-workshop/workshops/${workshopId}`,
 		);
-		const attended = page.getByRole("region", { name: "Attended" });
+		const people = page.getByRole("region", { name: "People", exact: true });
 		await expect(
-			attended.getByRole("button", { name: `${personName} — Attended` }),
+			people.getByRole("button", { name: `${personName} — Attended` }),
 		).toBeVisible();
 		// The dev server's TanStack Query Devtools button sits over the row's
 		// right edge (see `screenshot.css`), so the button is pressed from
 		// the keyboard.
-		await attended.getByRole("button", { name: "Invite", exact: true }).focus();
+		await people.getByRole("button", { name: "Invite", exact: true }).focus();
 		await page.keyboard.press("Enter");
 		await expect(
 			page.getByText(`Invitation sent to ${personName}`),
 		).toBeVisible();
 		await expect(
-			attended.getByText("Membership invitation sent", { exact: true }),
+			people.getByText("Membership invitation sent", { exact: true }),
 		).toBeVisible();
 
 		const invitation = await seedE2EScenario("beginnersWorkshopInvitation", {
@@ -403,7 +468,7 @@ test.describe("Beginners' Workshop journey", () => {
 		);
 		await expect(
 			page
-				.getByRole("region", { name: "Confirmed places" })
+				.getByRole("region", { name: "People", exact: true })
 				.getByRole("button", { name: `${holderName} — Paid` }),
 		).toBeVisible();
 	});

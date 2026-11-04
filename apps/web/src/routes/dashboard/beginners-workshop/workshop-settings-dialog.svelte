@@ -15,7 +15,11 @@ import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.
 import * as Field from "#lib/components/ui/field/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
 import { feeInEuro } from "#lib/beginners-workshops/presentation.js";
-import { civilCalendarDate, formatCivilDate } from "#lib/club-calendar.js";
+import {
+	civilCalendarDate,
+	formatCivilDate,
+	formatCivilTimeRange,
+} from "#lib/club-calendar.js";
 import { workshopSettingsSchema } from "#lib/schemas/beginnersWorkshop.js";
 import { updateWorkshopSettings } from "./workshops.remote";
 
@@ -43,8 +47,10 @@ function setDate(key: DateKey, value: DateValue | undefined) {
 		<Dialog.Header>
 			<Dialog.Title>Places, fee and payment deadline</Dialog.Title>
 			<Dialog.Description>
-				{formatCivilDate(workshop.date)} at {workshop.startTime}, {workshop.venue}.
-				Nothing is emailed when you save.
+				{formatCivilDate(workshop.date)} at {formatCivilTimeRange(
+					workshop.startTime,
+					workshop.endTime,
+				)}, {workshop.venue}. Nothing is emailed when you save.
 			</Dialog.Description>
 		</Dialog.Header>
 

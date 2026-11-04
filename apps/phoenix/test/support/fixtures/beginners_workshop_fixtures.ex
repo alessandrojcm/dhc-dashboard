@@ -50,6 +50,7 @@ defmodule Dhc.BeginnersWorkshopFixtures do
         "venue" => "St. Andrew's Hall",
         "date" => "2026-11-14",
         "start_time" => "18:30",
+        "end_time" => "20:30",
         "capacity" => 16,
         "fee_cents" => 4000
       },

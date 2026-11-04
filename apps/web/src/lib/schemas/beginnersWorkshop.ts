@@ -68,6 +68,7 @@ const venue = v.pipe(
 const scheduleEntries = {
 	venue,
 	startTime: wallTime("Enter the start time."),
+	endTime: wallTime("Enter the end time."),
 	...settingsEntries,
 	workshops: v.pipe(
 		v.array(
@@ -97,11 +98,20 @@ const scheduleEntries = {
  */
 export const scheduleWorkshopsSchema = v.pipe(
 	v.object(scheduleEntries),
+	v.forward(
+		v.partialCheck(
+			[["startTime"], ["endTime"]],
+			({ startTime, endTime }) => endTime > startTime,
+			"End time must be after start time.",
+		),
+		["endTime"],
+	),
 	v.transform(
 		({
 			workshops,
 			venue,
 			startTime,
+			endTime,
 			capacity,
 			fee,
 			paymentWindowDays,
@@ -113,6 +123,7 @@ export const scheduleWorkshopsSchema = v.pipe(
 					...workshop,
 					venue,
 					startTime,
+					endTime,
 					capacity,
 					feeCents: fee,
 					paymentWindowDays,
@@ -215,6 +226,7 @@ export const rescheduleWorkshopSchema = v.pipe(
 		id: workshopId,
 		date: civilDate("Pick the new date."),
 		startTime: wallTime("Enter the start time."),
+		endTime: wallTime("Enter the end time."),
 		venue,
 		paymentCutoffDate: civilDate("Pick the payment deadline date."),
 		paymentCutoffTime: wallTime("Enter the payment deadline time."),
@@ -222,6 +234,14 @@ export const rescheduleWorkshopSchema = v.pipe(
 			"Pick a valid date for offers to start.",
 		),
 	}),
+	v.forward(
+		v.partialCheck(
+			[["startTime"], ["endTime"]],
+			({ startTime, endTime }) => endTime > startTime,
+			"End time must be after start time.",
+		),
+		["endTime"],
+	),
 	v.transform(({ id, ...body }) => ({
 		id,
 		body: body satisfies BeginnersWorkshopRescheduleRequest,

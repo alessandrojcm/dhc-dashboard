@@ -77,6 +77,7 @@ function page(
 		workshop: {
 			date: "2026-11-14",
 			startTime: "18:30",
+			endTime: null,
 			venue: "St. Andrew's Hall",
 		},
 		feeCents: 4000,

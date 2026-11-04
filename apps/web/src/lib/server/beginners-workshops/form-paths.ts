@@ -12,6 +12,7 @@ import {
 const SCHEDULE_SHARED_FIELDS = new Set([
 	"venue",
 	"startTime",
+	"endTime",
 	"capacity",
 	"fee",
 	"paymentWindowDays",
@@ -61,6 +62,7 @@ export function settingsFormPath(field: string): FormPath | undefined {
 const RESCHEDULE_FIELDS = new Set([
 	"date",
 	"startTime",
+	"endTime",
 	"venue",
 	"paymentCutoffDate",
 	"paymentCutoffTime",

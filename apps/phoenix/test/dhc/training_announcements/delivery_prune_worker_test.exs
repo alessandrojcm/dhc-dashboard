@@ -37,7 +37,7 @@ defmodule Dhc.TrainingAnnouncements.DeliveryPruneWorkerTest do
     assert :ok = perform_job(DeliveryPruneWorker, %{})
     remaining = Repo.all(DiscordAnnouncementDelivery)
 
-    assert Enum.sort(Enum.map(remaining, &(&1.occurrence_date || &1.holiday_date))) ==
+    assert Enum.sort(Enum.map(remaining, &(&1.occurrence_date || &1.holiday_date)), Date) ==
              [
                horizon,
                horizon,

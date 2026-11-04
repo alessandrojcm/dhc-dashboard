@@ -15,6 +15,7 @@ import {
 const shared = {
 	venue: "  St. Andrew's Hall ",
 	startTime: "18:30",
+	endTime: "20:30",
 	capacity: 16,
 	fee: 40,
 	paymentWindowDays: 7,
@@ -43,6 +44,7 @@ describe("scheduleWorkshopsSchema", () => {
 					contactFromDate: undefined,
 					venue: "St. Andrew's Hall",
 					startTime: "18:30",
+					endTime: "20:30",
 					capacity: 16,
 					feeCents: 3999,
 					paymentWindowDays: 7,
@@ -55,6 +57,7 @@ describe("scheduleWorkshopsSchema", () => {
 					contactFromDate: "2026-11-20",
 					venue: "St. Andrew's Hall",
 					startTime: "18:30",
+					endTime: "20:30",
 					capacity: 16,
 					feeCents: 3999,
 					paymentWindowDays: 7,
@@ -73,6 +76,7 @@ describe("scheduleWorkshopsSchema", () => {
 		const result = v.safeParse(scheduleWorkshopsSchema, {
 			venue: "x".repeat(81),
 			startTime: "",
+			endTime: "",
 			capacity: 0,
 			fee: 0,
 			paymentWindowDays: 0,
@@ -85,11 +89,28 @@ describe("scheduleWorkshopsSchema", () => {
 			expect.arrayContaining([
 				"venue",
 				"startTime",
+				"endTime",
 				"capacity",
 				"fee",
 				"paymentWindowDays",
 				"workshops.0.date",
 			]),
+		);
+	});
+
+	it("requires the end time to be after the start time", () => {
+		const result = v.safeParse(scheduleWorkshopsSchema, {
+			...shared,
+			endTime: "18:30",
+			workshops: [{ date: "2026-11-14" }],
+		});
+
+		expect(result.success).toBe(false);
+		expect(result.issues?.map((issue) => v.getDotPath(issue))).toContain(
+			"endTime",
+		);
+		expect(result.issues?.map((issue) => issue.message)).toContain(
+			"End time must be after start time.",
 		);
 	});
 

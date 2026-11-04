@@ -371,6 +371,7 @@ type BeginnersWorkshopSeed = {
 		/** Dublin civil date; defaults to 14 days from today. */
 		date?: string;
 		startTime?: string;
+		endTime?: string;
 		capacity?: number;
 		feeCents?: number;
 	};

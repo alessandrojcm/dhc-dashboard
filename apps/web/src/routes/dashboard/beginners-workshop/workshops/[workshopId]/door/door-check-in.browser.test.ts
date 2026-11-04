@@ -38,6 +38,7 @@ function door(
 		venue: "St. Andrew's Hall",
 		date: "2026-11-14",
 		startTime: "18:30",
+		endTime: null,
 		stage: "check_in_open",
 		alerts: [],
 		staff: { coach: null, assistants: [] },

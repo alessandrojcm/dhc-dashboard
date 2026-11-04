@@ -35,6 +35,17 @@ the participant calendar restricted and unshared with that group. Review public
 and inherited domain permissions separately: event guest-list flags are not a
 calendar ACL. Google organizer/Workspace administrators retain privileged access.
 
+## Beginners' Workshop end-time readiness
+
+Beginners' Workshops require explicit Dublin civil `startTime` and `endTime`
+when scheduled or rescheduled. Existing rows retain an unknown (`null`) end
+time; do not infer a duration. Before a later Beginners' Workshop Calendar
+launch, inspect `Dhc.BeginnersWorkshops.end_time_report/1` in an authorized
+operator session, then backfill each upcoming row with the authorized
+`{:backfill_end_time, workshop_id, %{end_time: "HH:MM"}}` command through
+`Dhc.BeginnersWorkshops.execute/3`. Backfill changes no cutoff, offer-round,
+email, or attendance policy, and this slice makes no Google mutation.
+
 ## Ownership and recovery
 
 Workshop operations commit identifier-only synchronization intent alongside the

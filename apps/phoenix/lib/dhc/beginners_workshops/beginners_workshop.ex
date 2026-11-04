@@ -3,7 +3,7 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
   Ecto schema for `beginners_workshops`: one Beginners' Workshop (CONTEXT.md,
   ADR 0029). Never a Workshop; it shares no storage with `club_activities`.
 
-  `date` and `start_time` are Europe/Dublin civil values. `payment_cutoff` is
+  `date`, `start_time` and `end_time` are Europe/Dublin civil values. `payment_cutoff` is
   the instant after which no new payment can start; the boundary
   (`Dhc.BeginnersWorkshops.Commands`, which owns every write and the
   defaults) resolves it from a Dublin civil date and time. `status` is written only through the boundary's transition
@@ -35,6 +35,7 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
     field :venue, :string
     field :date, :date
     field :start_time, :time
+    field :end_time, :time
     field :capacity, :integer
     field :fee_cents, :integer
     field :payment_cutoff, :utc_datetime_usec
@@ -80,6 +81,7 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
       :venue,
       :date,
       :start_time,
+      :end_time,
       :capacity,
       :fee_cents,
       :payment_cutoff,
@@ -92,6 +94,7 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
       :venue,
       :date,
       :start_time,
+      :end_time,
       :capacity,
       :fee_cents,
       :payment_cutoff,
@@ -124,9 +127,9 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
   @spec reschedule_changeset(t(), map()) :: Ecto.Changeset.t()
   def reschedule_changeset(%__MODULE__{} = workshop, attrs) do
     workshop
-    |> cast(attrs, [:venue, :date, :start_time, :payment_cutoff, :contact_from])
+    |> cast(attrs, [:venue, :date, :start_time, :end_time, :payment_cutoff, :contact_from])
     |> update_change(:venue, &String.trim/1)
-    |> validate_required([:venue, :date, :start_time, :payment_cutoff, :contact_from])
+    |> validate_required([:venue, :date, :start_time, :end_time, :payment_cutoff, :contact_from])
     |> change(reschedule_count: workshop.reschedule_count + 1)
     |> validate_shape()
   end

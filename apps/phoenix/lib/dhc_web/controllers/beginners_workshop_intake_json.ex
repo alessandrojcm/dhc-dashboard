@@ -18,6 +18,8 @@ defmodule DhcWeb.BeginnersWorkshopIntakeJSON do
             %{
               date: page.workshop.date,
               startTime: BeginnersWorkshopsJSON.hh_mm(page.workshop.start_time),
+              endTime:
+                page.workshop.end_time && BeginnersWorkshopsJSON.hh_mm(page.workshop.end_time),
               venue: page.workshop.venue
             },
         feeCents: page.fee_cents,

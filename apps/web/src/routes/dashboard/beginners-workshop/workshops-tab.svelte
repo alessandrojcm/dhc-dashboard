@@ -24,7 +24,7 @@ import {
 	staffSummary,
 	stageTone,
 } from "#lib/beginners-workshops/presentation.js";
-import { civilDateTile } from "#lib/club-calendar.js";
+import { civilDateTile, formatCivilTimeRange } from "#lib/club-calendar.js";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -86,7 +86,9 @@ function editStaff(workshop: BeginnersWorkshop) {
 		</div>
 		<div class="flex min-w-0 flex-col gap-1.5">
 			<div class="flex flex-wrap items-center gap-2">
-				<span class="font-semibold">{workshop.startTime}</span>
+				<span class="font-semibold"
+					>{formatCivilTimeRange(workshop.startTime, workshop.endTime)}</span
+				>
 				<Badge variant="outline" class={toneClass[stageTone(workshop.stage)]}
 					>{stageLabel(workshop.stage)}</Badge
 				>

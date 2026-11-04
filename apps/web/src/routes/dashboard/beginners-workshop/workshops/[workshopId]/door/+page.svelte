@@ -11,7 +11,7 @@ import {
 	stageLabel,
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
-import { formatCivilDate } from "#lib/club-calendar.js";
+import { formatCivilDate, formatCivilTimeRange } from "#lib/club-calendar.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import type { BeginnersWorkshopDoor } from "@dhc/api-client";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -46,7 +46,10 @@ let workshop = $derived<BeginnersWorkshopDoor>(data.workshop);
 				Beginners' Workshop · Door check-in
 			</p>
 			<h1 class="font-heading text-3xl sm:text-4xl">
-				{formatCivilDate(workshop.date)} · {workshop.startTime}
+				{formatCivilDate(workshop.date)} · {formatCivilTimeRange(
+					workshop.startTime,
+					workshop.endTime,
+				)}
 			</h1>
 			<p class="flex items-center gap-2 text-muted-foreground">
 				<MapPin class="size-4 shrink-0" aria-hidden="true" />{workshop.venue}

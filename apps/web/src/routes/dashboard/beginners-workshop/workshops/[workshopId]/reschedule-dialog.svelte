@@ -125,7 +125,7 @@ function setContactFrom(value: DateValue | undefined) {
 			<input {...form.fields.id.as("hidden", workshop.id)} />
 
 			<h3 class="text-base font-semibold">New workshop details</h3>
-			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_10rem]">
+			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_10rem_10rem]">
 				<Field.Field>
 					{@const { value: _date, ...props } = form.fields.date.as(
 						"text",
@@ -153,6 +153,17 @@ function setContactFrom(value: DateValue | undefined) {
 							follow(current("date"), event.currentTarget.value)}
 					/>
 					{#each form.fields.startTime.issues() as issue (issue.message)}
+						<Field.Error>{issue.message}</Field.Error>
+					{/each}
+				</Field.Field>
+				<Field.Field>
+					{@const props = form.fields.endTime.as(
+						"time",
+						workshop.endTime ?? "",
+					)}
+					<Field.Label for={props.name}>End time</Field.Label>
+					<Input {...props} id={props.name} />
+					{#each form.fields.endTime.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -235,7 +246,6 @@ function setContactFrom(value: DateValue | undefined) {
 			<p class="text-sm text-muted-foreground" data-testid="reschedule-warning">
 				{warning}
 			</p>
-
 			{#if formError}
 				<p class="text-sm text-destructive" role="alert">{formError}</p>
 			{/if}
