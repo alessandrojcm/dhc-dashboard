@@ -11,8 +11,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
   `send_due_batch` (`:system`, run by the periodic sweep) sends a workshop's
   next Batch only when `WorkshopPolicy.batch_due?/3` holds under the
   Beginners' Workshop lock and someone eligible is waiting. The Batch is the
-  live `BatchProposal` of `WorkshopPolicy.batch_size/2` people; their
-  Waitlist entries are locked and re-checked, and a person taken by a
+  live workshop-scoped `BatchProposal` of `WorkshopPolicy.batch_size/2`
+  people, excluding any Intake for this workshop and open Intakes anywhere.
+  Their Waitlist entries are locked and re-checked, and a person taken by a
   concurrent command makes the pass retry from a fresh proposal. Each new
   Intake queues its Contact email through `IntakeEmails.deliver/5`, which
   writes the Intake Email ledger row and prepares an opaque delivery plan in
@@ -38,6 +39,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
   (`WorkshopPolicy.payment_window_end/3`: the Payment Cutoff, or the workshop
   start for a Carried Fee holder placed after it). The person pays the
   workshop fee like everyone else.
+
+  Unlike automatic Batches, a closed Intake for this workshop does not
+  exclude the person: a coordinator may deliberately place someone who
+  called back after declining. `FastTrackCandidates` keeps the same rule.
 
   No staff command sends email itself; `fast_track`'s Contact email is
   queued by the Intake it creates, exactly as a Batch's is.
@@ -157,9 +162,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
 
     if WorkshopPolicy.batch_due?(workshop, facts, Clock.read(clock)) do
       ids =
-        workshop
-        |> WorkshopPolicy.batch_size(facts)
-        |> BatchProposal.people()
+        workshop.id
+        |> BatchProposal.people(WorkshopPolicy.batch_size(workshop, facts))
         |> Enum.map(& &1.waitlist_id)
 
       {:all, from(e in WaitlistEntry, where: e.id in ^ids)}
@@ -193,7 +197,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
   # workshop's Batch, a fast-track), no longer waiting, or overtaken by an
   # earlier priority makes the pass retry from a fresh proposal.
   defp still_the_proposal(entries, workshop, facts) do
-    live = workshop |> WorkshopPolicy.batch_size(facts) |> BatchProposal.people()
+    live = BatchProposal.people(workshop.id, WorkshopPolicy.batch_size(workshop, facts))
     locked = Map.new(entries, &{&1.id, &1})
 
     if MapSet.new(live, & &1.waitlist_id) == MapSet.new(Map.keys(locked)) do

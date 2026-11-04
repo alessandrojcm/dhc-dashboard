@@ -1,7 +1,13 @@
 defmodule Dhc.BeginnersWorkshops.BatchProposal do
   @moduledoc """
   The live Batch proposal (ALE-380): `waiting` people in
-  `initial_registration_date` order, skipping anyone with an open Intake.
+  `initial_registration_date` order, skipping anyone with an open Intake
+  anywhere or any prior Intake for this workshop, whatever its state.
+
+  A closed Intake excludes only this workshop, even after a reschedule;
+  the person remains eligible for a different workshop while waiting.
+  Fast-track deliberately skips only open Intakes: a coordinator may place
+  someone who called back after declining the same workshop.
 
   The console's Next Batch preview (lock-free) and the boundary's
   `send_due_batch` (under the Beginners' Workshop lock, then locking the
@@ -30,12 +36,12 @@ defmodule Dhc.BeginnersWorkshops.BatchProposal do
           confirms: boolean()
         }
 
-  @doc "The first `size` eligible people, in priority order."
-  @spec people(non_neg_integer()) :: [person()]
-  def people(size) when is_integer(size) and size <= 0, do: []
+  @doc "The first `size` eligible people for `workshop_id`, in priority order."
+  @spec people(binary(), non_neg_integer()) :: [person()]
+  def people(_workshop_id, size) when is_integer(size) and size <= 0, do: []
 
-  def people(size) when is_integer(size) do
-    eligible()
+  def people(workshop_id, size) when is_integer(size) do
+    eligible(workshop_id)
     |> limit(^size)
     |> select([e, p], %{
       waitlist_id: e.id,
@@ -54,11 +60,7 @@ defmodule Dhc.BeginnersWorkshops.BatchProposal do
     |> Repo.all()
   end
 
-  @doc "Whether anyone at all is eligible."
-  @spec anyone_waiting?() :: boolean()
-  def anyone_waiting?, do: Repo.exists?(eligible())
-
-  defp eligible do
+  defp eligible(workshop_id) do
     open = Intake.open_states()
 
     from(e in WaitlistEntry,
@@ -70,6 +72,13 @@ defmodule Dhc.BeginnersWorkshops.BatchProposal do
         not exists(
           from(i in Intake,
             where: i.waitlist_id == parent_as(:entry).id and i.state in ^open,
+            select: 1
+          )
+        ),
+      where:
+        not exists(
+          from(i in Intake,
+            where: i.waitlist_id == parent_as(:entry).id and i.workshop_id == ^workshop_id,
             select: 1
           )
         ),

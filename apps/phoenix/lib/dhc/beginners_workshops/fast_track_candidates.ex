@@ -6,6 +6,10 @@ defmodule Dhc.BeginnersWorkshops.FastTrackCandidates do
   place. Lock-free and actor-free: the route's capability gate is its
   authorization, and the boundary decides again under the lock.
 
+  Unlike automatic Batches, a closed Intake for this workshop does not
+  exclude the person: a coordinator may deliberately place someone who
+  called back after declining.
+
   Only people with a Waitlist profile and an email are listed (the Contact
   email is addressed by first name). Each says whether they hold a `held`
   Carried Fee; after the Payment Cutoff only those holders are listed, as
