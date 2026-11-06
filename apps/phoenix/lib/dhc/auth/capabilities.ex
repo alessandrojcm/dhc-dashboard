@@ -89,7 +89,7 @@ defmodule Dhc.Auth.Capabilities do
   @beginners_coordinator_alert_recipients ~w(beginners_coordinator)
   # ALE-379: who may be assigned as a Beginners' Workshop's coach. Checked at
   # assignment only; losing the role later keeps the assignment.
-  @beginners_workshop_leads ~w(coach)
+  @coaches ~w(coach)
 
   # ALE-330: no read/manage split — only the committee shapes club
   # communications.
@@ -110,7 +110,7 @@ defmodule Dhc.Auth.Capabilities do
     # Beginners' Workshops"); an assistant must be able to, so it is also
     # the "active Member" an assistant must be.
     "beginners.workshops.assigned.read": %{roles: @members},
-    "beginners.workshops.lead": %{roles: @beginners_workshop_leads},
+    "beginners.workshops.lead": %{roles: @coaches},
     "beginners.workshops.manage": %{roles: @beginners_workshop_managers},
     "beginners.workshops.alerts.receive": %{roles: @beginners_coordinator_alert_recipients},
     # Running a workshop (its door view, check-in): the managers by role,
@@ -239,6 +239,14 @@ defmodule Dhc.Auth.Capabilities do
   @spec principal_ids_with(capability(), keyword()) :: [String.t()]
   def principal_ids_with(capability, opts \\ []) when is_list(opts) do
     roles = rule!(capability).roles
+    active_principal_ids(roles, opts)
+  end
+
+  @doc "Active coaches, including those without a paid membership, for the training calendar roster."
+  @spec active_coach_principal_ids() :: [String.t()]
+  def active_coach_principal_ids, do: active_principal_ids(@coaches, [])
+
+  defp active_principal_ids(roles, opts) do
     except = Keyword.get(opts, :except)
 
     from(r in UserRole,

@@ -71,6 +71,34 @@ defmodule Dhc.Members do
   end
 
   @doc """
+  Current training-calendar recipients, using only the Principal's login email.
+
+  Active, unpaused members qualify, as do active coaches regardless of their
+  membership/pause. This is a fresh roster, not a retained invitation snapshot.
+  Role knowledge remains in `Dhc.Auth.Capabilities`.
+  """
+  @spec training_calendar_emails(DateTime.t()) :: [String.t()]
+  def training_calendar_emails(now \\ DateTime.utc_now()) do
+    coaches = Dhc.Auth.Capabilities.active_coach_principal_ids()
+
+    from(p in UserProfile,
+      join: principal in Principal,
+      on: principal.id == p.principal_id,
+      left_join: m in MemberProfile,
+      on: m.user_profile_id == p.id,
+      where: p.is_active == true,
+      where:
+        principal.id in ^coaches or
+          (not is_nil(m.id) and
+             (is_nil(m.subscription_paused_until) or m.subscription_paused_until <= ^now)),
+      select: principal.email,
+      distinct: true,
+      order_by: principal.email
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Returns domain-shaped members analytics for the dashboard.
 
   Computed server-side over active members — `member_profiles` joined to

@@ -48,6 +48,10 @@ config :dhc, Dhc.WorkshopCalendar,
   active: false,
   req_options: [plug: {Req.Test, Dhc.WorkshopCalendar.Google}]
 
+config :dhc, Dhc.TrainingCalendar,
+  enabled: false,
+  req_options: [plug: {Req.Test, Dhc.TrainingCalendar.Google}]
+
 # ALE-299: throwaway VAPID pair so Web Push tests exercise real aes128gcm
 # encryption and VAPID signing. Never reuse outside the test environment; the
 # HTTP hop is stubbed (`:web_push_sender` / Req `plug:`), so nothing is sent.
