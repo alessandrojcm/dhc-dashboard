@@ -1,371 +1,226 @@
-# Workshop destinations: Google Places validation (ALE-439)
+# Google venue selection: what ALE-439 established
 
-Validated against public Google documentation on 6 November 2026 for
-[ALE-439](https://linear.app/alessandrojcm/issue/ALE-439/venues-validate-places-terms-and-permitted-destination-data).
-The [confirmed venue design](google-maps-venue-design.md) and
-[ALE-438](https://linear.app/alessandrojcm/issue/ALE-438/spec-workshop-venue-autocomplete-and-directions)
-remain the product scope. This document authorizes no implementation, Google
-provisioning, billing/key changes, live acceptance, activation or backfill.
+Checked against Google's public documentation on 6 November 2026.
 
-## Decision and gate status
+## Short answer
 
-**Google-derived saved destinations and Calendar export remain gated.** Public
-terms support retaining Place IDs and fetching fresh details for permitted
-in-app use. They do not establish permission for the agreed durable
-name/address-to-Calendar workflow. The relevant billing account and agreement
-have not been inspected. This is an engineering compliance decision on public
-evidence, not legal advice or a determination of the club's actual contract.
+The feature is technically supported: search for a venue, select it, show the
+destination, and write its address into Calendar's native `location` field.
+Calendar describes that field as "Geographic location of the event as free-form
+text." There is no Calendar-specific prohibition identified here. [Calendar API][calendar]
 
-The manual path remains supported independently: a required staff-owned short
-label, optional independently supplied destination name/address and optional
-validated manual Maps link. Those facts may be saved in each source domain and
-projected into native Calendar `location` through the existing protocol.
-Do not copy a Places result into the manual path and rename its provenance.
-No manually entered destination needs a provider identity or a Places lookup.
+There are two different data flows:
 
-[ALE-442](https://linear.app/alessandrojcm/issue/ALE-442/venues-shared-google-autocomplete-across-workshop-forms)
-must not ship its Google path on the strength of this report. Keep the agreed
-native Calendar location goal; neither a description-link workaround, an
-ID-only destination nor manual retyping of provider text silently replaces it.
+- **Street-address autofill:** Google expressly exempts a selected street address
+  that the user could have entered accurately themselves, for that user's
+  specific transaction. Keeping the existing staff-written venue label and
+  using this address for the workshop is a simpler candidate.
+- **Venue/business lookup plus Place Details:** the chosen integration returns
+  Google business names and addresses. Those fields are not automatically
+  covered by the street-address exception. Their durable use remains unvalidated.
 
-## Applicable terms: verified rules and missing account facts
+Custom licensing has not been shown necessary. Address-only entry is narrower
+than the agreed venue-name search; it is an option to discuss, not an approved
+replacement.
 
-| Public evidence                                                                                                                                                                                                                                                                 | Consequence for this integration                                                                                                                                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Both general and EEA Maps terms select EEA applicability by **billing account address**, with an exception for a pre-8-July-2025 project integration remaining unmodified. Ireland is in the FAQ's EEA list.                                                                    | Club geography, server region and attendee location do not establish the account's terms. New Places functionality cannot inherit an exception merely because Calendar OAuth already exists. [General terms][terms], [EEA terms][eea-terms], [FAQ][eea-faq].                                                                                                                                   |
-| The FAQ describes additional services, methods and response fields as material modifications, and treats integrations in a project as having the same state. It warns that it is a point-in-time reference.                                                                     | Read the current agreement first. Do not enable Places in an existing project or accept new terms to test this assumption. [FAQ][eea-faq].                                                                                                                                                                                                                                                     |
-| General terms §3.2.3(a)-(b) and EEA terms §3.3.2(a)-(b) prohibit export outside the Services, copying/saving business names and addresses, and caching unless expressly permitted.                                                                                              | Saving a selected venue is still storage. Refreshing every 30 days does not legalize fields without a caching exception. [General terms][terms], [EEA terms][eea-terms].                                                                                                                                                                                                                       |
-| Both Service Specific Terms A.3 allow Google-ID caching. Places B.14.3 (general) / B.15.4 (EEA) permit latitude/longitude caching for up to 30 consecutive days. The Places policy explicitly allows indefinite Place-ID storage.                                               | The identifier exception does not extend to names, addresses, URLs or an entire result. Coordinates are outside this feature and its lookup mask. [General SST][sst], [EEA SST][eea-sst], [Places policy][policies].                                                                                                                                                                           |
-| EEA SST B.15.1 prohibits non-ID/non-coordinate Places content "With any Map"; its definition includes linking, except a link to the content's source map. B.15.2 limits that content to enumerated permitted uses.                                                              | A no-map suggestions UI can support address autocomplete under permitted use (1). That does not establish ongoing venue display, generated directions links or Calendar exports. Uses (2), (4), (6) and (8) have specific store, productivity, financial-transaction or social-platform contexts; none is assumed to cover this club workflow. [EEA SST][eea-sst], [permitted uses][eea-uses]. |
-| The EEA integration guide permits provider-supplied source links and ID/coordinate-only map linking. Places UI Kit is exempt from the two EEA restrictions above.                                                                                                               | An arbitrary generated link containing Places text is not automatically the source-link exception. UI Kit changes display integration, not the default storage/export rules, so it does not solve durable Calendar locations. No switch to UI Kit is approved here. [EEA guide][eea-guide], [EEA SST][eea-sst].                                                                                |
-| The street-address Autocomplete exception applies only when the end user could otherwise have supplied the address completely/accurately, solely for that user's specific transaction. It excludes suggestion lists, other content and POI/address lookups from other services. | The selected venue name and Details address are not made unrestricted by a staff click. This proposed POI-plus-Details workflow does not rely on the narrow street-address exception. [Places policy][policies].                                                                                                                                                                               |
+This report does not establish that the feature is prohibited. It also does not
+clear ALE-439 or unblock ALE-442: the selected-address exception must be checked
+against the agreed venue lookup, and the intended account's terms are unknown.
+Manual destinations can proceed independently. The agreed
+[venue design](google-maps-venue-design.md) is unchanged.
 
-The general and EEA terms pages inspected say last modified **26 August 2026**;
-both SST pages say **28 October 2026**; the EEA permitted-uses page says
-**4 June 2025**. These public versions are evidence, not confirmation of the
-club's accepted, negotiated or reseller terms.
+## The specific terms question
 
-### Owner evidence needed to close the gate
+Google's [Places policy][policies] distinguishes these cases:
 
-Record the following without putting keys, billing details or private contracts
-in this public repository:
+- **Ordinary Places results:** the general terms restrict copying/saving business
+  names and addresses and caching content without an express exception. Place
+  IDs may be stored indefinitely. A 30-day coordinates exception does not permit
+  a 30-day address/name cache. [General terms §3.2.3][terms], [SST A.3/B.14.3][sst]
+- **Selected street address:** the policy says the address is not subject to
+  Maps Content restrictions when the end user could have supplied it completely
+  and accurately without Autocomplete, solely for that user's specific
+  transaction. This excludes suggestion lists, other content, and POI/address
+  lookups offered by other Maps services. Selecting any business result does not
+  automatically make all its returned fields exempt.
 
-1. The intended project, linked billing account's EEA/non-EEA classification,
-   agreement/version and any negotiated/reseller terms that affect this use.
-   If claiming the unmodified-integration exception, supply its project/workflow
-   history and why introducing these Places calls does not end it. The safe
-   planning assumption for a new EEA integration is current EEA terms.
-2. A contract/legal assessment or written licensing provision that permits the
-   exact fields to be retained for workshop history and exported to Calendar,
-   including guest copies, update messages and the historical no-rewrite policy.
-   Identify the duration and deletion/refresh requirements. A recurring API call
-   cannot delete an address already sent to guests.
-3. If EEA terms apply, the exact permitted-use category covering each staff and
-   attendee use beyond address lookup, and the map/source-link treatment of
-   attendee directions and Calendar's native navigation. If no category fits,
-   obtain a suitable license or bring the blocker back for a scope decision.
-4. An attribution treatment that remains compliant in native Calendar clients,
-   plus required application terms/privacy notices. The existing source
-   projection and Calendar `location` string do not carry a structured Place or
-   attribution contract. [Calendar Events][calendar], [Services list][services].
+Keep the distinction explicit: an address selected as form input may qualify;
+a business name/address discovered through Place Details is not automatically
+covered. Copying a provider result into a "manual" field does not establish
+independent provenance.
 
-Google technical support cannot grant terms exceptions; the policy directs
-contract interpretation to counsel and custom licensing to Sales. This task
-has not contacted either, accepted terms or accessed the Console.
-[Places policy][policies]. Once documentary permission is established, update
-this record and the affected ticket before implementing Google-derived storage.
-Native Calendar UX acceptance remains a separately authorized ALE-445 task.
+For the address-only candidate, keep the selected Autocomplete street-address
+text and optional Place ID; do not fetch/save a Details business name or
+`formattedAddress`. Google documents address/geocode autocomplete excluding
+businesses. This preserves the staff-owned label and can avoid importing a POI
+record. The published exception does not explicitly discuss Calendar attendee
+copies, so applying "that user's specific transaction" to the full workshop
+journey is an interpretation to record, not a Calendar guarantee.
+[Address-entry guidance][address-entry]
 
-## Field-by-field destination contract
+Before implementing Google-derived persistence, establish whether our exact
+selection/resolution flow meets the street-address exception. If it does, record
+which fields and transaction it covers. If it does not, name the specific
+conflict and return it for a decision; do not assume either approval or a need
+for a negotiated licence.
 
-"Transient" below means only the current permitted lookup/display interaction,
-with no reusable cache or durable copy. There is **no approved numeric cache
-TTL** for Places text here. All Google display permissions remain conditional
-on the applicable terms and attribution; this table does not enable the feature.
+### Which account terms apply?
 
-| Field / origin                                                                                     | Display and permitted use                                                                                                                                                                                                | Persistence, refresh and deletion                                                                                                                                                                                                                                                         | Calendar export                                                                                                                  |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Existing short label, independently staff-authored                                                 | Existing workshop/email copy; keep it separate from provider text and the Beginners' Workshop 80-character limit unchanged.                                                                                              | Existing domain lifetime; no Places refresh. Never overwrite automatically from `displayName`.                                                                                                                                                                                            | Existing label fallback is unaffected.                                                                                           |
-| Manual destination name/address and optional manual Maps link, independently supplied              | Staff and attendee destination display; link validation still applies.                                                                                                                                                   | Source-owned storage; replace/clear explicitly, preserve on omission. Manual replacement removes stale Google identity/derived links.                                                                                                                                                     | Native name/address permitted by this Places assessment; UX remains to be checked. Do not put the link in the event description. |
-| Autocomplete `text.text` / structured prediction text                                              | Suggestions only, with Google Maps attribution. Do not treat the prediction as resolved Details fields.                                                                                                                  | Transient; discard on replacement/abandonment/unmount. No database, logs, snapshots, persistent form drafts or fixtures of real responses.                                                                                                                                                | No.                                                                                                                              |
-| Details `displayName.text`                                                                         | Selected-result preview and fresh permitted in-app display, with attribution. Attendee display needs its own permitted-use assessment.                                                                                   | No durable storage permission established. Fetch fresh for a permitted interaction; discard afterwards. Neither a 30-day cache nor lifetime retention is approved.                                                                                                                        | Gated: no published exception established.                                                                                       |
-| Details `formattedAddress`                                                                         | Same as name. This Details address does not inherit the narrow Autocomplete street-address exception.                                                                                                                    | Same as name. Do not store the address in a constructed URL or short label to evade the rule.                                                                                                                                                                                             | Gated: no published exception established.                                                                                       |
-| Place ID (`id`, autocomplete `placeId`)                                                            | Lookup identity; may be used in Maps URLs subject to the applicable linking rules. It is not a human-readable destination.                                                                                               | Indefinite ID storage permitted. Keep an application timestamp and refresh IDs older than 12 months as Google recommends, using Details `id` only. Remove on explicit destination clear/replacement. A failed/obsolete/moved ID requires review, never automatic selection or relocation. | No ID-only substitute: Calendar has no ordinary structured Place-ID location field.                                              |
-| Application provenance (`provider: google`, selected/ID-checked time, permission-record reference) | Distinguishes restricted Google facts from independent manual facts.                                                                                                                                                     | Application-generated metadata can follow the owning destination; no query, credential or result body is needed. Keep provenance with the retained ID and any separately licensed retained content.                                                                                       | Internal only.                                                                                                                   |
-| Details `attributions[].{provider,providerUri}` and Google Maps branding                           | All returned provider credits stay with the result; branding is required separately.                                                                                                                                     | Transient alongside transient text. If future licensing permits retained text, retain its associated required attributions under that license too; an empty provider list never removes Google Maps branding.                                                                             | No verified native-location treatment; must be resolved with export permission.                                                  |
-| Details `googleMapsUri` / `googleMapsLinks`                                                        | Provider source links can be used in permitted in-app display; a general place URL is not necessarily directions.                                                                                                        | Not requested in the chosen mask; no durable URI cache is approved.                                                                                                                                                                                                                       | Not exported.                                                                                                                    |
-| Locally constructed directions URL                                                                 | Manual destination text is supported; a retained ID plus independently supplied destination text can technically form a link. Google-derived name/address in the URL remains gated, including EEA map-link restrictions. | Construct on read; do not persist a second copy of restricted provider text. Manually supplied URLs are stored as manual input.                                                                                                                                                           | No description workaround; native Calendar location still requires permitted name/address facts.                                 |
-| Raw responses, coordinates, reviews, photos, ratings, contact details                              | Not needed or requested.                                                                                                                                                                                                 | No storage, public projection, job arguments or durable fixtures. Coordinates' 30-day exception does not authorize other fields.                                                                                                                                                          | No.                                                                                                                              |
+EEA applicability follows the **Google billing account's address**, not the
+club's name, server region or search location. Ireland is in the EEA. The intended
+project/account and any negotiated/reseller agreement have not been inspected.
+[EEA terms][eea-terms], [FAQ][eea-faq]
 
-The Place-ID refresh recommendation and indefinite-ID permission come from the
-[Place IDs guide][place-ids] and [Places policy][policies]. An ID refresh that
-indicates a moved place must not move a published workshop. Refreshing display
-facts also cannot silently rewrite past Calendar events. These consequences are
-why storing just an ID and resolving at sync time does not satisfy the agreed
-durable export requirement.
+For an EEA account, the current SST permit address lookup/autocompletion but
+limit other non-ID/non-coordinate Places uses to listed categories, and restrict
+use "With any Map", including some links. Provider-supplied source links and
+ID-only map linking have documented exceptions. Assess these rules only for
+content that remains Google Maps Content. [EEA SST B.15][eea-sst],
+[permitted uses][eea-uses], [EEA integration guide][eea-guide]
 
-## Attribution and user notices
+Do not assume an old project avoids EEA terms: the pre-8-July-2025 exception
+requires an unmodified integration. The FAQ lists new services, methods and
+response fields as material changes. Calendar OAuth is not evidence of an
+existing Places integration. The terms pages checked were dated 26 August 2026;
+both SST pages, 28 October 2026. These public pages do not establish the club's
+accepted agreement.
 
-For any later permitted Google path, implement and test these obligations from
-the [current Places policy][policies], general terms §3.2.2 and EEA terms
-§§3.2.2/3.2.4 plus SST A.2:
+## Destination data contract
 
-- Suggestions need visible **Google Maps** attribution in the same visual
-  container as the Google list. Use Google's official logo where possible;
-  "Google Maps" text is allowed where space is limited. Do not use an old
-  "powered by Google" example as the specification for a new implementation.
-- The resolved selection needs attribution beside its Google name/address,
-  even after the suggestions close. Render returned data-provider names/links
-  too. Escape and validate these fields; do not inject provider HTML.
-- Any permitted attendee display needs the same associated branding/provider
-  credits on every member, external-attendee and safe Intake surface, not just
-  a footer on the staff form. A directions link alone is not attribution.
-- Preserve result/credit association on retained licensed content, including
-  read models and any export where the permission requires it. A Place ID or
-  `provider: google` marker alone is not visible attribution. Calendar is a
-  separate unresolved export surface; being another Google product does not
-  prove compliance.
-- Visually distinguish provider facts from the staff-owned label/manual data;
-  do not suggest Google supplied manual values. Follow Google's current logo
-  sizing, clear-space, legibility and accessible-name requirements. Text
-  attribution must remain "Google Maps", unmodified, untranslated and unwrapped,
-  with the documented accessible typography. Do not hide credits on mobile.
-- Application terms must notify users of Google Maps features/content and link
-  the Google Maps End User Additional Terms and Google Privacy Policy as the
-  applicable agreement requires. Review the app's privacy/consent notices
-  before activation; these requirements are not satisfied by this repository
-  document. [General terms][terms], [EEA terms][eea-terms].
+These decisions concern data handling, not a new shared venue database. Each
+Workshop domain keeps its own storage and commands.
 
-## Lookup integration
+- **Staff-owned short label:** preserve it separately; do not populate it
+  automatically from Google's business name. Keep the Beginners' Workshop
+  80-character limit and existing email copy.
+- **Independently supplied manual name/address/link:** can be saved, displayed
+  to attendees and projected to Calendar without a Places dependency. The Maps
+  link is optional and must pass server-side HTTPS/host/path/credential checks.
+  Omission preserves the destination; explicit clear removes it; a manual
+  replacement removes unrelated provider identity and derived links.
+- **Suggestion text:** display only for the current search with attribution;
+  discard when replaced, abandoned or unmounted. No database, persistent draft,
+  CDN/service-worker cache, analytics or raw-response fixtures.
+- **Selected name/address:** show a transient preview with attribution. Durable
+  storage and attendee/Calendar reuse remain unresolved for non-exempt provider
+  text. An address that actually meets the selected-address exception is treated
+  according to that exception, not automatically as permanently restricted
+  Places data. Do not invent a refresh TTL as a substitute for permission.
+- **Place ID and provenance:** an ID may be stored indefinitely with
+  `provider: google` and an application-generated selection/check timestamp.
+  Google recommends refreshing IDs older than 12 months using Details `id`
+  only. Clear on destination replacement/removal; obsolete or moved results
+  require review, never automatic relocation of a workshop. [Place IDs][ids]
+- **Directions URL:** construct a Maps URL from permitted destination text,
+  optionally with the selected Place ID. Use `api=1`, `destination`, and optional
+  `destination_place_id`; omit origin and encode values. No key is needed.
+  Constructing a URL does not exempt restricted text inside it. Do not request
+  or retain `googleMapsUri` merely to make a directions link. [Maps URLs][urls]
+- **Attribution:** retain required credits alongside any retained non-exempt
+  provider data under the permission that allows its retention. Raw responses,
+  coordinates, photos, reviews and contact details are not part of the contract.
 
-The technical choice is **Places API (New) REST: Autocomplete (New), then Place
-Details (New) on deliberate selection**, called by Phoenix through one
-domain-neutral Req/Req.Test boundary. It has no Workshop IDs, source writes or
-Calendar authority. A supported HTTP integration does not by itself authorize
-retention or Calendar export; the terms decision above governs those uses.
-[Autocomplete guide][autocomplete], [Details guide][details].
+Calendar receives permitted name/address text, falling back to the existing
+label. It has no ordinary structured Place-ID field; a successful text write
+does not prove exact Place binding or native navigation quality. Exporting
+non-exempt provider text, its retention in guest copies, and attribution remain
+part of the unresolved assessment. Do not add description links as a workaround
+or rewrite past events. Isolated native-navigation acceptance stays in ALE-445.
 
-Choose a custom suggestions UI rather than a Google JavaScript widget so the
-existing shared form and UI primitives can own keyboard interaction and manual
-fallback. No Maps JavaScript loader, map, browser Google key, staff geolocation,
-Geocoding API, Routes API or venue directory is required by this choice.
+## Lookup implementation contract
 
-### Application-facing lookup contract
+The technically supported candidate is **Autocomplete (New), then Place Details
+(New) on deliberate selection**, through one domain-neutral Phoenix Req/Req.Test
+boundary. It does not write workshops. The retention decision above must be
+resolved before treating its preview fields as saved destination fields.
 
-These are proposed boundary shapes, not implemented endpoints or a database
-schema. Later HTTP exposure is OpenAPI-first and capability-gated for the staff
-who can use the relevant forms; the lookup is not a public arbitrary Google
-proxy. Both source domains keep their own save commands.
-
-| Operation | Input                                                    | Closed output                                                                                                       |
-| --------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Suggest   | Venue query and a fresh opaque search-session token      | `ready` with ordered `{placeId, text}` suggestions (including an empty list), or `unavailable` with a closed reason |
-| Resolve   | The explicitly selected `placeId` and that session token | `ready` with `{provider: "google", placeId, name, address, attributions}`, or `unavailable` with a closed reason    |
-
-`name` and `address` in a resolved result are transient Google-derived preview
-text, not proof that either field may be saved. `attributions` is a closed list
-of `{provider, uri}` obtained from Google's attribution fields; Google Maps
-branding is an additional display obligation. Do not return raw Google JSON,
-credentials, error bodies, arbitrary URLs, photos, reviews or coordinates.
-
-Suggested failure vocabulary is `not_configured | disabled | invalid_input |
-not_found | quota | provider_unavailable`. Authentication/configuration errors
-are monitored without exposing their upstream response. No result is an ordinary
-empty success. Bound input size, rate and request duration, and check the
-caller's capability before spending provider quota. A session token is a billing
-correlator, never authorization or a source-workflow credential.
-
-### Provider request and response mapping
-
-1. Suggest uses `POST https://places.googleapis.com/v1/places:autocomplete`,
-   `Content-Type: application/json` and server-only `X-Goog-Api-Key`.
-   The JSON body contains `input`, `sessionToken`, `languageCode: "en"`,
-   `regionCode: "ie"` and this fixed application bias:
-
-   ```json
-   {
-     "locationBias": {
-       "circle": {
-         "center": { "latitude": 53.3498, "longitude": -6.2603 },
-         "radius": 30000
-       }
-     }
-   }
-   ```
-
-   The Dublin centre/radius are application choices, not a venue coordinate
-   requirement. Omit `locationRestriction`, `includedRegionCodes`, type filters
-   and `origin`. Leave query predictions and pure service-area businesses off.
-   `locationBias` permits results outside the circle; `regionCode` influences
-   ranking/formatting without a country exclusion. Do not rely on the server's
-   IP-derived default bias. [Request reference][autocomplete-reference].
-
-2. Set `X-Goog-FieldMask` to
+1. Suggest: `POST https://places.googleapis.com/v1/places:autocomplete` with
+   server-only `X-Goog-Api-Key`. Send `input`, random session token,
+   `languageCode: en`, `regionCode: ie`, and `locationBias.circle` centred at
+   `53.3498, -6.2603` with radius `30000` metres. Omit geographic restrictions,
+   type filters, origin and query predictions. The circle biases toward Dublin
+   without excluding other locations. Mask:
    `suggestions.placePrediction.placeId,suggestions.placePrediction.text.text`.
-   Map only `suggestions[].placePrediction.placeId` and `.text.text` into the
-   closed suggestion. Render that text as text, not HTML. Do not parse it into a
-   destination name/address: prediction text can differ from Details. Ignore
-   unsupported prediction variants; an empty or omitted suggestions array is
-   empty success. [Autocomplete fields][autocomplete-reference].
+   Return ordered `{placeId, text}` suggestions; none is an empty success.
+   [Autocomplete][autocomplete]
+2. Resolve: `GET https://places.googleapis.com/v1/places/{encodedPlaceId}` with
+   the same session token, `languageCode=en` and mask
+   `id,displayName,formattedAddress,attributions`. Map to a closed preview:
+   `{provider: google, placeId, name, address, attributions}`. In New,
+   `displayName.text` is the business name; `name` is a resource identifier.
+   Map credits from `{provider, providerUri}`. Do not parse prediction text into
+   authoritative name/address fields or expose raw JSON. [Details][details]
+3. Start a fresh UUID v4 per search interaction; end it on selection/resolution
+   or abandonment. All calls in a session use the same Google project. Replacing
+   a selection starts a new session. Debounce/cancel superseded searches and
+   reject stale responses. Never use a workflow credential as the session token.
+   [Sessions][sessions]
+4. Authenticate/capability-check and bound lookup requests. Return closed
+   unavailable/configuration/quota/not-found failures, not provider bodies.
+   Manual saving must work for every failure and when Places is unconfigured.
+   Return lookup responses with `Cache-Control: no-store`.
 
-3. Resolve uses `GET https://places.googleapis.com/v1/places/{placeId}` with the
-   Place ID encoded as one path segment, fixed host/path construction,
-   `sessionToken` and `languageCode=en` query parameters, and server-only
-   `X-Goog-Api-Key`. Do not set a Details `regionCode`, so an Irish country name
-   is not deliberately omitted from the full address. Use exactly
-   `X-Goog-FieldMask: id,displayName,formattedAddress,attributions`.
-   Map `id`, `displayName.text`, `formattedAddress` and
-   `attributions[].{provider,providerUri}`. In New, `name` is the resource name
-   `places/…`, not the human-readable `displayName`. Missing required identity
-   or useful destination text cannot be repaired by guessing from a suggestion;
-   offer manual entry. [Details guide][details], [Place reference][place].
+Google receives only the venue query/ID, random session token, fixed bias and
+language, field mask, key and normal server network metadata. Forward no browser
+cookies, client-IP headers, Referer, workshop IDs/details or attendee facts.
+Exclude lookup bodies/queries from logs, Sentry and analytics. Attendee links
+must disclose only destination information and preserve no-referrer navigation,
+especially on credential-bearing Intake pages.
 
-4. Generate a random UUID v4 per interaction. Use the same token for all its
-   suggestions and its one terminating Details request, with credentials from
-   the same Google Cloud project. Discard on resolution or abandonment; start a
-   new token for replacement. Never reuse an Intake, login, acceptance or
-   Calendar token. Google recommends sessions; an abandoned session remains
-   billable per autocomplete request. An ID-only refresh is separate from a
-   search session. [Session tokens][tokens], [session billing][session-pricing].
+## Attribution and configuration
 
-5. Debounce/cancel superseded searches and reject late results by the current
-   request/selection identity. Keep result/selection text in component memory
-   only and clear on replacement, abandonment or unmount. Serve lookup
-   responses with `Cache-Control: no-store`; exclude them from CDN, service
-   worker and browser persistent storage. Provider errors, slow requests or
-   absent configuration must leave the label/manual fields and save operation
-   usable. No speculative first-result selection or automatic save is allowed.
+Display **Google Maps** branding in the suggestions container, selected-result
+preview and any attendee surface displaying non-exempt Google data. Show returned
+third-party credits too; keep them associated and visible on mobile. Manual
+facts must not be falsely attributed to Google. Use the current official
+logo/text/accessibility rules, and the application terms/privacy notices required
+by the applicable agreement. A link or internal provider marker alone is not
+attribution. [Places policy][policies]
 
-### Data leaving the application
+Places needs its own billing-enabled project, **Places API (New)** enablement and
+restricted server key. Restrict it to that API and the actual public egress IPs;
+confirm stable egress before activation. No browser key is needed by this
+candidate. A later Maps JavaScript choice needs a separate website-restricted
+browser key and a fresh integration decision. Calendar organizer OAuth is
+separate. No setup or billing/key changes were performed. [Setup][setup],
+[key security][security]
 
-Places receives the venue query or selected Place ID, random session token,
-fixed language/region/bias, field mask and authentication. Google also observes
-the server's network metadata. Construct fresh outbound requests; do not forward
-browser cookies, authorization, client-IP headers, Referer or a page URL.
-Search controls must warn staff to enter venue information only. Do not attach
-Workshop titles, IDs, dates, attendees, private notes, medical/payment facts or
-Intake credentials. Prevent request/response bodies and query strings from
-entering logs, analytics, Sentry breadcrumbs or durable test fixtures.
+Review current quotas and session pricing before activation: requesting
+`displayName` is not an ID-only lookup, and session billing differs from
+standalone field-tier pricing. No zero-cost assumption is made.
+[Session pricing][pricing]
 
-Attendee navigation is an explicit link click, with only destination facts in
-the URL, no tracking/session tokens or origin location supplied by this app.
-Keep the Intake `Referrer-Policy: no-referrer` response and use referrer-safe
-external links on every attendee surface. Google Maps itself may ask the user
-for an origin after navigation; the dashboard must not request location access.
+## Checks for the later autocomplete ticket
 
-## Directions URL decision
+- Substitute Google with synthetic Req.Test data. Assert the exact calls/masks,
+  session lifecycle, non-exclusive Dublin bias, closed mapping, empty results,
+  quota/auth/outage handling and stale-response rejection.
+- Test real form submissions through all four workflows, manual fallback,
+  replacement/clear/omission, field errors, keyboard/phone behaviour and the
+  short-label limit. Test the resolved field permission/retention rules, not an
+  assumed blanket right to save provider JSON.
+- Check attribution and privacy on selected results and every attendee surface;
+  verify no persistent lookup cache or credential-bearing requests/referrers.
+- Run the existing substituted Calendar protocol against real source changes:
+  native location, preserved event/RSVP identity, normal updates, no-op silence
+  and enrichment without false reschedule emails. Live acceptance and production
+  operations still require separate authorization.
 
-Use the documented universal URL format when a permitted destination is
-available:
-
-```text
-https://www.google.com/maps/dir/?api=1&destination=<encoded destination>
-```
-
-For a permitted Google identity and independently supplied destination text,
-`destination_place_id=<encoded Place ID>` can also be supplied; `destination`
-is still required. Google-derived destination text remains gated. Build with a
-URL encoder, omit `origin`, and respect the 2,048-character URL limit. Maps URLs need no API
-key. This is a link, not a fetched/cached route. It does not add structured Place
-identity to Calendar's free-form location field. [Maps URLs][maps-urls].
-
-Do not request or persist `googleMapsUri`: its documented meaning is a URL for
-more information about the place, not specifically directions, and it has no
-separately established long-term storage permission here. A locally constructed
-URL does not remove restrictions on Google-derived text embedded in it.
-[Place reference][place]. Independently supplied manual Maps links remain
-optional and go through the source's HTTPS/host/path/credential validation;
-validation must not fetch arbitrary URLs or silently resolve shortened links.
-
-## Configuration and operational readiness
-
-These are requirements for a separately authorized setup, not tasks run by
-this validation:
-
-- A chosen Google Cloud project with billing enabled and **Places API (New)**
-  (`places.googleapis.com`) enabled. Record its linked billing account and
-  applicable agreement before enabling the provider. Existing Calendar API
-  enablement and organizer OAuth establish none of these facts. [Setup][setup].
-- A dedicated server-side Places key, stored as a secret, restricted to Places
-  API (New) and the actual public egress IP addresses Google sees, including
-  IPv6 where used. HTTP-referrer restrictions are for browser keys, not this
-  REST server key. Confirm stable egress before activation; inability to apply
-  the restriction is a deployment blocker, not permission to ship an
-  unrestricted key. Use separate environment credentials and bounded quotas.
-  [Key security][security].
-- No key is intentionally browser-exposed in the chosen integration. If the
-  integration later changes to Maps JavaScript, reopen this choice: its distinct
-  browser key is public by design and needs website/referrer and the required
-  API restrictions. Never reuse the server key or broaden Calendar OAuth to
-  make autocomplete work. [Key security][security].
-- `displayName` triggers the Details Pro field tier, while `formattedAddress`
-  is Essentials and `id`/`attributions` are IDs Only fields. Do not estimate cost
-  by field tier alone: the current session pricing page says a non-Essentials
-  terminating Details request is billed as **Enterprise + Atmosphere**, with
-  autocomplete requests in that session billed as Session Usage. Abandoned
-  sessions revert to per-request charges. The owner must review current rates,
-  quotas and alerts; this document makes no zero-cost promise. [Details
-  fields][details], [session pricing][session-pricing].
-- Provider availability must require explicit configuration and the completed
-  terms gate. Unconfigured, disabled, invalid-key and quota-exhausted states
-  degrade to manual scheduling. Calendar sending keeps its separate target-bound
-  activation gate. No saved manual destination may depend on a Places read.
-
-## Compliance checks for ALE-442
-
-Before code is authorized, the owner evidence above must resolve the full
-Google-selected save/read/Calendar path. Keep ALE-439 open as the blocker until
-then; this document records the validation outcome without clearing that gate.
-Manual-only tickets do not wait on it. Once resolved, extend the approved test
-seams in ALE-438 with:
-
-- Synthetic Req.Test assertions for the exact POST/GET, masks, Dublin bias,
-  session lifecycle and closed mapping, including missing fields/attributions,
-  out-of-region results, empty success, invalid/obsolete IDs and failures.
-  Tests fail on any unhandled real provider request.
-- Checks that only permitted fields reach each domain's saved/read contracts,
-  that omitted/cleared/replaced destinations behave correctly, and that
-  manual edits cannot keep an unrelated Google identity. Real Google response
-  fixtures, logs, analytics, Sentry and browser storage must remain empty.
-- Browser/E2E assertions for attribution while suggesting, after selection and
-  on every attendee surface; verify mobile and accessible presentation with
-  non-empty synthetic third-party credits. Independent manual values receive
-  no false provider attribution.
-- Clock-controlled ID refresh and every additional field retention/deletion
-  rule established by the final agreement, including its treatment of backups,
-  history, Calendar copies and expired data during provider outages. Default
-  denial must prevent accidental caching/export of unapproved fields.
-- Full selected-destination round trips through all four forms, attendee-safe
-  reads and both source Calendar projections. Assert no private credentials or
-  attendee facts reach Places or navigation URLs/referrers, and manual saves
-  remain available when Places is unavailable or gated.
-- Existing substituted Calendar sync assertions for native location and normal
-  updates/no-op silence, without changing descriptions, identity, RSVP or
-  enrichment-versus-reschedule semantics. Isolated live UX checks are separate;
-  a successful write does not establish either licensing or navigation quality.
-
-## Sources
-
-All sources are first-party Google documentation, accessed 6 November 2026.
-They establish public rules and API shapes, not the club's account agreement.
-
+[calendar]: https://developers.google.com/workspace/calendar/api/v3/reference/events#location
+[policies]: https://developers.google.com/maps/documentation/places/web-service/policies
 [terms]: https://cloud.google.com/maps-platform/terms
 [sst]: https://cloud.google.com/maps-platform/terms/maps-service-terms
 [eea-terms]: https://cloud.google.com/terms/maps-platform/eea
 [eea-sst]: https://cloud.google.com/terms/maps-platform/eea/maps-service-terms
-[eea-uses]: https://cloud.google.com/terms/maps-platform/eea-places-api-permitted-uses
 [eea-faq]: https://developers.google.com/maps/comms/eea/faq
+[eea-uses]: https://cloud.google.com/terms/maps-platform/eea-places-api-permitted-uses
 [eea-guide]: https://developers.google.com/maps/comms/eea/places
-[policies]: https://developers.google.com/maps/documentation/places/web-service/policies
-[place-ids]: https://developers.google.com/maps/documentation/places/web-service/place-id
-[calendar]: https://developers.google.com/workspace/calendar/api/v3/reference/events#location
-[services]: https://cloud.google.com/maps-platform/terms/maps-services
+[ids]: https://developers.google.com/maps/documentation/places/web-service/place-id
+[urls]: https://developers.google.com/maps/documentation/urls/guide
 [autocomplete]: https://developers.google.com/maps/documentation/places/web-service/place-autocomplete
-[autocomplete-reference]: https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places/autocomplete
 [details]: https://developers.google.com/maps/documentation/places/web-service/place-details
-[place]: https://developers.google.com/maps/documentation/places/web-service/reference/rest/v1/places
-[tokens]: https://developers.google.com/maps/documentation/places/web-service/place-session-tokens
-[session-pricing]: https://developers.google.com/maps/documentation/places/web-service/session-pricing
-[maps-urls]: https://developers.google.com/maps/documentation/urls/guide
+[sessions]: https://developers.google.com/maps/documentation/places/web-service/place-session-tokens
 [setup]: https://developers.google.com/maps/documentation/places/web-service/get-api-key
 [security]: https://developers.google.com/maps/api-security-best-practices
+[pricing]: https://developers.google.com/maps/documentation/places/web-service/session-pricing
+[address-entry]: https://developers.google.com/maps/documentation/geocoding/best-practices#respond-to-user-input
