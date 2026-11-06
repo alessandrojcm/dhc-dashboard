@@ -125,6 +125,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
+  alias Dhc.WorkshopCalendar
 
   # How many expired holds one `reap_holds` pass settles; the next sweep
   # takes the rest.
@@ -405,7 +406,11 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
          do: {:ok, {%{outcome: :policy_failed}, []}}
   end
 
-  defp record_paid(%{payment: payment, intake: intake, workshop: workshop}, details, reading) do
+  defp record_paid(
+         %{payment: payment, intake: intake, workshop: workshop} = locked,
+         details,
+         reading
+       ) do
     was_open? = payment.status == "open"
 
     changeset =
@@ -419,7 +424,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
 
     with {:ok, payment} <- transition(:payment, payment, changeset) do
       if was_open? and intake.state == "contacted",
-        do: pay_intake(intake, workshop, reading),
+        do: pay_intake(intake, workshop, Map.get(locked, :waitlist_entry), reading),
         else: refund_after_close(%{payment: payment, intake: intake, workshop: workshop}, reading)
     end
   end
@@ -431,9 +436,16 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
          do: {:ok, {%{outcome: :paid_after_close}, []}}
   end
 
-  defp pay_intake(intake, workshop, reading) do
+  defp pay_intake(intake, workshop, entry, reading) do
     with {:ok, intake} <-
            transition(:intake, intake, Intake.paid_changeset(intake, "stripe", reading.now)),
+         :ok <-
+           WorkshopCalendar.confirm_place(
+             :beginners_workshop,
+             workshop.id,
+             intake.id,
+             entry && entry.email
+           ),
          :ok <- place_confirmed(intake, workshop, reading),
          {:ok, created} <- notify_paid(intake, workshop) do
       {:ok, {%{outcome: :paid}, created}}

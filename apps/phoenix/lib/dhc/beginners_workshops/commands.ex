@@ -421,6 +421,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     to: NotificationCopy,
     as: :calendar_failed
 
+  @doc false
+  defdelegate calendar_recipient_failure_copy(source_id, place_id),
+    to: NotificationCopy,
+    as: :calendar_recipient_failed
+
   @doc "The transition table: entity → from status → legal target statuses."
   @spec transitions() :: %{atom() => %{String.t() => [String.t()]}}
   defdelegate transitions, to: Protocol

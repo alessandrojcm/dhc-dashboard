@@ -2,9 +2,10 @@
 
 ALE-430 and ALE-432 publish regular Workshops and Beginners' Workshops to the
 committee calendar through one synchronization protocol. ALE-433 adds private
-Calendar Invitations for newly confirmed regular Workshop places. Beginners'
-Workshop invitations, existing-attendee launch preview and reviewed activation
-remain in the later ALE-429 tickets.
+Calendar Invitations for newly confirmed regular Workshop places. ALE-434 uses
+that same participant protocol for Stripe-confirmed Beginners' Workshop places.
+Workshop-credit confirmations, existing-attendee launch preview and reviewed
+activation remain in the later ALE-429 tickets.
 There is no Calendar administration screen.
 
 ## Deployment boundary
@@ -133,6 +134,27 @@ missing participant snapshot or Calendar address. Pending Registrations,
 unfinished Checkout and compensating payments do not qualify. Replayed payment
 completion never captures another entitlement or selects a newer profile address.
 
+Beginners' Workshop Stripe completion captures the locked Waitlist entry's
+recorded address only when the Intake actually becomes paid. The retained
+binding belongs to the integration, keyed by the Intake's immutable ID; neither
+the Intake nor a delayed worker keeps/chooses another email snapshot. The
+Checkout payer, frozen hold email and Guardian are not recipient sources. Return
+and webhook duplicates leave that binding unchanged. Offers, open holds, failed
+or unpaid Checkout, policy failures and payments refunded after the place closed
+do not create invitation entitlements. Google failures cannot undo confirmation.
+
+Beginners' Workshop Settlement rows record `:remove_calendar_place` for deferral,
+withdrawal, cancel-with-refund and workshop cancellation alongside their existing
+effects. Refund submission/completion is independent. Attendance finalisation and
+corrections deliberately have no removal step, even when a no-show is corrected
+to deferred: that is attendance history, not a prospective place withdrawal.
+`calendar_place_ids/1` therefore reports confirmation facts (`paid_at`), including
+historical Intakes; a retained binding's explicit removal obligation determines
+place loss. This read never selects recipients or creates new entitlements.
+Reschedule uses the same participant event, preserving surviving Google RSVPs.
+Recipient failures use the Beginners' Workshop alert capability and its
+Notification copy owner, with one durable episode per failed place.
+
 The integration retains each logical place and its selected address separately
 from source storage, including failed addresses and owed removals. The shared
 `sync/3` operation takes `audience: :participant`; identifier-only jobs include
@@ -170,7 +192,9 @@ Address repair is a deliberate operator operation, not a coordinator screen:
 3. Call `Dhc.WorkshopCalendar.correct_recipient(:workshop, workshop_id,
    registration_id, corrected_address)`. It refuses an unpaused integration,
    invalid address, missing/inactive binding or a still-live event lease
-   (`:busy`; let it finish/expire rather than deleting integration rows).
+    (`:busy`; let it finish/expire rather than deleting integration rows).
+   For a Beginners' Workshop use `:beginners_workshop`, its workshop ID and
+   Intake ID with the same operation and preconditions.
 4. Call `Dhc.WorkshopCalendar.resume/0`. The same reconciliation operation
    removes the old organizer guest and uses the corrected retained address for
    the invitation. The old address remains a removal obligation; ordinary profile
@@ -181,8 +205,8 @@ Address repair is a deliberate operator operation, not a coordinator screen:
    or erasure of recipient-held copies. A failed repair follows the ordinary
    keyed-notification/manual-follow-up path; it never changes a booking.
 
-This operation neither activates sending nor changes the participant's profile
-or Registration snapshot. Person hard-delete privacy cleanup is ALE-436; do not
+This operation neither activates sending nor changes the participant's profile,
+Registration snapshot or Intake. Person hard-delete privacy cleanup is ALE-436; do not
 treat place cancellation or attendance history as that cleanup.
 
 ## Verification

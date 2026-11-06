@@ -16,6 +16,13 @@ defmodule Dhc.BeginnersWorkshops.Commands.NotificationCopy do
 
   alias Dhc.BeginnersWorkshops.IntakeEmails.Values
 
+  @doc "A recipient needs manual follow-up; no address or personal link is disclosed."
+  @spec calendar_recipient_failed(String.t(), String.t()) :: String.t()
+  def calendar_recipient_failed(workshop_id, place_id) do
+    "Calendar Invitation needs attention for Beginners' Workshop #{workshop_id}, place #{place_id}. " <>
+      "Check the person's recorded address and the retained Calendar binding. Workshop places are unchanged."
+  end
+
   @doc "Calendar delivery failures do not change anyone's workshop place."
   @spec calendar_failed(String.t(), String.t()) :: String.t()
   def calendar_failed(workshop_id, failure) do

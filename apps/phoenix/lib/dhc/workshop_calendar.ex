@@ -23,16 +23,17 @@ defmodule Dhc.WorkshopCalendar do
   def record_deleted(:workshop = kind, id), do: Store.record(kind, id, true)
 
   @doc "Retains the participant's selected address with a newly confirmed logical place."
-  def confirm_place(:workshop = kind, id, place_id, recipient),
+  def confirm_place(kind, id, place_id, recipient) when kind in [:workshop, :beginners_workshop],
     do: Recipients.confirm(kind, id, place_id, recipient)
 
   @doc "Records loss of a place in the causing transaction, independently of its refund."
-  def remove_place(:workshop = kind, id, place_id),
+  def remove_place(kind, id, place_id) when kind in [:workshop, :beginners_workshop],
     do: Recipients.remove(kind, id, place_id)
 
   @doc "Operator-only address repair. Requires pause and no live event owner; never calls Google inline."
-  def correct_recipient(:workshop = kind, id, place_id, recipient),
-    do: Recipients.correct(kind, id, place_id, recipient)
+  def correct_recipient(kind, id, place_id, recipient)
+      when kind in [:workshop, :beginners_workshop],
+      do: Recipients.correct(kind, id, place_id, recipient)
 
   @doc "Reconciles one source through the same protocol used by every driver."
   def sync(kind, id, opts \\ []) when kind in [:workshop, :beginners_workshop] do
@@ -45,9 +46,6 @@ defmodule Dhc.WorkshopCalendar do
 
       if audience not in ["committee", "participant"],
         do: raise(ArgumentError, "invalid Calendar audience")
-
-      if audience == "participant" and kind != :workshop,
-        do: raise(ArgumentError, "participant Calendar source is not implemented")
 
       Store.ensure(kind, id, audience)
 

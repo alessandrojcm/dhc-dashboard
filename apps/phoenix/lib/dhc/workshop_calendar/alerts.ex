@@ -27,11 +27,12 @@ defmodule Dhc.WorkshopCalendar.Alerts do
         row = Repo.one!(from(r in Recipient, where: r.id == ^recipient.id, lock: "FOR UPDATE"))
 
         if (row.active and row.failure_episode) && is_nil(row.alerted_at) do
-          copy =
-            "Calendar Invitation needs attention for workshop #{current.source_id}, place #{row.place_id}. Check the participant's recorded address and the retained Calendar binding. Bookings are unchanged."
-
           created =
-            notify(current, "workshop-calendar-recipient:#{row.id}:#{row.failure_episode}", copy)
+            notify(
+              current,
+              "workshop-calendar-recipient:#{row.id}:#{row.failure_episode}",
+              recipient_copy(current, row)
+            )
 
           row |> Ecto.Changeset.change(alerted_at: DateTime.utc_now()) |> Repo.update!()
           created
@@ -72,6 +73,13 @@ defmodule Dhc.WorkshopCalendar.Alerts do
 
   defp capability(%{source_kind: "workshop"}), do: :"workshops.manage"
   defp capability(%{source_kind: "beginners_workshop"}), do: :"beginners.workshops.alerts.receive"
+
+  defp recipient_copy(%{source_kind: "beginners_workshop"} = event, recipient),
+    do: BeginnersWorkshops.calendar_recipient_failure_copy(event.source_id, recipient.place_id)
+
+  defp recipient_copy(event, recipient),
+    do:
+      "Calendar Invitation needs attention for workshop #{event.source_id}, place #{recipient.place_id}. Check the participant's recorded address and the retained Calendar binding. Bookings are unchanged."
 
   defp copy(%{source_kind: "beginners_workshop"} = event),
     do: BeginnersWorkshops.calendar_failure_copy(event.source_id, event.failure)

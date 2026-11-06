@@ -129,6 +129,26 @@ defmodule Dhc.BeginnersWorkshops do
   @spec calendar_failure_copy(binary(), String.t()) :: String.t()
   defdelegate calendar_failure_copy(source_id, failure), to: Commands
 
+  @doc "Calendar's source-owned wording for a recipient needing manual follow-up."
+  @spec calendar_recipient_failure_copy(binary(), binary()) :: String.t()
+  defdelegate calendar_recipient_failure_copy(source_id, place_id), to: Commands
+
+  @doc """
+  Confirmation facts for Calendar, including attendance history. A Settlement
+  records explicit place loss in the retained binding; attendance corrections
+  (including no-show to deferred) must not be interpreted as that removal.
+  This read selects no recipient data and never creates an entitlement.
+  """
+  @spec calendar_place_ids(binary()) :: [binary()]
+  def calendar_place_ids(workshop_id) when is_binary(workshop_id) do
+    from(i in Intake,
+      where: i.workshop_id == ^workshop_id and not is_nil(i.paid_at),
+      order_by: [asc: i.id],
+      select: i.id
+    )
+    |> Repo.all()
+  end
+
   @doc """
   The person's Intake page behind an Intake link (ALE-381), or
   `{:error, :not_found}`. Options `clock:` and `returned_session:` (the

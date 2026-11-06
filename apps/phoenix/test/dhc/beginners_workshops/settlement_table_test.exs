@@ -86,6 +86,8 @@ defmodule Dhc.BeginnersWorkshops.SettlementTableTest do
 
   defp assert_legal(:release_holds, from), do: assert_moves(:payment, from, :payment, "releasing")
 
+  defp assert_legal(:remove_calendar_place, from), do: assert("paid" in from.intake)
+
   defp assert_legal({:standing, to, rule}, from) do
     assert rule in [:from_removed, :from_waiting, :withdrawal, :if_allowed, :required]
     starts = Map.fetch!(from, :standing)

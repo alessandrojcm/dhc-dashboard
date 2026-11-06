@@ -283,6 +283,13 @@ defmodule Dhc.WorkshopCalendar.Sync do
   defp projection(%{source_kind: "workshop", source_id: id}),
     do: Workshops.calendar_projection(id)
 
+  defp projection(%{source_kind: "beginners_workshop", source_id: id, audience: "participant"}) do
+    case BeginnersWorkshops.calendar_projection(id) do
+      nil -> nil
+      source -> Map.put(source, :place_ids, BeginnersWorkshops.calendar_place_ids(id))
+    end
+  end
+
   defp projection(%{source_kind: "beginners_workshop", source_id: id}),
     do: BeginnersWorkshops.calendar_projection(id)
 

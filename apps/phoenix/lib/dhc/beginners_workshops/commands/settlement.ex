@@ -32,7 +32,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     * `{:close, state}` — the Intake closes as `state`;
     * `:release_holds` — each live Seat Hold the caller locked becomes
       `releasing` (only Stripe ends the session; a completion that lands
-      anyway is refunded by `complete_payment`'s `paid_after_close`);
+       anyway is refunded by `complete_payment`'s `paid_after_close`);
+    * `:remove_calendar_place` — retains the lost place's invitation removal
+      in the same transaction, without waiting for a refund. Attendance rows
+      deliberately omit it, including a no-show corrected to deferred;
     * `{:standing, target, rule}` — the Waitlist Status moves to `target`
       when `rule` says it does (an anonymised person has no standing):
       * `:from_removed` — only a removed person moves (back to `waiting`,
@@ -105,6 +108,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
   alias Dhc.Repo
   alias Dhc.Waitlist
   alias Dhc.Waitlist.{Standing, WaitlistEntry}
+  alias Dhc.WorkshopCalendar
 
   @type key :: {atom(), atom() | String.t()}
 
@@ -200,6 +204,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     {:defer, :paid} => %{
       from: %{intake: ["paid"], standing: ["removed"], carried_fee: ["applied"]},
       steps: [
+        :remove_calendar_place,
         :carry,
         {:close, "deferred"},
         {:standing, "waiting", :from_removed},
@@ -213,6 +218,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     {:cancel_workshop, :paid} => %{
       from: %{intake: ["paid"], standing: ["removed"], carried_fee: ["applied"]},
       steps: [
+        :remove_calendar_place,
         :carry,
         {:close, "deferred"},
         {:standing, "waiting", :from_removed},
@@ -224,7 +230,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     # manual refund.
     {:cancel_workshop, :paid_anonymised} => %{
       from: %{intake: ["paid"]},
-      steps: [{:close, "deferred"}]
+      steps: [:remove_calendar_place, {:close, "deferred"}]
     },
     # An unpaid person never had a seat to lose; a holder keeps their
     # `held` fee.
@@ -243,6 +249,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     {:cancel_with_refund, :stripe_paid} => %{
       from: %{intake: ["paid"], standing: ["removed"]},
       steps: [
+        :remove_calendar_place,
         {:close, "cancelled_refunded"},
         {:refund_payment, "cancelled_with_refund"},
         {:standing, "waiting", :from_removed},
@@ -252,6 +259,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     {:cancel_with_refund, :carried_fee_paid} => %{
       from: %{intake: ["paid"], standing: ["removed"], carried_fee: ["applied"]},
       steps: [
+        :remove_calendar_place,
         {:close, "cancelled_refunded"},
         {:refund_fee, :paying, "cancelled_with_refund"},
         {:standing, "waiting", :from_removed},
@@ -293,6 +301,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     {:withdraw, :stripe_paid} => %{
       from: %{intake: ["paid"], standing: ["waiting", "attended"], carried_fee: ["held"]},
       steps: [
+        :remove_calendar_place,
         {:close, "withdrawn"},
         {:standing, "removed", :withdrawal},
         {:by_choice,
@@ -310,6 +319,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
     {:withdraw, :carried_fee_paid} => %{
       from: %{intake: ["paid"], standing: ["waiting", "attended"], carried_fee: ["applied"]},
       steps: [
+        :remove_calendar_place,
         {:close, "withdrawn"},
         {:standing, "removed", :withdrawal},
         @withdrawn_about_intake
@@ -449,6 +459,11 @@ defmodule Dhc.BeginnersWorkshops.Commands.Settlement do
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  defp step(:remove_calendar_place, %{rows: %{intake: intake}} = state) do
+    with :ok <- WorkshopCalendar.remove_place(:beginners_workshop, intake.workshop_id, intake.id),
+         do: {:ok, state}
   end
 
   defp step({:standing, to, rule}, %{rows: %{waitlist_entry: entry}} = state) do
