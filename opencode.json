@@ -21,6 +21,10 @@
         "type": "remote",
         "url": "https://mcp.svelte.dev/mcp",
         "disabled": false
+      },
+      "mobbin": {
+        "type": "remote",
+        "url": "https://api.mobbin.com/mcp"
       }
     }
   },
