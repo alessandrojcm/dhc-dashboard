@@ -38,6 +38,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopListTest do
     assert %{
              date: ~D[2026-11-14],
              start_time: ~T[18:30:00],
+             end_time: ~T[20:30:00],
              stage: :next_batch_due,
              seats: %{capacity: 12, paid: 0, holds: 0, free: 12},
              alerts: [:unstaffed]

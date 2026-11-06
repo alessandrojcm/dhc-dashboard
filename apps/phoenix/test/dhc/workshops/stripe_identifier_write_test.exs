@@ -102,6 +102,15 @@ defmodule Dhc.Workshops.StripeIdentifierWriteTest do
         outside_sandbox(fn ->
           Repo.query!("DROP TRIGGER IF EXISTS #{trigger} ON club_activity_registrations")
           Repo.query!("DROP FUNCTION IF EXISTS #{trigger}()")
+
+          Repo.delete_all(
+            from(j in Oban.Job, where: fragment("?->>'source_id'", j.args) == ^workshop.id)
+          )
+
+          Repo.delete_all(
+            from(e in Dhc.WorkshopCalendar.Event, where: e.source_id == ^workshop.id)
+          )
+
           Repo.delete_all(from r in Registration, where: r.club_activity_id == ^workshop.id)
           Repo.delete_all(from pa in PaymentAttempt, where: pa.club_activity_id == ^workshop.id)
           Repo.delete_all(from w in Dhc.Workshops.Workshop, where: w.id == ^workshop.id)

@@ -170,6 +170,7 @@ defmodule Dhc.BeginnersWorkshops.BatchesConcurrencyTest do
       venue: "Race Hall",
       date: ~D[2026-11-14],
       start_time: ~T[18:30:00],
+      end_time: ~T[20:30:00],
       capacity: capacity,
       fee_cents: 4000,
       payment_cutoff: ~U[2026-11-11 18:30:00.000000Z],

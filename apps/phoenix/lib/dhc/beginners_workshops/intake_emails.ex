@@ -296,6 +296,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails do
   defp value("startTime", {:intake, _i, workshop}, _name, _opts),
     do: Values.start_time(workshop.start_time)
 
+  defp value("endTime", {:intake, _i, workshop}, _name, _opts),
+    do: Values.end_time(workshop.end_time)
+
   defp value("venue", {:intake, _i, workshop}, _name, _opts), do: workshop.venue
   defp value("fee", {:intake, _i, workshop}, _name, _opts), do: Values.money(workshop.fee_cents)
 

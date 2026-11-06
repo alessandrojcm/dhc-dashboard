@@ -68,6 +68,7 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
                  "workshop" => %{
                    "date" => iso_date,
                    "startTime" => "18:30",
+                   "endTime" => "20:30",
                    "venue" => "St. Andrew's Hall"
                  },
                  "feeCents" => 4000

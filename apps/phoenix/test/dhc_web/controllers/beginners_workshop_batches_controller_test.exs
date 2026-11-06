@@ -43,6 +43,7 @@ defmodule DhcWeb.BeginnersWorkshopBatchesControllerTest do
             "venue" => "St. Andrew's Hall",
             "date" => Date.to_iso8601(Date.add(contact_from, 30)),
             "startTime" => "18:30",
+            "endTime" => "20:30",
             "capacity" => 2,
             "feeCents" => 4000,
             "contactFromDate" => Date.to_iso8601(contact_from)

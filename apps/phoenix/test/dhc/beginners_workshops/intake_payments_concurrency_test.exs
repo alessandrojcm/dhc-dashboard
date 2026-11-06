@@ -154,6 +154,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsConcurrencyTest do
             venue: "Race Hall",
             date: ~D[2026-11-14],
             start_time: ~T[18:30:00],
+            end_time: ~T[20:30:00],
             capacity: capacity,
             fee_cents: 4000,
             payment_cutoff: ~U[2026-11-11 18:30:00.000000Z],
@@ -199,11 +200,25 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsConcurrencyTest do
     person_ids = Enum.map(people, & &1.id)
     emails = Enum.map(people, & &1.email)
 
+    Repo.delete_all(
+      from(e in Dhc.WorkshopCalendar.Event,
+        where: e.source_kind == "beginners_workshop" and e.source_id == ^workshop.id
+      )
+    )
+
     Repo.delete_all(from(p in IntakePayment, where: p.intake_id in ^intake_ids))
     Repo.delete_all(from(l in IntakeEmailLog, where: l.intake_id in ^intake_ids))
     Repo.delete_all(from(i in Intake, where: i.id in ^intake_ids))
     Repo.delete_all(from(w in BeginnersWorkshop, where: w.id == ^workshop.id))
-    Repo.delete_all(from(j in Oban.Job, where: fragment("?->>'email'", j.args) in ^emails))
+
+    Repo.delete_all(
+      from(j in Oban.Job,
+        where:
+          fragment("?->>'email'", j.args) in ^emails or
+            fragment("?->>'source_id'", j.args) == ^workshop.id
+      )
+    )
+
     Repo.delete_all(from(p in UserProfile, where: p.waitlist_id in ^person_ids))
     Repo.delete_all(from(e in WaitlistEntry, where: e.id in ^person_ids))
   end

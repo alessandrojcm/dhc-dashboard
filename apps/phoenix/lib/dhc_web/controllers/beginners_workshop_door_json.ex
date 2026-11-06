@@ -14,6 +14,7 @@ defmodule DhcWeb.BeginnersWorkshopDoorJSON do
         venue: view.venue,
         date: view.date,
         startTime: BeginnersWorkshopsJSON.hh_mm(view.start_time),
+        endTime: view.end_time && BeginnersWorkshopsJSON.hh_mm(view.end_time),
         stage: view.stage,
         alerts: view.alerts,
         staff: BeginnersWorkshopsJSON.staff(view.staff),

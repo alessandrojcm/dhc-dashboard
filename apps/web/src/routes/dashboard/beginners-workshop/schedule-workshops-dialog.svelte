@@ -104,7 +104,7 @@ function reset() {
 			aria-label="Schedule Beginners' Workshops"
 		>
 			<h3 class="text-base font-semibold">Workshop details</h3>
-			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_8rem]">
+			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_8rem_8rem]">
 				<Field.Field>
 					{@const props = fields.venue.as("text")}
 					<Field.Label for={props.name}>Venue</Field.Label>
@@ -118,6 +118,14 @@ function reset() {
 					<Field.Label for={props.name}>Start time</Field.Label>
 					<Input {...props} id={props.name} />
 					{#each fields.startTime.issues() as issue (issue.message)}
+						<Field.Error>{issue.message}</Field.Error>
+					{/each}
+				</Field.Field>
+				<Field.Field>
+					{@const props = fields.endTime.as("time")}
+					<Field.Label for={props.name}>End time</Field.Label>
+					<Input {...props} id={props.name} />
+					{#each fields.endTime.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -263,7 +271,6 @@ function reset() {
 			{#if formError}
 				<p class="text-sm text-destructive" role="alert">{formError}</p>
 			{/if}
-
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => (open = false)}
 					>Cancel</Button

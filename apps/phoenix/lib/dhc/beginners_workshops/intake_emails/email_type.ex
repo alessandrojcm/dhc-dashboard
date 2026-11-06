@@ -43,6 +43,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.EmailType do
     "firstName" => 40,
     "date" => 27,
     "startTime" => 5,
+    "endTime" => 5,
     "venue" => 80,
     "fee" => 7,
     "windowEnd" => 34,
@@ -50,7 +51,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.EmailType do
     "refundAmount" => 7
   }
 
-  @base ~w(firstName date startTime venue)
+  @base ~w(firstName date startTime endTime venue)
 
   @types [
     %{

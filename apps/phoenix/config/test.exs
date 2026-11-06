@@ -43,6 +43,11 @@ config :dhc, Oban,
   plugins: false,
   queues: false
 
+# Never use inherited organizer credentials or live Google in automated tests.
+config :dhc, Dhc.WorkshopCalendar,
+  active: false,
+  req_options: [plug: {Req.Test, Dhc.WorkshopCalendar.Google}]
+
 # ALE-299: throwaway VAPID pair so Web Push tests exercise real aes128gcm
 # encryption and VAPID signing. Never reuse outside the test environment; the
 # HTTP hop is stubbed (`:web_push_sender` / Req `plug:`), so nothing is sent.

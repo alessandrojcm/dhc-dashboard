@@ -1,0 +1,213 @@
+defmodule Dhc.WorkshopCalendar.Recipients do
+  @moduledoc "Retained confirmation entitlements, not a live profile address lookup."
+  import Ecto.Query
+
+  alias Dhc.Repo
+  alias Dhc.WorkshopCalendar.{Alerts, Event, Recipient, Store}
+
+  def confirm(kind, id, place_id, recipient) do
+    require_transaction!()
+    Store.ensure(kind, id, "participant")
+    event = lock_event(kind, id)
+    now = DateTime.utc_now()
+
+    {count, _} =
+      Repo.insert_all(
+        Recipient,
+        [
+          %{
+            id: Ecto.UUID.generate(),
+            event_id: event.id,
+            place_id: place_id,
+            recipient: recipient,
+            inserted_at: now,
+            updated_at: now
+          }
+        ],
+        on_conflict: :nothing,
+        conflict_target: [:event_id, :place_id],
+        log: false
+      )
+
+    if count == 1, do: changed(event)
+    :ok
+  end
+
+  def remove(kind, id, place_id) do
+    require_transaction!()
+
+    if event = lock_event(kind, id) do
+      {count, _} =
+        from(r in Recipient,
+          where: r.event_id == ^event.id and r.place_id == ^place_id and r.active
+        )
+        |> Repo.update_all(set: [active: false, updated_at: DateTime.utc_now()])
+
+      if count > 0, do: changed(event)
+    end
+
+    :ok
+  end
+
+  def list(event),
+    do: Repo.all(from(r in Recipient, where: r.event_id == ^event.id, order_by: r.id))
+
+  def forget(kind, place_ids) do
+    require_transaction!()
+
+    # Domain locks are already held. Take integration events in a stable order;
+    # no source FK or person/address lookup is needed by the eventual worker.
+    events =
+      Repo.all(
+        from(e in Event,
+          where: e.source_kind == ^to_string(kind) and e.audience == "participant",
+          where:
+            e.id in subquery(
+              from(r in Recipient, where: r.place_id in ^place_ids, select: r.event_id)
+            ),
+          order_by: e.id,
+          lock: "FOR UPDATE"
+        )
+      )
+
+    Enum.each(events, fn event ->
+      from(r in Recipient, where: r.event_id == ^event.id and r.place_id in ^place_ids)
+      |> Repo.update_all(
+        set: [active: false, privacy_pending: true, updated_at: DateTime.utc_now()]
+      )
+
+      changed(event)
+    end)
+
+    :ok
+  end
+
+  def privacy_pending?(event),
+    do: Repo.exists?(from(r in Recipient, where: r.event_id == ^event.id and r.privacy_pending))
+
+  # Called only by Store.finish under the current event's lock/lease/revision,
+  # after a conditional provider write or definitive absence. Keep an address-
+  # free entitlement tombstone so old confirmation retries cannot recapture it.
+  def dispose_locked(event) do
+    from(r in Recipient, where: r.event_id == ^event.id and r.privacy_pending)
+    |> Repo.update_all(
+      set: [
+        recipient: nil,
+        previous_recipients: [],
+        privacy_pending: false,
+        requested_generation: nil,
+        invited_generation: nil,
+        removed_generation: nil,
+        failure: nil,
+        failure_episode: nil,
+        alerted_at: nil,
+        updated_at: DateTime.utc_now()
+      ]
+    )
+  end
+
+  def observed(event, attendees) do
+    emails = MapSet.new(attendees, &address(&1["email"]))
+
+    Store.owned(event, fn current ->
+      if current.revision == event.revision do
+        {ids, removed} = observed_ids(current, emails)
+
+        from(r in Recipient, where: r.id in ^ids)
+        |> Repo.update_all(set: [invited_generation: event.generation])
+
+        from(r in Recipient, where: r.id in ^removed)
+        |> Repo.update_all(set: [removed_generation: event.generation])
+
+        :ok
+      else
+        {:skip, :changed}
+      end
+    end)
+  end
+
+  defp observed_ids(event, emails) do
+    recipients = list(event)
+
+    invited =
+      for r <- recipients,
+          r.active and r.requested_generation == event.generation and
+            MapSet.member?(emails, address(r.recipient)),
+          do: r.id
+
+    removed =
+      for r <- recipients,
+          not r.active and not MapSet.member?(emails, address(r.recipient)),
+          do: r.id
+
+    {invited, removed}
+  end
+
+  def prepare_add(event, recipient) do
+    Store.owned(event, fn current ->
+      if current.revision == event.revision do
+        from(r in Recipient, where: r.id == ^recipient.id and r.active)
+        |> Repo.update_all(set: [requested_generation: event.generation])
+
+        :ok
+      else
+        {:skip, :changed}
+      end
+    end)
+  end
+
+  def reject(event, recipient, reason) do
+    Store.owned(event, fn current ->
+      if current.revision == event.revision do
+        row = Repo.get!(Recipient, recipient.id)
+
+        row
+        |> Ecto.Changeset.change(
+          failure: to_string(reason),
+          failure_episode: row.failure_episode || Ecto.UUID.generate()
+        )
+        |> Repo.update!()
+
+        :ok
+      else
+        {:skip, :changed}
+      end
+    end)
+  end
+
+  def alert_failures(event) do
+    event
+    |> list()
+    |> Enum.filter(&(&1.active and not is_nil(&1.failure) and is_nil(&1.alerted_at)))
+    |> Enum.each(&Alerts.deliver_recipient(event, &1))
+  end
+
+  def valid?(recipient) when is_binary(recipient),
+    do:
+      byte_size(recipient) <= 254 and
+        Regex.match?(~r/^[^\s@<>(),;:"\\]+@[^\s@<>(),;:"\\]+\.[^\s@<>(),;:"\\]+$/u, recipient)
+
+  def valid?(_), do: false
+
+  def address(nil), do: ""
+  def address(value), do: String.downcase(value)
+
+  defp lock_event(kind, id) do
+    Repo.one(
+      from(e in Event,
+        where:
+          e.source_kind == ^to_string(kind) and e.source_id == ^id and e.audience == "participant",
+        lock: "FOR UPDATE"
+      )
+    )
+  end
+
+  defp changed(event) do
+    Store.persist(event, %{revision: event.revision + 1, removal_completed: false})
+    Store.enqueue_audience(event.source_kind, event.source_id, "participant")
+  end
+
+  defp require_transaction! do
+    unless Repo.in_transaction?(), do: raise("Calendar recipients require the source transaction")
+  end
+end

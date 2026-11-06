@@ -13,6 +13,7 @@ defmodule DhcWeb.BeginnersWorkshopAssignmentsJSON do
             venue: row.venue,
             date: row.date,
             startTime: BeginnersWorkshopsJSON.hh_mm(row.start_time),
+            endTime: row.end_time && BeginnersWorkshopsJSON.hh_mm(row.end_time),
             stage: row.stage,
             role: row.role
           }

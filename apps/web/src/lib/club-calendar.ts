@@ -106,6 +106,14 @@ export function formatDublinTime(iso: string): string {
 	return dublinTime.format(new Date(iso));
 }
 
+/** Dublin civil workshop times, retaining an unknown historical end as unknown. */
+export function formatCivilTimeRange(
+	startTime: string,
+	endTime: string | null | undefined,
+): string {
+	return endTime ? `${startTime}–${endTime}` : startTime;
+}
+
 const dublinTimestamp = new Intl.DateTimeFormat("en-IE", {
 	dateStyle: "medium",
 	timeStyle: "short",

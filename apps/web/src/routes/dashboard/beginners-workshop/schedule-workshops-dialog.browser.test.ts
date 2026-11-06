@@ -28,7 +28,7 @@ async function openDialog() {
 
 // The remote form is one module-level instance, so its field values carry
 // over between tests: the validation test runs before any date is picked.
-test("refuses to submit until the venue and a date are given", async () => {
+test("refuses to submit until the venue, end time and a date are given", async () => {
 	const { screen } = await openDialog();
 
 	await userEvent.click(
@@ -36,6 +36,7 @@ test("refuses to submit until the venue and a date are given", async () => {
 	);
 
 	await expect.element(screen.getByText("Enter the venue.")).toBeVisible();
+	await expect.element(screen.getByText("Enter the end time.")).toBeVisible();
 	await expect
 		.element(screen.getByText("Pick the workshop date."))
 		.toBeVisible();
@@ -57,11 +58,13 @@ test("prefills the shared values and names every control from its field", async 
 	await expect
 		.element(screen.getByLabelText("Start time"))
 		.toHaveValue("18:30");
+	await expect.element(screen.getByLabelText("End time")).toHaveValue("");
 
 	expect(fieldNames(formElement(form.element()))).toEqual(
 		expect.arrayContaining([
 			"venue",
 			"startTime",
+			"endTime",
 			"n:capacity",
 			"n:fee",
 			"n:paymentWindowDays",

@@ -55,7 +55,9 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
           action: action(),
           closed_reason: :inactive | :payment_closed | nil,
           first_name: String.t() | nil,
-          workshop: %{date: Date.t(), start_time: Time.t(), venue: String.t()} | nil,
+          workshop:
+            %{date: Date.t(), start_time: Time.t(), end_time: Time.t() | nil, venue: String.t()}
+            | nil,
           fee_cents: pos_integer() | nil,
           payment_cutoff: DateTime.t() | nil
         }
@@ -110,7 +112,12 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
           action: action,
           closed_reason: closed_reason,
           first_name: first_name(intake),
-          workshop: %{date: workshop.date, start_time: workshop.start_time, venue: workshop.venue},
+          workshop: %{
+            date: workshop.date,
+            start_time: workshop.start_time,
+            end_time: workshop.end_time,
+            venue: workshop.venue
+          },
           fee_cents: fee_cents(intake, workshop, hold, holder?),
           payment_cutoff: if(action == :pay, do: workshop.payment_cutoff)
         }

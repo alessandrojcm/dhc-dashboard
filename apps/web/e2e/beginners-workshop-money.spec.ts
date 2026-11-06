@@ -192,7 +192,7 @@ async function waitForConsoleFailedRefund(page: Page, workshopId: string) {
 /** Withdraws a paid person from the Manage page, choosing to refund them. */
 async function withdrawWithRefund(page: Page, name: string, amount: string) {
 	await page
-		.getByRole("region", { name: "Confirmed places" })
+		.getByRole("region", { name: "People", exact: true })
 		.getByRole("button", { name: `${name} — Paid` })
 		.click();
 	await page
@@ -449,13 +449,13 @@ test.describe("Beginners' Workshop money", () => {
 		await withdrawWithRefund(page, person.name, "€40.00");
 
 		// The workshop-scope success refreshed the Manage page's data.
-		const out = page.getByRole("region", { name: "No longer attending" });
-		const place = out.getByRole("button", {
+		const people = page.getByRole("region", { name: "People", exact: true });
+		const place = people.getByRole("button", {
 			name: `${person.name} — Withdrawn`,
 		});
 		await expect(place).toContainText("Refund in progress");
 		await expect(
-			page.getByRole("region", { name: "Confirmed places" }),
+			people.getByRole("button", { name: `${person.name} — Paid` }),
 		).toHaveCount(0);
 
 		// After Stripe has answered, it is still a request, not a refund.
@@ -514,7 +514,7 @@ test.describe("Beginners' Workshop money", () => {
 		await expect(failed).toHaveCount(0);
 		await expect(
 			page
-				.getByRole("region", { name: "No longer attending" })
+				.getByRole("region", { name: "People", exact: true })
 				.getByRole("button", { name: `${person.name} — Withdrawn` }),
 		).toContainText("Refunded manually");
 	});

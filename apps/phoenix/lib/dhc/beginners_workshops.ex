@@ -15,11 +15,13 @@ defmodule Dhc.BeginnersWorkshops do
 
   alias Dhc.BeginnersWorkshops.{
     BeginnersWorkshop,
+    CalendarProjection,
     CarriedFee,
     CarriedFeeView,
     Clock,
     Commands,
     DoorView,
+    EndTimeReport,
     FastTrackCandidates,
     Intake,
     IntakeEmails,
@@ -77,6 +79,115 @@ defmodule Dhc.BeginnersWorkshops do
   """
   @spec report(keyword()) :: Report.t()
   def report(opts \\ []), do: Report.load(Clock.from_opts(opts))
+
+  @doc """
+  Read-only operational report of upcoming schedules with a missing or invalid
+  end time. Calendar work can use it before launch; it makes no Google call.
+  """
+  @spec end_time_report(keyword()) :: [EndTimeReport.row()]
+  def end_time_report(opts \\ []), do: EndTimeReport.load(Clock.from_opts(opts))
+
+  @doc """
+  The narrow Beginners' Workshop source projection for Workshop Calendar, or
+  `nil` when the workshop no longer exists. It contains no person, payment,
+  capacity, or Intake data. An unknown or invalid civil end time is `nil`;
+  Calendar must fail closed rather than infer one.
+  """
+  @spec calendar_projection(binary()) ::
+          %{
+            id: binary(),
+            title: String.t(),
+            status: String.t(),
+            start_date: DateTime.t() | nil,
+            end_date: DateTime.t() | nil,
+            location: String.t()
+          }
+          | nil
+  def calendar_projection(workshop_id) when is_binary(workshop_id) do
+    case Repo.get(BeginnersWorkshop, workshop_id) do
+      nil -> nil
+      workshop -> CalendarProjection.project(workshop)
+    end
+  end
+
+  @doc """
+  Returns Beginners' Workshop ids a Calendar repair pass must reconcile.
+
+  Cancelled workshops remain sources after their end to repair a missed
+  cancellation. A missing end remains discoverable while its start is future,
+  so a completed authorized backfill can recover Calendar automatically.
+  """
+  @spec calendar_source_ids(DateTime.t()) :: [binary()]
+  def calendar_source_ids(%DateTime{} = now) do
+    BeginnersWorkshop
+    |> Repo.all()
+    |> Enum.filter(&CalendarProjection.current?(&1, now))
+    |> Enum.map(& &1.id)
+  end
+
+  @doc "Closed projections for the upcoming sources selected during Calendar launch."
+  @spec calendar_launch_sources(DateTime.t()) :: [map()]
+  def calendar_launch_sources(%DateTime{} = now) do
+    BeginnersWorkshop
+    |> Repo.all()
+    |> Enum.map(&CalendarProjection.project/1)
+    |> Enum.filter(&(&1.status != "cancelled" and future_start?(&1, now)))
+    |> Enum.sort_by(&{DateTime.to_unix(&1.start_date), &1.id})
+  end
+
+  @doc "Current confirmed Beginners' Workshop places and their linked Waitlist addresses."
+  @spec calendar_launch_places(binary()) :: [%{place_id: binary(), recipient: String.t()}]
+  def calendar_launch_places(workshop_id) when is_binary(workshop_id) do
+    from(i in Intake,
+      join: e in Dhc.Waitlist.WaitlistEntry,
+      on: e.id == i.waitlist_id,
+      where: i.workshop_id == ^workshop_id and i.state in ["paid", "attended", "no_show"],
+      order_by: [asc: i.id],
+      select: %{place_id: i.id, recipient: e.email}
+    )
+    |> Repo.all()
+  end
+
+  @doc "Materializes Calendar launch intent through the Beginners' Workshop write boundary."
+  @spec materialize_calendar_launch(binary(), keyword()) ::
+          :ok | {:error, :missing_end_time | :invalid_schedule}
+  def materialize_calendar_launch(workshop_id, opts \\ []) when is_binary(workshop_id) do
+    clock =
+      case Keyword.get_lazy(opts, :clock, &Clock.system/0) do
+        tick when is_function(tick, 0) -> %Clock{tick: tick}
+        %Clock{} = clock -> clock
+      end
+
+    case execute(
+           :system,
+           {:materialize_calendar_launch, workshop_id},
+           Keyword.put(opts, :clock, clock)
+         ) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Confirmation facts for Calendar, including attendance history. A Settlement
+  records explicit place loss in the retained binding; attendance corrections
+  (including no-show to deferred) must not be interpreted as that removal.
+  This read selects no recipient data and never creates an entitlement.
+  """
+  @spec calendar_place_ids(binary()) :: [binary()]
+  def calendar_place_ids(workshop_id) when is_binary(workshop_id) do
+    from(i in Intake,
+      where: i.workshop_id == ^workshop_id and not is_nil(i.paid_at),
+      order_by: [asc: i.id],
+      select: i.id
+    )
+    |> Repo.all()
+  end
+
+  defp future_start?(%{start_date: %DateTime{} = start_date}, now),
+    do: DateTime.compare(start_date, now) == :gt
+
+  defp future_start?(_source, _now), do: false
 
   @doc """
   The person's Intake page behind an Intake link (ALE-381), or

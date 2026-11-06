@@ -326,7 +326,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsTest do
       assert {:ok, _} =
                BeginnersWorkshops.execute(
                  {:staff, coordinator},
-                 {:reschedule_workshop, workshop.id, %{"date" => "2026-11-21"}},
+                 {:reschedule_workshop, workshop.id,
+                  %{"date" => "2026-11-21", "start_time" => "18:30", "end_time" => "20:30"}},
                  clock: at(at)
                )
 

@@ -82,7 +82,7 @@ defmodule DhcWeb.BeginnersWorkshopDoorControllerTest do
     assert %{"data" => data} = conn |> as("coach") |> get(ctx.door) |> json_response(200)
 
     assert Map.keys(data) |> Enum.sort() ==
-             ~w(alerts checkIn date finalisation id people staff stage startTime status venue)
+             ~w(alerts checkIn date endTime finalisation id people staff stage startTime status venue)
 
     assert %{"stage" => "check_in_open", "checkIn" => %{"window" => "open", "opensAt" => _}} =
              data

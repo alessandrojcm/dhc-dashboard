@@ -166,6 +166,36 @@ mise run phx-rollback       # Rollback last migration
 mise run phx-gen-migration NAME  # Generate a new migration
 ```
 
+### Beginners' Workshop end-time readiness
+
+```bash
+cd apps/phoenix
+mise exec -- mix dhc.beginners_workshops.end_times
+```
+
+This is a read-only launch-readiness report for upcoming scheduled Beginners'
+Workshops with a missing or invalid end time. It does not contact Google.
+
+### Workshop Calendar preview and activation
+
+```bash
+cd apps/phoenix
+mix dhc.workshop_calendar.preview
+mix dhc.workshop_calendar.activate isolated
+mix dhc.workshop_calendar.activate production
+```
+
+`preview` prints a private, recipient-PII JSON artifact and makes no Google,
+database, or job writes. `activate` re-reads current upcoming sources and can
+send invitations; its argument must equal `WORKSHOP_CALENDAR_ENVIRONMENT`.
+Activation is durable but bound to that environment, both calendar IDs, and the
+OAuth client ID, so credentials or deployment alone never enable sending.
+Use `isolated` only with separate credentials/calendars and synthetic data.
+Missing or invalid required end/schedule data refuses the whole activation; a
+missing or invalid recipient is retained for follow-up without blocking other
+eligible recipients. There is no Calendar dashboard or manual recovery command.
+See `docs/workshop-calendar.md`.
+
 The Compose `phoenix` profile uses `apps/phoenix/Dockerfile.dev`, bind-mounts
 the Phoenix source, and leaves Mix dependencies/build artifacts in the image so
 the source mount does not erase the dependency cache. It publishes Phoenix at
@@ -234,6 +264,24 @@ bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv", dry_run: 
 bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv")'
 ```
 
+### Inspecting production data on Fly
+
+`bin/dhc eval` on the running machine boots a second release node that dies in
+`runtime.exs` (`environment variable DISCORD_BOT_TOKEN is missing`) because the
+secrets only exist inside the release command's `fnox` environment. Use `rpc`
+against the running node instead, and pipe a script in rather than fighting the
+shell quoting of `sh -lc`, `flyctl -C` and `~s()` in one line:
+
+```bash
+# The container has no psql; Dhc.Repo.query/1 works fine, cast uuid literals
+# and print row_to_json rows with inspect/1.
+cat /tmp/q.exs | flyctl ssh console -a dhc-dashboard -C "sh -c 'cat > /tmp/q.exs'"
+flyctl ssh console -a dhc-dashboard -C "sh -lc 'cd /app && /app/bin/dhc rpc \"Code.eval_file(~s(/tmp/q.exs))\"'"
+```
+
+`mise x` on the machine tries to install Node/Erlang and fails
+(`libatomic.so.1`), so do not reach for `mise` to get `fnox` there.
+
 ### Intake Reply classifier eval (ALE-410)
 
 The classifier eval consumes a hand-labelled CSV/TSV export with columns
@@ -296,6 +344,17 @@ cd apps/phoenix && \
   STRIPE_SYNC_TEST_PRICE_ID=price_... \
   mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
 ```
+
+When using Colima, start the existing VM with `colima start`, then pass both
+socket paths explicitly from `apps/phoenix`:
+
+```sh
+mise exec -- env DOCKER_HOST=unix://$HOME/.colima/default/docker.sock \
+  TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock mix test
+```
+
+Testcontainers does not discover the active Docker CLI context. Its cleanup
+container also needs the VM's `/var/run/docker.sock`, not the macOS socket path.
 
 Tests that use `Ecto.Adapters.SQL.Sandbox.unboxed_run/2` commit outside the
 per-test sandbox transaction and must explicitly delete every durable fixture

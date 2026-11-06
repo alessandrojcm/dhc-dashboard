@@ -32,6 +32,10 @@
   ],
   calls: [
     forbidden: [
+      # ALE-432: Calendar consumes only the two public context projections,
+      # never their command families or payment/storage APIs.
+      {["Dhc.WorkshopCalendar", "Dhc.WorkshopCalendar.*"],
+       ["Dhc.BeginnersWorkshops.*.*", "Dhc.Workshops.*.*"]},
       {"Dhc.TrainingAnnouncements.*",
        ["Dhc.Workshops.*", "Dhc.WorkshopAnnouncements.*", "Dhc.Discord.Worker"]},
       {"Dhc.Workshops.*", ["Dhc.TrainingAnnouncements.*"]},
@@ -105,6 +109,7 @@
          "Dhc.BeginnersWorkshops.Commands.authorize_assigned",
          "Dhc.BeginnersWorkshops.Commands.Attendance.*",
          "Dhc.BeginnersWorkshops.Commands.Batches.*",
+         "Dhc.BeginnersWorkshops.Commands.CalendarLaunch.*",
          "Dhc.BeginnersWorkshops.Commands.IntakeCommands.*",
          "Dhc.BeginnersWorkshops.Commands.Payments.*",
          "Dhc.BeginnersWorkshops.Commands.People.*",

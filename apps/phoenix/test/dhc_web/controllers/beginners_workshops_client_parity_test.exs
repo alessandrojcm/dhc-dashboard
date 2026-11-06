@@ -127,6 +127,21 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
     assert schemas["BeginnersWorkshopCheckInWindow"]["enum"] == ~w(before open closed)
   end
 
+  test "end time is nullable on existing reads and explicit on schedule writes" do
+    schemas = spec()["components"]["schemas"]
+
+    assert "endTime" in schemas["BeginnersWorkshop"]["required"]
+
+    assert schemas["BeginnersWorkshop"]["properties"]["endTime"] == %{
+             "type" => "string",
+             "pattern" => "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+             "nullable" => true
+           }
+
+    assert "endTime" in schemas["BeginnersWorkshopScheduleItem"]["required"]
+    assert schemas["BeginnersWorkshopRescheduleRequest"]["required"] == ["startTime", "endTime"]
+  end
+
   test "the Intake and Next Batch vocabularies are Phoenix's" do
     schemas = spec()["components"]["schemas"]
 

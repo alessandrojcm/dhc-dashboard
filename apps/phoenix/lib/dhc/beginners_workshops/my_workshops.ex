@@ -29,6 +29,7 @@ defmodule Dhc.BeginnersWorkshops.MyWorkshops do
           venue: String.t(),
           date: Date.t(),
           start_time: Time.t(),
+          end_time: Time.t() | nil,
           stage: WorkshopPolicy.stage(),
           role: String.t()
         }
@@ -62,6 +63,7 @@ defmodule Dhc.BeginnersWorkshops.MyWorkshops do
         venue: workshop.venue,
         date: workshop.date,
         start_time: workshop.start_time,
+        end_time: workshop.end_time,
         stage: WorkshopPolicy.stage(workshop, Map.fetch!(facts, workshop.id), reading),
         role: role
       }

@@ -40,6 +40,7 @@ defmodule Dhc.E2EHarness.BeginnersWorkshops do
         "venue" => Map.get(attrs, "venue", "E2E Hall #{System.unique_integer([:positive])}"),
         "date" => Map.get(attrs, "date", Date.to_iso8601(Date.add(today, 14))),
         "start_time" => Map.get(attrs, "startTime", "18:30"),
+        "end_time" => Map.get(attrs, "endTime", "20:30"),
         "capacity" => Map.get(attrs, "capacity", 1),
         "fee_cents" => Map.get(attrs, "feeCents", 4000)
       }

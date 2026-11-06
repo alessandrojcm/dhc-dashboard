@@ -1,5 +1,6 @@
 defmodule Dhc.Discord.WorkerTest do
-  use ExUnit.Case, async: true
+  # Production-path tests change application-wide environment and webhook config.
+  use ExUnit.Case, async: false
 
   alias Dhc.Discord.Worker
 

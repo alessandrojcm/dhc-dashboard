@@ -375,7 +375,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.People do
   defp hard_delete(%WaitlistEntry{} = entry, intakes, reading) do
     outcome = invitation_outcome(entry)
 
-    with {:ok, anonymised} <- anonymise_intakes(intakes, outcome, reading),
+    with :ok <-
+           Dhc.WorkshopCalendar.forget_places(:beginners_workshop, Enum.map(intakes, & &1.id)),
+         {:ok, anonymised} <- anonymise_intakes(intakes, outcome, reading),
          _deleted_reply_addresses <- IntakeReplies.delete_for_person(entry.id),
          {_count, _rows} <-
            Repo.update_all(from(f in CarriedFee, where: f.waitlist_id == ^entry.id),

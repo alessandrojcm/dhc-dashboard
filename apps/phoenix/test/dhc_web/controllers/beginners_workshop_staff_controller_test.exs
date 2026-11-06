@@ -164,13 +164,18 @@ defmodule DhcWeb.BeginnersWorkshopStaffControllerTest do
           "assistantPrincipalIds" => [ctx.ids["assistant"]]
         })
 
-      assert %{"data" => [%{"id" => id, "role" => "coach", "startTime" => "18:30"} = row]} =
+      assert %{
+               "data" => [
+                 %{"id" => id, "role" => "coach", "startTime" => "18:30", "endTime" => "20:30"} =
+                   row
+               ]
+             } =
                conn |> as("coach") |> get("/api/beginners-workshops/mine") |> json_response(200)
 
       assert id == ctx.workshop.id
 
       assert Map.keys(row) |> Enum.sort() ==
-               ~w(date id role stage startTime status venue)
+               ~w(date endTime id role stage startTime status venue)
 
       assert %{"data" => [%{"role" => "assistant"}]} =
                conn
@@ -203,7 +208,7 @@ defmodule DhcWeb.BeginnersWorkshopStaffControllerTest do
         assert %{"data" => data} = conn |> as(name) |> get(path) |> json_response(200)
 
         assert Map.keys(data) |> Enum.sort() ==
-                 ~w(alerts checkIn date finalisation id people staff stage startTime status venue)
+                 ~w(alerts checkIn date endTime finalisation id people staff stage startTime status venue)
 
         assert %{"id" => id, "staff" => %{"coach" => %{"name" => "Aoife Coach"}}} = data
         assert id == ctx.workshop.id
@@ -247,6 +252,7 @@ defmodule DhcWeb.BeginnersWorkshopStaffControllerTest do
         "venue" => "St. Andrew's Hall",
         "date" => Date.to_iso8601(Date.add(Date.utc_today(), 40)),
         "startTime" => "18:30",
+        "endTime" => "20:30",
         "capacity" => 16,
         "feeCents" => 4000
       }

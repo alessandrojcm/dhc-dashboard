@@ -22,7 +22,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   ## Reschedule (ALE-394)
 
-  `reschedule_workshop` moves a scheduled workshop's date, start time
+  `reschedule_workshop` moves a scheduled workshop's date, explicit start and end times
   and/or venue at any time before Attendance Finalisation; it is refused
   only with `:after_finalisation` or `:already_cancelled` (and a pending
   Batch never blocks it). Under the Beginners' Workshop lock, then the open
@@ -132,6 +132,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   alias Dhc.ClubCalendar
   alias Dhc.Repo
   alias Dhc.Waitlist.WaitlistEntry
+  alias Dhc.WorkshopCalendar
 
   # One request plans a season, not a year of weekly sessions.
   @max_scheduled_at_once 20
@@ -140,6 +141,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     venue: :string,
     date: :date,
     start_time: :time,
+    end_time: :time,
     capacity: :integer,
     fee_cents: :integer,
     payment_cutoff_date: :date,
@@ -150,7 +152,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   @update_fields ~w(capacity fee_cents payment_cutoff_date payment_cutoff_time contact_from payment_window_days)a
 
-  @reschedule_fields ~w(venue date start_time payment_cutoff_date payment_cutoff_time contact_from)a
+  @reschedule_fields ~w(venue date start_time end_time payment_cutoff_date payment_cutoff_time contact_from)a
 
   @doc false
   @spec run(Commands.actor(), Commands.command(), Clock.t()) ::
@@ -202,6 +204,21 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     end
   end
 
+  # The operational backfill deliberately changes only an unknown end time.
+  # It uses the ordinary write boundary and workshop lock, without revising
+  # cutoff, offer-round, notification or attendance policy.
+  def run({:staff, _principal_id}, {:backfill_end_time, workshop_id, attrs}, clock)
+      when is_map(attrs) do
+    with {:ok, workshop_id} <- cast_id(workshop_id) do
+      transact(fn ->
+        with_locked(
+          %{workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id))},
+          &backfill_end_time_locked(&1, attrs, clock)
+        )
+      end)
+    end
+  end
+
   def run({:staff, principal_id}, {:cancel_workshop, workshop_id, attrs}, clock)
       when is_map(attrs),
       do: cancel_workshop(principal_id, workshop_id, attrs, clock)
@@ -235,19 +252,27 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     input =
       {%{}, @schedule_types}
       |> Ecto.Changeset.cast(attrs, Map.keys(@schedule_types))
-      |> Ecto.Changeset.validate_required([:venue, :date, :start_time, :capacity, :fee_cents])
+      |> Ecto.Changeset.validate_required([
+        :venue,
+        :date,
+        :start_time,
+        :end_time,
+        :capacity,
+        :fee_cents
+      ])
 
     with {:ok, input} <- Ecto.Changeset.apply_action(input, :insert),
          {:ok, staff} <- Staff.staff_input(attrs),
          starts_at = WorkshopPolicy.starts_at(input),
          :ok <- in_future(starts_at, reading),
+         :ok <- valid_end_time(input),
          cutoff = resolve_cutoff(input, input),
          :ok <- cutoff_before_start(cutoff, starts_at),
          contact_from = Map.get(input, :contact_from) || reading.today,
          :ok <- contact_from_on_or_before(contact_from, cutoff),
          {:ok, workshop} <-
            input
-           |> Map.take([:venue, :date, :start_time, :capacity, :fee_cents])
+           |> Map.take([:venue, :date, :start_time, :end_time, :capacity, :fee_cents])
            |> Map.merge(%{
              payment_cutoff: cutoff,
              contact_from: contact_from,
@@ -258,6 +283,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
            })
            |> BeginnersWorkshop.schedule_changeset()
            |> persist(),
+         :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
          {:ok, created} <- Staff.apply_staff(workshop, [], staff, principal_id) do
       {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), reading), created}}
     end
@@ -379,7 +405,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     with :ok <- still_scheduled(workshop),
          facts = facts_for(workshop),
          {:ok, input, next} <- reschedule_input(workshop, attrs),
-         :ok <- moved_start_in_future(input, next, reading),
+         :ok <- moved_start_in_future(workshop, next, reading),
+         :ok <- valid_end_time(next),
          cutoff = rescheduled_cutoff(workshop, next),
          :ok <- cutoff_before_start(cutoff, WorkshopPolicy.starts_at(next)),
          {:ok, contact_from} <-
@@ -390,10 +417,12 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
              venue: next.venue,
              date: next.date,
              start_time: next.start_time,
+             end_time: next.end_time,
              payment_cutoff: cutoff,
              contact_from: contact_from
            })
            |> persist(),
+         :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
          :ok <- clamp_open_windows(workshop, reading),
          :ok <-
            emailed_each(
@@ -410,13 +439,42 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     end
   end
 
-  # The new values over the current ones; at least one of the date, start
-  # time and venue must change (otherwise there is nothing to tell anyone).
+  defp backfill_end_time_locked(%{workshop: workshop}, attrs, clock) do
+    reading = Clock.read(clock)
+
+    input =
+      {%{end_time: nil}, %{end_time: :time}}
+      |> Ecto.Changeset.cast(attrs, [:end_time])
+      |> Ecto.Changeset.validate_required([:end_time])
+
+    with :ok <- still_scheduled(workshop),
+         :ok <- upcoming(workshop, reading),
+         :ok <- missing_end_time(workshop),
+         {:ok, %{end_time: end_time}} <- Ecto.Changeset.apply_action(input, :update),
+         :ok <-
+           valid_end_time(%{
+             date: workshop.date,
+             start_time: workshop.start_time,
+             end_time: end_time
+           }),
+         {:ok, workshop} <-
+           workshop
+           |> Ecto.Changeset.change(end_time: end_time)
+           |> persist(),
+         :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id) do
+      {:ok, WorkshopProjection.view(workshop, facts_for(workshop), reading)}
+    end
+  end
+
+  # A reschedule always makes both times explicit: a legacy workshop's unknown
+  # end can only be filled deliberately, never inferred from its start. Date
+  # and venue retain their values when omitted.
   defp reschedule_input(workshop, attrs) do
     current = %{
       venue: workshop.venue,
       date: workshop.date,
-      start_time: workshop.start_time,
+      start_time: nil,
+      end_time: nil,
       payment_cutoff_date: nil,
       payment_cutoff_time: nil,
       contact_from: workshop.contact_from
@@ -426,7 +484,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
       {current, Map.take(@schedule_types, @reschedule_fields)}
       |> Ecto.Changeset.cast(attrs, @reschedule_fields)
       |> Ecto.Changeset.update_change(:venue, &String.trim/1)
-      |> Ecto.Changeset.validate_required([:venue, :date, :start_time, :contact_from])
+      |> Ecto.Changeset.validate_required([:venue, :date, :start_time, :end_time, :contact_from])
       |> Ecto.Changeset.validate_length(:venue, min: 1, max: BeginnersWorkshop.venue_max())
       |> require_a_move(workshop)
 
@@ -435,19 +493,20 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   defp require_a_move(input, workshop) do
     moved? =
-      Enum.any?([:date, :start_time, :venue], fn field ->
+      Enum.any?([:date, :start_time, :end_time, :venue], fn field ->
         Ecto.Changeset.get_field(input, field) != Map.fetch!(workshop, field)
       end)
 
     if moved?,
       do: input,
-      else: Ecto.Changeset.add_error(input, :date, "change the date, start time or venue")
+      else:
+        Ecto.Changeset.add_error(input, :date, "change the date, start time, end time or venue")
   end
 
   # Only a new start is judged against the clock: a venue correction on the
   # day (or after it, before finalisation) still goes through.
-  defp moved_start_in_future(input, next, reading) do
-    if Ecto.Changeset.changed?(input, :date) or Ecto.Changeset.changed?(input, :start_time),
+  defp moved_start_in_future(workshop, next, reading) do
+    if workshop.date != next.date or Time.compare(workshop.start_time, next.start_time) != :eq,
       do: in_future(WorkshopPolicy.starts_at(next), reading),
       else: :ok
   end
@@ -624,6 +683,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
              workshop,
              BeginnersWorkshop.cancel_changeset(workshop, actor_id, reason, reading.now)
            ),
+         :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
          {:ok, created} <- notify_cancelled(workshop) do
       view = WorkshopProjection.view(workshop, facts_for(workshop), reading)
       {:ok, {Map.merge(tally, %{workshop: view}), created}}
@@ -750,11 +810,21 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     if DateTime.compare(starts_at, reading.now) == :gt, do: :ok, else: {:error, :start_in_past}
   end
 
+  defp upcoming(workshop, %{now: now}) do
+    if WorkshopPolicy.starts_after?(workshop, now), do: :ok, else: {:error, :not_due}
+  end
+
+  defp missing_end_time(%BeginnersWorkshop{end_time: nil}), do: :ok
+  defp missing_end_time(%BeginnersWorkshop{}), do: {:error, :end_time_already_set}
+
   defp cutoff_before_start(cutoff, starts_at) do
     if WorkshopPolicy.cutoff_before_start?(cutoff, starts_at),
       do: :ok,
       else: {:error, :invalid_payment_cutoff}
   end
+
+  defp valid_end_time(schedule),
+    do: if(WorkshopPolicy.valid_end_time?(schedule), do: :ok, else: {:error, :invalid_end_time})
 
   defp contact_from_on_or_before(contact_from, cutoff) do
     if WorkshopPolicy.contact_from_valid?(contact_from, cutoff),

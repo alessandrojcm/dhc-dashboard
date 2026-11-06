@@ -551,6 +551,12 @@ defmodule Dhc.Workshops.PaymentCommandsConcurrencyTest do
   defp cleanup!(ctx) do
     workshop_id = ctx.workshop.id
 
+    Repo.delete_all(
+      from(j in Oban.Job, where: fragment("?->>'source_id'", j.args) == ^workshop_id)
+    )
+
+    Repo.delete_all(from(e in Dhc.WorkshopCalendar.Event, where: e.source_id == ^workshop_id))
+
     attempt_ids =
       Repo.all(
         from(pa in PaymentAttempt, where: pa.club_activity_id == ^workshop_id, select: pa.id)

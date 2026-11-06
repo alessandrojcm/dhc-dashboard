@@ -40,13 +40,22 @@ defmodule Dhc.BeginnersWorkshops.RescheduleTest do
     %{coordinator: staff_fixture("beginners_coordinator")}
   end
 
-  defp reschedule(actor, workshop, attrs, at \\ @now),
-    do:
-      BeginnersWorkshops.execute(
-        {:staff, actor},
-        {:reschedule_workshop, workshop.id, attrs},
-        clock: Clock.fixed(at)
+  defp reschedule(actor, workshop, attrs, at \\ @now) do
+    attrs =
+      Map.merge(
+        %{
+          "start_time" => Calendar.strftime(workshop.start_time, "%H:%M"),
+          "end_time" => Calendar.strftime(workshop.end_time, "%H:%M")
+        },
+        attrs
       )
+
+    BeginnersWorkshops.execute(
+      {:staff, actor},
+      {:reschedule_workshop, workshop.id, attrs},
+      clock: Clock.fixed(at)
+    )
+  end
 
   defp rescheduled_logs(workshop) do
     Repo.all(
@@ -103,6 +112,7 @@ defmodule Dhc.BeginnersWorkshops.RescheduleTest do
                reschedule(coordinator, workshop, %{
                  "date" => "2026-11-21",
                  "start_time" => "19:00",
+                 "end_time" => "21:00",
                  "venue" => "  The Hub  "
                })
 
@@ -402,7 +412,9 @@ defmodule Dhc.BeginnersWorkshops.RescheduleTest do
                reschedule(staff_fixture("coach"), workshop, %{"date" => "2026-11-21"}, now())
 
       assert {:error, :not_found} =
-               reschedule(coordinator, %{id: Ecto.UUID.generate()}, %{"date" => "2026-11-21"})
+               reschedule(coordinator, %{workshop | id: Ecto.UUID.generate()}, %{
+                 "date" => "2026-11-21"
+               })
     end
   end
 

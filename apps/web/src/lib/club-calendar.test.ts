@@ -11,6 +11,7 @@ import {
 	dublinWallClock,
 	formatCivilDate,
 	formatCivilDateLong,
+	formatCivilTimeRange,
 	formatDublinDate,
 	formatDublinDateLong,
 	formatDublinDayAndTime,
@@ -24,6 +25,11 @@ import {
 // 2026's clock changes: Dublin moves to IST (UTC+1) at 01:00 UTC on Sunday
 // 29 March and back to GMT at 01:00 UTC on Sunday 25 October.
 describe("on the Dublin clock", () => {
+	it("does not invent an end time for a historical civil schedule", () => {
+		expect(formatCivilTimeRange("18:30", null)).toBe("18:30");
+		expect(formatCivilTimeRange("18:30", "20:30")).toBe("18:30–20:30");
+	});
+
 	it("knows Dublin's today on either side of midnight", () => {
 		expect(dublinToday(new Date("2026-01-14T23:30:00Z"))).toBe("2026-01-14");
 		expect(dublinToday(new Date("2026-07-14T23:30:00Z"))).toBe("2026-07-15");

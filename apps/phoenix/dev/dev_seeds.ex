@@ -498,6 +498,7 @@ defmodule Dhc.DevSeeds do
           venue: Enum.at(venues, rem(index, length(venues))),
           date: Date.add(first, index * 14),
           start_time: ~T[18:30:00],
+          end_time: ~T[20:30:00],
           capacity: Enum.at([16, 12, 20], rem(index, 3)),
           fee_cents: 4000,
           # Batch 1 two weeks before each workshop, never in the past.
@@ -547,6 +548,7 @@ defmodule Dhc.DevSeeds do
              venue: "DCU Sports Hall",
              date: Date.add(yesterday, 22),
              start_time: ~T[18:30:00],
+             end_time: ~T[20:30:00],
              capacity: capacity,
              fee_cents: 4000,
              contact_from: yesterday
@@ -566,6 +568,7 @@ defmodule Dhc.DevSeeds do
 
     {paid, rest} = Enum.split(intakes, 2)
     Enum.each(paid, &seed_pay!(&1, workshop, DateTime.add(batch_at, 3600, :second)))
+
     for intake <- Enum.take(rest, 1),
         do: insert_seed_hold!(intake, workshop, DateTime.utc_now(), nil)
 
@@ -600,6 +603,7 @@ defmodule Dhc.DevSeeds do
              venue: "Ringsend Community Hall",
              date: Date.add(yesterday, 30),
              start_time: ~T[18:30:00],
+             end_time: ~T[20:30:00],
              capacity: capacity,
              fee_cents: 4000,
              contact_from: yesterday
@@ -648,6 +652,7 @@ defmodule Dhc.DevSeeds do
              venue: "St. Andrew's Resource Centre",
              date: Date.add(yesterday, 18),
              start_time: ~T[18:30:00],
+             end_time: ~T[20:30:00],
              capacity: capacity,
              fee_cents: 4000,
              contact_from: yesterday
@@ -694,6 +699,7 @@ defmodule Dhc.DevSeeds do
              venue: "Ringsend Community Hall",
              date: Date.add(yesterday, 25),
              start_time: ~T[19:00:00],
+             end_time: ~T[21:00:00],
              capacity: capacity,
              fee_cents: 4000,
              contact_from: yesterday
@@ -764,6 +770,7 @@ defmodule Dhc.DevSeeds do
              venue: "DCU Sports Hall",
              date: Date.add(today, 2),
              start_time: ~T[18:30:00],
+             end_time: ~T[20:30:00],
              capacity: capacity,
              fee_cents: 4000,
              payment_cutoff_date: Date.add(today, -1),
@@ -824,6 +831,7 @@ defmodule Dhc.DevSeeds do
              venue: "St. Andrew's Resource Centre",
              date: date,
              start_time: ~T[11:00:00],
+             end_time: ~T[13:00:00],
              capacity: capacity,
              fee_cents: 4000,
              contact_from: contact_from,

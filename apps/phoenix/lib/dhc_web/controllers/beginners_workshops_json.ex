@@ -267,6 +267,7 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       venue: view.venue,
       date: view.date,
       startTime: hh_mm(view.start_time),
+      endTime: view.end_time && hh_mm(view.end_time),
       capacity: view.capacity,
       feeCents: view.fee_cents,
       paymentCutoff: view.payment_cutoff,

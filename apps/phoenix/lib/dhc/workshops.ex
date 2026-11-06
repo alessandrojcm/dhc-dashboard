@@ -69,6 +69,7 @@ defmodule Dhc.Workshops do
   import Ecto.Query
 
   alias Dhc.Repo
+  alias Dhc.WorkshopCalendar
 
   alias Dhc.Workshops.{
     PaymentAttempt,
@@ -199,6 +200,97 @@ defmodule Dhc.Workshops do
     if summary, do: with_capacity_projection(summary)
   end
 
+  @doc """
+  Returns the narrow Workshop source projection used by the committee Calendar
+  integration, or `nil` when the Workshop no longer exists.
+
+  Archived Workshops intentionally remain a Calendar source: archival hides a
+  Workshop from dashboard reads, but does not alter its committee Calendar
+  event. The projection deliberately excludes descriptions, notes, capacity,
+  pricing, and attendee data.
+  """
+  @spec calendar_projection(binary()) ::
+          %{
+            id: binary(),
+            title: String.t(),
+            status: String.t(),
+            start_date: DateTime.t(),
+            end_date: DateTime.t(),
+            location: String.t()
+          }
+          | nil
+  def calendar_projection(workshop_id) when is_binary(workshop_id) do
+    from(w in Workshop,
+      where: w.id == ^workshop_id,
+      select: %{
+        id: w.id,
+        title: w.title,
+        status: w.status,
+        start_date: w.start_date,
+        end_date: w.end_date,
+        location: w.location
+      }
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Returns Workshop ids a Calendar repair pass must reconcile.
+
+  Upcoming Workshops remain sources after archival. Cancelled Workshops are
+  included regardless of date so a delayed repair can still cancel a Calendar
+  event after its source has passed.
+  """
+  @spec calendar_source_ids(DateTime.t()) :: [binary()]
+  def calendar_source_ids(%DateTime{} = now) do
+    from(w in Workshop,
+      where: w.end_date > ^now or w.status == "cancelled",
+      select: w.id
+    )
+    |> Repo.all()
+  end
+
+  @doc "Closed projections for the upcoming sources selected during Calendar launch."
+  @spec calendar_launch_sources(DateTime.t()) :: [map()]
+  def calendar_launch_sources(%DateTime{} = now) do
+    from(w in Workshop,
+      where: w.status != "cancelled" and w.start_date > ^now,
+      order_by: [asc: w.start_date, asc: w.id],
+      select: %{
+        id: w.id,
+        title: w.title,
+        status: w.status,
+        start_date: w.start_date,
+        end_date: w.end_date,
+        location: w.location
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc "Current confirmed Workshop places and their saved registration addresses."
+  @spec calendar_launch_places(binary()) :: [%{place_id: binary(), recipient: String.t() | nil}]
+  def calendar_launch_places(workshop_id) when is_binary(workshop_id) do
+    from(r in Registration,
+      where: r.club_activity_id == ^workshop_id and r.status == "confirmed",
+      order_by: [asc: r.id],
+      select: %{place_id: r.id, recipient: r.email}
+    )
+    |> Repo.all()
+  end
+
+  @doc "Materializes Calendar launch intent through the Workshop write boundary."
+  @spec materialize_calendar_launch(binary(), keyword()) ::
+          :ok | {:error, :missing_end_time | :invalid_schedule}
+  def materialize_calendar_launch(workshop_id, opts \\ []) when is_binary(workshop_id) do
+    clock = Keyword.get(opts, :clock, &DateTime.utc_now/0)
+
+    case PaymentCommands.execute(:system, {:materialize_calendar_launch, workshop_id, clock}) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # ── Counts ────────────────────────────────────────────────────────────
 
   @doc """
@@ -233,6 +325,24 @@ defmodule Dhc.Workshops do
       nil -> %{pending: 0, confirmed: 0}
       counts -> counts
     end
+  end
+
+  @doc """
+  Returns confirmed Registration ids that currently hold participant Calendar
+  places for a Workshop.
+
+  This deliberately exposes neither attendee rows nor participant data. Pending
+  registrations never receive an invitation, and attendance or archival does
+  not affect a confirmed place.
+  """
+  @spec calendar_place_ids(binary()) :: [binary()]
+  def calendar_place_ids(workshop_id) when is_binary(workshop_id) do
+    from(r in Registration,
+      where: r.club_activity_id == ^workshop_id and r.status == "confirmed",
+      order_by: [asc: r.id],
+      select: r.id
+    )
+    |> Repo.all()
   end
 
   @doc """
@@ -696,9 +806,17 @@ defmodule Dhc.Workshops do
   """
   @spec create_workshop(map(), binary()) :: {:ok, Workshop.t()} | {:error, Ecto.Changeset.t()}
   def create_workshop(attrs, created_by) when is_map(attrs) and is_binary(created_by) do
-    %Workshop{created_by: created_by, status: "planned"}
-    |> Workshop.management_changeset(attrs)
-    |> Repo.insert()
+    Repo.transaction(fn ->
+      with {:ok, workshop} <-
+             %Workshop{created_by: created_by, status: "planned"}
+             |> Workshop.management_changeset(attrs)
+             |> Repo.insert(),
+           :ok <- WorkshopCalendar.record_change(:workshop, workshop.id) do
+        workshop
+      else
+        {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback(changeset)
+      end
+    end)
   end
 
   @doc """
@@ -712,15 +830,18 @@ defmodule Dhc.Workshops do
           {:ok, Workshop.t()}
           | {:error, :not_found | :not_editable | :pricing_locked | Ecto.Changeset.t()}
   def update_workshop(workshop_id, attrs) when is_binary(workshop_id) and is_map(attrs) do
-    with %Workshop{} = workshop <- Repo.get(Workshop, workshop_id),
-         :ok <- authorize_update(workshop, attrs) do
-      workshop
-      |> Workshop.management_changeset(attrs)
-      |> Repo.update()
-    else
-      nil -> {:error, :not_found}
-      {:error, reason} -> {:error, reason}
-    end
+    Repo.transaction(fn ->
+      with %Workshop{} = workshop <-
+             Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE")),
+           :ok <- authorize_update(workshop, attrs),
+           {:ok, updated} <- workshop |> Workshop.management_changeset(attrs) |> Repo.update(),
+           :ok <- WorkshopCalendar.record_change(:workshop, updated.id) do
+        updated
+      else
+        nil -> Repo.rollback(:not_found)
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
   end
 
   @doc """
@@ -769,6 +890,7 @@ defmodule Dhc.Workshops do
     if has_registrations?(workshop.id) do
       archive_workshop(workshop)
     else
+      :ok = WorkshopCalendar.record_deleted(:workshop, workshop.id)
       {:ok, _} = Repo.delete(workshop)
       {:ok, :deleted}
     end
@@ -838,8 +960,13 @@ defmodule Dhc.Workshops do
     )
   end
 
-  defp mark_workshop_cancelled(%Workshop{status: "published"} = workshop),
-    do: workshop |> Ecto.Changeset.change(status: "cancelled") |> Repo.update()
+  defp mark_workshop_cancelled(%Workshop{status: "published"} = workshop) do
+    with {:ok, cancelled} <-
+           workshop |> Ecto.Changeset.change(status: "cancelled") |> Repo.update(),
+         :ok <- WorkshopCalendar.record_change(:workshop, cancelled.id) do
+      {:ok, cancelled}
+    end
+  end
 
   defp mark_workshop_cancelled(%Workshop{}), do: {:error, :not_cancellable}
 
@@ -926,18 +1053,20 @@ defmodule Dhc.Workshops do
   end
 
   defp transition_workshop(workshop_id, from_status, to_status, invalid_reason) do
-    case Repo.get(Workshop, workshop_id) do
-      nil ->
-        {:error, :not_found}
+    Repo.transaction(fn ->
+      case Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE")) do
+        nil ->
+          Repo.rollback(:not_found)
 
-      %Workshop{status: ^from_status} = workshop ->
-        workshop
-        |> Ecto.Changeset.change(status: to_status)
-        |> Repo.update()
+        %Workshop{status: ^from_status} = workshop ->
+          transitioned = workshop |> Ecto.Changeset.change(status: to_status) |> Repo.update!()
+          :ok = WorkshopCalendar.record_change(:workshop, transitioned.id)
+          transitioned
 
-      %Workshop{} ->
-        {:error, invalid_reason}
-    end
+        %Workshop{} ->
+          Repo.rollback(invalid_reason)
+      end
+    end)
   end
 
   defp toggle_planned_interest(workshop_id, user_id) do

@@ -72,6 +72,7 @@ defmodule Dhc.Workshops.PaymentCommands do
   alias Dhc.Repo
   alias Dhc.Stripe.Failure
   alias Dhc.UserProfiles.UserProfile
+  alias Dhc.WorkshopCalendar
 
   alias Dhc.Workshops.{
     ExternalUser,
@@ -116,13 +117,14 @@ defmodule Dhc.Workshops.PaymentCommands do
              (Workshop.t() -> {:ok, Workshop.t()} | {:error, term()}), :refund_owed | :keep}
           | {:submit_refund, refund_id :: binary()}
           | {:apply_refund_update, stripe_refund :: map()}
+          | {:materialize_calendar_launch, workshop_id :: binary(), (-> DateTime.t())}
           | :reconcile_refunds
           | {:reconcile_refunds, limit :: pos_integer()}
 
   @member_commands ~w(start_member_payment complete_member_payment cancel_member_registration)a
   @external_commands ~w(start_external_payment complete_external_payment)a
   @coordinator_commands ~w(request_refund cancel_workshop)a
-  @system_commands ~w(submit_refund apply_refund_update reconcile_refunds)a
+  @system_commands ~w(submit_refund apply_refund_update materialize_calendar_launch reconcile_refunds)a
 
   @workshop_registration_metadata_type "workshop_registration"
   @member_actor_type "member"
@@ -448,6 +450,23 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   defp run(:system, {:apply_refund_update, _object}), do: {:error, :invalid_refund_object}
 
+  defp run(:system, {:materialize_calendar_launch, workshop_id, clock})
+       when is_function(clock, 0) do
+    transact(fn ->
+      with_locked(
+        %{
+          workshop: from(w in Workshop, where: w.id == ^workshop_id),
+          registration:
+            {:all,
+             from(r in Registration,
+               where: r.club_activity_id == ^workshop_id and r.status == "confirmed"
+             )}
+        },
+        fn locked -> materialize_calendar_launch_locked(locked, clock.()) end
+      )
+    end)
+  end
+
   defp run(:system, :reconcile_refunds),
     do: run(:system, {:reconcile_refunds, @reconcile_batch_size})
 
@@ -476,6 +495,39 @@ defmodule Dhc.Workshops.PaymentCommands do
   end
 
   defp run(_actor, _command), do: {:error, :unknown_command}
+
+  defp materialize_calendar_launch_locked(%{workshop: nil}, _now), do: {:ok, :noop}
+
+  defp materialize_calendar_launch_locked(%{workshop: workshop, registration: registrations}, now) do
+    cond do
+      workshop.status == "cancelled" or DateTime.compare(workshop.start_date, now) != :gt ->
+        {:ok, :noop}
+
+      is_nil(workshop.end_date) ->
+        {:error, :missing_end_time}
+
+      DateTime.compare(workshop.end_date, workshop.start_date) != :gt ->
+        {:error, :invalid_schedule}
+
+      true ->
+        with :ok <- WorkshopCalendar.record_change(:workshop, workshop.id) do
+          workshop_registrations(registrations)
+          {:ok, :materialized}
+        end
+    end
+  end
+
+  defp workshop_registrations(registrations) do
+    Enum.each(registrations, fn registration ->
+      :ok =
+        WorkshopCalendar.confirm_place(
+          :workshop,
+          registration.club_activity_id,
+          registration.id,
+          registration.email
+        )
+    end)
+  end
 
   # ── Command bodies (under the lock) ─────────────────────────────
 
@@ -609,6 +661,13 @@ defmodule Dhc.Workshops.PaymentCommands do
            persist(member_registration_changeset(workshop, attempt, user_id, payment_intent),
              recoverable: true
            ),
+         :ok <-
+           WorkshopCalendar.confirm_place(
+             :workshop,
+             workshop.id,
+             registration.id,
+             registration.email
+           ),
          {:ok, _attempt} <- conclude_registered(attempt) do
       {:ok, {:registered, registration}}
     else
@@ -689,6 +748,13 @@ defmodule Dhc.Workshops.PaymentCommands do
          {:ok, registration} <-
            persist(external_registration_changeset(workshop, attempt, external_user, customer),
              recoverable: true
+           ),
+         :ok <-
+           WorkshopCalendar.confirm_place(
+             :workshop,
+             workshop.id,
+             registration.id,
+             registration.email
            ),
          {:ok, _attempt} <- conclude_registered(attempt) do
       {:ok, {:registered, registration}}
@@ -778,7 +844,8 @@ defmodule Dhc.Workshops.PaymentCommands do
     case RefundPolicy.requested_refund(facts, DateTime.utc_now()) do
       :ok ->
         with {:ok, refund, refunded} <-
-               record_registration_refund(registration, "Member cancelled registration", user_id) do
+               record_registration_refund(registration, "Member cancelled registration", user_id),
+             :ok <- WorkshopCalendar.remove_place(:workshop, workshop.id, registration.id) do
           {:ok, %{registration: refunded, refund_pending: refund.status == "pending"}}
         end
 
@@ -786,7 +853,8 @@ defmodule Dhc.Workshops.PaymentCommands do
         with {:ok, cancelled} <-
                persist(
                  Ecto.Changeset.change(registration, status: "cancelled", cancelled_at: now())
-               ) do
+               ),
+             :ok <- WorkshopCalendar.remove_place(:workshop, workshop.id, registration.id) do
           {:ok, %{registration: cancelled, refund_pending: false}}
         end
     end
@@ -800,7 +868,8 @@ defmodule Dhc.Workshops.PaymentCommands do
     facts = refund_facts(workshop, registration, refund)
 
     with :ok <- RefundPolicy.requested_refund(facts, DateTime.utc_now()),
-         {:ok, refund, refunded} <- record_registration_refund(registration, reason, requested_by) do
+         {:ok, refund, refunded} <- record_registration_refund(registration, reason, requested_by),
+         :ok <- WorkshopCalendar.remove_place(:workshop, workshop.id, registration.id) do
       {:ok, %{refund: refund, view: RefundProjection.project(refund, refunded)}}
     end
   end
@@ -1383,7 +1452,9 @@ defmodule Dhc.Workshops.PaymentCommands do
       club_activity_id: workshop.id,
       external_user_id: external_user.id,
       display_name: Registration.display_name(customer.first_name, customer.last_name),
-      email: customer.email,
+      # Booking identity keeps its existing Checkout fallback. The attendee
+      # snapshot (and Calendar recipient) may only use participant details.
+      email: customer.participant_email,
       status: "confirmed",
       stripe_checkout_session_id: attempt.stripe_checkout_session_id,
       payment_attempt_id: attempt.id,
@@ -1602,6 +1673,7 @@ defmodule Dhc.Workshops.PaymentCommands do
         {:ok,
          %{
            email: String.downcase(email),
+           participant_email: participant_email(details),
            first_name: first_name,
            last_name: Enum.at(rest, 0, ""),
            phone_number: Map.get(details, "phone")
@@ -1611,6 +1683,11 @@ defmodule Dhc.Workshops.PaymentCommands do
         {:error, :customer_details_missing}
     end
   end
+
+  defp participant_email(%{"email" => email}) when is_binary(email),
+    do: email |> String.trim() |> String.downcase()
+
+  defp participant_email(_details), do: nil
 
   defp stripe_adapter, do: Application.fetch_env!(:dhc, :workshop_stripe_adapter)
 

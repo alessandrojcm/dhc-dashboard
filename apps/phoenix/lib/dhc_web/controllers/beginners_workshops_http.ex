@@ -19,6 +19,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     "venue" => "venue",
     "date" => "date",
     "startTime" => "start_time",
+    "endTime" => "end_time",
     "capacity" => "capacity",
     "feeCents" => "fee_cents",
     "paymentCutoffDate" => "payment_cutoff_date",
@@ -35,6 +36,8 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
   # The field a named refusal is about.
   @reason_fields %{
     start_in_past: "date",
+    invalid_end_time: "endTime",
+    end_time_already_set: "endTime",
     invalid_payment_cutoff: "paymentCutoffDate",
     invalid_contact_from: "contactFromDate",
     contact_from_locked: "contactFromDate",
@@ -67,6 +70,8 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
          "Capacity can't go below the places already paid for or reserved by people paying now"},
       invalid_workshop: {422, "Check the workshop details"},
       start_in_past: {422, "The workshop must start in the future"},
+      invalid_end_time: {422, "The end time must be later than the start time on the same day"},
+      end_time_already_set: {409, "This workshop already has an end time; reschedule it instead"},
       invalid_payment_cutoff: {422, "The payment deadline must be before the workshop starts"},
       invalid_contact_from: {422, "Offers must start on or before the payment deadline"},
       no_workshops: {422, "Add at least one workshop"},
