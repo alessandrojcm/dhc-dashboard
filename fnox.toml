@@ -42,3 +42,11 @@ TRUSTED_FORWARDING_SECRET = { provider = "1Password", value = "TRUSTED_FORWARDIN
 TYPESAFE_API_KEY = { provider = "1Password", value = "TYPESAFE_API_KEY" }
 RESEND_WEBHOOK_SIGNING_SECRET= { provider = "1Password", value = "RESEND_WEBHOOK_SIGNING_SECRET" }
 INTAKE_REPLY_DOMAIN = { provider = "1Password", value = "INTAKE_REPLY_DOMAIN" }
+# Provision all six 1Password items before deployment (FNOX_IF_MISSING=error).
+# Credentials alone do not activate Calendar sending.
+WORKSHOP_CALENDAR_ENVIRONMENT = { provider = "1Password", value = "WORKSHOP_CALENDAR_ENVIRONMENT" }
+WORKSHOP_CALENDAR_CLIENT_ID = { provider = "1Password", value = "WORKSHOP_CALENDAR_CLIENT_ID" }
+WORKSHOP_CALENDAR_CLIENT_SECRET = { provider = "1Password", value = "WORKSHOP_CALENDAR_CLIENT_SECRET" }
+WORKSHOP_CALENDAR_REFRESH_TOKEN = { provider = "1Password", value = "WORKSHOP_CALENDAR_REFRESH_TOKEN" }
+WORKSHOP_CALENDAR_COMMITTEE_ID = { provider = "1Password", value = "WORKSHOP_CALENDAR_COMMITTEE_ID" }
+WORKSHOP_CALENDAR_PARTICIPANT_ID = { provider = "1Password", value = "WORKSHOP_CALENDAR_PARTICIPANT_ID" }
