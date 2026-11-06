@@ -162,3 +162,8 @@ Training Announcement lifecycle, drivers and first-freeze stamping (ALE-323/325/
 ## See also
 
 `CONTEXT.md`, `docs/adr/`, `apps/web/e2e/AGENTS.md`
+
+<!-- entire-agent:begin -->
+Read .entire/agent-guide.md for this repository's workflow, source inspection, and verification guidance.
+@.entire/agent-guide.md
+<!-- entire-agent:end -->
