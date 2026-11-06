@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_EBCxcH4Uf8HzXeYa1UhAVYls",
+  "agent_id": "ses_e4da60b5affeFGkE0c6myVWOx2",
+  "subagent_type": "build",
+  "task_description": "Audit shared infrastructure state",
+  "token_usage": {
+    "input_tokens": 74556,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 317440,
+    "output_tokens": 2005,
+    "api_call_count": 6
+  },
+  "started_at": "2026-11-06T19:33:22.212Z",
+  "completed_at": "2026-11-06T19:36:26.503484Z"
+}

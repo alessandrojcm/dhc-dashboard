@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_dNaAKt6U0HMm9mcglh3mvF0W",
+  "agent_id": "ses_e4da688f0ffeFoPjq9WWZEm5Lu",
+  "subagent_type": "build",
+  "task_description": "Audit membership checkout workflows",
+  "token_usage": {
+    "input_tokens": 118258,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 683520,
+    "output_tokens": 4330,
+    "api_call_count": 11
+  },
+  "started_at": "2026-11-06T19:32:50.063Z",
+  "completed_at": "2026-11-06T19:35:39.673398Z"
+}
