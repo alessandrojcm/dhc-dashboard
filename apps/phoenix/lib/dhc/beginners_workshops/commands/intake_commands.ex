@@ -200,6 +200,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
   alias Dhc.BeginnersWorkshops.IntakeEmails.{Occasion}
   alias Dhc.Repo
   alias Dhc.Waitlist.WaitlistEntry
+  alias Dhc.WorkshopCalendar
 
   # The console Intake commands: one plumbing, one rule (`IntakePolicy`).
   @intake_commands IntakePolicy.commands()
@@ -422,7 +423,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
   # Payment Cutoff does not stop it (only new Stripe holds); finalisation
   # closes the Intake, which ends it.
   defp act_on_intake(:confirm, locked, _event_id, reading) do
-    %{workshop: workshop, intake: intake, carried_fee: fee} = locked
+    %{workshop: workshop, intake: intake, carried_fee: fee, waitlist_entry: entry} = locked
 
     cond do
       workshop.status != "scheduled" ->
@@ -443,6 +444,13 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
                  :carried_fee,
                  fee,
                  CarriedFee.status_changeset(fee, "applied", intake.id, reading.now)
+               ),
+             :ok <-
+               WorkshopCalendar.confirm_place(
+                 :beginners_workshop,
+                 workshop.id,
+                 intake.id,
+                 entry.email
                ),
              :ok <- place_confirmed(intake, workshop, reading) do
           {:ok, intake}

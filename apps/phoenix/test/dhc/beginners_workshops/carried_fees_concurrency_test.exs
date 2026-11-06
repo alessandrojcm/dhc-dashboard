@@ -32,6 +32,7 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeesConcurrencyTest do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
+  alias Dhc.WorkshopCalendar.Event
 
   @now ~U[2026-10-22 12:00:00.000000Z]
 
@@ -167,6 +168,16 @@ defmodule Dhc.BeginnersWorkshops.CarriedFeesConcurrencyTest do
     intake_ids = Enum.map(intakes, & &1.id)
     person_ids = Enum.map(people, & &1.id)
     emails = Enum.map(people, & &1.email)
+
+    Repo.delete_all(
+      from(j in Oban.Job, where: fragment("?->>'source_id'", j.args) == ^workshop.id)
+    )
+
+    Repo.delete_all(
+      from(e in Event,
+        where: e.source_kind == "beginners_workshop" and e.source_id == ^workshop.id
+      )
+    )
 
     Repo.delete_all(from(p in IntakePayment, where: p.intake_id in ^intake_ids))
     Repo.delete_all(from(l in IntakeEmailLog, where: l.intake_id in ^intake_ids))

@@ -2,9 +2,9 @@
 
 ALE-430 and ALE-432 publish regular Workshops and Beginners' Workshops to the
 committee calendar through one synchronization protocol. ALE-433 adds private
-Calendar Invitations for newly confirmed regular Workshop places. ALE-434 uses
-that same participant protocol for Stripe-confirmed Beginners' Workshop places.
-Workshop-credit confirmations, existing-attendee launch preview and reviewed
+Calendar Invitations for newly confirmed regular Workshop places. ALE-434 and
+ALE-435 use that same participant protocol for Stripe-paid and workshop-credit
+Beginners' Workshop places. Existing-attendee launch preview and reviewed
 activation remain in the later ALE-429 tickets.
 There is no Calendar administration screen.
 
@@ -134,14 +134,19 @@ missing participant snapshot or Calendar address. Pending Registrations,
 unfinished Checkout and compensating payments do not qualify. Replayed payment
 completion never captures another entitlement or selects a newer profile address.
 
-Beginners' Workshop Stripe completion captures the locked Waitlist entry's
-recorded address only when the Intake actually becomes paid. The retained
+Beginners' Workshop Stripe completion and workshop-credit confirmation capture
+the locked Waitlist entry's recorded address only when the Intake actually
+becomes paid. The person's Intake-link confirmation and the coordinator's
+confirmation use the same command; it records the binding after applying the
+credit in that transaction. Held credit and contacted places alone do not qualify,
+and refused or repeated confirmations record no new entitlement. The retained
 binding belongs to the integration, keyed by the Intake's immutable ID; neither
 the Intake nor a delayed worker keeps/chooses another email snapshot. The
-Checkout payer, frozen hold email and Guardian are not recipient sources. Return
-and webhook duplicates leave that binding unchanged. Offers, open holds, failed
-or unpaid Checkout, policy failures and payments refunded after the place closed
-do not create invitation entitlements. Google failures cannot undo confirmation.
+Checkout payer, frozen hold email and Guardian are not recipient sources.
+Payment replays and repeated credit confirmations leave that binding unchanged.
+Offers, open holds, failed or unpaid Checkout, policy failures and payments
+refunded after the place closed do not create invitation entitlements. Google
+failures cannot undo confirmation.
 
 Beginners' Workshop Settlement rows record `:remove_calendar_place` for deferral,
 withdrawal, cancel-with-refund and workshop cancellation alongside their existing
@@ -179,8 +184,10 @@ Attendance and archival preserve Calendar history. At/after the scheduled end,
 there are no first invitations, detail rewrites or missing-event recreations.
 Owed attendee removals and event cancellation still run. A Google-only RSVP
 decline or removal of a personal copy is not a lost dashboard place or another
-invitation entitlement. A new confirmed Registration after cancellation is a new
-entitlement, including when cancellation and rebooking happened while paused.
+invitation entitlement. A new confirmed Registration or Intake after a lost place
+is a new entitlement, including when loss and reconfirmation happened while paused.
+Spending or forfeiting an applied workshop credit during attendance finalisation
+does not remove historical invitations.
 
 Address repair is a deliberate operator operation, not a coordinator screen:
 

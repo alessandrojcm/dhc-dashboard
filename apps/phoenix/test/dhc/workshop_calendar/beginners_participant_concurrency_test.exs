@@ -236,6 +236,131 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantConcurrencyTest do
     end)
   end
 
+  test "held-credit confirmations race for the last place and only the winner reaches Calendar",
+       %{
+         server: server
+       } do
+    for _attempt <- 1..3 do
+      Agent.update(server, fn _state -> WorkshopCalendarHTTP.initial() end)
+
+      committed_credit_people!(
+        2,
+        fn ctx ->
+          results =
+            hold_lock_then(
+              @workshop_lock,
+              [dump(ctx.workshop.id)],
+              [
+                fn -> {:first, confirm_by_person(ctx, 0)} end,
+                fn -> {:second, confirm_by_person(ctx, 1)} end
+              ]
+            )
+
+          assert [{winner, {:ok, %{outcome: :done}}}] =
+                   Enum.filter(results, fn {_person, result} ->
+                     match?({:ok, %{outcome: :done}}, result)
+                   end)
+
+          assert Enum.count(results, fn {_person, result} -> result == {:error, :full} end) == 1
+
+          winner_index = if winner == :first, do: 0, else: 1
+          winner_intake = Enum.at(ctx.intakes, winner_index)
+          winner_person = Enum.at(ctx.people, winner_index)
+
+          assert calendar_place_ids(ctx.workshop.id) == [winner_intake.id]
+
+          WorkshopCalendarHTTP.stub(server)
+          outside_sandbox(fn -> assert :ok = sync(ctx.workshop.id) end)
+
+          assert [event] = Map.values(WorkshopCalendarHTTP.events(server))
+          assert event["attendees"] == [%{"email" => winner_person.email}]
+        end,
+        capacity: 1
+      )
+    end
+  end
+
+  test "person and staff confirmations converge on one credit entitlement and one Calendar guest",
+       %{
+         server: server
+       } do
+    committed_credit_people!(
+      1,
+      fn ctx ->
+        results =
+          hold_lock_then(
+            @workshop_lock,
+            [dump(ctx.workshop.id)],
+            [
+              fn -> {:person, confirm_by_person(ctx, 0)} end,
+              fn -> {:staff, confirm_by_staff(ctx, 0)} end
+            ]
+          )
+
+        assert Enum.count(results, fn {_actor, result} ->
+                 match?({:ok, %{outcome: :done}}, result)
+               end) == 1
+
+        assert Enum.count(results, fn {_actor, result} ->
+                 match?({:ok, %{outcome: :already_done}}, result)
+               end) == 1
+
+        [intake] = ctx.intakes
+        [person] = ctx.people
+        assert calendar_place_ids(ctx.workshop.id) == [intake.id]
+
+        WorkshopCalendarHTTP.stub(server)
+        outside_sandbox(fn -> assert :ok = sync(ctx.workshop.id) end)
+
+        assert [event] = Map.values(WorkshopCalendarHTTP.events(server))
+        assert event["attendees"] == [%{"email" => person.email}]
+      end,
+      capacity: 1
+    )
+  end
+
+  test "withdrawal fences an in-flight Calendar addition for a confirmed credit", %{
+    server: server
+  } do
+    committed_credit_people!(
+      2,
+      fn ctx ->
+        WorkshopCalendarHTTP.stub(server)
+        outside_sandbox(fn -> assert {:ok, %{outcome: :done}} = confirm_by_person(ctx, 0) end)
+        outside_sandbox(fn -> assert :ok = sync(ctx.workshop.id) end)
+        outside_sandbox(fn -> assert {:ok, %{outcome: :done}} = confirm_by_person(ctx, 1) end)
+        parent = self()
+
+        WorkshopCalendarHTTP.stub(server, fn conn ->
+          if conn.host == "www.googleapis.com" and conn.method == "PUT" do
+            send(parent, {:attendee_add_started, self()})
+
+            receive do
+              :continue_attendee_add -> :ok
+            end
+          end
+        end)
+
+        stale = Task.async(fn -> outside_sandbox(fn -> sync(ctx.workshop.id) end) end)
+        assert_receive {:attendee_add_started, google}, 5_000
+
+        outside_sandbox(fn ->
+          assert {:ok, %{state: "withdrawn", outcome: :done}} =
+                   withdraw(ctx, Enum.at(ctx.intakes, 1))
+        end)
+
+        send(google, :continue_attendee_add)
+        assert {:snooze, 1} = Task.await(stale, 5_000)
+
+        WorkshopCalendarHTTP.stub(server)
+        outside_sandbox(fn -> assert :ok = sync(ctx.workshop.id) end)
+        assert [event] = Map.values(WorkshopCalendarHTTP.events(server))
+        assert event["attendees"] == [%{"email" => Enum.at(ctx.people, 0).email}]
+      end,
+      capacity: 2
+    )
+  end
+
   defp complete_then!(ctx, after_complete) do
     with_held_workshop_lock!(ctx, &start_completion_then(&1, ctx, after_complete))
   end
@@ -287,6 +412,40 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantConcurrencyTest do
       end,
       complete_count: 0
     )
+  end
+
+  # Credit confirmation must run through the same import and command seams as
+  # production. In particular, do not manufacture a paid Intake: confirmation
+  # owns the seat, confirmation history and Calendar participant intent.
+  defp committed_credit_people!(count, fun, opts) do
+    ctx = outside_sandbox(fn -> build_credit_people_context!(count, opts) end)
+
+    on_exit(fn -> outside_sandbox(fn -> cleanup!(ctx) end) end)
+    fun.(ctx)
+  end
+
+  defp build_credit_people_context!(count, opts) do
+    staff = staff_fixture("beginners_coordinator")
+    capacity = Keyword.get(opts, :capacity, count)
+    workshop = scheduled_fixture(staff, %{"capacity" => capacity})
+    people = waiting_people_fixture(count)
+    intake_tokens = Enum.map(people, &intake_fixture!(workshop.id, &1, @now))
+    intakes = Enum.map(intake_tokens, &elem(&1, 0))
+
+    Enum.each(people, fn person ->
+      assert {:ok, %{outcome: :created}} =
+               execute(:system, {:import_carried_fee, person.id, "Paid before migration"})
+    end)
+
+    %{
+      workshop: workshop,
+      staff: staff,
+      intakes: intakes,
+      intake: hd(intakes),
+      people: people,
+      tokens: Map.new(intake_tokens, fn {intake, token} -> {intake.id, token} end),
+      payments: []
+    }
   end
 
   defp committed_paid_people!(count, fun, opts \\ []) do
@@ -349,6 +508,16 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantConcurrencyTest do
     do: BeginnersWorkshops.execute(actor, command, clock: Clock.fixed(@now))
 
   defp complete(%{session: session}), do: execute(:stripe, {:complete_payment, session})
+
+  defp confirm_by_person(ctx, index) do
+    intake = Enum.at(ctx.intakes, index)
+    execute({:intake_link, Map.fetch!(ctx.tokens, intake.id)}, :confirm)
+  end
+
+  defp confirm_by_staff(ctx, index) do
+    intake = Enum.at(ctx.intakes, index)
+    execute({:staff, ctx.staff}, {:confirm, ctx.workshop.id, intake.id, %{}})
+  end
 
   defp calendar_place_ids(workshop_id),
     do: outside_sandbox(fn -> BeginnersWorkshops.calendar_place_ids(workshop_id) end)
@@ -493,6 +662,14 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantConcurrencyTest do
     Repo.delete_all(from(r in IntakeRefund, where: r.intake_id in ^ids.intake_ids))
     Repo.delete_all(from(e in IntakeEvent, where: e.intake_id in ^ids.intake_ids))
     Repo.delete_all(from(l in IntakeEmailLog, where: l.intake_id in ^ids.intake_ids))
+
+    # Confirmed credits point both ways (Intake → Carried Fee and Carried Fee
+    # → Intake). This is teardown only; remove the temporary entitlement
+    # before deleting either side of that relationship.
+    Repo.update_all(
+      from(i in Intake, where: i.id in ^ids.intake_ids and not is_nil(i.carried_fee_id)),
+      set: [state: "lapsed", paid_via: nil, paid_at: nil, carried_fee_id: nil]
+    )
 
     Repo.delete_all(
       from(f in CarriedFee,
