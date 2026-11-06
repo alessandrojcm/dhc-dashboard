@@ -8,6 +8,7 @@
 
 - Project `opencode.json` disables `sentry_*` MCP tools by default via top-level `tools` and exposes them only through the primary `triaging` agent. Restart opencode after config edits before expecting agent/MCP tool changes to take effect.
 - OpenCode V2 local plugins auto-load from `.opencode/plugins/` and import the runtime-provided `@opencode/plugin`; explicit registrations are for plugin directories outside that auto-loaded directory. The old `@opencode-ai/plugin` beta loads incompatible schemas against the host's Effect runtime (`Schema.isStartsWith` fails), even when a plain Bun import passes. Run `bun --no-env-file test ./.opencode/tests/git-guardian.integration.test.ts` to verify Git Guardian through the installed CLI's shared server, not a mocked SDK. Its `ctx.permission.hook("evaluate", ...)` sets `event.effect = "deny"`. After changing the plugin, use `opencode reload` and verify it is active; the legacy SDK dependency remains only for Entire's generated type import.
+- Port Entire's generated `.opencode/plugins/entire.ts` through its generator or a separately maintained V2 implementation: reinstalling the integration overwrites that file. V2 needs migrated hook registrations and event payloads as well as a default plugin definition; default-exporting the V1 `EntirePlugin` function alone is insufficient.
 
 ## SvelteKit (current)
 
