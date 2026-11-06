@@ -37,10 +37,11 @@ defmodule Dhc.WorkshopCalendar.Store do
     |> Repo.update_all(set: [failure: nil, attempts: 0, retry_at: nil])
 
     enqueue(kind, id)
+    if find(kind, id, "participant"), do: enqueue_audience(kind, id, "participant")
     :ok
   end
 
-  def ensure(kind, id) do
+  def ensure(kind, id, audience \\ "committee") do
     now = DateTime.utc_now()
 
     Repo.insert_all(
@@ -50,8 +51,8 @@ defmodule Dhc.WorkshopCalendar.Store do
           id: Ecto.UUID.generate(),
           source_kind: to_string(kind),
           source_id: id,
-          audience: "committee",
-          event_id: event_id(kind, id, 0),
+          audience: to_string(audience),
+          event_id: event_id(kind, id, audience, 0),
           inserted_at: now,
           updated_at: now
         }
@@ -69,7 +70,17 @@ defmodule Dhc.WorkshopCalendar.Store do
     |> Oban.insert!()
   end
 
-  def claim(kind, id, now) do
+  def enqueue_audience(kind, id, audience, delay \\ 0) do
+    %{source_kind: to_string(kind), source_id: id, audience: to_string(audience)}
+    |> SyncWorker.new(schedule_in: delay)
+    |> Oban.insert!()
+  end
+
+  def find(kind, id, audience) do
+    Repo.get_by(Event, source_kind: to_string(kind), source_id: id, audience: to_string(audience))
+  end
+
+  def claim(kind, id, now, audience \\ "committee") do
     now = timestamp(now)
 
     {:ok, result} =
@@ -77,7 +88,9 @@ defmodule Dhc.WorkshopCalendar.Store do
         event =
           Repo.one!(
             from(e in Event,
-              where: e.source_kind == ^to_string(kind) and e.source_id == ^id,
+              where:
+                e.source_kind == ^to_string(kind) and e.source_id == ^id and
+                  e.audience == ^to_string(audience),
               lock: "FOR UPDATE"
             )
           )
@@ -135,7 +148,7 @@ defmodule Dhc.WorkshopCalendar.Store do
       {:ok,
        persist(current, %{
          generation: generation,
-         event_id: event_id(current.source_kind, current.source_id, generation),
+         event_id: event_id(current.source_kind, current.source_id, current.audience, generation),
          create_requested: false,
          acknowledged: nil
        })}
@@ -185,6 +198,16 @@ defmodule Dhc.WorkshopCalendar.Store do
 
       :ok
     end)
+  end
+
+  def current?(event) do
+    Repo.exists?(
+      from(e in Event,
+        where:
+          e.id == ^event.id and e.revision == ^event.revision and
+            e.lease_token == ^event.lease_token and e.generation == ^event.generation
+      )
+    )
   end
 
   def fail(event, reason, now) do
@@ -240,7 +263,7 @@ defmodule Dhc.WorkshopCalendar.Store do
     Repo.all(
       from(e in Event,
         where: not e.removal_completed,
-        select: {e.source_kind, e.source_id}
+        select: {e.source_kind, e.source_id, e.audience}
       )
     )
   end
@@ -252,6 +275,8 @@ defmodule Dhc.WorkshopCalendar.Store do
       )
     )
   end
+
+  def participant_events, do: Repo.all(from(e in Event, where: e.audience == "participant"))
 
   # Resume is an explicit operator action, unlike a periodic repair. Re-arm a
   # bounded attempt budget, keeping the episode/alert marker until success so
@@ -268,8 +293,8 @@ defmodule Dhc.WorkshopCalendar.Store do
   defp timestamp(now),
     do: now |> DateTime.to_unix(:microsecond) |> DateTime.from_unix!(:microsecond)
 
-  defp event_id(kind, id, generation) do
-    :crypto.hash(:sha256, "#{kind}:#{id}:committee:#{generation}")
+  defp event_id(kind, id, audience, generation) do
+    :crypto.hash(:sha256, "#{kind}:#{id}:#{audience}:#{generation}")
     |> Base.encode16(case: :lower)
   end
 end

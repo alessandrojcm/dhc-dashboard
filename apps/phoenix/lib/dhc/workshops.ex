@@ -287,6 +287,24 @@ defmodule Dhc.Workshops do
   end
 
   @doc """
+  Returns confirmed Registration ids that currently hold participant Calendar
+  places for a Workshop.
+
+  This deliberately exposes neither attendee rows nor participant data. Pending
+  registrations never receive an invitation, and attendance or archival does
+  not affect a confirmed place.
+  """
+  @spec calendar_place_ids(binary()) :: [binary()]
+  def calendar_place_ids(workshop_id) when is_binary(workshop_id) do
+    from(r in Registration,
+      where: r.club_activity_id == ^workshop_id and r.status == "confirmed",
+      order_by: [asc: r.id],
+      select: r.id
+    )
+    |> Repo.all()
+  end
+
+  @doc """
   Projects active Registration capacity facts from a Workshop summary.
 
   Pending and confirmed Registrations are the source counts. Remaining places

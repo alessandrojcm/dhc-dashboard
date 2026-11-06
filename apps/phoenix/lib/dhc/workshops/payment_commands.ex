@@ -72,6 +72,7 @@ defmodule Dhc.Workshops.PaymentCommands do
   alias Dhc.Repo
   alias Dhc.Stripe.Failure
   alias Dhc.UserProfiles.UserProfile
+  alias Dhc.WorkshopCalendar
 
   alias Dhc.Workshops.{
     ExternalUser,
@@ -609,6 +610,13 @@ defmodule Dhc.Workshops.PaymentCommands do
            persist(member_registration_changeset(workshop, attempt, user_id, payment_intent),
              recoverable: true
            ),
+         :ok <-
+           WorkshopCalendar.confirm_place(
+             :workshop,
+             workshop.id,
+             registration.id,
+             registration.email
+           ),
          {:ok, _attempt} <- conclude_registered(attempt) do
       {:ok, {:registered, registration}}
     else
@@ -689,6 +697,13 @@ defmodule Dhc.Workshops.PaymentCommands do
          {:ok, registration} <-
            persist(external_registration_changeset(workshop, attempt, external_user, customer),
              recoverable: true
+           ),
+         :ok <-
+           WorkshopCalendar.confirm_place(
+             :workshop,
+             workshop.id,
+             registration.id,
+             registration.email
            ),
          {:ok, _attempt} <- conclude_registered(attempt) do
       {:ok, {:registered, registration}}
@@ -778,7 +793,8 @@ defmodule Dhc.Workshops.PaymentCommands do
     case RefundPolicy.requested_refund(facts, DateTime.utc_now()) do
       :ok ->
         with {:ok, refund, refunded} <-
-               record_registration_refund(registration, "Member cancelled registration", user_id) do
+               record_registration_refund(registration, "Member cancelled registration", user_id),
+             :ok <- WorkshopCalendar.remove_place(:workshop, workshop.id, registration.id) do
           {:ok, %{registration: refunded, refund_pending: refund.status == "pending"}}
         end
 
@@ -786,7 +802,8 @@ defmodule Dhc.Workshops.PaymentCommands do
         with {:ok, cancelled} <-
                persist(
                  Ecto.Changeset.change(registration, status: "cancelled", cancelled_at: now())
-               ) do
+               ),
+             :ok <- WorkshopCalendar.remove_place(:workshop, workshop.id, registration.id) do
           {:ok, %{registration: cancelled, refund_pending: false}}
         end
     end
@@ -800,7 +817,8 @@ defmodule Dhc.Workshops.PaymentCommands do
     facts = refund_facts(workshop, registration, refund)
 
     with :ok <- RefundPolicy.requested_refund(facts, DateTime.utc_now()),
-         {:ok, refund, refunded} <- record_registration_refund(registration, reason, requested_by) do
+         {:ok, refund, refunded} <- record_registration_refund(registration, reason, requested_by),
+         :ok <- WorkshopCalendar.remove_place(:workshop, workshop.id, registration.id) do
       {:ok, %{refund: refund, view: RefundProjection.project(refund, refunded)}}
     end
   end
@@ -1383,7 +1401,9 @@ defmodule Dhc.Workshops.PaymentCommands do
       club_activity_id: workshop.id,
       external_user_id: external_user.id,
       display_name: Registration.display_name(customer.first_name, customer.last_name),
-      email: customer.email,
+      # Booking identity keeps its existing Checkout fallback. The attendee
+      # snapshot (and Calendar recipient) may only use participant details.
+      email: customer.participant_email,
       status: "confirmed",
       stripe_checkout_session_id: attempt.stripe_checkout_session_id,
       payment_attempt_id: attempt.id,
@@ -1602,6 +1622,7 @@ defmodule Dhc.Workshops.PaymentCommands do
         {:ok,
          %{
            email: String.downcase(email),
+           participant_email: participant_email(details),
            first_name: first_name,
            last_name: Enum.at(rest, 0, ""),
            phone_number: Map.get(details, "phone")
@@ -1611,6 +1632,11 @@ defmodule Dhc.Workshops.PaymentCommands do
         {:error, :customer_details_missing}
     end
   end
+
+  defp participant_email(%{"email" => email}) when is_binary(email),
+    do: email |> String.trim() |> String.downcase()
+
+  defp participant_email(_details), do: nil
 
   defp stripe_adapter, do: Application.fetch_env!(:dhc, :workshop_stripe_adapter)
 

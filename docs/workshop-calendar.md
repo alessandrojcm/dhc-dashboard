@@ -1,13 +1,15 @@
 # Workshop Calendar integration
 
 ALE-430 and ALE-432 publish regular Workshops and Beginners' Workshops to the
-committee calendar through one synchronization protocol. Participant invitations,
-launch preview and reviewed activation remain in the later ALE-429 tickets.
+committee calendar through one synchronization protocol. ALE-433 adds private
+Calendar Invitations for newly confirmed regular Workshop places. Beginners'
+Workshop invitations, existing-attendee launch preview and reviewed activation
+remain in the later ALE-429 tickets.
 There is no Calendar administration screen.
 
 ## Deployment boundary
 
-The migration is additive: two integration-owned tables, no changes to Workshop
+The migrations are additive: integration-owned event/control/recipient tables, no changes to Workshop
 payment tables and no source foreign keys. Apply it before running the new code.
 Deleted sources deliberately leave their Calendar removal obligations behind.
 
@@ -119,6 +121,69 @@ including after its end. First publication, detail repair and missing-event
 recreation stop at the exact event end; owed cancellation/deletion still runs.
 Early Beginners' Workshop attendance finalisation does not cancel, remove or
 shorten its committee event; its scheduled end remains the publication cutoff.
+
+## Participant invitations and address repair
+
+Regular Workshop payment completion captures the saved Registration address in
+the same transaction that confirms the new place. Member addresses come from the
+member snapshot, not PaymentIntent receipt/payer details. External addresses are
+the participant details saved on the Registration; the legacy Checkout
+`customer_email` fallback still supports booking identity but never fills a
+missing participant snapshot or Calendar address. Pending Registrations,
+unfinished Checkout and compensating payments do not qualify. Replayed payment
+completion never captures another entitlement or selects a newer profile address.
+
+The integration retains each logical place and its selected address separately
+from source storage, including failed addresses and owed removals. The shared
+`sync/3` operation takes `audience: :participant`; identifier-only jobs include
+that audience. Event identity/generation, leases, retries and failure episodes
+are the same protocol as committee synchronization. Participant events have an
+independent identity on the restricted calendar and contain only title, explicit
+start/end and venue, plus Google event/guest metadata. Guests cannot see other
+guests, edit the event or invite others. No dashboard links or descriptions are
+exported.
+
+Cancellation and refund requests record removal when the place ends, not when
+Stripe completes its refund. Whole-workshop cancellation deletes the participant
+event while retaining the Cancelled committee entry. Reconciliation reads Google
+before replacing the attendee array and preserves surviving guest records/RSVPs.
+Removals run before isolated additions; malformed or Google-rejected addresses
+remain per-place follow-up and cannot block valid invitations. They notify active
+Workshop managers once per durable failure episode. No-op reconciliation is
+silent; privacy-only repair does not notify guests. New invitations, meaningful
+detail changes, guest removals and event cancellation use `sendUpdates=all`.
+
+Attendance and archival preserve Calendar history. At/after the scheduled end,
+there are no first invitations, detail rewrites or missing-event recreations.
+Owed attendee removals and event cancellation still run. A Google-only RSVP
+decline or removal of a personal copy is not a lost dashboard place or another
+invitation entitlement. A new confirmed Registration after cancellation is a new
+entitlement, including when cancellation and rebooking happened while paused.
+
+Address repair is a deliberate operator operation, not a coordinator screen:
+
+1. Verify the participant and the corrected address using the club's ordinary
+   manual email-change process. Use an authorized release console; do not put
+   addresses or credentials in job arguments, logs or shell history.
+2. Call `Dhc.WorkshopCalendar.pause/0`. Wait for any in-flight request to finish;
+   pause cannot recall an HTTP request already sent.
+3. Call `Dhc.WorkshopCalendar.correct_recipient(:workshop, workshop_id,
+   registration_id, corrected_address)`. It refuses an unpaused integration,
+   invalid address, missing/inactive binding or a still-live event lease
+   (`:busy`; let it finish/expire rather than deleting integration rows).
+4. Call `Dhc.WorkshopCalendar.resume/0`. The same reconciliation operation
+   removes the old organizer guest and uses the corrected retained address for
+   the invitation. The old address remains a removal obligation; ordinary profile
+   edits and a Google-only repair cannot silently replace this binding. A repair
+   after event end removes the old guest but does not send a first invitation to
+   the new address.
+5. Verify the organizer event after reconciliation. Do not promise email delivery
+   or erasure of recipient-held copies. A failed repair follows the ordinary
+   keyed-notification/manual-follow-up path; it never changes a booking.
+
+This operation neither activates sending nor changes the participant's profile
+or Registration snapshot. Person hard-delete privacy cleanup is ALE-436; do not
+treat place cancellation or attendance history as that cleanup.
 
 ## Verification
 

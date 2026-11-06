@@ -10,7 +10,7 @@ defmodule Dhc.WorkshopCalendar.Sync do
   alias Dhc.BeginnersWorkshops
   alias Dhc.ClubCalendar
   alias Dhc.WorkshopCalendar
-  alias Dhc.WorkshopCalendar.{Alerts, Google, Store}
+  alias Dhc.WorkshopCalendar.{Alerts, Google, Roster, Store}
   alias Dhc.Workshops
 
   def run(%{deleted: true, create_requested: false, acknowledged: nil} = event, clock) do
@@ -20,10 +20,12 @@ defmodule Dhc.WorkshopCalendar.Sync do
   end
 
   def run(event, clock) do
+    if event.audience == "participant", do: Roster.validate_recipients(event)
+
     result =
       with :ok <- validate_configuration(),
            false <- Store.exhausted?(event),
-           {:ok, bound} <- Store.bind_calendar(event, calendar_id()) do
+           {:ok, bound} <- Store.bind_calendar(event, calendar_id(event)) do
         reconcile(bound, clock)
       else
         true -> {:error, :exhausted}
@@ -65,13 +67,16 @@ defmodule Dhc.WorkshopCalendar.Sync do
 
   defp absent(event, source, reason, clock) do
     cond do
-      event.deleted or is_nil(source) ->
+      unwanted?(event, source) ->
         # A 404 is not a tombstone: an earlier timed-out insert may still
         # arrive. Keep absence-only removals in repair until Google has a
         # tombstone (or a successful conditional delete) for this identity.
         finish(event, nil, source, clock, removed: reason == :gone or not event.create_requested)
 
-      ended?(source, clock) ->
+      WorkshopCalendar.ended?(source, clock) ->
+        finish(event, event.acknowledged, source, clock)
+
+      no_places?(event, source) ->
         finish(event, event.acknowledged, source, clock)
 
       reason == :gone or not is_nil(event.acknowledged) ->
@@ -88,16 +93,20 @@ defmodule Dhc.WorkshopCalendar.Sync do
   defp create(event, source, clock) do
     desired = desired_event(event, source)
 
-    with :ok <- mutation_allowed(event, source, clock) do
-      case Google.insert(event.calendar_id, desired,
+    with :ok <- mutation_allowed(event, source, clock),
+         {:ok, observed} <-
+           Google.insert(event.calendar_id, desired,
+             audience: audience(event),
              before_mutation: fn ->
                with :ok <- mutation_allowed(event, source, clock), do: Store.prepare_create(event)
              end
            ) do
-        {:ok, _observed} -> finish(event, desired, source, clock)
-        {:error, :conflict} -> recover_conflicting_insert(event, source, clock)
-        other -> other
-      end
+      if event.audience == "participant",
+        do: update_if_changed(event, source, observed, clock),
+        else: finish(event, desired, source, clock)
+    else
+      {:error, :conflict} -> recover_conflicting_insert(event, source, clock)
+      other -> other
     end
   end
 
@@ -118,14 +127,24 @@ defmodule Dhc.WorkshopCalendar.Sync do
 
   defp present(event, source, observed, clock) do
     cond do
-      event.deleted or is_nil(source) ->
+      unwanted?(event, source) ->
         remove(event, source, observed, clock)
 
-      ended?(source, clock) and source.status != "cancelled" ->
+      WorkshopCalendar.ended?(source, clock) and source.status != "cancelled" and
+          event.audience == "committee" ->
         finish(event, event.acknowledged, source, clock)
 
       true ->
         update_if_changed(event, source, observed, clock)
+    end
+  end
+
+  defp update_if_changed(%{audience: "participant"} = event, source, observed, clock) do
+    with {:ok, acknowledged} <-
+           Roster.reconcile(event, source, observed, desired_event(event, source), clock, fn ->
+             mutation_allowed(event, source, clock, true)
+           end) do
+      finish(event, acknowledged, source, clock)
     end
   end
 
@@ -153,10 +172,11 @@ defmodule Dhc.WorkshopCalendar.Sync do
   end
 
   defp remove(event, source, observed, clock) do
-    with :ok <- mutation_allowed(event, source, clock),
+    with :ok <- mutation_allowed(event, source, clock, true),
          {:ok, etag} <- etag(observed) do
       case Google.delete(event.calendar_id, event.event_id, etag,
-             before_mutation: fn -> mutation_allowed(event, source, clock) end
+             audience: audience(event),
+             before_mutation: fn -> mutation_allowed(event, source, clock, true) end
            ) do
         {:ok, _deleted} ->
           finish(event, nil, source, clock, removed: true)
@@ -188,10 +208,9 @@ defmodule Dhc.WorkshopCalendar.Sync do
   defp same_field?(_key, observed, desired), do: observed == desired
 
   defp desired_event(event, source) do
-    %{
+    body = %{
       "id" => event.event_id,
       "summary" => summary(source),
-      "description" => dashboard_link(event.source_kind, source.id),
       "location" => source.location,
       "start" => %{
         "dateTime" => DateTime.to_iso8601(source.start_date),
@@ -207,6 +226,14 @@ defmodule Dhc.WorkshopCalendar.Sync do
       "guestsCanModify" => false,
       "guestsCanSeeOtherGuests" => false
     }
+
+    if event.audience == "participant",
+      do:
+        body
+        |> Map.put("visibility", "private")
+        |> Map.put("summary", source.title)
+        |> Map.put("attendees", []),
+      else: Map.put(body, "description", dashboard_link(event.source_kind, source.id))
   end
 
   defp summary(%{status: "planned", title: title}), do: "[Planned] " <> title
@@ -223,17 +250,35 @@ defmodule Dhc.WorkshopCalendar.Sync do
   defp dashboard_path("beginners_workshop", id),
     do: "/dashboard/beginners-workshop/workshops/#{id}"
 
-  defp mutation_allowed(event, source, clock) do
+  defp mutation_allowed(event, source, clock, cleanup? \\ false) do
     cond do
-      not WorkshopCalendar.outbound?() -> {:skip, :paused}
-      source_changed?(event, source) -> {:skip, :changed}
-      source && ended?(source, clock) && source.status != "cancelled" -> {:skip, :ended}
-      true -> :ok
+      not WorkshopCalendar.outbound?() ->
+        {:skip, :paused}
+
+      not Store.current?(event) ->
+        {:skip, :changed}
+
+      source_changed?(event, source) ->
+        {:skip, :changed}
+
+      not cleanup? && source && WorkshopCalendar.ended?(source, clock) &&
+          source.status != "cancelled" ->
+        {:skip, :ended}
+
+      true ->
+        :ok
     end
   end
 
   defp source_changed?(event, source),
     do: projection(event) != source
+
+  defp projection(%{source_kind: "workshop", source_id: id, audience: "participant"}) do
+    case Workshops.calendar_projection(id) do
+      nil -> nil
+      source -> Map.put(source, :place_ids, Workshops.calendar_place_ids(id))
+    end
+  end
 
   defp projection(%{source_kind: "workshop", source_id: id}),
     do: Workshops.calendar_projection(id)
@@ -276,12 +321,27 @@ defmodule Dhc.WorkshopCalendar.Sync do
 
   defp conclude(_event, result, _clock), do: result
 
-  defp ended?(source, clock), do: DateTime.compare(clock.(), source.end_date) != :lt
-
   defp etag(%{"etag" => etag}) when is_binary(etag) and etag != "", do: {:ok, etag}
   defp etag(_observed), do: {:error, :transient}
 
-  defp calendar_id, do: Keyword.get(WorkshopCalendar.config(), :committee_calendar_id)
+  defp audience(%{audience: "participant"}), do: :participant
+  defp audience(_), do: :committee
+
+  defp participant_cancelled?(%{audience: "participant"}, %{status: "cancelled"}), do: true
+  defp participant_cancelled?(_, _), do: false
+
+  defp unwanted?(event, source),
+    do: event.deleted or is_nil(source) or participant_cancelled?(event, source)
+
+  defp no_places?(%{audience: "participant"} = event, source),
+    do: not Roster.required?(event, source)
+
+  defp no_places?(_, _), do: false
+
+  defp calendar_id(%{audience: "participant"}),
+    do: Keyword.get(WorkshopCalendar.config(), :participant_calendar_id)
+
+  defp calendar_id(_), do: Keyword.get(WorkshopCalendar.config(), :committee_calendar_id)
 
   defp validate_configuration do
     config = WorkshopCalendar.config()

@@ -1,6 +1,6 @@
 defmodule Dhc.WorkshopCalendar.Google do
   @moduledoc """
-  Google Calendar transport boundary for the committee's organizer calendar.
+   Google Calendar transport boundary for the two organizer calendars.
 
   Each operation exchanges the dedicated organizer refresh token for a
   short-lived access token, then makes exactly one Calendar API request. The
@@ -42,11 +42,14 @@ defmodule Dhc.WorkshopCalendar.Google do
   def insert(calendar_id, event, opts \\ [])
 
   def insert(calendar_id, event, opts) when is_map(event) and is_list(opts) do
-    with :ok <- committee_event(event),
+    with :ok <- audience_event(event, opts),
          {:ok, token} <- access_token(),
          :ok <- before_mutation(opts),
          {:ok, response} <-
-           request(:post, events_path(calendar_id), token, json: event, send_updates: "none") do
+           request(:post, events_path(calendar_id), token,
+             json: event,
+             send_updates: updates(opts)
+           ) do
       event_response(response)
     end
   end
@@ -62,14 +65,14 @@ defmodule Dhc.WorkshopCalendar.Google do
 
   def update(calendar_id, event_id, event, etag, opts)
       when is_map(event) and is_binary(etag) and is_list(opts) do
-    with :ok <- committee_event(event),
+    with :ok <- audience_event(event, opts),
          {:ok, token} <- access_token(),
          :ok <- before_mutation(opts),
          {:ok, response} <-
            request(:put, event_path(calendar_id, event_id), token,
              json: event,
              headers: [{"if-match", etag}],
-             send_updates: "none"
+             send_updates: updates(opts)
            ) do
       event_response(response)
     end
@@ -90,7 +93,7 @@ defmodule Dhc.WorkshopCalendar.Google do
          {:ok, response} <-
            request(:delete, event_path(calendar_id, event_id), token,
              headers: [{"if-match", etag}],
-             send_updates: "none"
+             send_updates: updates(opts)
            ) do
       case response do
         %Req.Response{status: status} when status in 200..299 -> {:ok, :deleted}
@@ -230,6 +233,18 @@ defmodule Dhc.WorkshopCalendar.Google do
   end
 
   defp valid_scope?(_scope), do: false
+
+  defp updates(opts) do
+    if Keyword.get(opts, :audience) == :participant,
+      do: Keyword.get(opts, :send_updates, "all"),
+      else: "none"
+  end
+
+  defp audience_event(event, opts) do
+    if Keyword.get(opts, :audience) == :participant,
+      do: :ok,
+      else: committee_event(event)
+  end
 
   defp committee_event(%{"attendees" => []}), do: :ok
   defp committee_event(%{attendees: []}), do: :ok

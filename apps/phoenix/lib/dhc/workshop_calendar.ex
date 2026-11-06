@@ -12,7 +12,7 @@ defmodule Dhc.WorkshopCalendar do
 
   alias Dhc.BeginnersWorkshops
   alias Dhc.Repo
-  alias Dhc.WorkshopCalendar.{Alerts, Control, Store, Sync}
+  alias Dhc.WorkshopCalendar.{Alerts, Control, Recipients, Store, Sync}
   alias Dhc.Workshops
 
   @doc "Records a source change in the caller's transaction; never calls Google."
@@ -22,6 +22,18 @@ defmodule Dhc.WorkshopCalendar do
   @doc "Retains deletion work before the source is removed, without a cascading FK."
   def record_deleted(:workshop = kind, id), do: Store.record(kind, id, true)
 
+  @doc "Retains the participant's selected address with a newly confirmed logical place."
+  def confirm_place(:workshop = kind, id, place_id, recipient),
+    do: Recipients.confirm(kind, id, place_id, recipient)
+
+  @doc "Records loss of a place in the causing transaction, independently of its refund."
+  def remove_place(:workshop = kind, id, place_id),
+    do: Recipients.remove(kind, id, place_id)
+
+  @doc "Operator-only address repair. Requires pause and no live event owner; never calls Google inline."
+  def correct_recipient(:workshop = kind, id, place_id, recipient),
+    do: Recipients.correct(kind, id, place_id, recipient)
+
   @doc "Reconciles one source through the same protocol used by every driver."
   def sync(kind, id, opts \\ []) when kind in [:workshop, :beginners_workshop] do
     if Repo.in_transaction?(),
@@ -29,9 +41,17 @@ defmodule Dhc.WorkshopCalendar do
 
     if outbound?() do
       clock = Keyword.get(opts, :clock, &DateTime.utc_now/0)
-      Store.ensure(kind, id)
+      audience = opts |> Keyword.get(:audience, :committee) |> to_string()
 
-      case Store.claim(kind, id, clock.()) do
+      if audience not in ["committee", "participant"],
+        do: raise(ArgumentError, "invalid Calendar audience")
+
+      if audience == "participant" and kind != :workshop,
+        do: raise(ArgumentError, "participant Calendar source is not implemented")
+
+      Store.ensure(kind, id, audience)
+
+      case Store.claim(kind, id, clock.(), audience) do
         {:ok, event} -> Sync.run(event, clock)
         {:skip, :busy} -> {:snooze, 5}
         {:skip, _reason} -> :ok
@@ -47,15 +67,22 @@ defmodule Dhc.WorkshopCalendar do
       clock = Keyword.get(opts, :clock, &DateTime.utc_now/0)
 
       sources =
-        Enum.map(Workshops.calendar_source_ids(clock.()), &{"workshop", &1}) ++
-          Enum.map(BeginnersWorkshops.calendar_source_ids(clock.()), &{"beginners_workshop", &1}) ++
+        Enum.map(Workshops.calendar_source_ids(clock.()), &{"workshop", &1, "committee"}) ++
+          Enum.map(
+            BeginnersWorkshops.calendar_source_ids(clock.()),
+            &{"beginners_workshop", &1, "committee"}
+          ) ++
           Store.pending_sources()
 
       sources
       |> Enum.uniq()
-      |> Enum.each(fn {kind, id} -> Store.enqueue(kind, id) end)
+      |> Enum.each(fn
+        {kind, id, "committee"} -> Store.enqueue(kind, id)
+        {kind, id, audience} -> Store.enqueue_audience(kind, id, audience)
+      end)
 
       Enum.each(Store.unalerted_failures(), &Alerts.deliver/1)
+      Enum.each(Store.participant_events(), &Recipients.alert_failures/1)
     end
 
     :ok
@@ -73,6 +100,9 @@ defmodule Dhc.WorkshopCalendar do
 
   @doc false
   def config, do: Application.get_env(:dhc, __MODULE__, [])
+
+  @doc false
+  def ended?(source, clock), do: DateTime.compare(clock.(), source.end_date) != :lt
 
   @doc false
   def outbound? do

@@ -20,9 +20,11 @@ defmodule Dhc.WorkshopCalendarHTTP do
       status: nil,
       insert_conflict: false,
       uncertain_insert: false,
+      uncertain_update: false,
       defer_insert: false,
       delayed: nil,
-      revoked: false
+      revoked: false,
+      rejected_recipients: []
     }
   end
 
@@ -75,8 +77,8 @@ defmodule Dhc.WorkshopCalendarHTTP do
     end
   end
 
-  defp event_request(state, %{method: "POST", payload: event}) do
-    assert event["attendees"] in [nil, []]
+  defp event_request(state, %{method: "POST", payload: event} = request) do
+    if String.contains?(request.path, "committee"), do: assert(event["attendees"] in [nil, []])
     id = event["id"]
 
     cond do
@@ -120,16 +122,31 @@ defmodule Dhc.WorkshopCalendarHTTP do
   end
 
   defp mutate(state, request, event, id) do
-    if request.if_match == [event["etag"]] do
-      replacement =
-        if request.method == "DELETE",
-          do: %{"id" => id, "status" => "cancelled"},
-          else: request.payload
+    rejected? =
+      Enum.any?(
+        Map.get(request.payload || %{}, "attendees", []),
+        &(&1["email"] in state.rejected_recipients)
+      )
 
-      {updated, state} = stamp(state, replacement)
-      {{:json, 200, updated}, %{state | events: Map.put(state.events, id, updated)}}
-    else
-      {{:json, 412, %{}}, state}
+    cond do
+      rejected? ->
+        {{:json, 400, %{}}, state}
+
+      request.if_match == [event["etag"]] ->
+        replacement =
+          if request.method == "DELETE",
+            do: %{"id" => id, "status" => "cancelled"},
+            else: request.payload
+
+        {updated, state} = stamp(state, replacement)
+
+        response =
+          if Map.get(state, :uncertain_update, false), do: :timeout, else: {:json, 200, updated}
+
+        {response, %{state | events: Map.put(state.events, id, updated), uncertain_update: false}}
+
+      true ->
+        {{:json, 412, %{}}, state}
     end
   end
 

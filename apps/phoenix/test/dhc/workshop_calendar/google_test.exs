@@ -104,6 +104,46 @@ defmodule Dhc.WorkshopCalendar.GoogleTest do
     assert {:ok, %{"id" => "event-1"}} = Google.insert("committee", %{"summary" => "Workshop"})
   end
 
+  test "participant writes notify guests and retain conditional-write fencing" do
+    Req.Test.expect(Google, 4, fn conn ->
+      case {conn.method, conn.request_path} do
+        {"POST", "/token"} ->
+          Req.Test.json(conn, %{"access_token" => "short-lived"})
+
+        {"PUT", "/calendar/v3/calendars/participants/events/event-1"} ->
+          assert conn.query_string == "sendUpdates=all"
+          assert Plug.Conn.get_req_header(conn, "if-match") == ["etag-1"]
+
+          assert conn.body_params["attendees"] == [
+                   %{"email" => "person@example.com", "responseStatus" => "declined"}
+                 ]
+
+          Req.Test.json(conn, %{"id" => "event-1", "etag" => "etag-2"})
+
+        {"DELETE", "/calendar/v3/calendars/participants/events/event-1"} ->
+          assert conn.query_string == "sendUpdates=all"
+          assert Plug.Conn.get_req_header(conn, "if-match") == ["etag-2"]
+          Plug.Conn.send_resp(conn, 204, "")
+      end
+    end)
+
+    assert {:ok, _} =
+             Google.update(
+               "participants",
+               "event-1",
+               %{
+                 "attendees" => [
+                   %{"email" => "person@example.com", "responseStatus" => "declined"}
+                 ]
+               },
+               "etag-1",
+               audience: :participant
+             )
+
+    assert {:ok, :deleted} =
+             Google.delete("participants", "event-1", "etag-2", audience: :participant)
+  end
+
   test "uses If-Match and sendUpdates=none for updates and deletes" do
     Req.Test.expect(Dhc.WorkshopCalendar.Google, 4, fn conn ->
       case {conn.method, conn.request_path} do

@@ -6,6 +6,12 @@ defmodule Dhc.WorkshopCalendar.Workers.SyncWorker do
     unique: [period: 60, fields: [:worker, :args], states: :incomplete]
 
   @impl Oban.Worker
+  def perform(%Oban.Job{
+        args: %{"source_kind" => "workshop", "source_id" => id, "audience" => "participant"}
+      }) do
+    Dhc.WorkshopCalendar.sync(:workshop, id, audience: :participant)
+  end
+
   def perform(%Oban.Job{args: %{"source_kind" => "workshop", "source_id" => id}}) do
     Dhc.WorkshopCalendar.sync(:workshop, id)
   end
