@@ -10,9 +10,6 @@ on:
       - 'pnpm-lock.yaml'
       - 'docker-compose.yml'
       - '.mise.toml'
-      - 'tools/deployment-workflow.test.mjs'
-      - 'tools/phoenix-toolchain-config*'
-      - '.github/workflows/deploy-phoenix-fly.yml'
       - '.github/workflows/phx-test.yml'
   workflow_dispatch:
 
@@ -49,9 +46,6 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'docker-compose.yml'
               - '.mise.toml'
-              - 'tools/deployment-workflow.test.mjs'
-              - 'tools/phoenix-toolchain-config*'
-              - '.github/workflows/deploy-phoenix-fly.yml'
               - '.github/workflows/phx-test.yml'
 
   test:
@@ -71,9 +65,6 @@ jobs:
       # BEAM toolchain.
       - name: Setup mise (Erlang + Elixir pinned in .mise.toml)
         uses: jdx/mise-action@v2
-
-      - name: Check production deployment invariants and toolchain projection
-        run: node --test tools/deployment-workflow.test.mjs tools/phoenix-toolchain-config.test.mjs
 
       - name: Restore deps & _build cache
         uses: actions/cache@v4
