@@ -108,6 +108,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     Attendance,
     Batches,
     IntakeCommands,
+    NotificationCopy,
     Payments,
     People,
     Protocol,
@@ -414,6 +415,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       run(actor, command, Clock.from_opts(opts))
     end
   end
+
+  @doc false
+  defdelegate calendar_failure_copy(source_id, failure),
+    to: NotificationCopy,
+    as: :calendar_failed
 
   @doc "The transition table: entity → from status → legal target statuses."
   @spec transitions() :: %{atom() => %{String.t() => [String.t()]}}

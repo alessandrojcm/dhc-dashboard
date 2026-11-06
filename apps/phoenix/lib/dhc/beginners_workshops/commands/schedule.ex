@@ -132,6 +132,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   alias Dhc.ClubCalendar
   alias Dhc.Repo
   alias Dhc.Waitlist.WaitlistEntry
+  alias Dhc.WorkshopCalendar
 
   # One request plans a season, not a year of weekly sessions.
   @max_scheduled_at_once 20
@@ -282,6 +283,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
            })
            |> BeginnersWorkshop.schedule_changeset()
            |> persist(),
+         :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
          {:ok, created} <- Staff.apply_staff(workshop, [], staff, principal_id) do
       {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), reading), created}}
     end
@@ -420,6 +422,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
              contact_from: contact_from
            })
            |> persist(),
+         :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
          :ok <- clamp_open_windows(workshop, reading),
          :ok <-
            emailed_each(
@@ -457,7 +460,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
          {:ok, workshop} <-
            workshop
            |> Ecto.Changeset.change(end_time: end_time)
-           |> persist() do
+           |> persist(),
+         :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id) do
       {:ok, WorkshopProjection.view(workshop, facts_for(workshop), reading)}
     end
   end
@@ -679,6 +683,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
              workshop,
              BeginnersWorkshop.cancel_changeset(workshop, actor_id, reason, reading.now)
            ),
+         :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
          {:ok, created} <- notify_cancelled(workshop) do
       view = WorkshopProjection.view(workshop, facts_for(workshop), reading)
       {:ok, {Map.merge(tally, %{workshop: view}), created}}

@@ -10,18 +10,20 @@ defmodule Dhc.WorkshopCalendar do
   """
   import Ecto.Query
 
+  alias Dhc.BeginnersWorkshops
   alias Dhc.Repo
   alias Dhc.WorkshopCalendar.{Alerts, Control, Store, Sync}
   alias Dhc.Workshops
 
   @doc "Records a source change in the caller's transaction; never calls Google."
-  def record_change(:workshop = kind, id), do: Store.record(kind, id, false)
+  def record_change(kind, id) when kind in [:workshop, :beginners_workshop],
+    do: Store.record(kind, id, false)
 
   @doc "Retains deletion work before the source is removed, without a cascading FK."
   def record_deleted(:workshop = kind, id), do: Store.record(kind, id, true)
 
   @doc "Reconciles one source through the same protocol used by every driver."
-  def sync(:workshop = kind, id, opts \\ []) do
+  def sync(kind, id, opts \\ []) when kind in [:workshop, :beginners_workshop] do
     if Repo.in_transaction?(),
       do: raise(ArgumentError, "Calendar synchronization requires a committed source transaction")
 
@@ -46,6 +48,7 @@ defmodule Dhc.WorkshopCalendar do
 
       sources =
         Enum.map(Workshops.calendar_source_ids(clock.()), &{"workshop", &1}) ++
+          Enum.map(BeginnersWorkshops.calendar_source_ids(clock.()), &{"beginners_workshop", &1}) ++
           Store.pending_sources()
 
       sources

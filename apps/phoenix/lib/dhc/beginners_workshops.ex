@@ -15,6 +15,7 @@ defmodule Dhc.BeginnersWorkshops do
 
   alias Dhc.BeginnersWorkshops.{
     BeginnersWorkshop,
+    CalendarProjection,
     CarriedFee,
     CarriedFeeView,
     Clock,
@@ -85,6 +86,48 @@ defmodule Dhc.BeginnersWorkshops do
   """
   @spec end_time_report(keyword()) :: [EndTimeReport.row()]
   def end_time_report(opts \\ []), do: EndTimeReport.load(Clock.from_opts(opts))
+
+  @doc """
+  The narrow Beginners' Workshop source projection for Workshop Calendar, or
+  `nil` when the workshop no longer exists. It contains no person, payment,
+  capacity, or Intake data. An unknown or invalid civil end time is `nil`;
+  Calendar must fail closed rather than infer one.
+  """
+  @spec calendar_projection(binary()) ::
+          %{
+            id: binary(),
+            title: String.t(),
+            status: String.t(),
+            start_date: DateTime.t() | nil,
+            end_date: DateTime.t() | nil,
+            location: String.t()
+          }
+          | nil
+  def calendar_projection(workshop_id) when is_binary(workshop_id) do
+    case Repo.get(BeginnersWorkshop, workshop_id) do
+      nil -> nil
+      workshop -> CalendarProjection.project(workshop)
+    end
+  end
+
+  @doc """
+  Returns Beginners' Workshop ids a Calendar repair pass must reconcile.
+
+  Cancelled workshops remain sources after their end to repair a missed
+  cancellation. A missing end remains discoverable while its start is future,
+  so a completed authorized backfill can recover Calendar automatically.
+  """
+  @spec calendar_source_ids(DateTime.t()) :: [binary()]
+  def calendar_source_ids(%DateTime{} = now) do
+    BeginnersWorkshop
+    |> Repo.all()
+    |> Enum.filter(&CalendarProjection.current?(&1, now))
+    |> Enum.map(& &1.id)
+  end
+
+  @doc "Calendar's source-owned wording for a terminal synchronization failure."
+  @spec calendar_failure_copy(binary(), String.t()) :: String.t()
+  defdelegate calendar_failure_copy(source_id, failure), to: Commands
 
   @doc """
   The person's Intake page behind an Intake link (ALE-381), or

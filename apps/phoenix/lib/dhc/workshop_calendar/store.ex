@@ -27,6 +27,15 @@ defmodule Dhc.WorkshopCalendar.Store do
       set: [deleted: deleted, removal_completed: false, updated_at: DateTime.utc_now()]
     )
 
+    # A source-owned schedule correction can resolve missing legacy data.
+    # Do not re-arm provider/configuration failures on unrelated domain writes.
+    from(e in Event,
+      where:
+        e.source_kind == ^to_string(kind) and e.source_id == ^id and
+          e.failure in ["missing_end_time", "invalid_schedule"]
+    )
+    |> Repo.update_all(set: [failure: nil, attempts: 0, retry_at: nil])
+
     enqueue(kind, id)
     :ok
   end
@@ -181,22 +190,37 @@ defmodule Dhc.WorkshopCalendar.Store do
   def fail(event, reason, now) do
     now = timestamp(now)
 
-    owned(event, fn current ->
-      retry? = reason in [:transient, :conflict] and current.attempts < @max_attempts
-      delay = min(30 * Integer.pow(2, min(current.attempts - 1, 6)), 1800)
-      failure = if reason == :exhausted, do: "exhausted", else: to_string(reason)
+    owned(event, &fail_current(&1, event, reason, now))
+  end
 
-      failed =
-        persist(current, %{
-          lease_token: nil,
-          lease_until: nil,
-          retry_at: if(retry?, do: DateTime.add(now, delay)),
-          failure: failure,
-          failure_episode: current.failure_episode || Ecto.UUID.generate()
-        })
+  # A failed obsolete read cannot park a source correction committed while
+  # this owner was working (notably a missing-end-time backfill).
+  defp fail_current(%{revision: current_revision} = current, %{revision: revision}, _reason, _now)
+       when current_revision != revision do
+    persist(current, %{
+      lease_token: nil,
+      lease_until: nil,
+      attempts: max(current.attempts - 1, 0)
+    })
 
-      if retry?, do: {:retry, delay}, else: {:failed, failed}
-    end)
+    {:retry, 1}
+  end
+
+  defp fail_current(current, _event, reason, now) do
+    retry? = reason in [:transient, :conflict] and current.attempts < @max_attempts
+    delay = min(30 * Integer.pow(2, min(current.attempts - 1, 6)), 1800)
+    failure = if reason == :exhausted, do: "exhausted", else: to_string(reason)
+
+    failed =
+      persist(current, %{
+        lease_token: nil,
+        lease_until: nil,
+        retry_at: if(retry?, do: DateTime.add(now, delay)),
+        failure: failure,
+        failure_episode: current.failure_episode || Ecto.UUID.generate()
+      })
+
+    if retry?, do: {:retry, delay}, else: {:failed, failed}
   end
 
   def owned(event, fun) do

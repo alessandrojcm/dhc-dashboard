@@ -32,6 +32,10 @@
   ],
   calls: [
     forbidden: [
+      # ALE-432: Calendar consumes only the two public context projections,
+      # never their command families or payment/storage APIs.
+      {["Dhc.WorkshopCalendar", "Dhc.WorkshopCalendar.*"],
+       ["Dhc.BeginnersWorkshops.*.*", "Dhc.Workshops.*.*"]},
       {"Dhc.TrainingAnnouncements.*",
        ["Dhc.Workshops.*", "Dhc.WorkshopAnnouncements.*", "Dhc.Discord.Worker"]},
       {"Dhc.Workshops.*", ["Dhc.TrainingAnnouncements.*"]},

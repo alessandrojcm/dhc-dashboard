@@ -3,6 +3,7 @@ defmodule Dhc.WorkshopCalendar.Alerts do
   import Ecto.Query
 
   alias Dhc.Auth.Capabilities
+  alias Dhc.BeginnersWorkshops
   alias Dhc.Notifications
   alias Dhc.Repo
   alias Dhc.WorkshopCalendar.{Event, Store}
@@ -21,7 +22,7 @@ defmodule Dhc.WorkshopCalendar.Alerts do
   defp deliver_unalerted(%{alerted_at: nil, failure_episode: episode} = event)
        when not is_nil(episode) do
     created =
-      :"workshops.manage"
+      capability(event)
       |> Capabilities.principal_ids_with()
       |> Enum.flat_map(fn id ->
         case Notifications.create_keyed_in_transaction(
@@ -40,6 +41,12 @@ defmodule Dhc.WorkshopCalendar.Alerts do
   end
 
   defp deliver_unalerted(_event), do: []
+
+  defp capability(%{source_kind: "workshop"}), do: :"workshops.manage"
+  defp capability(%{source_kind: "beginners_workshop"}), do: :"beginners.workshops.alerts.receive"
+
+  defp copy(%{source_kind: "beginners_workshop"} = event),
+    do: BeginnersWorkshops.calendar_failure_copy(event.source_id, event.failure)
 
   defp copy(event) do
     reason =

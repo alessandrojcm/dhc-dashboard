@@ -4,10 +4,16 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
   gate, success shapes, and the problem `code`/`fields` of every refusal.
   """
   use DhcWeb.ConnCase, async: false
+  use Oban.Testing, repo: Dhc.Repo
 
   alias Dhc.Auth.UserRole
   alias Dhc.BeginnersWorkshopFixtures
+  alias Dhc.ClubCalendar
   alias Dhc.Repo
+  alias Dhc.WorkshopCalendar
+  alias Dhc.WorkshopCalendar.Google
+  alias Dhc.WorkshopCalendar.Workers.SyncWorker
+  alias Dhc.WorkshopCalendarHTTP
   alias DhcWeb.OpenApiVerifier
 
   @roles ~w(beginners_coordinator president admin committee_coordinator workshop_coordinator treasurer coach member)
@@ -361,6 +367,63 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              coordinator |> post(path, %{}) |> json_response(409)
   end
 
+  test "schedule, reschedule and cancel reconcile one Calendar event only after the worker runs",
+       %{
+         conn: conn
+       } do
+    server = calendar_surface!()
+    original = item()
+    [scheduled] = schedule!(conn, [original])
+    args = %{"source_kind" => "beginners_workshop", "source_id" => scheduled["id"]}
+
+    assert_enqueued(worker: SyncWorker, args: args)
+    assert WorkshopCalendarHTTP.requests(server) == []
+    assert :ok = perform_job(SyncWorker, args)
+
+    assert [created] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert created["summary"] == "Beginners' Workshop"
+    assert created["description"] =~ "/dashboard/beginners-workshop/workshops/#{scheduled["id"]}"
+    assert_event_times(created, original["date"], original["startTime"], original["endTime"])
+
+    rescheduled_date = Date.add(Date.from_iso8601!(original["date"]), 7) |> Date.to_iso8601()
+    mutation_count = length(WorkshopCalendarHTTP.mutations(server))
+
+    assert %{"data" => %{"date" => ^rescheduled_date}} =
+             conn
+             |> as_role("beginners_coordinator")
+             |> post("/api/beginners-workshops/#{scheduled["id"]}/reschedule", %{
+               "date" => rescheduled_date,
+               "startTime" => "19:00",
+               "endTime" => "21:00",
+               "venue" => "The Hub"
+             })
+             |> json_response(200)
+
+    assert length(WorkshopCalendarHTTP.mutations(server)) == mutation_count
+    assert :ok = perform_job(SyncWorker, args)
+
+    assert [rescheduled] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert rescheduled["id"] == created["id"]
+    assert rescheduled["location"] == "The Hub"
+    assert_event_times(rescheduled, rescheduled_date, "19:00", "21:00")
+
+    mutation_count = length(WorkshopCalendarHTTP.mutations(server))
+
+    assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
+             conn
+             |> as_role("beginners_coordinator")
+             |> post("/api/beginners-workshops/#{scheduled["id"]}/cancel", %{})
+             |> json_response(200)
+
+    assert length(WorkshopCalendarHTTP.mutations(server)) == mutation_count
+    assert :ok = perform_job(SyncWorker, args)
+
+    assert [cancelled] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert cancelled["id"] == created["id"]
+    assert cancelled["summary"] == "[Cancelled] Beginners' Workshop"
+    assert_event_times(cancelled, rescheduled_date, "19:00", "21:00")
+  end
+
   test "the console previews what Cancel would do while scheduled", %{conn: conn} do
     [workshop] = schedule!(conn)
 
@@ -374,5 +437,36 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              |> as_role("beginners_coordinator")
              |> get("/api/beginners-workshops/#{workshop["id"]}/console")
              |> json_response(200)
+  end
+
+  defp calendar_surface! do
+    previous = WorkshopCalendar.config()
+
+    Application.put_env(:dhc, WorkshopCalendar,
+      active: true,
+      committee_calendar_id: "committee@test.invalid",
+      participant_calendar_id: "participants@test.invalid",
+      client_id: "calendar-client",
+      client_secret: "calendar-secret",
+      refresh_token: "calendar-refresh",
+      req_options: [plug: {Req.Test, Google}]
+    )
+
+    on_exit(fn -> Application.put_env(:dhc, WorkshopCalendar, previous) end)
+    server = start_supervised!({Agent, fn -> WorkshopCalendarHTTP.initial() end})
+    WorkshopCalendarHTTP.stub(server)
+    server
+  end
+
+  defp assert_event_times(event, date, start_time, end_time) do
+    date = Date.from_iso8601!(date)
+    start_time = Time.from_iso8601!(start_time <> ":00")
+    end_time = Time.from_iso8601!(end_time <> ":00")
+
+    assert event["start"]["dateTime"] ==
+             date |> ClubCalendar.to_utc(start_time) |> DateTime.to_iso8601()
+
+    assert event["end"]["dateTime"] ==
+             date |> ClubCalendar.to_utc(end_time) |> DateTime.to_iso8601()
   end
 end

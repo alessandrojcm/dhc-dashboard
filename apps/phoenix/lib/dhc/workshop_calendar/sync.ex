@@ -7,6 +7,7 @@ defmodule Dhc.WorkshopCalendar.Sync do
   and deletions against Google-side changes; the local lease/revision fences
   acknowledgments against concurrent drivers and source transactions.
   """
+  alias Dhc.BeginnersWorkshops
   alias Dhc.ClubCalendar
   alias Dhc.WorkshopCalendar
   alias Dhc.WorkshopCalendar.{Alerts, Google, Store}
@@ -15,7 +16,7 @@ defmodule Dhc.WorkshopCalendar.Sync do
   def run(%{deleted: true, create_requested: false, acknowledged: nil} = event, clock) do
     # No request was ever prepared for this identity. Ownership fencing stops
     # an old driver from preparing one after this deletion is acknowledged.
-    finish(event, nil, Workshops.calendar_projection(event.source_id), clock, removed: true)
+    finish(event, nil, projection(event), clock, removed: true)
   end
 
   def run(event, clock) do
@@ -33,8 +34,14 @@ defmodule Dhc.WorkshopCalendar.Sync do
   end
 
   defp reconcile(event, clock) do
-    source = Workshops.calendar_projection(event.source_id)
+    source = projection(event)
 
+    with :ok <- valid_schedule(source) do
+      observe(event, source, clock)
+    end
+  end
+
+  defp observe(event, source, clock) do
     case Google.get(event.calendar_id, event.event_id) do
       {:ok, %{"status" => "cancelled"}} ->
         absent(event, source, :gone, clock)
@@ -184,7 +191,7 @@ defmodule Dhc.WorkshopCalendar.Sync do
     %{
       "id" => event.event_id,
       "summary" => summary(source),
-      "description" => dashboard_link(source.id),
+      "description" => dashboard_link(event.source_kind, source.id),
       "location" => source.location,
       "start" => %{
         "dateTime" => DateTime.to_iso8601(source.start_date),
@@ -206,10 +213,15 @@ defmodule Dhc.WorkshopCalendar.Sync do
   defp summary(%{status: "cancelled", title: title}), do: "[Cancelled] " <> title
   defp summary(%{title: title}), do: title
 
-  defp dashboard_link(id) do
+  defp dashboard_link(kind, id) do
     String.trim_trailing(Application.fetch_env!(:dhc, :app_url), "/") <>
-      "/dashboard/workshops/#{id}/attendees"
+      dashboard_path(kind, id)
   end
+
+  defp dashboard_path("workshop", id), do: "/dashboard/workshops/#{id}/attendees"
+
+  defp dashboard_path("beginners_workshop", id),
+    do: "/dashboard/beginners-workshop/workshops/#{id}"
 
   defp mutation_allowed(event, source, clock) do
     cond do
@@ -221,7 +233,24 @@ defmodule Dhc.WorkshopCalendar.Sync do
   end
 
   defp source_changed?(event, source),
-    do: Workshops.calendar_projection(event.source_id) != source
+    do: projection(event) != source
+
+  defp projection(%{source_kind: "workshop", source_id: id}),
+    do: Workshops.calendar_projection(id)
+
+  defp projection(%{source_kind: "beginners_workshop", source_id: id}),
+    do: BeginnersWorkshops.calendar_projection(id)
+
+  defp valid_schedule(nil), do: :ok
+  defp valid_schedule(%{end_date: nil}), do: {:error, :missing_end_time}
+
+  defp valid_schedule(%{start_date: %DateTime{} = start_date, end_date: %DateTime{} = end_date}) do
+    if DateTime.compare(end_date, start_date) == :gt,
+      do: :ok,
+      else: {:error, :invalid_schedule}
+  end
+
+  defp valid_schedule(_source), do: {:error, :invalid_schedule}
 
   defp finish(event, desired, source, clock, opts \\ []) do
     Store.finish(

@@ -9,4 +9,8 @@ defmodule Dhc.WorkshopCalendar.Workers.SyncWorker do
   def perform(%Oban.Job{args: %{"source_kind" => "workshop", "source_id" => id}}) do
     Dhc.WorkshopCalendar.sync(:workshop, id)
   end
+
+  def perform(%Oban.Job{args: %{"source_kind" => "beginners_workshop", "source_id" => id}}) do
+    Dhc.WorkshopCalendar.sync(:beginners_workshop, id)
+  end
 end
