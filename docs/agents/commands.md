@@ -244,6 +244,24 @@ bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv", dry_run: 
 bin/dhc eval 'Dhc.Release.import_waitlist("/secure/path/waitlist.tsv")'
 ```
 
+### Inspecting production data on Fly
+
+`bin/dhc eval` on the running machine boots a second release node that dies in
+`runtime.exs` (`environment variable DISCORD_BOT_TOKEN is missing`) because the
+secrets only exist inside the release command's `fnox` environment. Use `rpc`
+against the running node instead, and pipe a script in rather than fighting the
+shell quoting of `sh -lc`, `flyctl -C` and `~s()` in one line:
+
+```bash
+# The container has no psql; Dhc.Repo.query/1 works fine, cast uuid literals
+# and print row_to_json rows with inspect/1.
+cat /tmp/q.exs | flyctl ssh console -a dhc-dashboard -C "sh -c 'cat > /tmp/q.exs'"
+flyctl ssh console -a dhc-dashboard -C "sh -lc 'cd /app && /app/bin/dhc rpc \"Code.eval_file(~s(/tmp/q.exs))\"'"
+```
+
+`mise x` on the machine tries to install Node/Erlang and fails
+(`libatomic.so.1`), so do not reach for `mise` to get `fnox` there.
+
 ### Intake Reply classifier eval (ALE-410)
 
 The classifier eval consumes a hand-labelled CSV/TSV export with columns
