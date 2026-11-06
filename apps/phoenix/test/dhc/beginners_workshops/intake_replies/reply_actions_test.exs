@@ -14,29 +14,25 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActionsTest do
     binding_open: true,
     open_intake: "contacted",
     held_fee: false,
-    standing: "waiting",
-    restorable: false
+    standing: "waiting"
   }
   @paid %ReplyActions{
     binding_open: true,
     open_intake: "paid",
     held_fee: false,
-    standing: "waiting",
-    restorable: false
+    standing: "waiting"
   }
   @fee_holder %ReplyActions{
     binding_open: false,
     open_intake: nil,
     held_fee: true,
-    standing: "waiting",
-    restorable: false
+    standing: "waiting"
   }
   @no_intake %ReplyActions{
     binding_open: false,
     open_intake: nil,
     held_fee: false,
-    standing: "waiting",
-    restorable: false
+    standing: "waiting"
   }
 
   describe "action/3: the table" do
@@ -95,28 +91,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActionsTest do
       assert {:none, "no_reply_action"} = ReplyActions.action("wants_refund", :yes, @no_intake)
     end
 
-    test "wants to come back restores a removed person within retention (ALE-412)" do
-      removed = %{@no_intake | standing: "removed", restorable: true}
-
-      for money <- [:yes, :no, :unclear],
-          do:
-            assert(
-              {:ok, {:person, :restore_person}} =
-                ReplyActions.action("wants_to_come_back", money, removed)
-            )
-
-      # Past retention, still on the Waitlist, or with an open Intake: the
-      # coordinator decides.
-      past_retention = %{removed | restorable: false}
-      removed_contacted = %{removed | open_intake: "contacted", binding_open: true}
-
-      for state <- [@contacted, @paid, @fee_holder, @no_intake, past_retention, removed_contacted],
-          do:
-            assert(
-              {:none, "no_reply_action"} = ReplyActions.action("wants_to_come_back", :no, state)
-            )
-    end
-
     test "lost or broken link" do
       assert {:ok, {:intake, :resend_link}} = ReplyActions.action("link_problem", :no, @contacted)
       assert {:ok, {:intake, :resend_link}} = ReplyActions.action("link_problem", :no, @paid)
@@ -157,9 +131,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActionsTest do
       assert ReplyActions.offered(@fee_holder) == ~w(leaving_waitlist wants_refund)
       assert ReplyActions.offered(@no_intake) == ~w(leaving_waitlist)
       assert ReplyActions.offered(%{@no_intake | standing: "removed"}) == []
-
-      assert ReplyActions.offered(%{@no_intake | standing: "removed", restorable: true}) ==
-               ~w(wants_to_come_back)
     end
   end
 
@@ -220,10 +191,16 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActionsTest do
   end
 
   describe "config/0" do
-    test "every intent is off by default" do
+    test "only cant_make_date is on by default; the money-moving intents stay off" do
       config = ReplyActions.config()
       assert Map.keys(config.intents) |> Enum.sort() == Enum.sort(ReplyActions.intents())
-      assert Enum.all?(config.intents, fn {_intent, %{enabled: enabled}} -> enabled == false end)
+      assert config.intents["cant_make_date"].enabled == true
+      assert config.intents["cant_make_date"].threshold == 0.9
+
+      for intent <- ~w(leaving_waitlist wants_refund link_problem) do
+        refute config.intents[intent].enabled
+      end
+
       assert config.money_back.no < config.money_back.yes
     end
 

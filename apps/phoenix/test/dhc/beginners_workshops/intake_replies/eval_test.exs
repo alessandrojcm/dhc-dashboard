@@ -12,10 +12,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.EvalTest do
     "leaving_waitlist",
     "link_problem",
     "something_else",
-    "wants_refund",
-    "wants_to_come_back"
+    "wants_refund"
   ]
-  @notice_intents ["leaving_waitlist", "something_else", "wants_refund", "wants_to_come_back"]
+  @notice_intents ["leaving_waitlist", "something_else", "wants_refund"]
 
   setup {Req.Test, :verify_on_exit!}
 
@@ -45,7 +44,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.EvalTest do
     answers = %{
       "I cannot attend,\nplease contact me next month" => {"cant_make_date", 0.96, 0.1},
       "Please take me off the Waitlist" => {"something_else", 0.9, 0.8},
-      "I need to leave the list" => {"wants_to_come_back", 0.9, 0.1}
+      "I need to leave the list" => {"wants_refund", 0.9, 0.1}
     }
 
     Req.Test.expect(Dhc.TypeSafe, 3, fn conn ->
@@ -76,10 +75,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.EvalTest do
     assert report.by_intent["cant_make_date"].thresholds[0.9] ==
              %{actions_taken: 1, wrong_actions: 0, coordinator: 2}
 
-    assert report.by_intent["wants_to_come_back"].thresholds[0.9] ==
+    assert report.by_intent["wants_refund"].thresholds[0.9] ==
              %{actions_taken: 1, wrong_actions: 1, coordinator: 2}
 
-    assert report.by_intent["wants_to_come_back"].thresholds[0.95] ==
+    assert report.by_intent["wants_refund"].thresholds[0.95] ==
              %{actions_taken: 0, wrong_actions: 0, coordinator: 3}
 
     assert report.by_intent["cant_make_date"].recommended_threshold ==

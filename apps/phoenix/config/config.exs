@@ -74,11 +74,11 @@ config :dhc, :intake_reply_domain, nil
 config :dhc, :intake_reply_forward_to, "contact@dublinhemaclub.com"
 config :dhc, :resend_api_url, "https://api.resend.com"
 
-# ALE-414: Intake Replies is parked — labelled replies are too few to decide
-# which intents may act (see IntakeReplies.ReplyActions), so the feature is
-# inert end to end: no reply address is minted and the Resend webhook records
-# nothing. Switch it on to mint addresses and receive replies again.
-config :dhc, Dhc.BeginnersWorkshops.IntakeReplies, enabled: false
+# ALE-414: Intake Replies is switched on — reply addresses are minted and the
+# Resend webhook records and forwards replies. Only `cant_make_date` acts (see
+# ReplyActions below); the money-moving intents stay off until they have enough
+# labelled replies.
+config :dhc, Dhc.BeginnersWorkshops.IntakeReplies, enabled: true
 
 # ALE-410: pin evaluation to a concrete Jev release so measured confidence
 # thresholds do not silently drift when the provider updates its aliases.
@@ -86,15 +86,17 @@ config :dhc,
   typesafe_model: "jev-1.13.0",
   typesafe_api_url: "https://api.typesafe.ai"
 
-# ALE-411: Reply Actions, one switch per intent. Every intent is off until
-# the offline eval (ALE-414, `mix dhc.intake_replies.eval`) sets its
-# confidence threshold; there is no shadow mode. `money_back` reads Jev's
-# "asking for their money back?" answer: at or above `yes` is yes, at or
-# below `no` is no, between them unclear (a Deferral on "can't make it",
-# the coordinator on "leaving"). See IntakeReplies.ReplyActions.
+# ALE-411: Reply Actions, one switch per intent. `cant_make_date` is on from
+# the offline eval (ALE-414, `mix dhc.intake_replies.eval`): 0 wrong actions
+# across 15 labelled examples, and a decline/defer is reversible. The
+# money-moving intents stay off until they have enough labelled replies; there
+# is no shadow mode. `money_back` reads Jev's "asking for their money back?"
+# answer: at or above `yes` is yes, at or below `no` is no, between them
+# unclear (a Deferral on "can't make it", the coordinator on "leaving"). See
+# IntakeReplies.ReplyActions.
 config :dhc, Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions,
   intents: %{
-    "cant_make_date" => [enabled: false, threshold: 0.9],
+    "cant_make_date" => [enabled: true, threshold: 0.9],
     "leaving_waitlist" => [enabled: false, threshold: 0.9],
     "wants_refund" => [enabled: false, threshold: 0.9],
     "link_problem" => [enabled: false, threshold: 0.9]

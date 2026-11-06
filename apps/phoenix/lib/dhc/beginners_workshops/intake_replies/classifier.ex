@@ -18,7 +18,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Classifier do
     "cant_make_date" => "The person cannot attend this Beginners' Workshop date.",
     "leaving_waitlist" => "The person wants to leave the Beginners' Workshop Waitlist.",
     "wants_refund" => "The person is asking for a refund of money or a held workshop fee.",
-    "wants_to_come_back" => "The person wants to come back onto the Waitlist.",
     "link_problem" => "The person's Intake link is lost, broken or not working.",
     "something_else" => "The reply does not clearly express one of the listed intents."
   }
@@ -41,8 +40,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Classifier do
   @doc "Every intent the closed Classifier vocabulary recognises, in spec order."
   @spec intents() :: [String.t()]
   def intents,
-    do:
-      ~w(cant_make_date leaving_waitlist wants_refund wants_to_come_back link_problem something_else)
+    do: ~w(cant_make_date leaving_waitlist wants_refund link_problem something_else)
 
   @doc "Classifies extracted reply text against the supplied live allowed intents."
   @spec classify(String.t(), String.t(), [String.t() | atom()]) ::
@@ -59,9 +57,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Classifier do
   @spec allowed_intents_for_email_type(String.t()) :: [String.t()]
   def allowed_intents_for_email_type(email_type) do
     if match?({:ok, %{kind: :action}}, EmailType.fetch(email_type)) do
-      ~w(cant_make_date leaving_waitlist wants_refund wants_to_come_back link_problem)
+      ~w(cant_make_date leaving_waitlist wants_refund link_problem)
     else
-      ~w(leaving_waitlist wants_refund wants_to_come_back)
+      ~w(leaving_waitlist wants_refund)
     end
   end
 

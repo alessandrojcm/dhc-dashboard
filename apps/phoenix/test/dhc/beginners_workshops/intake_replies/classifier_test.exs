@@ -102,14 +102,14 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ClassifierTest do
 
     test "a notice email offers the notice intents plus something_else" do
       allowed = Classifier.allowed_intents_for_email_type("payment_refunded")
-      assert Enum.sort(allowed) == ["leaving_waitlist", "wants_refund", "wants_to_come_back"]
+      assert Enum.sort(allowed) == ["leaving_waitlist", "wants_refund"]
 
       Req.Test.expect(Dhc.TypeSafe, fn conn ->
         {request, conn} = TypeSafeStub.request(conn)
         assert request["state"] =~ "Answered email: Payment refunded\n"
 
         assert request |> get_in(["questions", "intent", "criteria"]) |> Map.keys() |> Enum.sort() ==
-                 ["leaving_waitlist", "something_else", "wants_refund", "wants_to_come_back"]
+                 ["leaving_waitlist", "something_else", "wants_refund"]
 
         Req.Test.json(conn, TypeSafeStub.answer(request, "something_else", 0.6, 0.5))
       end)
