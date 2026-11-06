@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.13.1",
+  "checkpoint_id": "7a7f5ae0b67d",
+  "strategy": "manual-commit",
+  "branch": "feature/google-maps",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "AGENTS.md",
+    "docs/google-maps-venue-design.md",
+    "docs/google-places-terms-validation.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/7a/7f5ae0b67d/0/metadata.json",
+      "transcript": "/7a/7f5ae0b67d/0/full.jsonl",
+      "compact_transcript": "/7a/7f5ae0b67d/0/transcript.jsonl",
+      "content_hash": "/7a/7f5ae0b67d/0/content_hash.txt",
+      "prompt": "/7a/7f5ae0b67d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 269665,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9889920,
+    "output_tokens": 20679,
+    "api_call_count": 55,
+    "subagent_tokens": {
+      "input_tokens": 385972,
+      "cache_creation_tokens": 0,
+      "cache_read_tokens": 1701376,
+      "output_tokens": 8905,
+      "api_call_count": 32
+    }
+  },
+  "redaction": {
+    "replacements": 268,
+    "layers": {
+      "betterleaks": 4,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 266,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_lyMF7GUHBHd3L71N5LOb9XdT",
+  "agent_id": "ses_e4da7950dffez8MYXVK7NAAGWp",
+  "subagent_type": "build",
+  "task_description": "Review Places ticket compliance",
+  "token_usage": {
+    "input_tokens": 79988,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 387584,
+    "output_tokens": 693,
+    "api_call_count": 7
+  },
+  "started_at": "2026-11-06T19:31:41.426Z",
+  "completed_at": "2026-11-06T19:32:49.856588Z"
+}

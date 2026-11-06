@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_XxFwkySrONxZwdRgERMJBYKu",
+  "agent_id": "ses_e4da79716ffeFuWMs6MpZvNWWS",
+  "subagent_type": "build",
+  "task_description": "Review documentary standards",
+  "token_usage": {
+    "input_tokens": 57627,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 226304,
+    "output_tokens": 645,
+    "api_call_count": 6
+  },
+  "started_at": "2026-11-06T19:31:40.902Z",
+  "completed_at": "2026-11-06T19:32:36.512924Z"
+}
