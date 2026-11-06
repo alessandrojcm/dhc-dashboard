@@ -191,10 +191,16 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActionsTest do
   end
 
   describe "config/0" do
-    test "every intent is off by default" do
+    test "only cant_make_date is on by default; the money-moving intents stay off" do
       config = ReplyActions.config()
       assert Map.keys(config.intents) |> Enum.sort() == Enum.sort(ReplyActions.intents())
-      assert Enum.all?(config.intents, fn {_intent, %{enabled: enabled}} -> enabled == false end)
+      assert config.intents["cant_make_date"].enabled == true
+      assert config.intents["cant_make_date"].threshold == 0.9
+
+      for intent <- ~w(leaving_waitlist wants_refund link_problem) do
+        refute config.intents[intent].enabled
+      end
+
       assert config.money_back.no < config.money_back.yes
     end
 
