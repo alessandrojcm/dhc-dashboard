@@ -3,6 +3,13 @@
 Status: scope summary confirmed by the user on 6 November 2026. No implementation,
 Google provisioning or production changes authorized.
 
+ALE-439 documentary validation is recorded in
+[Google Places terms validation](google-places-terms-validation.md). Google-derived
+saved destinations and Calendar export remain gated on the applicable account
+terms and permission for storage/export/attribution; the public rules do not
+establish that permission. Manual destinations can proceed independently. The
+native Calendar goal below is unchanged.
+
 ## Goal
 
 Help attendees navigate to the right venue from their Calendar Invitation and
