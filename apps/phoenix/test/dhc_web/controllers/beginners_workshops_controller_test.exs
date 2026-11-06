@@ -80,10 +80,14 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
 
   test "schedules several workshops and lists them with stage, seats and alerts", %{conn: conn} do
     date = Date.add(Date.utc_today(), 60)
+    contact_from = Date.add(Date.utc_today(), -1)
 
     [first, second] =
       schedule!(conn, [
-        item(%{"date" => Date.to_iso8601(Date.add(date, 7))}),
+        item(%{
+          "date" => Date.to_iso8601(Date.add(date, 7)),
+          "contactFromDate" => Date.to_iso8601(contact_from)
+        }),
         item(%{"paymentWindowDays" => 3, "paymentCutoffTime" => "12:00"})
       ])
 
@@ -97,7 +101,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              "paymentCutoffDate" => cutoff_date,
              "paymentCutoffTime" => "18:30",
              "paymentCutoff" => _instant,
-             "contactFromDate" => _today,
+             "contactFromDate" => contact_from_date,
              "contactFromEditable" => true,
              "paymentWindowDays" => 7,
              "stage" => "next_batch_due",
@@ -106,6 +110,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
            } = first
 
     assert cutoff_date == Date.to_iso8601(Date.add(date, 4))
+    assert contact_from_date == Date.to_iso8601(contact_from)
     assert %{"paymentWindowDays" => 3, "paymentCutoffTime" => "12:00"} = second
 
     assert %{"data" => %{"upcoming" => upcoming, "past" => []}} =

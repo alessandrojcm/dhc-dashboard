@@ -71,13 +71,16 @@ defmodule Dhc.MixProject do
     [
       {:phoenix, "~> 1.8.11"},
       {:phoenix_ecto, "~> 4.5"},
+      # Floor Ecto at 3.14.3 for CVE-2026-118391 (query-cache growth from
+      # interpolated JSON paths and splice lists).
+      {:ecto, "~> 3.14.3"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, "~> 0.22.4"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.14"},
+      {:bandit, "~> 1.14.1"},
       {:oban, "~> 2.19"},
       {:sentry, "~> 13.4"},
       {:opentelemetry, "~> 1.5"},
@@ -117,7 +120,11 @@ defmodule Dhc.MixProject do
       # incoming WebSocket frames; the Discord gateway (Nostrum's consumer)
       # is not used here — only the REST API — so the cap cannot bite.
       {:gun, "~> 2.7"},
-      {:assent, "~> 0.3.1"},
+      {:assent, "~> 0.3.2"},
+      # Floor transitive OAuth and certificate-verification dependencies at
+      # their patched releases.
+      {:jose, "~> 1.11.13"},
+      {:ssl_verify_fun, "~> 1.1.9"},
       # Email transport seam for transactional emails (ADR 0021). First-party
       # adapters per environment: Resend in prod, Mailpit over HTTP in dev,
       # Swoosh.Adapters.Test in tests. Needs >= 1.26 for Swoosh.Adapters.Mailpit.
