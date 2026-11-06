@@ -6,7 +6,7 @@
 ARG BUILDER_IMAGE="debian:bookworm-20250520-slim"
 ARG RUNNER_IMAGE="debian:bookworm-20250520-slim"
 
-FROM ${BUILDER_IMAGE} AS builder
+FROM ${BUILDER_IMAGE} AS build-base
 
 WORKDIR /app
 
@@ -43,9 +43,15 @@ ENV MISE_GITHUB_ATTESTATIONS=true
 
 RUN curl https://mise.run | sh
 
-# Install only the BEAM tools needed to build the release. Other tools pinned in
-# `.mise.toml` (Node, pnpm, fnox) are used elsewhere but are not needed here.
-COPY .mise.toml ./
+# Project the root config in a separate stage. COPY below hashes only these
+# generated files, so unrelated tools/tasks cannot invalidate the install layers.
+FROM build-base AS toolchain-config
+COPY .mise.toml /toolchain-source.toml
+COPY tools/phoenix-toolchain-config.sh /phoenix-toolchain-config.sh
+RUN bash /phoenix-toolchain-config.sh /toolchain-source.toml /toolchains
+
+FROM build-base AS builder
+COPY --from=toolchain-config /toolchains/beam.toml .mise.toml
 RUN mise trust -a && mise install erlang elixir
 
 RUN mix local.hex --force && \
@@ -107,8 +113,9 @@ ENV LANG="en_US.UTF-8" \
 RUN curl https://mise.run | sh
 
 WORKDIR /app
-COPY .mise.toml fnox.toml ./
+COPY --from=toolchain-config /toolchains/runtime.toml .mise.toml
 RUN mise trust -a && mise install fnox && chown -R nobody:root /mise /app
+COPY --chown=nobody:root fnox.toml ./
 
 # `include_erts: true` bundles the pinned OTP and Elixir runtime in the release;
 # the runner deliberately does not install a second BEAM toolchain.
