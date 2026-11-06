@@ -52,6 +52,60 @@ defmodule Dhc.WorkshopCalendar.Recipients do
   def list(event),
     do: Repo.all(from(r in Recipient, where: r.event_id == ^event.id, order_by: r.id))
 
+  def forget(kind, place_ids) do
+    require_transaction!()
+
+    # Domain locks are already held. Take integration events in a stable order;
+    # no source FK or person/address lookup is needed by the eventual worker.
+    events =
+      Repo.all(
+        from(e in Event,
+          where: e.source_kind == ^to_string(kind) and e.audience == "participant",
+          where:
+            e.id in subquery(
+              from(r in Recipient, where: r.place_id in ^place_ids, select: r.event_id)
+            ),
+          order_by: e.id,
+          lock: "FOR UPDATE"
+        )
+      )
+
+    Enum.each(events, fn event ->
+      from(r in Recipient, where: r.event_id == ^event.id and r.place_id in ^place_ids)
+      |> Repo.update_all(
+        set: [active: false, privacy_pending: true, updated_at: DateTime.utc_now()]
+      )
+
+      changed(event)
+    end)
+
+    :ok
+  end
+
+  def privacy_pending?(event),
+    do: Repo.exists?(from(r in Recipient, where: r.event_id == ^event.id and r.privacy_pending))
+
+  # Called only by Store.finish under the current event's lock/lease/revision,
+  # after a conditional provider write or definitive absence. Keep an address-
+  # free entitlement tombstone so old confirmation retries cannot recapture it.
+  def dispose_locked(event) do
+    from(r in Recipient, where: r.event_id == ^event.id and r.privacy_pending)
+    |> Repo.update_all(
+      set: [
+        recipient: nil,
+        previous_recipients: [],
+        privacy_pending: false,
+        requested_generation: nil,
+        invited_generation: nil,
+        removed_generation: nil,
+        failure: nil,
+        failure_episode: nil,
+        alerted_at: nil,
+        updated_at: DateTime.utc_now()
+      ]
+    )
+  end
+
   def correct(kind, id, place_id, recipient) do
     {:ok, result} =
       Repo.transaction(fn ->

@@ -34,10 +34,12 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantConcurrencyTest do
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.WorkshopCalendar
-  alias Dhc.WorkshopCalendar.{Event, Google}
+  alias Dhc.WorkshopCalendar.{Event, Google, Recipient}
   alias Dhc.WorkshopCalendarHTTP
 
   @now ~U[2026-10-22 12:00:00.000000Z]
+  @early_finalisation ~U[2026-11-14 19:00:00.000000Z]
+  @ends_at ~U[2026-11-14 20:30:00.000000Z]
   @workshop_lock "SELECT id FROM beginners_workshops WHERE id = $1 FOR UPDATE"
 
   setup do
@@ -156,6 +158,109 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantConcurrencyTest do
       end,
       complete_count: 1
     )
+  end
+
+  test "hard deletion fences an in-flight attendee addition and scrubs its retained address", %{
+    server: server
+  } do
+    committed_paid_people!(1, fn ctx ->
+      [person] = ctx.people
+      parent = self()
+
+      WorkshopCalendarHTTP.stub(server, fn conn ->
+        if conn.host == "www.googleapis.com" and conn.method == "PUT" do
+          send(parent, {:privacy_add_started, self()})
+
+          receive do
+            :continue_privacy_add -> :ok
+          end
+        end
+      end)
+
+      stale = Task.async(fn -> outside_sandbox(fn -> sync(ctx.workshop.id) end) end)
+      assert_receive {:privacy_add_started, google}, 5_000
+
+      outside_sandbox(fn -> finish_and_delete!(ctx, person, @early_finalisation) end)
+      assert %{active: false, privacy_pending: true} = retained_recipient!(ctx.intake.id)
+
+      send(google, :continue_privacy_add)
+      assert {:snooze, 1} = Task.await(stale, 5_000)
+
+      WorkshopCalendarHTTP.stub(server)
+      outside_sandbox(fn -> assert :ok = sync_at(ctx.workshop.id, @ends_at) end)
+
+      assert [event] = Map.values(WorkshopCalendarHTTP.events(server))
+      assert event["attendees"] == []
+
+      assert %{active: false, recipient: nil, previous_recipients: [], privacy_pending: false} =
+               retained_recipient!(ctx.intake.id)
+    end)
+  end
+
+  test "expired attendee owner cannot restore a deleted address after privacy cleanup fenced an absent guest",
+       %{server: server} do
+    committed_paid_people!(1, fn ctx ->
+      [person] = ctx.people
+      parent = self()
+
+      WorkshopCalendarHTTP.stub(server, fn conn ->
+        if conn.host == "www.googleapis.com" and conn.method == "PUT" do
+          send(parent, {:stale_privacy_add_started, self()})
+
+          receive do
+            :continue_stale_privacy_add -> :ok
+          end
+        end
+      end)
+
+      stale = Task.async(fn -> outside_sandbox(fn -> sync(ctx.workshop.id) end) end)
+      assert_receive {:stale_privacy_add_started, google}, 5_000
+
+      outside_sandbox(fn -> finish_and_delete!(ctx, person, @early_finalisation) end)
+      assert %{active: false, privacy_pending: true} = retained_recipient!(ctx.intake.id)
+
+      # The replacement owner gets the expired lease while Google has no copy of
+      # the deleted address. It must still advance the ETag before scrubbing the
+      # retained binding, so the old request cannot restore that address.
+      WorkshopCalendarHTTP.stub(server, fn conn ->
+        if conn.host == "www.googleapis.com" and conn.method == "PUT" do
+          send(parent, {:privacy_cleanup_started, self()})
+
+          receive do
+            :continue_privacy_cleanup -> :ok
+          end
+        end
+      end)
+
+      replacement =
+        Task.async(fn ->
+          outside_sandbox(fn -> sync_at(ctx.workshop.id, DateTime.add(@ends_at, 121)) end)
+        end)
+
+      assert_receive {:privacy_cleanup_started, cleanup_google}, 5_000
+
+      duplicate =
+        Task.async(fn ->
+          outside_sandbox(fn -> sync_at(ctx.workshop.id, DateTime.add(@ends_at, 121)) end)
+        end)
+
+      assert {:snooze, 5} = Task.await(duplicate, 5_000)
+      send(cleanup_google, :continue_privacy_cleanup)
+      assert :ok = Task.await(replacement, 5_000)
+
+      send(google, :continue_stale_privacy_add)
+      assert :ok = Task.await(stale, 5_000)
+
+      assert [current] = Map.values(WorkshopCalendarHTTP.events(server))
+      assert current["attendees"] == []
+
+      assert %{active: false, recipient: nil, previous_recipients: [], privacy_pending: false} =
+               retained_recipient!(ctx.intake.id)
+
+      assert Enum.any?(WorkshopCalendarHTTP.mutations(server), fn mutation ->
+               mutation.method == "PUT" and mutation.payload["attendees"] == []
+             end)
+    end)
   end
 
   test "workshop cancellation fences an in-flight attendee addition and leaves its cancelled tombstone",
@@ -507,6 +612,9 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantConcurrencyTest do
   defp execute(actor, command),
     do: BeginnersWorkshops.execute(actor, command, clock: Clock.fixed(@now))
 
+  defp execute_at(actor, command, now),
+    do: BeginnersWorkshops.execute(actor, command, clock: Clock.fixed(now))
+
   defp complete(%{session: session}), do: execute(:stripe, {:complete_payment, session})
 
   defp confirm_by_person(ctx, index) do
@@ -542,6 +650,22 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantConcurrencyTest do
         audience: :participant,
         clock: fn -> @now end
       )
+
+  defp sync_at(id, now),
+    do:
+      WorkshopCalendar.sync(:beginners_workshop, id,
+        audience: :participant,
+        clock: fn -> now end
+      )
+
+  defp finish_and_delete!(ctx, person, now) do
+    assert {:ok, _} = execute_at({:staff, ctx.staff}, {:finish_workshop, ctx.workshop.id}, now)
+
+    assert {:ok, %{outcome: :deleted}} =
+             execute_at({:staff, ctx.staff}, {:delete_person, person.id, %{}}, now)
+  end
+
+  defp retained_recipient!(intake_id), do: Repo.get_by!(Recipient, place_id: intake_id)
 
   defp first_schedule,
     do: %{

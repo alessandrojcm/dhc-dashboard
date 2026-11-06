@@ -213,8 +213,51 @@ Address repair is a deliberate operator operation, not a coordinator screen:
    keyed-notification/manual-follow-up path; it never changes a booking.
 
 This operation neither activates sending nor changes the participant's profile,
-Registration snapshot or Intake. Person hard-delete privacy cleanup is ALE-436; do not
-treat place cancellation or attendance history as that cleanup.
+Registration snapshot or Intake. Place cancellation and attendance history are
+not person hard-delete privacy cleanup.
+
+## Person deletion and historical privacy cleanup (ALE-436)
+
+The existing Beginners' Workshop manual Delete and three-month retention purge
+capture privacy-removal obligations for every retained Intake binding before
+anonymising or unlinking the person. They use the same authoritative transaction
+and locks as before. Authorization, deletion refusals, refunds, anonymisation and
+reporting are unchanged; Google never runs in that transaction and cannot delay
+the person's deletion. There is no new Member/Principal deletion policy: those
+records currently have no supported person hard-delete entrypoint. The shared
+Calendar boundary accepts source-owned place identifiers for either source kind
+when a supported operation needs it; it never finds people by matching email.
+
+Obligations live on the integration's retained recipient rows, without source
+foreign keys. Identifier-only jobs and periodic repair find them even after the
+Waitlist entry/profile is gone. Pause and inactive sending retain them without
+Google mutations; resume reconciles current facts, not queued attendee snapshots.
+Cleanup runs at and after event end, and even with an unknown legacy end time.
+It removes the selected and previously corrected addresses from current and
+historical organizer events, preserving other guests, their RSVPs and event
+details. An address shared by another active entitlement remains that guest's
+address; deleting one binding must not cancel the other's invitation.
+
+Cleanup uses the event lease/revision and Google's conditional-write ETag. Even
+when the guest is already absent, a conditional write advances the provider fence
+before personal data is discarded, preventing an expired worker's late update
+from restoring it. Ambiguous success is read back and retried through the same
+bounded recovery/alert protocol. A tombstone or an event never requested can
+settle without creation. A bare 404 after a prepared creation retains the
+obligation: the uncertain insertion might still arrive. Cleanup never recreates
+an event solely to remove someone, including after its end.
+
+Once acknowledged under current ownership, cleanup clears the binding's selected
+address, previous addresses and recipient failure data. It keeps only an inactive,
+address-free place tombstone so stale confirmation retries cannot select an
+address again. Event acknowledgments contain no attendee snapshots; jobs contain
+no addresses or request bodies. A failed historical removal remains outstanding
+for the existing coordinator alert and explicit operator resume workflow.
+
+This cleans integration-owned organizer details only. It cannot guarantee erasure
+of recipient calendar copies, delivered invitation emails or Google's retained
+data. Neither successful HTTP responses nor cleanup acknowledgments promise
+invitation email delivery or universal deletion.
 
 ## Verification
 

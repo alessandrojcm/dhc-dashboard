@@ -10,13 +10,13 @@ defmodule Dhc.WorkshopCalendar.Sync do
   alias Dhc.BeginnersWorkshops
   alias Dhc.ClubCalendar
   alias Dhc.WorkshopCalendar
-  alias Dhc.WorkshopCalendar.{Alerts, Google, Roster, Store}
+  alias Dhc.WorkshopCalendar.{Alerts, Google, Recipients, Roster, Store}
   alias Dhc.Workshops
 
   def run(%{deleted: true, create_requested: false, acknowledged: nil} = event, clock) do
     # No request was ever prepared for this identity. Ownership fencing stops
     # an old driver from preparing one after this deletion is acknowledged.
-    finish(event, nil, projection(event), clock, removed: true)
+    finish(event, nil, projection(event), clock, removed: true, privacy_removed: true)
   end
 
   def run(event, clock) do
@@ -38,8 +38,11 @@ defmodule Dhc.WorkshopCalendar.Sync do
   defp reconcile(event, clock) do
     source = projection(event)
 
-    with :ok <- valid_schedule(source) do
+    # An unknown legacy schedule must not strand a historical address removal.
+    if Recipients.privacy_pending?(event) do
       observe(event, source, clock)
+    else
+      with :ok <- valid_schedule(source), do: observe(event, source, clock)
     end
   end
 
@@ -66,18 +69,35 @@ defmodule Dhc.WorkshopCalendar.Sync do
   end
 
   defp absent(event, source, reason, clock) do
+    if Recipients.privacy_pending?(event) do
+      # Privacy absence is independent of schedule and is never authority to
+      # recreate an event. A later ordinary pass may repair surviving places.
+      finish(event, event.acknowledged, source, clock,
+        privacy_removed: reason == :gone or not event.create_requested
+      )
+    else
+      absent_source(event, source, reason, clock)
+    end
+  end
+
+  defp absent_source(event, source, reason, clock) do
+    definitive? = reason == :gone or not event.create_requested
+
     cond do
       unwanted?(event, source) ->
         # A 404 is not a tombstone: an earlier timed-out insert may still
         # arrive. Keep absence-only removals in repair until Google has a
         # tombstone (or a successful conditional delete) for this identity.
-        finish(event, nil, source, clock, removed: reason == :gone or not event.create_requested)
+        finish(event, nil, source, clock,
+          removed: definitive?,
+          privacy_removed: definitive?
+        )
 
       WorkshopCalendar.ended?(source, clock) ->
-        finish(event, event.acknowledged, source, clock)
+        finish(event, event.acknowledged, source, clock, privacy_removed: definitive?)
 
       no_places?(event, source) ->
-        finish(event, event.acknowledged, source, clock)
+        finish(event, event.acknowledged, source, clock, privacy_removed: definitive?)
 
       reason == :gone or not is_nil(event.acknowledged) ->
         with {:ok, next} <- Store.next_generation(event) do
@@ -130,6 +150,9 @@ defmodule Dhc.WorkshopCalendar.Sync do
       unwanted?(event, source) ->
         remove(event, source, observed, clock)
 
+      Recipients.privacy_pending?(event) ->
+        cleanup(event, source, observed, clock)
+
       WorkshopCalendar.ended?(source, clock) and source.status != "cancelled" and
           event.audience == "committee" ->
         finish(event, event.acknowledged, source, clock)
@@ -139,12 +162,19 @@ defmodule Dhc.WorkshopCalendar.Sync do
     end
   end
 
+  defp cleanup(event, source, observed, clock) do
+    with {:ok, acknowledged} <-
+           Roster.cleanup(event, observed, fn -> mutation_allowed(event, source, clock, true) end) do
+      finish(event, acknowledged, source, clock, privacy_removed: true)
+    end
+  end
+
   defp update_if_changed(%{audience: "participant"} = event, source, observed, clock) do
     with {:ok, acknowledged} <-
            Roster.reconcile(event, source, observed, desired_event(event, source), clock, fn ->
              mutation_allowed(event, source, clock, true)
            end) do
-      finish(event, acknowledged, source, clock)
+      finish(event, acknowledged, source, clock, privacy_removed: true)
     end
   end
 
@@ -179,7 +209,7 @@ defmodule Dhc.WorkshopCalendar.Sync do
              before_mutation: fn -> mutation_allowed(event, source, clock, true) end
            ) do
         {:ok, _deleted} ->
-          finish(event, nil, source, clock, removed: true)
+          finish(event, nil, source, clock, removed: true, privacy_removed: true)
 
         {:error, reason} when reason in [:missing, :gone] ->
           confirmed_absence(event, source, reason, clock)

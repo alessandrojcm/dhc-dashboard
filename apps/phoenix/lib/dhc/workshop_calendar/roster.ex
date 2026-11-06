@@ -30,6 +30,45 @@ defmodule Dhc.WorkshopCalendar.Roster do
     Enum.any?(Recipients.list(event), &eligible?(&1, source))
   end
 
+  # Privacy is independent of today's source roster/schedule. Preserve every
+  # unaffected Google guest and all historical content, even with source rows
+  # gone or a legacy end time unknown. A shared address still belongs to its
+  # surviving entitlement; disposing the deleted binding must not cancel it.
+  def cleanup(_event, %{"attendeesOmitted" => true}, _allowed), do: {:error, :transient}
+
+  def cleanup(event, observed, allowed) do
+    recipients = Recipients.list(event)
+
+    retiring =
+      recipients
+      |> Enum.filter(& &1.privacy_pending)
+      |> Enum.flat_map(&[&1.recipient | &1.previous_recipients])
+      |> MapSet.new(&Recipients.address/1)
+
+    retained =
+      recipients
+      |> Enum.filter(& &1.active)
+      |> MapSet.new(&Recipients.address(&1.recipient))
+
+    removed = MapSet.difference(retiring, retained)
+    attendees = Map.get(observed, "attendees", [])
+
+    survivors =
+      Enum.reject(attendees, &MapSet.member?(removed, Recipients.address(&1["email"])))
+
+    body = observed |> Map.take(@content) |> Map.put("attendees", survivors)
+    updates = if attendees == survivors, do: "none", else: "all"
+
+    # Even an absent guest needs a conditional write before disposing its
+    # address: an expired owner may have an addition in flight with the old
+    # ETag. Do not falsely acknowledge cleanup if Google kept that version.
+    with {:ok, updated} <- write(event, observed, body, allowed, updates) do
+      if updated["etag"] != observed["etag"] and is_binary(updated["etag"]),
+        do: {:ok, Map.take(updated, @content)},
+        else: {:error, :conflict}
+    end
+  end
+
   def reconcile(event, source, observed, desired, clock, allowed) do
     if observed["attendeesOmitted"] == true do
       {:error, :transient}

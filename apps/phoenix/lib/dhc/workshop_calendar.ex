@@ -30,6 +30,10 @@ defmodule Dhc.WorkshopCalendar do
   def remove_place(kind, id, place_id) when kind in [:workshop, :beginners_workshop],
     do: Recipients.remove(kind, id, place_id)
 
+  @doc "Retains privacy removals before the caller anonymises/unlinks its locked places."
+  def forget_places(kind, place_ids) when kind in [:workshop, :beginners_workshop],
+    do: Recipients.forget(kind, place_ids)
+
   @doc "Operator-only address repair. Requires pause and no live event owner; never calls Google inline."
   def correct_recipient(kind, id, place_id, recipient)
       when kind in [:workshop, :beginners_workshop],

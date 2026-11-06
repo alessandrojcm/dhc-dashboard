@@ -10,7 +10,7 @@ defmodule Dhc.WorkshopCalendar.Store do
   import Ecto.Query
 
   alias Dhc.Repo
-  alias Dhc.WorkshopCalendar.Event
+  alias Dhc.WorkshopCalendar.{Event, Recipients}
   alias Dhc.WorkshopCalendar.Workers.SyncWorker
 
   @lease_seconds 120
@@ -171,6 +171,9 @@ defmodule Dhc.WorkshopCalendar.Store do
   def finish(event, acknowledged, _now, opts \\ []) do
     owned(event, fn current ->
       stale? = current.revision != event.revision or Keyword.get(opts, :stale, false)
+
+      if Keyword.get(opts, :privacy_removed, false) and not stale?,
+        do: Recipients.dispose_locked(current)
 
       persist(current, %{
         acknowledged: acknowledged,

@@ -9,6 +9,7 @@ defmodule Dhc.WorkshopCalendar.Recipient do
     field :recipient, :string, redact: true
     field :previous_recipients, {:array, :string}, default: [], redact: true
     field :active, :boolean, default: true
+    field :privacy_pending, :boolean, default: false
     field :invited_generation, :integer
     field :requested_generation, :integer
     field :removed_generation, :integer
