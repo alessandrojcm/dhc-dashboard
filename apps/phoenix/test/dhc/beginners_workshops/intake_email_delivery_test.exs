@@ -86,6 +86,36 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailDeliveryTest do
   end
 
   describe "variants" do
+    test "delivers the scheduled end time", ctx do
+      assert {:ok, :queued} =
+               deliver(
+                 ctx.person,
+                 {:intake, ctx.intake, ctx.workshop},
+                 :contact,
+                 Occasion.contact(),
+                 @reading
+               )
+
+      assert [%{args: %{"data_variables" => %{"MESSAGE_HTML" => html}}}] = jobs()
+      assert html =~ "18:30</strong>–20:30"
+    end
+
+    test "labels a legacy unknown end time without refusing the email", ctx do
+      legacy_workshop = %{ctx.workshop | end_time: nil}
+
+      assert {:ok, :queued} =
+               deliver(
+                 ctx.person,
+                 {:intake, ctx.intake, legacy_workshop},
+                 :contact,
+                 Occasion.contact(),
+                 @reading
+               )
+
+      assert [%{args: %{"data_variables" => %{"MESSAGE_HTML" => html}}}] = jobs()
+      assert html =~ "18:30</strong>–TBC"
+    end
+
     test "a contacted person is asked to pay, a holder of a held Carried Fee to confirm", ctx do
       assert {:ok, :queued} =
                deliver(

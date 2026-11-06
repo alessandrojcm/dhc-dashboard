@@ -25,6 +25,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmails.Values do
   @spec start_time(Time.t()) :: String.t()
   def start_time(%Time{} = time), do: Calendar.strftime(time, "%H:%M")
 
+  @doc "`12:00`, or `TBC` for a legacy workshop whose end time is unknown."
+  @spec end_time(Time.t() | nil) :: String.t()
+  def end_time(%Time{} = time), do: start_time(time)
+  def end_time(nil), do: "TBC"
+
   @doc "`Sunday 8 November 2026, 23:59`, on the Dublin wall clock."
   @spec deadline(DateTime.t()) :: String.t()
   def deadline(%DateTime{} = at) do

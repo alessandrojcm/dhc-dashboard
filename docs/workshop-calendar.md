@@ -38,13 +38,32 @@ calendar ACL. Google organizer/Workspace administrators retain privileged access
 ## Beginners' Workshop end-time readiness
 
 Beginners' Workshops require explicit Dublin civil `startTime` and `endTime`
-when scheduled or rescheduled. Existing rows retain an unknown (`null`) end
-time; do not infer a duration. Before a later Beginners' Workshop Calendar
-launch, inspect `Dhc.BeginnersWorkshops.end_time_report/1` in an authorized
-operator session, then backfill each upcoming row with the authorized
+when scheduled or rescheduled. The additive column migration accepts unknown
+(`null`) legacy end times. The follow-up data migration uses the club-approved
+baseline of **start + six Dublin civil hours** for existing missing values,
+including historical rows. This is a baseline, not a recovered historical
+duration. Explicitly recorded end times are never overwritten. Starts at or
+after 18:00 remain unknown because six hours would cross midnight; overnight
+sessions are unsupported. Rolling back the data migration preserves values
+and any later coordinator corrections.
+
+After deployment and before a later Beginners' Workshop Calendar launch, run
+`mix dhc.beginners_workshops.end_times` (read-only, no Google calls). Inspect
+`Dhc.BeginnersWorkshops.end_time_report/1` in an authorized operator session,
+then resolve each remaining upcoming row with the authorized
 `{:backfill_end_time, workshop_id, %{end_time: "HH:MM"}}` command through
 `Dhc.BeginnersWorkshops.execute/3`. Backfill changes no cutoff, offer-round,
 email, or attendance policy, and this slice makes no Google mutation.
+
+The separate Intake Email data migration adds an `endTime` chip to the six
+schedule-bearing templates, retaining coordinator copy and existing chips.
+If there is no start-time chip, it appends an end-time sentence instead. It
+rechecks the shared 2,000-character worst-case measure before saving: a custom
+body too close to the limit stops the deployment with its email type and
+required size, rather than truncating copy or breaking email delivery. Shorten
+that template in the existing editor and rerun the migration. Rollback keeps
+the edited bodies; queued emails are not rewritten or resent. Remaining
+unknown workshop ends render as `TBC`.
 
 ## Ownership and recovery
 

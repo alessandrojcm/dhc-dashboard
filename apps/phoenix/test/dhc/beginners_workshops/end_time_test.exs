@@ -89,6 +89,36 @@ defmodule Dhc.BeginnersWorkshops.EndTimeTest do
   end
 
   describe "reschedule_workshop" do
+    test "explicit unchanged start times still allow venue and end-time corrections after the start" do
+      coordinator = staff_fixture()
+      workshop = scheduled_fixture(coordinator)
+      during_workshop = Clock.fixed(~U[2026-11-14 19:30:00Z])
+
+      assert {:ok, %{venue: "The Hub", start_time: ~T[18:30:00]}} =
+               BeginnersWorkshops.execute(
+                 {:staff, coordinator},
+                 {:reschedule_workshop, workshop.id,
+                  %{"venue" => "The Hub", "start_time" => "18:30", "end_time" => "20:30"}},
+                 clock: during_workshop
+               )
+
+      assert {:ok, %{end_time: ~T[21:00:00]}} =
+               BeginnersWorkshops.execute(
+                 {:staff, coordinator},
+                 {:reschedule_workshop, workshop.id,
+                  %{"start_time" => "18:30", "end_time" => "21:00"}},
+                 clock: during_workshop
+               )
+
+      assert {:error, :start_in_past} =
+               BeginnersWorkshops.execute(
+                 {:staff, coordinator},
+                 {:reschedule_workshop, workshop.id,
+                  %{"start_time" => "19:00", "end_time" => "21:00"}},
+                 clock: during_workshop
+               )
+    end
+
     test "requires both explicit times, including for a venue-only move" do
       coordinator = staff_fixture()
       workshop = scheduled_fixture(coordinator)

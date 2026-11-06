@@ -403,7 +403,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     with :ok <- still_scheduled(workshop),
          facts = facts_for(workshop),
          {:ok, input, next} <- reschedule_input(workshop, attrs),
-         :ok <- moved_start_in_future(input, next, reading),
+         :ok <- moved_start_in_future(workshop, next, reading),
          :ok <- valid_end_time(next),
          cutoff = rescheduled_cutoff(workshop, next),
          :ok <- cutoff_before_start(cutoff, WorkshopPolicy.starts_at(next)),
@@ -501,8 +501,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   # Only a new start is judged against the clock: a venue correction on the
   # day (or after it, before finalisation) still goes through.
-  defp moved_start_in_future(input, next, reading) do
-    if Ecto.Changeset.changed?(input, :date) or Ecto.Changeset.changed?(input, :start_time),
+  defp moved_start_in_future(workshop, next, reading) do
+    if workshop.date != next.date or Time.compare(workshop.start_time, next.start_time) != :eq,
       do: in_future(WorkshopPolicy.starts_at(next), reading),
       else: :ok
   end

@@ -50,6 +50,7 @@ defmodule DhcWeb.BeginnersWorkshopEmailTemplatesControllerTest do
                    "firstName",
                    "date",
                    "startTime",
+                   "endTime",
                    "venue",
                    "fee",
                    "windowEnd",

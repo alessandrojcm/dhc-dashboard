@@ -8868,7 +8868,7 @@ components:
     IntakeEmailPlaceholder:
       type: string
       description: A placeholder name in the closed Intake Email vocabulary.
-      enum: [firstName, date, startTime, venue, fee, windowEnd, paymentCutoff, refundAmount]
+      enum: [firstName, date, startTime, endTime, venue, fee, windowEnd, paymentCutoff, refundAmount]
     IntakeEmailDocument:
       type: object
       description: |

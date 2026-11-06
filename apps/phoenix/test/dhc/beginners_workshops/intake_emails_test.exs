@@ -18,6 +18,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailsTest do
     "firstName" => "Aoife",
     "date" => "Saturday 14 November 2026",
     "startTime" => "10:00",
+    "endTime" => "12:00",
     "venue" => "St. Michan's Hall",
     "fee" => "€50.00",
     "windowEnd" => "Sunday 8 November 2026, 23:59",
@@ -44,6 +45,16 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailsTest do
       for template <- IntakeEmails.list_templates() do
         assert :ok = Renderer.validate(template.email_type, template.subject, template.body),
                "#{template.email_type} fails its own save check"
+      end
+    end
+
+    test "schedule-bearing templates include the workshop end time" do
+      for type <-
+            ~w(contact_pay contact_confirm place_confirmed_paid place_confirmed_carried pre_workshop rescheduled) do
+        assert "endTime" in (type
+                             |> IntakeEmails.get_template!()
+                             |> then(&Dhc.Email.RichText.placeholder_names(&1.body))),
+               "#{type} does not show the workshop end time"
       end
     end
 
@@ -169,6 +180,16 @@ defmodule Dhc.BeginnersWorkshops.IntakeEmailsTest do
       end)
 
       assert is_binary(sealed)
+    end
+
+    test "fills an end time in a schedule-bearing template" do
+      {:ok, _} =
+        IntakeEmails.update_template("contact_pay", %{
+          body: doc([p([ph("startTime"), t("–"), ph("endTime")])])
+        })
+
+      assert {:ok, %{args: %{"data_variables" => %{"MESSAGE_HTML" => "<p>10:00–12:00</p>"}}}} =
+               IntakeEmails.queue("contact_pay", @person, @values, button_url: @intake_link)
     end
 
     test "each type uses its own button label" do

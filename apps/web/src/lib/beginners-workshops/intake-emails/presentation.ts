@@ -106,6 +106,7 @@ export const INTAKE_EMAIL_PLACEHOLDER_LABELS = {
 	firstName: "First name",
 	date: "Date",
 	startTime: "Start time",
+	endTime: "End time",
 	venue: "Venue",
 	fee: "Fee",
 	windowEnd: "Reply deadline",
