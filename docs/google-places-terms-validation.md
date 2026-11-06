@@ -2,6 +2,19 @@
 
 Checked against Google's public documentation on 6 November 2026.
 
+## Confirmed scope and account region
+
+The user reconfirmed ordinary Google Maps venue-name search: search, deliberately
+select a result, save the destination, and use it for directions and native
+Calendar location. Address-only autofill was rejected as a replacement. This
+product choice is settled; provider validation must work within it rather than
+reopening the same scope question. The intended billing account is Ireland/EEA.
+See the authoritative [venue design](google-maps-venue-design.md).
+
+These confirmations record scope and account region. They do not establish a
+licensing exception or authorize implementation, Google provisioning or
+production operations.
+
 ## Short answer
 
 The feature is technically supported: search for a venue, select it, show the
@@ -14,18 +27,17 @@ There are two different data flows:
 - **Street-address autofill:** Google expressly exempts a selected street address
   that the user could have entered accurately themselves, for that user's
   specific transaction. Keeping the existing staff-written venue label and
-  using this address for the workshop is a simpler candidate.
+  using this address for the workshop describes a different, narrower flow.
 - **Venue/business lookup plus Place Details:** the chosen integration returns
   Google business names and addresses. Those fields are not automatically
   covered by the street-address exception. Their durable use remains unvalidated.
 
-Custom licensing has not been shown necessary. Address-only entry is narrower
-than the agreed venue-name search; it is an option to discuss, not an approved
-replacement.
+Custom licensing has not been shown necessary. The address-only flow is
+reference material, not a proposed replacement for the confirmed venue search.
 
 This report does not establish that the feature is prohibited. It also does not
-clear ALE-439 or unblock ALE-442: the selected-address exception must be checked
-against the agreed venue lookup, and the intended account's terms are unknown.
+clear ALE-439 or unblock ALE-442: data retention/reuse for the agreed venue
+lookup remains to be validated under the applicable EEA terms.
 Manual destinations can proceed independently. The agreed
 [venue design](google-maps-venue-design.md) is unchanged.
 
@@ -49,26 +61,24 @@ a business name/address discovered through Place Details is not automatically
 covered. Copying a provider result into a "manual" field does not establish
 independent provenance.
 
-For the address-only candidate, keep the selected Autocomplete street-address
-text and optional Place ID; do not fetch/save a Details business name or
-`formattedAddress`. Google documents address/geocode autocomplete excluding
-businesses. This preserves the staff-owned label and can avoid importing a POI
-record. The published exception does not explicitly discuss Calendar attendee
-copies, so applying "that user's specific transaction" to the full workshop
-journey is an interpretation to record, not a Calendar guarantee.
+Google also documents address/geocode autocomplete excluding businesses. That
+is a narrower integration and is not the chosen product scope. The published
+street-address exception does not explicitly discuss Calendar attendee copies;
+it must not be presented as either a guarantee for venue lookup or a reason to
+require the rejected address-only replacement.
 [Address-entry guidance][address-entry]
 
-Before implementing Google-derived persistence, establish whether our exact
-selection/resolution flow meets the street-address exception. If it does, record
-which fields and transaction it covers. If it does not, name the specific
-conflict and return it for a decision; do not assume either approval or a need
-for a negotiated licence.
+Before implementing Google-derived persistence, establish the permitted
+retention/reuse for the exact venue selection/resolution flow. Report a concrete
+provider limitation if one is established; do not infer either approval or a
+need for a negotiated licence from an unresolved interpretation.
 
 ### Which account terms apply?
 
 EEA applicability follows the **Google billing account's address**, not the
-club's name, server region or search location. Ireland is in the EEA. The intended
-project/account and any negotiated/reseller agreement have not been inspected.
+club's name, server region or search location. The owner confirmed the intended
+billing account is Ireland/EEA. Its project and any negotiated/reseller agreement
+have not been inspected; the billing-region question is settled.
 [EEA terms][eea-terms], [FAQ][eea-faq]
 
 For an EEA account, the current SST permit address lookup/autocompletion but

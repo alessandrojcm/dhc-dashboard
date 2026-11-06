@@ -4,11 +4,10 @@ Status: scope summary confirmed by the user on 6 November 2026. No implementatio
 Google provisioning or production changes authorized.
 
 ALE-439 documentary validation is recorded in
-[Google Places terms validation](google-places-terms-validation.md). It distinguishes
-the selected street-address exception from venue/business lookup plus Details.
-The agreed venue lookup's retention/export remains unvalidated; address-only
-entry is a narrower candidate, not an approved scope change. Manual destinations
-can proceed independently. The native Calendar goal below is unchanged.
+[Google Places terms validation](google-places-terms-validation.md). Its provider
+requirements must be resolved within the confirmed venue-name search scope;
+address-only autofill was rejected as a replacement. Manual destinations remain
+available independently. The native Calendar goal below is unchanged.
 
 ## Goal
 
@@ -24,6 +23,12 @@ than introducing another Calendar delivery path. See
 
 Confirmed on 6 November 2026:
 
+- Keep ordinary Google Maps venue-name search: search for a venue, deliberately
+  select a result, save the destination, and use it for directions and Calendar's
+  native location. The user explicitly rejected an address-only downgrade and
+  further product-scope questions about that choice. Resolve provider details
+  within this scope rather than presenting speculative restrictions as a reason
+  to redesign it.
 - Cover regular Workshop create/edit and Beginners' Workshop schedule/reschedule.
 - Keep the existing short venue label separate from the selected Google location.
   Beginners' Workshop labels retain their existing 80-character email limit.
@@ -67,6 +72,9 @@ Confirmed on 6 November 2026:
   do not assume all returned place details can be stored indefinitely.
 - Places requires its own API/billing/key configuration; existing Calendar OAuth
   does not establish that Places is configured.
+- The owner confirmed that the intended Google Maps billing account is based in
+  Ireland/EEA. Use that account region for validation; the actual project and any
+  account-specific agreement have not been inspected.
 
 ## Authorization boundary
 
