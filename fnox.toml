@@ -50,3 +50,11 @@ WORKSHOP_CALENDAR_CLIENT_SECRET = { provider = "1Password", value = "WORKSHOP_CA
 WORKSHOP_CALENDAR_REFRESH_TOKEN = { provider = "1Password", value = "WORKSHOP_CALENDAR_REFRESH_TOKEN" }
 WORKSHOP_CALENDAR_COMMITTEE_ID = { provider = "1Password", value = "WORKSHOP_CALENDAR_COMMITTEE_ID" }
 WORKSHOP_CALENDAR_PARTICIPANT_ID = { provider = "1Password", value = "WORKSHOP_CALENDAR_PARTICIPANT_ID" }
+# Optional training-calendar ACL sync. Safe defaults keep deployment inactive
+# before these items exist, even with FNOX_IF_MISSING=error. An enabled sync
+# with missing credentials fails explicitly in the worker instead of sending.
+TRAINING_CALENDAR_ENABLED = { provider = "1Password", value = "TRAINING_CALENDAR_ENABLED", default = "false" }
+TRAINING_CALENDAR_ID = { provider = "1Password", value = "TRAINING_CALENDAR_ID", default = "" }
+TRAINING_CALENDAR_CLIENT_ID = { provider = "1Password", value = "TRAINING_CALENDAR_CLIENT_ID", default = "" }
+TRAINING_CALENDAR_CLIENT_SECRET = { provider = "1Password", value = "TRAINING_CALENDAR_CLIENT_SECRET", default = "" }
+TRAINING_CALENDAR_REFRESH_TOKEN = { provider = "1Password", value = "TRAINING_CALENDAR_REFRESH_TOKEN", default = "" }

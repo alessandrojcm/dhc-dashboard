@@ -132,6 +132,9 @@ config :dhc, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 0 * * *", Dhc.StripeSync.Worker},
+       # Oban's existing crontab is UTC. Both possible Dublin-midnight slots
+       # wake this worker; it ignores the other slot without changing other jobs.
+       {"0 0,23 * * *", Dhc.TrainingCalendar.Workers.SyncWorker},
        # Deletes notifications older than three months (read or unread).
        {"0 0 * * *", Dhc.Notifications.Workers.RetentionWorker},
        {"0 * * * *", Dhc.Discord.Workers.JoinGrantCleanupWorker},

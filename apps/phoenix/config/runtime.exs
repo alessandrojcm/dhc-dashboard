@@ -10,6 +10,14 @@ unless config_env() == :test do
     refresh_token: System.get_env("WORKSHOP_CALENDAR_REFRESH_TOKEN"),
     committee_calendar_id: System.get_env("WORKSHOP_CALENDAR_COMMITTEE_ID"),
     participant_calendar_id: System.get_env("WORKSHOP_CALENDAR_PARTICIPANT_ID")
+
+  # Sharing is a separate integration/credential: never broaden Workshop OAuth.
+  config :dhc, Dhc.TrainingCalendar,
+    enabled: System.get_env("TRAINING_CALENDAR_ENABLED") == "true",
+    calendar_id: System.get_env("TRAINING_CALENDAR_ID"),
+    client_id: System.get_env("TRAINING_CALENDAR_CLIENT_ID"),
+    client_secret: System.get_env("TRAINING_CALENDAR_CLIENT_SECRET"),
+    refresh_token: System.get_env("TRAINING_CALENDAR_REFRESH_TOKEN")
 end
 
 # Test protocol probes own the REST limiter and must never use inherited bot
