@@ -32,9 +32,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
   refusal is `refused` with the reason. A retry that finds the Intake
   history row naming this reply knows the action already ran. (A person
   command with no open Intake writes no history row; a retry after a crash
-  between its commit and the row update finds it `already_done`. A restore
-  writes no history row either, so it stamps the reply's
-  `action_committed_at` in its own transaction and a retry reports it done.)
+  between its commit and the row update finds it `already_done`.)
 
   A Jev failure returns `{:error, :classifier_failed}` so the job retries;
   on the last attempt (`final: true`) it is `needs_you` /
@@ -47,11 +45,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
   import Ecto.Query
 
   alias Dhc.BeginnersWorkshops
-  alias Dhc.BeginnersWorkshops.{CarriedFee, Clock, Intake, IntakeEvent, IntakeReply}
+  alias Dhc.BeginnersWorkshops.{CarriedFee, Intake, IntakeEvent, IntakeReply}
   alias Dhc.BeginnersWorkshops.IntakeReplies.{Classifier, ReplyActions, ReplyText}
   alias Dhc.Repo
-  alias Dhc.Waitlist
-  alias Dhc.Waitlist.WaitlistEntry
 
   @automated_precedence ~w(auto_reply bulk junk)
 
@@ -154,7 +150,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
 
   # The person's state for the table, read without a lock: the boundary's
   # locked re-check decides (retention on the same clock it is passed).
-  defp person_facts(binding, opts) do
+  defp person_facts(binding, _opts) do
     waitlist_id = binding.waitlist_id
     entry = binding.waitlist_entry
 
@@ -174,15 +170,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
         Repo.exists?(
           from(f in CarriedFee, where: f.waitlist_id == ^waitlist_id and f.status == "held")
         ),
-      standing: entry.status,
-      restorable: restorable?(entry, opts)
+      standing: entry.status
     }
   end
-
-  defp restorable?(%WaitlistEntry{status: "removed", removed_at: %DateTime{} = at}, opts),
-    do: Waitlist.restorable?(at, Clock.read(Clock.from_opts(opts)).now)
-
-  defp restorable?(_entry, _opts), do: false
 
   # ── Acting ──────────────────────────────────────────────────────
 
@@ -192,8 +182,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
     "cancel_with_refund" => {:intake, :cancel_with_refund},
     "resend_link" => {:intake, :resend_link},
     "withdraw" => {:person, :withdraw},
-    "refund_carried_fee" => {:person, :refund_carried_fee},
-    "restore_person" => {:person, :restore_person}
+    "refund_carried_fee" => {:person, :refund_carried_fee}
   }
 
   defp chosen(%IntakeReply{command: command}), do: Map.fetch!(@commands, command)
@@ -232,14 +221,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Decision do
       BeginnersWorkshops.execute(
         {:intake_reply, id},
         {:refund_carried_fee, binding.waitlist_id, %{}},
-        clock_opts(opts)
-      )
-
-  defp run(%IntakeReply{id: id, reply_address: binding}, {:person, :restore_person}, opts),
-    do:
-      BeginnersWorkshops.execute(
-        {:intake_reply, id},
-        {:restore_person, binding.waitlist_id},
         clock_opts(opts)
       )
 

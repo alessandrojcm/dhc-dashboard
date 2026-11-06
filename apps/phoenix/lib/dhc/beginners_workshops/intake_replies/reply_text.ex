@@ -17,11 +17,11 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyText do
      forwarded-message markers, the signature delimiter `-- `, and mobile
      footers ("Sent from my iPhone", "Get Outlook for …"). A separator rule
      right above the cut goes with it.
-  3. **Redaction.** Every URL becomes `[link]` and every email address
-     `[email]`, so the Intake link and addresses never leave Phoenix even when
-     quoting slips past step 2. A link counts with a scheme, with `www.`, or as
-     a bare host followed by a path. Names in the person's own words are not
-     redacted.
+  3. **Redaction.** Every URL becomes `[link]`, every email address
+     `[email]`, and every phone number `[phone]`, so the Intake link,
+     addresses and phone numbers never leave Phoenix even when quoting slips
+     past step 2. A link counts with a scheme, with `www.`, or as a bare host
+     followed by a path. Names in the person's own words are not redacted.
   4. **Size.** At most 2,000 characters; `:empty` when nothing is left.
   """
 
@@ -55,6 +55,10 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyText do
   # link looks once a client drops the scheme).
   @url ~r/\b(?:https?:\/\/|www\.|(?:[a-z0-9-]+\.)+[a-z]{2,}\/)[^\s<>"']*[^\s<>"'.,;:!?)\]]/i
   @email ~r/[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/
+  # Based on `Dhc.Waitlist.Import.Sheet.@phone_pattern`: an optional `+` (and
+  # a leading `(` for a bracketed area code), then a run of digits/spaces/
+  # dashes/parens/dots of at least six digits.
+  @phone ~r/\+?\(?\d[\d \-().]{5,}\d/u
 
   @block_tags ~w(p div tr li ul ol table h1 h2 h3 h4 h5 h6 hr pre section article header footer)
   @entities %{
@@ -92,7 +96,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyText do
 
   @type parts :: %{optional(:text) => String.t() | nil, optional(:html) => String.t() | nil}
 
-  @doc "The person's new text, quoted history removed and links and addresses redacted."
+  @doc "The person's new text, quoted history removed and links, addresses and phone numbers redacted."
   @spec extract(parts()) :: {:ok, String.t()} | :empty
   def extract(parts) when is_map(parts) do
     parts
@@ -172,6 +176,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyText do
     text
     |> then(&Regex.replace(@url, &1, "[link]"))
     |> then(&Regex.replace(@email, &1, "[email]"))
+    |> then(&Regex.replace(@phone, &1, "[phone]"))
   end
 
   defp tidy(text), do: text |> String.replace(~r/\n{3,}/, "\n\n") |> String.trim()

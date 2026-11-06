@@ -50,10 +50,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.Forward do
     "refund_carried_fee" =>
       {"Credit refunded", "Done by email reply: a refund of their workshop credit was requested."},
     "resend_link" =>
-      {"Link resent", "Done by email reply: their workshop place link was sent again."},
-    "restore_person" =>
-      {"Restored",
-       "Done by email reply: they were put back on the Waitlist with their original priority, and told so."}
+      {"Link resent", "Done by email reply: their workshop place link was sent again."}
   }
 
   # Why nothing was done, by recorded reason.

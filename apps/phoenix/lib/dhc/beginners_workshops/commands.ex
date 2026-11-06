@@ -42,8 +42,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       `IntakeReplies.forward/2`. Authorized for exactly
       `@intake_reply_commands` (`decline`, `defer`, `cancel_with_refund`,
       `withdraw` with `refund: true` only, `refund_carried_fee`,
-      `resend_link`, and ALE-412's `restore_person`, which no other actor
-      runs) and only for a recorded Intake Reply; it never reaches
+      `resend_link`) and only for a recorded Intake Reply; it never reaches
       `forfeit_carried_fee`. The boundary's locked policy re-check still
       decides, and the Intake history row names the reply, not a Principal.
 
@@ -78,7 +77,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       `rotate_link`, `refund_carried_fee`, `correct_attendance`);
     * `Commands.People` — the Waitlist tab's `withdraw` and
       `refund_carried_fee`, `link_carried_fee_payment`, `delete_person`,
-      `purge_retention`, `import_carried_fee`, `restore_person`;
+      `purge_retention`, `import_carried_fee`;
     * `Commands.Attendance` — `check_in`, `undo_check_in`,
       `pass_payment_cutoff`, `finish_workshop`, `finalise_attendance`,
       `send_follow_ups`, `invite`;
@@ -181,7 +180,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:delete_person, waitlist_id :: binary(), map()}
           | {:purge_retention, waitlist_id :: binary()}
           | {:alert_reply_waiting, resend_email_id :: String.t()}
-          | {:restore_person, waitlist_id :: binary()}
           | {IntakePolicy.command(), workshop_id :: binary(), intake_id :: binary(), map()}
 
   @typedoc """
@@ -352,9 +350,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     :cancel_with_refund,
     :withdraw,
     :refund_carried_fee,
-    :resend_link,
-    # ALE-412: only a reply puts a person back on the Waitlist this way.
-    :restore_person
+    :resend_link
   ]
 
   # Stripe-driven commands (webhooks and the success return).
@@ -391,7 +387,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     delete_person: People,
     purge_retention: People,
     import_carried_fee: People,
-    restore_person: People,
     check_in: Attendance,
     undo_check_in: Attendance,
     pass_payment_cutoff: Attendance,

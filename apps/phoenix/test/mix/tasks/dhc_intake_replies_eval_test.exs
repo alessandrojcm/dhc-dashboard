@@ -46,7 +46,7 @@ defmodule Mix.Tasks.Dhc.IntakeReplies.EvalTest do
     assert "  90.0%: 1 actions, 0 wrong, 0 to coordinator" in output
     assert "  recommended: stay off (fewer than 20 examples)" in output
 
-    for intent <- ~w(leaving_waitlist wants_refund wants_to_come_back link_problem something_else) do
+    for intent <- ~w(leaving_waitlist wants_refund link_problem something_else) do
       assert "#{intent}: 0 examples" in output
     end
 

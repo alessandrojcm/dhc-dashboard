@@ -278,6 +278,21 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyTextTest do
       assert {:ok, "[email] or [email]"} = ReplyText.extract(%{text: nil, html: html})
     end
 
+    test "phone numbers in the person's words are redacted" do
+      text = """
+      My mobile is +353 87 123 4567, or ring (01) 234 5678 in the day.
+      Landline 0830994752 also works.
+      """
+
+      assert {:ok, result} = ReplyText.extract(%{text: text, html: nil})
+
+      assert result ==
+               "My mobile is [phone], or ring [phone] in the day.\n" <>
+                 "Landline [phone] also works."
+
+      refute result =~ ~r/\d{7,}/
+    end
+
     test "quoting that no rule recognises still loses its link and addresses" do
       text = """
       yes please

@@ -9,7 +9,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions do
   | `cant_make_date` | Decline | money back → Cancel with refund, else Deferral | — | — |
   | `leaving_waitlist` | Withdrawal | money back → Withdrawal with refund, else coordinator | same as Paid | Withdrawal |
   | `wants_refund` | — | Cancel with refund | Refund the Carried Fee | — |
-  | `wants_to_come_back` | — | — | — | removed within retention → Restore |
   | `link_problem` | Resend link | Resend link | — | — |
 
   Money errs towards what can be undone: unclear money on "can't make it"
@@ -20,12 +19,8 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions do
   Intake intents (`cant_make_date`, `wants_refund` on a paid Intake,
   `link_problem`) act only while the Intake the email was about is still
   the person's open Intake (`binding_open`); person intents
-  (`leaving_waitlist`, `wants_refund` on a held Carried Fee,
-  `wants_to_come_back`) act whichever email was answered.
-
-  "Wants to come back" (ALE-412) restores only someone with no open Intake
-  whose standing is `removed` within retention (`restorable`); anyone else
-  is the coordinator's.
+  (`leaving_waitlist`, `wants_refund` on a held Carried Fee) act whichever
+  email was answered.
 
   These facts are read without a lock and only choose the command: the
   boundary's locked `IntakePolicy`/`CarriedFeePolicy` re-check decides.
@@ -38,25 +33,22 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions do
       person's open Intake;
     * `open_intake` — the state of the person's open Intake, if any;
     * `held_fee` — the person holds a `held` Carried Fee;
-    * `standing` — their Waitlist status;
-    * `restorable` — they are `removed` and still within retention
-      (`Dhc.Waitlist.restorable?/2`).
+    * `standing` — their Waitlist status.
   """
   @type t :: %__MODULE__{
           binding_open: boolean(),
           open_intake: String.t() | nil,
           held_fee: boolean(),
-          standing: String.t() | nil,
-          restorable: boolean()
+          standing: String.t() | nil
         }
 
-  @enforce_keys [:binding_open, :open_intake, :held_fee, :standing, :restorable]
+  @enforce_keys [:binding_open, :open_intake, :held_fee, :standing]
   defstruct @enforce_keys
 
   @type money :: :yes | :no | :unclear
   @type action ::
           {:intake, :decline | :defer | :cancel_with_refund | :resend_link}
-          | {:person, :withdraw | :refund_carried_fee | :restore_person}
+          | {:person, :withdraw | :refund_carried_fee}
   @type decision :: {:ok, action()} | {:none, reason :: String.t()}
 
   @type config :: %{
@@ -66,7 +58,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions do
 
   # The intents that can lead to a command, in spec order (`something_else`
   # never does).
-  @intents ~w(cant_make_date leaving_waitlist wants_refund wants_to_come_back link_problem)
+  @intents ~w(cant_make_date leaving_waitlist wants_refund link_problem)
 
   @default_threshold 0.9
   @default_money_back %{yes: 0.8, no: 0.2}
@@ -141,13 +133,6 @@ defmodule Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions do
 
   def action("wants_refund", _money, %__MODULE__{held_fee: true}),
     do: {:ok, {:person, :refund_carried_fee}}
-
-  def action(
-        "wants_to_come_back",
-        _money,
-        %__MODULE__{open_intake: nil, standing: "removed", restorable: true}
-      ),
-      do: {:ok, {:person, :restore_person}}
 
   def action("link_problem", _money, %__MODULE__{} = facts) do
     intake_action(facts, fn _open -> :resend_link end)
