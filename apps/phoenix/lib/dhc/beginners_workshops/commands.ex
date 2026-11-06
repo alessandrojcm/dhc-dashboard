@@ -84,6 +84,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     * `Commands.Staff` — `set_staff` and the Staff Notifications;
     * `Commands.Replies` — `alert_reply_waiting` (an Intake Reply that could
       not be forwarded, ALE-409).
+    * `Commands.CalendarLaunch` — `materialize_calendar_launch`, the
+      source-owned no-Google launch binding pass.
 
   To add a command: its capability in `@staff_capabilities` (or its actor
   list; a Reply Action also joins `@intake_reply_commands`), its name in `@families`, a `run/3` clause in its family module, and
@@ -107,8 +109,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   alias Dhc.BeginnersWorkshops.Commands.{
     Attendance,
     Batches,
+    CalendarLaunch,
     IntakeCommands,
-    NotificationCopy,
     Payments,
     People,
     Protocol,
@@ -182,6 +184,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:delete_person, waitlist_id :: binary(), map()}
           | {:purge_retention, waitlist_id :: binary()}
           | {:alert_reply_waiting, resend_email_id :: String.t()}
+          | {:materialize_calendar_launch, workshop_id :: binary()}
           | {IntakePolicy.command(), workshop_id :: binary(), intake_id :: binary(), map()}
 
   @typedoc """
@@ -341,7 +344,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     :send_follow_ups,
     :import_carried_fee,
     :purge_retention,
-    :alert_reply_waiting
+    :alert_reply_waiting,
+    :materialize_calendar_launch
   ]
 
   # The person's Intake-page commands (`{:intake_link, token}`).
@@ -401,7 +405,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     send_follow_ups: Attendance,
     invite: Attendance,
     set_staff: Staff,
-    alert_reply_waiting: Replies
+    alert_reply_waiting: Replies,
+    materialize_calendar_launch: CalendarLaunch
   }
 
   @doc """
@@ -415,16 +420,6 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       run(actor, command, Clock.from_opts(opts))
     end
   end
-
-  @doc false
-  defdelegate calendar_failure_copy(source_id, failure),
-    to: NotificationCopy,
-    as: :calendar_failed
-
-  @doc false
-  defdelegate calendar_recipient_failure_copy(source_id, place_id),
-    to: NotificationCopy,
-    as: :calendar_recipient_failed
 
   @doc "The transition table: entity → from status → legal target statuses."
   @spec transitions() :: %{atom() => %{String.t() => [String.t()]}}

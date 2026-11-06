@@ -5,14 +5,11 @@ defmodule Dhc.WorkshopCalendar do
   Source changes record identifier-only intent in their existing transaction.
   Workers and periodic repair both run `sync/3`, always against current facts.
   Sending starts inactive; provisioning and reviewed activation belong to the
-  launch workflow, not deploying this integration. Pause is durable across nodes
-  and stops starting mutations, not requests already in flight.
+  launch workflow, not deploying this integration.
   """
-  import Ecto.Query
-
   alias Dhc.BeginnersWorkshops
   alias Dhc.Repo
-  alias Dhc.WorkshopCalendar.{Alerts, Control, Recipients, Store, Sync}
+  alias Dhc.WorkshopCalendar.{Alerts, Launch, Recipients, Store, Sync}
   alias Dhc.Workshops
 
   @doc "Records a source change in the caller's transaction; never calls Google."
@@ -34,10 +31,11 @@ defmodule Dhc.WorkshopCalendar do
   def forget_places(kind, place_ids) when kind in [:workshop, :beginners_workshop],
     do: Recipients.forget(kind, place_ids)
 
-  @doc "Operator-only address repair. Requires pause and no live event owner; never calls Google inline."
-  def correct_recipient(kind, id, place_id, recipient)
-      when kind in [:workshop, :beginners_workshop],
-      do: Recipients.correct(kind, id, place_id, recipient)
+  @doc "Read-only operator preview; recipient details must not be put in application logs."
+  defdelegate preview(opts \\ []), to: Launch
+
+  @doc "Explicitly activates the configured target and includes current upcoming confirmed places."
+  defdelegate activate(target, opts \\ []), to: Launch
 
   @doc "Reconciles one source through the same protocol used by every driver."
   def sync(kind, id, opts \\ []) when kind in [:workshop, :beginners_workshop] do
@@ -90,16 +88,6 @@ defmodule Dhc.WorkshopCalendar do
     :ok
   end
 
-  @doc "Pauses new outbound mutations without discarding work."
-  def pause, do: set_paused(true)
-
-  @doc "Resumes current-state reconciliation; does not activate an inactive installation."
-  def resume do
-    :ok = Store.resume_failed()
-    :ok = set_paused(false)
-    repair()
-  end
-
   @doc false
   def config, do: Application.get_env(:dhc, __MODULE__, [])
 
@@ -108,11 +96,10 @@ defmodule Dhc.WorkshopCalendar do
 
   @doc false
   def outbound? do
-    Keyword.get(config(), :active, false) == true and not Repo.get!(Control, 1).paused
-  end
-
-  defp set_paused(paused) do
-    Repo.update_all(from(c in Control, where: c.id == 1), set: [paused: paused])
-    :ok
+    # Protocol tests opt in without production credentials. Runtime configuration
+    # can never bypass the durable, target-bound activation outside tests.
+    if Application.get_env(:dhc, :environment) == :test and Keyword.has_key?(config(), :active),
+      do: Keyword.fetch!(config(), :active) == true,
+      else: Launch.active?()
   end
 end

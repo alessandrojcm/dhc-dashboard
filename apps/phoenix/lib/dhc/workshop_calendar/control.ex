@@ -4,6 +4,7 @@ defmodule Dhc.WorkshopCalendar.Control do
 
   @primary_key {:id, :integer, autogenerate: false}
   schema "workshop_calendar_control" do
-    field :paused, :boolean, default: false
+    field :activation_key, :string
+    field :activated_at, :utc_datetime_usec
   end
 end

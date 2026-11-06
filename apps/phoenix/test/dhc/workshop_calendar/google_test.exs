@@ -243,9 +243,9 @@ defmodule Dhc.WorkshopCalendar.GoogleTest do
       Req.Test.json(conn, %{"access_token" => "short-lived"})
     end)
 
-    assert {:skip, :paused} =
+    assert {:skip, :inactive} =
              Google.insert("committee", %{"summary" => "Workshop"},
-               before_mutation: fn -> {:skip, :paused} end
+               before_mutation: fn -> {:skip, :inactive} end
              )
   end
 

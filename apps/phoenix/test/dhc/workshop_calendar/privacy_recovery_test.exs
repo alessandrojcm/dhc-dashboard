@@ -2,6 +2,8 @@ defmodule Dhc.WorkshopCalendar.PrivacyRecoveryTest do
   use Dhc.DataCase, async: false
   use Oban.Testing, repo: Dhc.Repo
 
+  import Dhc.WorkshopCalendarTestConfig, only: [activate!: 1, deactivate!: 0]
+
   alias Dhc.BeginnersIntakeStripe, as: Stripe
   alias Dhc.BeginnersWorkshopFixtures, as: Fixtures
   alias Dhc.BeginnersWorkshops
@@ -34,98 +36,25 @@ defmodule Dhc.WorkshopCalendar.PrivacyRecoveryTest do
     %{server: server, staff: Fixtures.staff_fixture()}
   end
 
-  test "a paused correction retains both addresses until an early-finalised hard delete cleans them",
-       ctx do
+  test "a terminal Google authorization failure retains privacy cleanup and reports once", ctx do
+    Sentry.Test.setup_sentry()
     {workshop, {intake, _token}} = paid_workshop(ctx.staff)
     assert :ok = sync(workshop.id, @now)
-    original = recipient!(intake.id).recipient
-
-    assert :ok = WorkshopCalendar.pause()
-
-    assert :ok =
-             WorkshopCalendar.correct_recipient(
-               :beginners_workshop,
-               workshop.id,
-               intake.id,
-               "corrected@example.com"
-             )
-
-    assert %{recipient: "corrected@example.com", previous_recipients: [^original]} =
-             recipient!(intake.id)
-
-    finish_and_delete!(ctx.staff, workshop.id, intake.waitlist_id)
-
-    assert %{
-             privacy_pending: true,
-             recipient: "corrected@example.com",
-             previous_recipients: [^original]
-           } =
-             recipient!(intake.id)
-
-    assert :ok = WorkshopCalendar.resume()
-    assert :ok = sync(workshop.id, @early)
-    assert participant(ctx.server)["attendees"] == []
-
-    assert %{active: false, recipient: nil, previous_recipients: [], privacy_pending: false} =
-             recipient!(intake.id)
-  end
-
-  test "a terminal Google authorization failure retains privacy cleanup and alerts once", ctx do
-    {workshop, {intake, _token}} = paid_workshop(ctx.staff)
-    assert :ok = sync(workshop.id, @now)
-    assert :ok = WorkshopCalendar.pause()
+    config = deactivate!()
     finish_and_delete!(ctx.staff, workshop.id, intake.waitlist_id)
     Agent.update(ctx.server, &%{&1 | status: 401})
 
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = sync(workshop.id, @early)
 
     assert %{privacy_pending: true, recipient: recipient} = recipient!(intake.id)
     assert is_binary(recipient)
     assert %{failure: "unauthorized", retry_at: nil} = participant_event!(workshop.id)
-    assert 1 == calendar_alert_count(ctx.staff)
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
 
     assert :ok = WorkshopCalendar.repair(clock: fn -> @early end)
     assert :ok = sync(workshop.id, @early)
-    assert 1 == calendar_alert_count(ctx.staff)
-  end
-
-  test "resume repairs privacy cleanup and disposes retained addresses and failure fields", ctx do
-    {workshop, {intake, _token}} = paid_workshop(ctx.staff)
-    assert :ok = sync(workshop.id, @now)
-    assert :ok = WorkshopCalendar.pause()
-
-    assert :ok =
-             WorkshopCalendar.correct_recipient(
-               :beginners_workshop,
-               workshop.id,
-               intake.id,
-               "rejected@example.com"
-             )
-
-    assert :ok = WorkshopCalendar.resume()
-    Agent.update(ctx.server, &%{&1 | rejected_recipients: ["rejected@example.com"]})
-    assert :ok = sync(workshop.id, @now)
-
-    assert %{failure: "rejected_recipient", failure_episode: episode} = recipient!(intake.id)
-    assert is_binary(episode)
-
-    assert :ok = WorkshopCalendar.pause()
-    finish_and_delete!(ctx.staff, workshop.id, intake.waitlist_id)
-    Agent.update(ctx.server, &%{&1 | rejected_recipients: []})
-
-    assert :ok = WorkshopCalendar.resume()
-    assert :ok = sync(workshop.id, @early)
-
-    assert %{
-             active: false,
-             recipient: nil,
-             previous_recipients: [],
-             privacy_pending: false,
-             failure: nil,
-             failure_episode: nil,
-             alerted_at: nil
-           } = recipient!(intake.id)
+    assert Sentry.Test.pop_sentry_reports() == []
   end
 
   test "an identifier-only worker cleans a deleted person's old binding without recreating an event",
@@ -140,10 +69,10 @@ defmodule Dhc.WorkshopCalendar.PrivacyRecoveryTest do
       "audience" => "participant"
     }
 
-    assert :ok = WorkshopCalendar.pause()
+    config = deactivate!()
     finish_and_delete!(ctx.staff, workshop.id, intake.waitlist_id)
     refute Repo.get(Dhc.Waitlist.WaitlistEntry, intake.waitlist_id)
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = perform_job(SyncWorker, args)
 
     assert participant(ctx.server)["id"] == original["id"]
@@ -185,7 +114,7 @@ defmodule Dhc.WorkshopCalendar.PrivacyRecoveryTest do
     {workshop, {intake, _token}} = paid_workshop(ctx.staff)
     assert :ok = sync(workshop.id, @now)
     event = participant(ctx.server)
-    assert :ok = WorkshopCalendar.pause()
+    config = deactivate!()
 
     assert {:ok, _} =
              command(ctx.staff, {:cancel_workshop, workshop.id, %{reason: "Closed"}}, @early)
@@ -194,7 +123,7 @@ defmodule Dhc.WorkshopCalendar.PrivacyRecoveryTest do
              command(ctx.staff, {:delete_person, intake.waitlist_id, %{refund: false}}, @early)
 
     assert %{privacy_pending: true} = recipient!(intake.id)
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = sync(workshop.id, @early)
     assert HTTP.events(ctx.server)[event["id"]]["status"] == "cancelled"
 
@@ -249,11 +178,6 @@ defmodule Dhc.WorkshopCalendar.PrivacyRecoveryTest do
       )
 
   defp recipient!(intake_id), do: Repo.get_by!(Recipient, place_id: intake_id)
-
-  defp calendar_alert_count(staff) do
-    {:ok, %{notifications: notifications}} = Dhc.Notifications.list_for_user(staff)
-    Enum.count(notifications, &String.starts_with?(&1.body, "Workshop Calendar"))
-  end
 
   defp post_count(server), do: server |> HTTP.mutations() |> Enum.count(&(&1.method == "POST"))
 end

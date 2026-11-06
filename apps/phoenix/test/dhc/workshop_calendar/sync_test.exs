@@ -2,6 +2,8 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
   use Dhc.DataCase, async: false
   use Oban.Testing, repo: Dhc.Repo
 
+  import Dhc.WorkshopCalendarTestConfig, only: [activate!: 1, deactivate!: 0]
+
   alias Dhc.WorkshopCalendar
   alias Dhc.WorkshopCalendar.Google
   alias Dhc.WorkshopCalendar.Workers.SyncWorker
@@ -140,16 +142,16 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     assert cancelled["location"] == event["location"]
   end
 
-  test "deletion work survives the source, pause, and event end; repairs do not resurrect it" do
+  test "deletion work survives the source, inactive configuration, and event end; repairs do not resurrect it" do
     server = google_surface!()
     workshop = create_workshop!()
     assert :ok = sync(workshop.id)
-    assert :ok = WorkshopCalendar.pause()
+    config = deactivate!()
     assert {:ok, :deleted} = Workshops.delete_workshop(workshop.id)
     assert Workshops.calendar_projection(workshop.id) == nil
     assert :ok = sync(workshop.id)
     assert [_] = WorkshopCalendarHTTP.mutations(server)
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = sync_at(workshop.id, ~U[2027-04-01 00:00:00Z])
     assert [%{"status" => "cancelled"}] = Map.values(WorkshopCalendarHTTP.events(server))
     assert :ok = sync(workshop.id)
@@ -230,8 +232,8 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
   end
 
   test "conflicting tombstoned identities consume the bounded retry budget rather than looping" do
+    Sentry.Test.setup_sentry()
     server = google_surface!()
-    manager = manager!()
     workshop = create_workshop!()
     Agent.update(server, &%{&1 | insert_conflict: true})
 
@@ -242,7 +244,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
       end)
 
     assert :ok = sync_at(workshop.id, now)
-    assert {:ok, %{notifications: [_]}} = Dhc.Notifications.list_for_user(manager.principal_id)
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
     count = length(WorkshopCalendarHTTP.mutations(server))
     assert count == 6
     assert :ok = sync_at(workshop.id, DateTime.add(now, 86_400))
@@ -260,14 +262,15 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     assert [_] = WorkshopCalendarHTTP.mutations(server)
   end
 
-  test "pause during token refresh prevents starting an event mutation" do
+  test "inactive configuration during token refresh prevents starting an event mutation" do
     parent = self()
+    config = WorkshopCalendar.config()
 
     server =
       google_surface!(fn conn ->
         if conn.host == "oauth2.googleapis.com" do
           send(parent, :refresh_seen)
-          WorkshopCalendar.pause()
+          Application.put_env(:dhc, WorkshopCalendar, Keyword.put(config, :active, false))
         end
       end)
 
@@ -275,7 +278,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     assert :ok = sync(workshop.id)
     assert_receive :refresh_seen
     assert WorkshopCalendarHTTP.mutations(server) == []
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     WorkshopCalendarHTTP.stub(server)
     assert :ok = sync(workshop.id)
     assert [_] = WorkshopCalendarHTTP.mutations(server)
@@ -301,30 +304,24 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     assert Workshops.calendar_projection(workshop.id).status == "published"
   end
 
-  test "permanent failures alert only active Workshop managers, once even after Notification retention" do
+  test "permanent failures report once across repeated reconciliation" do
+    Sentry.Test.setup_sentry()
     server = google_surface!()
-    manager = manager!()
-    outsider = WorkshopFixtures.member_fixture()
     workshop = create_workshop!()
     Agent.update(server, &%{&1 | status: 401})
     assert :ok = sync(workshop.id)
 
-    assert {:ok, %{notifications: [notification]}} =
-             Dhc.Notifications.list_for_user(manager.principal_id)
-
-    assert notification.body =~ "authorization"
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(outsider.principal_id)
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
     requests = length(WorkshopCalendarHTTP.requests(server))
-    Repo.delete_all(Dhc.Notifications.Notification)
     assert :ok = WorkshopCalendar.repair(clock: fn -> @now end)
     assert :ok = sync(workshop.id)
     assert length(WorkshopCalendarHTTP.requests(server)) == requests
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(manager.principal_id)
+    assert Sentry.Test.pop_sentry_reports() == []
   end
 
-  test "resume after organizer authorization repair reconciles the cancellation recorded while paused" do
+  test "terminal authorization failure retains later cancellation without resetting its report episode" do
+    Sentry.Test.setup_sentry()
     server = google_surface!()
-    manager = manager!()
     workshop = create_workshop!()
     {:ok, _} = Workshops.publish_workshop(workshop.id)
     args = %{"source_kind" => "workshop", "source_id" => workshop.id}
@@ -332,26 +329,25 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     Agent.update(server, &%{&1 | revoked: true})
     assert :ok = perform_job(SyncWorker, args)
 
-    assert {:ok, %{notifications: [notification]}} =
-             Dhc.Notifications.list_for_user(manager.principal_id)
-
-    assert notification.body =~ "authorization"
-
-    assert :ok = WorkshopCalendar.pause()
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
+    request_count = length(WorkshopCalendarHTTP.requests(server))
+    config = deactivate!()
     assert {:ok, _} = Workshops.cancel_workshop(workshop.id)
     Agent.update(server, &%{&1 | revoked: false})
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = perform_job(SyncWorker, args)
 
-    assert [%{"summary" => "[Cancelled] Longsword"}] =
+    assert [%{"summary" => "Longsword"}] =
              Map.values(WorkshopCalendarHTTP.events(server))
 
-    assert {:ok, %{notifications: [_]}} = Dhc.Notifications.list_for_user(manager.principal_id)
+    assert Workshops.calendar_projection(workshop.id).status == "cancelled"
+    assert length(WorkshopCalendarHTTP.requests(server)) == request_count
+    assert Sentry.Test.pop_sentry_reports() == []
   end
 
-  test "transient failures retry with bounded backoff and retain one exhausted failure alert" do
+  test "transient failures retry with bounded backoff and retain one exhausted failure report" do
+    Sentry.Test.setup_sentry()
     server = google_surface!()
-    manager = manager!()
     workshop = create_workshop!()
     Agent.update(server, &%{&1 | status: 503})
 
@@ -363,10 +359,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
 
     assert :ok = sync_at(workshop.id, now)
 
-    assert {:ok, %{notifications: [notification]}} =
-             Dhc.Notifications.list_for_user(manager.principal_id)
-
-    assert notification.body =~ "exhausted"
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
     count = length(WorkshopCalendarHTTP.requests(server))
     assert :ok = sync_at(workshop.id, DateTime.add(now, 86_400))
     assert length(WorkshopCalendarHTTP.requests(server)) == count
@@ -406,17 +399,6 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     server = start_supervised!({Agent, fn -> WorkshopCalendarHTTP.initial() end})
     WorkshopCalendarHTTP.stub(server, before_request)
     server
-  end
-
-  defp manager! do
-    manager = WorkshopFixtures.member_fixture()
-
-    Repo.insert!(%Dhc.Auth.UserRole{
-      principal_id: manager.principal_id,
-      role: "workshop_coordinator"
-    })
-
-    manager
   end
 
   defp create_workshop! do

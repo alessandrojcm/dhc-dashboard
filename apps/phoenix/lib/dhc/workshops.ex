@@ -250,6 +250,47 @@ defmodule Dhc.Workshops do
     |> Repo.all()
   end
 
+  @doc "Closed projections for the upcoming sources selected during Calendar launch."
+  @spec calendar_launch_sources(DateTime.t()) :: [map()]
+  def calendar_launch_sources(%DateTime{} = now) do
+    from(w in Workshop,
+      where: w.status != "cancelled" and w.start_date > ^now,
+      order_by: [asc: w.start_date, asc: w.id],
+      select: %{
+        id: w.id,
+        title: w.title,
+        status: w.status,
+        start_date: w.start_date,
+        end_date: w.end_date,
+        location: w.location
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc "Current confirmed Workshop places and their saved registration addresses."
+  @spec calendar_launch_places(binary()) :: [%{place_id: binary(), recipient: String.t() | nil}]
+  def calendar_launch_places(workshop_id) when is_binary(workshop_id) do
+    from(r in Registration,
+      where: r.club_activity_id == ^workshop_id and r.status == "confirmed",
+      order_by: [asc: r.id],
+      select: %{place_id: r.id, recipient: r.email}
+    )
+    |> Repo.all()
+  end
+
+  @doc "Materializes Calendar launch intent through the Workshop write boundary."
+  @spec materialize_calendar_launch(binary(), keyword()) ::
+          :ok | {:error, :missing_end_time | :invalid_schedule}
+  def materialize_calendar_launch(workshop_id, opts \\ []) when is_binary(workshop_id) do
+    clock = Keyword.get(opts, :clock, &DateTime.utc_now/0)
+
+    case PaymentCommands.execute(:system, {:materialize_calendar_launch, workshop_id, clock}) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # ── Counts ────────────────────────────────────────────────────────────
 
   @doc """

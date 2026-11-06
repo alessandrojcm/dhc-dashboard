@@ -104,8 +104,6 @@ config :dhc, Dhc.BeginnersWorkshops.IntakeReplies.ReplyActions,
   money_back: [yes: 0.8, no: 0.2]
 
 # Configure Oban for background job processing
-config :dhc, Dhc.WorkshopCalendar, active: false
-
 config :dhc, Oban,
   repo: Dhc.Repo,
   prefix: "public",

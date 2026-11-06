@@ -13,6 +13,9 @@ defmodule Dhc.WorkshopCalendar.Sync do
   alias Dhc.WorkshopCalendar.{Alerts, Google, Recipients, Roster, Store}
   alias Dhc.Workshops
 
+  @doc false
+  def preview(event, source), do: desired_event(event, source)
+
   def run(%{deleted: true, create_requested: false, acknowledged: nil} = event, clock) do
     # No request was ever prepared for this identity. Ownership fencing stops
     # an old driver from preparing one after this deletion is acknowledged.
@@ -92,6 +95,11 @@ defmodule Dhc.WorkshopCalendar.Sync do
           removed: definitive?,
           privacy_removed: definitive?
         )
+
+      never_published_cancelled?(event, source) ->
+        # Activation must not turn old cancelled sources into new committee
+        # events. Existing or uncertain publications still reconcile normally.
+        finish(event, nil, source, clock, removed: true)
 
       WorkshopCalendar.ended?(source, clock) ->
         finish(event, event.acknowledged, source, clock, privacy_removed: definitive?)
@@ -283,7 +291,7 @@ defmodule Dhc.WorkshopCalendar.Sync do
   defp mutation_allowed(event, source, clock, cleanup? \\ false) do
     cond do
       not WorkshopCalendar.outbound?() ->
-        {:skip, :paused}
+        {:skip, :inactive}
 
       not Store.current?(event) ->
         {:skip, :changed}
@@ -375,12 +383,21 @@ defmodule Dhc.WorkshopCalendar.Sync do
 
   defp no_places?(_, _), do: false
 
+  defp never_published_cancelled?(
+         %{audience: "committee", create_requested: false, acknowledged: nil},
+         %{status: "cancelled"}
+       ),
+       do: true
+
+  defp never_published_cancelled?(_event, _source), do: false
+
   defp calendar_id(%{audience: "participant"}),
     do: Keyword.get(WorkshopCalendar.config(), :participant_calendar_id)
 
   defp calendar_id(_), do: Keyword.get(WorkshopCalendar.config(), :committee_calendar_id)
 
-  defp validate_configuration do
+  @doc false
+  def validate_configuration do
     config = WorkshopCalendar.config()
     committee = Keyword.get(config, :committee_calendar_id)
     participant = Keyword.get(config, :participant_calendar_id)

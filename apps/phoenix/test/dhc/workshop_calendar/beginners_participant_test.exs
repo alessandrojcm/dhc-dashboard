@@ -2,6 +2,8 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
   use Dhc.DataCase, async: false
   use Oban.Testing, repo: Dhc.Repo
 
+  import Dhc.WorkshopCalendarTestConfig, only: [activate!: 1, deactivate!: 0]
+
   alias Dhc.BeginnersIntakeStripe, as: Stripe
   alias Dhc.BeginnersWorkshopFixtures, as: Fixtures
   alias Dhc.BeginnersWorkshops
@@ -126,14 +128,14 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
       assert {:ok, %{outcome: :paid}} = intake |> hold!(token) |> Stripe.session() |> complete()
       assert :ok = sync(workshop.id)
       count = length(HTTP.requests(server))
-      assert :ok = WorkshopCalendar.pause()
+      config = deactivate!()
 
       assert {:ok, _} =
                command(staff, {unquote(operation), workshop.id, intake.id, %{refund: true}})
 
       assert :ok = sync(workshop.id)
       assert length(HTTP.requests(server)) == count
-      assert :ok = WorkshopCalendar.resume()
+      activate!(config)
       assert :ok = sync(workshop.id, @ends_at)
       assert participant(server)["attendees"] == []
 
@@ -320,7 +322,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
 
   test "invalid and Google-rejected recipients get per-person follow-up while valid additions and removals progress",
        %{staff: staff, server: server} do
-    outsider = Fixtures.staff_fixture("workshop_coordinator")
+    Sentry.Test.setup_sentry(dedup_events: false)
 
     {workshop,
      [
@@ -349,18 +351,12 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
     assert {:ok, _} = command(staff, {:cancel_with_refund, workshop.id, removed.id, %{}})
     assert :ok = sync(workshop.id)
     assert participant(server)["attendees"] == [%{"email" => valid_email}]
-    assert {:ok, %{notifications: notifications}} = Dhc.Notifications.list_for_user(staff)
-    alerts = Enum.filter(notifications, &String.starts_with?(&1.body, "Calendar Invitation"))
-    assert [_, _] = alerts
-    assert Enum.all?(alerts, &(&1.body =~ "Workshop places are unchanged"))
-    assert Enum.all?(alerts, &(&1.body =~ "recorded address"))
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(outsider)
+    assert [_, _] = Sentry.Test.pop_sentry_reports()
     count = length(HTTP.mutations(server))
-    Repo.delete_all(Dhc.Notifications.Notification)
     assert :ok = WorkshopCalendar.repair(clock: fn -> @now end)
     assert :ok = sync(workshop.id)
     assert length(HTTP.mutations(server)) == count
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(staff)
+    assert Sentry.Test.pop_sentry_reports() == []
   end
 
   test "Google outages cannot undo payment and retry recovers without duplicate invitations", %{
@@ -379,37 +375,6 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
     assert [_create, _add] = HTTP.mutations(server)
   end
 
-  test "paused manual address repair updates the retained binding and cannot restore the old address",
-       %{staff: staff, server: server} do
-    {workshop, [{intake, token}]} = Fixtures.contacted_fixture(staff, 1)
-    assert {:ok, %{outcome: :paid}} = intake |> hold!(token) |> Stripe.session() |> complete()
-    assert :ok = sync(workshop.id)
-
-    assert {:error, :pause_required} =
-             WorkshopCalendar.correct_recipient(
-               :beginners_workshop,
-               workshop.id,
-               intake.id,
-               "corrected@example.com"
-             )
-
-    assert :ok = WorkshopCalendar.pause()
-
-    assert :ok =
-             WorkshopCalendar.correct_recipient(
-               :beginners_workshop,
-               workshop.id,
-               intake.id,
-               "corrected@example.com"
-             )
-
-    assert :ok = WorkshopCalendar.resume()
-    assert :ok = sync(workshop.id)
-    assert participant(server)["attendees"] == [%{"email" => "corrected@example.com"}]
-    assert :ok = sync(workshop.id)
-    assert participant(server)["attendees"] == [%{"email" => "corrected@example.com"}]
-  end
-
   test "a new paid place after cancellation is a new entitlement, unlike a Google-only decline",
        %{staff: staff, server: server} do
     {workshop, [{intake, token}]} = Fixtures.contacted_fixture(staff, 1)
@@ -426,7 +391,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
     count = length(HTTP.mutations(server))
     assert :ok = sync(workshop.id)
     assert length(HTTP.mutations(server)) == count
-    assert :ok = WorkshopCalendar.pause()
+    config = deactivate!()
     assert {:ok, _} = command(staff, {:cancel_with_refund, workshop.id, intake.id, %{}})
 
     assert {:ok, %{id: new_id}} =
@@ -439,7 +404,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
     assert {:ok, %{outcome: :paid}} =
              replacement |> hold!(new_token) |> Stripe.session() |> complete()
 
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = sync(workshop.id)
     assert participant(server)["id"] == first["id"]
     assert participant(server)["attendees"] == [%{"email" => guest["email"]}]
@@ -449,6 +414,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
     staff: staff,
     server: server
   } do
+    Sentry.Test.setup_sentry()
     {workshop, [{intake, token}]} = Fixtures.contacted_fixture(staff, 1)
     payment = hold!(intake, token)
 
@@ -461,32 +427,23 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
 
     assert :ok = sync(workshop.id)
     assert HTTP.mutations(server) == []
-    assert {:ok, %{notifications: notifications}} = Dhc.Notifications.list_for_user(staff)
-    assert Enum.any?(notifications, &(&1.body =~ "recorded address"))
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
     assert Repo.get!(Intake, intake.id).state == "paid"
   end
 
-  test "terminal Google failure alerts only Beginners' Workshop recipients once and never changes confirmation",
+  test "terminal Google failure reports once and never changes confirmation",
        %{staff: staff, server: server} do
-    outsider = Fixtures.staff_fixture("workshop_coordinator")
+    Sentry.Test.setup_sentry()
     {workshop, [{intake, token}]} = Fixtures.contacted_fixture(staff, 1)
     assert {:ok, %{outcome: :paid}} = intake |> hold!(token) |> Stripe.session() |> complete()
     Agent.update(server, &%{&1 | status: 401})
     assert :ok = sync(workshop.id)
-    assert {:ok, %{notifications: notifications}} = Dhc.Notifications.list_for_user(staff)
-
-    assert Enum.count(
-             notifications,
-             &(&1.body =~ "authorization" and &1.body =~ "Workshop places are unchanged")
-           ) == 1
-
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(outsider)
-    Repo.delete_all(Dhc.Notifications.Notification)
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
     count = length(HTTP.requests(server))
     assert :ok = WorkshopCalendar.repair(clock: fn -> @now end)
     assert :ok = sync(workshop.id)
     assert length(HTTP.requests(server)) == count
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(staff)
+    assert Sentry.Test.pop_sentry_reports() == []
     assert Repo.get!(Intake, intake.id).state == "paid"
   end
 

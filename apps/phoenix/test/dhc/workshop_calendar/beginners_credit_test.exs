@@ -2,6 +2,8 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
   use Dhc.DataCase, async: false
   use Oban.Testing, repo: Dhc.Repo
 
+  import Dhc.WorkshopCalendarTestConfig, only: [activate!: 1, deactivate!: 0]
+
   alias Dhc.BeginnersIntakeStripe, as: Stripe
   alias Dhc.BeginnersWorkshopFixtures, as: Fixtures
   alias Dhc.BeginnersWorkshops
@@ -159,7 +161,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
         {:withdraw, %{refund: true}},
         {:cancel_with_refund, %{}}
       ] do
-    test "#{operation} #{inspect(attrs)} removes the credit-paid place after pause, even at event end",
+    test "#{operation} #{inspect(attrs)} removes the credit-paid place after inactive configuration, even at event end",
          %{
            staff: staff,
            server: server
@@ -172,7 +174,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
       first = participant(server)
       assert first["attendees"] == [%{"email" => person.email}]
       count = length(HTTP.requests(server))
-      assert :ok = WorkshopCalendar.pause()
+      config = deactivate!()
 
       assert {:ok, _} =
                command(
@@ -182,7 +184,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
 
       assert :ok = sync(workshop.id)
       assert length(HTTP.requests(server)) == count
-      assert :ok = WorkshopCalendar.resume()
+      activate!(config)
       assert :ok = sync(workshop.id, @ends_at)
       assert participant(server)["id"] == first["id"]
       assert participant(server)["attendees"] == []
@@ -244,12 +246,12 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
       &%{&1 | events: Map.put(&1.events, first["id"], Map.put(first, "attendees", [guest]))}
     )
 
-    assert :ok = WorkshopCalendar.pause()
+    config = deactivate!()
     assert {:ok, _} = command(staff, {:defer, workshop.id, first_intake.id, %{}})
     {replacement, new_token} = contact!(staff, workshop, person)
     refute replacement.id == first_intake.id
     assert {:ok, _} = execute({:intake_link, new_token}, :confirm)
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = sync(workshop.id)
     assert participant(server)["id"] == first["id"]
     assert participant(server)["attendees"] == [%{"email" => person.email}]
@@ -328,6 +330,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
     staff: staff,
     server: server
   } do
+    Sentry.Test.setup_sentry(dedup_events: false)
     workshop = Fixtures.scheduled_fixture(staff)
     removed = holder!()
     {removed_intake, removed_token} = contact!(staff, workshop, removed)
@@ -351,8 +354,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
     assert {:ok, _} = command(staff, {:defer, workshop.id, removed_intake.id, %{}})
     assert :ok = sync(workshop.id)
     assert participant(server)["attendees"] == [%{"email" => valid.email}]
-    assert {:ok, %{notifications: notifications}} = Dhc.Notifications.list_for_user(staff)
-    assert Enum.count(notifications, &String.starts_with?(&1.body, "Calendar Invitation")) == 2
+    assert [_, _] = Sentry.Test.pop_sentry_reports()
     count = length(HTTP.mutations(server))
     assert :ok = sync(workshop.id)
     assert length(HTTP.mutations(server)) == count
@@ -379,7 +381,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
     assert [_create, _add] = HTTP.mutations(server)
   end
 
-  test "inactive confirmation retains its binding without sends, and resume cannot activate sending",
+  test "inactive confirmation retains its binding without sends until this isolated test installation activates",
        %{
          staff: staff,
          server: server
@@ -391,8 +393,6 @@ defmodule Dhc.WorkshopCalendar.BeginnersCreditTest do
     {_intake, token} = contact!(staff, workshop, person)
     assert {:ok, _} = execute({:intake_link, token}, :confirm)
     person |> Ecto.Changeset.change(email: "changed@example.com") |> Repo.update!()
-    assert :ok = WorkshopCalendar.pause()
-    assert :ok = WorkshopCalendar.resume()
     assert :ok = sync(workshop.id)
     assert HTTP.requests(server) == []
 

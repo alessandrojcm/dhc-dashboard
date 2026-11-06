@@ -109,7 +109,7 @@ defmodule Dhc.WorkshopCalendar.ConcurrencyTest do
 
     WorkshopCalendarHTTP.stub(server)
 
-    # Pause after the HTTP adapter returns but before the local acknowledgment.
+    # Wait after the HTTP adapter returns but before the local acknowledgment.
     handler = "calendar-crash-#{workshop.id}"
     owner = self()
 

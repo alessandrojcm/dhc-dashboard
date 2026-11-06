@@ -2,6 +2,8 @@ defmodule Dhc.WorkshopCalendar.PrivacyCleanupTest do
   use Dhc.DataCase, async: false
   use Oban.Testing, repo: Dhc.Repo
 
+  import Dhc.WorkshopCalendarTestConfig, only: [activate!: 1, deactivate!: 0]
+
   alias Dhc.BeginnersIntakeStripe, as: Stripe
   alias Dhc.BeginnersWorkshopFixtures, as: Fixtures
   alias Dhc.BeginnersWorkshops
@@ -132,7 +134,7 @@ defmodule Dhc.WorkshopCalendar.PrivacyCleanupTest do
     end
   end
 
-  test "paused retention purge preserves obligations across historical workshops and partial failure",
+  test "inactive retention purge preserves obligations across historical workshops and partial failure",
        ctx do
     {first, [{intake, _}]} = paid_workshop(ctx.staff, 1)
     assert :ok = sync(first.id, @now)
@@ -167,7 +169,7 @@ defmodule Dhc.WorkshopCalendar.PrivacyCleanupTest do
     assert :ok = sync(second.id, next_day)
     second_end = ~U[2026-11-21 20:30:00.000000Z]
     assert {:ok, _} = command(ctx.staff, {:finish_workshop, second.id}, second_end)
-    assert :ok = WorkshopCalendar.pause()
+    config = deactivate!()
     requests = length(HTTP.requests(ctx.server))
     purge_at = ~U[2027-03-01 12:00:00.000000Z]
 
@@ -178,7 +180,7 @@ defmodule Dhc.WorkshopCalendar.PrivacyCleanupTest do
     assert Repo.get!(Intake, second_id).waitlist_id == nil
     assert :ok = sync(first.id, purge_at)
     assert length(HTTP.requests(ctx.server)) == requests
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = sync(first.id, purge_at)
     Agent.update(ctx.server, &%{&1 | uncertain_update: true})
     assert {:snooze, 30} = sync(second.id, purge_at)

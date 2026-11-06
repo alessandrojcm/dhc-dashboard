@@ -281,22 +281,12 @@ defmodule Dhc.WorkshopCalendar.Store do
 
   def participant_events, do: Repo.all(from(e in Event, where: e.audience == "participant"))
 
-  # Resume is an explicit operator action, unlike a periodic repair. Re-arm a
-  # bounded attempt budget, keeping the episode/alert marker until success so
-  # resuming unchanged broken credentials cannot spam retained Notifications.
-  def resume_failed do
-    from(e in Event, where: not is_nil(e.failure) and is_nil(e.retry_at))
-    |> Repo.update_all(set: [failure: nil, attempts: 0, updated_at: DateTime.utc_now()])
-
-    :ok
-  end
-
   def persist(event, attrs), do: event |> Ecto.Changeset.change(attrs) |> Repo.update!()
 
   defp timestamp(now),
     do: now |> DateTime.to_unix(:microsecond) |> DateTime.from_unix!(:microsecond)
 
-  defp event_id(kind, id, audience, generation) do
+  def event_id(kind, id, audience, generation) do
     :crypto.hash(:sha256, "#{kind}:#{id}:#{audience}:#{generation}")
     |> Base.encode16(case: :lower)
   end

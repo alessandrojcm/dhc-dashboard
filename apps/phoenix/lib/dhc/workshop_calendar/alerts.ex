@@ -1,98 +1,91 @@
 defmodule Dhc.WorkshopCalendar.Alerts do
-  @moduledoc "Durable failure episodes outlive Notification retention; signaling follows commit."
+  @moduledoc "Durable Calendar failure episodes are reported to Sentry once."
   import Ecto.Query
 
-  alias Dhc.Auth.Capabilities
-  alias Dhc.BeginnersWorkshops
-  alias Dhc.Notifications
   alias Dhc.Repo
   alias Dhc.WorkshopCalendar.{Event, Recipient, Store}
 
+  @doc "Reports an unalerted terminal event failure after its marker commits."
+  @spec deliver(Event.t()) :: :ok | {:error, :calendar_alert_delivery_inside_transaction}
   def deliver(event) do
-    {:ok, created} =
-      Repo.transaction(fn ->
-        current = Repo.one!(from(e in Event, where: e.id == ^event.id, lock: "FOR UPDATE"))
-        deliver_unalerted(current)
-      end)
+    if Repo.in_transaction?() do
+      {:error, :calendar_alert_delivery_inside_transaction}
+    else
+      {:ok, report} =
+        Repo.transaction(fn ->
+          current = Repo.one!(from(e in Event, where: e.id == ^event.id, lock: "FOR UPDATE"))
+          mark_event_reported(current)
+        end)
 
-    Enum.each(created, &Notifications.signal_created/1)
-    :ok
+      capture(report)
+      :ok
+    end
   end
 
+  @doc "Reports an unalerted terminal recipient failure after its marker commits."
+  @spec deliver_recipient(Event.t(), Recipient.t()) ::
+          :ok | {:error, :calendar_alert_delivery_inside_transaction}
   def deliver_recipient(event, recipient) do
-    {:ok, created} =
-      Repo.transaction(fn ->
-        # The same event → recipient order as source writes and acknowledgments.
-        current = Repo.one!(from(e in Event, where: e.id == ^event.id, lock: "FOR UPDATE"))
-        row = Repo.one!(from(r in Recipient, where: r.id == ^recipient.id, lock: "FOR UPDATE"))
+    if Repo.in_transaction?() do
+      {:error, :calendar_alert_delivery_inside_transaction}
+    else
+      {:ok, report} =
+        Repo.transaction(fn ->
+          # The same event → recipient order as source writes and acknowledgments.
+          current = Repo.one!(from(e in Event, where: e.id == ^event.id, lock: "FOR UPDATE"))
+          row = Repo.one!(from(r in Recipient, where: r.id == ^recipient.id, lock: "FOR UPDATE"))
 
-        if (row.active and row.failure_episode) && is_nil(row.alerted_at) do
-          created =
-            notify(
-              current,
-              "workshop-calendar-recipient:#{row.id}:#{row.failure_episode}",
-              recipient_copy(current, row)
-            )
+          mark_recipient_reported(current, row)
+        end)
 
-          row |> Ecto.Changeset.change(alerted_at: DateTime.utc_now()) |> Repo.update!()
-          created
-        else
-          []
-        end
-      end)
-
-    Enum.each(created, &Notifications.signal_created/1)
-    :ok
+      capture(report)
+      :ok
+    end
   end
 
-  defp deliver_unalerted(%{alerted_at: nil, failure_episode: episode} = event)
+  defp mark_event_reported(%{alerted_at: nil, failure_episode: episode} = event)
        when not is_nil(episode) do
-    created = notify(event, "workshop-calendar:#{event.id}:#{episode}", copy(event))
-
     Store.persist(event, %{alerted_at: DateTime.utc_now()})
-    created
+    event_report(event, episode)
   end
 
-  defp deliver_unalerted(_event), do: []
+  defp mark_event_reported(_event), do: nil
 
-  defp notify(event, key, copy) do
-    capability(event)
-    |> Capabilities.principal_ids_with()
-    |> Enum.flat_map(fn id ->
-      case Notifications.create_keyed_in_transaction(
-             id,
-             key,
-             copy
-           ) do
-        {:ok, :created, notification} -> [notification]
-        {:ok, :already_created} -> []
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
+  defp mark_recipient_reported(event, recipient) do
+    if (recipient.active and recipient.failure_episode) && is_nil(recipient.alerted_at) do
+      recipient |> Ecto.Changeset.change(alerted_at: DateTime.utc_now()) |> Repo.update!()
+      recipient_report(event, recipient)
+    end
   end
 
-  defp capability(%{source_kind: "workshop"}), do: :"workshops.manage"
-  defp capability(%{source_kind: "beginners_workshop"}), do: :"beginners.workshops.alerts.receive"
-
-  defp recipient_copy(%{source_kind: "beginners_workshop"} = event, recipient),
-    do: BeginnersWorkshops.calendar_recipient_failure_copy(event.source_id, recipient.place_id)
-
-  defp recipient_copy(event, recipient),
+  defp event_report(event, episode),
     do:
-      "Calendar Invitation needs attention for workshop #{event.source_id}, place #{recipient.place_id}. Check the participant's recorded address and the retained Calendar binding. Bookings are unchanged."
+      {"Workshop Calendar synchronization failed",
+       %{
+         source_kind: event.source_kind,
+         source_id: event.source_id,
+         event_id: event.id,
+         audience: event.audience,
+         reason: event.failure,
+         failure_episode: episode
+       }}
 
-  defp copy(%{source_kind: "beginners_workshop"} = event),
-    do: BeginnersWorkshops.calendar_failure_copy(event.source_id, event.failure)
+  defp recipient_report(event, recipient),
+    do:
+      {"Workshop Calendar recipient synchronization failed",
+       %{
+         source_kind: event.source_kind,
+         source_id: event.source_id,
+         event_id: event.id,
+         audience: event.audience,
+         recipient_id: recipient.id,
+         place_id: recipient.place_id,
+         reason: recipient.failure,
+         failure_episode: recipient.failure_episode
+       }}
 
-  defp copy(event) do
-    reason =
-      case event.failure do
-        "unauthorized" -> "Organizer authorization needs renewal."
-        "configuration" -> "Check organizer ownership and the two calendar IDs."
-        "rejected" -> "Google refused the event. Check the workshop details."
-        _ -> "Automatic retries are exhausted. Check Google availability and configuration."
-      end
+  defp capture(nil), do: :ok
 
-    "Workshop Calendar needs attention for workshop #{event.source_id}. #{reason} Bookings are unchanged."
-  end
+  defp capture({message, extra}),
+    do: Sentry.capture_message(message, level: :error, extra: extra)
 end

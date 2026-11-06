@@ -16,30 +16,6 @@ defmodule Dhc.BeginnersWorkshops.Commands.NotificationCopy do
 
   alias Dhc.BeginnersWorkshops.IntakeEmails.Values
 
-  @doc "A recipient needs manual follow-up; no address or personal link is disclosed."
-  @spec calendar_recipient_failed(String.t(), String.t()) :: String.t()
-  def calendar_recipient_failed(workshop_id, place_id) do
-    "Calendar Invitation needs attention for Beginners' Workshop #{workshop_id}, place #{place_id}. " <>
-      "Check the person's recorded address and the retained Calendar binding. Workshop places are unchanged."
-  end
-
-  @doc "Calendar delivery failures do not change anyone's workshop place."
-  @spec calendar_failed(String.t(), String.t()) :: String.t()
-  def calendar_failed(workshop_id, failure) do
-    reason =
-      case failure do
-        "unauthorized" -> "Organizer authorization needs renewal."
-        "configuration" -> "Check organizer ownership and the two calendar IDs."
-        "missing_end_time" -> "Record the workshop's end time before publishing it to Calendar."
-        "invalid_schedule" -> "Check the workshop's start and end times."
-        "rejected" -> "Google refused the event. Check the workshop details."
-        _ -> "Automatic retries are exhausted. Check Google availability and configuration."
-      end
-
-    "Workshop Calendar needs attention for Beginners' Workshop #{workshop_id}. " <>
-      "#{reason} Workshop places are unchanged."
-  end
-
   @typedoc "What happened to a workshop credit whose refund failed, or `nil` for a payment refund."
   @type refund_follow_up :: nil | :credit_held | :credit_still_owed | :credit
 

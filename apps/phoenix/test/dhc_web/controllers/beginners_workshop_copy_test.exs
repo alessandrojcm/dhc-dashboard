@@ -100,14 +100,8 @@ defmodule DhcWeb.BeginnersWorkshopCopyTest do
       {:staff_unassigned, NotificationCopy.staff_unassigned(@workshop)},
       {:rescheduled, NotificationCopy.rescheduled(@workshop)},
       {:cancelled, NotificationCopy.cancelled(@workshop)},
-      {:reply_waiting, NotificationCopy.reply_waiting(Ecto.UUID.generate())},
-      {:calendar_recipient_failed,
-       NotificationCopy.calendar_recipient_failed(Ecto.UUID.generate(), Ecto.UUID.generate())}
+      {:reply_waiting, NotificationCopy.reply_waiting(Ecto.UUID.generate())}
     ] ++
-      Enum.map(
-        ~w(unauthorized configuration missing_end_time invalid_schedule rejected exhausted),
-        &{:calendar_failed, NotificationCopy.calendar_failed(Ecto.UUID.generate(), &1)}
-      ) ++
       for follow_up <- NotificationCopy.refund_follow_ups(),
           {name, date} <- [{"Aoife", @workshop.date}, {nil, nil}],
           do: {:refund_failed, NotificationCopy.refund_failed("€35.00", name, date, follow_up)}

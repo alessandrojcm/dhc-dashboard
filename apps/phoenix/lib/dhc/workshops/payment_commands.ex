@@ -117,13 +117,14 @@ defmodule Dhc.Workshops.PaymentCommands do
              (Workshop.t() -> {:ok, Workshop.t()} | {:error, term()}), :refund_owed | :keep}
           | {:submit_refund, refund_id :: binary()}
           | {:apply_refund_update, stripe_refund :: map()}
+          | {:materialize_calendar_launch, workshop_id :: binary(), (-> DateTime.t())}
           | :reconcile_refunds
           | {:reconcile_refunds, limit :: pos_integer()}
 
   @member_commands ~w(start_member_payment complete_member_payment cancel_member_registration)a
   @external_commands ~w(start_external_payment complete_external_payment)a
   @coordinator_commands ~w(request_refund cancel_workshop)a
-  @system_commands ~w(submit_refund apply_refund_update reconcile_refunds)a
+  @system_commands ~w(submit_refund apply_refund_update materialize_calendar_launch reconcile_refunds)a
 
   @workshop_registration_metadata_type "workshop_registration"
   @member_actor_type "member"
@@ -449,6 +450,23 @@ defmodule Dhc.Workshops.PaymentCommands do
 
   defp run(:system, {:apply_refund_update, _object}), do: {:error, :invalid_refund_object}
 
+  defp run(:system, {:materialize_calendar_launch, workshop_id, clock})
+       when is_function(clock, 0) do
+    transact(fn ->
+      with_locked(
+        %{
+          workshop: from(w in Workshop, where: w.id == ^workshop_id),
+          registration:
+            {:all,
+             from(r in Registration,
+               where: r.club_activity_id == ^workshop_id and r.status == "confirmed"
+             )}
+        },
+        fn locked -> materialize_calendar_launch_locked(locked, clock.()) end
+      )
+    end)
+  end
+
   defp run(:system, :reconcile_refunds),
     do: run(:system, {:reconcile_refunds, @reconcile_batch_size})
 
@@ -477,6 +495,39 @@ defmodule Dhc.Workshops.PaymentCommands do
   end
 
   defp run(_actor, _command), do: {:error, :unknown_command}
+
+  defp materialize_calendar_launch_locked(%{workshop: nil}, _now), do: {:ok, :noop}
+
+  defp materialize_calendar_launch_locked(%{workshop: workshop, registration: registrations}, now) do
+    cond do
+      workshop.status == "cancelled" or DateTime.compare(workshop.start_date, now) != :gt ->
+        {:ok, :noop}
+
+      is_nil(workshop.end_date) ->
+        {:error, :missing_end_time}
+
+      DateTime.compare(workshop.end_date, workshop.start_date) != :gt ->
+        {:error, :invalid_schedule}
+
+      true ->
+        with :ok <- WorkshopCalendar.record_change(:workshop, workshop.id) do
+          workshop_registrations(registrations)
+          {:ok, :materialized}
+        end
+    end
+  end
+
+  defp workshop_registrations(registrations) do
+    Enum.each(registrations, fn registration ->
+      :ok =
+        WorkshopCalendar.confirm_place(
+          :workshop,
+          registration.club_activity_id,
+          registration.id,
+          registration.email
+        )
+    end)
+  end
 
   # ── Command bodies (under the lock) ─────────────────────────────
 

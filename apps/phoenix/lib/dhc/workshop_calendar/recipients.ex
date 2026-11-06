@@ -3,7 +3,7 @@ defmodule Dhc.WorkshopCalendar.Recipients do
   import Ecto.Query
 
   alias Dhc.Repo
-  alias Dhc.WorkshopCalendar.{Alerts, Control, Event, Recipient, Store}
+  alias Dhc.WorkshopCalendar.{Alerts, Event, Recipient, Store}
 
   def confirm(kind, id, place_id, recipient) do
     require_transaction!()
@@ -104,63 +104,6 @@ defmodule Dhc.WorkshopCalendar.Recipients do
         updated_at: DateTime.utc_now()
       ]
     )
-  end
-
-  def correct(kind, id, place_id, recipient) do
-    {:ok, result} =
-      Repo.transaction(fn ->
-        control = Repo.one!(from(c in Control, where: c.id == 1, lock: "FOR SHARE"))
-        event = lock_event(kind, id)
-        correct_locked(control, event, place_id, recipient)
-      end)
-
-    result
-  end
-
-  defp correct_locked(%{paused: false}, _event, _place, _recipient), do: {:error, :pause_required}
-  defp correct_locked(_control, nil, _place, _recipient), do: {:error, :not_found}
-
-  defp correct_locked(_control, event, place_id, recipient) do
-    row = Repo.get_by(Recipient, event_id: event.id, place_id: place_id, active: true)
-
-    cond do
-      not valid?(recipient) ->
-        {:error, :invalid_recipient}
-
-      event.lease_until && DateTime.compare(event.lease_until, DateTime.utc_now()) == :gt ->
-        {:error, :busy}
-
-      is_nil(row) ->
-        {:error, :not_found}
-
-      row.recipient == recipient ->
-        :ok
-
-      true ->
-        replace_recipient(event, row, recipient)
-    end
-  end
-
-  defp replace_recipient(event, row, recipient) do
-    previous =
-      [row.recipient | row.previous_recipients]
-      |> Enum.reject(&(is_nil(&1) or address(&1) == address(recipient)))
-      |> Enum.uniq()
-
-    row
-    |> Ecto.Changeset.change(
-      recipient: recipient,
-      previous_recipients: previous,
-      requested_generation: nil,
-      invited_generation: nil,
-      failure: nil,
-      failure_episode: nil,
-      alerted_at: nil
-    )
-    |> Repo.update!(log: false)
-
-    changed(event)
-    :ok
   end
 
   def observed(event, attendees) do

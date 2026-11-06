@@ -109,6 +109,7 @@
          "Dhc.BeginnersWorkshops.Commands.authorize_assigned",
          "Dhc.BeginnersWorkshops.Commands.Attendance.*",
          "Dhc.BeginnersWorkshops.Commands.Batches.*",
+         "Dhc.BeginnersWorkshops.Commands.CalendarLaunch.*",
          "Dhc.BeginnersWorkshops.Commands.IntakeCommands.*",
          "Dhc.BeginnersWorkshops.Commands.Payments.*",
          "Dhc.BeginnersWorkshops.Commands.People.*",

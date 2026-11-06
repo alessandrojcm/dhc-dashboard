@@ -176,6 +176,26 @@ mise exec -- mix dhc.beginners_workshops.end_times
 This is a read-only launch-readiness report for upcoming scheduled Beginners'
 Workshops with a missing or invalid end time. It does not contact Google.
 
+### Workshop Calendar preview and activation
+
+```bash
+cd apps/phoenix
+mix dhc.workshop_calendar.preview
+mix dhc.workshop_calendar.activate isolated
+mix dhc.workshop_calendar.activate production
+```
+
+`preview` prints a private, recipient-PII JSON artifact and makes no Google,
+database, or job writes. `activate` re-reads current upcoming sources and can
+send invitations; its argument must equal `WORKSHOP_CALENDAR_ENVIRONMENT`.
+Activation is durable but bound to that environment, both calendar IDs, and the
+OAuth client ID, so credentials or deployment alone never enable sending.
+Use `isolated` only with separate credentials/calendars and synthetic data.
+Missing or invalid required end/schedule data refuses the whole activation; a
+missing or invalid recipient is retained for follow-up without blocking other
+eligible recipients. There is no Calendar dashboard or manual recovery command.
+See `docs/workshop-calendar.md`.
+
 The Compose `phoenix` profile uses `apps/phoenix/Dockerfile.dev`, bind-mounts
 the Phoenix source, and leaves Mix dependencies/build artifacts in the image so
 the source mount does not erase the dependency cache. It publishes Phoenix at

@@ -1,9 +1,10 @@
 import Config
 
-# Supplying credentials does not activate sending. ALE-437 owns the separately
-# authorized launch. Test credentials remain isolated from the operator's env.
+# Supplying credentials does not activate sending. The explicit operator launch
+# binds activation to this target. Tests never inherit live credentials.
 unless config_env() == :test do
   config :dhc, Dhc.WorkshopCalendar,
+    environment: System.get_env("WORKSHOP_CALENDAR_ENVIRONMENT"),
     client_id: System.get_env("WORKSHOP_CALENDAR_CLIENT_ID"),
     client_secret: System.get_env("WORKSHOP_CALENDAR_CLIENT_SECRET"),
     refresh_token: System.get_env("WORKSHOP_CALENDAR_REFRESH_TOKEN"),

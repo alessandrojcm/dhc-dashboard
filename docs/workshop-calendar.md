@@ -4,21 +4,23 @@ ALE-430 and ALE-432 publish regular Workshops and Beginners' Workshops to the
 committee calendar through one synchronization protocol. ALE-433 adds private
 Calendar Invitations for newly confirmed regular Workshop places. ALE-434 and
 ALE-435 use that same participant protocol for Stripe-paid and workshop-credit
-Beginners' Workshop places. Existing-attendee launch preview and reviewed
-activation remain in the later ALE-429 tickets.
+Beginners' Workshop places. ALE-437 adds a read-only launch preview and explicit
+activation for existing upcoming eligible attendees.
 There is no Calendar administration screen.
 
 ## Deployment boundary
 
-The migrations are additive: integration-owned event/control/recipient tables, no changes to Workshop
-payment tables and no source foreign keys. Apply it before running the new code.
+The integration owns its event/control/recipient tables, with no changes to Workshop
+payment tables and no source foreign keys. ALE-437 replaces the old pause flag
+with target-bound activation fields. Apply migrations before running the new code.
 Deleted sources deliberately leave their Calendar removal obligations behind.
 
-**Sending is inactive by default.** Credentials alone do not activate it. There
-is intentionally no production activation environment variable or Mix command in
-this first slice. ALE-437 owns the reviewed launch workflow. Do not enable the
-internal `Dhc.WorkshopCalendar` `active` setting in production before that work,
-the isolated-Google acceptance checks and separate authorization are complete.
+**Sending is inactive by default.** Credentials and deployment alone do not
+activate it. Set `WORKSHOP_CALENDAR_ENVIRONMENT` to `isolated` or `production`,
+then explicitly run the matching activation task after review. The durable
+activation key binds that environment, both calendar IDs, and the OAuth client
+ID; changing any of them returns sending to inactive until another explicit
+activation.
 
 The optional runtime credential names are:
 
@@ -27,6 +29,26 @@ The optional runtime credential names are:
 - `WORKSHOP_CALENDAR_REFRESH_TOKEN`
 - `WORKSHOP_CALENDAR_COMMITTEE_ID`
 - `WORKSHOP_CALENDAR_PARTICIPANT_ID`
+
+`isolated` requires separate credentials and calendars with synthetic data. It
+is not a production-data sanitizer. Production credentials, resources, and
+Google acceptance checks are outside this implementation.
+
+Run these only in an authorized operator session:
+
+```sh
+cd apps/phoenix
+mix dhc.workshop_calendar.preview
+mix dhc.workshop_calendar.activate isolated
+mix dhc.workshop_calendar.activate production
+```
+
+Preview starts only its read dependencies and Repo, not the application or its
+workers. It emits private JSON containing recipient PII and makes no Google,
+database or job writes. Activation re-reads and locks the current sources; it
+never accepts a saved preview as input. Required missing or invalid end/schedule data refuses the
+entire activation atomically. Missing or invalid recipients remain per-place
+follow-up and do not stop eligible recipients from being activated.
 
 Provision them using the existing production secret-manager workflow, not checked
 in configuration. Use a dedicated organizer owning **both** distinct calendars
@@ -99,31 +121,23 @@ locally. A 404 after a prepared create stays in repair until a tombstone or
 successful delete proves that a late insert cannot leave a live event behind.
 
 Temporary failures back off from 30 seconds and exhaust after six attempts.
-Permanent/exhausted failures retain their reason and episode and notify active
-holders of `workshops.manage` for regular Workshops or
-`beginners.workshops.alerts.receive` for Beginners' Workshops. Beginners' Workshop
-alert wording stays with its Notification copy owner. The episode's alert marker survives Notification
-retention. Repair does not repeatedly call Google for terminal failures. The
-operator-facing recovery tooling belongs to ALE-437; do not delete integration
-rows to retry, because that discards identity and cleanup obligations.
-
-`Dhc.WorkshopCalendar.pause/0` is an internal, durable stop for new mutations.
-`resume/0` clears it and queues current facts, but cannot activate an inactive
-installation. Explicit resume also re-arms failed work with a bounded attempt
-budget after the operator repairs authorization/configuration; an unchanged
-failure keeps its existing alert episode rather than sending another alert.
-A request already in flight cannot be recalled. Jobs and deletion
-obligations survive pause. Domain commands remain available with missing Google
-credentials, while inactive, or while paused.
+Permanent or exhausted event failures retain their reason and episode and report
+to Sentry. An episode is claimed under lock; best-effort capture follows commit,
+never an uncommitted synchronization transaction. Sentry is monitoring, not a
+guaranteed delivery ledger. Repair does not repeatedly call Google for terminal
+failures; do not delete integration rows to retry, because that discards identity and cleanup
+obligations. There is no pause/resume or manual recovery command. Domain commands
+remain available with missing Google credentials or inactive sending.
 
 Archival does not change Calendar. Cancellation retains the committee event at
-its scheduled time, marked Cancelled. Hard deletion removes the organizer event,
+its scheduled time, marked Cancelled; a cancelled source that was never published
+does not acquire a new event at launch. Hard deletion removes the organizer event,
 including after its end. First publication, detail repair and missing-event
 recreation stop at the exact event end; owed cancellation/deletion still runs.
 Early Beginners' Workshop attendance finalisation does not cancel, remove or
 shorten its committee event; its scheduled end remains the publication cutoff.
 
-## Participant invitations and address repair
+## Participant invitations
 
 Regular Workshop payment completion captures the saved Registration address in
 the same transaction that confirms the new place. Member addresses come from the
@@ -157,8 +171,8 @@ to deferred: that is attendance history, not a prospective place withdrawal.
 historical Intakes; a retained binding's explicit removal obligation determines
 place loss. This read never selects recipients or creates new entitlements.
 Reschedule uses the same participant event, preserving surviving Google RSVPs.
-Recipient failures use the Beginners' Workshop alert capability and its
-Notification copy owner, with one durable episode per failed place.
+Recipient failures retain one durable episode per failed place and report to
+Sentry; they do not create capability/dashboard Notifications.
 
 The integration retains each logical place and its selected address separately
 from source storage, including failed addresses and owed removals. The shared
@@ -175,8 +189,8 @@ Stripe completes its refund. Whole-workshop cancellation deletes the participant
 event while retaining the Cancelled committee entry. Reconciliation reads Google
 before replacing the attendee array and preserves surviving guest records/RSVPs.
 Removals run before isolated additions; malformed or Google-rejected addresses
-remain per-place follow-up and cannot block valid invitations. They notify active
-Workshop managers once per durable failure episode. No-op reconciliation is
+remain per-place follow-up and cannot block valid invitations. Terminal recipient
+failures report to Sentry once per durable failure episode. No-op reconciliation is
 silent; privacy-only repair does not notify guests. New invitations, meaningful
 detail changes, guest removals and event cancellation use `sendUpdates=all`.
 
@@ -185,36 +199,9 @@ there are no first invitations, detail rewrites or missing-event recreations.
 Owed attendee removals and event cancellation still run. A Google-only RSVP
 decline or removal of a personal copy is not a lost dashboard place or another
 invitation entitlement. A new confirmed Registration or Intake after a lost place
-is a new entitlement, including when loss and reconfirmation happened while paused.
+is a new entitlement, including when loss and reconfirmation happened while sending was inactive.
 Spending or forfeiting an applied workshop credit during attendance finalisation
 does not remove historical invitations.
-
-Address repair is a deliberate operator operation, not a coordinator screen:
-
-1. Verify the participant and the corrected address using the club's ordinary
-   manual email-change process. Use an authorized release console; do not put
-   addresses or credentials in job arguments, logs or shell history.
-2. Call `Dhc.WorkshopCalendar.pause/0`. Wait for any in-flight request to finish;
-   pause cannot recall an HTTP request already sent.
-3. Call `Dhc.WorkshopCalendar.correct_recipient(:workshop, workshop_id,
-   registration_id, corrected_address)`. It refuses an unpaused integration,
-   invalid address, missing/inactive binding or a still-live event lease
-    (`:busy`; let it finish/expire rather than deleting integration rows).
-   For a Beginners' Workshop use `:beginners_workshop`, its workshop ID and
-   Intake ID with the same operation and preconditions.
-4. Call `Dhc.WorkshopCalendar.resume/0`. The same reconciliation operation
-   removes the old organizer guest and uses the corrected retained address for
-   the invitation. The old address remains a removal obligation; ordinary profile
-   edits and a Google-only repair cannot silently replace this binding. A repair
-   after event end removes the old guest but does not send a first invitation to
-   the new address.
-5. Verify the organizer event after reconciliation. Do not promise email delivery
-   or erasure of recipient-held copies. A failed repair follows the ordinary
-   keyed-notification/manual-follow-up path; it never changes a booking.
-
-This operation neither activates sending nor changes the participant's profile,
-Registration snapshot or Intake. Place cancellation and attendance history are
-not person hard-delete privacy cleanup.
 
 ## Person deletion and historical privacy cleanup (ALE-436)
 
@@ -230,10 +217,10 @@ when a supported operation needs it; it never finds people by matching email.
 
 Obligations live on the integration's retained recipient rows, without source
 foreign keys. Identifier-only jobs and periodic repair find them even after the
-Waitlist entry/profile is gone. Pause and inactive sending retain them without
-Google mutations; resume reconciles current facts, not queued attendee snapshots.
+Waitlist entry/profile is gone. Inactive sending retains them without Google
+mutations; activation reconciles current facts, not queued attendee snapshots.
 Cleanup runs at and after event end, and even with an unknown legacy end time.
-It removes the selected and previously corrected addresses from current and
+It removes the retained selected address from current and
 historical organizer events, preserving other guests, their RSVPs and event
 details. An address shared by another active entitlement remains that guest's
 address; deleting one binding must not cancel the other's invitation.
@@ -241,8 +228,8 @@ address; deleting one binding must not cancel the other's invitation.
 Cleanup uses the event lease/revision and Google's conditional-write ETag. Even
 when the guest is already absent, a conditional write advances the provider fence
 before personal data is discarded, preventing an expired worker's late update
-from restoring it. Ambiguous success is read back and retried through the same
-bounded recovery/alert protocol. A tombstone or an event never requested can
+from restoring it. Ambiguous success is read back through the same bounded retry
+and Sentry-reporting protocol. A tombstone or an event never requested can
 settle without creation. A bare 404 after a prepared creation retains the
 obligation: the uncertain insertion might still arrive. Cleanup never recreates
 an event solely to remove someone, including after its end.
@@ -252,7 +239,7 @@ address, previous addresses and recipient failure data. It keeps only an inactiv
 address-free place tombstone so stale confirmation retries cannot select an
 address again. Event acknowledgments contain no attendee snapshots; jobs contain
 no addresses or request bodies. A failed historical removal remains outstanding
-for the existing coordinator alert and explicit operator resume workflow.
+for bounded reconciliation and Sentry reporting.
 
 This cleans integration-owned organizer details only. It cannot guarantee erasure
 of recipient calendar copies, delivered invitation emails or Google's retained
@@ -271,10 +258,9 @@ mise exec -- mix test test/dhc/workshop_calendar test/dhc/workshops/calendar_pro
 mise exec -- mix precommit
 ```
 
-Before production activation, isolated calendars must demonstrate committee
-read-only access, no guest/roster exposure, event creation/update/cancellation,
-Google-side repair and OAuth revocation handling. Later participant slices must
-also demonstrate guest privacy, external invitations and RSVP preservation.
+Tests stub Google and OAuth with Req.Test; they do not claim live-Google,
+isolated-calendar, or production acceptance coverage. When real isolated checks
+are separately authorized, use separate credentials/calendars and synthetic data.
 API success means Google accepted a projection, not that an email was delivered.
 External calendar copies, delivered invitations and Google's retained data cannot
 be guaranteed erased.

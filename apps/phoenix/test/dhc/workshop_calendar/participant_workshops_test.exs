@@ -2,6 +2,8 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
   use Dhc.DataCase, async: false
   use Oban.Testing, repo: Dhc.Repo
 
+  import Dhc.WorkshopCalendarTestConfig, only: [activate!: 1, deactivate!: 0]
+
   alias Dhc.WorkshopCalendar
   alias Dhc.WorkshopCalendar.Google
   alias Dhc.WorkshopCalendar.Workers.SyncWorker
@@ -274,17 +276,11 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
 
   test "one Google-rejected address cannot block a valid invitation or another person's removal",
        %{server: server} do
+    Sentry.Test.setup_sentry()
     workshop = workshop!()
     removed = WorkshopFixtures.member_fixture()
     confirm!(workshop, removed)
     assert :ok = sync(workshop.id)
-    manager = WorkshopFixtures.member_fixture()
-
-    Repo.insert!(%Dhc.Auth.UserRole{
-      principal_id: manager.principal_id,
-      role: "workshop_coordinator"
-    })
-
     bad = WorkshopFixtures.member_fixture(%{email: "bad@example.com"})
     good = WorkshopFixtures.member_fixture(%{email: "good@example.com"})
     confirm!(workshop, bad)
@@ -294,69 +290,19 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
     assert :ok = sync(workshop.id)
     assert event(server)["attendees"] == [%{"email" => "good@example.com"}]
 
-    assert {:ok, %{notifications: [alert]}} =
-             Dhc.Notifications.list_for_user(manager.principal_id)
-
-    assert alert.body =~ "participant"
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
     count = length(WorkshopCalendarHTTP.mutations(server))
-    Repo.delete_all(Dhc.Notifications.Notification)
     assert :ok = WorkshopCalendar.repair(clock: fn -> @now end)
     assert :ok = sync(workshop.id)
     assert length(WorkshopCalendarHTTP.mutations(server)) == count
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(manager.principal_id)
-  end
-
-  test "an operator address correction replaces the retained binding and organizer guest together",
-       %{server: server} do
-    workshop = workshop!()
-    member = WorkshopFixtures.member_fixture()
-    registration = confirm!(workshop, member)
-    assert :ok = sync(workshop.id)
-
-    assert {:error, :pause_required} =
-             WorkshopCalendar.correct_recipient(
-               :workshop,
-               workshop.id,
-               registration.id,
-               "corrected@example.com"
-             )
-
-    assert :ok = WorkshopCalendar.pause()
-
-    assert {:error, :invalid_recipient} =
-             WorkshopCalendar.correct_recipient(
-               :workshop,
-               workshop.id,
-               registration.id,
-               "invalid"
-             )
-
-    assert :ok =
-             WorkshopCalendar.correct_recipient(
-               :workshop,
-               workshop.id,
-               registration.id,
-               "corrected@example.com"
-             )
-
-    assert :ok = WorkshopCalendar.resume()
-    assert :ok = sync(workshop.id)
-    assert event(server)["attendees"] == [%{"email" => "corrected@example.com"}]
-    assert :ok = sync(workshop.id)
-    assert event(server)["attendees"] == [%{"email" => "corrected@example.com"}]
-    assert Workshops.calendar_place_ids(workshop.id) == [registration.id]
+    assert Sentry.Test.pop_sentry_reports() == []
   end
 
   test "an invalid saved participant address is per-place follow-up, never a payer fallback", %{
     server: server
   } do
+    Sentry.Test.setup_sentry()
     workshop = workshop!()
-    manager = WorkshopFixtures.member_fixture()
-
-    Repo.insert!(%Dhc.Auth.UserRole{
-      principal_id: manager.principal_id,
-      role: "workshop_coordinator"
-    })
 
     missing = WorkshopFixtures.member_fixture()
 
@@ -369,7 +315,7 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
     confirm!(workshop, good)
     assert :ok = sync(workshop.id)
     assert event(server)["attendees"] == [%{"email" => "valid@example.com"}]
-    assert {:ok, %{notifications: [_]}} = Dhc.Notifications.list_for_user(manager.principal_id)
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
   end
 
   test "archival and attendance recording preserve the participant event without extra updates",
@@ -433,55 +379,16 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
     assert length(WorkshopCalendarHTTP.mutations(server)) == count
   end
 
-  test "an address repair leaves a shared guest's RSVP intact and never retires that address again",
-       %{server: server} do
-    workshop = workshop!()
-    member = WorkshopFixtures.member_fixture(%{email: "shared-repair@example.com"})
-    registration = confirm!(workshop, member)
-    confirm_external!(workshop, "shared-repair@example.com")
-    assert :ok = sync(workshop.id)
-    original = event(server)
-
-    accepted =
-      Map.put(original, "attendees", [
-        %{"email" => "shared-repair@example.com", "responseStatus" => "accepted"}
-      ])
-
-    Agent.update(server, &%{&1 | events: Map.put(&1.events, original["id"], accepted)})
-    assert :ok = WorkshopCalendar.pause()
-
-    assert :ok =
-             WorkshopCalendar.correct_recipient(
-               :workshop,
-               workshop.id,
-               registration.id,
-               "repaired@example.com"
-             )
-
-    assert :ok = WorkshopCalendar.resume()
-    assert :ok = sync(workshop.id)
-
-    assert event(server)["attendees"] ==
-             accepted["attendees"] ++ [%{"email" => "repaired@example.com"}]
-
-    count = length(WorkshopCalendarHTTP.mutations(server))
-    assert :ok = sync(workshop.id)
-    assert length(WorkshopCalendarHTTP.mutations(server)) == count
-
-    assert event(server)["attendees"] ==
-             accepted["attendees"] ++ [%{"email" => "repaired@example.com"}]
-  end
-
-  test "pause retains confirmation and cancellation work and resume reconciles only current places",
+  test "inactive configuration retains confirmation and cancellation work until reconciliation uses current places",
        %{server: server} do
     workshop = workshop!()
     member = WorkshopFixtures.member_fixture()
-    assert :ok = WorkshopCalendar.pause()
+    config = deactivate!()
     confirm!(workshop, member)
     assert {:ok, _} = Workshops.cancel_member_registration(workshop.id, member.principal_id)
     assert :ok = sync(workshop.id)
     assert WorkshopCalendarHTTP.requests(server) == []
-    assert :ok = WorkshopCalendar.resume()
+    activate!(config)
     assert :ok = sync(workshop.id)
     assert WorkshopCalendarHTTP.mutations(server) == []
   end

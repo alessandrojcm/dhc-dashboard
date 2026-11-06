@@ -134,16 +134,16 @@ defmodule Dhc.WorkshopCalendar.BeginnersSyncTest do
 
   test "a missing legacy end is reported without Google and an authorized backfill recovers it",
        %{server: server, staff: staff} do
+    Sentry.Test.setup_sentry()
     workshop = schedule!(staff)
     # Legacy storage allows unknown ends; ordinary commands never create them.
     legacy = Repo.get!(Dhc.BeginnersWorkshops.BeginnersWorkshop, workshop.id)
     legacy |> Ecto.Changeset.change(end_time: nil) |> Repo.update!()
     assert :ok = sync(workshop.id)
     assert WorkshopCalendarHTTP.requests(server) == []
-    assert {:ok, %{notifications: [notification]}} = Dhc.Notifications.list_for_user(staff)
-    assert notification.body =~ "end time"
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
     assert :ok = sync(workshop.id)
-    assert {:ok, %{notifications: [_]}} = Dhc.Notifications.list_for_user(staff)
+    assert Sentry.Test.pop_sentry_reports() == []
 
     assert {:ok, _} = command(staff, {:backfill_end_time, workshop.id, %{end_time: "12:00"}})
     assert :ok = sync(workshop.id)
@@ -188,25 +188,21 @@ defmodule Dhc.WorkshopCalendar.BeginnersSyncTest do
     assert [_] = WorkshopCalendarHTTP.mutations(server)
   end
 
-  test "persistent failures alert only the Beginners' Workshop recipients once per durable episode",
+  test "persistent failures report once per durable episode",
        %{server: server, staff: staff} do
-    outsider = Fixtures.staff_fixture("workshop_coordinator")
+    Sentry.Test.setup_sentry()
     workshop = schedule!(staff)
     Agent.update(server, &%{&1 | status: 401})
     assert :ok = sync(workshop.id)
-    assert {:ok, %{notifications: [notification]}} = Dhc.Notifications.list_for_user(staff)
-    assert notification.body =~ "Workshop places are unchanged"
-    assert notification.body =~ "authorization"
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(outsider)
+    assert [%Sentry.Event{}] = Sentry.Test.pop_sentry_reports()
     count = length(WorkshopCalendarHTTP.requests(server))
-    Repo.delete_all(Dhc.Notifications.Notification)
     assert :ok = WorkshopCalendar.repair(clock: fn -> @now end)
     assert :ok = sync(workshop.id)
     assert length(WorkshopCalendarHTTP.requests(server)) == count
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(staff)
+    assert Sentry.Test.pop_sentry_reports() == []
   end
 
-  test "pause and inactive deployment send nothing; resume reconciles cancellation not stale scheduling",
+  test "inactive deployment sends nothing and later automatic reconciliation uses cancellation, not stale scheduling",
        %{server: server, staff: staff} do
     config = WorkshopCalendar.config()
     Application.put_env(:dhc, WorkshopCalendar, Keyword.put(config, :active, false))
@@ -215,12 +211,12 @@ defmodule Dhc.WorkshopCalendar.BeginnersSyncTest do
     assert WorkshopCalendarHTTP.requests(server) == []
     Application.put_env(:dhc, WorkshopCalendar, config)
     assert :ok = sync(workshop.id)
-    assert :ok = WorkshopCalendar.pause()
+    Application.put_env(:dhc, WorkshopCalendar, Keyword.put(config, :active, false))
     assert {:ok, _} = command(staff, {:cancel_workshop, workshop.id, %{}})
     count = length(WorkshopCalendarHTTP.requests(server))
     assert :ok = sync(workshop.id)
     assert length(WorkshopCalendarHTTP.requests(server)) == count
-    assert :ok = WorkshopCalendar.resume()
+    Application.put_env(:dhc, WorkshopCalendar, config)
     assert :ok = sync(workshop.id)
 
     assert [%{"summary" => "[Cancelled] Beginners' Workshop"}] =
@@ -291,7 +287,6 @@ defmodule Dhc.WorkshopCalendar.BeginnersSyncTest do
     end)
 
     assert {:snooze, 1} = sync(workshop.id)
-    assert {:ok, %{notifications: []}} = Dhc.Notifications.list_for_user(staff)
     Agent.update(server, &%{&1 | status: nil})
     WorkshopCalendarHTTP.stub(server)
     assert :ok = sync(workshop.id)

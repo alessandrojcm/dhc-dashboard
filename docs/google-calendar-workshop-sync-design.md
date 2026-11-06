@@ -7,6 +7,29 @@ design sign-off does not authorize them.
 Research: [Google Calendar workshop sync](research/google-calendar-workshop-sync.md).
 Domain terms: Workshop Calendar and Calendar Invitation in [CONTEXT.md](../CONTEXT.md).
 
+## Latest scope clarification (ALE-437)
+
+This clarification supersedes conflicting launch and operations details below;
+the interview record remains historical design context. The delivered scope is
+read-only preview plus explicit activation for existing upcoming eligible
+attendees. `mix dhc.workshop_calendar.preview` emits an authorized private JSON
+artifact with recipient PII and makes no Google, database, or job writes.
+`mix dhc.workshop_calendar.activate isolated|production` must match
+`WORKSHOP_CALENDAR_ENVIRONMENT`, re-reads locked current facts, and records an
+activation bound to the environment, both calendar IDs, and client ID.
+Credentials or deployment alone do not activate sending.
+
+Isolated activation uses separate credentials/calendars and synthetic data; it
+is not a production-data sanitizer. Required missing or invalid end/schedule data
+blocks activation atomically. Recipient failures remain per-place follow-up:
+regular launch uses the saved Registration email, Beginners' Workshop launch
+uses the linked person's current Waitlist email, and each selected address is
+retained. Valid recipients proceed when another recipient is missing or invalid.
+Automatic synchronization, bounded reconciliation retries, and privacy cleanup
+remain. Terminal event and recipient failures go to Sentry. There is no Calendar
+UI, pause/resume, manual recipient-correction tool, recovery programme, or
+claimed production-Google acceptance test.
+
 ## Agreed decisions
 
 Confirmed in interview round 1:

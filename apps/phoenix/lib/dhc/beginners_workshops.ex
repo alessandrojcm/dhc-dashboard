@@ -125,13 +125,48 @@ defmodule Dhc.BeginnersWorkshops do
     |> Enum.map(& &1.id)
   end
 
-  @doc "Calendar's source-owned wording for a terminal synchronization failure."
-  @spec calendar_failure_copy(binary(), String.t()) :: String.t()
-  defdelegate calendar_failure_copy(source_id, failure), to: Commands
+  @doc "Closed projections for the upcoming sources selected during Calendar launch."
+  @spec calendar_launch_sources(DateTime.t()) :: [map()]
+  def calendar_launch_sources(%DateTime{} = now) do
+    BeginnersWorkshop
+    |> Repo.all()
+    |> Enum.map(&CalendarProjection.project/1)
+    |> Enum.filter(&(&1.status != "cancelled" and future_start?(&1, now)))
+    |> Enum.sort_by(&{DateTime.to_unix(&1.start_date), &1.id})
+  end
 
-  @doc "Calendar's source-owned wording for a recipient needing manual follow-up."
-  @spec calendar_recipient_failure_copy(binary(), binary()) :: String.t()
-  defdelegate calendar_recipient_failure_copy(source_id, place_id), to: Commands
+  @doc "Current confirmed Beginners' Workshop places and their linked Waitlist addresses."
+  @spec calendar_launch_places(binary()) :: [%{place_id: binary(), recipient: String.t()}]
+  def calendar_launch_places(workshop_id) when is_binary(workshop_id) do
+    from(i in Intake,
+      join: e in Dhc.Waitlist.WaitlistEntry,
+      on: e.id == i.waitlist_id,
+      where: i.workshop_id == ^workshop_id and i.state in ["paid", "attended", "no_show"],
+      order_by: [asc: i.id],
+      select: %{place_id: i.id, recipient: e.email}
+    )
+    |> Repo.all()
+  end
+
+  @doc "Materializes Calendar launch intent through the Beginners' Workshop write boundary."
+  @spec materialize_calendar_launch(binary(), keyword()) ::
+          :ok | {:error, :missing_end_time | :invalid_schedule}
+  def materialize_calendar_launch(workshop_id, opts \\ []) when is_binary(workshop_id) do
+    clock =
+      case Keyword.get_lazy(opts, :clock, &Clock.system/0) do
+        tick when is_function(tick, 0) -> %Clock{tick: tick}
+        %Clock{} = clock -> clock
+      end
+
+    case execute(
+           :system,
+           {:materialize_calendar_launch, workshop_id},
+           Keyword.put(opts, :clock, clock)
+         ) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   @doc """
   Confirmation facts for Calendar, including attendance history. A Settlement
@@ -148,6 +183,11 @@ defmodule Dhc.BeginnersWorkshops do
     )
     |> Repo.all()
   end
+
+  defp future_start?(%{start_date: %DateTime{} = start_date}, now),
+    do: DateTime.compare(start_date, now) == :gt
+
+  defp future_start?(_source, _now), do: false
 
   @doc """
   The person's Intake page behind an Intake link (ALE-381), or
