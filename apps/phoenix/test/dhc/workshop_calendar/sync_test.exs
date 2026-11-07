@@ -125,6 +125,69 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     assert Enum.all?(WorkshopCalendarHTTP.mutations(server), &(&1.query == "sendUpdates=none"))
   end
 
+  # ALE-440: a manually entered destination supplies Calendar's native
+  # location; enriching one is an ordinary meaningful change for the shared
+  # protocol, and an unchanged destination stays silent.
+  test "a manual destination supplies the native location and its enrichment updates the same committee event silently to attendees" do
+    server = google_surface!()
+
+    %{principal_id: principal_id} = WorkshopFixtures.member_fixture()
+
+    {:ok, workshop} =
+      Workshops.create_workshop(
+        %{
+          title: "Longsword",
+          description: "PRIVATE notes, medical and payment details",
+          location: "Club hall",
+          destination_name: "National Basketball Arena",
+          destination_address: "Tymon Park, Dublin 6w",
+          start_date: ~U[2027-03-28 09:00:00Z],
+          end_date: ~U[2027-03-28 11:00:00Z],
+          max_capacity: 20,
+          price_member: 1000.0,
+          price_non_member: 2000.0
+        },
+        principal_id
+      )
+
+    assert :ok = sync(workshop.id)
+    [event] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert event["location"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+
+    # Destination enrichment: same event identity, no duplicate, committee
+    # mutations stay non-notifying.
+    assert {:ok, _} =
+             Workshops.update_workshop(workshop.id, %{
+               destination_name: "National Basketball Arena",
+               destination_address: "Tymon Road, Dublin 6w",
+               directions_url: "https://maps.app.goo.gl/AbCdEf"
+             })
+
+    assert :ok = sync(workshop.id)
+    [updated] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert updated["id"] == event["id"]
+    assert updated["location"] == "National Basketball Arena, Tymon Road, Dublin 6w"
+    assert map_size(WorkshopCalendarHTTP.events(server)) == 1
+
+    mutations = WorkshopCalendarHTTP.mutations(server)
+    assert Enum.all?(mutations, &(&1.query == "sendUpdates=none"))
+    # The directions link never reaches Calendar content.
+    refute Jason.encode!(updated) =~ "maps.app.goo.gl"
+
+    # Unchanged reconciliation after enrichment stays silent.
+    assert :ok = sync(workshop.id)
+    assert mutations == WorkshopCalendarHTTP.mutations(server)
+  end
+
+  test "a label-only Workshop keeps its label as the native location" do
+    server = google_surface!()
+    workshop = create_workshop!()
+
+    assert :ok = sync(workshop.id)
+    [event] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert event["location"] == "Club hall"
+  end
+
   test "cancellation keeps committee history at its scheduled time even when work arrives after end" do
     server = google_surface!()
     workshop = create_workshop!()

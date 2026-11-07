@@ -68,6 +68,7 @@ defmodule Dhc.Workshops do
 
   import Ecto.Query
 
+  alias Dhc.Destinations
   alias Dhc.Repo
   alias Dhc.WorkshopCalendar
 
@@ -104,9 +105,9 @@ defmodule Dhc.Workshops do
   # passed into `build_summary/2` separately because each caller computes them
   # differently (a SQL aggregate for the list, the `registration_counts/1` +
   # `interest_count/1` helpers for the single archived read).
-  @summary_scalar_fields ~w(id title description location start_date end_date
-    max_capacity price_member price_non_member is_public refund_days status
-    announce_discord announce_email created_by)a
+  @summary_scalar_fields ~w(id title description location destination_name destination_address
+    directions_url start_date end_date max_capacity price_member price_non_member is_public
+    refund_days status announce_discord announce_email created_by)a
 
   @doc """
   Returns the member-visible Workshop statuses (`planned`, `published`).
@@ -208,6 +209,10 @@ defmodule Dhc.Workshops do
   Workshop from dashboard reads, but does not alter its committee Calendar
   event. The projection deliberately excludes descriptions, notes, capacity,
   pricing, and attendee data.
+
+  ALE-440: `location` is the recognizable Calendar location string — the
+  manually entered destination name/address when one is stored, else the short
+  venue label. It is never a link.
   """
   @spec calendar_projection(binary()) ::
           %{
@@ -228,10 +233,19 @@ defmodule Dhc.Workshops do
         status: w.status,
         start_date: w.start_date,
         end_date: w.end_date,
-        location: w.location
+        label: w.location,
+        destination_name: w.destination_name,
+        destination_address: w.destination_address
       }
     )
     |> Repo.one()
+    |> case do
+      nil ->
+        nil
+
+      source ->
+        calendar_source(source)
+    end
   end
 
   @doc """
@@ -262,10 +276,31 @@ defmodule Dhc.Workshops do
         status: w.status,
         start_date: w.start_date,
         end_date: w.end_date,
-        location: w.location
+        label: w.location,
+        destination_name: w.destination_name,
+        destination_address: w.destination_address
       }
     )
     |> Repo.all()
+    |> Enum.map(&calendar_source/1)
+  end
+
+  # Keep the Calendar projection closed. The intermediate fields are selected only
+  # to derive the native location and must never escape to the shared protocol.
+  defp calendar_source(source) do
+    %{
+      id: source.id,
+      title: source.title,
+      status: source.status,
+      start_date: source.start_date,
+      end_date: source.end_date,
+      location:
+        Destinations.calendar_location(
+          source.destination_name,
+          source.destination_address,
+          source.label
+        )
+    }
   end
 
   @doc "Current confirmed Workshop places and their saved registration addresses."
@@ -1047,6 +1082,9 @@ defmodule Dhc.Workshops do
       start_date: workshop.start_date,
       end_date: workshop.end_date,
       location: workshop.location,
+      destination_name: workshop.destination_name,
+      destination_address: workshop.destination_address,
+      directions_url: workshop.directions_url,
       price_non_member: trunc(workshop.price_non_member),
       max_capacity: workshop.max_capacity
     }
@@ -1164,6 +1202,9 @@ defmodule Dhc.Workshops do
         title: w.title,
         description: w.description,
         location: w.location,
+        destination_name: w.destination_name,
+        destination_address: w.destination_address,
+        directions_url: w.directions_url,
         start_date: w.start_date,
         end_date: w.end_date,
         max_capacity: w.max_capacity,

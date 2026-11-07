@@ -20,6 +20,8 @@ defmodule Dhc.Workshops.Workshop do
 
   import Ecto.Changeset
 
+  alias Dhc.Destinations
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   @type t :: %__MODULE__{}
@@ -28,6 +30,12 @@ defmodule Dhc.Workshops.Workshop do
     field :title, :string
     field :description, :string
     field :location, :string
+    # ALE-440: optional, manually entered destination details. The short
+    # venue label (`location`) stays required and independent; these are all
+    # nullable so legacy rows and label-only submissions remain valid.
+    field :destination_name, :string
+    field :destination_address, :string
+    field :directions_url, :string
     field :start_date, :utc_datetime
     field :end_date, :utc_datetime
     field :max_capacity, :integer
@@ -48,20 +56,68 @@ defmodule Dhc.Workshops.Workshop do
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end
 
-  @management_fields ~w(title description location start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
+  @management_fields ~w(title description location destination_name destination_address
+    directions_url start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
   @required_management_fields ~w(title location start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
 
   @doc false
   def management_changeset(workshop, attrs) do
     workshop
     |> cast(attrs, @management_fields)
+    |> normalize_destination()
     |> validate_required(@required_management_fields)
     |> validate_length(:title, min: 1, max: 255)
     |> validate_number(:max_capacity, greater_than: 0)
     |> validate_number(:price_member, greater_than_or_equal_to: 0)
     |> validate_number(:price_non_member, greater_than_or_equal_to: 0)
     |> validate_number(:refund_days, greater_than_or_equal_to: 0)
+    |> validate_destination()
     |> validate_end_after_start()
+  end
+
+  # ALE-440: destination fields are optional free text, so an emptied or
+  # whitespace-only submission means "absent", not a stored empty string. The
+  # label itself stays required exactly as before.
+  defp normalize_destination(changeset) do
+    Enum.reduce(
+      [:destination_name, :destination_address, :directions_url],
+      changeset,
+      fn field, acc ->
+        case get_change(acc, field) do
+          change when is_binary(change) ->
+            put_change(acc, field, Destinations.normalize_optional(change))
+
+          _ ->
+            acc
+        end
+      end
+    )
+  end
+
+  defp validate_destination(changeset) do
+    changeset
+    |> validate_length(:destination_name, max: Destinations.name_max())
+    |> validate_length(:destination_address, max: Destinations.address_max())
+    |> validate_directions_url()
+  end
+
+  # Only a *supplied* link is judged; clearing it (nil) is a valid edit. The
+  # closed reason set and its wording live in `Dhc.Destinations` so the
+  # Beginners' Workshop destination work reuses the same rule.
+  defp validate_directions_url(changeset) do
+    case get_field(changeset, :directions_url) do
+      nil ->
+        changeset
+
+      url ->
+        case Destinations.validate_maps_url(url) do
+          :ok ->
+            changeset
+
+          {:error, reason} ->
+            add_error(changeset, :directions_url, Destinations.url_error_message(reason))
+        end
+    end
   end
 
   defp validate_end_after_start(changeset) do

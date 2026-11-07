@@ -10,6 +10,7 @@ import {
 	Clock3,
 	Users,
 	MapPin,
+	Navigation,
 	Copy,
 	LoaderCircle,
 	TriangleAlert,
@@ -23,6 +24,7 @@ import {
 	formatDublinDateLong,
 	formatDublinTime12h,
 } from "#lib/club-calendar.js";
+import { destinationLines, directionsHref } from "#lib/destinations.js";
 import type { WorkshopCalendarEvent } from "#lib/types.js";
 import Dinero from "dinero.js";
 import {
@@ -64,6 +66,10 @@ const canViewAttendees = $derived(
 const publicRegisterPath = $derived(
 	resolve(`workshops/${workshop.id}/register`),
 );
+// ALE-440: the destination details an attendee can navigate with, beside the
+// familiar label. Legacy rows keep their label only.
+const destinationDetail = $derived(destinationLines(workshop));
+const destinationHref = $derived(directionsHref(workshop));
 
 function getStatusVariant(status: typeof workshop.status) {
 	if (status === "planned") return "secondary" as const;
@@ -272,11 +278,29 @@ const hasEditAction = $derived(!!event.handleEdit);
 						aria-hidden="true"
 						class="mt-0.5 size-5 shrink-0 text-primary"
 					/>
-					<div>
+					<div class="min-w-0">
 						<dt class="text-xs font-medium text-muted-foreground">Location</dt>
 						<dd class="mt-0.5 text-sm font-bold">
 							{workshop.location || "Location not set"}
 						</dd>
+						{#if destinationDetail.length > 0}
+							<dd class="mt-1 text-sm leading-5 text-muted-foreground">
+								{destinationDetail.join(" · ")}
+							</dd>
+						{/if}
+						{#if destinationHref}
+							<dd class="mt-2">
+								<a
+									href={destinationHref}
+									target="_blank"
+									rel="noopener noreferrer"
+									class={`${buttonVariants({ variant: "outline", size: "sm" })} min-h-11`}
+								>
+									<Navigation aria-hidden="true" class="size-4" />
+									Get directions
+								</a>
+							</dd>
+						{/if}
 					</div>
 				</div>
 			</dl>

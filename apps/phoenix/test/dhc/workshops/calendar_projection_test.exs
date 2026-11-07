@@ -32,7 +32,10 @@ defmodule Dhc.Workshops.CalendarProjectionTest do
       assert id == workshop.id
       assert %DateTime{} = start_date
       assert %DateTime{} = end_date
-      refute Map.has_key?(Workshops.calendar_projection(workshop.id), :description)
+
+      assert Map.keys(Workshops.calendar_projection(workshop.id)) |> Enum.sort() ==
+               [:end_date, :id, :location, :start_date, :status, :title]
+
       assert Workshops.calendar_projection(Ecto.UUID.generate()) == nil
     end
   end

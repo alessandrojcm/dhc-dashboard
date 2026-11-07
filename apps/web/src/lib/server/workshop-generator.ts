@@ -26,7 +26,16 @@ import {
  * The same draft travels in the create page's `?generated=` parameter.
  */
 export const LLMCreateWorkshopSchema = v.object({
-	...v.omit(BaseWorkshopSchema, ["workshop_date", "workshop_end_date"]).entries,
+	// The draft keeps the short venue label only: destination details are a
+	// deliberate coordinator choice (ALE-440), not something a generated
+	// draft should invent.
+	...v.omit(BaseWorkshopSchema, [
+		"workshop_date",
+		"workshop_end_date",
+		"destination_name",
+		"destination_address",
+		"directions_url",
+	]).entries,
 	workshop_date: v.pipe(
 		v.string(),
 		v.isoDate(),

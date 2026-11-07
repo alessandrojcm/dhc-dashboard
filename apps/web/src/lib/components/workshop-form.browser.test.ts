@@ -8,7 +8,13 @@ import WorkshopForm from "./workshop-form.svelte";
 // or wrote the organiser's own zone would show it.
 onHostTimeZone("America/Los_Angeles");
 
-type Submission = { workshopDate: string; workshopEndDate: string };
+type Submission = {
+	workshopDate: string;
+	workshopEndDate: string;
+	destinationName: string;
+	destinationAddress: string;
+	directionsUrl: string;
+};
 
 /**
  * Records what the form submits: its own form data at the moment it is
@@ -32,6 +38,9 @@ function recordSubmissions() {
 		submissions.push({
 			workshopDate: field("workshop_date"),
 			workshopEndDate: field("workshop_end_date"),
+			destinationName: field("destination_name"),
+			destinationAddress: field("destination_address"),
+			directionsUrl: field("directions_url"),
 		});
 	};
 
@@ -60,7 +69,13 @@ function recordSubmissions() {
 
 const recorded = recordSubmissions();
 
-function renderForm(initialData?: { start: string; end: string }) {
+function renderForm(initialData?: {
+	start: string;
+	end: string;
+	destination_name?: string;
+	destination_address?: string;
+	directions_url?: string;
+}) {
 	return render(WorkshopForm, {
 		mode: initialData ? "edit" : "create",
 		workshopStatus: initialData ? "planned" : undefined,
@@ -71,6 +86,9 @@ function renderForm(initialData?: { start: string; end: string }) {
 			...(initialData && {
 				workshop_date: new Date(initialData.start),
 				workshop_end_date: new Date(initialData.end),
+				destination_name: initialData.destination_name ?? "",
+				destination_address: initialData.destination_address ?? "",
+				directions_url: initialData.directions_url ?? "",
 			}),
 		},
 	});
@@ -122,7 +140,7 @@ describe("the workshop form on a host in Los Angeles", () => {
 		await userEvent.fill(to(screen), "20:30");
 
 		// 18:30 IST is 17:30 UTC, and 10:30 in Los Angeles.
-		expect(await submit(screen, "Create Workshop")).toEqual({
+		expect(await submit(screen, "Create Workshop")).toMatchObject({
 			workshopDate: "2026-10-20T17:30:00.000Z",
 			workshopEndDate: "2026-10-20T19:30:00.000Z",
 		});
@@ -139,7 +157,7 @@ describe("the workshop form on a host in Los Angeles", () => {
 
 		await expect.element(from(screen)).toHaveValue("10:00");
 		await expect.element(to(screen)).toHaveValue("12:00");
-		expect(await submit(screen, "Create Workshop")).toEqual({
+		expect(await submit(screen, "Create Workshop")).toMatchObject({
 			workshopDate: "2026-12-05T10:00:00.000Z",
 			workshopEndDate: "2026-12-05T12:00:00.000Z",
 		});
@@ -159,7 +177,7 @@ describe("the workshop form on a host in Los Angeles", () => {
 			.toHaveTextContent("Tue 20 Oct 2026");
 		await expect.element(screen.getByText("18:30–20:30")).toBeVisible();
 
-		expect(await submit(screen, "Update Workshop")).toEqual({
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
 			workshopDate: "2026-10-20T17:30:00.000Z",
 			workshopEndDate: "2026-10-20T19:30:00.000Z",
 		});
@@ -181,7 +199,7 @@ describe("the workshop form on a host in Los Angeles", () => {
 
 		// The end keeps its own Dublin day when only its time changes.
 		await userEvent.fill(to(screen), "01:00");
-		expect(await submit(screen, "Update Workshop")).toEqual({
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
 			workshopDate: "2026-07-14T22:30:00.000Z",
 			workshopEndDate: "2026-07-15T00:00:00.000Z",
 		});
@@ -221,5 +239,129 @@ describe("the workshop form on a host in Los Angeles", () => {
 			// The default end, 12:00 GMT, is after the change.
 			workshopEndDate: "2026-10-25T12:00:00.000Z",
 		});
+	});
+});
+
+describe("the workshop form's destination details", () => {
+	const destinationControls = (screen: Screen) => ({
+		name: screen.getByRole("textbox", {
+			name: "Destination name",
+			exact: true,
+		}),
+		address: screen.getByRole("textbox", {
+			name: "Destination address",
+			exact: true,
+		}),
+		link: screen.getByRole("textbox", {
+			name: "Google Maps directions link",
+			exact: true,
+		}),
+	});
+
+	// A complete edit form (title, label, dates, capacity, price all
+	// prefilled) so a submission passes the form's client-side preflight and
+	// the destination fields are what varies.
+	const completeEditForm = () =>
+		renderForm({
+			start: "2026-10-20T17:30:00Z",
+			end: "2026-10-20T19:30:00Z",
+		});
+
+	it("submits manually entered destination details beside the label", async () => {
+		const screen = await completeEditForm();
+		const controls = destinationControls(screen);
+
+		await userEvent.fill(controls.name, "National Basketball Arena");
+		await userEvent.fill(controls.address, "Tymon Park, Dublin 6w");
+		await userEvent.fill(controls.link, "https://maps.app.goo.gl/AbCdEf");
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "National Basketball Arena",
+			destinationAddress: "Tymon Park, Dublin 6w",
+			directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+		});
+	});
+
+	it("submits empty destination fields when none are entered", async () => {
+		const screen = await completeEditForm();
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "",
+			destinationAddress: "",
+			directionsUrl: "",
+		});
+	});
+
+	it("prefills a stored destination on edit and resubmits it unchanged", async () => {
+		const screen = await renderForm({
+			start: "2026-10-20T17:30:00Z",
+			end: "2026-10-20T19:30:00Z",
+			destination_name: "National Basketball Arena",
+			destination_address: "Tymon Park, Dublin 6w",
+			directions_url: "https://maps.app.goo.gl/AbCdEf",
+		});
+		const controls = destinationControls(screen);
+
+		await expect
+			.element(controls.name)
+			.toHaveValue("National Basketball Arena");
+		await expect.element(controls.address).toHaveValue("Tymon Park, Dublin 6w");
+		await expect
+			.element(controls.link)
+			.toHaveValue("https://maps.app.goo.gl/AbCdEf");
+
+		// An unrelated edit resubmits the stored destination untouched.
+		await userEvent.fill(
+			screen.getByRole("textbox", { name: "Workshop title", exact: true }),
+			"Renamed workshop",
+		);
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "National Basketball Arena",
+			destinationAddress: "Tymon Park, Dublin 6w",
+			directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+		});
+	});
+
+	it("an emptied destination field submits as a clear, not the stored value", async () => {
+		const screen = await renderForm({
+			start: "2026-10-20T17:30:00Z",
+			end: "2026-10-20T19:30:00Z",
+			destination_name: "National Basketball Arena",
+			destination_address: "Tymon Park, Dublin 6w",
+			directions_url: "https://maps.app.goo.gl/AbCdEf",
+		});
+		const controls = destinationControls(screen);
+
+		await userEvent.fill(controls.link, "");
+		await userEvent.fill(controls.address, "");
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "National Basketball Arena",
+			destinationAddress: "",
+			directionsUrl: "",
+		});
+	});
+
+	it("keeps entered destination values and shows the field issue when the link is not https", async () => {
+		const screen = await completeEditForm();
+		const controls = destinationControls(screen);
+
+		await userEvent.fill(controls.name, "Arena");
+		await userEvent.fill(
+			controls.link,
+			"http://www.google.com/maps?q=Tallaght",
+		);
+
+		await screen.getByRole("button", { name: "Update Workshop" }).click();
+
+		// No request leaves the browser: the form's own validation refused it.
+		await expect
+			.element(screen.getByText("Directions link must be an https link"))
+			.toBeVisible();
+		expect(recorded.requests()).toBe(0);
+		await expect.element(controls.name).toHaveValue("Arena");
+		await expect
+			.element(controls.link)
+			.toHaveValue("http://www.google.com/maps?q=Tallaght");
 	});
 });

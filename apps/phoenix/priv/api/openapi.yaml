@@ -3348,7 +3348,11 @@ paths:
         Lifecycle/status is not directly writable here; use publish/cancel
         command endpoints. Pricing edits preserve the current looser rule:
         pricing may be changed while planned, or after publish only while there
-        are zero active (`pending`/`confirmed`) registrations.
+        are zero active (`pending`/`confirmed`) registrations. Optional
+        destination fields (`destinationName`, `destinationAddress`,
+        `directionsUrl`) are general edits, not pricing: they follow the
+        planned-only rule, and an omitted key preserves the stored value while
+        an explicit `null` clears it (ALE-440).
 
         Requires `workshop_coordinator`, `president`, or `admin`.
       security:
@@ -12615,6 +12619,22 @@ components:
           format: date-time
         location:
           type: string
+        destinationName:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination name for directions (ALE-440).
+            Null on legacy rows, which keep their short `location` label only.
+        destinationAddress:
+          type: string
+          nullable: true
+          description: Optional manually entered destination address for directions.
+        directionsUrl:
+          type: string
+          nullable: true
+          description: |
+            Optional manually supplied Google Maps directions link, validated
+            server-side as a supported HTTPS Maps destination.
         priceNonMember:
           type: integer
           minimum: 0
@@ -12737,6 +12757,26 @@ components:
           type: boolean
         announceEmail:
           type: boolean
+        destinationName:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Optional manually entered destination name (ALE-440). Kept separate
+            from the required short venue label.
+        destinationAddress:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: Optional manually entered destination address.
+        directionsUrl:
+          type: string
+          nullable: true
+          maxLength: 2048
+          description: |
+            Optional manually supplied Google Maps directions link. Rejected
+            unless it is a supported HTTPS Maps destination (no executable
+            schemes, credentials, or unsupported targets).
       description: |
         Coordinator Workshop management input. Lifecycle status and createdBy
         are server-owned and intentionally absent.
@@ -12779,6 +12819,31 @@ components:
           type: boolean
         announceEmail:
           type: boolean
+        destinationName:
+          type: string
+          nullable: true
+          maxLength: 255
+          description: |
+            Optional manually entered destination name (ALE-440). Omitting the
+            key preserves the stored value; an explicit `null` (or an empty
+            string) clears it.
+        destinationAddress:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: |
+            Optional manually entered destination address. Omission preserves;
+            an explicit `null` clears.
+        directionsUrl:
+          type: string
+          nullable: true
+          maxLength: 2048
+          description: |
+            Optional manually supplied Google Maps directions link, validated
+            server-side as a supported HTTPS Maps destination. Omission
+            preserves; an explicit `null` clears. Destination edits are general
+            edits: they follow the planned-only rule and are not covered by the
+            pricing-only exception.
       description: |
         Partial Workshop management update. All fields from
         `WorkshopManagementRequest` are optional at runtime; lifecycle status is
@@ -12820,6 +12885,22 @@ components:
         location:
           type: string
           nullable: true
+        destinationName:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination name for directions
+            (ALE-440). Null on legacy rows, which keep their label only.
+        destinationAddress:
+          type: string
+          nullable: true
+          description: Optional manually entered destination address for directions.
+        directionsUrl:
+          type: string
+          nullable: true
+          description: |
+            Optional manually supplied Google Maps directions link, validated
+            server-side as a supported HTTPS Maps destination.
         startDate:
           type: string
           format: date-time
@@ -12875,6 +12956,9 @@ components:
         - title
         - description
         - location
+        - destinationName
+        - destinationAddress
+        - directionsUrl
         - startDate
         - endDate
         - maxCapacity
@@ -12904,6 +12988,22 @@ components:
         location:
           type: string
           nullable: true
+        destinationName:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination name for directions
+            (ALE-440). Null on legacy rows, which keep their label only.
+        destinationAddress:
+          type: string
+          nullable: true
+          description: Optional manually entered destination address for directions.
+        directionsUrl:
+          type: string
+          nullable: true
+          description: |
+            Optional manually supplied Google Maps directions link, validated
+            server-side as a supported HTTPS Maps destination.
         startDate:
           type: string
           format: date-time
@@ -13010,6 +13110,22 @@ components:
           nullable: true
         location:
           type: string
+        destinationName:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination name for directions
+            (ALE-440). Null on legacy rows, which keep their label only.
+        destinationAddress:
+          type: string
+          nullable: true
+          description: Optional manually entered destination address for directions.
+        directionsUrl:
+          type: string
+          nullable: true
+          description: |
+            Optional manually supplied Google Maps directions link, validated
+            server-side as a supported HTTPS Maps destination.
         startDate:
           type: string
           format: date-time

@@ -161,6 +161,121 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
     assert [%{"email" => "guest@example.com"}] = event(server)["attendees"]
   end
 
+  test "a destination gives both audiences the same native location while the participant event keeps its privacy",
+       %{server: server} do
+    workshop =
+      WorkshopFixtures.workshop_fixture(
+        status: "published",
+        is_public: true,
+        price_member: 1800.0,
+        price_non_member: 2400.0,
+        destination_name: "National Basketball Arena",
+        destination_address: "Tymon Park, Dublin 6w",
+        directions_url: "https://maps.app.goo.gl/AbCdEf",
+        start_date: ~U[2027-03-28 09:00:00Z],
+        end_date: ~U[2027-03-28 11:00:00Z]
+      )
+
+    member = WorkshopFixtures.member_fixture()
+    registration = confirm!(workshop, member)
+
+    # The participant event is created with the recognizable destination as
+    # its native location, and repeated synchronization is a no-op.
+    assert :ok = sync(workshop.id)
+    participant = event(server)
+    assert participant["location"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+    assert participant["attendees"] == [%{"email" => registration.email}]
+    refute Map.has_key?(participant, "description")
+    # The directions link and every other destination extra stay off Google.
+    refute Jason.encode!(participant) =~ "maps.app.goo.gl"
+
+    mutations = WorkshopCalendarHTTP.mutations(server)
+    assert :ok = sync(workshop.id)
+    assert WorkshopCalendarHTTP.mutations(server) == mutations
+    assert map_size(WorkshopCalendarHTTP.events(server)) == 1
+
+    # The committee audience shows the same destination, not conflicting
+    # location information.
+    assert :ok = WorkshopCalendar.sync(:workshop, workshop.id, clock: fn -> @now end)
+
+    [committee] =
+      WorkshopCalendarHTTP.events(server)
+      |> Map.values()
+      |> Enum.reject(&Map.has_key?(&1, "attendees"))
+
+    assert committee["id"] != participant["id"]
+    assert committee["location"] == participant["location"]
+  end
+
+  test "a destination update revises the existing participant event, preserves its RSVP, and then stays silent",
+       %{server: server} do
+    workshop =
+      WorkshopFixtures.workshop_fixture(
+        status: "planned",
+        start_date: ~U[2027-03-28 09:00:00Z],
+        end_date: ~U[2027-03-28 11:00:00Z]
+      )
+
+    attendee = WorkshopFixtures.external_user_fixture(%{email: "participant@example.com"})
+
+    registration =
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        status: "confirmed",
+        external_user_id: attendee.id,
+        email: attendee.email
+      )
+
+    assert {:ok, :ok} =
+             Repo.transaction(fn ->
+               WorkshopCalendar.confirm_place(
+                 :workshop,
+                 workshop.id,
+                 registration.id,
+                 registration.email
+               )
+             end)
+
+    assert :ok = sync(workshop.id)
+    original = event(server)
+
+    Agent.update(server, fn state ->
+      rsvped =
+        Map.put(original, "attendees", [
+          %{"email" => registration.email, "responseStatus" => "accepted"}
+        ])
+
+      %{state | events: Map.put(state.events, original["id"], rsvped)}
+    end)
+
+    mutations = WorkshopCalendarHTTP.mutations(server)
+
+    assert {:ok, _} =
+             Workshops.update_workshop(workshop.id, %{
+               destination_name: "National Basketball Arena",
+               destination_address: "Tymon Park, Dublin 6w"
+             })
+
+    assert :ok = sync(workshop.id)
+    updated = event(server)
+
+    assert updated["id"] == original["id"]
+    assert updated["location"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+
+    assert updated["attendees"] == [
+             %{"email" => registration.email, "responseStatus" => "accepted"}
+           ]
+
+    assert Enum.all?(
+             WorkshopCalendarHTTP.mutations(server) -- mutations,
+             &(&1.query == "sendUpdates=all")
+           )
+
+    after_update = WorkshopCalendarHTTP.mutations(server)
+    assert :ok = sync(workshop.id)
+    assert WorkshopCalendarHTTP.mutations(server) == after_update
+  end
+
   test "pending checkout and compensating payments never receive an invitation", %{server: server} do
     workshop = workshop!()
     member = WorkshopFixtures.member_fixture()

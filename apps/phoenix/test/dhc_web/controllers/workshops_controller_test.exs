@@ -187,6 +187,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "title" => "Demand Workshop",
                "description" => "Coordinator view",
                "location" => "Main Hall",
+               "destinationName" => nil,
+               "destinationAddress" => nil,
+               "directionsUrl" => nil,
                "startDate" => "2026-07-01T10:00:00Z",
                "endDate" => "2026-07-01T12:00:00Z",
                "maxCapacity" => 12,
@@ -624,6 +627,185 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
       assert payload["title"] == "Updated API Workshop"
       assert payload["status"] == "planned"
+    end
+
+    # ── ALE-440: manually entered destinations over the public contract ──
+
+    test "creates a Workshop with a manual destination and optional Maps link", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops",
+          Map.merge(valid_workshop_payload(), %{
+            "destinationName" => "National Basketball Arena",
+            "destinationAddress" => "Tymon Park, Dublin 6w",
+            "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+          })
+        )
+
+      assert %{"data" => %{"workshop" => workshop}} = json_response(conn, 201)
+
+      assert workshop["location"] == "Main Hall"
+      assert workshop["destinationName"] == "National Basketball Arena"
+      assert workshop["destinationAddress"] == "Tymon Park, Dublin 6w"
+      assert workshop["directionsUrl"] == "https://maps.app.goo.gl/AbCdEf"
+    end
+
+    test "keeps label-only payloads valid and reports legacy rows as null", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops", valid_workshop_payload())
+
+      assert %{"data" => %{"workshop" => workshop}} = json_response(conn, 201)
+      assert workshop["destinationName"] == nil
+      assert workshop["destinationAddress"] == nil
+      assert workshop["directionsUrl"] == nil
+    end
+
+    test "rejects an unsafe directions link as a 422 field error", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops",
+          Map.merge(valid_workshop_payload(), %{
+            "directionsUrl" => "javascript:alert(1)"
+          })
+        )
+
+      assert json_response(conn, 422) == %{
+               "errors" => %{
+                 "detail" => "directionsUrl: Directions link must be an https link",
+                 "fields" => %{"directionsUrl" => ["Directions link must be an https link"]}
+               }
+             }
+    end
+
+    test "an omitted destination field preserves the stored destination", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          destination_name: "National Basketball Arena",
+          destination_address: "Tymon Park, Dublin 6w",
+          directions_url: "https://maps.app.goo.gl/AbCdEf"
+        )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"title" => "Unrelated edit"})
+
+      assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
+
+      assert payload["title"] == "Unrelated edit"
+      assert payload["destinationName"] == "National Basketball Arena"
+      assert payload["destinationAddress"] == "Tymon Park, Dublin 6w"
+      assert payload["directionsUrl"] == "https://maps.app.goo.gl/AbCdEf"
+    end
+
+    test "an explicit null clears the optional destination details", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          destination_name: "National Basketball Arena",
+          destination_address: "Tymon Park, Dublin 6w",
+          directions_url: "https://maps.app.goo.gl/AbCdEf"
+        )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
+          "destinationName" => nil,
+          "destinationAddress" => nil,
+          "directionsUrl" => nil
+        })
+
+      assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
+
+      assert payload["destinationName"] == nil
+      assert payload["destinationAddress"] == nil
+      assert payload["directionsUrl"] == nil
+      assert payload["location"] == "Test Location"
+    end
+
+    test "destination edits on a published Workshop are refused as not editable", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
+          "destinationName" => "Arena"
+        })
+
+      assert %{
+               "errors" => %{
+                 "detail" => "Only planned workshops can be edited",
+                 "code" => "not_editable"
+               }
+             } =
+               json_response(conn, 422)
+
+      conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"directionsUrl" => nil})
+
+      assert json_response(conn, 422)["errors"]["code"] == "not_editable"
+    end
+
+    test "the public external-registration gate carries the destination for directions", %{
+      conn: conn
+    } do
+      workshop =
+        insert_workshop(
+          title: "Public Destination Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2,
+          destination_name: "National Basketball Arena",
+          destination_address: "Tymon Park, Dublin 6w",
+          directions_url: "https://maps.app.goo.gl/AbCdEf"
+        )
+
+      conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+
+      assert %{
+               "data" => %{
+                 "canRegister" => true,
+                 "workshop" => %{
+                   "destinationName" => "National Basketball Arena",
+                   "destinationAddress" => "Tymon Park, Dublin 6w",
+                   "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+                 }
+               }
+             } = json_response(conn, 200)
+    end
+
+    test "a legacy gate Workshop reports null destination fields", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          title: "Legacy Public Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2
+        )
+
+      conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+
+      assert %{
+               "data" => %{
+                 "canRegister" => true,
+                 "workshop" => %{
+                   "destinationName" => nil,
+                   "destinationAddress" => nil,
+                   "directionsUrl" => nil
+                 }
+               }
+             } = json_response(conn, 200)
     end
 
     test "allows published pricing edits only while there are no active registrations", %{
@@ -2169,6 +2351,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
       title: "Uncapped",
       description: nil,
       location: "Main Hall",
+      destination_name: nil,
+      destination_address: nil,
+      directions_url: nil,
       start_date: ~U[2026-07-01 10:00:00Z],
       end_date: ~U[2026-07-01 12:00:00Z],
       max_capacity: nil,

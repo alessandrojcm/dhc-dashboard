@@ -264,6 +264,9 @@ export async function createWorkshop({
 	title,
 	description = "",
 	location,
+	destination_name,
+	destination_address,
+	directions_url,
 	start_date,
 	end_date,
 	max_capacity,
@@ -277,6 +280,10 @@ export async function createWorkshop({
 	title: string;
 	description?: string;
 	location: string;
+	/** ALE-440: optional manually entered destination details. */
+	destination_name?: string;
+	destination_address?: string;
+	directions_url?: string;
 	start_date: Date;
 	end_date: Date;
 	max_capacity: number;
@@ -300,6 +307,13 @@ export async function createWorkshop({
 		refundDays: refund_days,
 		createdBy: created_by,
 		status,
+		...(destination_name !== undefined && {
+			destinationName: destination_name,
+		}),
+		...(destination_address !== undefined && {
+			destinationAddress: destination_address,
+		}),
+		...(directions_url !== undefined && { directionsUrl: directions_url }),
 	});
 
 	return {

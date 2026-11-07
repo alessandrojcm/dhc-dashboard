@@ -25,6 +25,36 @@ export function movesOntoDublinToday(
 	return startsDublinToday(start, now) && !startsDublinToday(persisted, now);
 }
 
+const isHttpsUrl = (input: string) => {
+	try {
+		return new URL(input).protocol === "https:";
+	} catch {
+		return false;
+	}
+};
+
+/**
+ * Optional destination details (ALE-440), kept separate from the required
+ * short venue label. Client-side the directions link only gets a light
+ * https-shape check; Phoenix owns the supported-Maps-destination rule and
+ * answers a rejection as a field error on `directionsUrl`.
+ */
+export const destinationDetails = {
+	destination_name: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
+	destination_address: v.optional(v.pipe(v.string(), v.maxLength(500)), ""),
+	directions_url: v.optional(
+		v.pipe(
+			v.string(),
+			v.maxLength(2048),
+			v.check(
+				(input) => input.trim() === "" || isHttpsUrl(input),
+				"Directions link must be an https link",
+			),
+		),
+		"",
+	),
+};
+
 export const BaseWorkshopSchema = v.object({
 	title: v.pipe(
 		v.string(),
@@ -33,6 +63,9 @@ export const BaseWorkshopSchema = v.object({
 	),
 	description: v.optional(v.string(), ""),
 	location: v.pipe(v.string(), v.minLength(1, "Location is required")),
+	destination_name: destinationDetails.destination_name,
+	destination_address: destinationDetails.destination_address,
+	directions_url: destinationDetails.directions_url,
 	workshop_date: v.pipe(
 		v.date(),
 		v.check(
@@ -93,6 +126,9 @@ export const CreateWorkshopRemoteSchema = v.object({
 	),
 	description: v.optional(v.string(), ""),
 	location: v.pipe(v.string(), v.minLength(1, "Location is required")),
+	destination_name: destinationDetails.destination_name,
+	destination_address: destinationDetails.destination_address,
+	directions_url: destinationDetails.directions_url,
 	workshop_date: v.pipe(v.string(), v.nonEmpty("Workshop date is required")),
 	workshop_end_date: v.pipe(
 		v.string(),

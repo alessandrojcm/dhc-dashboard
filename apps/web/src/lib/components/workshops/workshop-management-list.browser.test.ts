@@ -15,6 +15,9 @@ function workshop(
 		title: "Clock change longsword",
 		description: null,
 		location: "Main Hall",
+		destinationName: null,
+		destinationAddress: null,
+		directionsUrl: null,
 		// 00:30 Irish Summer Time to 01:30 GMT on Sunday 25 October; in LA it
 		// is still Saturday afternoon.
 		startDate: "2026-10-24T23:30:00Z",
@@ -37,6 +40,56 @@ function workshop(
 		...overrides,
 	};
 }
+
+test("shows a saved destination with a safe directions link in the management modal", async () => {
+	// ALE-440: the familiar label stays, destination details sit beside it,
+	// and the validated manual Maps link opens externally.
+	const screen = await render(WorkshopManagementListTestWrapper, {
+		workshops: [
+			workshop({
+				destinationName: "National Basketball Arena",
+				destinationAddress: "Tymon Park, Dublin 6w",
+				directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+			}),
+		],
+	});
+
+	const row = screen.getByRole("article");
+	await row.getByRole("button", { name: "Manage" }).click();
+
+	const dialog = screen.getByRole("dialog");
+	await expect.element(dialog.getByText("Main Hall")).toBeVisible();
+	await expect
+		.element(
+			dialog.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+		)
+		.toBeVisible();
+
+	const directions = dialog.getByRole("link", { name: "Get directions" });
+	await expect.element(directions).toBeVisible();
+	await expect
+		.element(directions)
+		.toHaveAttribute("href", "https://maps.app.goo.gl/AbCdEf");
+	await expect.element(directions).toHaveAttribute("target", "_blank");
+	await expect
+		.element(directions)
+		.toHaveAttribute("rel", "noopener noreferrer");
+});
+
+test("a legacy label-only Workshop shows no directions link", async () => {
+	const screen = await render(WorkshopManagementListTestWrapper, {
+		workshops: [workshop()],
+	});
+
+	const row = screen.getByRole("article");
+	await row.getByRole("button", { name: "Manage" }).click();
+
+	const dialog = screen.getByRole("dialog");
+	await expect.element(dialog.getByText("Main Hall")).toBeVisible();
+	expect(
+		dialog.getByRole("link", { name: "Get directions" }).elements(),
+	).toHaveLength(0);
+});
 
 test("lists and manages a Workshop on the Dublin clock across the October change", async () => {
 	const screen = await render(WorkshopManagementListTestWrapper, {

@@ -6,6 +6,7 @@ import {
 	createTestWorkshop,
 } from "./attendee-test-helpers";
 import { createMember, createWorkshop } from "./setupFunctions";
+import { stubEmbeddedCheckout } from "./beginners-workshop-checkout";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import type { E2ERegistrationSeedRequest } from "./e2eApi";
 import { loginAsUser } from "./auth";
@@ -356,6 +357,71 @@ test.describe("Workshop Management", () => {
 				.toBe("/dashboard/workshops/create");
 		});
 
+		test("creates a workshop with a manual destination through the UI", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+			await gotoHydrated(page, "/dashboard/workshops/create");
+
+			const ts = Date.now();
+			const title = `Destination Workshop ${ts}`;
+			const workshopDate = dayjs().add(2, "day");
+
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(title);
+			await page.getByRole("textbox", { name: /location/i }).fill("Main hall");
+			await page
+				.getByRole("textbox", { name: "Destination name", exact: true })
+				.fill("National Basketball Arena");
+			await page
+				.getByRole("textbox", { name: "Destination address", exact: true })
+				.fill("Tymon Park, Dublin 6w");
+			await page
+				.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				})
+				.fill("https://maps.app.goo.gl/AbCdEf");
+			await pickWorkshopDate(page, workshopDate);
+			await page
+				.getByRole("spinbutton", { name: "Available places", exact: true })
+				.fill("15");
+			await page
+				.getByRole("spinbutton", { name: "Member price", exact: true })
+				.fill("15");
+
+			await page
+				.getByRole("button", { name: "Create Workshop", exact: true })
+				.click();
+
+			await expect(
+				page.getByText(`Workshop "${title}" created successfully!`),
+			).toBeVisible();
+			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
+
+			// The destination round-trips: the management modal shows the label,
+			// the destination details, and the validated Maps link.
+			const dialog = await openWorkshopModal(page, title);
+			await expect(dialog.getByText("Main hall")).toBeVisible();
+			await expect(
+				dialog.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+			).toBeVisible();
+			await expect(
+				dialog.getByRole("link", { name: "Get directions" }),
+			).toHaveAttribute("href", "https://maps.app.goo.gl/AbCdEf");
+
+			// Track the created workshop for teardown from the modal's edit link.
+			const editHref = await dialog
+				.getByTestId("edit-workshop-button")
+				.getAttribute("href");
+			const createdId = editHref?.match(
+				/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+			)?.[0];
+			if (createdId) createdWorkshopIds.push(createdId);
+		});
+
 		test("creates a workshop through the UI", async ({ page, context }) => {
 			await loginAsUser(context, adminData.email);
 			await gotoHydrated(page, "/dashboard/workshops/create");
@@ -481,6 +547,196 @@ test.describe("Workshop Management", () => {
 			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
 		});
 
+		test("prefills a saved destination, keeps it through an unrelated edit, and updates it", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+
+			const ts = Date.now();
+			const title = `Destination Edit ${ts}`;
+			const workshop = await createTestWorkshop(page, {
+				title,
+				location: "Main hall",
+				destination_name: "National Basketball Arena",
+				destination_address: "Tymon Park, Dublin 6w",
+				directions_url: "https://maps.app.goo.gl/AbCdEf",
+				max_capacity: 10,
+				price_member: 1500,
+				price_non_member: 2500,
+				is_public: false,
+				status: "planned",
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+
+			await expect(
+				page.getByRole("textbox", { name: "Destination name", exact: true }),
+			).toHaveValue("National Basketball Arena");
+			await expect(
+				page.getByRole("textbox", { name: "Destination address", exact: true }),
+			).toHaveValue("Tymon Park, Dublin 6w");
+			await expect(
+				page.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				}),
+			).toHaveValue("https://maps.app.goo.gl/AbCdEf");
+
+			// An unrelated edit resubmits the stored destination untouched.
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(`Renamed ${title}`);
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+			await expect(page.getByText(/updated successfully/i)).toBeVisible();
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(
+				page.getByRole("textbox", { name: "Destination name", exact: true }),
+			).toHaveValue("National Basketball Arena");
+
+			// A deliberate change replaces the destination and its link together.
+			await page
+				.getByRole("textbox", { name: "Destination name", exact: true })
+				.fill("Clontarf Cricket Club");
+			await page
+				.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				})
+				.fill("https://www.google.com/maps/place/Clontarf+Cricket+Club");
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+			await expect(page.getByText(/updated successfully/i)).toBeVisible();
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(
+				page.getByRole("textbox", { name: "Destination name", exact: true }),
+			).toHaveValue("Clontarf Cricket Club");
+			await expect(
+				page.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				}),
+			).toHaveValue("https://www.google.com/maps/place/Clontarf+Cricket+Club");
+			// The short label was never touched by the destination edits.
+			await expect(
+				page.getByRole("textbox", { name: /location/i }),
+			).toHaveValue("Main hall");
+		});
+
+		test("clearing the destination fields removes the optional details", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+
+			const ts = Date.now();
+			const workshop = await createTestWorkshop(page, {
+				title: `Destination Clear ${ts}`,
+				location: "Main hall",
+				destination_name: "National Basketball Arena",
+				destination_address: "Tymon Park, Dublin 6w",
+				directions_url: "https://maps.app.goo.gl/AbCdEf",
+				max_capacity: 10,
+				price_member: 1500,
+				price_non_member: 2500,
+				is_public: false,
+				status: "planned",
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+
+			await page
+				.getByRole("textbox", { name: "Destination name", exact: true })
+				.fill("");
+			await page
+				.getByRole("textbox", { name: "Destination address", exact: true })
+				.fill("");
+			await page
+				.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				})
+				.fill("");
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+			await expect(page.getByText(/updated successfully/i)).toBeVisible();
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(
+				page.getByRole("textbox", { name: "Destination name", exact: true }),
+			).toHaveValue("");
+			await expect(
+				page.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				}),
+			).toHaveValue("");
+			// The label survives the clear.
+			await expect(
+				page.getByRole("textbox", { name: /location/i }),
+			).toHaveValue("Main hall");
+		});
+
+		test("rejects an unsafe directions link server-side and recovers without losing values", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+
+			const ts = Date.now();
+			const workshop = await createTestWorkshop(page, {
+				title: `Unsafe Link ${ts}`,
+				location: "Main hall",
+				max_capacity: 10,
+				price_member: 1500,
+				price_non_member: 2500,
+				is_public: false,
+				status: "planned",
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+
+			// https, so the form's own check passes; only Phoenix's
+			// supported-Maps-destination rule can refuse it.
+			await page
+				.getByRole("textbox", { name: "Destination name", exact: true })
+				.fill("Arena");
+			await page
+				.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				})
+				.fill("https://evil.example.com/maps");
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+
+			await expect(
+				page.getByText("Directions link must be a Google Maps link"),
+			).toBeVisible();
+			// The entered values survive the rejection.
+			await expect(
+				page.getByRole("textbox", { name: "Destination name", exact: true }),
+			).toHaveValue("Arena");
+			await expect(
+				page.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				}),
+			).toHaveValue("https://evil.example.com/maps");
+
+			// Correcting the link and resubmitting succeeds.
+			await page
+				.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				})
+				.fill("https://maps.app.goo.gl/AbCdEf");
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+			await expect(page.getByText(/updated successfully/i)).toBeVisible();
+		});
+
 		test("locks editing for a published workshop", async ({
 			page,
 			context,
@@ -516,6 +772,17 @@ test.describe("Workshop Management", () => {
 			).toBeDisabled();
 			await expect(
 				page.getByRole("textbox", { name: /location/i }),
+			).toBeDisabled();
+			// Destination controls are locked with the rest: the published
+			// pricing exception does not permit venue edits (ALE-440).
+			await expect(
+				page.getByRole("textbox", { name: "Destination name", exact: true }),
+			).toBeDisabled();
+			await expect(
+				page.getByRole("textbox", {
+					name: "Google Maps directions link",
+					exact: true,
+				}),
 			).toBeDisabled();
 			await expect(
 				page.getByRole("button", { name: "Update Workshop" }),
@@ -765,6 +1032,97 @@ test.describe("Workshop Management", () => {
 			// Remove from cleanup list since it's already deleted.
 			const idx = createdWorkshopIds.indexOf(workshop.id);
 			if (idx >= 0) createdWorkshopIds.splice(idx, 1);
+		});
+	});
+
+	test.describe("attendee directions (ALE-440)", () => {
+		test("members see destination details and a directions link on their workshop list", async ({
+			page,
+			context,
+		}) => {
+			const ts = Date.now();
+			const start = dayjs().add(3, "day").hour(14).minute(0);
+			const workshop = await createWorkshop({
+				title: `Member Directions ${ts}`,
+				description: "Attendee directions fixture",
+				location: "Main hall",
+				destination_name: "National Basketball Arena",
+				destination_address: "Tymon Park, Dublin 6w",
+				directions_url: "https://maps.app.goo.gl/AbCdEf",
+				start_date: start.toDate(),
+				end_date: start.add(2, "hour").toDate(),
+				max_capacity: 10,
+				price_member: 1000,
+				price_non_member: 2000,
+				is_public: true,
+				refund_days: 3,
+				created_by: adminData.userId!,
+				status: "published",
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			await loginAsUser(context, memberData.email);
+			await gotoHydrated(page, "/dashboard/my-workshops");
+
+			const card = page.getByRole("article").filter({
+				has: page.getByRole("heading", { name: `Member Directions ${ts}` }),
+			});
+			await expect(card.getByText("Main hall")).toBeVisible();
+			await expect(
+				card.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+			).toBeVisible();
+			await expect(
+				card.getByRole("link", { name: "Get directions" }),
+			).toHaveAttribute("href", "https://maps.app.goo.gl/AbCdEf");
+			await expect(
+				card.getByRole("link", { name: "Get directions" }),
+			).toHaveAttribute("rel", "noopener noreferrer");
+		});
+
+		test("external attendees see the destination and directions on the registration page", async ({
+			page,
+		}) => {
+			const ts = Date.now();
+			const start = dayjs().add(3, "day").hour(14).minute(0);
+			const workshop = await createWorkshop({
+				title: `External Directions ${ts}`,
+				description: "External attendee directions fixture",
+				location: "Main hall",
+				destination_name: "National Basketball Arena",
+				destination_address: "Tymon Park, Dublin 6w",
+				directions_url: "https://maps.app.goo.gl/AbCdEf",
+				start_date: start.toDate(),
+				end_date: start.add(2, "hour").toDate(),
+				max_capacity: 10,
+				price_member: 1000,
+				price_non_member: 2000,
+				is_public: true,
+				refund_days: 3,
+				created_by: adminData.userId!,
+				status: "published",
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			// Stub Stripe's embedded Checkout so the public page mounts without
+			// leaving the browser; Phoenix still opens a real test-mode session,
+			// which the cleanup expires.
+			const expireSessions = await stubEmbeddedCheckout(page);
+
+			try {
+				await gotoHydrated(page, `/workshops/${workshop.id}/register`);
+				await expect(page.getByText("Main hall")).toBeVisible();
+				await expect(
+					page.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+				).toBeVisible();
+				const directions = page.getByRole("link", { name: "Get directions" });
+				await expect(directions).toHaveAttribute(
+					"href",
+					"https://maps.app.goo.gl/AbCdEf",
+				);
+				await expect(directions).toHaveAttribute("rel", "noopener noreferrer");
+			} finally {
+				await expireSessions();
+			}
 		});
 	});
 

@@ -75,6 +75,9 @@ defmodule DhcWeb.WorkshopsHTTP do
       price_non_member: "priceNonMember",
       is_public: "isPublic",
       refund_days: "refundDays",
+      destination_name: "destinationName",
+      destination_address: "destinationAddress",
+      directions_url: "directionsUrl",
       announce_discord: "announceDiscord",
       announce_email: "announceEmail"
     }

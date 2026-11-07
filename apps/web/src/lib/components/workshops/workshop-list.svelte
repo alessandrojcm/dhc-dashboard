@@ -5,6 +5,7 @@ import * as Dialog from "#lib/components/ui/dialog/index.js";
 import WorkshopExpressCheckout from "./workshop-express-checkout.svelte";
 import WorkshopCancellationDialog from "./workshop-cancellation-dialog.svelte";
 import { dublinInstantTile, formatDublinSpan } from "#lib/club-calendar.js";
+import { destinationLines, directionsHref } from "#lib/destinations.js";
 import Dinero from "dinero.js";
 import { useQueryClient } from "@tanstack/svelte-query";
 import type { UserData } from "#lib/types.js";
@@ -269,7 +270,26 @@ function handleRegistrationSuccess() {
 											aria-hidden="true"
 											class="size-4 shrink-0 text-primary"
 										/>
-										<span class="truncate">{workshop.location}</span>
+										<span class="min-w-0">
+											<span class="block truncate">{workshop.location}</span>
+											{#if destinationLines(workshop).length > 0}
+												<span
+													class="block truncate text-xs text-muted-foreground"
+												>
+													{destinationLines(workshop).join(" · ")}
+												</span>
+											{/if}
+											{#if directionsHref(workshop)}
+												<a
+													href={directionsHref(workshop)}
+													target="_blank"
+													rel="noopener noreferrer"
+													class="mt-0.5 inline-block text-xs font-medium text-primary underline-offset-2 hover:underline"
+												>
+													Get directions
+												</a>
+											{/if}
+										</span>
 									</span>
 								</div>
 							</div>
