@@ -1,0 +1,70 @@
+{
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoint_id": "d1c316c252ae",
+  "checkpoints_count": 9,
+  "cli_version": "0.9.0",
+  "combined_attribution": {
+    "agent_lines": 82,
+    "agent_percentage": 7.016248153618906,
+    "agent_removed": 13,
+    "calculated_at": "2026-08-22T20:07:40.411447Z",
+    "human_added": 595,
+    "human_modified": 0,
+    "human_removed": 664,
+    "metric_version": 2,
+    "total_committed": 677,
+    "total_lines_changed": 1354
+  },
+  "files_touched": [
+    "CONTEXT.md",
+    "apps/phoenix/AGENTS.md",
+    "apps/phoenix/config/config.exs",
+    "apps/phoenix/config/dev.exs",
+    "apps/phoenix/config/runtime.exs",
+    "apps/phoenix/config/test.exs",
+    "apps/phoenix/lib/dhc/application.ex",
+    "apps/phoenix/lib/dhc/email/api_client.ex",
+    "apps/phoenix/lib/dhc/email/mailer.ex",
+    "apps/phoenix/lib/dhc/email/workers/worker.ex",
+    "apps/phoenix/mix.exs",
+    "apps/phoenix/test/dhc/email/api_client_test.exs",
+    "apps/phoenix/test/dhc/email/workers/worker_test.exs",
+    "apps/phoenix/test/support/email_adapter_stub.ex",
+    "docs/adr/0021-swoosh-is-the-email-transport-seam.md",
+    "docs/adr/0022-code-authored-templates-synced-to-resend.md",
+    "docs/agents/commands.md",
+    "docs/agents/migration-notes.md",
+    "docs/agents/where-to-look.md"
+  ],
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    },
+    {
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "metadata": "/1/metadata.json",
+      "prompt": "",
+      "transcript": "/1/full.jsonl"
+    },
+    {
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "metadata": "/2/metadata.json",
+      "prompt": "/2/prompt.txt",
+      "transcript": "/2/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 170,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 14278535,
+    "input_tokens": 538545,
+    "output_tokens": 78923
+  }
+}
