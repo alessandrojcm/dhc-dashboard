@@ -470,6 +470,62 @@ describe("connectNotificationRealtime (ALE-164 socket-token path)", () => {
 		expect(getSocketToken).toHaveBeenCalledTimes(attempts);
 	});
 
+	it("uses the exact backoff sequence and resets it after a successful join", async () => {
+		vi.useFakeTimers();
+		const createSocket = createSocketFactory();
+		const getSocketToken = vi.fn(async () => "socket-token");
+		const { handle } = setup({ getSocketToken, createSocket });
+		await vi.advanceTimersByTimeAsync(0);
+
+		createdSockets[0].onErrorCb?.("first drop");
+		await vi.advanceTimersByTimeAsync(999);
+		expect(getSocketToken).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(getSocketToken).toHaveBeenCalledTimes(2);
+
+		createdSockets[1].onErrorCb?.("second drop");
+		await vi.advanceTimersByTimeAsync(1_999);
+		expect(getSocketToken).toHaveBeenCalledTimes(2);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(getSocketToken).toHaveBeenCalledTimes(3);
+
+		for (const delay of [5_000, 10_000, 30_000]) {
+			createdSockets.at(-1)?.onErrorCb?.("another drop");
+			await vi.advanceTimersByTimeAsync(delay - 1);
+			expect(getSocketToken).toHaveBeenCalledTimes(createdSockets.length);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(getSocketToken).toHaveBeenCalledTimes(createdSockets.length);
+		}
+
+		resolveJoin(createdSockets.at(-1)!.channels[0], "ok");
+		createdSockets.at(-1)?.onErrorCb?.("drop after recovery");
+		await vi.advanceTimersByTimeAsync(999);
+		expect(getSocketToken).toHaveBeenCalledTimes(6);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(getSocketToken).toHaveBeenCalledTimes(7);
+
+		handle.destroy();
+	});
+
+	it("ignores creation events from a channel retired by a replacement socket", async () => {
+		vi.useFakeTimers();
+		const createSocket = createSocketFactory();
+		const { invalidate, handle } = setup({
+			getSocketToken: async () => "socket-token",
+			createSocket,
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		const oldChannel = createdSockets[0].channels[0];
+		createdSockets[0].onCloseCb?.();
+		await vi.advanceTimersByTimeAsync(1_000);
+
+		invalidate.mockClear();
+		emitChannelEvent(oldChannel, "notification_created");
+		expect(invalidate).not.toHaveBeenCalled();
+
+		handle.destroy();
+	});
+
 	it("keeps retrying after the live socket keeps failing, at the bounded ceiling", async () => {
 		vi.useFakeTimers();
 		vi.spyOn(console, "warn").mockImplementation(() => {});
