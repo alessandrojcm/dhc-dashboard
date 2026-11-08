@@ -1,0 +1,28 @@
+{
+  "branch": "gitbutler/workspace",
+  "checkpoint_id": "a4b785eac5c5",
+  "checkpoints_count": 3,
+  "cli_version": "0.9.0",
+  "files_touched": [
+    "apps/web/e2e/member-signup.spec.ts",
+    "apps/web/src/lib/components/ui/phone-input.svelte",
+    "apps/web/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte"
+  ],
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 12,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "input_tokens": 331599,
+    "output_tokens": 1686
+  }
+}
