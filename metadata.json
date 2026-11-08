@@ -1,0 +1,72 @@
+{
+  "branch": "feature/google-maps",
+  "checkpoint_id": "6856d32f46f5",
+  "checkpoints_count": 10,
+  "cli_version": "0.13.1",
+  "files_touched": [
+    "AGENTS.md",
+    "apps/phoenix/lib/dhc/destinations.ex",
+    "apps/phoenix/lib/dhc/workshops.ex",
+    "apps/phoenix/lib/dhc/workshops/workshop.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_http.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_json.ex",
+    "apps/phoenix/priv/api/openapi.yaml",
+    "apps/phoenix/test/dhc/destinations_test.exs",
+    "apps/phoenix/test/dhc/workshop_calendar/participant_workshops_test.exs",
+    "apps/phoenix/test/dhc/workshop_calendar/sync_test.exs",
+    "apps/phoenix/test/dhc/workshops/calendar_projection_test.exs",
+    "apps/phoenix/test/dhc/workshops_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/workshops_controller_test.exs",
+    "apps/phoenix/test/support/e2e_harness.ex",
+    "apps/phoenix/test/support/fixtures/workshop_fixtures.ex",
+    "apps/web/e2e/attendee-test-helpers.ts",
+    "apps/web/e2e/setupFunctions.ts",
+    "apps/web/e2e/workshop-management.spec.ts",
+    "apps/web/src/lib/components/notifications/notification-realtime.svelte.ts",
+    "apps/web/src/lib/components/workshop-form.browser.test.ts",
+    "apps/web/src/lib/components/workshop-form.remote.ts",
+    "apps/web/src/lib/components/workshop-form.svelte",
+    "apps/web/src/lib/components/workshops/workshop-calendar.browser.test.ts",
+    "apps/web/src/lib/components/workshops/workshop-event-modal.svelte",
+    "apps/web/src/lib/components/workshops/workshop-list.browser.test.ts",
+    "apps/web/src/lib/components/workshops/workshop-list.svelte",
+    "apps/web/src/lib/components/workshops/workshop-management-list.browser.test.ts",
+    "apps/web/src/lib/schemas/workshop.ts",
+    "apps/web/src/lib/server/workshop-generator.ts",
+    "apps/web/src/routes/(public)/workshops/[id]/register/+page.server.ts",
+    "apps/web/src/routes/(public)/workshops/[id]/register/+page.svelte",
+    "apps/web/src/routes/dashboard/workshops/[id]/edit/+page.server.ts"
+  ],
+  "redaction": {
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 30,
+      "credentialed_uri": 0,
+      "entropy": 3127,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    },
+    "replacements": 3157
+  },
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 56,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5420738,
+    "input_tokens": 273983,
+    "output_tokens": 5595
+  }
+}
