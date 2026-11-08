@@ -1,0 +1,65 @@
+{
+  "branch": "feature/google-maps",
+  "checkpoint_id": "41f0db685aac",
+  "checkpoints_count": 3,
+  "cli_version": "0.13.1",
+  "files_touched": [
+    "apps/phoenix/lib/dhc/destinations.ex",
+    "apps/phoenix/lib/dhc/workshops.ex",
+    "apps/phoenix/lib/dhc/workshops/workshop.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_http.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_json.ex",
+    "apps/phoenix/priv/api/openapi.yaml",
+    "apps/phoenix/priv/repo/migrations/20261107162850_add_workshop_destinations.exs",
+    "apps/phoenix/test/dhc/destinations_test.exs",
+    "apps/phoenix/test/dhc/workshop_calendar/participant_workshops_test.exs",
+    "apps/phoenix/test/dhc/workshop_calendar/sync_test.exs",
+    "apps/phoenix/test/dhc/workshops_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/workshops_controller_test.exs",
+    "apps/phoenix/test/support/fixtures/workshop_fixtures.ex",
+    "apps/web/src/lib/components/destination-input.svelte",
+    "apps/web/src/lib/components/workshop-form.remote.ts",
+    "apps/web/src/lib/components/workshop-form.svelte",
+    "apps/web/src/lib/components/workshops/workshop-calendar.browser.test.ts",
+    "apps/web/src/lib/components/workshops/workshop-event-modal.svelte",
+    "apps/web/src/lib/components/workshops/workshop-management-list.browser.test.ts",
+    "apps/web/src/lib/destinations.ts",
+    "apps/web/src/lib/schemas/workshop.ts",
+    "apps/web/src/lib/server/workshop-generator.ts",
+    "apps/web/src/routes/(public)/workshops/[id]/register/+page.server.ts",
+    "apps/web/src/routes/(public)/workshops/[id]/register/+page.svelte",
+    "apps/web/src/routes/dashboard/workshops/[id]/edit/+page.server.ts"
+  ],
+  "redaction": {
+    "layers": {
+      "betterleaks": 2,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 170,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    },
+    "replacements": 172
+  },
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 22,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2661086,
+    "input_tokens": 518533,
+    "output_tokens": 14077
+  }
+}
