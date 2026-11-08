@@ -1,0 +1,48 @@
+{
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoint_id": "0b2da37a6826",
+  "checkpoints_count": 8,
+  "cli_version": "0.9.0",
+  "files_touched": [
+    "docs/agents/structure.md",
+    "docs/agents/tech-stack.md"
+  ],
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "",
+      "transcript": "/0/full.jsonl"
+    },
+    {
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "metadata": "/1/metadata.json",
+      "prompt": "/1/prompt.txt",
+      "transcript": "/1/full.jsonl"
+    },
+    {
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "metadata": "/2/metadata.json",
+      "prompt": "/2/prompt.txt",
+      "transcript": "/2/full.jsonl"
+    },
+    {
+      "compact_transcript": "/3/transcript.jsonl",
+      "content_hash": "/3/content_hash.txt",
+      "metadata": "/3/metadata.json",
+      "prompt": "/3/prompt.txt",
+      "transcript": "/3/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 152,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 13065346,
+    "input_tokens": 1810504,
+    "output_tokens": 52139
+  }
+}

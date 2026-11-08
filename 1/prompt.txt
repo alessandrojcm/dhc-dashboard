@@ -1,0 +1,8 @@
+Research current official documentation for React Email (react.email) and answer concisely:
+
+1. What is the latest stable version of `@react-email/components` and the `react-email` CLI package? Exact version numbers from npm.
+2. What does the official `react-email` preview server setup look like inside an existing pnpm monorepo package (NOT `pnpm create email` standalone scaffold)? Specifically: which devDependency provides the `email dev` preview command, what directory convention does it expect (e.g. `emails/`), what script entry should package.json have, and what port does the preview default to?
+3. How do you render a React Email component to static HTML programmatically for tests — is there an official `@react-email/render` package, what's its current API (`render()` signature — does it return a Promise now?), and exact version?
+4. Any TypeScript-specific gotchas: do component props interfaces work directly with @react-email/components? Is `react-dom/server` renderToStaticMarkup still viable as an alternative to @react-email/render for simple test rendering?
+
+Return exact version numbers, exact package names, exact CLI commands, and short code snippets. Cite which doc pages you used. Do NOT write any project code — research only.
