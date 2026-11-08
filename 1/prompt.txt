@@ -1,0 +1,18 @@
+Research current (2026) official Resend documentation for their **Templates** feature and report precise API facts. Use web search + fetching https://resend.com/docs and related pages. This is research only — do not write code.
+
+Context: We're building a Node/TypeScript sync script that renders React Email components to HTML and uploads them as Resend-hosted Templates, addressing templates by a stable "alias" derived from an Email Kind. Flow needed: create-or-update by alias (idempotent rerun), draft vs published lifecycle, declaring template variables, listing templates.
+
+Questions to answer precisely:
+
+1. **Templates REST API**: What are the exact endpoints under https://api.resend.com for templates (create, get, list, update, delete, publish/unpublish if they exist)? For each: HTTP method, path, required/optional JSON body fields, and response body shape. Specifically:
+   - Is there an `alias` field on templates? How is it set/used? Can you look up a template BY alias directly, or only by id?
+   - How are template **variables** declared (field name, shape — e.g. `{ key, type, fallback }`?) and what types are allowed?
+   - How does the **draft vs publish** lifecycle work over the API? Is there a status field, a publish endpoint, or separate create-as-draft semantics?
+   - Does updating a published template overwrite it or create a new version?
+   - Variable placeholder syntax inside template HTML (e.g. `{{KEY}}` vs `{{{KEY}}}`) and any reserved variable names.
+2. **Official `resend` CLI**: Does the official `resend` npm CLI have template subcommands (e.g. `resend templates push/sync/create/update/publish/list`)? Exact command names, flags, how it authenticates (env var name?), whether it supports CI/non-interactive use, and whether it supports aliases/drafts/publishing. If the CLI cannot do all of it, say which parts must use the REST API.
+3. **Auth**: Header format (`Authorization: Bearer re_...`) and which key type is needed for template management (Full Access vs Send-only vs Domain-only).
+4. **Rate limits / errors**: Any published rate limits for the Templates API, and error envelope shape ({name, message} ?).
+5. **Node SDK**: Does the official `resend` npm package (Node SDK) expose `templates.*` methods? Which version, and method signatures?
+
+Report findings as a compact structured summary with exact field names, endpoints, and one example request/response pair for create-with-variables and for publish (or the equivalent). Include source URLs. Flag anything you could not confirm rather than guessing.

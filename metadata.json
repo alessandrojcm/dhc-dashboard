@@ -1,0 +1,61 @@
+{
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoint_id": "f90f963d7ba9",
+  "checkpoints_count": 7,
+  "cli_version": "0.9.0",
+  "files_touched": [
+    "apps/web/wrangler.jsonc"
+  ],
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    },
+    {
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "metadata": "/1/metadata.json",
+      "prompt": "/1/prompt.txt",
+      "transcript": "/1/full.jsonl"
+    },
+    {
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "metadata": "/2/metadata.json",
+      "prompt": "/2/prompt.txt",
+      "transcript": "/2/full.jsonl"
+    },
+    {
+      "compact_transcript": "/3/transcript.jsonl",
+      "content_hash": "/3/content_hash.txt",
+      "metadata": "/3/metadata.json",
+      "prompt": "",
+      "transcript": "/3/full.jsonl"
+    },
+    {
+      "compact_transcript": "/4/transcript.jsonl",
+      "content_hash": "/4/content_hash.txt",
+      "metadata": "/4/metadata.json",
+      "prompt": "",
+      "transcript": "/4/full.jsonl"
+    },
+    {
+      "compact_transcript": "/5/transcript.jsonl",
+      "content_hash": "/5/content_hash.txt",
+      "metadata": "/5/metadata.json",
+      "prompt": "/5/prompt.txt",
+      "transcript": "/5/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 135,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9963147,
+    "input_tokens": 259164,
+    "output_tokens": 54198
+  }
+}

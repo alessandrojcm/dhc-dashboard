@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "f90f963d7ba9",
+  "session_id": "ses_fd4a3e85dffeEJZOljeWI58s21",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T22:20:55.417468Z",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [],
+  "agent": "OpenCode",
+  "model": "x-preview-f-free",
+  "turn_id": "dbccf619d3b1",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 127932,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9837888,
+    "output_tokens": 42056,
+    "api_call_count": 126
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 7,
+      "user_lines_removed": 1,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "apps/web/wrangler.jsonc": 7
+      },
+      "user_removed_per_file": {
+        "apps/web/wrangler.jsonc": 1
+      }
+    }
+  ]
+}

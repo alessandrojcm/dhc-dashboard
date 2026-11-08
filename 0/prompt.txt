@@ -1,0 +1,18 @@
+Research the current (2026) Resend email platform's Templates feature APIs. This is for a CI sync pipeline that renders React Email components to HTML and upserts them as Resend-hosted templates.
+
+I need precise answers on:
+
+1. The official `resend` npm CLI: does it support managing **Templates** (the dashboard-hosted templates feature, NOT sending emails)? List the exact subcommands/syntax if yes (create/update/publish/list/get), including flags like alias, subject, from, html, status/draft vs publish.
+2. The Resend REST **Templates API** (api.resend.com): exact endpoints and JSON payloads for:
+   - Create a template (draft) — payload fields (name, alias?, subject, from, html, variables?)
+   - Update an existing template
+   - Publish a template
+   - Get a single template by id or alias — response shape (fields like `id`, `alias`, `status`: e.g. "draft"|"published", `name`)
+   - List templates — pagination model
+3. Whether templates can be addressed by a stable string **alias** at send time (`template: { ... }` param of POST /emails), and whether create/update accepts setting that alias.
+4. Any rate limits or gotchas for these endpoints.
+5. Environment variable conventions the CLI uses for auth (e.g. RESEND_API_KEY).
+
+Useful starting points: https://resend.com/docs/dashboard/templates/introduction , https://resend.com/docs/api-reference/templates/* , https://resend.com/docs/cli/introduction , the resend npm package docs. Verify against live docs pages rather than memory.
+
+Return: a concise but complete summary with exact endpoint paths, request/response field names, exact CLI command syntax, and source URLs for each claim. If some part is not supported (e.g. CLI lacks template management), say so explicitly so we can fall back to the REST API via curl/fetch.
