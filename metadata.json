@@ -1,0 +1,33 @@
+{
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoint_id": "cca61fc80f58",
+  "checkpoints_count": 2,
+  "cli_version": "0.9.0",
+  "files_touched": [
+    "docs/agents/tech-stack.md"
+  ],
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    },
+    {
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "metadata": "/1/metadata.json",
+      "prompt": "",
+      "transcript": "/1/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 11,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 960455,
+    "input_tokens": 71493,
+    "output_tokens": 10266
+  }
+}

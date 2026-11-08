@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "cca61fc80f58",
+  "session_id": "ses_fd512f5c2ffeGdVm1zkFm5vxgG",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T20:09:02.293314Z",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/agents/tech-stack.md"
+  ],
+  "agent": "OpenCode",
+  "model": "",
+  "turn_id": "5f8765e94548",
+  "checkpoint_transcript_start": 100,
+  "transcript_lines_at_start": 100,
+  "compact_transcript_start": 100,
+  "token_usage": {
+    "input_tokens": 4847,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 793088,
+    "output_tokens": 1088,
+    "api_call_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T20:09:02.235505Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 0,
+    "total_lines_changed": 1,
+    "agent_percentage": 0,
+    "metric_version": 2
+  }
+}
