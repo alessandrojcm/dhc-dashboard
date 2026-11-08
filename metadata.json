@@ -1,0 +1,26 @@
+{
+  "branch": "gitbutler/workspace",
+  "checkpoint_id": "3a84002fa71d",
+  "checkpoints_count": 1,
+  "cli_version": "0.9.0",
+  "files_touched": [
+    "CONTEXT.md"
+  ],
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 7,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "input_tokens": 324484,
+    "output_tokens": 4830
+  }
+}
