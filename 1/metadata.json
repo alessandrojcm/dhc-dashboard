@@ -1,0 +1,102 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "94de6df2655f",
+  "session_id": "ses_fd4e13d58ffetoIsfha64XDWNj",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T21:20:08.457905Z",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 5,
+  "save_step_count": 2,
+  "files_touched": [
+    "packages/email-templates/.oxlintrc.json",
+    "packages/email-templates/emails/_components/layout.tsx",
+    "packages/email-templates/emails/invite-member.tsx",
+    "packages/email-templates/emails/magic-link.tsx",
+    "packages/email-templates/emails/workshop-announcement.tsx",
+    "packages/email-templates/emails/workshop-registration-error.tsx",
+    "packages/email-templates/emails/workshop-registration.tsx",
+    "packages/email-templates/package.json",
+    "packages/email-templates/src/index.ts",
+    "packages/email-templates/src/template-metadata.ts",
+    "packages/email-templates/test/template-metadata.test.ts",
+    "packages/email-templates/tsconfig.json",
+    "packages/email-templates/vitest.config.ts",
+    "pnpm-lock.yaml"
+  ],
+  "agent": "OpenCode",
+  "model": "x-preview-f-free",
+  "turn_id": "3a7005164a21",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 1746489,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 11684288,
+    "output_tokens": 44727,
+    "api_call_count": 139
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T21:20:08.392387Z",
+    "agent_lines": 1184,
+    "agent_removed": 0,
+    "human_added": 316,
+    "human_modified": 563,
+    "human_removed": 0,
+    "total_committed": 1946,
+    "total_lines_changed": 2073,
+    "agent_percentage": 57.115291847563924,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 275,
+      "user_lines_removed": 110,
+      "agent_lines_added": 1940,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".mise.toml": 2,
+        "package.json": 4,
+        "packages/email-templates/emails/_components/layout.tsx": 91,
+        "packages/email-templates/emails/invite-member.tsx": 21,
+        "packages/email-templates/emails/magic-link.tsx": 10,
+        "packages/email-templates/emails/workshop-announcement.tsx": 4,
+        "packages/email-templates/emails/workshop-registration-error.tsx": 4,
+        "packages/email-templates/emails/workshop-registration.tsx": 4,
+        "packages/email-templates/package.json": 1,
+        "packages/email-templates/src/template-metadata.ts": 25,
+        "packages/email-templates/test/template-metadata.test.ts": 4,
+        "pnpm-lock.yaml": 105
+      },
+      "user_removed_per_file": {
+        ".mise.toml": 4,
+        "package.json": 4,
+        "packages/email-templates/emails/_components/layout.tsx": 10,
+        "packages/email-templates/emails/invite-member.tsx": 10,
+        "packages/email-templates/emails/magic-link.tsx": 14,
+        "packages/email-templates/emails/workshop-announcement.tsx": 1,
+        "packages/email-templates/emails/workshop-registration-error.tsx": 1,
+        "packages/email-templates/emails/workshop-registration.tsx": 1,
+        "packages/email-templates/src/template-metadata.ts": 36,
+        "packages/email-templates/test/template-metadata.test.ts": 21,
+        "pnpm-lock.yaml": 8
+      }
+    }
+  ]
+}

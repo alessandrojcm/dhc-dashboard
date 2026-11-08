@@ -1,0 +1,72 @@
+{
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoint_id": "94de6df2655f",
+  "checkpoints_count": 10,
+  "cli_version": "0.9.0",
+  "combined_attribution": {
+    "agent_lines": 2047,
+    "agent_percentage": 99.08034849951596,
+    "agent_removed": 0,
+    "calculated_at": "2026-08-22T21:20:11.20167Z",
+    "human_added": 9,
+    "human_modified": 0,
+    "human_removed": 10,
+    "metric_version": 2,
+    "total_committed": 2056,
+    "total_lines_changed": 2066
+  },
+  "files_touched": [
+    "packages/email-templates/.oxlintrc.json",
+    "packages/email-templates/emails/_components/layout.tsx",
+    "packages/email-templates/emails/invite-member.tsx",
+    "packages/email-templates/emails/magic-link.tsx",
+    "packages/email-templates/emails/workshop-announcement.tsx",
+    "packages/email-templates/emails/workshop-registration-error.tsx",
+    "packages/email-templates/emails/workshop-registration.tsx",
+    "packages/email-templates/package.json",
+    "packages/email-templates/src/index.ts",
+    "packages/email-templates/src/template-metadata.ts",
+    "packages/email-templates/test/template-metadata.test.ts",
+    "packages/email-templates/tsconfig.json",
+    "packages/email-templates/vitest.config.ts",
+    "pnpm-lock.yaml"
+  ],
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    },
+    {
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "metadata": "/1/metadata.json",
+      "prompt": "/1/prompt.txt",
+      "transcript": "/1/full.jsonl"
+    },
+    {
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "metadata": "/2/metadata.json",
+      "prompt": "/2/prompt.txt",
+      "transcript": "/2/full.jsonl"
+    },
+    {
+      "compact_transcript": "/3/transcript.jsonl",
+      "content_hash": "/3/content_hash.txt",
+      "metadata": "/3/metadata.json",
+      "prompt": "/3/prompt.txt",
+      "transcript": "/3/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 159,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 13730375,
+    "input_tokens": 1857424,
+    "output_tokens": 60424
+  }
+}
