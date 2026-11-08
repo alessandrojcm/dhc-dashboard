@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_lhLiFu775vAC7J8ULDJfr1Xx",
+  "agent_id": "ses_e4da6314affe1ZcS4AR4FyXM0M",
+  "subagent_type": "build",
+  "task_description": "Audit inventory announcement workflows",
+  "token_usage": {
+    "input_tokens": 87043,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 314880,
+    "output_tokens": 4449,
+    "api_call_count": 7
+  },
+  "started_at": "2026-11-06T19:33:12.5Z",
+  "completed_at": "2026-11-06T19:35:32.094505Z"
+}

@@ -1,0 +1,45 @@
+{
+  "branch": "feature/google-maps",
+  "checkpoint_id": "32167dc32a46",
+  "checkpoints_count": 1,
+  "cli_version": "0.13.1",
+  "files_touched": null,
+  "redaction": {
+    "layers": {
+      "betterleaks": 2,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 122,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    },
+    "replacements": 124
+  },
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 36,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3558272,
+    "input_tokens": 210942,
+    "output_tokens": 9899,
+    "subagent_tokens": {
+      "api_call_count": 46,
+      "cache_creation_tokens": 0,
+      "cache_read_tokens": 3287040,
+      "input_tokens": 470197,
+      "output_tokens": 21309
+    }
+  }
+}
