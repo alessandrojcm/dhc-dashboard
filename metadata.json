@@ -1,0 +1,109 @@
+{
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoint_id": "289db9f7e4e6",
+  "checkpoints_count": 15,
+  "cli_version": "0.9.0",
+  "combined_attribution": {
+    "agent_lines": 223,
+    "agent_percentage": 99.60238568588468,
+    "agent_removed": 278,
+    "calculated_at": "2026-08-22T22:55:27.978609Z",
+    "human_added": 1,
+    "human_modified": 0,
+    "human_removed": 1,
+    "metric_version": 2,
+    "total_committed": 224,
+    "total_lines_changed": 503
+  },
+  "files_touched": [
+    ".env.example",
+    "AGENTS.md",
+    "apps/phoenix/AGENTS.md",
+    "apps/phoenix/config/config.exs",
+    "apps/phoenix/config/dev.exs",
+    "apps/phoenix/config/runtime.exs",
+    "apps/phoenix/config/test.exs",
+    "apps/phoenix/lib/dhc/auth.ex",
+    "apps/phoenix/lib/dhc/email/api_client.ex",
+    "apps/phoenix/lib/dhc/email/mailer.ex",
+    "apps/phoenix/lib/dhc/email/workers/worker.ex",
+    "apps/phoenix/lib/dhc/invitations.ex",
+    "apps/phoenix/lib/dhc/invitations/workers/bulk_invite_worker.ex",
+    "apps/phoenix/lib/dhc/membership.ex",
+    "apps/phoenix/lib/dhc/membership/reactivation.ex",
+    "apps/phoenix/lib/dhc/workshop_announcements/workers/worker.ex",
+    "apps/phoenix/mix.exs",
+    "apps/phoenix/mix.lock",
+    "apps/phoenix/test/dhc/email/api_client_test.exs",
+    "apps/phoenix/test/dhc/email/workers/worker_test.exs",
+    "apps/phoenix/test/dhc/invitations/workers/bulk_invite_worker_test.exs",
+    "apps/phoenix/test/dhc/membership/reactivation_integration_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/auth_session_controller_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/membership_controller_test.exs",
+    "docs/adr/0022-code-authored-templates-synced-to-resend.md",
+    "docs/agents/commands.md",
+    "docs/agents/migration-notes.md",
+    "docs/agents/tech-stack.md",
+    "docs/agents/where-to-look.md",
+    "fnox.toml"
+  ],
+  "sessions": [
+    {
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "metadata": "/0/metadata.json",
+      "prompt": "/0/prompt.txt",
+      "transcript": "/0/full.jsonl"
+    },
+    {
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "metadata": "/1/metadata.json",
+      "prompt": "/1/prompt.txt",
+      "transcript": "/1/full.jsonl"
+    },
+    {
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "metadata": "/2/metadata.json",
+      "prompt": "/2/prompt.txt",
+      "transcript": "/2/full.jsonl"
+    },
+    {
+      "compact_transcript": "/3/transcript.jsonl",
+      "content_hash": "/3/content_hash.txt",
+      "metadata": "/3/metadata.json",
+      "prompt": "/3/prompt.txt",
+      "transcript": "/3/full.jsonl"
+    },
+    {
+      "compact_transcript": "/4/transcript.jsonl",
+      "content_hash": "/4/content_hash.txt",
+      "metadata": "/4/metadata.json",
+      "prompt": "/4/prompt.txt",
+      "transcript": "/4/full.jsonl"
+    },
+    {
+      "compact_transcript": "/5/transcript.jsonl",
+      "content_hash": "/5/content_hash.txt",
+      "metadata": "/5/metadata.json",
+      "prompt": "/5/prompt.txt",
+      "transcript": "/5/full.jsonl"
+    },
+    {
+      "compact_transcript": "/6/transcript.jsonl",
+      "content_hash": "/6/content_hash.txt",
+      "metadata": "/6/metadata.json",
+      "prompt": "/6/prompt.txt",
+      "transcript": "/6/full.jsonl"
+    }
+  ],
+  "strategy": "manual-commit",
+  "token_usage": {
+    "api_call_count": 151,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 12446263,
+    "input_tokens": 863414,
+    "output_tokens": 60252
+  }
+}
