@@ -1,0 +1,65 @@
+{
+  "cli_version": "0.13.1",
+  "checkpoint_id": "41f0db685aac",
+  "strategy": "manual-commit",
+  "branch": "feature/google-maps",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/phoenix/lib/dhc/destinations.ex",
+    "apps/phoenix/lib/dhc/workshops.ex",
+    "apps/phoenix/lib/dhc/workshops/workshop.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_http.ex",
+    "apps/phoenix/lib/dhc_web/controllers/workshops_json.ex",
+    "apps/phoenix/priv/api/openapi.yaml",
+    "apps/phoenix/priv/repo/migrations/20261107162850_add_workshop_destinations.exs",
+    "apps/phoenix/test/dhc/destinations_test.exs",
+    "apps/phoenix/test/dhc/workshop_calendar/participant_workshops_test.exs",
+    "apps/phoenix/test/dhc/workshop_calendar/sync_test.exs",
+    "apps/phoenix/test/dhc/workshops_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/workshops_controller_test.exs",
+    "apps/phoenix/test/support/fixtures/workshop_fixtures.ex",
+    "apps/web/src/lib/components/destination-input.svelte",
+    "apps/web/src/lib/components/workshop-form.remote.ts",
+    "apps/web/src/lib/components/workshop-form.svelte",
+    "apps/web/src/lib/components/workshops/workshop-calendar.browser.test.ts",
+    "apps/web/src/lib/components/workshops/workshop-event-modal.svelte",
+    "apps/web/src/lib/components/workshops/workshop-management-list.browser.test.ts",
+    "apps/web/src/lib/destinations.ts",
+    "apps/web/src/lib/schemas/workshop.ts",
+    "apps/web/src/lib/server/workshop-generator.ts",
+    "apps/web/src/routes/(public)/workshops/[id]/register/+page.server.ts",
+    "apps/web/src/routes/(public)/workshops/[id]/register/+page.svelte",
+    "apps/web/src/routes/dashboard/workshops/[id]/edit/+page.server.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/41/f0db685aac/0/metadata.json",
+      "transcript": "/41/f0db685aac/0/full.jsonl",
+      "compact_transcript": "/41/f0db685aac/0/transcript.jsonl",
+      "content_hash": "/41/f0db685aac/0/content_hash.txt",
+      "prompt": "/41/f0db685aac/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 518533,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2661086,
+    "output_tokens": 14077,
+    "api_call_count": 22
+  },
+  "redaction": {
+    "replacements": 172,
+    "layers": {
+      "betterleaks": 2,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 2,
+      "credentialed_uri": 0,
+      "entropy": 170,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

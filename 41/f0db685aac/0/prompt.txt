@@ -1,0 +1,13 @@
+find all the implicit state machines in apps/web
+
+---
+
+why shoyuldnt evey entry become xstate? how would we model the state machine then?
+
+---
+
+okay cool, now create a follow up for the strongest candidates so we convert them to xstate
+
+---
+
+okay can you @to-spec each one of those action points as a children task of ale-466
