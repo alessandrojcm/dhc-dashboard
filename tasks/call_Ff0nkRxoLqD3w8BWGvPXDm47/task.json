@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_Ff0nkRxoLqD3w8BWGvPXDm47",
+  "agent_id": "ses_e4da79716ffeFuWMs6MpZvNWWS",
+  "subagent_type": "build",
+  "task_description": "Review corrected report standards",
+  "token_usage": {
+    "input_tokens": 20858,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 114688,
+    "output_tokens": 256,
+    "api_call_count": 2
+  },
+  "started_at": "2026-11-06T19:43:59.521Z",
+  "completed_at": "2026-11-06T19:44:19.002043Z"
+}

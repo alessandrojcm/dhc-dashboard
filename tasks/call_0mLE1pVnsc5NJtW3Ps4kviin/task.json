@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_0mLE1pVnsc5NJtW3Ps4kviin",
+  "agent_id": "ses_e4da022beffeJPL30j5wgu9004",
+  "subagent_type": "build",
+  "task_description": "Recheck venue storage exception",
+  "token_usage": {
+    "input_tokens": 44435,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 346624,
+    "output_tokens": 1362,
+    "api_call_count": 9
+  },
+  "started_at": "2026-11-06T19:39:49.438Z",
+  "completed_at": "2026-11-06T19:41:24.039161Z"
+}

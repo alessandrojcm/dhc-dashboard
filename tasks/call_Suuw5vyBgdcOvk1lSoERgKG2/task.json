@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_Suuw5vyBgdcOvk1lSoERgKG2",
+  "agent_id": "ses_e4dad830effe5jSJz80xQA6XXo",
+  "subagent_type": "build",
+  "task_description": "Validate Places legal constraints",
+  "token_usage": {
+    "input_tokens": 163939,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 421376,
+    "output_tokens": 5779,
+    "api_call_count": 6
+  },
+  "started_at": "2026-11-06T19:25:12.816Z",
+  "completed_at": "2026-11-06T19:28:07.218172Z"
+}
