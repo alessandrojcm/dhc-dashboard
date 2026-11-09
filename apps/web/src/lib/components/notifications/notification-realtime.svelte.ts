@@ -273,7 +273,13 @@ const notificationRealtimeMachine = setup({
 				return {};
 			}
 
+			// Socket implementations may synchronously call a lifecycle callback
+			// while it is being registered. The assign action has not committed its
+			// returned socket to the machine context yet, so that socket is current
+			// even though the snapshot still says otherwise.
+			let setupComplete = false;
 			const retired = () => {
+				if (!setupComplete) return false;
 				const snapshot = self.getSnapshot();
 				return (
 					snapshot.status !== "active" || snapshot.context.socket !== socket
@@ -285,7 +291,16 @@ const notificationRealtimeMachine = setup({
 					return;
 				}
 				warn("socket lost", reason);
-				self.send({ type: "SOCKET_LOST", socket, reason });
+				const event: NotificationRealtimeMachineEvent = {
+					type: "SOCKET_LOST",
+					socket,
+					reason,
+				};
+				// Wait until assign commits the socket before the event's guard reads
+				// the context. Phoenix normally invokes later, but test doubles and
+				// alternate socket transports are allowed to invoke synchronously.
+				if (setupComplete) self.send(event);
+				else queueMicrotask(() => self.send(event));
 			};
 
 			try {
@@ -297,8 +312,9 @@ const notificationRealtimeMachine = setup({
 			} catch (error) {
 				warn("socket lifecycle wiring failed", error);
 			}
+			let channel: RealtimeChannel | null = null;
 			try {
-				const channel = socket.channel("notifications:self");
+				channel = socket.channel("notifications:self");
 				channel.on(NOTIFICATION_CREATED_EVENT, () => {
 					const snapshot = self.getSnapshot();
 					if (
@@ -308,8 +324,11 @@ const notificationRealtimeMachine = setup({
 						self.send({ type: "NOTIFICATION_CREATED", socket });
 					}
 				});
+				setupComplete = true;
 				return { socket, channel };
 			} catch (error) {
+				setupComplete = true;
+				if (channel) leave(channel);
 				self.send({ type: "CONNECTION_FAILED", cause: error });
 				disconnect(socket, "socket disconnect threw");
 				return { socket: null, channel: null };
