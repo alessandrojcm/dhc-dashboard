@@ -519,7 +519,9 @@ defmodule DhcWeb.InvitationsControllerTest do
       email = "real@example.com"
       insurance_link = "https://insurance.example.com/updated-form"
       assert {:ok, _} = Dhc.Settings.update("hema_insurance_form_link", insurance_link)
-      invitation_id = insert_invitation(email: email, status: "pending", seconds: 0)
+      # Issued an hour ago, so its window ends an hour before a fresh one and
+      # a re-arm is visible.
+      invitation_id = insert_invitation(email: email, status: "pending", seconds: -3600)
       original = Repo.get(Invitation, invitation_id)
 
       conn =
@@ -535,11 +537,11 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert args["transactional_id"] == "inviteMember"
       assert args["data_variables"]["INSURANCE_FORM_LINK"] == insurance_link
 
-      # The resend refreshed the expiry window from +7 days to +1 day.
+      # The resend re-armed the expiry with the default validity window.
       refreshed = Repo.get(Invitation, invitation_id)
       assert refreshed.expires_at != original.expires_at
 
-      expected = DateTime.add(DateTime.utc_now(), 1, :day) |> DateTime.truncate(:second)
+      expected = DateTime.add(DateTime.utc_now(), 7, :day) |> DateTime.truncate(:second)
       assert DateTime.diff(refreshed.expires_at, expected, :second) in -5..5
     end
 
@@ -585,8 +587,11 @@ defmodule DhcWeb.InvitationsControllerTest do
 
     test "resending an email with an expired and a pending invitation refreshes only the pending one",
          %{conn: conn} do
-      expired_id = insert_invitation(email: "mixed@example.com", status: "expired", seconds: 1)
-      pending_id = insert_invitation(email: "mixed@example.com", status: "pending", seconds: 2)
+      expired_id =
+        insert_invitation(email: "mixed@example.com", status: "expired", seconds: -7200)
+
+      pending_id =
+        insert_invitation(email: "mixed@example.com", status: "pending", seconds: -3600)
 
       conn =
         conn
@@ -606,7 +611,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       refreshed = Repo.get!(Invitation, pending_id)
       assert refreshed.status == "pending"
 
-      expected = DateTime.add(DateTime.utc_now(), 1, :day) |> DateTime.truncate(:second)
+      expected = DateTime.add(DateTime.utc_now(), 7, :day) |> DateTime.truncate(:second)
       assert DateTime.diff(refreshed.expires_at, expected, :second) in -5..5
     end
   end

@@ -9,6 +9,12 @@ import { defineTemplate } from "../src/template-metadata";
  */
 const HEMA_IRELAND_ITEMS_URL = "https://www.hemaireland.com/";
 
+/**
+ * Matches `:invitation_validity_days` in `apps/phoenix/config/config.exs`; the
+ * window itself is owned by `Dhc.Invitations.Validity`. Keep both in step.
+ */
+const INVITATION_VALIDITY_DAYS = 7;
+
 export interface InviteMemberProps {
   /** The recipient's unique invitation acceptance link. */
   INVITATION_LINK: string;
@@ -54,8 +60,8 @@ export default function InviteMemberEmail({
         <Link href={INVITATION_LINK} style={linkStyle}>
           this
         </Link>{" "}
-        link and fill in your details. This link expires in 7 days, so please make sure you fill it
-        out before that!
+        link and fill in your details. This link expires in {INVITATION_VALIDITY_DAYS} days, so
+        please make sure you fill it out before that!
       </Text>
       <Text style={paragraphStyle}>
         Additionally, please purchase the following{" "}

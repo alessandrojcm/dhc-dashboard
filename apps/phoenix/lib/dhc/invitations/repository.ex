@@ -10,6 +10,7 @@ defmodule Dhc.Invitations.Repository do
 
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.ProcessingLog
+  alias Dhc.Invitations.Validity
   alias Dhc.Notifications
   alias Dhc.Repo
 
@@ -45,7 +46,7 @@ defmodule Dhc.Invitations.Repository do
       prospective_principal_id: Ecto.UUID.generate(),
       waitlist_id: waitlist_id,
       status: "pending",
-      expires_at: DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second),
+      expires_at: Validity.expires_at(),
       created_by_principal_id: created_by_id,
       invitation_type: Map.get(invite_data, "invitationType", "admin"),
       pricing_tier: Map.get(invite_data, "pricingTier", "standard"),

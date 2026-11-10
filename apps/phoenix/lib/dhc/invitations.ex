@@ -16,6 +16,7 @@ defmodule Dhc.Invitations do
   alias Dhc.Invitations.EmailRefusals
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.Repository
+  alias Dhc.Invitations.Validity
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -633,10 +634,11 @@ defmodule Dhc.Invitations do
   end
 
   # Re-arms exactly the invitation being resent: pending again with a fresh
-  # short expiry window. Targeted by id (not by email), so sibling rows for
-  # the same email are never flipped to pending — flipping more than one row
-  # would violate `invitations_email_pending_unique`, and flipping an
-  # accepted/revoked row would resurrect a settled invitation.
+  # validity window (the same one a newly issued Invitation gets). Targeted by
+  # id (not by email), so sibling rows for the same email are never flipped to
+  # pending — flipping more than one row would violate
+  # `invitations_email_pending_unique`, and flipping an accepted/revoked row
+  # would resurrect a settled invitation.
   defp refresh_for_resend(invitation_id) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -644,7 +646,7 @@ defmodule Dhc.Invitations do
       where: i.id == ^invitation_id and i.status in ["pending", "expired"]
     )
     |> Repo.update_all(
-      set: [status: "pending", expires_at: DateTime.add(now, 1, :day), updated_at: now]
+      set: [status: "pending", expires_at: Validity.expires_at(now), updated_at: now]
     )
 
     :ok
