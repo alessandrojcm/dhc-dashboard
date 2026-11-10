@@ -1,0 +1,13 @@
+can you check why the @.opencode/plugin/entire.ts plugin is not submittng sessions? my last sessions on the remote are from august
+
+---
+
+yeah ok troubkleshoot with the cli
+
+---
+
+yes just make it work
+
+---
+
+entire checkpoint list --outgoing needs the git-refs checkpoint backend. This repository uses git-branch, whose push sends entire/checkpoints/v1 as one branch rather than one ref per checkpoint. can we migrate backends
