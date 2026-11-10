@@ -20,6 +20,7 @@ defmodule Dhc.BeginnersWorkshops do
     CarriedFeeView,
     Clock,
     Commands,
+    DestinationEnrichment,
     DoorView,
     EndTimeReport,
     FastTrackCandidates,
@@ -35,6 +36,7 @@ defmodule Dhc.BeginnersWorkshops do
     WorkshopList
   }
 
+  alias Dhc.ClubCalendar
   alias Dhc.Repo
   alias Dhc.Waitlist
   alias Dhc.Waitlist.Import
@@ -152,17 +154,7 @@ defmodule Dhc.BeginnersWorkshops do
   @spec materialize_calendar_launch(binary(), keyword()) ::
           :ok | {:error, :missing_end_time | :invalid_schedule}
   def materialize_calendar_launch(workshop_id, opts \\ []) when is_binary(workshop_id) do
-    clock =
-      case Keyword.get_lazy(opts, :clock, &Clock.system/0) do
-        tick when is_function(tick, 0) -> %Clock{tick: tick}
-        %Clock{} = clock -> clock
-      end
-
-    case execute(
-           :system,
-           {:materialize_calendar_launch, workshop_id},
-           Keyword.put(opts, :clock, clock)
-         ) do
+    case execute(:system, {:materialize_calendar_launch, workshop_id}, put_clock(opts)) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
@@ -182,6 +174,84 @@ defmodule Dhc.BeginnersWorkshops do
       select: i.id
     )
     |> Repo.all()
+  end
+
+  # ── Reviewed destination enrichment (ALE-444) ────────────────────────
+
+  @doc """
+  The closed facts (`Dhc.BeginnersWorkshops.DestinationEnrichment.facts/1`)
+  of every Beginners' Workshop that has not yet ended at `now`, for the
+  reviewed destination backfill preview (`Dhc.DestinationBackfill`). A
+  workshop without a valid end time counts until its Dublin date has passed.
+  Cancelled, finalised and already-started workshops are included so the
+  preview can say why each is refused. Read-only: no person, Intake, payment
+  or link data.
+  """
+  @spec destination_backfill_sources(DateTime.t()) :: [DestinationEnrichment.facts()]
+  def destination_backfill_sources(%DateTime{} = now) do
+    today = ClubCalendar.on_date(now)
+
+    from(w in BeginnersWorkshop,
+      where: w.date >= ^today,
+      order_by: [asc: w.date, asc: w.start_time, asc: w.id]
+    )
+    |> Repo.all()
+    |> Enum.map(&DestinationEnrichment.facts/1)
+    |> Enum.filter(&not_ended?(&1, now))
+  end
+
+  defp not_ended?(%{ends_at: %DateTime{} = ends_at}, now),
+    do: DateTime.compare(ends_at, now) == :gt
+
+  defp not_ended?(%{ends_at: nil}, _now), do: true
+
+  @doc """
+  The advisory enrichment reading for one workshop's facts: the rule the
+  `enrich_destination` command applies under the lock, without the
+  reviewed-facts comparison.
+  """
+  @spec check_destination_enrichment(
+          DestinationEnrichment.facts() | nil,
+          DestinationEnrichment.destination(),
+          DateTime.t()
+        ) :: :change | :unchanged | {:refused, DestinationEnrichment.refusal()}
+  defdelegate check_destination_enrichment(facts, proposed, now),
+    to: DestinationEnrichment,
+    as: :check
+
+  @doc """
+  Applies one reviewed same-Venue destination enrichment through `execute/3`
+  (`{:enrich_destination, id, review}` in `Commands.Schedule`), as
+  `{:staff, principal_id}` holding `beginners.workshops.manage`.
+
+  `opts[:clock]` is a `Clock` or, as `Dhc.DestinationBackfill` passes it, a
+  `(-> DateTime.t())`; it is read under the workshop lock. Returns
+  `{:ok, :changed | :unchanged}` or `{:error, reason}`. Never a reschedule:
+  no email, Staff Notification or schedule change, only the destination and
+  its Calendar intent.
+  """
+  @spec enrich_destination(
+          Commands.actor(),
+          binary(),
+          %{
+            expected: DestinationEnrichment.expected(),
+            destination: DestinationEnrichment.destination()
+          },
+          keyword()
+        ) :: {:ok, :changed | :unchanged} | {:error, Commands.error()}
+  def enrich_destination(actor, workshop_id, review, opts \\ []) do
+    execute(actor, {:enrich_destination, workshop_id, review}, put_clock(opts))
+  end
+
+  # Calendar and the destination backfill pass a bare `(-> DateTime.t())`.
+  defp put_clock(opts) do
+    clock =
+      case Keyword.get_lazy(opts, :clock, &Clock.system/0) do
+        tick when is_function(tick, 0) -> %Clock{tick: tick}
+        %Clock{} = clock -> clock
+      end
+
+    Keyword.put(opts, :clock, clock)
   end
 
   defp future_start?(%{start_date: %DateTime{} = start_date}, now),

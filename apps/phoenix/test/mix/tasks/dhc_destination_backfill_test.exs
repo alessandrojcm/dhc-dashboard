@@ -2,6 +2,8 @@ defmodule Mix.Tasks.DhcDestinationBackfillTest do
   use Dhc.DataCase, async: false
 
   alias Dhc.Auth.UserRole
+  alias Dhc.BeginnersWorkshopFixtures
+  alias Dhc.BeginnersWorkshops.BeginnersWorkshop
   alias Dhc.WorkshopCalendar
   alias Dhc.WorkshopCalendar.Google
   alias Dhc.WorkshopFixtures
@@ -80,7 +82,7 @@ defmodule Mix.Tasks.DhcDestinationBackfillTest do
     Application.put_env(:dhc, Dhc.Repo, config)
     count = fn ->
       {:ok, repo} = Dhc.Repo.start_link(config)
-      rows = Dhc.Repo.query!(\"SELECT (SELECT count(*) FROM oban_jobs), (SELECT count(*) FROM workshop_calendar_events), (SELECT max(updated_at) FROM club_activities)\").rows
+      rows = Dhc.Repo.query!(\"SELECT (SELECT count(*) FROM oban_jobs), (SELECT count(*) FROM workshop_calendar_events), (SELECT max(updated_at) FROM club_activities), (SELECT max(updated_at) FROM beginners_workshops)\").rows
       :ok = GenServer.stop(repo)
       rows
     end
@@ -119,6 +121,14 @@ defmodule Mix.Tasks.DhcDestinationBackfillTest do
     assert_raise Mix.Error, usage, fn -> Apply.run(["plan.json", "--operator"]) end
 
     workshop = WorkshopFixtures.workshop_fixture(location: "Club hall", status: "published")
+    staff = staff!()
+
+    beginners =
+      BeginnersWorkshopFixtures.scheduled_fixture(staff, %{
+        "date" => "2027-03-28",
+        "venue" => "Club hall"
+      })
+
     Preview.run([write!(dir, "mapping.json", @mapping)])
     assert_received {:mix_shell, :info, [output]}
     preview = Jason.decode!(output)
@@ -129,13 +139,21 @@ defmodule Mix.Tasks.DhcDestinationBackfillTest do
         "approved_targets" => preview["proposed_targets"]
       })
 
-    staff = staff!()
     Apply.run([plan, "--operator", staff])
     assert_received {:mix_shell, :info, [result]}
 
-    assert %{"results" => [%{"source_id" => id, "outcome" => "changed"}]} = Jason.decode!(result)
-    assert id == workshop.id
+    assert %{"results" => results} = Jason.decode!(result)
+
+    assert Enum.sort(Enum.map(results, &{&1["source_kind"], &1["source_id"], &1["outcome"]})) ==
+             Enum.sort([
+               {"workshop", workshop.id, "changed"},
+               {"beginners_workshop", beginners.id, "changed"}
+             ])
+
     assert %{destination_name: "National Basketball Arena"} = Repo.get!(Workshop, workshop.id)
+
+    assert %{destination_name: "National Basketball Arena"} =
+             Repo.get!(BeginnersWorkshop, beginners.id)
 
     unknown = write!(dir, "unknown.json", %{"approved_targets" => []})
     assert_raise Mix.Error, ~r/Plan refused/, fn -> Apply.run([unknown, "--operator", staff]) end
@@ -150,7 +168,7 @@ defmodule Mix.Tasks.DhcDestinationBackfillTest do
   defp staff! do
     member = WorkshopFixtures.member_fixture()
 
-    for role <- ["member", "workshop_coordinator"],
+    for role <- ["member", "workshop_coordinator", "beginners_coordinator"],
         do: Repo.insert!(%UserRole{principal_id: member.principal_id, role: role})
 
     member.principal_id

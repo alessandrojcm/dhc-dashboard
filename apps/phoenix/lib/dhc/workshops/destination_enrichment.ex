@@ -19,23 +19,18 @@ defmodule Dhc.Workshops.DestinationEnrichment do
 
   ## Outcomes
 
-    * `:change` — every stored destination field is absent or already equal
-      to the proposal, and at least one differs;
-    * `:unchanged` — the stored destination already is the proposal;
-    * `{:refused, reason}` — one of `t:refusal/0`.
+  `:change`, `:unchanged` (`Dhc.Destinations.Enrichment.outcome/2`, shared
+  with Beginners' Workshops) or `{:refused, reason}` — one of `t:refusal/0`.
   """
 
   alias Dhc.ClubCalendar
   alias Dhc.Destinations
+  alias Dhc.Destinations.Enrichment
   alias Dhc.Workshops.Workshop
 
   @eligible_statuses ~w(planned published)
 
-  @type destination :: %{
-          destination_name: String.t() | nil,
-          destination_address: String.t() | nil,
-          directions_url: String.t() | nil
-        }
+  @type destination :: Enrichment.destination()
 
   @type facts :: %{
           source_id: binary(),
@@ -51,18 +46,7 @@ defmodule Dhc.Workshops.DestinationEnrichment do
           destination: destination()
         }
 
-  @typedoc """
-  The reviewed current facts an approved target names: the short label, the
-  status and Dublin civil schedule, and the destination the reviewer saw.
-  """
-  @type expected :: %{
-          label: String.t(),
-          status: String.t(),
-          date: Date.t(),
-          start_time: Time.t(),
-          end_time: Time.t(),
-          destination: destination()
-        }
+  @type expected :: Enrichment.expected()
 
   @type refusal ::
           :not_found
@@ -105,24 +89,24 @@ defmodule Dhc.Workshops.DestinationEnrichment do
   @spec check(facts() | nil, destination(), DateTime.t()) ::
           :change | :unchanged | {:refused, refusal()}
   def check(facts, proposed, %DateTime{} = now) do
-    with :ok <- eligible(facts, now), do: proposal(facts.destination, proposed)
+    with :ok <- eligible(facts, now), do: Enrichment.outcome(facts.destination, proposed)
   end
 
   @doc """
   `check/3` for an approved target, judged under the Workshop lock.
 
   Between eligibility and the proposal it requires the current facts to still
-  be the ones the reviewer approved: a different label means the Workshop may
-  have moved Venue, and a different schedule, status or destination means the
-  review is stale. Neither is overwritten. A destination that already equals
-  the proposal is `:unchanged`, so repeating an applied plan is a no-op.
+  be the ones the reviewer approved (`Dhc.Destinations.Enrichment.still_reviewed/3`):
+  a stale label, schedule, status or destination is refused, never
+  overwritten. A destination that already equals the proposal is
+  `:unchanged`, so repeating an applied plan is a no-op.
   """
   @spec check_reviewed(facts() | nil, expected(), destination(), DateTime.t()) ::
           :change | :unchanged | {:refused, refusal()}
   def check_reviewed(facts, expected, proposed, %DateTime{} = now) do
     with :ok <- eligible(facts, now),
-         :ok <- still_reviewed(facts, expected, proposed),
-         do: proposal(facts.destination, proposed)
+         :ok <- Enrichment.still_reviewed(facts, expected, proposed),
+         do: Enrichment.outcome(facts.destination, proposed)
   end
 
   defp eligible(nil, _now), do: {:refused, :not_found}
@@ -134,45 +118,5 @@ defmodule Dhc.Workshops.DestinationEnrichment do
 
   defp eligible(facts, now) do
     if DateTime.compare(facts.starts_at, now) == :gt, do: :ok, else: {:refused, :started}
-  end
-
-  # A destination that already is the proposal is the reviewed end state, so
-  # repeating an applied plan (or a duplicate driver) is unchanged, not stale.
-  defp still_reviewed(facts, expected, proposed) do
-    cond do
-      facts.label != expected.label ->
-        {:refused, :label_changed}
-
-      {facts.date, facts.start_time, facts.end_time} !=
-          {expected.date, expected.start_time, expected.end_time} ->
-        {:refused, :rescheduled}
-
-      facts.status != expected.status ->
-        {:refused, :status_changed}
-
-      facts.destination not in [expected.destination, proposed] ->
-        {:refused, :destination_changed}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp proposal(current, proposed) do
-    cond do
-      current == proposed -> :unchanged
-      enrichment?(current, proposed) -> :change
-      true -> {:refused, :destination_conflict}
-    end
-  end
-
-  # Enrichment only fills absent fields: a stored value that differs from the
-  # proposal (including one the proposal would clear) is a different
-  # destination, which the ordinary editor owns.
-  defp enrichment?(current, proposed) do
-    Enum.all?(Destinations.fields(), fn field ->
-      value = Map.fetch!(current, field)
-      is_nil(value) or value == Map.fetch!(proposed, field)
-    end)
   end
 end

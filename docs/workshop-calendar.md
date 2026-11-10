@@ -92,9 +92,9 @@ that template in the existing editor and rerun the migration. Rollback keeps
 the edited bodies; queued emails are not rewritten or resent. Remaining
 unknown workshop ends render as `TBC`.
 
-## Reviewed destination backfill (ALE-443)
+## Reviewed destination backfill (ALE-443, ALE-444)
 
-Existing upcoming regular Workshops can be enriched with manual destinations
+Existing upcoming regular Workshops and Beginners' Workshops can be enriched with manual destinations
 from a one-off, human-reviewed mapping of short venue labels. A mapping entry
 asserts that the label and the destination are the same physical Venue; list a
 label under `ambiguous` (or leave it out) when it is not certain. The mapping
@@ -115,14 +115,22 @@ mix dhc.destination_backfill.apply PLAN.json --operator PRINCIPAL_ID
 
 Preview starts only its read dependencies and Repo, never the application or
 its workers, and makes no Google, database or job writes. It lists every
-Workshop that has not ended with its label, status, Dublin schedule, current
+regular Workshop and Beginners' Workshop that has not ended, each row and
+target keyed by `source_kind` (`workshop` or `beginners_workshop`) and
+`source_id` so a shared id or label never merges two sources, with its label
+(a Beginners' Workshop's `venue`), status, Dublin schedule, current
 and proposed destination, outcome (`change`, `unchanged`, or `refused` with a
 reason such as `unreviewed_venue`, `ambiguous_venue`, `destination_conflict`,
-`cancelled`, `archived` or `started`) and Calendar effect. It contains no
-recipient addresses.
+`cancelled`, `archived`, `not_eligible_status` or `started`) and Calendar
+effect. It contains no recipient addresses, person data or Intake links. A
+Beginners' Workshop with no known end time shows `end_time: null`.
 
-Apply requires a principal holding `workshops.manage`. Each approved target is
-re-read under the Workshop lock against the facts the reviewer saw: a changed
+Apply authorizes each target with its own owner: `workshops.manage` for a
+regular Workshop, `beginners.workshops.manage` for a Beginners' Workshop, whose
+target runs the `enrich_destination` command of `Dhc.BeginnersWorkshops.execute/3`
+(never `reschedule_workshop`) under the Beginners' Workshop lock and boundary
+clock. Each approved target is re-read under its source's lock against the
+facts the reviewer saw: a changed
 label, Dublin schedule, status or destination, a cancellation, archival or
 deletion, or a start at or before the clock reading taken under the lock is
 refused and reported, never overwritten. The proposed destination always
@@ -130,6 +138,12 @@ comes from the mapping for the target's label. Accepted targets change only
 the three destination fields and record Calendar intent in the same
 transaction; repeating an applied plan writes nothing. Workshops that would now
 change but were not approved are reported as `discovered` and left alone.
+Every target is its owner's own transaction, so a mixed run is reconciled from
+its per-target `changed`/`unchanged`/`refused` results, never assumed atomic
+across the two domains. A Beginners' Workshop enrichment changes no venue,
+date, time, Payment Cutoff, offer round, `reschedule_count`, Staff, place,
+payment, refund or attendance fact and queues no "Workshop rescheduled" email,
+log occasion or Staff Notification.
 
 Enrichment is an ordinary meaningful Calendar change: inactive sending keeps
 the intent without Google calls, and active sending updates the existing

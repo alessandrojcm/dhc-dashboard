@@ -2,6 +2,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   @moduledoc """
   The workshop lifecycle commands of the Beginners' Workshop boundary
   (ALE-405): `schedule_workshop`, `update_workshop`, `reschedule_workshop`,
+  `update_destination`, `enrich_destination`, `backfill_end_time`,
   `cancel_workshop`, `pause_batches` and `resume_batches`, all
   `beginners.workshops.manage`. `Dhc.BeginnersWorkshops.Commands` authorizes
   the actor and routes here; every body runs inside `Commands.Protocol`.
@@ -38,6 +39,20 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   it records only the Calendar intent. Destination details alone never count
   as a reschedule's move, so `reschedule_workshop` still refuses them. An
   unchanged destination writes nothing at all.
+
+  `enrich_destination` (ALE-444) is the reviewed destination backfill's
+  apply (`Dhc.DestinationBackfill`, through
+  `Dhc.BeginnersWorkshops.enrich_destination/4`): `%{expected: facts,
+  destination: proposal}`. Under the workshop lock, with the clock read
+  inside it, `DestinationEnrichment.check_reviewed/4` requires the workshop
+  to be scheduled and not yet started and its label, Dublin schedule, status
+  and destination to still be the reviewed `expected` facts, and the
+  proposal to fill only absent fields. It then writes exactly as
+  `update_destination` does and answers `:changed`, or `:unchanged` with no
+  write; a refusal is the rule's reason (`:not_found`, `:cancelled`,
+  `:not_eligible_status`, `:started`, `:label_changed`, `:rescheduled`,
+  `:status_changed`, `:destination_changed`, `:destination_conflict`) or
+  `:invalid_destination`.
 
   ## Reschedule (ALE-394)
 
@@ -131,6 +146,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     BeginnersWorkshop,
     CarriedFee,
     Clock,
+    DestinationEnrichment,
     Intake,
     IntakeEmails,
     IntakePayment,
@@ -251,6 +267,23 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
         with_locked(
           %{workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id))},
           &destination_locked(&1, attrs, clock)
+        )
+      end)
+    end
+  end
+
+  # ALE-444: the reviewed backfill's same-Venue enrichment, on the same
+  # workshop lock and boundary clock as `update_destination`.
+  def run(
+        {:staff, _principal_id},
+        {:enrich_destination, workshop_id, %{expected: expected, destination: destination}},
+        clock
+      ) do
+    with {:ok, workshop_id} <- cast_id(workshop_id) do
+      transact(fn ->
+        with_locked(
+          %{workshop: from(w in BeginnersWorkshop, where: w.id == ^workshop_id)},
+          &enrich_locked(&1, expected, destination, clock)
         )
       end)
     end
@@ -505,6 +538,34 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
          {%{}, %{venue: :string}}
          |> Ecto.Changeset.change()
          |> Ecto.Changeset.add_error(:venue, "can't be blank", validation: :required)}
+    end
+  end
+
+  # ── enrich_destination (ALE-444) ────────────────────────────────
+
+  # The facts are judged on the row and clock read under the lock; only an
+  # exact reviewed `:change` writes, through the same `save_destination/2`.
+  defp enrich_locked(%{workshop: workshop}, expected, destination, clock) do
+    facts = workshop && DestinationEnrichment.facts(workshop)
+
+    case DestinationEnrichment.check_reviewed(
+           facts,
+           expected,
+           destination,
+           Clock.read(clock).now
+         ) do
+      :unchanged ->
+        {:ok, :unchanged}
+
+      {:refused, reason} ->
+        {:error, reason}
+
+      :change ->
+        case save_destination(workshop, destination) do
+          {:ok, _workshop} -> {:ok, :changed}
+          {:error, %Ecto.Changeset{}} -> {:error, :invalid_destination}
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 

@@ -27,9 +27,16 @@ defmodule Dhc.DestinationBackfill do
       apply, which re-reads under the source's lock and returns
       `{:ok, :changed | :unchanged}` or `{:error, reason}`.
 
-  Regular Workshops are `Dhc.Workshops`; a later slice adds Beginners'
-  Workshops through their own command (`{:update_destination, id, attrs}`),
-  not a cross-domain writer.
+  Regular Workshops are `Dhc.Workshops`; Beginners' Workshops (ALE-444) are
+  `Dhc.BeginnersWorkshops`, whose apply is the `enrich_destination` command
+  of its own boundary (`execute/3`, `Commands.Schedule`), never a reschedule
+  and never a cross-domain writer. Rows and targets are keyed by
+  `{source_kind, source_id}`, so two sources sharing an id or a label stay
+  distinct, and each target is applied in its owner's own transaction: a
+  mixed run reports per target and is never atomic across domains.
+
+  A Beginners' Workshop with no known end time reports `ends_at` and
+  `end_time` as `nil`; its target's `expected.end_time` is then `null`.
 
   ## The mapping
 
@@ -67,11 +74,12 @@ defmodule Dhc.DestinationBackfill do
   change but were not approved are reported as `discovered` and left alone.
   """
 
+  alias Dhc.BeginnersWorkshops
   alias Dhc.Destinations
   alias Dhc.WorkshopCalendar
   alias Dhc.Workshops
 
-  @owners [workshop: Workshops]
+  @owners [workshop: Workshops, beginners_workshop: BeginnersWorkshops]
 
   @destination_types Map.new(Destinations.fields(), &{&1, :string})
   @destination_keys Enum.map(Destinations.fields(), &Atom.to_string/1)
@@ -79,7 +87,7 @@ defmodule Dhc.DestinationBackfill do
   @target_keys ~w(source_kind source_id expected)
   @expected_keys ~w(label status date start_time end_time destination)
 
-  @type source_kind :: :workshop
+  @type source_kind :: :workshop | :beginners_workshop
   @type mapping :: %{
           entries: [%{venue: String.t(), destination: map()}],
           ambiguous: [String.t()],
@@ -454,7 +462,7 @@ defmodule Dhc.DestinationBackfill do
     with true <- is_binary(expected["label"]) and is_binary(expected["status"]),
          {:ok, date} <- parse_date(expected["date"]),
          {:ok, start_time} <- parse_time(expected["start_time"]),
-         {:ok, end_time} <- parse_time(expected["end_time"]),
+         {:ok, end_time} <- parse_optional_time(expected["end_time"]),
          true <- Enum.sort(Map.keys(destination)) == Enum.sort(@destination_keys),
          true <- Enum.all?(Map.values(destination), &(is_nil(&1) or is_binary(&1))) do
       {:ok,
@@ -478,6 +486,10 @@ defmodule Dhc.DestinationBackfill do
 
   defp parse_time(text) when is_binary(text), do: Time.from_iso8601(text)
   defp parse_time(_text), do: {:error, :invalid_format}
+
+  # A legacy Beginners' Workshop may have no known end time yet.
+  defp parse_optional_time(nil), do: {:ok, nil}
+  defp parse_optional_time(text), do: parse_time(text)
 
   defp clock(opts), do: Keyword.get(opts, :clock, &DateTime.utc_now/0)
 end

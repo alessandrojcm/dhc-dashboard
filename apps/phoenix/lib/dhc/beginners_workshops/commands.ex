@@ -63,8 +63,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   Each family's moduledoc documents its commands:
 
     * `Commands.Schedule` — `schedule_workshop`, `update_workshop`,
-      `reschedule_workshop`, `update_destination`, `backfill_end_time`,
-      `cancel_workshop`, `pause_batches`, `resume_batches`;
+      `reschedule_workshop`, `update_destination`, `enrich_destination`,
+      `backfill_end_time`, `cancel_workshop`, `pause_batches`,
+      `resume_batches`;
     * `Commands.Batches` — `send_due_batch`, `fast_track`;
     * `Commands.Payments` — `start_payment`, `confirm` by Intake link,
       `complete_payment`, `release_payment`, `reap_holds`;
@@ -148,7 +149,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   Destination attributes (ALE-441) are the optional `destination_name`,
   `destination_address` and `directions_url`: on a schedule, a reschedule,
   or `update_destination`, which also names the `venue` it describes.
-  Omitted keys keep their value and `nil` clears one.
+  Omitted keys keep their value and `nil` clears one. `enrich_destination`
+  (ALE-444) takes `%{expected: reviewed_facts, destination: proposal}` from
+  the reviewed destination backfill instead.
 
   Staff attributes (`set_staff`, and optional on a schedule) are
   `coach_principal_id` (`nil` for no coach) and `assistant_principal_ids`
@@ -160,6 +163,11 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | {:reschedule_workshop, workshop_id :: binary(), map()}
           | {:backfill_end_time, workshop_id :: binary(), map()}
           | {:update_destination, workshop_id :: binary(), map()}
+          | {:enrich_destination, workshop_id :: binary(),
+             %{
+               expected: Dhc.BeginnersWorkshops.DestinationEnrichment.expected(),
+               destination: Dhc.BeginnersWorkshops.DestinationEnrichment.destination()
+             }}
           | {:cancel_workshop, workshop_id :: binary(), map()}
           | {:pause_batches, workshop_id :: binary()}
           | {:resume_batches, workshop_id :: binary()}
@@ -291,6 +299,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :invalid_correction
           | :not_deletable
           | :not_restorable
+          | :invalid_destination
+          | Dhc.BeginnersWorkshops.DestinationEnrichment.refusal()
           | Ecto.Changeset.t()
           | {:workshop, non_neg_integer(), atom() | Ecto.Changeset.t()}
 
@@ -302,6 +312,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     reschedule_workshop: :"beginners.workshops.manage",
     backfill_end_time: :"beginners.workshops.manage",
     update_destination: :"beginners.workshops.manage",
+    enrich_destination: :"beginners.workshops.manage",
     cancel_workshop: :"beginners.workshops.manage",
     pause_batches: :"beginners.workshops.manage",
     resume_batches: :"beginners.workshops.manage",
@@ -384,6 +395,7 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     reschedule_workshop: Schedule,
     backfill_end_time: Schedule,
     update_destination: Schedule,
+    enrich_destination: Schedule,
     cancel_workshop: Schedule,
     pause_batches: Schedule,
     resume_batches: Schedule,
