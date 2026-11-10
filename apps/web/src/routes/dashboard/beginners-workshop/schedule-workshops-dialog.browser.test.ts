@@ -1,7 +1,22 @@
 import { expect, test } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import {
+	FakeVenueLookup,
+	venueLookupContext,
+} from "#lib/testing/fake-venue-lookup.js";
 import ScheduleWorkshopsDialog from "./schedule-workshops-dialog.svelte";
+
+// ALE-442: the venue lookup boundary, substituted with a synthetic place.
+const lookup = new FakeVenueLookup([
+	{
+		provider: "google",
+		placeId: "place_hall",
+		name: "Synthetic Fencing Hall",
+		address: "1 Example Street, Dublin 8",
+		attributions: [{ provider: "Venue Guide", providerUri: null }],
+	},
+]);
 
 // The remote form strips its `/<form id>` suffix from control names, so a
 // name check compares the field part only.
@@ -18,7 +33,10 @@ function formElement(element: Element): HTMLFormElement {
 }
 
 async function openDialog() {
-	const screen = await render(ScheduleWorkshopsDialog, { open: true });
+	const screen = await render(ScheduleWorkshopsDialog, {
+		context: venueLookupContext(lookup),
+		props: { open: true },
+	});
 	const form = screen.getByRole("form", {
 		name: "Schedule Beginners' Workshops",
 	});
@@ -142,4 +160,41 @@ test("offers optional Staff shared by every date (ALE-379)", async () => {
 	await userEvent.click(screen.getByRole("option", { name: /Aoife Coach/ }));
 
 	expect(fieldNames(formElement(form.element()))).toContain("coachPrincipalId");
+});
+
+test("ALE-442: a chosen Google place is shared by every date through named hidden controls", async () => {
+	const { screen, form } = await openDialog();
+
+	await userEvent.click(
+		screen.getByRole("combobox", { name: "Search Google Maps" }),
+	);
+	await userEvent.keyboard("Synthetic");
+	await screen.getByRole("option", { name: /Synthetic Fencing Hall/ }).click();
+
+	const preview = screen.getByRole("region", { name: "Selected destination" });
+	await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
+	await expect.element(preview).toHaveTextContent("Google Maps · Venue Guide");
+	// The short email-sized venue label stays the coordinator's own.
+	await expect.element(screen.getByLabelText("Venue")).toHaveValue("");
+	// Choosing a place never submits the dialog.
+	await expect.element(form).toBeVisible();
+
+	const element = formElement(form.element());
+	expect(fieldNames(element)).toEqual(
+		expect.arrayContaining([
+			"destination_name",
+			"destination_address",
+			"destination_place_id",
+			"destination_attributions",
+		]),
+	);
+	const value = (name: string) =>
+		[...element.elements]
+			.filter(
+				(control): control is HTMLInputElement =>
+					control instanceof HTMLInputElement,
+			)
+			.find((control) => control.name.split("/")[0] === name)?.value;
+	expect(value("destination_place_id")).toBe("place_hall");
+	expect(value("destination_name")).toBe("Synthetic Fencing Hall");
 });

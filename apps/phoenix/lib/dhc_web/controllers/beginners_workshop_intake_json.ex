@@ -23,7 +23,11 @@ defmodule DhcWeb.BeginnersWorkshopIntakeJSON do
               venue: page.workshop.venue,
               destinationName: page.workshop.destination_name,
               destinationAddress: page.workshop.destination_address,
-              directionsUrl: page.workshop.directions_url
+              directionsUrl: page.workshop.directions_url,
+              destinationProvider: page.workshop.destination_provider,
+              destinationPlaceId: page.workshop.destination_place_id,
+              destinationAttributions:
+                DhcWeb.DestinationJSON.attributions(page.workshop.destination_attributions)
             },
         feeCents: page.fee_cents,
         paymentCutoff: page.payment_cutoff

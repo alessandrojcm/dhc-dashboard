@@ -3,6 +3,7 @@ import { workshopsShow } from "@dhc/api-client";
 import { authorize } from "#lib/server/auth.js";
 import { apiClientOptions } from "#lib/server/api-client.js";
 import type { PageServerLoad } from "./$types";
+import { destinationValues } from "#lib/destinations.js";
 
 export const load: PageServerLoad = async ({ locals, cookies, params }) => {
 	await authorize(locals, "workshops.manage");
@@ -34,9 +35,8 @@ export const load: PageServerLoad = async ({ locals, cookies, params }) => {
 		title: workshop.title,
 		description: workshop.description || "",
 		location: workshop.location ?? "",
-		destination_name: workshop.destinationName ?? "",
-		destination_address: workshop.destinationAddress ?? "",
-		directions_url: workshop.directionsUrl ?? "",
+		// ALE-440/ALE-442: the saved destination, including a selected place.
+		...destinationValues(workshop),
 		workshop_date: new Date(workshop.startDate),
 		workshop_end_date: new Date(workshop.endDate),
 		max_capacity: workshop.maxCapacity ?? 1,

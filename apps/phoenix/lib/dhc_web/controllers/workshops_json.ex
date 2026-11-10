@@ -1,6 +1,8 @@
 defmodule DhcWeb.WorkshopsJSON do
   @moduledoc false
 
+  alias DhcWeb.DestinationJSON
+
   def render("calendar.json", %{workshops: workshops}) do
     %{data: %{workshops: Enum.map(workshops, &calendar_workshop/1)}}
   end
@@ -106,6 +108,9 @@ defmodule DhcWeb.WorkshopsJSON do
       destinationName: workshop.destination_name,
       destinationAddress: workshop.destination_address,
       directionsUrl: workshop.directions_url,
+      destinationProvider: workshop.destination_provider,
+      destinationPlaceId: workshop.destination_place_id,
+      destinationAttributions: DestinationJSON.attributions(workshop.destination_attributions),
       startDate: workshop.start_date,
       endDate: workshop.end_date,
       maxCapacity: workshop.max_capacity,
@@ -137,6 +142,9 @@ defmodule DhcWeb.WorkshopsJSON do
       destinationName: workshop.destination_name,
       destinationAddress: workshop.destination_address,
       directionsUrl: workshop.directions_url,
+      destinationProvider: workshop.destination_provider,
+      destinationPlaceId: workshop.destination_place_id,
+      destinationAttributions: DestinationJSON.attributions(workshop.destination_attributions),
       priceNonMember: workshop.price_non_member,
       maxCapacity: workshop.max_capacity
     }
@@ -151,6 +159,9 @@ defmodule DhcWeb.WorkshopsJSON do
       destinationName: workshop.destination_name,
       destinationAddress: workshop.destination_address,
       directionsUrl: workshop.directions_url,
+      destinationProvider: workshop.destination_provider,
+      destinationPlaceId: workshop.destination_place_id,
+      destinationAttributions: DestinationJSON.attributions(workshop.destination_attributions),
       startDate: workshop.start_date,
       endDate: workshop.end_date,
       maxCapacity: workshop.max_capacity,
@@ -188,6 +199,9 @@ defmodule DhcWeb.WorkshopsJSON do
       destinationName: workshop.destination_name,
       destinationAddress: workshop.destination_address,
       directionsUrl: workshop.directions_url,
+      destinationProvider: workshop.destination_provider,
+      destinationPlaceId: workshop.destination_place_id,
+      destinationAttributions: DestinationJSON.attributions(workshop.destination_attributions),
       startDate: workshop.start_date,
       endDate: workshop.end_date,
       maxCapacity: workshop.max_capacity,

@@ -375,6 +375,65 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              |> json_response(200)
   end
 
+  test "a selected Google place round-trips through schedule, update and clear (ALE-442)", %{
+    conn: conn
+  } do
+    selected = %{
+      "destinationName" => "Synthetic Fencing Hall",
+      "destinationAddress" => "1 Example Street, Dublin 8",
+      "destinationPlaceId" => "place_hall",
+      "destinationAttributions" => [
+        %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
+      ]
+    }
+
+    [first, second] = schedule!(conn, [item(selected), item(selected)])
+
+    for workshop <- [first, second] do
+      assert %{
+               "destinationProvider" => "google",
+               "destinationPlaceId" => "place_hall",
+               "directionsUrl" => nil,
+               "destinationAttributions" => [
+                 %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
+               ]
+             } = workshop
+    end
+
+    coordinator = as_role(conn, "beginners_coordinator")
+    path = "/api/beginners-workshops/#{first["id"]}/destination"
+
+    assert %{"data" => manual} =
+             coordinator
+             |> put(path, %{
+               "venue" => first["venue"],
+               "destinationName" => "Our Own Hall",
+               "destinationPlaceId" => nil
+             })
+             |> json_response(200)
+
+    assert %{
+             "destinationName" => "Our Own Hall",
+             "destinationProvider" => nil,
+             "destinationPlaceId" => nil,
+             "destinationAttributions" => []
+           } = manual
+
+    assert %{"errors" => %{"fields" => %{"destinationPlaceId" => ["is not a valid place"]}}} =
+             coordinator
+             |> put(
+               path,
+               Map.merge(selected, %{"venue" => first["venue"], "destinationPlaceId" => "x/y"})
+             )
+             |> json_response(422)
+
+    # The other date keeps its own copy of the selection.
+    assert %{"data" => %{"workshop" => %{"destinationPlaceId" => "place_hall"}}} =
+             coordinator
+             |> get("/api/beginners-workshops/#{second["id"]}/console")
+             |> json_response(200)
+  end
+
   test "updates only the destination and maps every refusal (ALE-441)", %{conn: conn} do
     [workshop] = schedule!(conn)
     path = "/api/beginners-workshops/#{workshop["id"]}/destination"

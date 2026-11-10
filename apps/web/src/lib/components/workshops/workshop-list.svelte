@@ -5,7 +5,12 @@ import * as Dialog from "#lib/components/ui/dialog/index.js";
 import WorkshopExpressCheckout from "./workshop-express-checkout.svelte";
 import WorkshopCancellationDialog from "./workshop-cancellation-dialog.svelte";
 import { dublinInstantTile, formatDublinSpan } from "#lib/club-calendar.js";
-import { destinationLines, directionsHref } from "#lib/destinations.js";
+import {
+	destinationAttribution,
+	destinationLines,
+	directionsHref,
+} from "#lib/destinations.js";
+import DestinationAttribution from "#lib/components/destination-attribution.svelte";
 import Dinero from "dinero.js";
 import { useQueryClient } from "@tanstack/svelte-query";
 import type { UserData } from "#lib/types.js";
@@ -278,6 +283,11 @@ function handleRegistrationSuccess() {
 												>
 													{destinationLines(workshop).join(" · ")}
 												</span>
+											{/if}
+											{#if destinationAttribution(workshop)}
+												<DestinationAttribution
+													credits={destinationAttribution(workshop)?.credits}
+												/>
 											{/if}
 											{#if directionsHref(workshop)}
 												<a

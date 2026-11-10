@@ -314,6 +314,49 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
     assert HTTP.mutations(server) == after_update
   end
 
+  # ALE-442: a Google selection reaches attendees only as native location
+  # text with normal update notifications; provider identity never does.
+  test "a selected place notifies participants once, then a Place-only change stays silent",
+       %{staff: staff, server: server} do
+    {workshop, [{intake, token}]} = Fixtures.contacted_fixture(staff, 1)
+    assert {:ok, %{outcome: :paid}} = intake |> hold!(token) |> Stripe.session() |> complete()
+    assert :ok = sync(workshop.id)
+    first = participant(server)
+    count = length(HTTP.mutations(server))
+
+    selection = %{
+      venue: workshop.venue,
+      destination_name: "Synthetic Fencing Hall",
+      destination_address: "1 Example Street, Dublin 8",
+      destination_place_id: "place_hall",
+      destination_attributions: [%{"provider" => "Venue Guide"}]
+    }
+
+    assert {:ok, _} = command(staff, {:update_destination, workshop.id, selection})
+    assert :ok = sync(workshop.id)
+    updated = participant(server)
+    assert updated["id"] == first["id"]
+    assert updated["location"] == "Synthetic Fencing Hall, 1 Example Street, Dublin 8"
+    refute Map.has_key?(updated, "description")
+    payloads = HTTP.mutations(server) |> Enum.map(& &1.payload) |> Jason.encode!()
+    refute payloads =~ "place_hall"
+    refute payloads =~ "Venue Guide"
+    assert [%{query: "sendUpdates=all"}] = Enum.drop(HTTP.mutations(server), count)
+
+    # Replacing it with a different listing of the same text changes no event.
+    after_update = HTTP.mutations(server)
+
+    assert {:ok, _} =
+             command(
+               staff,
+               {:update_destination, workshop.id,
+                %{selection | destination_place_id: "place_annex"}}
+             )
+
+    assert :ok = sync(workshop.id)
+    assert HTTP.mutations(server) == after_update
+  end
+
   test "early finalisation, check-in and later attendance corrections preserve historical invitations",
        %{staff: staff, server: server} do
     {workshop, intakes} = Fixtures.contacted_fixture(staff, 2)

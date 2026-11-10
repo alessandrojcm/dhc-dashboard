@@ -3,6 +3,33 @@ import { render } from "vitest-browser-svelte";
 import { userEvent } from "vitest/browser";
 import { onHostTimeZone } from "#lib/testing/host-time-zone.js";
 import WorkshopForm from "./workshop-form.svelte";
+import {
+	FakeVenueLookup,
+	venueLookupContext,
+} from "#lib/testing/fake-venue-lookup.js";
+
+// ALE-442: the one venue lookup boundary is substituted with a synthetic
+// catalogue; no request reaches Phoenix or Google.
+const hall = {
+	provider: "google" as const,
+	placeId: "place_hall",
+	name: "Synthetic Fencing Hall",
+	address: "1 Example Street, Dublin 8",
+	attributions: [
+		{ provider: "Venue Guide", providerUri: "https://guide.example.test/" },
+	],
+};
+const annex = {
+	provider: "google" as const,
+	placeId: "place_annex",
+	name: "Synthetic Fencing Annex",
+	address: "2 Example Street, Dublin 8",
+	attributions: [],
+};
+let lookup = new FakeVenueLookup([annex, hall]);
+beforeEach(() => {
+	lookup = new FakeVenueLookup([annex, hall]);
+});
 
 // Eight hours behind Dublin (seven across late October), so a form that read
 // or wrote the organiser's own zone would show it.
@@ -14,6 +41,8 @@ type Submission = {
 	destinationName: string;
 	destinationAddress: string;
 	directionsUrl: string;
+	destinationPlaceId: string;
+	destinationAttributions: string;
 };
 
 /**
@@ -41,6 +70,8 @@ function recordSubmissions() {
 			destinationName: field("destination_name"),
 			destinationAddress: field("destination_address"),
 			directionsUrl: field("directions_url"),
+			destinationPlaceId: field("destination_place_id"),
+			destinationAttributions: field("destination_attributions"),
 		});
 	};
 
@@ -75,21 +106,28 @@ function renderForm(initialData?: {
 	destination_name?: string;
 	destination_address?: string;
 	directions_url?: string;
+	destination_place_id?: string;
+	destination_attributions?: string;
 }) {
 	return render(WorkshopForm, {
-		mode: initialData ? "edit" : "create",
-		workshopStatus: initialData ? "planned" : undefined,
-		initialData: {
-			title: "Longsword basics",
-			location: "Main hall",
-			max_capacity: 12,
-			...(initialData && {
-				workshop_date: new Date(initialData.start),
-				workshop_end_date: new Date(initialData.end),
-				destination_name: initialData.destination_name ?? "",
-				destination_address: initialData.destination_address ?? "",
-				directions_url: initialData.directions_url ?? "",
-			}),
+		context: venueLookupContext(lookup),
+		props: {
+			mode: initialData ? "edit" : "create",
+			workshopStatus: initialData ? "planned" : undefined,
+			initialData: {
+				title: "Longsword basics",
+				location: "Main hall",
+				max_capacity: 12,
+				...(initialData && {
+					workshop_date: new Date(initialData.start),
+					workshop_end_date: new Date(initialData.end),
+					destination_name: initialData.destination_name ?? "",
+					destination_address: initialData.destination_address ?? "",
+					directions_url: initialData.directions_url ?? "",
+					destination_place_id: initialData.destination_place_id ?? "",
+					destination_attributions: initialData.destination_attributions ?? "",
+				}),
+			},
 		},
 	});
 }
@@ -363,5 +401,164 @@ describe("the workshop form's destination details", () => {
 		await expect
 			.element(controls.link)
 			.toHaveValue("http://www.google.com/maps?q=Tallaght");
+	});
+});
+
+describe("the workshop form's Google venue search (ALE-442)", () => {
+	const completeEditForm = (extra = {}) =>
+		renderForm({
+			start: "2026-10-20T17:30:00Z",
+			end: "2026-10-20T19:30:00Z",
+			...extra,
+		});
+
+	const searchBox = (screen: Screen) =>
+		screen.getByRole("combobox", { name: "Search Google Maps" });
+
+	it("chooses a place by keyboard without submitting, previews it with attribution, then saves it", async () => {
+		const screen = await completeEditForm({
+			directions_url: "https://maps.app.goo.gl/Stale",
+		});
+
+		await userEvent.click(searchBox(screen));
+		await userEvent.keyboard("Synthetic");
+		await expect.element(screen.getByRole("option").first()).toBeVisible();
+		await expect
+			.element(screen.getByText("2 places found", { exact: false }))
+			.toBeInTheDocument();
+		// Nothing is chosen until the person chooses it.
+		expect(lookup.resolveCalls).toEqual([]);
+		await expect
+			.element(searchBox(screen))
+			.not.toHaveAttribute("aria-activedescendant");
+
+		await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+
+		const preview = screen.getByRole("region", {
+			name: "Selected destination",
+		});
+		await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
+		await expect
+			.element(preview)
+			.toHaveTextContent("1 Example Street, Dublin 8");
+		await expect.element(preview).toHaveTextContent("Google Maps");
+		await expect
+			.element(preview.getByRole("link", { name: "Venue Guide" }))
+			.toHaveAttribute("referrerpolicy", "no-referrer");
+		// The choice resolves in the same session the search used.
+		expect(lookup.resolveCalls).toEqual([
+			{
+				placeId: "place_hall",
+				sessionToken: lookup.suggestCalls.at(-1)?.sessionToken,
+			},
+		]);
+		expect(recorded.requests()).toBe(0);
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "Synthetic Fencing Hall",
+			destinationAddress: "1 Example Street, Dublin 8",
+			directionsUrl: "",
+			destinationPlaceId: "place_hall",
+			destinationAttributions: JSON.stringify(hall.attributions),
+		});
+	});
+
+	it("dismisses suggestions with Escape and keeps manual entry working", async () => {
+		const screen = await completeEditForm();
+
+		await userEvent.click(searchBox(screen));
+		await userEvent.keyboard("Synthetic");
+		await expect.element(screen.getByRole("option").first()).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect
+			.element(screen.getByRole("option").first())
+			.not.toBeInTheDocument();
+		expect(lookup.resolveCalls).toEqual([]);
+
+		await userEvent.fill(
+			screen.getByRole("textbox", { name: "Destination name", exact: true }),
+			"Our Own Hall",
+		);
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "Our Own Hall",
+			destinationPlaceId: "",
+		});
+	});
+
+	it("explains an unavailable or unconfigured Google and keeps entered values", async () => {
+		lookup.suggestFailure =
+			"Google venue search isn't set up; enter the destination details manually";
+		const screen = await completeEditForm();
+		const name = screen.getByRole("textbox", {
+			name: "Destination name",
+			exact: true,
+		});
+		await userEvent.fill(name, "Typed before searching");
+
+		await userEvent.click(searchBox(screen));
+		await userEvent.keyboard("Synthetic");
+		await expect
+			.element(screen.getByRole("status").filter({ hasText: "isn't set up" }))
+			.toBeVisible();
+		await expect.element(name).toHaveValue("Typed before searching");
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "Typed before searching",
+			destinationPlaceId: "",
+		});
+	});
+
+	it("says when nothing matches", async () => {
+		const screen = await completeEditForm();
+
+		await userEvent.click(searchBox(screen));
+		await userEvent.keyboard("Nowhere");
+		await expect
+			.element(screen.getByText("No places found", { exact: false }))
+			.toBeVisible();
+	});
+
+	it("keeps a saved selection on an unrelated edit", async () => {
+		const screen = await completeEditForm({
+			destination_name: "Synthetic Fencing Hall",
+			destination_address: "1 Example Street, Dublin 8",
+			destination_place_id: "place_hall",
+			destination_attributions: "[]",
+		});
+
+		const preview = screen.getByRole("region", {
+			name: "Selected destination",
+		});
+		await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "Synthetic Fencing Hall",
+			destinationPlaceId: "place_hall",
+		});
+	});
+
+	it("removing a selection clears its provider identity before a manual destination", async () => {
+		const screen = await completeEditForm({
+			destination_name: "Synthetic Fencing Hall",
+			destination_address: "1 Example Street, Dublin 8",
+			destination_place_id: "place_hall",
+			destination_attributions: "[]",
+		});
+
+		await screen
+			.getByRole("button", { name: "Remove and enter manually" })
+			.click();
+		const name = screen.getByRole("textbox", {
+			name: "Destination name",
+			exact: true,
+		});
+		await expect.element(name).toHaveValue("");
+		await userEvent.fill(name, "Our Own Hall");
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "Our Own Hall",
+			destinationAddress: "",
+			destinationPlaceId: "",
+			destinationAttributions: "",
+		});
 	});
 });

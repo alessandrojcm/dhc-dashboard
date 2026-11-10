@@ -190,6 +190,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "destinationName" => nil,
                "destinationAddress" => nil,
                "directionsUrl" => nil,
+               "destinationProvider" => nil,
+               "destinationPlaceId" => nil,
+               "destinationAttributions" => [],
                "startDate" => "2026-07-01T10:00:00Z",
                "endDate" => "2026-07-01T12:00:00Z",
                "maxCapacity" => 12,
@@ -806,6 +809,168 @@ defmodule DhcWeb.WorkshopsControllerTest do
                  }
                }
              } = json_response(conn, 200)
+    end
+
+    # ── ALE-442: a destination selected from Google venue search ──
+
+    test "a selected place round-trips through create, unrelated edits, replacement and clear",
+         %{conn: conn} do
+      selected = %{
+        "destinationName" => "Synthetic Fencing Hall",
+        "destinationAddress" => "1 Example Street, Dublin 8",
+        "directionsUrl" => "https://maps.app.goo.gl/Stale",
+        "destinationPlaceId" => "place_hall",
+        "destinationAttributions" => [
+          %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
+        ]
+      }
+
+      created =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops", Map.merge(valid_workshop_payload(), selected))
+        |> json_response(201)
+        |> get_in(["data", "workshop"])
+
+      assert %{
+               "location" => "Main Hall",
+               "destinationName" => "Synthetic Fencing Hall",
+               "destinationProvider" => "google",
+               "destinationPlaceId" => "place_hall",
+               # A selected place's link is derived from it; no stale link is kept.
+               "directionsUrl" => nil,
+               "destinationAttributions" => [
+                 %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
+               ]
+             } = created
+
+      stored = Repo.get!(Dhc.Workshops.Workshop, created["id"])
+      assert %DateTime{} = stored.destination_selected_at
+
+      # The edit form resubmits the selection unchanged with an unrelated edit.
+      edited =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{created["id"]}", %{
+          "title" => "Renamed",
+          "destinationName" => "Synthetic Fencing Hall",
+          "destinationAddress" => "1 Example Street, Dublin 8",
+          "directionsUrl" => nil,
+          "destinationPlaceId" => "place_hall",
+          "destinationAttributions" => []
+        })
+        |> json_response(200)
+        |> get_in(["data", "workshop"])
+
+      assert edited["title"] == "Renamed"
+      assert edited["destinationPlaceId"] == "place_hall"
+      assert [%{"provider" => "Venue Guide"}] = edited["destinationAttributions"]
+
+      assert Repo.get!(Dhc.Workshops.Workshop, created["id"]).destination_selected_at ==
+               stored.destination_selected_at
+
+      # A different, manual destination drops the provider identity and credits.
+      manual =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{created["id"]}", %{
+          "destinationName" => "Our Own Hall",
+          "destinationAddress" => "2 Other Road",
+          "directionsUrl" => "https://maps.app.goo.gl/AbCdEf",
+          "destinationPlaceId" => nil
+        })
+        |> json_response(200)
+        |> get_in(["data", "workshop"])
+
+      assert %{
+               "destinationName" => "Our Own Hall",
+               "directionsUrl" => "https://maps.app.goo.gl/AbCdEf",
+               "destinationProvider" => nil,
+               "destinationPlaceId" => nil,
+               "destinationAttributions" => []
+             } = manual
+
+      cleared =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{created["id"]}", %{
+          "destinationName" => nil,
+          "destinationAddress" => nil,
+          "directionsUrl" => nil,
+          "destinationPlaceId" => nil
+        })
+        |> json_response(200)
+        |> get_in(["data", "workshop"])
+
+      assert %{"destinationName" => nil, "destinationPlaceId" => nil} = cleared
+      assert cleared["location"] == "Main Hall"
+    end
+
+    test "an invalid selection is a field error and saves nothing", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops",
+          Map.merge(valid_workshop_payload(), %{
+            "destinationName" => "Hall",
+            "destinationPlaceId" => "../places/x"
+          })
+        )
+
+      assert %{"errors" => %{"fields" => %{"destinationPlaceId" => ["is not a valid place"]}}} =
+               json_response(conn, 422)
+    end
+
+    test "selecting a place for a published Workshop keeps the planned-only rule", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
+          "destinationName" => "Hall",
+          "destinationPlaceId" => "place_hall"
+        })
+
+      assert json_response(conn, 422)["errors"]["code"] == "not_editable"
+    end
+
+    test "attendee reads carry the selected place for directions and attribution", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          title: "Public Selected Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2,
+          destination_name: "Synthetic Fencing Hall",
+          destination_address: "1 Example Street, Dublin 8",
+          destination_provider: "google",
+          destination_place_id: "place_hall",
+          destination_selected_at: ~U[2026-11-01 10:00:00Z],
+          destination_attributions: [%{"provider" => "Venue Guide", "provider_uri" => nil}]
+        )
+
+      gate =
+        conn
+        |> get("/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+        |> json_response(200)
+
+      assert %{
+               "destinationProvider" => "google",
+               "destinationPlaceId" => "place_hall",
+               "destinationAttributions" => [%{"provider" => "Venue Guide", "providerUri" => nil}]
+             } = gate["data"]["workshop"]
+
+      member_list =
+        build_conn()
+        |> auth_conn("member")
+        |> get("/api/workshops")
+        |> json_response(200)
+
+      assert %{"destinationProvider" => "google", "destinationPlaceId" => "place_hall"} =
+               Enum.find(member_list["data"]["workshops"], &(&1["id"] == to_uuid(workshop.id)))
     end
 
     test "allows published pricing edits only while there are no active registrations", %{
@@ -2354,6 +2519,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
       destination_name: nil,
       destination_address: nil,
       directions_url: nil,
+      destination_provider: nil,
+      destination_place_id: nil,
+      destination_attributions: [],
       start_date: ~U[2026-07-01 10:00:00Z],
       end_date: ~U[2026-07-01 12:00:00Z],
       max_capacity: nil,

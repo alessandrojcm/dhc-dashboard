@@ -76,13 +76,18 @@ defmodule Dhc.DestinationBackfill do
 
   alias Dhc.BeginnersWorkshops
   alias Dhc.Destinations
+  alias Dhc.Destinations.Enrichment
   alias Dhc.WorkshopCalendar
   alias Dhc.Workshops
 
   @owners [workshop: Workshops, beginners_workshop: BeginnersWorkshops]
 
-  @destination_types Map.new(Destinations.fields(), &{&1, :string})
-  @destination_keys Enum.map(Destinations.fields(), &Atom.to_string/1)
+  # A mapping proposes manual text only; a reviewed destination also names the
+  # selected place (`nil` for a manual one) so a Google selection is never
+  # overwritten (`Dhc.Destinations.Enrichment.fields/0`).
+  @mapping_fields Destinations.text_fields()
+  @destination_types Map.new(@mapping_fields, &{&1, :string})
+  @destination_keys Enum.map(Enrichment.fields(), &Atom.to_string/1)
   @entry_keys ~w(venue destination note)
   @target_keys ~w(source_kind source_id expected)
   @expected_keys ~w(label status date start_time end_time destination)
@@ -138,6 +143,7 @@ defmodule Dhc.DestinationBackfill do
 
     with [] <- unknown_keys(entry, @entry_keys, at),
          [] <- unknown_keys(destination, @destination_keys, "#{at}.destination"),
+         :ok <- manual_only(destination, "#{at}.destination"),
          {:ok, venue} <- parse_venue(venue, at),
          {:ok, destination} <- parse_destination(destination, "#{at}.destination") do
       {:ok, %{venue: venue, destination: destination}}
@@ -152,6 +158,13 @@ defmodule Dhc.DestinationBackfill do
       {:error,
        %{at: "mappings[#{index}]", issue: "needs a venue string and a destination object"}}
 
+  # A mapping proposes manual text: it never selects a Google place (the
+  # echoed `destination_place_id: null` of a preview's mapping is allowed).
+  defp manual_only(%{"destination_place_id" => place_id}, at) when not is_nil(place_id),
+    do: {:error, %{at: at, issue: "a reviewed mapping names manual destinations only"}}
+
+  defp manual_only(_destination, _at), do: :ok
+
   defp parse_venue(venue, at) do
     case Destinations.normalize_optional(venue) do
       nil -> {:error, %{at: "#{at}.venue", issue: "can't be blank"}}
@@ -163,8 +176,12 @@ defmodule Dhc.DestinationBackfill do
   # (`Dhc.Destinations.validate_changeset/1`) and must say something.
   defp parse_destination(destination, at) do
     changeset =
-      {Map.new(Destinations.fields(), &{&1, nil}), @destination_types}
-      |> Ecto.Changeset.cast(destination, Destinations.fields(), empty_values: [])
+      {Map.new(@mapping_fields, &{&1, nil}), @destination_types}
+      |> Ecto.Changeset.cast(
+        Map.take(destination, Enum.map(@mapping_fields, &Atom.to_string/1)),
+        @mapping_fields,
+        empty_values: []
+      )
       |> Destinations.validate_changeset()
 
     cond do
@@ -175,7 +192,7 @@ defmodule Dhc.DestinationBackfill do
         {:error, %{at: at, issue: "names no destination detail"}}
 
       true ->
-        {:ok, Ecto.Changeset.apply_changes(changeset)}
+        {:ok, changeset |> Ecto.Changeset.apply_changes() |> Map.put(:destination_place_id, nil)}
     end
   end
 
@@ -472,7 +489,7 @@ defmodule Dhc.DestinationBackfill do
          date: date,
          start_time: start_time,
          end_time: end_time,
-         destination: Map.new(Destinations.fields(), &{&1, destination[Atom.to_string(&1)]})
+         destination: Map.new(Enrichment.fields(), &{&1, destination[Atom.to_string(&1)]})
        }}
     else
       _invalid -> {:error, "expected facts are incomplete or malformed"}

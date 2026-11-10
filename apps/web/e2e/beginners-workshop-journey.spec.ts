@@ -311,6 +311,139 @@ test.describe("Beginners' Workshop journey", () => {
 		}
 	});
 
+	// ALE-442: Google venue search through the real Phoenix lookup (answered by
+	// the E2E server's synthetic Places catalogue), saved on schedule,
+	// replaced by a destination-only change, and shown to the person with
+	// attribution and place-bound directions.
+	test("schedules with a chosen Google place, replaces it without emailing and gives the person attributed directions", async ({
+		page,
+		context,
+		browser,
+	}) => {
+		test.slow();
+		const { today } = await fetchE2EStatus();
+		const date = addClubDays(today, 35);
+		const venue = `Google Hall ${tag}`;
+		const person = await seedPerson(
+			`Places${faker.string.alpha(6)}`,
+			"1997-01-01T09:00:00Z",
+		);
+
+		await loginAsUser(context, coordinatorEmail);
+		await gotoHydrated(page, WORKSHOPS_PATH);
+		await page.getByRole("button", { name: "Schedule workshops" }).click();
+		const dialog = page.getByRole("dialog", {
+			name: "Schedule Beginners' Workshops",
+		});
+		await dialog.getByLabel("Venue", { exact: true }).fill(venue);
+
+		const search = dialog.getByRole("combobox", { name: "Search Google Maps" });
+		await search.pressSequentially("Synthetic Fencing");
+		await expect(dialog.getByRole("option")).toHaveCount(2);
+		await search.press("ArrowDown");
+		await search.press("Enter");
+		const selected = dialog.getByRole("region", {
+			name: "Selected destination",
+		});
+		await expect(selected).toContainText("Synthetic Fencing Hall");
+		await expect(selected).toContainText("Google Maps · Example Venue Guide");
+		// Choosing a place does not submit the dialog.
+		await expect(dialog).toBeVisible();
+
+		await dialog.getByLabel("Capacity").fill("1");
+		await dialog.getByLabel("Start time", { exact: true }).fill("18:30");
+		await dialog.getByLabel("End time", { exact: true }).fill("20:15");
+		await pickDate(page, "Workshop date 1", date);
+		await pickDate(page, "Start offering places 1", today);
+		await dialog
+			.getByRole("button", { name: "Schedule workshop", exact: true })
+			.click();
+		await expect(
+			page.getByText("Scheduled 1 Beginners' Workshop"),
+		).toBeVisible();
+
+		await gotoHydrated(page, WORKSHOPS_PATH);
+		await page
+			.getByRole("listitem")
+			.filter({ hasText: venue })
+			.getByRole("link", { name: `Manage workshop on ${date}` })
+			.click();
+		await expect(page).toHaveURL(
+			/\/dashboard\/beginners-workshop\/workshops\/[0-9a-f-]+$/,
+		);
+		const workshopId = page.url().split("/").pop() ?? "";
+		await expect(
+			page.getByText(
+				"Synthetic Fencing Hall · 1 Example Street, Dublin 8, Ireland",
+			),
+		).toBeVisible();
+		await expect(page.getByTestId("destination-attribution")).toContainText(
+			"Google Maps",
+		);
+		const batch = await seedE2EScenario("beginnersWorkshopBatch", {
+			workshopId,
+		});
+		expect(batch.contactedWaitlistIds).toEqual([person.waitlistId]);
+		await gotoHydrated(
+			page,
+			`/dashboard/beginners-workshop/workshops/${workshopId}`,
+		);
+
+		// Replacing the place at the same venue is a destination-only change.
+		await page.getByRole("button", { name: "Reschedule", exact: true }).click();
+		const reschedule = page.getByRole("dialog", { name: /^Reschedule / });
+		await expect(
+			reschedule.getByRole("region", { name: "Selected destination" }),
+		).toContainText("Synthetic Fencing Hall");
+		const replace = reschedule.getByRole("combobox", {
+			name: "Replace with another place",
+		});
+		await replace.pressSequentially("Annex");
+		await reschedule
+			.getByRole("option", { name: /Synthetic Fencing Annex/ })
+			.click();
+		await expect(
+			reschedule.getByRole("region", { name: "Selected destination" }),
+		).toContainText("Synthetic Fencing Annex");
+		await expect(reschedule.getByTestId("reschedule-warning")).toHaveText(
+			"No emails will be sent: only the destination details change.",
+		);
+		await reschedule.getByRole("button", { name: "Save destination" }).click();
+		await expect(page.getByText("Destination details saved")).toBeVisible();
+
+		const link = await seedE2EScenario("beginnersWorkshopIntakeLink", {
+			waitlistId: person.waitlistId,
+		});
+		const personContext = await browser.newContext();
+		let cleanupCheckout = async () => {};
+		try {
+			const personPage = await personContext.newPage();
+			cleanupCheckout = await stubEmbeddedCheckout(personPage);
+			await gotoHydrated(personPage, link.path);
+			const details = personPage.getByRole("list", { name: "Workshop" });
+			await expect(details).toContainText(venue);
+			await expect(details).toContainText(
+				"Synthetic Fencing Annex · 2 Example Street, Dublin 8, Ireland",
+			);
+			await expect(details.getByTestId("destination-attribution")).toHaveText(
+				/Google Maps/,
+			);
+			const directions = details.getByRole("link", { name: "Get directions" });
+			await expect(directions).toHaveAttribute(
+				"href",
+				/destination_place_id=e2e_place_annex$/,
+			);
+			await expect(directions).toHaveAttribute("referrerpolicy", "no-referrer");
+			expect(await directions.getAttribute("href")).not.toContain(link.path);
+		} finally {
+			try {
+				await cleanupCheckout();
+			} finally {
+				await personContext.close();
+			}
+		}
+	});
+
 	test("embedded intake payment stays on the page and resumes its existing session", async ({
 		page,
 	}) => {

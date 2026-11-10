@@ -31,7 +31,8 @@ defmodule Dhc.DestinationBackfillTest do
   @arena_fields %{
     destination_name: "National Basketball Arena",
     destination_address: "Tymon Park, Dublin 6w",
-    directions_url: "https://maps.app.goo.gl/AbCdEf"
+    directions_url: "https://maps.app.goo.gl/AbCdEf",
+    destination_place_id: nil
   }
 
   setup do
@@ -96,6 +97,27 @@ defmodule Dhc.DestinationBackfillTest do
                Enum.find(issues, &(&1.at == "mappings[1].destination"))
 
       assert {:error, _} = DestinationBackfill.parse_mapping(%{"venues" => []})
+    end
+
+    test "names manual destinations only: a selected place is refused, an echoed null is not" do
+      selected = Map.put(@arena, "destination_place_id", "ChIJ123")
+
+      assert {:error, [%{at: "mappings[0].destination", issue: issue}]} =
+               DestinationBackfill.parse_mapping(%{
+                 "mappings" => [%{"venue" => "A", "destination" => selected}]
+               })
+
+      assert issue =~ "manual destinations only"
+
+      assert {:ok, %{entries: [%{destination: %{destination_place_id: nil}}]}} =
+               DestinationBackfill.parse_mapping(%{
+                 "mappings" => [
+                   %{
+                     "venue" => "A",
+                     "destination" => Map.put(@arena, "destination_place_id", nil)
+                   }
+                 ]
+               })
     end
   end
 

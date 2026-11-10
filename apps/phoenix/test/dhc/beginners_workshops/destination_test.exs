@@ -363,4 +363,152 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
                IntakePage.show(token, Clock.fixed(@now))
     end
   end
+
+  # ── ALE-442: a destination selected from Google venue search ──
+
+  describe "a selected Google place" do
+    @selected %{
+      "destination_name" => "Synthetic Fencing Hall",
+      "destination_address" => "1 Example Street, Dublin 8",
+      "directions_url" => nil,
+      "destination_place_id" => "place_hall",
+      "destination_attributions" => [
+        %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
+      ]
+    }
+
+    defp provenance(workshop) do
+      workshop
+      |> stored()
+      |> Map.take([
+        :destination_provider,
+        :destination_place_id,
+        :destination_selected_at,
+        :destination_attributions
+      ])
+    end
+
+    test "every scheduled date owns the selection, stamped with the command's clock", %{
+      coordinator: coordinator
+    } do
+      at = now()
+
+      assert {:ok, [first, second]} =
+               run(
+                 coordinator,
+                 {:schedule_workshop,
+                  [
+                    workshop_attrs(Map.merge(@selected, %{"date" => "2026-11-14"})),
+                    workshop_attrs(Map.merge(@selected, %{"date" => "2026-11-21"}))
+                  ]},
+                 at
+               )
+
+      for view <- [first, second] do
+        assert view.venue == "St. Andrew's Hall"
+        assert view.destination_provider == "google"
+        assert view.destination_place_id == "place_hall"
+
+        assert provenance(%{id: view.id}).destination_selected_at ==
+                 DateTime.truncate(at, :second)
+      end
+    end
+
+    test "update_destination selects, replaces with a manual destination and clears without a reschedule",
+         %{coordinator: coordinator} do
+      {workshop, _intakes} = contacted_fixture(coordinator, 1)
+      logs = email_logs(workshop)
+      keys = notifications()
+
+      assert {:ok, view} = update_destination(coordinator, workshop, @selected)
+
+      assert %{
+               destination_provider: "google",
+               destination_place_id: "place_hall",
+               destination_attributions: [
+                 %{"provider" => "Venue Guide", "provider_uri" => "https://guide.example.test/"}
+               ]
+             } = view
+
+      assert %{destination_selected_at: ~U[2026-10-22 12:00:00Z]} = provenance(workshop)
+      assert stored(workshop).reschedule_count == 0
+
+      # The dialog resubmitting the same selection is a silent no-op.
+      before = stored(workshop)
+      assert {:ok, _} = update_destination(coordinator, workshop, @selected)
+      assert stored(workshop).updated_at == before.updated_at
+
+      # A manual destination replaces the provider identity and its credits.
+      assert {:ok, manual} =
+               update_destination(coordinator, workshop, %{
+                 "destination_name" => "Our Own Hall",
+                 "destination_address" => "2 Other Road",
+                 "destination_place_id" => nil
+               })
+
+      assert %{destination_provider: nil, destination_place_id: nil, destination_attributions: []} =
+               manual
+
+      assert {:ok, _} = update_destination(coordinator, workshop, @selected)
+
+      assert {:ok, cleared} =
+               update_destination(coordinator, workshop, %{
+                 "destination_name" => nil,
+                 "destination_address" => nil,
+                 "destination_place_id" => nil
+               })
+
+      assert %{destination_name: nil, destination_place_id: nil} = cleared
+      assert email_logs(workshop) == logs
+      assert notifications() == keys
+      assert stored(workshop).reschedule_count == 0
+    end
+
+    test "a genuine reschedule saves a new selection and still emails; a selection alone is not a move",
+         %{coordinator: coordinator} do
+      {workshop, _intakes} = contacted_fixture(coordinator, 1)
+
+      assert {:error, %Ecto.Changeset{}} = reschedule(coordinator, workshop, @selected)
+      assert provenance(workshop).destination_place_id == nil
+
+      assert {:ok, view} =
+               reschedule(coordinator, workshop, Map.merge(@selected, %{"venue" => "The Hub"}))
+
+      assert view.venue == "The Hub"
+      assert view.destination_place_id == "place_hall"
+
+      assert [{_, "rescheduled", "rescheduled:1"}] =
+               Enum.filter(email_logs(workshop), &(elem(&1, 1) == "rescheduled"))
+    end
+
+    test "the Intake page carries the place and its credits, never more", %{
+      coordinator: coordinator
+    } do
+      {workshop, [{_intake, token}]} = contacted_fixture(coordinator, 1)
+      assert {:ok, _} = update_destination(coordinator, workshop, @selected)
+
+      assert {:ok, %{workshop: page}} = IntakePage.show(token, Clock.fixed(@now))
+
+      assert %{
+               destination_name: "Synthetic Fencing Hall",
+               destination_provider: "google",
+               destination_place_id: "place_hall",
+               destination_attributions: [%{"provider" => "Venue Guide"}]
+             } = page
+
+      refute Map.has_key?(page, :destination_selected_at)
+    end
+
+    test "a malformed selection is refused with a named field", %{coordinator: coordinator} do
+      workshop = scheduled_fixture(coordinator)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               update_destination(coordinator, workshop, %{
+                 "destination_name" => "Hall",
+                 "destination_place_id" => "not/a place"
+               })
+
+      assert %{destination_place_id: ["is not a valid place"]} = errors_on(changeset)
+    end
+  end
 end

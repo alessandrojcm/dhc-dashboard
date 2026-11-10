@@ -26,9 +26,15 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
   @arena %{
     destination_name: "National Basketball Arena",
     destination_address: "Tymon Park, Dublin 6w",
-    directions_url: "https://maps.app.goo.gl/AbCdEf"
+    directions_url: "https://maps.app.goo.gl/AbCdEf",
+    destination_place_id: nil
   }
-  @none %{destination_name: nil, destination_address: nil, directions_url: nil}
+  @none %{
+    destination_name: nil,
+    destination_address: nil,
+    directions_url: nil,
+    destination_place_id: nil
+  }
 
   setup do
     %{staff: staff!()}
@@ -149,6 +155,21 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
 
     test "a different stored destination is a conflict, not enrichment", %{staff: staff} do
       workshop = published!(destination_address: "Another street")
+      assert {:error, :destination_conflict} = enrich(staff, workshop)
+      assert Repo.get!(Workshop, workshop.id) == workshop
+    end
+
+    # ALE-442: a Google-selected destination is never "absent", so a reviewed
+    # manual mapping cannot overwrite it or strip its provider identity.
+    test "a Google-selected destination is a conflict, not enrichment", %{staff: staff} do
+      workshop =
+        published!(
+          destination_name: @arena.destination_name,
+          destination_provider: "google",
+          destination_place_id: "ChIJ-selected",
+          destination_selected_at: ~U[2027-02-01 12:00:00Z]
+        )
+
       assert {:error, :destination_conflict} = enrich(staff, workshop)
       assert Repo.get!(Workshop, workshop.id) == workshop
     end

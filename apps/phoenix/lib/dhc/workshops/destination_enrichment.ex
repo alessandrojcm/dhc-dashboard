@@ -24,7 +24,6 @@ defmodule Dhc.Workshops.DestinationEnrichment do
   """
 
   alias Dhc.ClubCalendar
-  alias Dhc.Destinations
   alias Dhc.Destinations.Enrichment
   alias Dhc.Workshops.Workshop
 
@@ -74,7 +73,7 @@ defmodule Dhc.Workshops.DestinationEnrichment do
       date: ClubCalendar.on_date(workshop.start_date),
       start_time: ClubCalendar.time_on(workshop.start_date),
       end_time: ClubCalendar.time_on(workshop.end_date),
-      destination: Map.new(Destinations.fields(), &{&1, Map.fetch!(workshop, &1)})
+      destination: Map.new(Enrichment.fields(), &{&1, Map.fetch!(workshop, &1)})
     }
   end
 

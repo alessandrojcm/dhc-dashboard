@@ -1,8 +1,23 @@
 import type { BeginnersWorkshop } from "@dhc/api-client";
 import { expect, test } from "vitest";
-import { userEvent } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import {
+	FakeVenueLookup,
+	venueLookupContext,
+} from "#lib/testing/fake-venue-lookup.js";
 import RescheduleDialog from "./reschedule-dialog.svelte";
+
+// ALE-442: the one venue lookup boundary, substituted with a synthetic place.
+const lookup = new FakeVenueLookup([
+	{
+		provider: "google",
+		placeId: "place_annex",
+		name: "Synthetic Fencing Annex",
+		address: "2 Example Street, Dublin 8",
+		attributions: [],
+	},
+]);
 
 let nextWorkshopId = 1;
 
@@ -20,6 +35,9 @@ function workshop(
 		destinationName: null,
 		destinationAddress: null,
 		directionsUrl: null,
+		destinationProvider: null,
+		destinationPlaceId: null,
+		destinationAttributions: [],
 		date: "2026-11-14",
 		startTime: "18:30",
 		endTime: "20:30",
@@ -51,10 +69,13 @@ async function openDialog(
 	overrides: Partial<BeginnersWorkshop> = {},
 ) {
 	const screen = await render(RescheduleDialog, {
-		workshop: workshop(overrides),
-		recipients,
-		open: true,
-		today: "2026-10-09",
+		context: venueLookupContext(lookup),
+		props: {
+			workshop: workshop(overrides),
+			recipients,
+			open: true,
+			today: "2026-10-09",
+		},
 	});
 	const form = screen.getByRole("form", { name: "Reschedule workshop" });
 	await expect.element(form).toBeVisible();
@@ -135,6 +156,9 @@ test("ALE-441: a destination-only edit saves without emailing; a move is still a
 		destinationName: "National Basketball Arena",
 		destinationAddress: null,
 		directionsUrl: null,
+		destinationProvider: null,
+		destinationPlaceId: null,
+		destinationAttributions: [],
 	});
 	const operation = () =>
 		form
@@ -183,4 +207,78 @@ test("ALE-441: the destination link gets the shared https check before submittin
 	await expect
 		.element(screen.getByText("Directions link must be an https link"))
 		.toBeVisible();
+});
+
+test("ALE-442: replacing a saved Google place is a destination-only change, and Escape keeps the dialog open", async () => {
+	const { screen, form } = await openDialog(3, {
+		destinationName: "Synthetic Fencing Hall",
+		destinationAddress: "1 Example Street, Dublin 8",
+		destinationProvider: "google",
+		destinationPlaceId: "place_hall",
+		destinationAttributions: [{ provider: "Venue Guide", providerUri: null }],
+	});
+	const hidden = (name: string) =>
+		form
+			.element()
+			.querySelector<HTMLInputElement>(`input[type=hidden][name*="${name}"]`)
+			?.value;
+
+	const preview = screen.getByRole("region", { name: "Selected destination" });
+	await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
+	await expect.element(preview).toHaveTextContent("Venue Guide");
+	expect(hidden("operation")).toBe("reschedule");
+
+	await userEvent.click(
+		screen.getByRole("combobox", { name: "Replace with another place" }),
+	);
+	await userEvent.keyboard("Annex");
+	await expect.element(screen.getByRole("option").first()).toBeVisible();
+	await userEvent.keyboard("{Escape}");
+	await expect
+		.element(screen.getByRole("option").first())
+		.not.toBeInTheDocument();
+	await expect.element(form).toBeVisible();
+
+	await userEvent.keyboard("{Backspace}");
+	await screen.getByRole("option", { name: /Annex/ }).click();
+	await expect.element(preview).toHaveTextContent("Synthetic Fencing Annex");
+	expect(lookup.resolveCalls.map((call) => call.placeId)).toEqual([
+		"place_annex",
+	]);
+
+	await expect
+		.element(screen.getByRole("button", { name: "Save destination" }))
+		.toBeVisible();
+	expect(hidden("operation")).toBe("destination");
+	expect(hidden("destination_place_id")).toBe("place_annex");
+	expect(hidden("destination_attributions")).toBe("[]");
+});
+
+test("ALE-442: the search and a selected place fit a phone", async () => {
+	await page.viewport(375, 740);
+	const { screen } = await openDialog(0, {
+		destinationName: "Synthetic Fencing Hall with a fairly long listing name",
+		destinationAddress: "1 Example Street, Dublin 8, D08 X000, Ireland",
+		destinationProvider: "google",
+		destinationPlaceId: "place_hall",
+		destinationAttributions: [],
+	});
+
+	const preview = screen
+		.getByRole("region", { name: "Selected destination" })
+		.element();
+	const remove = screen
+		.getByRole("button", { name: "Remove and enter manually" })
+		.element();
+	const search = screen
+		.getByRole("combobox", { name: "Replace with another place" })
+		.element();
+	for (const element of [preview, remove, search]) {
+		const box = element.getBoundingClientRect();
+		expect(box.left).toBeGreaterThanOrEqual(0);
+		expect(box.right).toBeLessThanOrEqual(375);
+	}
+	// Touch-sized controls.
+	expect(remove.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+	expect(search.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
 });

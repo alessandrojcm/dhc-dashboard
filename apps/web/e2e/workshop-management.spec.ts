@@ -422,6 +422,106 @@ test.describe("Workshop Management", () => {
 			if (createdId) createdWorkshopIds.push(createdId);
 		});
 
+		// ALE-442: Google venue search through the real Phoenix lookup, answered
+		// by the E2E server's synthetic Places catalogue.
+		test("creates a workshop with a chosen Google place, then replaces it with a manual destination", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+			await gotoHydrated(page, "/dashboard/workshops/create");
+
+			const ts = Date.now();
+			const title = `Google Place Workshop ${ts}`;
+			const workshopDate = dayjs().add(2, "day");
+
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(title);
+			await page.getByRole("textbox", { name: /location/i }).fill("Main hall");
+
+			// A search answered by nothing explains itself; a quota failure keeps
+			// manual entry available.
+			const search = page.getByRole("combobox", { name: "Search Google Maps" });
+			await search.pressSequentially("quota");
+			await expect(
+				page.getByRole("status").filter({ hasText: "reached its limit" }),
+			).toBeVisible();
+			await search.fill("");
+			await search.pressSequentially("Synthetic Fencing Hall");
+			await page
+				.getByRole("option", { name: /Synthetic Fencing Hall/ })
+				.click();
+			const selected = page.getByRole("region", {
+				name: "Selected destination",
+			});
+			await expect(selected).toContainText(
+				"1 Example Street, Dublin 8, Ireland",
+			);
+			await expect(selected).toContainText("Google Maps · Example Venue Guide");
+
+			await pickWorkshopDate(page, workshopDate);
+			await page
+				.getByRole("spinbutton", { name: "Available places", exact: true })
+				.fill("15");
+			await page
+				.getByRole("spinbutton", { name: "Member price", exact: true })
+				.fill("15");
+			await page
+				.getByRole("button", { name: "Create Workshop", exact: true })
+				.click();
+			await expect(
+				page.getByText(`Workshop "${title}" created successfully!`),
+			).toBeVisible();
+			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
+
+			const dialog = await openWorkshopModal(page, title);
+			await expect(
+				dialog.getByText(
+					"Synthetic Fencing Hall · 1 Example Street, Dublin 8, Ireland",
+				),
+			).toBeVisible();
+			await expect(dialog.getByTestId("destination-attribution")).toContainText(
+				"Google Maps",
+			);
+			await expect(
+				dialog.getByRole("link", { name: "Get directions" }),
+			).toHaveAttribute("href", /destination_place_id=e2e_place_hall$/);
+			// Editing it into a manual destination removes the provider identity.
+			await dialog.getByTestId("edit-workshop-button").click();
+			await expect(page).toHaveURL(/\/dashboard\/workshops\/[0-9a-f-]+\/edit$/);
+			const createdId = page
+				.url()
+				.match(
+					/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+				)?.[0];
+			if (createdId) createdWorkshopIds.push(createdId);
+			await gotoHydrated(page, `/dashboard/workshops/${createdId}/edit`);
+			await expect(
+				page.getByRole("region", { name: "Selected destination" }),
+			).toContainText("Synthetic Fencing Hall");
+			await page
+				.getByRole("button", { name: "Remove and enter manually" })
+				.click();
+			await page
+				.getByRole("textbox", { name: "Destination name", exact: true })
+				.fill("Our Own Hall");
+			await page
+				.getByRole("button", { name: "Update Workshop", exact: true })
+				.click();
+			await expect(page.getByText(/updated successfully/)).toBeVisible();
+
+			await gotoHydrated(page, "/dashboard/workshops");
+			const updated = await openWorkshopModal(page, title);
+			await expect(updated.getByText("Our Own Hall")).toBeVisible();
+			await expect(updated.getByTestId("destination-attribution")).toHaveCount(
+				0,
+			);
+			await expect(
+				updated.getByRole("link", { name: "Get directions" }),
+			).not.toHaveAttribute("href", /destination_place_id/);
+		});
+
 		test("creates a workshop through the UI", async ({ page, context }) => {
 			await loginAsUser(context, adminData.email);
 			await gotoHydrated(page, "/dashboard/workshops/create");

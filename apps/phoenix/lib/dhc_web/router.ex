@@ -61,6 +61,19 @@ defmodule DhcWeb.Router do
     plug(DhcWeb.Plugs.RequireSession, capability: :"training_announcements.manage")
   end
 
+  # ALE-442: the domain-neutral Google venue lookup. Searches are venue text
+  # only, but nothing about them is logged (`log: false`).
+  pipeline :venues_lookup do
+    plug(DhcWeb.Plugs.RequireSession, capability: :"venues.lookup")
+  end
+
+  scope "/api/venue-lookup", DhcWeb do
+    pipe_through([:api, :venues_lookup])
+
+    post("/suggestions", VenueLookupController, :suggest, log: false)
+    post("/selections", VenueLookupController, :resolve, log: false)
+  end
+
   scope "/api/beginners-workshops", DhcWeb do
     pipe_through([:api, :beginners_workshops_manage])
 

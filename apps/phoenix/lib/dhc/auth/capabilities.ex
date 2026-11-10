@@ -133,6 +133,9 @@ defmodule Dhc.Auth.Capabilities do
     "members.settings.edit": %{roles: @officers},
     "membership.reactivate": %{roles: @billing_authority},
     "training_announcements.manage": %{roles: @training_announcement_managers},
+    # ALE-442: Google venue search is a scheduling aid, so whoever schedules
+    # either kind of workshop may use it; it writes nothing.
+    "venues.lookup": %{roles: Enum.uniq(@workshop_coordinators ++ @beginners_workshop_managers)},
     "workshops.manage": %{roles: @workshop_coordinators},
     "workshops.own.read": %{roles: @members}
   }

@@ -90,6 +90,17 @@ unless e2e_server? do
   config :dhc, :stripe_req_options, plug: {Req.Test, Dhc.Stripe}
 end
 
+# ALE-442: Google Places venue lookup never reaches Google in automated
+# suites. Unit tests stub it with `Req.Test.stub(Dhc.Places, plug)`; the E2E
+# server answers from the synthetic `Dhc.PlacesE2EStub` catalogue.
+config :dhc, :places_api_key, "places-test-key"
+
+if e2e_server? do
+  config :dhc, :places_req_options, plug: Dhc.PlacesE2EStub
+else
+  config :dhc, :places_req_options, plug: {Req.Test, Dhc.Places}
+end
+
 config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verification"
 

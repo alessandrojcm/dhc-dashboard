@@ -85,7 +85,8 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
              data["workshop"]
 
     assert Map.keys(data["workshop"]) |> Enum.sort() ==
-             ~w(date destinationAddress destinationName directionsUrl endTime startTime venue)
+             ~w(date destinationAddress destinationAttributions destinationName destinationPlaceId
+                destinationProvider directionsUrl endTime startTime venue)
   end
 
   test "the page carries a saved destination beside the label, still without a referrer", %{
@@ -116,6 +117,44 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
                  "destinationName" => "National Basketball Arena",
                  "destinationAddress" => "Tymon Park, Dublin 6w",
                  "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+               }
+             }
+           } = json_response(conn, 200)
+  end
+
+  test "a selected place carries its Place ID and credits for attribution (ALE-442)", %{
+    conn: conn,
+    token: token,
+    workshop: workshop
+  } do
+    assert {:ok, _} =
+             Dhc.BeginnersWorkshops.execute(
+               {:staff, staff_fixture("beginners_coordinator")},
+               {:update_destination, workshop.id,
+                %{
+                  "venue" => workshop.venue,
+                  "destination_name" => "Synthetic Fencing Hall",
+                  "destination_address" => "1 Example Street, Dublin 8",
+                  "destination_place_id" => "place_hall",
+                  "destination_attributions" => [%{"provider" => "Venue Guide"}]
+                }},
+               clock: clock(DateTime.utc_now())
+             )
+
+    conn = get(conn, "/api/beginners/intake/#{token}")
+    assert no_referrer?(conn)
+
+    assert %{
+             "data" => %{
+               "workshop" => %{
+                 "venue" => "St. Andrew's Hall",
+                 "destinationName" => "Synthetic Fencing Hall",
+                 "destinationProvider" => "google",
+                 "destinationPlaceId" => "place_hall",
+                 "directionsUrl" => nil,
+                 "destinationAttributions" => [
+                   %{"provider" => "Venue Guide", "providerUri" => nil}
+                 ]
                }
              }
            } = json_response(conn, 200)

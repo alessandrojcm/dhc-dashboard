@@ -32,6 +32,7 @@ import * as Alert from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Card from "#lib/components/ui/card/index.js";
+import DestinationAttribution from "#lib/components/destination-attribution.svelte";
 import { confirmIntakePlace, startIntakePayment } from "./intake.remote";
 
 let {
@@ -118,6 +119,9 @@ const refusal = $derived.by(() => {
 							<span class="text-muted-foreground"
 								>{details.destination.join(" · ")}</span
 							>
+						{/if}
+						{#if details.attribution}
+							<DestinationAttribution credits={details.attribution.credits} />
 						{/if}
 						{#if details.directionsHref}
 							<!-- The page sends no referrer, and this link never carries its token. -->

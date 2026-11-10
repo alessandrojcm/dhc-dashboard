@@ -43,6 +43,9 @@ defmodule Dhc.Auth.CapabilitiesTest do
     "membership.reactivate": {~w(admin president treasurer committee_coordinator), false},
     "training_announcements.manage":
       {~w(admin president committee_coordinator sparring_coordinator coach), false},
+    "venues.lookup":
+      {~w(workshop_coordinator president admin committee_coordinator beginners_coordinator),
+       false},
     "workshops.manage": {~w(workshop_coordinator president admin), false},
     "workshops.own.read": {~w(member), false}
   }

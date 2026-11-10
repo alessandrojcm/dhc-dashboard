@@ -179,6 +179,62 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     assert mutations == WorkshopCalendarHTTP.mutations(server)
   end
 
+  # ALE-442: a Google-selected destination reaches Calendar only as native
+  # location text; its Place ID and credits never enter the event, and adding
+  # provider identity to an unchanged name/address is a silent no-op.
+  test "a selected place updates the native location, and a Place ID alone stays silent" do
+    server = google_surface!()
+    %{principal_id: principal_id} = WorkshopFixtures.member_fixture()
+
+    {:ok, workshop} =
+      Workshops.create_workshop(
+        %{
+          title: "Longsword",
+          location: "Club hall",
+          destination_name: "Synthetic Fencing Hall",
+          destination_address: "1 Example Street, Dublin 8",
+          start_date: ~U[2027-03-28 09:00:00Z],
+          end_date: ~U[2027-03-28 11:00:00Z],
+          max_capacity: 20,
+          price_member: 1000.0,
+          price_non_member: 2000.0
+        },
+        principal_id
+      )
+
+    assert :ok = sync(workshop.id)
+    [event] = Map.values(WorkshopCalendarHTTP.events(server))
+    mutations = WorkshopCalendarHTTP.mutations(server)
+
+    # Selecting the same place with the same text: provider identity only.
+    assert {:ok, %{destination_place_id: "place_hall"}} =
+             Workshops.update_workshop(workshop.id, %{
+               destination_name: "Synthetic Fencing Hall",
+               destination_address: "1 Example Street, Dublin 8",
+               destination_place_id: "place_hall",
+               destination_attributions: [%{"provider" => "Venue Guide"}]
+             })
+
+    assert :ok = sync(workshop.id)
+    assert WorkshopCalendarHTTP.mutations(server) == mutations
+
+    # Selecting a fuller listing of the same venue updates the same event.
+    assert {:ok, _} =
+             Workshops.update_workshop(workshop.id, %{
+               destination_name: "Synthetic Fencing Hall",
+               destination_address: "1 Example Street, Dublin 8, D08 X000",
+               destination_place_id: "place_hall"
+             })
+
+    assert :ok = sync(workshop.id)
+    [updated] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert updated["id"] == event["id"]
+    assert updated["location"] == "Synthetic Fencing Hall, 1 Example Street, Dublin 8, D08 X000"
+    refute Jason.encode!(updated) =~ "place_hall"
+    refute Jason.encode!(updated) =~ "Venue Guide"
+    assert Enum.all?(WorkshopCalendarHTTP.mutations(server), &(&1.query == "sendUpdates=none"))
+  end
+
   test "a label-only Workshop keeps its label as the native location" do
     server = google_surface!()
     workshop = create_workshop!()

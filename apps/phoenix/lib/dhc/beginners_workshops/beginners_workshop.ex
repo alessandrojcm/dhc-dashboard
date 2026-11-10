@@ -41,6 +41,13 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
     field :destination_name, :string
     field :destination_address, :string
     field :directions_url, :string
+    # ALE-442: the provider identity of a destination selected from Google
+    # Maps venue search (`Dhc.Destinations` owns the rules). All absent for a
+    # manual destination.
+    field :destination_provider, :string
+    field :destination_place_id, :string
+    field :destination_selected_at, :utc_datetime
+    field :destination_attributions, {:array, :map}, default: []
     field :date, :date
     field :start_time, :time
     field :end_time, :time
@@ -82,8 +89,8 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
   The shape of a new workshop. `attrs` are already resolved by the boundary
   (defaults filled, the cutoff an instant).
   """
-  @spec schedule_changeset(map()) :: Ecto.Changeset.t()
-  def schedule_changeset(attrs) do
+  @spec schedule_changeset(map(), keyword()) :: Ecto.Changeset.t()
+  def schedule_changeset(attrs, opts \\ []) do
     %__MODULE__{}
     |> cast(attrs, [
       :venue,
@@ -99,7 +106,7 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
       | Destinations.fields()
     ])
     |> update_change(:venue, &String.trim/1)
-    |> Destinations.validate_changeset()
+    |> Destinations.validate_changeset(opts)
     |> validate_required([
       :venue,
       :date,
@@ -134,8 +141,8 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
   start time, venue, Payment Cutoff and contact-from date, already resolved
   by the boundary, and the next reschedule number.
   """
-  @spec reschedule_changeset(t(), map()) :: Ecto.Changeset.t()
-  def reschedule_changeset(%__MODULE__{} = workshop, attrs) do
+  @spec reschedule_changeset(t(), map(), keyword()) :: Ecto.Changeset.t()
+  def reschedule_changeset(%__MODULE__{} = workshop, attrs, opts \\ []) do
     workshop
     |> cast(attrs, [
       :venue,
@@ -147,7 +154,7 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
       | Destinations.fields()
     ])
     |> update_change(:venue, &String.trim/1)
-    |> Destinations.validate_changeset()
+    |> Destinations.validate_changeset(opts)
     |> validate_required([:venue, :date, :start_time, :end_time, :payment_cutoff, :contact_from])
     |> change(reschedule_count: workshop.reschedule_count + 1)
     |> validate_shape()
@@ -155,16 +162,17 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
 
   @doc """
   The shape of a destination-only change (`update_destination`, ALE-441):
-  the optional destination name, address and directions link at the same
-  venue. Omitted keys keep their value and `nil` clears one. It casts
+  the optional destination name, address and directions link, or (ALE-442)
+  a selected Google place, at the same venue. `opts[:now]` stamps a new
+  selection (`Dhc.Destinations.validate_changeset/2`). Omitted keys keep their value and `nil` clears one. It casts
   nothing else, so no schedule fact, the reschedule number or any policy
   field can change through it.
   """
-  @spec destination_changeset(t(), map()) :: Ecto.Changeset.t()
-  def destination_changeset(%__MODULE__{} = workshop, attrs) do
+  @spec destination_changeset(t(), map(), keyword()) :: Ecto.Changeset.t()
+  def destination_changeset(%__MODULE__{} = workshop, attrs, opts \\ []) do
     workshop
     |> cast(attrs, Destinations.fields())
-    |> Destinations.validate_changeset()
+    |> Destinations.validate_changeset(opts)
   end
 
   @doc "Pauses automatic Batches (`pause_batches`), recording who and when."

@@ -276,6 +276,10 @@ const isHttpsUrl = (input: string) => {
  * Client-side the directions link only gets a light https-shape check; Phoenix
  * owns the supported-Maps-destination rule and answers a rejection as a field
  * error on `directionsUrl`.
+ *
+ * ALE-442: a destination selected from Google venue search also submits its
+ * Place ID and credits through two hidden controls (empty for a manual
+ * destination); Phoenix owns the provenance rules.
  */
 export const destinationEntries = {
 	destination_name: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
@@ -289,6 +293,11 @@ export const destinationEntries = {
 				"Directions link must be an https link",
 			),
 		),
+		"",
+	),
+	destination_place_id: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
+	destination_attributions: v.optional(
+		v.pipe(v.string(), v.maxLength(8192)),
 		"",
 	),
 };

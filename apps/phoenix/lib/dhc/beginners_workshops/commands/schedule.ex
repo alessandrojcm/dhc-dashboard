@@ -54,6 +54,13 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   `:status_changed`, `:destination_changed`, `:destination_conflict`) or
   `:invalid_destination`.
 
+  ALE-442: schedule, reschedule and `update_destination` also take a
+  selected Google place (`destination_place_id` with its
+  `destination_attributions`); the selection is stamped with the command's
+  clock reading, and `Dhc.Destinations` decides when provider identity is
+  kept, replaced or removed. Selecting a place for the same venue is an
+  `update_destination` like any other destination enrichment.
+
   ## Reschedule (ALE-394)
 
   `reschedule_workshop` moves a scheduled workshop's date, explicit start and end times
@@ -186,7 +193,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     payment_window_days: :integer,
     destination_name: :string,
     destination_address: :string,
-    directions_url: :string
+    directions_url: :string,
+    destination_place_id: :string,
+    destination_attributions: {:array, :map}
   }
 
   @update_fields ~w(capacity fee_cents payment_cutoff_date payment_cutoff_time contact_from payment_window_days)a
@@ -354,7 +363,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
                  WorkshopPolicy.default_payment_window_days(),
              scheduled_by_principal_id: principal_id
            })
-           |> BeginnersWorkshop.schedule_changeset()
+           |> BeginnersWorkshop.schedule_changeset(now: reading.now)
            |> persist(),
          :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
          {:ok, created} <- Staff.apply_staff(workshop, [], staff, principal_id) do
@@ -494,7 +503,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
                end_time: next.end_time,
                payment_cutoff: cutoff,
                contact_from: contact_from
-             })
+             }),
+             now: reading.now
            )
            |> persist(),
          :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
@@ -521,7 +531,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
     with :ok <- still_scheduled(workshop),
          :ok <- same_venue(workshop, attrs),
-         {:ok, workshop} <- save_destination(workshop, attrs) do
+         {:ok, workshop} <- save_destination(workshop, attrs, reading) do
       {:ok, WorkshopProjection.view(workshop, facts_for(workshop), reading)}
     end
   end
@@ -544,16 +554,12 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   # ── enrich_destination (ALE-444) ────────────────────────────────
 
   # The facts are judged on the row and clock read under the lock; only an
-  # exact reviewed `:change` writes, through the same `save_destination/2`.
+  # exact reviewed `:change` writes, through the same `save_destination/3`.
   defp enrich_locked(%{workshop: workshop}, expected, destination, clock) do
     facts = workshop && DestinationEnrichment.facts(workshop)
+    reading = Clock.read(clock)
 
-    case DestinationEnrichment.check_reviewed(
-           facts,
-           expected,
-           destination,
-           Clock.read(clock).now
-         ) do
+    case DestinationEnrichment.check_reviewed(facts, expected, destination, reading.now) do
       :unchanged ->
         {:ok, :unchanged}
 
@@ -561,7 +567,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
         {:error, reason}
 
       :change ->
-        case save_destination(workshop, destination) do
+        case save_destination(workshop, destination, reading) do
           {:ok, _workshop} -> {:ok, :changed}
           {:error, %Ecto.Changeset{}} -> {:error, :invalid_destination}
           {:error, reason} -> {:error, reason}
@@ -571,8 +577,11 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   # An unchanged destination is a silent no-op: no write and no Calendar
   # intent.
-  defp save_destination(workshop, attrs) do
-    changeset = BeginnersWorkshop.destination_changeset(workshop, destination_attrs(attrs))
+  defp save_destination(workshop, attrs, reading) do
+    changeset =
+      BeginnersWorkshop.destination_changeset(workshop, destination_attrs(attrs),
+        now: reading.now
+      )
 
     cond do
       not changeset.valid? ->

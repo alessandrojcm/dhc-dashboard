@@ -89,6 +89,9 @@ describe("rescheduleOperation", () => {
 		destinationName: "Arena",
 		destinationAddress: null,
 		directionsUrl: null,
+		destinationProvider: null,
+		destinationPlaceId: null,
+		destinationAttributions: [],
 	};
 	const unchanged = {
 		date: "2026-11-14",
@@ -98,6 +101,8 @@ describe("rescheduleOperation", () => {
 		destination_name: "Arena",
 		destination_address: "",
 		directions_url: "",
+		destination_place_id: "",
+		destination_attributions: "",
 	};
 
 	it("is a destination-only change while the date, times and venue stay", () => {
@@ -119,6 +124,34 @@ describe("rescheduleOperation", () => {
 				destination_name: "Arena Two",
 			}),
 		).toBe("destination");
+	});
+
+	it("selecting, replacing or removing a Google place is a destination-only change (ALE-442)", () => {
+		expect(
+			rescheduleOperation(current, {
+				...unchanged,
+				destination_place_id: "place_hall",
+			}),
+		).toBe("destination");
+
+		const selected = {
+			...current,
+			destinationProvider: "google" as const,
+			destinationPlaceId: "place_hall",
+		};
+		const resubmitted = {
+			...unchanged,
+			destination_place_id: "place_hall",
+			destination_attributions: "[]",
+		};
+		expect(rescheduleOperation(selected, resubmitted)).toBe("reschedule");
+		expect(
+			rescheduleOperation(selected, {
+				...resubmitted,
+				destination_place_id: "place_annex",
+			}),
+		).toBe("destination");
+		expect(rescheduleOperation(selected, unchanged)).toBe("destination");
 	});
 
 	it("stays a reschedule when nothing changed, so Phoenix asks for a move", () => {

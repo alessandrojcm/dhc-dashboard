@@ -30,7 +30,6 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichment do
   """
 
   alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, CalendarProjection}
-  alias Dhc.Destinations
   alias Dhc.Destinations.Enrichment
 
   @type destination :: Enrichment.destination()
@@ -78,7 +77,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichment do
       date: workshop.date,
       start_time: workshop.start_time,
       end_time: workshop.end_time,
-      destination: Map.new(Destinations.fields(), &{&1, Map.fetch!(workshop, &1)})
+      destination: Map.new(Enrichment.fields(), &{&1, Map.fetch!(workshop, &1)})
     }
   end
 

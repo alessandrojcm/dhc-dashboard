@@ -8,6 +8,7 @@ import {
 	onboardingVerifyInvitationAcceptance,
 	beginnersWorkshopEmailTemplatesList,
 	waitlistStatus,
+	venueLookupSuggest,
 } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import {
@@ -65,6 +66,31 @@ describe("API error reporting", () => {
 			expect(captureException).not.toHaveBeenCalled();
 		},
 	);
+
+	it("does not report an unconfigured or over-quota venue search, but reports a provider rejection", async () => {
+		const body = {
+			input: "hall",
+			sessionToken: "6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b",
+		};
+		fetchMock.mockResolvedValue(
+			Response.json(
+				{ errors: { detail: "Google venue search isn't set up" } },
+				{ status: 503 },
+			),
+		);
+		await venueLookupSuggest({ body });
+		expect(captureException).not.toHaveBeenCalled();
+
+		fetchMock.mockResolvedValue(
+			Response.json(
+				{ errors: { detail: "Google venue search isn't authorised" } },
+				{ status: 502 },
+			),
+		);
+		await venueLookupSuggest({ body });
+		expect(captureException).toHaveBeenCalledTimes(1);
+		expect(JSON.stringify(captureException.mock.calls)).not.toContain("hall");
+	});
 
 	it("still reports network failures for ordinary API reads", async () => {
 		fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));

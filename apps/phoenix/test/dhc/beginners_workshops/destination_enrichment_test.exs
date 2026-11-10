@@ -43,9 +43,15 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichmentTest do
   @arena %{
     destination_name: "National Basketball Arena",
     destination_address: "Tymon Park, Dublin 6w",
-    directions_url: "https://maps.app.goo.gl/AbCdEf"
+    directions_url: "https://maps.app.goo.gl/AbCdEf",
+    destination_place_id: nil
   }
-  @none %{destination_name: nil, destination_address: nil, directions_url: nil}
+  @none %{
+    destination_name: nil,
+    destination_address: nil,
+    directions_url: nil,
+    destination_place_id: nil
+  }
 
   setup do
     %{coordinator: staff_fixture("beginners_coordinator")}

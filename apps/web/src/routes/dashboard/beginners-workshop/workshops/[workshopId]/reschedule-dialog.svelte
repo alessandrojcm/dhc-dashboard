@@ -72,6 +72,12 @@ const operation = $derived(
 			savedDestination.destination_address,
 		directions_url:
 			form.fields.directions_url.value() ?? savedDestination.directions_url,
+		destination_place_id:
+			form.fields.destination_place_id.value() ??
+			savedDestination.destination_place_id,
+		destination_attributions:
+			form.fields.destination_attributions.value() ??
+			savedDestination.destination_attributions,
 	}),
 );
 const warning = $derived(rescheduleWarning(recipients, operation));

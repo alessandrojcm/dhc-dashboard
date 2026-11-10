@@ -161,3 +161,41 @@ test("shows a saved destination and a safe directions link beside the label", as
 		legacy.getByRole("link", { name: "Get directions" }).elements(),
 	).toHaveLength(0);
 });
+
+test("ALE-442: a selected Google place shows its attribution and place-bound directions", async () => {
+	const screen = await render(WorkshopListTestWrapper, {
+		workshops: [
+			workshop({
+				destinationName: "Synthetic Fencing Hall",
+				destinationAddress: "1 Example Street, Dublin 8",
+				destinationProvider: "google",
+				destinationPlaceId: "place_hall",
+				destinationAttributions: [
+					{ provider: "Venue Guide", providerUri: null },
+				],
+			}),
+			workshop({
+				id: "22222222-2222-2222-2222-222222222222",
+				title: "Manual destination",
+				destinationName: "Our Own Hall",
+			}),
+		],
+	});
+
+	const card = screen.getByRole("article").first();
+	await expect
+		.element(card.getByTestId("destination-attribution"))
+		.toHaveTextContent("Google Maps · Venue Guide");
+	await expect
+		.element(card.getByRole("link", { name: "Get directions" }))
+		.toHaveAttribute(
+			"href",
+			expect.stringContaining("destination_place_id=place_hall"),
+		);
+
+	// A manual destination is never attributed to Google.
+	const manual = screen.getByRole("article").nth(1);
+	expect(manual.getByTestId("destination-attribution").elements()).toHaveLength(
+		0,
+	);
+});

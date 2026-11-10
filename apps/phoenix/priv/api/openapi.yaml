@@ -15,6 +15,13 @@ servers:
     description: Relative path (same origin)
 
 tags:
+  - name: VenueLookup
+    description: |
+      ALE-442: the domain-neutral Google Maps venue lookup used by every
+      Workshop form. It searches and previews only; each Workshop domain saves
+      a selection through its own operations.
+    x-context: Dhc.Places
+    x-resource: Place
   - name: TrainingAnnouncements
     description: Committee-managed Training Announcements and absolute-date exceptions.
     x-context: Dhc.TrainingAnnouncements
@@ -433,6 +440,126 @@ paths:
         "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
         "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
         "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+  /venue-lookup/suggestions:
+    post:
+      operationId: venueLookup.suggest
+      tags:
+        - VenueLookup
+      summary: Search Google Maps for venues
+      description: |
+        Google Places Autocomplete (New) for a venue name or address, biased
+        toward Dublin without excluding other places. Suggestions are ordered
+        and transient (`Cache-Control: no-store`); none is an empty list.
+        `sessionToken` is a client-generated UUID v4 for one search
+        interaction, reused by the selection that ends it.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueLookupSuggestRequest"
+      responses:
+        "200":
+          description: Ordered suggestions for the search.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueLookupSuggestionsResponse"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Venue lookup capability required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid search or session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Google rejected the request or is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Google venue search is not set up or has reached its quota.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /venue-lookup/selections:
+    post:
+      operationId: venueLookup.resolve
+      tags:
+        - VenueLookup
+      summary: Preview a chosen venue suggestion
+      description: |
+        Google Place Details (New) for a deliberately chosen suggestion, as a
+        closed preview with the credits that must be shown beside it. Saving
+        it is a separate Workshop operation. `Cache-Control: no-store`.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueLookupResolveRequest"
+      responses:
+        "200":
+          description: The chosen place's preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueLookupSelectionResponse"
+        "404":
+          description: The place is no longer available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Venue lookup capability required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid search or session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Google rejected the request or is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Google venue search is not set up or has reached its quota.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /discord-doctor/report:
     get:
       operationId: discordDoctor.report
@@ -8773,6 +8900,60 @@ components:
         format: uuid
       description: The Loan id.
   schemas:
+    DestinationAttribution:
+      type: object
+      description: |
+        A third-party credit Google returned with a selected place (ALE-442),
+        shown beside the destination's name and address.
+      required: [provider, providerUri]
+      properties:
+        provider: {type: string, maxLength: 200}
+        providerUri: {type: string, nullable: true, maxLength: 2048, description: An https link to the provider}
+    VenueLookupSuggestRequest:
+      type: object
+      required: [input, sessionToken]
+      properties:
+        input: {type: string, minLength: 1, maxLength: 120}
+        sessionToken: {type: string, format: uuid}
+    VenueLookupResolveRequest:
+      type: object
+      required: [placeId, sessionToken]
+      properties:
+        placeId: {type: string, maxLength: 255, pattern: '^[A-Za-z0-9_-]+$'}
+        sessionToken: {type: string, format: uuid}
+    VenueLookupSuggestion:
+      type: object
+      required: [placeId, text]
+      properties:
+        placeId: {type: string}
+        text: {type: string, description: "Google's suggestion text, for this search only"}
+    VenueLookupSuggestionsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [suggestions]
+          properties:
+            suggestions:
+              type: array
+              items: {$ref: "#/components/schemas/VenueLookupSuggestion"}
+    VenueLookupSelection:
+      type: object
+      required: [provider, placeId, name, address, attributions]
+      properties:
+        provider: {type: string, enum: [google]}
+        placeId: {type: string}
+        name: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        attributions:
+          type: array
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
+    VenueLookupSelectionResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/VenueLookupSelection"}
     MemberAnnouncementDocument:
       type: object
       description: |
@@ -9264,6 +9445,9 @@ components:
         - destinationName
         - destinationAddress
         - directionsUrl
+        - destinationProvider
+        - destinationPlaceId
+        - destinationAttributions
         - date
         - startTime
         - endTime
@@ -9299,6 +9483,26 @@ components:
           description: |
             Optional manually supplied Google Maps directions link, validated
             server-side as a supported HTTPS Maps destination.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when the destination was deliberately selected from Google
+            Maps venue search (ALE-442); `null` for a manual destination. Show
+            Google Maps attribution beside a `google` destination's name and address.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected destination's Google Place ID, for a directions link
+            (`destination_place_id`); `null` for a manual destination.
+        destinationAttributions:
+          type: array
+          description: |
+            Third-party credits Google requires beside the selected
+            destination's name and address. Empty for a manual destination.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
         date: {type: string, format: date}
         startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'}
         endTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', nullable: true}
@@ -9525,6 +9729,26 @@ components:
             Optional manually supplied Google Maps directions link. Rejected
             unless it is a supported HTTPS Maps destination (no executable
             schemes, credentials, or unsupported targets).
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a destination chosen from venue
+            search, sent with the selection's name and address. A new Place ID
+            records a Google selection (and drops any manual directions link:
+            the link is derived from the place); `null` clears it. Changing the
+            name, address or link without sending the selected Place ID turns
+            the destination manual and removes its provider identity. Omission
+            preserves.
+        destinationAttributions:
+          type: array
+          maxItems: 10
+          description: |
+            The selection's third-party credits, accepted only with a newly
+            sent `destinationPlaceId`.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
         coachPrincipalId:
           type: string
           format: uuid
@@ -9595,6 +9819,26 @@ components:
             Optional manually supplied Google Maps directions link. Rejected
             unless it is a supported HTTPS Maps destination (no executable
             schemes, credentials, or unsupported targets). Omitting the key keeps the stored value; `null` (or an empty string) clears it.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a destination chosen from venue
+            search, sent with the selection's name and address. A new Place ID
+            records a Google selection (and drops any manual directions link:
+            the link is derived from the place); `null` clears it. Changing the
+            name, address or link without sending the selected Place ID turns
+            the destination manual and removes its provider identity. Omission
+            preserves.
+        destinationAttributions:
+          type: array
+          maxItems: 10
+          description: |
+            The selection's third-party credits, accepted only with a newly
+            sent `destinationPlaceId`.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
       required: [startTime, endTime]
     BeginnersWorkshopDestinationRequest:
       type: object
@@ -9626,6 +9870,26 @@ components:
             Optional manually supplied Google Maps directions link. Rejected
             unless it is a supported HTTPS Maps destination (no executable
             schemes, credentials, or unsupported targets). Omitting the key keeps the stored value; `null` (or an empty string) clears it.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a destination chosen from venue
+            search, sent with the selection's name and address. A new Place ID
+            records a Google selection (and drops any manual directions link:
+            the link is derived from the place); `null` clears it. Changing the
+            name, address or link without sending the selected Place ID turns
+            the destination manual and removes its provider identity. Omission
+            preserves.
+        destinationAttributions:
+          type: array
+          maxItems: 10
+          description: |
+            The selection's third-party credits, accepted only with a newly
+            sent `destinationPlaceId`.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
     BeginnersWorkshopResponse:
       type: object
       required: [data]
@@ -10175,7 +10439,7 @@ components:
       enum: [inactive, payment_closed]
     BeginnersIntakeWorkshop:
       type: object
-      required: [date, startTime, endTime, venue, destinationName, destinationAddress, directionsUrl]
+      required: [date, startTime, endTime, venue, destinationName, destinationAddress, directionsUrl, destinationProvider, destinationPlaceId, destinationAttributions]
       properties:
         date: {type: string, format: date, description: Europe/Dublin civil date}
         startTime: {type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$", description: "Europe/Dublin HH:MM"}
@@ -10197,6 +10461,26 @@ components:
           description: |
             Optional manually supplied Google Maps directions link, validated
             server-side as a supported HTTPS Maps destination.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when the destination was deliberately selected from Google
+            Maps venue search (ALE-442); `null` for a manual destination. Show
+            Google Maps attribution beside a `google` destination's name and address.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected destination's Google Place ID, for a directions link
+            (`destination_place_id`); `null` for a manual destination.
+        destinationAttributions:
+          type: array
+          description: |
+            Third-party credits Google requires beside the selected
+            destination's name and address. Empty for a manual destination.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
     BeginnersIntakePage:
       type: object
       description: |
@@ -12773,6 +13057,26 @@ components:
           description: |
             Optional manually supplied Google Maps directions link, validated
             server-side as a supported HTTPS Maps destination.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when the destination was deliberately selected from Google
+            Maps venue search (ALE-442); `null` for a manual destination. Show
+            Google Maps attribution beside a `google` destination's name and address.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected destination's Google Place ID, for a directions link
+            (`destination_place_id`); `null` for a manual destination.
+        destinationAttributions:
+          type: array
+          description: |
+            Third-party credits Google requires beside the selected
+            destination's name and address. Empty for a manual destination.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
         priceNonMember:
           type: integer
           minimum: 0
@@ -12915,6 +13219,26 @@ components:
             Optional manually supplied Google Maps directions link. Rejected
             unless it is a supported HTTPS Maps destination (no executable
             schemes, credentials, or unsupported targets).
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a destination chosen from venue
+            search, sent with the selection's name and address. A new Place ID
+            records a Google selection (and drops any manual directions link:
+            the link is derived from the place); `null` clears it. Changing the
+            name, address or link without sending the selected Place ID turns
+            the destination manual and removes its provider identity. Omission
+            preserves.
+        destinationAttributions:
+          type: array
+          maxItems: 10
+          description: |
+            The selection's third-party credits, accepted only with a newly
+            sent `destinationPlaceId`.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
       description: |
         Coordinator Workshop management input. Lifecycle status and createdBy
         are server-owned and intentionally absent.
@@ -12982,6 +13306,26 @@ components:
             preserves; an explicit `null` clears. Destination edits are general
             edits: they follow the planned-only rule and are not covered by the
             pricing-only exception.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a destination chosen from venue
+            search, sent with the selection's name and address. A new Place ID
+            records a Google selection (and drops any manual directions link:
+            the link is derived from the place); `null` clears it. Changing the
+            name, address or link without sending the selected Place ID turns
+            the destination manual and removes its provider identity. Omission
+            preserves.
+        destinationAttributions:
+          type: array
+          maxItems: 10
+          description: |
+            The selection's third-party credits, accepted only with a newly
+            sent `destinationPlaceId`.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
       description: |
         Partial Workshop management update. All fields from
         `WorkshopManagementRequest` are optional at runtime; lifecycle status is
@@ -13039,6 +13383,26 @@ components:
           description: |
             Optional manually supplied Google Maps directions link, validated
             server-side as a supported HTTPS Maps destination.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when the destination was deliberately selected from Google
+            Maps venue search (ALE-442); `null` for a manual destination. Show
+            Google Maps attribution beside a `google` destination's name and address.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected destination's Google Place ID, for a directions link
+            (`destination_place_id`); `null` for a manual destination.
+        destinationAttributions:
+          type: array
+          description: |
+            Third-party credits Google requires beside the selected
+            destination's name and address. Empty for a manual destination.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
         startDate:
           type: string
           format: date-time
@@ -13097,6 +13461,9 @@ components:
         - destinationName
         - destinationAddress
         - directionsUrl
+        - destinationProvider
+        - destinationPlaceId
+        - destinationAttributions
         - startDate
         - endDate
         - maxCapacity
@@ -13142,6 +13509,26 @@ components:
           description: |
             Optional manually supplied Google Maps directions link, validated
             server-side as a supported HTTPS Maps destination.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when the destination was deliberately selected from Google
+            Maps venue search (ALE-442); `null` for a manual destination. Show
+            Google Maps attribution beside a `google` destination's name and address.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected destination's Google Place ID, for a directions link
+            (`destination_place_id`); `null` for a manual destination.
+        destinationAttributions:
+          type: array
+          description: |
+            Third-party credits Google requires beside the selected
+            destination's name and address. Empty for a manual destination.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
         startDate:
           type: string
           format: date-time
@@ -13264,6 +13651,26 @@ components:
           description: |
             Optional manually supplied Google Maps directions link, validated
             server-side as a supported HTTPS Maps destination.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when the destination was deliberately selected from Google
+            Maps venue search (ALE-442); `null` for a manual destination. Show
+            Google Maps attribution beside a `google` destination's name and address.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected destination's Google Place ID, for a directions link
+            (`destination_place_id`); `null` for a manual destination.
+        destinationAttributions:
+          type: array
+          description: |
+            Third-party credits Google requires beside the selected
+            destination's name and address. Empty for a manual destination.
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
         startDate:
           type: string
           format: date-time
@@ -15311,6 +15718,7 @@ components:
         - members.settings.edit
         - membership.reactivate
         - training_announcements.manage
+        - venues.lookup
         - workshops.manage
         - workshops.own.read
     AuthSessionProjection:

@@ -386,6 +386,8 @@ defmodule DhcWeb.WorkshopsController do
     |> put_if_present(params, "destinationName", :destination_name)
     |> put_if_present(params, "destinationAddress", :destination_address)
     |> put_if_present(params, "directionsUrl", :directions_url)
+    |> put_if_present(params, "destinationPlaceId", :destination_place_id)
+    |> put_if_present(params, "destinationAttributions", :destination_attributions)
     |> put_datetime_if_present(params, "startDate", :start_date)
     |> put_datetime_if_present(params, "endDate", :end_date)
     |> put_if_present(params, "maxCapacity", :max_capacity)

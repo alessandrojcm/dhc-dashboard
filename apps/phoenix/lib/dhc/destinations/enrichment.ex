@@ -7,18 +7,33 @@ defmodule Dhc.Destinations.Enrichment do
   Each source context keeps its own eligibility rule (statuses, archive,
   start), storage, lock and command; this module judges only the shared fact
   shape — `label`, `status`, Dublin civil `date`/`start_time`/`end_time` and
-  `destination` with the `Dhc.Destinations.fields/0` keys — so a regular
+  `destination` with the `fields/0` keys — so a regular
   Workshop and a Beginners' Workshop are judged identically without either
   context reading the other (ADR 0029).
   """
 
   alias Dhc.Destinations
 
+  # The reviewed destination: the manual text fields plus the selected place
+  # (ALE-442). A reviewed mapping only ever proposes manual text
+  # (`destination_place_id: nil`), so a Google-selected destination is never
+  # "absent" and is refused as a conflict rather than overwritten; its
+  # attributions travel with the place and are not compared.
+  @fields Destinations.text_fields() ++ [:destination_place_id]
+
   @type destination :: %{
           destination_name: String.t() | nil,
           destination_address: String.t() | nil,
-          directions_url: String.t() | nil
+          directions_url: String.t() | nil,
+          destination_place_id: String.t() | nil
         }
+
+  @doc """
+  The keys of a reviewed destination: `Dhc.Destinations.text_fields/0` and
+  `destination_place_id`.
+  """
+  @spec fields() :: [atom()]
+  def fields, do: @fields
 
   @typedoc """
   The reviewed current facts an approved target names: the short label, the
@@ -85,7 +100,7 @@ defmodule Dhc.Destinations.Enrichment do
   end
 
   defp fills_absent?(current, proposed) do
-    Enum.all?(Destinations.fields(), fn field ->
+    Enum.all?(@fields, fn field ->
       value = Map.fetch!(current, field)
       is_nil(value) or value == Map.fetch!(proposed, field)
     end)

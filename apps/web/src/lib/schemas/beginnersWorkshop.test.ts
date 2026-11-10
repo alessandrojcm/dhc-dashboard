@@ -47,6 +47,8 @@ describe("scheduleWorkshopsSchema", () => {
 					destinationName: null,
 					destinationAddress: null,
 					directionsUrl: null,
+					destinationPlaceId: null,
+					destinationAttributions: [],
 					startTime: "18:30",
 					endTime: "20:30",
 					capacity: 16,
@@ -63,6 +65,8 @@ describe("scheduleWorkshopsSchema", () => {
 					destinationName: null,
 					destinationAddress: null,
 					directionsUrl: null,
+					destinationPlaceId: null,
+					destinationAttributions: [],
 					startTime: "18:30",
 					endTime: "20:30",
 					capacity: 16,
@@ -331,6 +335,8 @@ describe("destination details (ALE-441)", () => {
 		destinationName: "National Basketball Arena",
 		destinationAddress: "Tymon Park, Dublin 6w",
 		directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+		destinationPlaceId: null,
+		destinationAttributions: [],
 	};
 
 	it("gives every scheduled date its own copy of the shared destination", () => {
@@ -411,7 +417,29 @@ describe("destination details (ALE-441)", () => {
 				destinationName: null,
 				destinationAddress: "Tymon Park, Dublin 6w",
 				directionsUrl: null,
+				destinationPlaceId: null,
+				destinationAttributions: [],
 			},
 		});
+	});
+
+	it("sends a selected Google place and its credits on every date (ALE-442)", () => {
+		const { workshops } = v.parse(scheduleWorkshopsSchema, {
+			...shared,
+			destination_name: "Synthetic Fencing Hall",
+			destination_address: "1 Example Street",
+			destination_place_id: "place_hall",
+			destination_attributions:
+				'[{"provider":"Venue Guide","providerUri":null}]',
+			workshops: [{ date: "2026-11-14" }, { date: "2026-11-21" }],
+		});
+
+		for (const workshop of workshops)
+			expect(workshop).toMatchObject({
+				destinationPlaceId: "place_hall",
+				destinationAttributions: [
+					{ provider: "Venue Guide", providerUri: null },
+				],
+			});
 	});
 });

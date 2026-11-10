@@ -18,6 +18,9 @@ function workshop(
 		destinationName: null,
 		destinationAddress: null,
 		directionsUrl: null,
+		destinationProvider: null,
+		destinationPlaceId: null,
+		destinationAttributions: [],
 		// 00:30 Irish Summer Time to 01:30 GMT on Sunday 25 October; in LA it
 		// is still Saturday afternoon.
 		startDate: "2026-10-24T23:30:00Z",

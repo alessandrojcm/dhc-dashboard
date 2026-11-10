@@ -114,6 +114,9 @@ export function rescheduleOperation(
 		| "destinationName"
 		| "destinationAddress"
 		| "directionsUrl"
+		| "destinationProvider"
+		| "destinationPlaceId"
+		| "destinationAttributions"
 	>,
 	values: ScheduleValues & DestinationFields,
 ): RescheduleOperation {
@@ -129,7 +132,9 @@ export function rescheduleOperation(
 	const changed =
 		next.destinationName !== saved.destinationName ||
 		next.destinationAddress !== saved.destinationAddress ||
-		next.directionsUrl !== saved.directionsUrl;
+		next.directionsUrl !== saved.directionsUrl ||
+		// ALE-442: selecting, replacing or removing a Google place.
+		next.destinationPlaceId !== saved.destinationPlaceId;
 	return changed ? "destination" : "reschedule";
 }
 

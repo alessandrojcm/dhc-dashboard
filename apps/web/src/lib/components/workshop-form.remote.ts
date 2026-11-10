@@ -15,6 +15,7 @@ import {
 	commandResult,
 } from "#lib/server/api/command-result.js";
 import { apiClientOptions } from "#lib/server/api-client.js";
+import { parseCredits } from "#lib/destinations.js";
 import {
 	CreateWorkshopRemoteSchema,
 	UpdateWorkshopRemoteSchema,
@@ -38,6 +39,11 @@ function destinationFormField(
 			return "destination_address";
 		case "directionsUrl":
 			return "directions_url";
+		// ALE-442: a refused selection is shown where the selection is: the
+		// destination name, beside the selected place.
+		case "destinationPlaceId":
+		case "destinationAttributions":
+			return "destination_name";
 	}
 }
 
@@ -74,23 +80,56 @@ function attributeDestinationRejection(issue: DestinationIssueRoot) {
  * preserves the stored detail, an emptied field clears it (`null`), and a
  * value passes through. The edit form always submits the fields it
  * prefilled, so an unrelated edit resubmits the stored values.
+ *
+ * ALE-442: the selected Google Place ID and its credits follow the same
+ * rule; credits are sent only with a Place ID.
  */
-const destinationPayload = (data: {
+function destinationPayload(data: {
 	destination_name?: string;
 	destination_address?: string;
 	directions_url?: string;
-}) => ({
-	destinationName:
-		data.destination_name === undefined
-			? undefined
-			: data.destination_name || null,
-	destinationAddress:
-		data.destination_address === undefined
-			? undefined
-			: data.destination_address || null,
-	directionsUrl:
-		data.directions_url === undefined ? undefined : data.directions_url || null,
-});
+	destination_place_id?: string;
+	destination_attributions?: string;
+}): Pick<
+	WorkshopManagementUpdateRequest,
+	| "destinationName"
+	| "destinationAddress"
+	| "directionsUrl"
+	| "destinationPlaceId"
+	| "destinationAttributions"
+> {
+	const payload: Pick<
+		WorkshopManagementUpdateRequest,
+		| "destinationName"
+		| "destinationAddress"
+		| "directionsUrl"
+		| "destinationPlaceId"
+		| "destinationAttributions"
+	> = {
+		destinationName:
+			data.destination_name === undefined
+				? undefined
+				: data.destination_name || null,
+		destinationAddress:
+			data.destination_address === undefined
+				? undefined
+				: data.destination_address || null,
+		directionsUrl:
+			data.directions_url === undefined
+				? undefined
+				: data.directions_url || null,
+	};
+
+	if (data.destination_place_id !== undefined) {
+		const placeId = data.destination_place_id.trim() || null;
+		payload.destinationPlaceId = placeId;
+		payload.destinationAttributions = placeId
+			? parseCredits(data.destination_attributions ?? "")
+			: [];
+	}
+
+	return payload;
+}
 
 export const createWorkshop = form(
 	CreateWorkshopRemoteSchema,

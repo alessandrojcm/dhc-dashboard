@@ -100,8 +100,11 @@ asserts that the label and the destination are the same physical Venue; list a
 label under `ambiguous` (or leave it out) when it is not certain. The mapping
 accepts only `destination_name`, `destination_address` and `directions_url`: no
 Places search, provider identity or first-result choice, and it is not a
-reusable venue registry. Google-selected destinations are not accepted until
-the terms-supported selection implementation exists.
+reusable venue registry. Google-selected destinations (ALE-442) stay with the
+editors' search: a mapping may echo `destination_place_id: null` but never
+names a place, and a workshop whose stored destination is a Google selection
+is refused as `destination_conflict` rather than overwritten or stripped of
+its provider identity.
 
 Run these only in an authorized operator session:
 
