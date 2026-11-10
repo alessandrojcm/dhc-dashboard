@@ -39,6 +39,11 @@ config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
 config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
 config :dhc, :workshop_stripe_adapter, Dhc.Workshops.StripeAdapter.Live
 
+# How many days an Invitation stays valid from the moment it is issued or
+# re-armed (see Dhc.Invitations.Validity, the single owner of this window).
+# The invite email copy states the same number.
+config :dhc, :invitation_validity_days, 7
+
 # Private Stripe coupon IDs backing invitation pricing tiers (see
 # Dhc.Invitations.Pricing.tier_coupon_id/1). These coupons are applied directly
 # by the backend: coach = percent_off 100 / duration forever; student =
