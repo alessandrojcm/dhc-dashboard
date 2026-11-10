@@ -8,9 +8,9 @@ import { ExternalLink, MapPin } from "@lucide/svelte";
  * The destination input (ALE-440): optional, manually entered destination
  * details beside a domain's own short venue label.
  *
- * Domain-neutral on purpose — regular Workshop create/edit composes it
- * today and the Beginners' Workshop schedule/reschedule forms can compose
- * the same fields later without importing either domain's policy. It only
+ * Domain-neutral on purpose — regular Workshop create/edit and the
+ * Beginners' Workshop schedule/reschedule forms (ALE-441) compose the same
+ * fields without importing either domain's policy. It only
  * renders the shared field vocabulary (`destination_name`,
  * `destination_address`, `directions_url`) through the remote-form field
  * API, so control names, restored values, `aria-invalid` and field issues
@@ -20,12 +20,23 @@ type TextField = RemoteFormField<string>;
 
 let {
 	fields,
+	values,
 	disabled = false,
 }: {
 	fields: {
 		destination_name: TextField;
 		destination_address: TextField;
 		directions_url: TextField;
+	};
+	/**
+	 * The saved destination each control shows until it is edited (ALE-441),
+	 * for forms that prefill through `.as(type, value)` rather than
+	 * `fields.set(...)`.
+	 */
+	values?: {
+		destination_name: string;
+		destination_address: string;
+		directions_url: string;
 	};
 	disabled?: boolean;
 } = $props();
@@ -54,7 +65,10 @@ let {
 
 	<div class="grid grid-cols-1 gap-5 md:grid-cols-2">
 		<Field.Field>
-			{@const nameField = fields.destination_name.as("text")}
+			{@const nameField = fields.destination_name.as(
+				"text",
+				values?.destination_name,
+			)}
 			<Field.Label for={nameField.name}>Destination name</Field.Label>
 			<Input
 				{...nameField}
@@ -69,7 +83,10 @@ let {
 		</Field.Field>
 
 		<Field.Field>
-			{@const addressField = fields.destination_address.as("text")}
+			{@const addressField = fields.destination_address.as(
+				"text",
+				values?.destination_address,
+			)}
 			<Field.Label for={addressField.name}>Destination address</Field.Label>
 			<Input
 				{...addressField}
@@ -85,7 +102,10 @@ let {
 	</div>
 
 	<Field.Field>
-		{@const linkField = fields.directions_url.as("text")}
+		{@const linkField = fields.directions_url.as(
+			"text",
+			values?.directions_url,
+		)}
 		<Field.Label for={linkField.name}>Google Maps directions link</Field.Label>
 		<div class="relative">
 			<span

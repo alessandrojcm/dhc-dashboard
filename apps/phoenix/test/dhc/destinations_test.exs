@@ -150,4 +150,36 @@ defmodule Dhc.DestinationsTest do
       assert Destinations.calendar_location(nil, nil, "Main hall") == "Main hall"
     end
   end
+
+  describe "validate_changeset/1" do
+    @types %{destination_name: :string, destination_address: :string, directions_url: :string}
+
+    defp cast(data \\ %{}, attrs),
+      do: Ecto.Changeset.cast({data, @types}, attrs, Map.keys(@types))
+
+    test "blank text is absent and a supplied Maps link is judged with its one message" do
+      changeset =
+        cast(%{"destination_name" => "  ", "directions_url" => "http://maps.google.com/?q=x"})
+        |> Destinations.validate_changeset()
+
+      assert Ecto.Changeset.get_change(changeset, :destination_name) == nil
+      assert changeset.errors[:directions_url] == {"Directions link must be an https link", []}
+    end
+
+    test "clearing a stored link is valid, and the lengths are the shared maxima" do
+      assert %{valid?: true} =
+               %{directions_url: "https://maps.app.goo.gl/AbCdEf"}
+               |> cast(%{"directions_url" => nil})
+               |> Destinations.validate_changeset()
+
+      assert %{valid?: false, errors: errors} =
+               cast(%{
+                 "destination_name" => String.duplicate("n", Destinations.name_max() + 1),
+                 "destination_address" => String.duplicate("a", Destinations.address_max() + 1)
+               })
+               |> Destinations.validate_changeset()
+
+      assert Keyword.keys(errors) |> Enum.sort() == [:destination_address, :destination_name]
+    end
+  end
 end

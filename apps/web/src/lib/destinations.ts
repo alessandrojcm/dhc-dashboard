@@ -48,3 +48,33 @@ export function directionsHref(workshop: DestinationFacts): string | undefined {
 
 	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
+
+/** The destination controls `destination-input.svelte` submits. */
+export interface DestinationFields {
+	destination_name: string;
+	destination_address: string;
+	directions_url: string;
+}
+
+/**
+ * The destination controls as Phoenix request fields: every key is sent, so
+ * an emptied control clears the saved value (`null`) rather than keeping it.
+ */
+export function destinationBody(fields: DestinationFields) {
+	return {
+		destinationName: fields.destination_name.trim() || null,
+		destinationAddress: fields.destination_address.trim() || null,
+		directionsUrl: fields.directions_url.trim() || null,
+	};
+}
+
+/** A saved destination as the controls' values, for prefilling an edit form. */
+export function destinationValues(
+	workshop: DestinationFacts,
+): DestinationFields {
+	return {
+		destination_name: workshop.destinationName ?? "",
+		destination_address: workshop.destinationAddress ?? "",
+		directions_url: workshop.directionsUrl ?? "",
+	};
+}

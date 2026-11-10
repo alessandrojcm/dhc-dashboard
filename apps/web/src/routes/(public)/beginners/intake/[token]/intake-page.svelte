@@ -110,8 +110,27 @@ const refusal = $derived.by(() => {
 				<li class="flex items-center gap-2">
 					<Clock class="size-4 text-muted-foreground" />{details.time}
 				</li>
-				<li class="flex items-center gap-2">
-					<MapPin class="size-4 text-muted-foreground" />{details.venue}
+				<li class="flex items-start gap-2">
+					<MapPin class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+					<span class="flex flex-col gap-0.5">
+						<span>{details.venue}</span>
+						{#if details.destination.length > 0}
+							<span class="text-muted-foreground"
+								>{details.destination.join(" · ")}</span
+							>
+						{/if}
+						{#if details.directionsHref}
+							<!-- The page sends no referrer, and this link never carries its token. -->
+							<a
+								href={details.directionsHref}
+								target="_blank"
+								rel="noopener noreferrer"
+								referrerpolicy="no-referrer"
+								class="inline-flex min-h-11 items-center font-medium text-primary underline-offset-4 hover:underline"
+								>Get directions</a
+							>
+						{/if}
+					</span>
 				</li>
 			</ul>
 			{#if details.fee}

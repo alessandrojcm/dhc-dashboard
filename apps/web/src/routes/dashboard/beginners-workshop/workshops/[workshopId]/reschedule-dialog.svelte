@@ -4,6 +4,9 @@
 	prefilled with the offsets Phoenix keeps and following a new date or time
 	until edited. It says how many people the reschedule emails before saving.
 	Phoenix decides: it is refused only after finalisation or cancellation.
+	ALE-441: it also edits the destination details. While the date, times and
+	venue stay as they are, saving changes only the destination (Phoenix's
+	destination-only command) and emails nobody.
 -->
 <script lang="ts">
 import type { BeginnersWorkshop } from "@dhc/api-client";
@@ -17,8 +20,11 @@ import {
 import {
 	keptContactFrom,
 	keptCutoff,
+	rescheduleOperation,
 	rescheduleWarning,
 } from "#lib/beginners-workshops/reschedule.js";
+import DestinationInput from "#lib/components/destination-input.svelte";
+import { destinationValues } from "#lib/destinations.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import DatePicker from "#lib/components/ui/date-picker.svelte";
 import * as Dialog from "#lib/components/ui/dialog/index.js";
@@ -51,7 +57,24 @@ let formError = $state<string | null>(null);
 let cutoffEdited = $state(false);
 let contactFromEdited = $state(false);
 
-const warning = $derived(rescheduleWarning(recipients));
+// Phoenix judges the move; this only picks which command the dialog sends.
+const savedDestination = $derived(destinationValues(workshop));
+const operation = $derived(
+	rescheduleOperation(workshop, {
+		date: current("date"),
+		startTime: current("startTime"),
+		endTime: form.fields.endTime.value() || (workshop.endTime ?? ""),
+		venue: form.fields.venue.value() ?? workshop.venue,
+		destination_name:
+			form.fields.destination_name.value() ?? savedDestination.destination_name,
+		destination_address:
+			form.fields.destination_address.value() ??
+			savedDestination.destination_address,
+		directions_url:
+			form.fields.directions_url.value() ?? savedDestination.directions_url,
+	}),
+);
+const warning = $derived(rescheduleWarning(recipients, operation));
 
 type DateKey = "date" | "paymentCutoffDate" | "contactFromDate";
 
@@ -102,8 +125,9 @@ function setContactFrom(value: DateValue | undefined) {
 		<Dialog.Header>
 			<Dialog.Title>Reschedule {formatCivilDate(workshop.date)}</Dialog.Title>
 			<Dialog.Description>
-				Change the date, time or venue. Existing bookings stay confirmed and the
-				number of places stays the same.
+				Change the date, time or venue, or only the destination details.
+				Existing bookings stay confirmed and the number of places stays the
+				same.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -113,7 +137,11 @@ function setContactFrom(value: DateValue | undefined) {
 				if (!(await instance.submit())) return;
 				const result = instance.result;
 				if (result?.ok) {
-					toast.success("Workshop rescheduled");
+					toast.success(
+						result.operation === "destination"
+							? "Destination details saved"
+							: "Workshop rescheduled",
+					);
 					open = false;
 				} else if (result) {
 					formError = result.error;
@@ -123,6 +151,7 @@ function setContactFrom(value: DateValue | undefined) {
 			aria-label="Reschedule workshop"
 		>
 			<input {...form.fields.id.as("hidden", workshop.id)} />
+			<input {...form.fields.operation.as("hidden", operation)} />
 
 			<h3 class="text-base font-semibold">New workshop details</h3>
 			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_10rem_10rem]">
@@ -177,6 +206,8 @@ function setContactFrom(value: DateValue | undefined) {
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
 			</Field.Field>
+
+			<DestinationInput fields={form.fields} values={savedDestination} />
 
 			<Field.Group class="grid gap-4 sm:grid-cols-[1fr_10rem]">
 				<Field.Field>
@@ -255,11 +286,15 @@ function setContactFrom(value: DateValue | undefined) {
 					>Keep current date</Button
 				>
 				<Button type="submit" disabled={!!form.pending}
-					>{form.pending
-						? "Rescheduling…"
-						: recipients > 0
-							? `Reschedule and email ${recipients}`
-							: "Reschedule"}</Button
+					>{operation === "destination"
+						? form.pending
+							? "Saving…"
+							: "Save destination"
+						: form.pending
+							? "Rescheduling…"
+							: recipients > 0
+								? `Reschedule and email ${recipients}`
+								: "Reschedule"}</Button
 				>
 			</Dialog.Footer>
 		</form>

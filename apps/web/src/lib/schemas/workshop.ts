@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import { dublinToday } from "#lib/club-calendar.js";
+import { destinationEntries as destinationDetails } from "#lib/schemas/fields.js";
 
 /**
  * Whether a workshop starting at `start` would start on Dublin's today, as
@@ -24,36 +25,6 @@ export function movesOntoDublinToday(
 ) {
 	return startsDublinToday(start, now) && !startsDublinToday(persisted, now);
 }
-
-const isHttpsUrl = (input: string) => {
-	try {
-		return new URL(input).protocol === "https:";
-	} catch {
-		return false;
-	}
-};
-
-/**
- * Optional destination details (ALE-440), kept separate from the required
- * short venue label. Client-side the directions link only gets a light
- * https-shape check; Phoenix owns the supported-Maps-destination rule and
- * answers a rejection as a field error on `directionsUrl`.
- */
-export const destinationDetails = {
-	destination_name: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
-	destination_address: v.optional(v.pipe(v.string(), v.maxLength(500)), ""),
-	directions_url: v.optional(
-		v.pipe(
-			v.string(),
-			v.maxLength(2048),
-			v.check(
-				(input) => input.trim() === "" || isHttpsUrl(input),
-				"Directions link must be an https link",
-			),
-		),
-		"",
-	),
-};
 
 export const BaseWorkshopSchema = v.object({
 	title: v.pipe(

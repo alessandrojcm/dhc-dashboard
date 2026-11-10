@@ -27,6 +27,7 @@ import {
 	beginnersWorkshopIntakesRotateLink,
 	beginnersWorkshopsCancel,
 	beginnersWorkshopsReschedule,
+	beginnersWorkshopsUpdateDestination,
 } from "@dhc/api-client";
 import {
 	batchesCommandSchema,
@@ -94,18 +95,34 @@ export const fastTrackNewPerson = form(
 	},
 );
 
-/** ALE-394: move the workshop's date, start time or venue. */
+/**
+ * ALE-394: move the workshop's date, start time or venue. ALE-441: a
+ * submission that moves nothing changes only the destination, through
+ * Phoenix's destination-only command, which emails nobody.
+ */
 export const rescheduleWorkshop = form(
 	rescheduleWorkshopSchema,
-	async ({ id, body }) => {
+	async (input) => {
 		const options = await beginnersWorkshopsManageOptions();
-		return beginnersWorkshopCommand(
-			beginnersWorkshopsReschedule({ ...options, path: { id }, body }),
+		const path = { id: input.id };
+		const result = await beginnersWorkshopCommand(
+			input.operation === "destination"
+				? beginnersWorkshopsUpdateDestination({
+						...options,
+						path,
+						body: input.body,
+					})
+				: beginnersWorkshopsReschedule({ ...options, path, body: input.body }),
 			{
-				fallback: "Could not reschedule the workshop",
+				fallback:
+					input.operation === "destination"
+						? "Could not save the destination details"
+						: "Could not reschedule the workshop",
 				formPath: rescheduleFormPath,
 			},
 		);
+		// Which change was saved, so the dialog can word the outcome.
+		return result.ok ? { ...result, operation: input.operation } : result;
 	},
 );
 

@@ -260,3 +260,35 @@ export const optionalPrincipalId = (message: string) =>
 /** ALE-379: several Member picks (one hidden input each); none is `[]`. */
 export const principalIds = (message: string) =>
 	v.optional(v.array(v.pipe(v.string(), v.uuid(message))), []);
+
+const isHttpsUrl = (input: string) => {
+	try {
+		return new URL(input).protocol === "https:";
+	} catch {
+		return false;
+	}
+};
+
+/**
+ * Optional destination details (ALE-440/ALE-441), shared by the regular
+ * Workshop and Beginners' Workshop forms beside each domain's own required
+ * short venue label. The keys are `destination-input.svelte`'s control names.
+ * Client-side the directions link only gets a light https-shape check; Phoenix
+ * owns the supported-Maps-destination rule and answers a rejection as a field
+ * error on `directionsUrl`.
+ */
+export const destinationEntries = {
+	destination_name: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
+	destination_address: v.optional(v.pipe(v.string(), v.maxLength(500)), ""),
+	directions_url: v.optional(
+		v.pipe(
+			v.string(),
+			v.maxLength(2048),
+			v.check(
+				(input) => input.trim() === "" || isHttpsUrl(input),
+				"Directions link must be an https link",
+			),
+		),
+		"",
+	),
+};

@@ -193,7 +193,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.Protocol do
       {:payment_window_days, "beginners_workshops_payment_window_check"},
       {:reschedule_count, "beginners_workshops_reschedule_count_check"},
       {:status, "beginners_workshops_cancelled_check"},
-      {:cancel_reason, "beginners_workshops_cancel_reason_check"}
+      {:cancel_reason, "beginners_workshops_cancel_reason_check"},
+      {:destination_name, "beginners_workshops_destination_name_length"},
+      {:destination_address, "beginners_workshops_destination_address_length"},
+      {:directions_url, "beginners_workshops_directions_url_length"}
     ],
     Batch => [
       {:number, "beginners_workshop_batches_number_check"},

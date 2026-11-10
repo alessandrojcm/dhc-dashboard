@@ -17,6 +17,9 @@ function workshop(
 		id: uniqueWorkshopId(),
 		status: "scheduled",
 		venue: "St. Andrew's Hall",
+		destinationName: null,
+		destinationAddress: null,
+		directionsUrl: null,
 		date: "2026-11-14",
 		startTime: "18:30",
 		endTime: "20:30",
@@ -124,5 +127,60 @@ test("offers the contact-from date while Batch 1 hasn't gone out", async () => {
 		.toBeVisible();
 	await expect
 		.element(screen.getByRole("button", { name: "Reschedule", exact: true }))
+		.toBeVisible();
+});
+
+test("ALE-441: a destination-only edit saves without emailing; a move is still a reschedule", async () => {
+	const { screen, form } = await openDialog(3, {
+		destinationName: "National Basketball Arena",
+		destinationAddress: null,
+		directionsUrl: null,
+	});
+	const operation = () =>
+		form
+			.element()
+			.querySelector<HTMLInputElement>('input[type=hidden][name*="operation"]')
+			?.value;
+
+	await expect
+		.element(screen.getByLabelText("Destination name"))
+		.toHaveValue("National Basketball Arena");
+	// Nothing changed yet: the dialog is a reschedule.
+	expect(operation()).toBe("reschedule");
+
+	await userEvent.fill(
+		screen.getByLabelText("Destination address"),
+		"Tymon Park, Dublin 6w",
+	);
+	await expect
+		.element(screen.getByTestId("reschedule-warning"))
+		.toHaveTextContent(
+			"No emails will be sent: only the destination details change.",
+		);
+	await expect
+		.element(screen.getByRole("button", { name: "Save destination" }))
+		.toBeVisible();
+	expect(operation()).toBe("destination");
+
+	await userEvent.fill(screen.getByLabelText("Venue"), "The Hub");
+	await expect
+		.element(screen.getByRole("button", { name: "Reschedule and email 3" }))
+		.toBeVisible();
+	expect(operation()).toBe("reschedule");
+});
+
+test("ALE-441: the destination link gets the shared https check before submitting", async () => {
+	const { screen } = await openDialog(0);
+
+	await userEvent.fill(
+		screen.getByLabelText("Google Maps directions link"),
+		"http://maps.google.com/?q=Tallaght",
+	);
+	await userEvent.click(
+		screen.getByRole("button", { name: "Save destination" }),
+	);
+
+	await expect
+		.element(screen.getByText("Directions link must be an https link"))
 		.toBeVisible();
 });

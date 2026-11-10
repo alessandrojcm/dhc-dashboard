@@ -20,6 +20,25 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   `pause_batches` / `resume_batches` stop and restart new Batches only.
 
+  ## Destinations (ALE-441)
+
+  A workshop may carry optional, manually entered destination details
+  (`destination_name`, `destination_address`, `directions_url`) beside its
+  short `venue` label; `Dhc.Destinations` owns their shape and the Maps-link
+  rule. `schedule_workshop` takes them per workshop (the dashboard shares one
+  set across a Schedule's dates, and each workshop then owns its copy), and
+  `reschedule_workshop` saves any it is given with the move. Omitted keys keep
+  their value and `nil` clears one; `update_workshop` never touches them.
+
+  `update_destination` is the destination-only change at the same venue: the
+  request names the `venue` it describes (`:venue_changed` when the workshop's
+  label is no longer that) and changes only the three destination fields. It
+  is not a reschedule: no date, time, Payment Cutoff, contact-from date,
+  Batch window, `reschedule_count`, email or Staff Notification changes, and
+  it records only the Calendar intent. Destination details alone never count
+  as a reschedule's move, so `reschedule_workshop` still refuses them. An
+  unchanged destination writes nothing at all.
+
   ## Reschedule (ALE-394)
 
   `reschedule_workshop` moves a scheduled workshop's date, explicit start and end times
@@ -130,6 +149,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   alias Dhc.BeginnersWorkshops.IntakeEmails.{Occasion}
   alias Dhc.ClubCalendar
+  alias Dhc.Destinations
   alias Dhc.Repo
   alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.WorkshopCalendar
@@ -147,7 +167,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     payment_cutoff_date: :date,
     payment_cutoff_time: :time,
     contact_from: :date,
-    payment_window_days: :integer
+    payment_window_days: :integer,
+    destination_name: :string,
+    destination_address: :string,
+    directions_url: :string
   }
 
   @update_fields ~w(capacity fee_cents payment_cutoff_date payment_cutoff_time contact_from payment_window_days)a
@@ -219,6 +242,20 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     end
   end
 
+  # ALE-441: destination-only enrichment, on the same workshop lock, without
+  # touching schedule, payment, offer-round or notification policy.
+  def run({:staff, _principal_id}, {:update_destination, workshop_id, attrs}, clock)
+      when is_map(attrs) do
+    with {:ok, workshop_id} <- cast_id(workshop_id) do
+      transact(fn ->
+        with_locked(
+          %{workshop: required(from(w in BeginnersWorkshop, where: w.id == ^workshop_id))},
+          &destination_locked(&1, attrs, clock)
+        )
+      end)
+    end
+  end
+
   def run({:staff, principal_id}, {:cancel_workshop, workshop_id, attrs}, clock)
       when is_map(attrs),
       do: cancel_workshop(principal_id, workshop_id, attrs, clock)
@@ -272,7 +309,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
          :ok <- contact_from_on_or_before(contact_from, cutoff),
          {:ok, workshop} <-
            input
-           |> Map.take([:venue, :date, :start_time, :end_time, :capacity, :fee_cents])
+           |> Map.take(
+             [:venue, :date, :start_time, :end_time, :capacity, :fee_cents] ++
+               Destinations.fields()
+           )
            |> Map.merge(%{
              payment_cutoff: cutoff,
              contact_from: contact_from,
@@ -413,14 +453,16 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
            rescheduled_contact_from(workshop, input, next, cutoff, facts, reading),
          {:ok, workshop} <-
            workshop
-           |> BeginnersWorkshop.reschedule_changeset(%{
-             venue: next.venue,
-             date: next.date,
-             start_time: next.start_time,
-             end_time: next.end_time,
-             payment_cutoff: cutoff,
-             contact_from: contact_from
-           })
+           |> BeginnersWorkshop.reschedule_changeset(
+             Map.merge(destination_attrs(attrs), %{
+               venue: next.venue,
+               date: next.date,
+               start_time: next.start_time,
+               end_time: next.end_time,
+               payment_cutoff: cutoff,
+               contact_from: contact_from
+             })
+           )
            |> persist(),
          :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
          :ok <- clamp_open_windows(workshop, reading),
@@ -437,6 +479,62 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
          {:ok, created} <- notify_rescheduled(workshop) do
       {:ok, {WorkshopProjection.view(workshop, facts_for(workshop), reading), created}}
     end
+  end
+
+  # ── update_destination (ALE-441) ────────────────────────────────
+
+  defp destination_locked(%{workshop: workshop}, attrs, clock) do
+    reading = Clock.read(clock)
+
+    with :ok <- still_scheduled(workshop),
+         :ok <- same_venue(workshop, attrs),
+         {:ok, workshop} <- save_destination(workshop, attrs) do
+      {:ok, WorkshopProjection.view(workshop, facts_for(workshop), reading)}
+    end
+  end
+
+  # The request names the venue its destination describes, so a destination
+  # saved from a stale view never lands on a workshop that moved venue.
+  defp same_venue(workshop, attrs) do
+    case fetch_attr(attrs, :venue) do
+      venue when is_binary(venue) ->
+        if String.trim(venue) == workshop.venue, do: :ok, else: {:error, :venue_changed}
+
+      _missing ->
+        {:error,
+         {%{}, %{venue: :string}}
+         |> Ecto.Changeset.change()
+         |> Ecto.Changeset.add_error(:venue, "can't be blank", validation: :required)}
+    end
+  end
+
+  # An unchanged destination is a silent no-op: no write and no Calendar
+  # intent.
+  defp save_destination(workshop, attrs) do
+    changeset = BeginnersWorkshop.destination_changeset(workshop, destination_attrs(attrs))
+
+    cond do
+      not changeset.valid? ->
+        {:error, changeset}
+
+      changeset.changes == %{} ->
+        {:ok, workshop}
+
+      true ->
+        with {:ok, workshop} <- persist(changeset),
+             :ok <- WorkshopCalendar.record_change(:beginners_workshop, workshop.id),
+             do: {:ok, workshop}
+    end
+  end
+
+  # Only the destination keys the request carries: an omitted key keeps its
+  # value, an explicit `nil` (or blank) clears it.
+  defp destination_attrs(attrs) do
+    for field <- Destinations.fields(),
+        key <- [field, Atom.to_string(field)],
+        Map.has_key?(attrs, key),
+        into: %{},
+        do: {field, Map.fetch!(attrs, key)}
   end
 
   defp backfill_end_time_locked(%{workshop: workshop}, attrs, clock) do

@@ -71,6 +71,8 @@ defmodule DhcWeb.Router do
     get("/report", BeginnersWorkshopReportController, :show)
     put("/:id/settings", BeginnersWorkshopsController, :update_settings)
     post("/:id/reschedule", BeginnersWorkshopsController, :reschedule)
+    # ALE-441: destination-only enrichment at the same venue (never a reschedule).
+    put("/:id/destination", BeginnersWorkshopsController, :update_destination)
     post("/:id/cancel", BeginnersWorkshopsController, :cancel)
     get("/:id/console", BeginnersWorkshopsController, :console)
     post("/:id/batches/pause", BeginnersWorkshopBatchesController, :pause)

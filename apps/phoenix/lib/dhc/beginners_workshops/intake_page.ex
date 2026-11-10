@@ -25,7 +25,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
       Intake after the Payment Cutoff.
 
   It carries the first name, the
-  workshop date, start time and venue, the fee and one action — never ids or
+  workshop date, start time and venue (with its optional destination name,
+  address and Maps link, ALE-441), the fee and one action — never ids or
   Stripe objects; an `inactive` page carries none of them. Seats come from
   the same `WorkshopFacts` and `WorkshopPolicy` the boundary decides with, so
   a stale page can be out of date but never judge differently.
@@ -56,7 +57,15 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
           closed_reason: :inactive | :payment_closed | nil,
           first_name: String.t() | nil,
           workshop:
-            %{date: Date.t(), start_time: Time.t(), end_time: Time.t() | nil, venue: String.t()}
+            %{
+              date: Date.t(),
+              start_time: Time.t(),
+              end_time: Time.t() | nil,
+              venue: String.t(),
+              destination_name: String.t() | nil,
+              destination_address: String.t() | nil,
+              directions_url: String.t() | nil
+            }
             | nil,
           fee_cents: pos_integer() | nil,
           payment_cutoff: DateTime.t() | nil
@@ -116,7 +125,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
             date: workshop.date,
             start_time: workshop.start_time,
             end_time: workshop.end_time,
-            venue: workshop.venue
+            venue: workshop.venue,
+            destination_name: workshop.destination_name,
+            destination_address: workshop.destination_address,
+            directions_url: workshop.directions_url
           },
           fee_cents: fee_cents(intake, workshop, hold, holder?),
           payment_cutoff: if(action == :pay, do: workshop.payment_cutoff)

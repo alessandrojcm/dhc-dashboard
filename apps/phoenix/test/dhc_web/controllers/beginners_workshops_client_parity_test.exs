@@ -69,7 +69,7 @@ defmodule DhcWeb.BeginnersWorkshopsClientParityTest do
                 beginnersWorkshops.cancel beginnersWorkshops.console beginnersWorkshops.list beginnersWorkshops.reschedule
                 beginnersWorkshops.schedule
                 beginnersWorkshops.setStaff beginnersWorkshops.staffCandidates
-                beginnersWorkshops.updateSettings)
+                beginnersWorkshops.updateDestination beginnersWorkshops.updateSettings)
 
     for {method, operation} <- operations do
       assert operation["tags"] == ["BeginnersWorkshops"]

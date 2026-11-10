@@ -4,6 +4,7 @@ import {
 	deletePersonSchema,
 	fastTrackNewPersonSchema,
 	fastTrackWaitlistPersonSchema,
+	rescheduleWorkshopSchema,
 	scheduleWorkshopsSchema,
 	workshopSettingsSchema,
 	recordPersonManualRefundSchema,
@@ -43,6 +44,9 @@ describe("scheduleWorkshopsSchema", () => {
 					paymentCutoffDate: undefined,
 					contactFromDate: undefined,
 					venue: "St. Andrew's Hall",
+					destinationName: null,
+					destinationAddress: null,
+					directionsUrl: null,
 					startTime: "18:30",
 					endTime: "20:30",
 					capacity: 16,
@@ -56,6 +60,9 @@ describe("scheduleWorkshopsSchema", () => {
 					paymentCutoffDate: "2026-12-01",
 					contactFromDate: "2026-11-20",
 					venue: "St. Andrew's Hall",
+					destinationName: null,
+					destinationAddress: null,
+					directionsUrl: null,
 					startTime: "18:30",
 					endTime: "20:30",
 					capacity: 16,
@@ -311,5 +318,100 @@ describe("ALE-421: the Waitlist tab's money commands", () => {
 				note: "  ",
 			}),
 		).toEqual({ waitlistId, refundId, body: {} });
+	});
+});
+
+describe("destination details (ALE-441)", () => {
+	const destination = {
+		destination_name: " National Basketball Arena ",
+		destination_address: "Tymon Park, Dublin 6w",
+		directions_url: "https://maps.app.goo.gl/AbCdEf",
+	};
+	const sent = {
+		destinationName: "National Basketball Arena",
+		destinationAddress: "Tymon Park, Dublin 6w",
+		directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+	};
+
+	it("gives every scheduled date its own copy of the shared destination", () => {
+		const { workshops } = v.parse(scheduleWorkshopsSchema, {
+			...shared,
+			...destination,
+			workshops: [{ date: "2026-11-14" }, { date: "2026-11-21" }],
+		});
+
+		for (const workshop of workshops) expect(workshop).toMatchObject(sent);
+	});
+
+	it("refuses a non-https directions link on the field", () => {
+		const result = v.safeParse(scheduleWorkshopsSchema, {
+			...shared,
+			directions_url: "javascript:alert(1)",
+			workshops: [{ date: "2026-11-14" }],
+		});
+
+		expect(result.success).toBe(false);
+		expect(
+			(result.issues ?? []).map((issue) => [
+				v.getDotPath(issue),
+				issue.message,
+			]),
+		).toEqual([["directions_url", "Directions link must be an https link"]]);
+	});
+
+	const reschedule = {
+		id: "3f9b7c5e-0e4c-4c39-9f0a-7a0f3f1a7b10",
+		date: "2026-11-14",
+		startTime: "18:30",
+		endTime: "20:30",
+		venue: " St. Andrew's Hall ",
+		paymentCutoffDate: "2026-11-11",
+		paymentCutoffTime: "18:30",
+		contactFromDate: "",
+	};
+
+	it("sends a reschedule's move together with its destination", () => {
+		const output = v.parse(rescheduleWorkshopSchema, {
+			...reschedule,
+			...destination,
+			operation: "reschedule",
+		});
+
+		expect(output).toEqual({
+			id: reschedule.id,
+			operation: "reschedule",
+			body: {
+				date: "2026-11-14",
+				startTime: "18:30",
+				endTime: "20:30",
+				venue: "St. Andrew's Hall",
+				paymentCutoffDate: "2026-11-11",
+				paymentCutoffTime: "18:30",
+				contactFromDate: undefined,
+				...sent,
+			},
+		});
+	});
+
+	it("sends a destination-only change with just the venue it describes", () => {
+		const output = v.parse(rescheduleWorkshopSchema, {
+			...reschedule,
+			destination_name: "",
+			destination_address: "Tymon Park, Dublin 6w",
+			directions_url: "",
+			operation: "destination",
+		});
+
+		// Emptied controls clear the saved values.
+		expect(output).toEqual({
+			id: reschedule.id,
+			operation: "destination",
+			body: {
+				venue: "St. Andrew's Hall",
+				destinationName: null,
+				destinationAddress: "Tymon Park, Dublin 6w",
+				directionsUrl: null,
+			},
+		});
 	});
 });

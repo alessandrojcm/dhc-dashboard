@@ -8,9 +8,11 @@ defmodule Dhc.Destinations do
   stays required and independent in every source context; a destination never
   replaces it.
 
-  This module owns the two rules every workshop-owning context shares:
+  This module owns the rules every workshop-owning context shares:
 
-    * which manually supplied URLs are supported HTTPS Maps destinations, and
+    * which manually supplied URLs are supported HTTPS Maps destinations,
+    * how the destination fields of a source schema are normalized and
+      validated (`validate_changeset/1`), and
     * how a destination composes the recognizable Calendar location string,
       falling back to the source's own label when no destination is stored.
 
@@ -44,6 +46,51 @@ defmodule Dhc.Destinations do
 
   @type url_error ::
           :invalid_url | :unsupported_scheme | :credentials | :unsupported_target
+
+  @fields [:destination_name, :destination_address, :directions_url]
+
+  @doc """
+  The destination fields every workshop-owning schema stores under the same
+  names: `destination_name`, `destination_address` and `directions_url`.
+  """
+  @spec fields() :: [atom()]
+  def fields, do: @fields
+
+  @doc """
+  Normalizes and validates the destination fields of a source schema's
+  changeset (ALE-440/ALE-441).
+
+  The caller casts the fields itself, so each source context decides when a
+  destination may change. An emptied or whitespace-only value becomes `nil`
+  (absent); a supplied directions link must pass `validate_maps_url/1`, worded
+  by `url_error_message/1`. Clearing a field (`nil`) is always valid.
+  """
+  @spec validate_changeset(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def validate_changeset(%Ecto.Changeset{} = changeset) do
+    @fields
+    |> Enum.reduce(changeset, fn field, acc ->
+      case Ecto.Changeset.get_change(acc, field) do
+        change when is_binary(change) ->
+          Ecto.Changeset.put_change(acc, field, normalize_optional(change))
+
+        _ ->
+          acc
+      end
+    end)
+    |> Ecto.Changeset.validate_length(:destination_name, max: @name_max)
+    |> Ecto.Changeset.validate_length(:destination_address, max: @address_max)
+    |> validate_directions_url()
+  end
+
+  # Only a *supplied* link is judged; clearing it (nil) is a valid edit.
+  defp validate_directions_url(changeset) do
+    with url when is_binary(url) <- Ecto.Changeset.get_field(changeset, :directions_url),
+         {:error, reason} <- validate_maps_url(url) do
+      Ecto.Changeset.add_error(changeset, :directions_url, url_error_message(reason))
+    else
+      _ok -> changeset
+    end
+  end
 
   @doc """
   The maximum length of a destination name.

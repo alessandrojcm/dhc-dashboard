@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { destinationLines, directionsHref } from "#lib/destinations.js";
+import {
+	destinationBody,
+	destinationLines,
+	destinationValues,
+	directionsHref,
+} from "#lib/destinations.js";
 
 describe("destinationLines", () => {
 	it("lists the name and address in that order", () => {
@@ -70,5 +75,42 @@ describe("directionsHref", () => {
 
 	it("returns undefined for legacy label-only rows", () => {
 		expect(directionsHref({})).toBeUndefined();
+	});
+});
+
+describe("destinationBody", () => {
+	it("sends every field, an emptied control as null so it clears", () => {
+		expect(
+			destinationBody({
+				destination_name: "  Arena ",
+				destination_address: "",
+				directions_url: "   ",
+			}),
+		).toEqual({
+			destinationName: "Arena",
+			destinationAddress: null,
+			directionsUrl: null,
+		});
+	});
+});
+
+describe("destinationValues", () => {
+	it("prefills the controls from a saved destination, legacy rows empty", () => {
+		expect(
+			destinationValues({
+				destinationName: "Arena",
+				destinationAddress: null,
+				directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+			}),
+		).toEqual({
+			destination_name: "Arena",
+			destination_address: "",
+			directions_url: "https://maps.app.goo.gl/AbCdEf",
+		});
+		expect(destinationValues({})).toEqual({
+			destination_name: "",
+			destination_address: "",
+			directions_url: "",
+		});
 	});
 });

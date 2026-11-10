@@ -62,6 +62,7 @@ import {
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
 import { rescheduleRecipients } from "#lib/beginners-workshops/reschedule.js";
+import { destinationLines } from "#lib/destinations.js";
 import { workshopScope } from "#lib/beginners-workshops/refunds/scope.js";
 import FailedRefundFollowUp from "#lib/components/beginners-workshops/refunds/failed-refund-follow-up.svelte";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
@@ -109,6 +110,8 @@ let settingsOpen = $state(false);
 let fastTrackMounted = $state(false);
 
 const workshop = $derived(view.workshop);
+// ALE-441: the saved destination, shown beside the short venue label.
+const destination = $derived(destinationLines(workshop));
 const next = $derived(view.nextBatch);
 const steps = $derived(consoleTimeline(view));
 const now = $derived(nowCard(view));
@@ -172,7 +175,9 @@ const attentionClass =
 						<MapPin
 							class="size-4 text-primary"
 							aria-hidden="true"
-						/>{workshop.venue}
+						/>{workshop.venue}{#if destination.length > 0}<span
+								>&nbsp;· {destination.join(" · ")}</span
+							>{/if}
 					</p>
 					<p class="flex items-center gap-2" data-testid="console-staff">
 						<Users
@@ -557,7 +562,7 @@ const attentionClass =
 		/>
 	{/if}
 	<!-- A reschedule remounts it, so the new values are the ones that follow. -->
-	{#key `${workshop.id}:${workshop.date}:${workshop.startTime}:${workshop.endTime}:${workshop.venue}`}
+	{#key `${workshop.id}:${workshop.date}:${workshop.startTime}:${workshop.endTime}:${workshop.venue}:${destination.join("|")}:${workshop.directionsUrl}`}
 		<RescheduleDialog
 			{workshop}
 			recipients={rescheduleRecipients(view)}

@@ -79,6 +79,46 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
 
     assert Map.keys(data) |> Enum.sort() ==
              ~w(action closedReason feeCents firstName paymentCutoff state workshop)
+
+    # ALE-441: a label-only (legacy) workshop carries no destination.
+    assert %{"destinationName" => nil, "destinationAddress" => nil, "directionsUrl" => nil} =
+             data["workshop"]
+
+    assert Map.keys(data["workshop"]) |> Enum.sort() ==
+             ~w(date destinationAddress destinationName directionsUrl endTime startTime venue)
+  end
+
+  test "the page carries a saved destination beside the label, still without a referrer", %{
+    conn: conn,
+    token: token,
+    workshop: workshop
+  } do
+    assert {:ok, _} =
+             Dhc.BeginnersWorkshops.execute(
+               {:staff, staff_fixture("beginners_coordinator")},
+               {:update_destination, workshop.id,
+                %{
+                  "venue" => workshop.venue,
+                  "destination_name" => "National Basketball Arena",
+                  "destination_address" => "Tymon Park, Dublin 6w",
+                  "directions_url" => "https://maps.app.goo.gl/AbCdEf"
+                }},
+               clock: clock(DateTime.utc_now())
+             )
+
+    conn = get(conn, "/api/beginners/intake/#{token}")
+    assert no_referrer?(conn)
+
+    assert %{
+             "data" => %{
+               "workshop" => %{
+                 "venue" => "St. Andrew's Hall",
+                 "destinationName" => "National Basketball Arena",
+                 "destinationAddress" => "Tymon Park, Dublin 6w",
+                 "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+               }
+             }
+           } = json_response(conn, 200)
   end
 
   test "an unknown link is 404, still without a referrer", %{conn: conn} do

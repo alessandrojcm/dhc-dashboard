@@ -18,6 +18,8 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Dhc.Destinations
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
@@ -33,6 +35,12 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
   schema "beginners_workshops" do
     field :status, :string, default: "scheduled"
     field :venue, :string
+    # ALE-441: optional, manually entered destination details beside the
+    # short `venue` label, which stays required and email-sized. Nullable so
+    # legacy rows and label-only submissions remain valid.
+    field :destination_name, :string
+    field :destination_address, :string
+    field :directions_url, :string
     field :date, :date
     field :start_time, :time
     field :end_time, :time
@@ -88,8 +96,10 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
       :contact_from,
       :payment_window_days,
       :scheduled_by_principal_id
+      | Destinations.fields()
     ])
     |> update_change(:venue, &String.trim/1)
+    |> Destinations.validate_changeset()
     |> validate_required([
       :venue,
       :date,
@@ -127,11 +137,34 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
   @spec reschedule_changeset(t(), map()) :: Ecto.Changeset.t()
   def reschedule_changeset(%__MODULE__{} = workshop, attrs) do
     workshop
-    |> cast(attrs, [:venue, :date, :start_time, :end_time, :payment_cutoff, :contact_from])
+    |> cast(attrs, [
+      :venue,
+      :date,
+      :start_time,
+      :end_time,
+      :payment_cutoff,
+      :contact_from
+      | Destinations.fields()
+    ])
     |> update_change(:venue, &String.trim/1)
+    |> Destinations.validate_changeset()
     |> validate_required([:venue, :date, :start_time, :end_time, :payment_cutoff, :contact_from])
     |> change(reschedule_count: workshop.reschedule_count + 1)
     |> validate_shape()
+  end
+
+  @doc """
+  The shape of a destination-only change (`update_destination`, ALE-441):
+  the optional destination name, address and directions link at the same
+  venue. Omitted keys keep their value and `nil` clears one. It casts
+  nothing else, so no schedule fact, the reschedule number or any policy
+  field can change through it.
+  """
+  @spec destination_changeset(t(), map()) :: Ecto.Changeset.t()
+  def destination_changeset(%__MODULE__{} = workshop, attrs) do
+    workshop
+    |> cast(attrs, Destinations.fields())
+    |> Destinations.validate_changeset()
   end
 
   @doc "Pauses automatic Batches (`pause_batches`), recording who and when."

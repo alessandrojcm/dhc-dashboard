@@ -328,6 +328,110 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              coordinator |> post(path, %{"venue" => "Elsewhere"}) |> json_response(409)
   end
 
+  test "schedules and reschedules with destination details, mapping field errors (ALE-441)", %{
+    conn: conn
+  } do
+    destination = %{
+      "destinationName" => "National Basketball Arena",
+      "destinationAddress" => "Tymon Park, Dublin 6w",
+      "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+    }
+
+    [with_destination, label_only] = schedule!(conn, [item(destination), item()])
+    assert Map.take(with_destination, Map.keys(destination)) == destination
+
+    assert Map.take(label_only, Map.keys(destination)) == %{
+             "destinationName" => nil,
+             "destinationAddress" => nil,
+             "directionsUrl" => nil
+           }
+
+    coordinator = as_role(conn, "beginners_coordinator")
+
+    assert %{
+             "errors" => %{
+               "fields" => %{
+                 "workshops.1.directionsUrl" => ["Directions link must be an https link"]
+               }
+             }
+           } =
+             coordinator
+             |> post("/api/beginners-workshops", %{
+               "workshops" => [item(), item(%{"directionsUrl" => "http://maps.google.com/x"})]
+             })
+             |> json_response(422)
+
+    date = Date.add(Date.from_iso8601!(label_only["date"]), 7) |> Date.to_iso8601()
+
+    assert %{"data" => %{"venue" => "The Hub", "destinationName" => "The Hub, upstairs"}} =
+             coordinator
+             |> post("/api/beginners-workshops/#{label_only["id"]}/reschedule", %{
+               "date" => date,
+               "startTime" => "18:30",
+               "endTime" => "20:30",
+               "venue" => "The Hub",
+               "destinationName" => "The Hub, upstairs"
+             })
+             |> json_response(200)
+  end
+
+  test "updates only the destination and maps every refusal (ALE-441)", %{conn: conn} do
+    [workshop] = schedule!(conn)
+    path = "/api/beginners-workshops/#{workshop["id"]}/destination"
+    coordinator = as_role(conn, "beginners_coordinator")
+
+    body = %{
+      "venue" => workshop["venue"],
+      "destinationName" => "National Basketball Arena",
+      "destinationAddress" => "Tymon Park, Dublin 6w",
+      "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+    }
+
+    assert %{"data" => updated} = coordinator |> put(path, body) |> json_response(200)
+    assert updated["destinationName"] == "National Basketball Arena"
+    assert updated["directionsUrl"] == "https://maps.app.goo.gl/AbCdEf"
+
+    assert Map.drop(updated, ~w(destinationName destinationAddress directionsUrl)) ==
+             Map.drop(workshop, ~w(destinationName destinationAddress directionsUrl))
+
+    # An omitted key keeps its value; `null` clears it.
+    assert %{
+             "data" => %{"destinationName" => "National Basketball Arena", "directionsUrl" => nil}
+           } =
+             coordinator
+             |> put(path, %{"venue" => workshop["venue"], "directionsUrl" => nil})
+             |> json_response(200)
+
+    assert %{
+             "errors" =>
+               %{
+                 "fields" => %{"directionsUrl" => ["Directions link must be a Google Maps link"]}
+               } = errors
+           } =
+             coordinator
+             |> put(path, Map.put(body, "directionsUrl", "https://evil.example.com/maps"))
+             |> json_response(422)
+
+    refute Map.has_key?(errors, "code")
+
+    assert %{"errors" => %{"code" => "venue_changed", "fields" => %{"venue" => [_]}}} =
+             coordinator |> put(path, Map.put(body, "venue", "Elsewhere")) |> json_response(409)
+
+    assert %{"errors" => %{"fields" => %{"venue" => [_]}}} =
+             coordinator |> put(path, Map.delete(body, "venue")) |> json_response(422)
+
+    assert coordinator
+           |> put("/api/beginners-workshops/#{Ecto.UUID.generate()}/destination", body)
+           |> json_response(404)
+
+    assert conn |> as_role("treasurer") |> put(path, body) |> json_response(403)
+
+    BeginnersWorkshopFixtures.force_status!(workshop["id"], "cancelled")
+
+    assert %{"errors" => %{"code" => "already_cancelled"}} =
+             coordinator |> put(path, body) |> json_response(409)
+  end
+
   test "cancels a workshop and maps every refusal (ALE-395)", %{conn: conn} do
     [workshop] = schedule!(conn)
     path = "/api/beginners-workshops/#{workshop["id"]}/cancel"

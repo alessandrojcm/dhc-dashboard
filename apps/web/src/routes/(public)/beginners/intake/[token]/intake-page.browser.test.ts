@@ -170,6 +170,9 @@ function page(
 			startTime: "18:30",
 			endTime: null,
 			venue: "St. Andrew's Hall",
+			destinationName: null,
+			destinationAddress: null,
+			directionsUrl: null,
 		},
 		feeCents: 4000,
 		...overrides,
@@ -200,6 +203,57 @@ test("pay: the person's name, the workshop, the fee and payment loading with no 
 	expect(
 		document.querySelector("input[type=hidden]")?.getAttribute("value"),
 	).toBe(token);
+});
+
+test("ALE-441: the saved destination and a referrer-safe directions link sit beside the venue", async () => {
+	const screen = await render(IntakePage, {
+		page: page({
+			state: "paid",
+			action: "none",
+			workshop: {
+				...page().workshop!,
+				destinationName: "National Basketball Arena",
+				destinationAddress: "Tymon Park, Dublin 6w",
+				directionsUrl: null,
+			},
+		}),
+		token,
+	});
+
+	const workshop = screen.getByRole("list", { name: "Workshop" });
+	await expect.element(workshop).toHaveTextContent("St. Andrew's Hall");
+	await expect
+		.element(workshop)
+		.toHaveTextContent("National Basketball Arena · Tymon Park, Dublin 6w");
+
+	const directions = screen.getByRole("link", { name: "Get directions" });
+	await expect
+		.element(directions)
+		.toHaveAttribute(
+			"href",
+			"https://www.google.com/maps/search/?api=1&query=National%20Basketball%20Arena%2C%20Tymon%20Park%2C%20Dublin%206w",
+		);
+	await expect
+		.element(directions)
+		.toHaveAttribute("rel", "noopener noreferrer");
+	await expect
+		.element(directions)
+		.toHaveAttribute("referrerpolicy", "no-referrer");
+	expect(directions.element().getAttribute("href")).not.toContain(token);
+});
+
+test("ALE-441: a label-only workshop offers no directions link", async () => {
+	const screen = await render(IntakePage, {
+		page: page({ state: "paid", action: "none" }),
+		token,
+	});
+
+	await expect
+		.element(screen.getByRole("list", { name: "Workshop" }))
+		.toHaveTextContent("St. Andrew's Hall");
+	expect(
+		screen.getByRole("link", { name: "Get directions" }).elements(),
+	).toHaveLength(0);
 });
 
 test("pay with a live hold opens checkout without a Continue button", async () => {

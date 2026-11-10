@@ -8,11 +8,21 @@
  * - while Batch 1 hasn't gone out, the contact-from date keeps its days
  *   before the workshop date, or comes forward to Dublin today when that
  *   would fall after the cutoff date.
+ *
+ * ALE-441: the same dialog edits the destination details. A submission that
+ * keeps the date, times and venue but changes the destination is a
+ * destination-only change (`update_destination`), which Phoenix never treats
+ * as a reschedule.
  */
 import type {
 	BeginnersWorkshop,
 	BeginnersWorkshopConsole,
 } from "@dhc/api-client";
+import {
+	type DestinationFields,
+	destinationBody,
+	destinationValues,
+} from "#lib/destinations.js";
 
 /** A Dublin civil date (`YYYY-MM-DD`) and wall time (`HH:MM`). */
 export interface CivilDateTime {
@@ -74,13 +84,67 @@ export function keptContactFrom(
 	return kept > cutoffDate ? today : kept;
 }
 
+/** What one Reschedule dialog submission asks Phoenix to do. */
+export type RescheduleOperation = "reschedule" | "destination";
+
+/** The schedule values the Reschedule dialog submits. */
+export interface ScheduleValues {
+	date: string;
+	startTime: string;
+	endTime: string;
+	venue: string;
+}
+
+const wall = (time: string | null | undefined) => (time ?? "").slice(0, 5);
+
+/**
+ * A reschedule when the date, start time, end time or venue changes (the
+ * fields `reschedule_workshop` counts as a move). Otherwise a changed
+ * destination is a destination-only change; with nothing changed at all the
+ * dialog stays a reschedule, which Phoenix refuses as no move. A legacy
+ * workshop with no end time is moved by any explicit end.
+ */
+export function rescheduleOperation(
+	workshop: Pick<
+		BeginnersWorkshop,
+		| "date"
+		| "startTime"
+		| "endTime"
+		| "venue"
+		| "destinationName"
+		| "destinationAddress"
+		| "directionsUrl"
+	>,
+	values: ScheduleValues & DestinationFields,
+): RescheduleOperation {
+	const moved =
+		values.date !== workshop.date ||
+		wall(values.startTime) !== wall(workshop.startTime) ||
+		wall(values.endTime) !== wall(workshop.endTime) ||
+		values.venue.trim() !== workshop.venue;
+	if (moved) return "reschedule";
+
+	const saved = destinationBody(destinationValues(workshop));
+	const next = destinationBody(values);
+	const changed =
+		next.destinationName !== saved.destinationName ||
+		next.destinationAddress !== saved.destinationAddress ||
+		next.directionsUrl !== saved.directionsUrl;
+	return changed ? "destination" : "reschedule";
+}
+
 /** Who a reschedule emails: every open Intake (paid or asked). */
 export function rescheduleRecipients(view: BeginnersWorkshopConsole): number {
 	return view.roster.seated.length + view.roster.asked.length;
 }
 
 /** The warning shown before saving. */
-export function rescheduleWarning(recipients: number): string {
+export function rescheduleWarning(
+	recipients: number,
+	operation: RescheduleOperation = "reschedule",
+): string {
+	if (operation === "destination")
+		return "No emails will be sent: only the destination details change.";
 	if (recipients === 0)
 		return "No emails will be sent: nobody has an active workshop place.";
 	const people = recipients === 1 ? "1 person" : `${recipients} people`;

@@ -3,6 +3,7 @@ defmodule Dhc.BeginnersWorkshops.CalendarProjection do
 
   alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, WorkshopPolicy}
   alias Dhc.ClubCalendar
+  alias Dhc.Destinations
 
   @title "Beginners' Workshop"
 
@@ -23,7 +24,14 @@ defmodule Dhc.BeginnersWorkshops.CalendarProjection do
       status: calendar_status(workshop.status),
       start_date: start_date,
       end_date: end_date,
-      location: workshop.venue
+      # ALE-441: the recognizable destination name/address when one is
+      # stored, else the short venue label; never a link.
+      location:
+        Destinations.calendar_location(
+          workshop.destination_name,
+          workshop.destination_address,
+          workshop.venue
+        )
     }
   end
 

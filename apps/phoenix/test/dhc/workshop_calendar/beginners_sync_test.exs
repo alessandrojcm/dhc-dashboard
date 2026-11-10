@@ -78,6 +78,55 @@ defmodule Dhc.WorkshopCalendar.BeginnersSyncTest do
     assert moved["location"] == "New hall"
   end
 
+  # ALE-441: a manual destination supplies Calendar's native location; the
+  # destination-only command is an ordinary meaningful change for the shared
+  # protocol, and an unchanged destination stays silent.
+  test "a manual destination is the native location and enrichment updates the same event silently",
+       %{server: server, staff: staff} do
+    workshop = schedule!(staff)
+    assert :ok = sync(workshop.id)
+    [label_only] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert label_only["location"] == "Club hall"
+    revision = revision(workshop.id)
+
+    assert {:ok, _} =
+             command(
+               staff,
+               {:update_destination, workshop.id,
+                %{
+                  venue: "Club hall",
+                  destination_name: "National Basketball Arena",
+                  destination_address: "Tymon Park, Dublin 6w",
+                  directions_url: "https://maps.app.goo.gl/AbCdEf"
+                }}
+             )
+
+    # Identifier-only intent, recorded in the command's transaction.
+    assert revision(workshop.id) == revision + 1
+    assert :ok = sync(workshop.id)
+    [enriched] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert enriched["id"] == label_only["id"]
+    assert enriched["location"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+    assert enriched["start"] == label_only["start"]
+    assert enriched["end"] == label_only["end"]
+    # The directions link never reaches Calendar content.
+    refute Jason.encode!(enriched) =~ "maps.app.goo.gl"
+    mutations = WorkshopCalendarHTTP.mutations(server)
+    assert Enum.all?(mutations, &(&1.query == "sendUpdates=none"))
+
+    # The same destination again writes nothing and stays silent.
+    assert {:ok, _} =
+             command(
+               staff,
+               {:update_destination, workshop.id,
+                %{venue: "Club hall", destination_name: "National Basketball Arena"}}
+             )
+
+    assert revision(workshop.id) == revision + 1
+    assert :ok = sync(workshop.id)
+    assert WorkshopCalendarHTTP.mutations(server) == mutations
+  end
+
   test "committee drift repair removes participant data without copying any person or credential",
        %{
          server: server,
@@ -340,4 +389,15 @@ defmodule Dhc.WorkshopCalendar.BeginnersSyncTest do
 
   defp sync(id, now \\ @now),
     do: WorkshopCalendar.sync(:beginners_workshop, id, clock: fn -> now end)
+
+  defp revision(id),
+    do:
+      Repo.one!(
+        from(e in Dhc.WorkshopCalendar.Event,
+          where:
+            e.source_kind == "beginners_workshop" and e.source_id == ^id and
+              e.audience == "committee",
+          select: e.revision
+        )
+      )
 end

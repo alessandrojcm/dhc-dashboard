@@ -18,6 +18,9 @@ const pay: BeginnersIntakePage = {
 		startTime: "18:30",
 		endTime: null,
 		venue: "St. Andrew's Hall",
+		destinationName: null,
+		destinationAddress: null,
+		directionsUrl: null,
 	},
 	feeCents: 4000,
 };
@@ -51,6 +54,8 @@ describe("the Intake page presentation (ALE-381)", () => {
 			date: "Sat 14 Nov 2026",
 			time: "18:30",
 			venue: "St. Andrew's Hall",
+			destination: [],
+			directionsHref: null,
 			fee: "€40.00",
 		});
 		expect(intakeDetails(INACTIVE_PAGE)).toBeNull();
