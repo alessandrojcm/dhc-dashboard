@@ -1,26 +1,33 @@
 <!--
 	ALE-381: the person's Intake page. Everything shown is Phoenix's safe
-	view; the one action is Phoenix's too. Pay mounts embedded Checkout;
-	"Check again" and the
-	payment-in-progress refresh reload Phoenix's view. A Carried Fee holder
-	(ALE-388) gets "Confirm my place" instead of Pay. No self-service
+	view; the one action is Phoenix's too. ALE-447: `intakePaymentMachine`
+	owns the orchestration — the automatic payment start, refusal and retry,
+	the payment-in-progress refresh and the Carried Fee "Confirm my place"
+	alternative (ALE-388) — and the embedded widget's machine owns collection
+	and confirmation. The remote forms stay the transport. No self-service
 	decline or withdraw: replies to the email go through a coordinator.
 -->
 <script lang="ts">
-import { tick } from "svelte";
+import { onMount, tick, untrack } from "svelte";
 import type { BeginnersIntakePage } from "@dhc/api-client";
 import { CalendarDays, Clock, MapPin, RefreshCw } from "@lucide/svelte";
+import { useMachine } from "@xstate/svelte";
+import { fromPromise } from "xstate";
 import { goto, invalidateAll } from "$app/navigation";
 import IntakeCheckout from "#lib/components/beginners-workshops/intake-checkout.svelte";
 import { formatDublinInstant } from "#lib/club-calendar.js";
 import {
-	confirmsWithCarriedFee,
 	intakeActionLabel,
 	intakeCopy,
 	intakeDetails,
 	REFRESH_MS,
-	startsCheckout,
 } from "#lib/beginners-workshops/intake-page.js";
+import type { EmbeddedCheckoutFactory } from "#lib/stripe/embedded-checkout-widget.js";
+import {
+	intakePaymentMachine,
+	intakePaymentView,
+	type IntakePaymentStart,
+} from "#lib/beginners-workshops/intake-payment-machine.js";
 import * as Alert from "#lib/components/ui/alert/index.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -32,58 +39,54 @@ let {
 	token,
 	refresh = () => void invalidateAll(),
 	refreshMs = REFRESH_MS,
-	startPayment = () => paymentForm.submit(),
+	startPayment = submitPayment,
+	createCheckout,
 }: {
 	page: BeginnersIntakePage;
 	token: string;
 	refresh?: () => void;
 	refreshMs?: number;
-	startPayment?: () => Promise<boolean>;
+	startPayment?: () => Promise<IntakePaymentStart>;
+	/** The embedded widget's Stripe; the widget's own default when unset. */
+	createCheckout?: EmbeddedCheckoutFactory;
 } = $props();
 
 const formId = $props.id();
 const paymentForm = startIntakePayment.for(formId);
 const confirmForm = confirmIntakePlace.for(formId);
+
+// The POST that takes the Seat Hold. Its result is `undefined` while a
+// hosted hold from before the embedded migration redirects away.
+async function submitPayment(): Promise<IntakePaymentStart> {
+	await tick(); // The remote form must be attached before programmatic submit.
+	if (!(await paymentForm.submit())) throw new Error("Payment not submitted");
+	return paymentForm.result;
+}
+
+// The route keys this page by token, so the inputs are fixed for the
+// actor's lifetime; later views arrive as `PAGE`.
+const { snapshot, send } = useMachine(
+	intakePaymentMachine.provide({
+		actors: { startPayment: fromPromise(() => startPayment()) },
+		actions: { refresh: () => refresh() },
+	}),
+	{ input: untrack(() => ({ page, refreshMs })) },
+);
+
+// Only the mounted browser may start a payment or arm the refresh.
+onMount(() => send({ type: "MOUNTED" }));
+$effect(() => {
+	send({ type: "PAGE", page });
+});
+
+const view = $derived(intakePaymentView($snapshot));
 const copy = $derived(intakeCopy(page));
 const details = $derived(intakeDetails(page));
 const actionLabel = $derived(intakeActionLabel(page));
-const checkout = $derived(startsCheckout(page));
-const confirms = $derived(confirmsWithCarriedFee(page));
-const payment = $derived(paymentForm.result?.ok ? paymentForm.result : null);
-let requestFailed = $state(false);
 const refusal = $derived.by(() => {
-	const result = confirms ? confirmForm.result : paymentForm.result;
-	if (result?.ok) return null;
-	return result && !result.ok
-		? result.error
-		: requestFailed
-			? "Payment is unavailable right now. Please try again shortly."
-			: null;
-});
-
-// Opening the email link opens payment too. POST still takes the Seat Hold;
-// the page's GET never reserves a place. A live hold resumes the same session.
-let initiated = false;
-$effect(() => {
-	if (!checkout || initiated) return;
-	initiated = true;
-	void openPayment();
-});
-
-async function openPayment() {
-	await tick(); // The remote form must be attached before programmatic submit.
-	try {
-		await startPayment();
-	} catch {
-		requestFailed = true;
-	}
-}
-
-// `payment_in_progress` asks Phoenix again until it reports `paid`.
-$effect(() => {
-	if (page.state !== "payment_in_progress") return;
-	const timer = setTimeout(() => refresh(), refreshMs);
-	return () => clearTimeout(timer);
+	if (view.footer.kind !== "confirm") return view.refusal;
+	const result = confirmForm.result;
+	return result && !result.ok ? result.error : null;
 });
 </script>
 
@@ -135,32 +138,42 @@ $effect(() => {
 			</Card.Content>
 		{/if}
 		<Card.Footer>
-			{#if checkout && payment}
-				{#key payment.clientSecret}
+			{#if view.footer.kind === "checkout"}
+				{@const session = view.footer.session}
+				{#key session.clientSecret}
 					<IntakeCheckout
-						clientSecret={payment.clientSecret}
+						clientSecret={session.clientSecret}
+						{createCheckout}
 						onComplete={() =>
-							goto(`?session_id=${encodeURIComponent(payment.sessionId)}`)}
+							goto(`?session_id=${encodeURIComponent(session.sessionId)}`)}
 					/>
 				{/key}
-			{:else if checkout}
-				{#if !refusal}
+			{:else if view.footer.kind === "loading" || view.footer.kind === "retry"}
+				{#if view.footer.kind === "loading"}
 					<p role="status" class="py-4 text-sm text-muted-foreground">
 						Loading secure payment…
 					</p>
 				{/if}
-				<form {...paymentForm} class="w-full" hidden={!refusal}>
+				<!-- The start's transport: the machine submits it, on mount and on retry. -->
+				<form
+					{...paymentForm}
+					class="w-full"
+					hidden={view.footer.kind !== "retry"}
+				>
 					<input {...paymentForm.fields.token.as("hidden", token)} />
-					<Button
-						type="submit"
-						class="w-full"
-						disabled={!!paymentForm.pending}
-						aria-busy={!!paymentForm.pending}
-					>
-						{paymentForm.pending ? "Loading secure payment…" : "Try again"}
-					</Button>
+					{#if view.footer.kind === "retry"}
+						<Button
+							type="button"
+							class="w-full"
+							disabled={view.footer.busy}
+							aria-busy={view.footer.busy}
+							onclick={() => send({ type: "RETRY" })}
+						>
+							{view.footer.busy ? "Loading secure payment…" : view.footer.label}
+						</Button>
+					{/if}
 				</form>
-			{:else if confirms}
+			{:else if view.footer.kind === "confirm"}
 				<form {...confirmForm} class="w-full">
 					<input {...confirmForm.fields.token.as("hidden", token)} />
 					<Button type="submit" class="w-full" disabled={!!confirmForm.pending}>
@@ -171,12 +184,10 @@ $effect(() => {
 				<Button
 					variant="outline"
 					class="w-full"
-					onclick={() => refresh()}
-					aria-busy={page.state === "payment_in_progress"}
+					onclick={() => send({ type: "REFRESH" })}
+					aria-busy={view.footer.inProgress}
 				>
-					<RefreshCw
-						class={page.state === "payment_in_progress" ? "animate-spin" : ""}
-					/>
+					<RefreshCw class={view.footer.inProgress ? "animate-spin" : ""} />
 					{actionLabel}
 				</Button>
 			{/if}

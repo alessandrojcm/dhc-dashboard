@@ -1,12 +1,23 @@
+<!--
+	ALE-447: the Intake page's embedded Checkout. `intakeCheckoutMachine` owns
+	the lifecycle; this component only supplies the widget (factory and
+	container) and Phoenix's confirmation, and renders the machine's view.
+-->
 <script lang="ts">
-import { onMount } from "svelte";
+import { useMachine } from "@xstate/svelte";
+import { onMount, untrack } from "svelte";
+import { fromPromise } from "xstate";
+import { createIntakeCheckout } from "./intake-checkout-sdk.js";
 import {
-	createIntakeCheckout,
-	type IntakeCheckoutFactory,
-	type IntakeCheckoutWidget,
-} from "./intake-checkout-sdk.js";
+	intakeCheckoutMachine,
+	intakeCheckoutView,
+} from "./intake-checkout-machine.js";
 import * as Alert from "#lib/components/ui/alert/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
+import {
+	embeddedCheckoutWidget,
+	type EmbeddedCheckoutFactory,
+} from "#lib/stripe/embedded-checkout-widget.js";
 
 let {
 	clientSecret,
@@ -14,89 +25,46 @@ let {
 	createCheckout = createIntakeCheckout,
 }: {
 	clientSecret: string;
+	/** Asks Phoenix for the outcome; Stripe's callback alone never means paid. */
 	onComplete: () => Promise<void>;
-	createCheckout?: IntakeCheckoutFactory;
+	createCheckout?: EmbeddedCheckoutFactory;
 } = $props();
 
 let container: HTMLDivElement | undefined = $state();
-let loading = $state(true);
-let failed = $state(false);
-let checkout: IntakeCheckoutWidget | undefined;
-let disposed = false;
 
-async function mountCheckout() {
-	loading = true;
-	failed = false;
-	try {
-		const embedded = await createCheckout({
-			clientSecret,
-			onComplete: () => {
-				if (!disposed) void complete();
-			},
-		});
-		if (disposed) {
-			embedded.destroy();
-			return;
-		}
-		checkout = embedded;
-		if (container) checkout.mount(container);
-	} catch {
-		// Stripe errors may contain credentials; show only fixed safe copy.
-		checkout?.destroy();
-		checkout = undefined;
-		if (!disposed) failed = true;
-	} finally {
-		if (!disposed) loading = false;
-	}
-}
+// The page keys this component by client secret, so the session and the
+// factory are fixed for the actor's lifetime.
+const { snapshot, send } = useMachine(
+	intakeCheckoutMachine.provide({
+		actors: {
+			widget: embeddedCheckoutWidget(
+				untrack(() => createCheckout),
+				() => container,
+			),
+			confirm: fromPromise(() => onComplete()),
+		},
+	}),
+	{ input: untrack(() => ({ clientSecret })) },
+);
 
-let completed = $state(false);
-async function complete() {
-	completed = true;
-	checkout?.destroy();
-	checkout = undefined;
-	loading = true;
-	failed = false;
-	try {
-		// Phoenix retrieves the session and decides the outcome. Stripe's
-		// browser callback alone never means the workshop place is paid.
-		await onComplete();
-	} catch {
-		if (!disposed) failed = true;
-	} finally {
-		if (!disposed) loading = false;
-	}
-}
+onMount(() => send({ type: "MOUNTED" }));
 
-onMount(() => {
-	void mountCheckout();
-	return () => {
-		disposed = true;
-		checkout?.destroy();
-	};
-});
+const view = $derived(intakeCheckoutView($snapshot));
 </script>
 
-<section aria-label="Secure payment" aria-busy={loading} class="w-full">
-	{#if loading}
+<section aria-label="Secure payment" aria-busy={!!view.status} class="w-full">
+	{#if view.status}
 		<p role="status" class="py-4 text-sm text-muted-foreground">
-			{completed ? "Confirming your payment…" : "Loading secure payment…"}
+			{view.status}
 		</p>
 	{/if}
-	{#if failed}
+	{#if view.failure}
 		<Alert.Root variant="destructive" class="mb-3">
-			<Alert.Description>
-				{completed
-					? "We couldn't check your payment yet. Check again — don't pay twice."
-					: "We couldn't load secure payment. Please try again."}
-			</Alert.Description>
+			<Alert.Description>{view.failure}</Alert.Description>
 		</Alert.Root>
-		<Button
-			onclick={() => (completed ? complete() : mountCheckout())}
-			disabled={loading}
-		>
-			{completed ? "Check payment" : "Try again"}
-		</Button>
+	{/if}
+	{#if view.retry}
+		<Button onclick={() => send({ type: "RETRY" })}>{view.retry}</Button>
 	{/if}
 	<div bind:this={container}></div>
 </section>
