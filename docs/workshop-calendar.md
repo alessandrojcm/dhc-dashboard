@@ -92,6 +92,52 @@ that template in the existing editor and rerun the migration. Rollback keeps
 the edited bodies; queued emails are not rewritten or resent. Remaining
 unknown workshop ends render as `TBC`.
 
+## Reviewed destination backfill (ALE-443)
+
+Existing upcoming regular Workshops can be enriched with manual destinations
+from a one-off, human-reviewed mapping of short venue labels. A mapping entry
+asserts that the label and the destination are the same physical Venue; list a
+label under `ambiguous` (or leave it out) when it is not certain. The mapping
+accepts only `destination_name`, `destination_address` and `directions_url`: no
+Places search, provider identity or first-result choice, and it is not a
+reusable venue registry. Google-selected destinations are not accepted until
+the terms-supported selection implementation exists.
+
+Run these only in an authorized operator session:
+
+```sh
+cd apps/phoenix
+mix dhc.destination_backfill.preview MAPPING.json > preview.json
+# Review every row, then write PLAN.json with the preview's "mapping" and an
+# "approved_targets" list copied from the reviewed "proposed_targets".
+mix dhc.destination_backfill.apply PLAN.json --operator PRINCIPAL_ID
+```
+
+Preview starts only its read dependencies and Repo, never the application or
+its workers, and makes no Google, database or job writes. It lists every
+Workshop that has not ended with its label, status, Dublin schedule, current
+and proposed destination, outcome (`change`, `unchanged`, or `refused` with a
+reason such as `unreviewed_venue`, `ambiguous_venue`, `destination_conflict`,
+`cancelled`, `archived` or `started`) and Calendar effect. It contains no
+recipient addresses.
+
+Apply requires a principal holding `workshops.manage`. Each approved target is
+re-read under the Workshop lock against the facts the reviewer saw: a changed
+label, Dublin schedule, status or destination, a cancellation, archival or
+deletion, or a start at or before the clock reading taken under the lock is
+refused and reported, never overwritten. The proposed destination always
+comes from the mapping for the target's label. Accepted targets change only
+the three destination fields and record Calendar intent in the same
+transaction; repeating an applied plan writes nothing. Workshops that would now
+change but were not approved are reported as `discovered` and left alone.
+
+Enrichment is an ordinary meaningful Calendar change: inactive sending keeps
+the intent without Google calls, and active sending updates the existing
+events (retained recipients and RSVPs, `sendUpdates=all` for participants, so
+Google may email attendees). No workshop email is queued and no template
+changes. The event-end detail cutoff still applies. No production backfill has
+been authorized or run.
+
 ## Ownership and recovery
 
 Workshop operations commit identifier-only synchronization intent alongside the

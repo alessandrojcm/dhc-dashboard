@@ -77,6 +77,18 @@ defmodule Dhc.Workshops.Workshop do
     |> validate_end_after_start()
   end
 
+  @doc """
+  A destination-only change (ALE-443 reviewed enrichment): casts only the
+  three destination fields, so no label, schedule, status or pricing value can
+  ride along.
+  """
+  @spec destination_changeset(t(), map()) :: Ecto.Changeset.t()
+  def destination_changeset(%__MODULE__{} = workshop, attrs) do
+    workshop
+    |> cast(attrs, Destinations.fields())
+    |> Destinations.validate_changeset()
+  end
+
   defp validate_end_after_start(changeset) do
     start_date = get_field(changeset, :start_date)
     end_date = get_field(changeset, :end_date)
