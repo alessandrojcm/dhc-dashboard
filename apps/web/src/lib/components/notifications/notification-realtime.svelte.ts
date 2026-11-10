@@ -149,22 +149,6 @@ function warn(context: string, cause: unknown): void {
 	console.warn(`NotificationCenter realtime: ${context}`, cause);
 }
 
-/**
- * Connect a Phoenix Socket, join the user's Notification topic, and keep it
- * connected. Every connect (initial and recovery) fetches a fresh socket
- * token because the token is short-lived; a socket error or close replaces
- * the socket after a bounded backoff.
- *
- * Returns a handle whose `destroy()` cancels any pending reconnect, leaves
- * the channel, and disconnects the socket. All realtime failures are
- * swallowed and logged; `invalidate` is only ever called as a best-effort
- * refetch trigger, never as an error path.
- *
- * The `userId` (topic suffix) is read from the decoded socket token —
- * Phoenix assigns `current_user.sub` on connect, and the channel join
- * authorizes the topic against that sub. The browser does not need to know
- * its own user id here; it learns the topic from the server's join response.
- */
 type NotificationRealtimeMachineInput = {
 	socketUrl: string;
 	getSocketToken: SocketTokenFetcher;
@@ -424,8 +408,20 @@ const notificationRealtimeMachine = setup({
 });
 
 /**
- * Connect a Phoenix Socket and join the user's notification topic. The returned
- * handle is unchanged; only its implementation is now a per-handle XState actor.
+ * Connect a Phoenix Socket, join the user's Notification topic, and keep it
+ * connected. Every connect (initial and recovery) fetches a fresh socket
+ * token because the token is short-lived; a socket error or close replaces
+ * the socket after a bounded backoff.
+ *
+ * Each call starts its own actor; the returned handle's `destroy()` stops it,
+ * which cancels any pending token fetch or reconnect, leaves the channel, and
+ * disconnects the socket. All realtime failures are swallowed and logged;
+ * `invalidate` is only ever called as a best-effort refetch trigger, never as
+ * an error path.
+ *
+ * The browser joins the `notifications:self` alias: Phoenix assigns
+ * `current_user.sub` from the socket token on connect, and the channel join
+ * authorizes the topic against that sub.
  */
 export function connectNotificationRealtime(
 	config: NotificationRealtimeConfig,

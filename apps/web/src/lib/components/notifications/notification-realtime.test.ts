@@ -28,7 +28,13 @@ import { getClient } from "@dhc/api-client";
  *   6. connection/join errors stay silent and never block invalidation calls;
  *   7. a failed, empty, or hung token fetch creates no socket and is retried
  *      with backoff; a late token from a superseded attempt is dropped;
- *   8. a retired socket that reconnects on its own is disconnected again.
+ *   8. a retired socket that reconnects on its own is disconnected again;
+ *   9. a rejected session ends recovery, a channel rejoin on a live socket is
+ *      left to Phoenix, destroy is idempotent, and each connection runs its
+ *      own actor (ALE-449).
+ *
+ * Since ALE-449 the bridge is an XState actor; these tests drive it only
+ * through the public handle and fake timers, never through machine internals.
  *
  * The Phoenix client boundary is substituted with an in-memory fake so no
  * WebSocket globals or network are involved. Full browser E2E is out of scope.
@@ -718,5 +724,171 @@ describe("connectNotificationRealtime (ALE-164 socket-token path)", () => {
 
 		expect(socket.disconnectCount).toBe(disconnectsAfterDestroy + 1);
 		expect(getSocketToken).toHaveBeenCalledTimes(1);
+	});
+
+	it("abandons a hung token fetch after 10 seconds, then backs off before retrying", async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const createSocket = createSocketFactory();
+		const getSocketToken = vi
+			.fn<() => Promise<string | null>>()
+			.mockImplementationOnce(() => new Promise(() => {}))
+			.mockResolvedValue("socket-token-B");
+		const { handle } = setup({ getSocketToken, createSocket });
+
+		await vi.advanceTimersByTimeAsync(9_999);
+		expect(getSocketToken).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		// Abandoned at the timeout; the first backoff step still applies.
+		await vi.advanceTimersByTimeAsync(999);
+		expect(getSocketToken).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(getSocketToken).toHaveBeenCalledTimes(2);
+		expect(createdSockets).toHaveLength(1);
+		expect(createdSockets[0].authToken).toBe("socket-token-B");
+
+		handle.destroy();
+	});
+
+	it("invalidates on every rejoin and every creation signal of the live channel", async () => {
+		vi.useFakeTimers();
+		const createSocket = createSocketFactory();
+		const { invalidate, handle } = setup({
+			getSocketToken: async () => "socket-token-A",
+			createSocket,
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		const channel = createdSockets[0].channels[0];
+
+		// Phoenix re-sends the join push on rejoin, firing its `ok` hook again.
+		resolveJoin(channel, "ok");
+		resolveJoin(channel, "ok");
+		emitChannelEvent(channel, "notification_created");
+		emitChannelEvent(channel, "notification_created");
+
+		expect(invalidate).toHaveBeenCalledTimes(4);
+		handle.destroy();
+	});
+
+	it("leaves a channel rejoin on a live socket to Phoenix", async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const createSocket = createSocketFactory();
+		const getSocketToken = vi.fn(async () => "socket-token-A");
+		const { handle } = setup({ getSocketToken, createSocket });
+		await vi.advanceTimersByTimeAsync(0);
+		const socket = createdSockets[0];
+
+		resolveJoin(socket.channels[0], "error", { reason: "crashed" });
+		resolveJoin(socket.channels[0], "timeout");
+		await vi.advanceTimersByTimeAsync(5 * RECONNECT_CEILING_MS);
+
+		expect(getSocketToken).toHaveBeenCalledTimes(1);
+		expect(createdSockets).toHaveLength(1);
+		expect(socket.disconnected).toBe(false);
+		expect(socket.channels[0].leaveMock).not.toHaveBeenCalled();
+		handle.destroy();
+	});
+
+	it("reconnects once when the live socket reports both error and close", async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const createSocket = createSocketFactory();
+		const getSocketToken = vi.fn(async () => "socket-token-A");
+		const { handle } = setup({ getSocketToken, createSocket });
+		await vi.advanceTimersByTimeAsync(0);
+
+		createdSockets[0].onErrorCb?.("down");
+		createdSockets[0].onCloseCb?.();
+		createdSockets[0].onErrorCb?.("still down");
+		await vi.advanceTimersByTimeAsync(RECONNECT_CEILING_MS);
+
+		expect(getSocketToken).toHaveBeenCalledTimes(2);
+		expect(createdSockets).toHaveLength(2);
+		handle.destroy();
+	});
+
+	it("retries with backoff when the socket cannot be constructed", async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const fallback = createSocketFactory();
+		const createSocket = vi
+			.fn<SocketFactory>()
+			.mockImplementationOnce(() => {
+				throw new Error("bad url");
+			})
+			.mockImplementation(fallback);
+		const getSocketToken = vi.fn(async () => "socket-token-A");
+		const { handle } = setup({ getSocketToken, createSocket });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(createdSockets).toHaveLength(0);
+
+		await vi.advanceTimersByTimeAsync(999);
+		expect(getSocketToken).toHaveBeenCalledTimes(1);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(getSocketToken).toHaveBeenCalledTimes(2);
+		expect(createdSockets).toHaveLength(1);
+		expect(createdSockets[0].connected).toBe(true);
+		handle.destroy();
+	});
+
+	it("cancels a scheduled reconnect when destroyed during backoff", async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const createSocket = createSocketFactory();
+		const getSocketToken = vi.fn(async () => "socket-token-A");
+		const { handle } = setup({ getSocketToken, createSocket });
+		await vi.advanceTimersByTimeAsync(0);
+
+		createdSockets[0].onCloseCb?.();
+		handle.destroy();
+		await vi.advanceTimersByTimeAsync(5 * RECONNECT_CEILING_MS);
+
+		expect(getSocketToken).toHaveBeenCalledTimes(1);
+		expect(createdSockets).toHaveLength(1);
+	});
+
+	it("destroy is idempotent", async () => {
+		vi.useFakeTimers();
+		const createSocket = createSocketFactory();
+		const { invalidate, handle } = setup({
+			getSocketToken: async () => "socket-token-A",
+			createSocket,
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		const socket = createdSockets[0];
+		const channel = socket.channels[0];
+
+		handle.destroy();
+		handle.destroy();
+
+		expect(channel.leaveMock).toHaveBeenCalledTimes(1);
+		expect(socket.disconnectCount).toBe(1);
+		resolveJoin(channel, "ok");
+		emitChannelEvent(channel, "notification_created");
+		expect(invalidate).not.toHaveBeenCalled();
+	});
+
+	it("gives each connection its own recovery state", async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const createSocket = createSocketFactory();
+		const first = setup({
+			getSocketToken: async () => "socket-token-1",
+			createSocket,
+		});
+		const getSecondToken = vi.fn(async () => "socket-token-2");
+		const second = setup({ getSocketToken: getSecondToken, createSocket });
+		await vi.advanceTimersByTimeAsync(0);
+		const [firstSocket, secondSocket] = createdSockets;
+
+		first.handle.destroy();
+		secondSocket.onCloseCb?.();
+		await vi.advanceTimersByTimeAsync(1_000);
+
+		expect(firstSocket.disconnected).toBe(true);
+		expect(getSecondToken).toHaveBeenCalledTimes(2);
+		expect(createdSockets.at(-1)?.authToken).toBe("socket-token-2");
+		second.handle.destroy();
 	});
 });

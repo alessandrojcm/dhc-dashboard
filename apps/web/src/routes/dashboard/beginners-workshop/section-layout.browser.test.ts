@@ -1,12 +1,21 @@
 import "../../../app.css";
 import { page } from "vitest/browser";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type {
 	BeginnersWorkshopInvitable,
 	WaitlistEntry,
 } from "@dhc/api-client";
 import SectionLayout from "./section-layout.test-wrapper.svelte";
+
+beforeAll(async () => {
+	// app.css loads Calistoga from Google Fonts; snapshot it, not its fallback.
+	// Its @font-face only exists once that stylesheet arrives, so wait for it.
+	for (let tries = 0; tries < 100; tries += 1) {
+		if ((await document.fonts.load('1em "Calistoga"')).length > 0) return;
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+});
 
 afterEach(async () => {
 	await page.viewport(1280, 900);
@@ -72,8 +81,6 @@ for (const [width, height] of [
 					.getByText("Ada Waiting"),
 			)
 			.toBeVisible();
-		// Browser tests share a pointer; keep its hover state out of layout snapshots.
-		await screen.getByRole("main").unhover({ position: { x: 1, y: 1 } });
 		await expect
 			.element(screen.getByRole("main"))
 			.toMatchScreenshot(`waitlist-${width}x${height}`);
@@ -81,9 +88,6 @@ for (const [width, height] of [
 			.getByRole("button", { name: "Next", exact: true })
 			.element()
 			.scrollIntoView({ block: "end" });
-		// Reproduce a pointer left over navigation by a preceding browser test.
-		if (width === 390) await screen.getByText("Invite members").hover();
-		await screen.getByRole("main").unhover({ position: { x: 1, y: 1 } });
 		await expect
 			.element(screen.getByRole("main"))
 			.toMatchScreenshot(`waitlist-scrolled-${width}x${height}`);
@@ -94,12 +98,10 @@ for (const [width, height] of [
 		const screen = await render(SectionLayout, { deps, invitable: true });
 		const empty = screen.getByText("Nobody to invite");
 		await expect.element(empty).toBeVisible();
-		await screen.getByRole("main").unhover({ position: { x: 1, y: 1 } });
 		await expect
 			.element(screen.getByRole("main"))
 			.toMatchScreenshot(`invitable-${width}x${height}`);
 		empty.element().scrollIntoView({ block: "center" });
-		await screen.getByRole("main").unhover({ position: { x: 1, y: 1 } });
 		await expect
 			.element(screen.getByRole("main"))
 			.toMatchScreenshot(`invitable-scrolled-${width}x${height}`);
@@ -113,7 +115,6 @@ for (const [width, height] of [
 			people: [person],
 		});
 		await expect.element(screen.getByText("Aoife Byrne")).toBeVisible();
-		await screen.getByRole("main").unhover({ position: { x: 1, y: 1 } });
 		await expect
 			.element(screen.getByRole("main"))
 			.toMatchScreenshot(`invitable-populated-${width}x${height}`);
@@ -121,7 +122,6 @@ for (const [width, height] of [
 			.getByRole("button", { name: "Invite", exact: true })
 			.element()
 			.scrollIntoView({ block: "end" });
-		await screen.getByRole("main").unhover({ position: { x: 1, y: 1 } });
 		await expect
 			.element(screen.getByRole("main"))
 			.toMatchScreenshot(`invitable-populated-scrolled-${width}x${height}`);
