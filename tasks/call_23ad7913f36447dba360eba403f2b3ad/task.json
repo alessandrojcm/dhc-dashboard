@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_23ad7913f36447dba360eba403f2b3ad",
+  "agent_id": "ses_e43ffe911ffeyLhJg81Tcs168r",
+  "subagent_type": "build",
+  "task_description": "Review coding standards",
+  "token_usage": {
+    "input_tokens": 98316,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1475072,
+    "output_tokens": 1486,
+    "api_call_count": 19
+  },
+  "started_at": "2026-11-08T16:31:24.908Z",
+  "completed_at": "2026-11-08T16:33:58.465113Z"
+}

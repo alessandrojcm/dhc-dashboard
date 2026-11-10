@@ -1,0 +1,28 @@
+{
+  "tool_use_id": "call_1f188c10cb4c4e10be17582800862096",
+  "agent_id": "ses_e3e916d45ffeaTH2WGOTZEScHH",
+  "subagent_type": "build",
+  "task_description": "Check enrichment race",
+  "files": [
+    "apps/phoenix/lib/dhc/beginners_workshops/commands/schedule.ex",
+    "apps/phoenix/lib/dhc_web/controllers/beginners_workshops_http.ex",
+    "apps/phoenix/priv/api/openapi.yaml",
+    "apps/phoenix/test/dhc/beginners_workshops/commands_test.exs",
+    "apps/phoenix/test/dhc/beginners_workshops/destination_enrichment_test.exs",
+    "apps/phoenix/test/dhc/workshop_calendar/beginners_participant_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/beginners_workshops_controller_test.exs",
+    "apps/web/src/lib/beginners-workshops/reschedule-operation.test.ts",
+    "apps/web/src/lib/beginners-workshops/reschedule-operation.ts",
+    "apps/web/src/lib/schemas/beginnersWorkshop.ts",
+    "apps/web/src/routes/dashboard/beginners-workshop/workshops/[workshopId]/destination-enrichment-dialog.svelte"
+  ],
+  "token_usage": {
+    "input_tokens": 144992,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2157056,
+    "output_tokens": 4653,
+    "api_call_count": 21
+  },
+  "started_at": "2026-11-09T18:05:49.014Z",
+  "completed_at": "2026-11-09T19:12:21.667055Z"
+}

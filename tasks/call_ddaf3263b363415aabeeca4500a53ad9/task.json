@@ -1,0 +1,18 @@
+{
+  "tool_use_id": "call_ddaf3263b363415aabeeca4500a53ad9",
+  "agent_id": "ses_e3e9155f6ffe4XoqokjRvcAjrA",
+  "subagent_type": "build",
+  "task_description": "Cover calendar sync",
+  "files": [
+    "apps/phoenix/test/dhc/workshop_calendar/beginners_participant_test.exs"
+  ],
+  "token_usage": {
+    "input_tokens": 114785,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1162752,
+    "output_tokens": 3202,
+    "api_call_count": 17
+  },
+  "started_at": "2026-11-09T17:50:17.608Z",
+  "completed_at": "2026-11-09T17:54:15.598569Z"
+}

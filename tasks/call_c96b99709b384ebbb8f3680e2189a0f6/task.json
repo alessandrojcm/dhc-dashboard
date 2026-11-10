@@ -1,0 +1,19 @@
+{
+  "tool_use_id": "call_c96b99709b384ebbb8f3680e2189a0f6",
+  "agent_id": "ses_e44129d77ffeQw0don746UXBLp",
+  "subagent_type": "build",
+  "task_description": "Check reschedule distinction",
+  "files": [
+    "apps/phoenix/test/dhc/beginners_workshops/reschedule_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/beginners_workshops_client_parity_test.exs"
+  ],
+  "token_usage": {
+    "input_tokens": 48847,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1283072,
+    "output_tokens": 1702,
+    "api_call_count": 6
+  },
+  "started_at": "2026-11-08T16:32:00.495Z",
+  "completed_at": "2026-11-08T16:41:23.58875Z"
+}

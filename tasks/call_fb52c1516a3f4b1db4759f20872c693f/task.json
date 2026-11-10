@@ -1,0 +1,19 @@
+{
+  "tool_use_id": "call_fb52c1516a3f4b1db4759f20872c693f",
+  "agent_id": "ses_e3e8d95d3ffedpb2jzGRxl4M0O",
+  "subagent_type": "build",
+  "task_description": "Cover enrichment invariants",
+  "files": [
+    "apps/phoenix/test/dhc/beginners_workshops/destination_enrichment_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/beginners_workshops_controller_test.exs"
+  ],
+  "token_usage": {
+    "input_tokens": 209516,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3750400,
+    "output_tokens": 6330,
+    "api_call_count": 37
+  },
+  "started_at": "2026-11-09T17:54:23.403Z",
+  "completed_at": "2026-11-09T18:02:09.702104Z"
+}
