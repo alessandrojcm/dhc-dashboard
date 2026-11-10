@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_0ac6deda494544da9d84fb7a5c3217dc",
+  "agent_id": "ses_e4907ba81ffe7WeJbome90Z76Q",
+  "subagent_type": "build",
+  "task_description": "Review ticket compliance",
+  "token_usage": {
+    "input_tokens": 182402,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1604096,
+    "output_tokens": 4384,
+    "api_call_count": 15
+  },
+  "started_at": "2026-11-07T17:04:46.462Z",
+  "completed_at": "2026-11-07T17:08:48.898315Z"
+}

@@ -1,0 +1,18 @@
+{
+  "tool_use_id": "call_2b4823cefe6947bdab5bd5f211f7e096",
+  "agent_id": "ses_e490879fdffe3yzsPGirA7uQN8",
+  "subagent_type": "build",
+  "task_description": "Cover participant updates",
+  "files": [
+    "apps/phoenix/test/dhc/workshop_calendar/participant_workshops_test.exs"
+  ],
+  "token_usage": {
+    "input_tokens": 137103,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3494400,
+    "output_tokens": 3553,
+    "api_call_count": 23
+  },
+  "started_at": "2026-11-07T17:08:58.731Z",
+  "completed_at": "2026-11-07T17:13:23.914305Z"
+}

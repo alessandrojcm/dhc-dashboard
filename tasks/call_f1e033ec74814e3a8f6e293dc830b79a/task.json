@@ -1,0 +1,22 @@
+{
+  "tool_use_id": "call_f1e033ec74814e3a8f6e293dc830b79a",
+  "agent_id": "ses_e490879fdffe3yzsPGirA7uQN8",
+  "subagent_type": "build",
+  "task_description": "Verify backend destination work",
+  "files": [
+    "apps/phoenix/lib/dhc/destinations.ex",
+    "apps/phoenix/lib/dhc/workshops.ex",
+    "apps/phoenix/test/dhc/destinations_test.exs",
+    "apps/phoenix/test/dhc/workshops/calendar_projection_test.exs",
+    "apps/phoenix/test/dhc/workshops_test.exs"
+  ],
+  "token_usage": {
+    "input_tokens": 167482,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2128896,
+    "output_tokens": 3070,
+    "api_call_count": 25
+  },
+  "started_at": "2026-11-07T17:03:57.441Z",
+  "completed_at": "2026-11-07T17:13:23.516956Z"
+}

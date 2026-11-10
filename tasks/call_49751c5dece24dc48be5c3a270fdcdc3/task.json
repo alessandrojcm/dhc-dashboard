@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_49751c5dece24dc48be5c3a270fdcdc3",
+  "agent_id": "ses_e4907ba84ffen2tGGXwsAw2WdX",
+  "subagent_type": "build",
+  "task_description": "Review implementation standards",
+  "token_usage": {
+    "input_tokens": 137483,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1051648,
+    "output_tokens": 2078,
+    "api_call_count": 12
+  },
+  "started_at": "2026-11-07T17:04:46.458Z",
+  "completed_at": "2026-11-07T17:07:01.54369Z"
+}
