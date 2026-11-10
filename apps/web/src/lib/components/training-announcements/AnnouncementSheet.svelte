@@ -9,6 +9,11 @@
 	that sets neither a weekday nor a date, copy that will not render): its
 	problem details are shown against the field that caused them.
 
+	The save order is `announcementSaveMachine`'s (ALE-448): the sheet only
+	sends it the draft and renders its state. The two edit writes are not
+	atomic, so a copy refusal after a schedule write says the schedule landed
+	rather than pretending it was undone.
+
 	The preview is the API's own renderer for a chosen date. Nothing here
 	re-renders tokens locally, so the sheet cannot promise copy that delivery
 	would refuse.
@@ -24,7 +29,14 @@ import {
 	type TrainingAnnouncementListResponse,
 } from "@dhc/api-client";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
-import { Alert, AlertDescription } from "#lib/components/ui/alert/index.js";
+import { untrack } from "svelte";
+import { useMachine } from "@xstate/svelte";
+import { fromPromise } from "xstate";
+import {
+	Alert,
+	AlertDescription,
+	AlertTitle,
+} from "#lib/components/ui/alert/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Field from "#lib/components/ui/field/index.js";
 import { Input } from "#lib/components/ui/input/index.js";
@@ -47,15 +59,16 @@ import {
 } from "#lib/training-announcements/copy.js";
 import {
 	announcementDraft,
+	copyRequest,
 	draftPreviewDate,
 	newAnnouncementDraft,
-	scheduleChanged,
 	type AnnouncementDraft,
 	type AnnouncementSave,
 	type AnnouncementScheduleType,
 } from "#lib/training-announcements/announcement.js";
+import { announcementSaveMachine } from "#lib/training-announcements/save-machine.js";
 import { civilCalendarDate, civilIsoDate } from "#lib/club-calendar.js";
-import { apiProblem, type ApiFieldMessages } from "#lib/api-error.js";
+import { apiProblem } from "#lib/api-error.js";
 import DiscordMessagePreview from "./DiscordMessagePreview.svelte";
 
 const queryClient = useQueryClient();
@@ -66,7 +79,10 @@ let {
 	onClose,
 	onSaved,
 }: {
-	/** `null` creates a new announcement; an existing row edits it. */
+	/**
+	 * `null` creates a new announcement; an existing row edits it. Read once
+	 * when the sheet opens: the owner remounts the sheet for another row.
+	 */
 	announcement?: TrainingAnnouncement | null;
 	/** Europe/Dublin today as `YYYY-MM-DD`, from the page load. */
 	today: string;
@@ -74,20 +90,28 @@ let {
 	onSaved: (saved: AnnouncementSave) => void;
 } = $props();
 
-const editing = $derived(announcement !== null);
+// The sheet edits the row it opened with; a refetch of the same row must not
+// reset the draft or the save machine underneath the form.
+const opened = untrack(() => announcement);
+const editing = opened !== null;
 
 let draft = $state<AnnouncementDraft>(
-	announcement
-		? announcementDraft(announcement, today)
-		: newAnnouncementDraft(today),
+	untrack(() =>
+		opened ? announcementDraft(opened, today) : newAnnouncementDraft(today),
+	),
 );
-let previewDate = $state(draftPreviewDate(draft, today));
+let previewDate = $state(untrack(() => draftPreviewDate(draft, today)));
 let preview = $state<{ renderedMessage: string; threadName: string } | null>(
 	null,
 );
-let saveError = $state<string | null>(null);
 let previewError = $state<string | null>(null);
-let fieldMessages = $state<ApiFieldMessages[]>([]);
+
+/** Every save write ends with an authoritative list read, open sheet or not. */
+function reconcileList() {
+	return queryClient.invalidateQueries({
+		queryKey: trainingAnnouncementsListQueryKey(),
+	});
+}
 
 const create = createMutation(() => ({
 	...trainingAnnouncementsCreateMutation(),
@@ -149,23 +173,75 @@ const create = createMutation(() => ({
 					: old,
 		);
 	},
+	onSettled: () => reconcileList(),
 }));
-const updateSchedule = createMutation(() =>
-	trainingAnnouncementsUpdateScheduleMutation(),
-);
-const updateCopy = createMutation(() =>
-	trainingAnnouncementsUpdateCopyMutation(),
-);
+// A schedule write commits on its own even when the copy write after it
+// fails, so each write reconciles the list itself.
+const updateSchedule = createMutation(() => ({
+	...trainingAnnouncementsUpdateScheduleMutation(),
+	onSettled: () => reconcileList(),
+}));
+const updateCopy = createMutation(() => ({
+	...trainingAnnouncementsUpdateCopyMutation(),
+	onSettled: () => reconcileList(),
+}));
 const previewCopy = createMutation(() =>
 	trainingAnnouncementsPreviewCopyMutation(),
 );
 
-const busy = $derived(
-	create.isPending || updateSchedule.isPending || updateCopy.isPending,
+/**
+ * The save protocol (ALE-448): create, or schedule-then-copy, with
+ * stage-scoped failures. Its requests are the mutations above; it stops with
+ * this sheet, so a late answer can never report to or close a replacement.
+ */
+const { snapshot, send } = useMachine(
+	announcementSaveMachine.provide({
+		actors: {
+			create: fromPromise(async ({ input }) => {
+				const response = await create.mutateAsync({ body: input.body });
+				return response.data;
+			}),
+			updateSchedule: fromPromise(async ({ input }) => {
+				const response = await updateSchedule.mutateAsync({
+					path: { id: input.id },
+					body: input.body,
+				});
+				return response.data;
+			}),
+			updateCopy: fromPromise(async ({ input }) => {
+				const response = await updateCopy.mutateAsync({
+					path: { id: input.id },
+					body: input.body,
+				});
+				return response.data;
+			}),
+		},
+		actions: {
+			saved: (_, save) => onSaved(save),
+			close: () => onClose(),
+		},
+	}),
+	{ input: { announcement: opened } },
 );
 
+const saving = $derived($snapshot.hasTag("saving"));
+const problem = $derived($snapshot.context.problem);
+/** The schedule landed and stays; only the copy write was refused. */
+const partiallySaved = $derived(
+	$snapshot.matches({ edit: "copyFailed" }) &&
+		$snapshot.context.scheduleApplied,
+);
+
+function save() {
+	send({ type: "SAVE", draft: $state.snapshot(draft) });
+}
+
+function close() {
+	send({ type: "CLOSE" });
+}
+
 function fieldMessage(field: string): string | undefined {
-	return fieldMessages.find((entry) => entry.field === field)?.messages[0];
+	return problem?.fields.find((entry) => entry.field === field)?.messages[0];
 }
 
 function applyKindPreset(kind: AnnouncementDraft["kind"]) {
@@ -189,73 +265,11 @@ function syncPreviewDate() {
 	previewDate = draftPreviewDate(draft, today);
 }
 
-/** Exactly one of the two schedule fields is set; the other is cleared. */
-function scheduleFields() {
-	return draft.scheduleType === "weekly"
-		? { weekday: draft.weekday, oneOffDate: null, postTime: draft.postTime }
-		: { weekday: null, oneOffDate: draft.oneOffDate, postTime: draft.postTime };
-}
-
-function reportProblem(cause: unknown, fallback: string) {
-	const problem = apiProblem(cause);
-	saveError = problem?.detail ?? fallback;
-	fieldMessages = problem?.fields ?? [];
-}
-
-function finished(saved: AnnouncementSave) {
-	void queryClient.invalidateQueries({
-		queryKey: trainingAnnouncementsListQueryKey(),
-	});
-	onSaved(saved);
-	onClose();
-}
-
-async function save() {
-	saveError = null;
-	fieldMessages = [];
-	try {
-		if (!announcement) {
-			const response = await create.mutateAsync({
-				body: { ...scheduleFields(), ...copyFields(), kind: draft.kind },
-			});
-			finished(response.data);
-			return;
-		}
-
-		// Schedule first: an elapsed slot is refused before any copy is
-		// written, so the sheet never half-applies a rejected edit. A copy-only
-		// edit has no schedule response, so it carries no warnings.
-		let warnings: AnnouncementSave["warnings"] = [];
-		if (scheduleChanged(draft, announcement)) {
-			const scheduled = await updateSchedule.mutateAsync({
-				path: { id: announcement.id },
-				body: scheduleFields(),
-			});
-			warnings = scheduled.data.warnings;
-		}
-		const copied = await updateCopy.mutateAsync({
-			path: { id: announcement.id },
-			body: copyFields(),
-		});
-		finished({ announcement: copied.data, warnings });
-	} catch (cause) {
-		reportProblem(cause, "Could not save the announcement");
-	}
-}
-
-function copyFields() {
-	return {
-		title: draft.title,
-		message: draft.message,
-		mentionEveryone: draft.mentionEveryone,
-	};
-}
-
 async function showPreview() {
 	previewError = null;
 	try {
 		const response = await previewCopy.mutateAsync({
-			body: { ...copyFields(), kind: draft.kind, date: previewDate },
+			body: { ...copyRequest(draft), kind: draft.kind, date: previewDate },
 		});
 		preview = response.data;
 	} catch (cause) {
@@ -284,7 +298,7 @@ async function showPreview() {
 <Sheet.Root
 	open
 	onOpenChange={(open) => {
-		if (!open) onClose();
+		if (!open) close();
 	}}
 >
 	<Sheet.Content
@@ -305,9 +319,26 @@ async function showPreview() {
 			</Sheet.Description>
 		</Sheet.Header>
 		<div class="space-y-6 px-4 pb-2">
-			{#if saveError}
+			{#if partiallySaved}
 				<Alert variant="destructive" data-testid="announcement-sheet-error">
-					<AlertDescription>{saveError}</AlertDescription>
+					<TriangleAlert aria-hidden="true" />
+					<AlertTitle
+						>The new schedule was saved, but the message was not</AlertTitle
+					>
+					<AlertDescription>
+						<p>{problem?.detail ?? "Could not save the message"}</p>
+						<p>
+							Future posts already use the new schedule. Fix the message and
+							save again.
+						</p>
+					</AlertDescription>
+				</Alert>
+			{:else if problem}
+				<Alert variant="destructive" data-testid="announcement-sheet-error">
+					<AlertDescription
+						>{problem.detail ??
+							"Could not save the announcement"}</AlertDescription
+					>
 				</Alert>
 			{/if}
 
@@ -570,9 +601,9 @@ async function showPreview() {
 		</div>
 
 		<Sheet.Footer>
-			<Button variant="ghost" onclick={onClose}>Cancel</Button>
-			<Button disabled={busy} onclick={save}>
-				{busy ? "Saving…" : editing ? "Save changes" : "Create announcement"}
+			<Button variant="ghost" onclick={close}>Cancel</Button>
+			<Button disabled={saving} onclick={save}>
+				{saving ? "Saving…" : editing ? "Save changes" : "Create announcement"}
 			</Button>
 		</Sheet.Footer>
 	</Sheet.Content>

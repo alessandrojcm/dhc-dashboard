@@ -335,12 +335,16 @@ function saved(save: AnnouncementSave) {
 </div>
 
 {#if sheetFor !== undefined}
-	<AnnouncementSheet
-		announcement={sheetFor}
-		{today}
-		onClose={() => (sheetFor = undefined)}
-		onSaved={saved}
-	/>
+	<!-- One sheet, and one save workflow, per announcement opened: another
+	     row remounts it rather than re-pointing a running save. -->
+	{#key sheetFor?.id ?? null}
+		<AnnouncementSheet
+			announcement={sheetFor}
+			{today}
+			onClose={() => (sheetFor = undefined)}
+			onSaved={saved}
+		/>
+	{/key}
 {/if}
 
 {#if inspected}

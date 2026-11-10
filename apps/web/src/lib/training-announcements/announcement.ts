@@ -11,7 +11,10 @@
  */
 import type {
 	TrainingAnnouncement,
+	TrainingAnnouncementCopyRequest,
+	TrainingAnnouncementCreateRequest,
 	TrainingAnnouncementKind,
+	TrainingAnnouncementScheduleRequest,
 	TrainingAnnouncementWarning,
 } from "@dhc/api-client";
 import { formatCivilDateLong } from "#lib/club-calendar.js";
@@ -191,6 +194,33 @@ export function scheduleChanged(
 		draft.postTime !== postTime ||
 		announcement.weekday !== null
 	);
+}
+
+/** The `updateSchedule` body: exactly one schedule field set, the other cleared. */
+export function scheduleRequest(
+	draft: AnnouncementDraft,
+): TrainingAnnouncementScheduleRequest {
+	return draft.scheduleType === "weekly"
+		? { weekday: draft.weekday, oneOffDate: null, postTime: draft.postTime }
+		: { weekday: null, oneOffDate: draft.oneOffDate, postTime: draft.postTime };
+}
+
+/** The `updateCopy` body. */
+export function copyRequest(
+	draft: AnnouncementDraft,
+): TrainingAnnouncementCopyRequest {
+	return {
+		title: draft.title,
+		message: draft.message,
+		mentionEveryone: draft.mentionEveryone,
+	};
+}
+
+/** The `create` body: the schedule and copy in one write, plus the kind. */
+export function createRequest(
+	draft: AnnouncementDraft,
+): TrainingAnnouncementCreateRequest {
+	return { ...scheduleRequest(draft), ...copyRequest(draft), kind: draft.kind };
 }
 
 /** Advisory `warnings[]` from create/updateSchedule, in committee words. */
