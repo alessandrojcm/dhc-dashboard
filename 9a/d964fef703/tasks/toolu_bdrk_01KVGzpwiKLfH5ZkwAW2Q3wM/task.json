@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_bdrk_01KVGzpwiKLfH5ZkwAW2Q3wM",
+  "agent_id": "ses_e3aaec634ffe3772yVCl73DTlD",
+  "subagent_type": "build",
+  "task_description": "ALE-447 regular Workshop checkout",
+  "token_usage": {
+    "input_tokens": 82,
+    "cache_creation_tokens": 88364,
+    "cache_read_tokens": 4522553,
+    "output_tokens": 24880,
+    "api_call_count": 40
+  },
+  "started_at": "2026-11-10T11:56:37.193Z",
+  "completed_at": "2026-11-10T12:04:50.724179Z"
+}

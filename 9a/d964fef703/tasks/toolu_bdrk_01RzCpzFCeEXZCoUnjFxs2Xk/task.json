@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_bdrk_01RzCpzFCeEXZCoUnjFxs2Xk",
+  "agent_id": "ses_e3abebed5ffeVYEabNRwVQCu0o",
+  "subagent_type": "build",
+  "task_description": "ALE-447 Intake checkout machine",
+  "token_usage": {
+    "input_tokens": 142,
+    "cache_creation_tokens": 212579,
+    "cache_read_tokens": 10800267,
+    "output_tokens": 42082,
+    "api_call_count": 70
+  },
+  "started_at": "2026-11-10T11:39:10.503Z",
+  "completed_at": "2026-11-10T11:55:37.001616Z"
+}
