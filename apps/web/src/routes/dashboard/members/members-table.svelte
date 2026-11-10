@@ -100,12 +100,11 @@ let expandedState = $state({});
 // billing-authority role (layout load mirrors the minting pipeline) and the
 // row's membership status is inactive.
 const canReactivate = $derived(page.data.canReactivate === true);
-let reactivateOpen = $state(false);
+// The member whose reactivation dialog is open; `null` closes it.
 let reactivateTargetId = $state<string | null>(null);
 
 function openReactivation(memberId: string) {
 	reactivateTargetId = memberId;
-	reactivateOpen = true;
 }
 
 const membersQuery = createQuery(() => ({
@@ -651,11 +650,15 @@ const table = createSvelteTable(tableOptions);
 </section>
 
 {#if reactivateTargetId}
-	<ReactivateMemberDialog
-		bind:open={reactivateOpen}
-		memberId={reactivateTargetId}
-		onSettled={() => {
-			void membersQuery.refetch();
-		}}
-	/>
+	{#key reactivateTargetId}
+		<ReactivateMemberDialog
+			memberId={reactivateTargetId}
+			onClose={() => {
+				reactivateTargetId = null;
+			}}
+			onSettled={() => {
+				void membersQuery.refetch();
+			}}
+		/>
+	{/key}
 {/if}
