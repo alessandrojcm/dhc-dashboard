@@ -33,7 +33,9 @@ Confirmed on 6 November 2026:
 - Keep the existing short venue label separate from the selected Google location.
   Beginners' Workshop labels retain their existing 80-character email limit.
 - Let staff enter a venue/address manually if Google has no suitable result or is
-  unavailable, with an optional manually supplied Maps link.
+  unavailable. (Implemented as one autocomplete input: text typed without
+  choosing a suggestion is saved as written; a chosen suggestion saves its
+  Place ID only.)
 - Favour Dublin in suggestions without excluding other locations.
 - Show directions in Calendar events and attendee-facing workshop pages.
 - Use Calendar's native location field, not a Maps link added to the event

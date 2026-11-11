@@ -62,7 +62,7 @@ import {
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
 import { rescheduleRecipients } from "#lib/beginners-workshops/reschedule.js";
-import { destinationLines } from "#lib/destinations.js";
+import { destinationLines, directionsHref } from "#lib/destinations.js";
 import { workshopScope } from "#lib/beginners-workshops/refunds/scope.js";
 import FailedRefundFollowUp from "#lib/components/beginners-workshops/refunds/failed-refund-follow-up.svelte";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
@@ -110,8 +110,14 @@ let settingsOpen = $state(false);
 let fastTrackMounted = $state(false);
 
 const workshop = $derived(view.workshop);
-// ALE-441: the saved destination, shown beside the short venue label.
+// ALE-441: the saved destination, shown beside the short venue label; a
+// selected place (ALE-442) is a directions link, never Google text.
 const destination = $derived(destinationLines(workshop));
+const placeDirections = $derived(
+	destination.length === 0
+		? directionsHref(workshop, workshop.venue)
+		: undefined,
+);
 const next = $derived(view.nextBatch);
 const steps = $derived(consoleTimeline(view));
 const now = $derived(nowCard(view));
@@ -177,6 +183,14 @@ const attentionClass =
 							aria-hidden="true"
 						/>{workshop.venue}{#if destination.length > 0}<span
 								>&nbsp;· {destination.join(" · ")}</span
+							>{:else if placeDirections}<span aria-hidden="true">&nbsp;·</span
+							><a
+								href={placeDirections}
+								target="_blank"
+								rel="noopener noreferrer"
+								referrerpolicy="no-referrer"
+								class="font-medium text-primary underline-offset-4 hover:underline"
+								>Get directions</a
 							>{/if}
 					</p>
 					<p class="flex items-center gap-2" data-testid="console-staff">
@@ -562,7 +576,7 @@ const attentionClass =
 		/>
 	{/if}
 	<!-- A reschedule remounts it, so the new values are the ones that follow. -->
-	{#key `${workshop.id}:${workshop.date}:${workshop.startTime}:${workshop.endTime}:${workshop.venue}:${destination.join("|")}:${workshop.directionsUrl}:${workshop.destinationPlaceId}`}
+	{#key `${workshop.id}:${workshop.date}:${workshop.startTime}:${workshop.endTime}:${workshop.venue}:${destination.join("|")}:${workshop.destinationPlaceId}`}
 		<RescheduleDialog
 			{workshop}
 			recipients={rescheduleRecipients(view)}

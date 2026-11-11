@@ -33,9 +33,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersDestinationBackfillSyncTest do
       %{
         "venue" => "Club hall",
         "destination" => %{
-          "destination_name" => "National Basketball Arena",
-          "destination_address" => "Tymon Park, Dublin 6w",
-          "directions_url" => "https://maps.app.goo.gl/AbCdEf"
+          "destination_text" => "National Basketball Arena, Tymon Park, Dublin 6w"
         }
       }
     ]

@@ -12,16 +12,17 @@ defmodule DhcWeb.VenueLookupHTTP do
       invalid_place: {422, "Choose a place from the suggestions"},
       not_found:
         {404,
-         "That place is no longer available on Google Maps; search again or enter it manually"},
+         "That place is no longer available on Google Maps; search again or type the destination"},
       not_configured:
-        {503, "Google venue search isn't set up; enter the destination details manually"},
+        {503, "Google venue search isn't set up; type the destination and it is saved as written"},
       quota_exceeded:
         {503,
-         "Google venue search has reached its limit for now; enter the destination details manually"},
+         "Google venue search has reached its limit for now; type the destination and it is saved as written"},
       unauthorized:
-        {502, "Google venue search isn't authorised; enter the destination details manually"},
+        {502,
+         "Google venue search isn't authorised; type the destination and it is saved as written"},
       unavailable:
         {502,
-         "Google venue search is unavailable right now; enter the destination details manually"}
+         "Google venue search is unavailable right now; type the destination and it is saved as written"}
     }
 end

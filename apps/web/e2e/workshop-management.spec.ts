@@ -372,18 +372,17 @@ test.describe("Workshop Management", () => {
 				.getByRole("textbox", { name: "Workshop title", exact: true })
 				.fill(title);
 			await page.getByRole("textbox", { name: /location/i }).fill("Main hall");
-			await page
-				.getByRole("textbox", { name: "Destination name", exact: true })
-				.fill("National Basketball Arena");
-			await page
-				.getByRole("textbox", { name: "Destination address", exact: true })
-				.fill("Tymon Park, Dublin 6w");
-			await page
-				.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				})
-				.fill("https://maps.app.goo.gl/AbCdEf");
+			// No suggestion matches, so the text is saved exactly as typed.
+			const destination = page.getByRole("combobox", {
+				name: "Destination",
+				exact: true,
+			});
+			await destination.pressSequentially(
+				"National Basketball Arena, Tymon Park, Dublin 6w",
+			);
+			await expect(
+				page.getByRole("status").filter({ hasText: "No places found" }),
+			).toBeVisible();
 			await pickWorkshopDate(page, workshopDate);
 			await page
 				.getByRole("spinbutton", { name: "Available places", exact: true })
@@ -402,15 +401,18 @@ test.describe("Workshop Management", () => {
 			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
 
 			// The destination round-trips: the management modal shows the label,
-			// the destination details, and the validated Maps link.
+			// the manual text, and a Maps search for exactly that text.
 			const dialog = await openWorkshopModal(page, title);
 			await expect(dialog.getByText("Main hall")).toBeVisible();
 			await expect(
-				dialog.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+				dialog.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
 			).toBeVisible();
 			await expect(
 				dialog.getByRole("link", { name: "Get directions" }),
-			).toHaveAttribute("href", "https://maps.app.goo.gl/AbCdEf");
+			).toHaveAttribute(
+				"href",
+				`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
+			);
 
 			// Track the created workshop for teardown from the modal's edit link.
 			const editHref = await dialog
@@ -440,31 +442,28 @@ test.describe("Workshop Management", () => {
 				.fill(title);
 			await page.getByRole("textbox", { name: /location/i }).fill("Main hall");
 
-			// A search answered by nothing explains itself; a quota failure keeps
-			// manual entry available.
-			const search = page.getByRole("combobox", { name: "Search Google Maps" });
-			await search.pressSequentially("quota");
+			// A quota failure explains itself and keeps typed text working.
+			const destination = page.getByRole("combobox", {
+				name: "Destination",
+				exact: true,
+			});
+			await destination.pressSequentially("quota");
 			await expect(
 				page.getByRole("status").filter({ hasText: "reached its limit" }),
 			).toBeVisible();
-			await search.fill("");
-			await search.pressSequentially("Synthetic Fencing Hall");
+			await page.getByRole("button", { name: "Clear destination" }).click();
+			await destination.pressSequentially("Synthetic Fencing Hall");
 			await page
 				.getByRole("option", { name: /Synthetic Fencing Hall/ })
 				.click();
-			// Google's text is a transient preview with attribution; the
-			// destination name stays the coordinator's own.
-			const selected = page.getByRole("region", { name: "Selected place" });
-			await expect(selected).toContainText(
-				"1 Example Street, Dublin 8, Ireland",
+			// Google's text shows in the input with attribution, for this
+			// editing session only.
+			await expect(destination).toHaveValue(
+				"Synthetic Fencing Hall, 1 Example Street, Dublin 8, Ireland",
 			);
-			await expect(selected).toContainText("Google Maps · Example Venue Guide");
-			await expect(
-				page.getByRole("textbox", { name: "Destination name", exact: true }),
-			).toHaveValue("");
-			await page
-				.getByRole("textbox", { name: "Destination name", exact: true })
-				.fill("Our hall");
+			await expect(page.getByTestId("destination-attribution")).toContainText(
+				"Google Maps · Example Venue Guide",
+			);
 
 			await pickWorkshopDate(page, workshopDate);
 			await page
@@ -481,10 +480,10 @@ test.describe("Workshop Management", () => {
 			).toBeVisible();
 			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
 
-			// Attendees see the staff text, never Google's, and directions bound
+			// Attendees see the label, never Google's text, and directions bound
 			// to the place.
 			const dialog = await openWorkshopModal(page, title);
-			await expect(dialog.getByText("Our hall", { exact: true })).toBeVisible();
+			await expect(dialog.getByText("Main hall")).toBeVisible();
 			await expect(dialog.getByText("Synthetic Fencing Hall")).toHaveCount(0);
 			await expect(dialog.getByTestId("destination-attribution")).toHaveCount(
 				0,
@@ -493,7 +492,7 @@ test.describe("Workshop Management", () => {
 				dialog.getByRole("link", { name: "Get directions" }),
 			).toHaveAttribute(
 				"href",
-				"https://www.google.com/maps/dir/?api=1&destination=Our%20hall&destination_place_id=e2e_place_hall",
+				"https://www.google.com/maps/dir/?api=1&destination=Main%20hall&destination_place_id=e2e_place_hall",
 			);
 			// Editing it into a manual destination removes the provider identity.
 			await dialog.getByTestId("edit-workshop-button").click();
@@ -506,14 +505,19 @@ test.describe("Workshop Management", () => {
 			if (createdId) createdWorkshopIds.push(createdId);
 			await gotoHydrated(page, `/dashboard/workshops/${createdId}/edit`);
 			// No Google text was stored, so the saved place reopens as selected.
-			await expect(
-				page.getByRole("region", { name: "Selected place" }),
-			).toContainText("Google Maps place selected");
+			const saved = page.getByRole("combobox", {
+				name: "Destination",
+				exact: true,
+			});
+			await expect(saved).toHaveValue("");
+			await expect(saved).toHaveAttribute(
+				"placeholder",
+				"Google Maps place selected",
+			);
 			await expect(page.getByText("Synthetic Fencing Hall")).toHaveCount(0);
-			await page.getByRole("button", { name: "Remove place" }).click();
-			await page
-				.getByRole("textbox", { name: "Destination name", exact: true })
-				.fill("Our Own Hall");
+			// Typing replaces the place with manual text.
+			await saved.pressSequentially("Our Own Hall");
+			await saved.press("Escape");
 			await page
 				.getByRole("button", { name: "Update Workshop", exact: true })
 				.click();
@@ -655,7 +659,7 @@ test.describe("Workshop Management", () => {
 			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
 		});
 
-		test("prefills a saved destination, keeps it through an unrelated edit, and updates it", async ({
+		test("prefills a saved destination, keeps it through an unrelated edit, updates and clears it", async ({
 			page,
 			context,
 		}) => {
@@ -666,9 +670,7 @@ test.describe("Workshop Management", () => {
 			const workshop = await createTestWorkshop(page, {
 				title,
 				location: "Main hall",
-				destination_name: "National Basketball Arena",
-				destination_address: "Tymon Park, Dublin 6w",
-				directions_url: "https://maps.app.goo.gl/AbCdEf",
+				destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
 				max_capacity: 10,
 				price_member: 1500,
 				price_non_member: 2500,
@@ -677,20 +679,13 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			const destination = () =>
+				page.getByRole("combobox", { name: "Destination", exact: true });
 
-			await expect(
-				page.getByRole("textbox", { name: "Destination name", exact: true }),
-			).toHaveValue("National Basketball Arena");
-			await expect(
-				page.getByRole("textbox", { name: "Destination address", exact: true }),
-			).toHaveValue("Tymon Park, Dublin 6w");
-			await expect(
-				page.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				}),
-			).toHaveValue("https://maps.app.goo.gl/AbCdEf");
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(destination()).toHaveValue(
+				"National Basketball Arena, Tymon Park, Dublin 6w",
+			);
 
 			// An unrelated edit resubmits the stored destination untouched.
 			await page
@@ -700,149 +695,31 @@ test.describe("Workshop Management", () => {
 			await expect(page.getByText(/updated successfully/i)).toBeVisible();
 
 			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
-			await expect(
-				page.getByRole("textbox", { name: "Destination name", exact: true }),
-			).toHaveValue("National Basketball Arena");
+			await expect(destination()).toHaveValue(
+				"National Basketball Arena, Tymon Park, Dublin 6w",
+			);
 
-			// A deliberate change replaces the destination and its link together.
-			await page
-				.getByRole("textbox", { name: "Destination name", exact: true })
-				.fill("Clontarf Cricket Club");
-			await page
-				.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				})
-				.fill("https://www.google.com/maps/place/Clontarf+Cricket+Club");
+			// A deliberate change replaces the destination.
+			await page.getByRole("button", { name: "Clear destination" }).click();
+			await destination().pressSequentially("Clontarf Cricket Club");
+			await destination().press("Escape");
 			await page.getByRole("button", { name: "Update Workshop" }).click();
 			await expect(page.getByText(/updated successfully/i)).toBeVisible();
 
 			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
-			await expect(
-				page.getByRole("textbox", { name: "Destination name", exact: true }),
-			).toHaveValue("Clontarf Cricket Club");
-			await expect(
-				page.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				}),
-			).toHaveValue("https://www.google.com/maps/place/Clontarf+Cricket+Club");
+			await expect(destination()).toHaveValue("Clontarf Cricket Club");
+
+			// Clearing it removes the optional destination.
+			await page.getByRole("button", { name: "Clear destination" }).click();
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+			await expect(page.getByText(/updated successfully/i)).toBeVisible();
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(destination()).toHaveValue("");
 			// The short label was never touched by the destination edits.
 			await expect(
 				page.getByRole("textbox", { name: /location/i }),
 			).toHaveValue("Main hall");
-		});
-
-		test("clearing the destination fields removes the optional details", async ({
-			page,
-			context,
-		}) => {
-			await loginAsUser(context, adminData.email);
-
-			const ts = Date.now();
-			const workshop = await createTestWorkshop(page, {
-				title: `Destination Clear ${ts}`,
-				location: "Main hall",
-				destination_name: "National Basketball Arena",
-				destination_address: "Tymon Park, Dublin 6w",
-				directions_url: "https://maps.app.goo.gl/AbCdEf",
-				max_capacity: 10,
-				price_member: 1500,
-				price_non_member: 2500,
-				is_public: false,
-				status: "planned",
-			});
-			createdWorkshopIds.push(workshop.id);
-
-			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
-
-			await page
-				.getByRole("textbox", { name: "Destination name", exact: true })
-				.fill("");
-			await page
-				.getByRole("textbox", { name: "Destination address", exact: true })
-				.fill("");
-			await page
-				.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				})
-				.fill("");
-			await page.getByRole("button", { name: "Update Workshop" }).click();
-			await expect(page.getByText(/updated successfully/i)).toBeVisible();
-
-			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
-			await expect(
-				page.getByRole("textbox", { name: "Destination name", exact: true }),
-			).toHaveValue("");
-			await expect(
-				page.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				}),
-			).toHaveValue("");
-			// The label survives the clear.
-			await expect(
-				page.getByRole("textbox", { name: /location/i }),
-			).toHaveValue("Main hall");
-		});
-
-		test("rejects an unsafe directions link server-side and recovers without losing values", async ({
-			page,
-			context,
-		}) => {
-			await loginAsUser(context, adminData.email);
-
-			const ts = Date.now();
-			const workshop = await createTestWorkshop(page, {
-				title: `Unsafe Link ${ts}`,
-				location: "Main hall",
-				max_capacity: 10,
-				price_member: 1500,
-				price_non_member: 2500,
-				is_public: false,
-				status: "planned",
-			});
-			createdWorkshopIds.push(workshop.id);
-
-			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
-
-			// https, so the form's own check passes; only Phoenix's
-			// supported-Maps-destination rule can refuse it.
-			await page
-				.getByRole("textbox", { name: "Destination name", exact: true })
-				.fill("Arena");
-			await page
-				.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				})
-				.fill("https://evil.example.com/maps");
-			await page.getByRole("button", { name: "Update Workshop" }).click();
-
-			await expect(
-				page.getByText("Directions link must be a Google Maps link"),
-			).toBeVisible();
-			// The entered values survive the rejection.
-			await expect(
-				page.getByRole("textbox", { name: "Destination name", exact: true }),
-			).toHaveValue("Arena");
-			await expect(
-				page.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				}),
-			).toHaveValue("https://evil.example.com/maps");
-
-			// Correcting the link and resubmitting succeeds.
-			await page
-				.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				})
-				.fill("https://maps.app.goo.gl/AbCdEf");
-			await page.getByRole("button", { name: "Update Workshop" }).click();
-			await expect(page.getByText(/updated successfully/i)).toBeVisible();
 		});
 
 		test("locks editing for a published workshop", async ({
@@ -884,13 +761,7 @@ test.describe("Workshop Management", () => {
 			// Destination controls are locked with the rest: the published
 			// pricing exception does not permit venue edits (ALE-440).
 			await expect(
-				page.getByRole("textbox", { name: "Destination name", exact: true }),
-			).toBeDisabled();
-			await expect(
-				page.getByRole("textbox", {
-					name: "Google Maps directions link",
-					exact: true,
-				}),
+				page.getByRole("combobox", { name: "Destination", exact: true }),
 			).toBeDisabled();
 			await expect(
 				page.getByRole("button", { name: "Update Workshop" }),
@@ -1144,7 +1015,7 @@ test.describe("Workshop Management", () => {
 	});
 
 	test.describe("attendee directions (ALE-440)", () => {
-		test("members see destination details and a directions link on their workshop list", async ({
+		test("members see the destination and a directions link on their workshop list", async ({
 			page,
 			context,
 		}) => {
@@ -1154,9 +1025,7 @@ test.describe("Workshop Management", () => {
 				title: `Member Directions ${ts}`,
 				description: "Attendee directions fixture",
 				location: "Main hall",
-				destination_name: "National Basketball Arena",
-				destination_address: "Tymon Park, Dublin 6w",
-				directions_url: "https://maps.app.goo.gl/AbCdEf",
+				destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
 				start_date: start.toDate(),
 				end_date: start.add(2, "hour").toDate(),
 				max_capacity: 10,
@@ -1177,11 +1046,14 @@ test.describe("Workshop Management", () => {
 			});
 			await expect(card.getByText("Main hall")).toBeVisible();
 			await expect(
-				card.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+				card.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
 			).toBeVisible();
 			await expect(
 				card.getByRole("link", { name: "Get directions" }),
-			).toHaveAttribute("href", "https://maps.app.goo.gl/AbCdEf");
+			).toHaveAttribute(
+				"href",
+				`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
+			);
 			await expect(
 				card.getByRole("link", { name: "Get directions" }),
 			).toHaveAttribute("rel", "noopener noreferrer");
@@ -1196,9 +1068,7 @@ test.describe("Workshop Management", () => {
 				title: `External Directions ${ts}`,
 				description: "External attendee directions fixture",
 				location: "Main hall",
-				destination_name: "National Basketball Arena",
-				destination_address: "Tymon Park, Dublin 6w",
-				directions_url: "https://maps.app.goo.gl/AbCdEf",
+				destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
 				start_date: start.toDate(),
 				end_date: start.add(2, "hour").toDate(),
 				max_capacity: 10,
@@ -1220,12 +1090,12 @@ test.describe("Workshop Management", () => {
 				await gotoHydrated(page, `/workshops/${workshop.id}/register`);
 				await expect(page.getByText("Main hall")).toBeVisible();
 				await expect(
-					page.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+					page.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
 				).toBeVisible();
 				const directions = page.getByRole("link", { name: "Get directions" });
 				await expect(directions).toHaveAttribute(
 					"href",
-					"https://maps.app.goo.gl/AbCdEf",
+					`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
 				);
 				await expect(directions).toHaveAttribute("rel", "noopener noreferrer");
 			} finally {

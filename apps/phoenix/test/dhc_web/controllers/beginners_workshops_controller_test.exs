@@ -332,18 +332,14 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
     conn: conn
   } do
     destination = %{
-      "destinationName" => "National Basketball Arena",
-      "destinationAddress" => "Tymon Park, Dublin 6w",
-      "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+      "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
     }
 
     [with_destination, label_only] = schedule!(conn, [item(destination), item()])
     assert Map.take(with_destination, Map.keys(destination)) == destination
 
     assert Map.take(label_only, Map.keys(destination)) == %{
-             "destinationName" => nil,
-             "destinationAddress" => nil,
-             "directionsUrl" => nil
+             "destinationText" => nil
            }
 
     coordinator = as_role(conn, "beginners_coordinator")
@@ -351,26 +347,26 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
     assert %{
              "errors" => %{
                "fields" => %{
-                 "workshops.1.directionsUrl" => ["Directions link must be an https link"]
+                 "workshops.1.destinationText" => [_]
                }
              }
            } =
              coordinator
              |> post("/api/beginners-workshops", %{
-               "workshops" => [item(), item(%{"directionsUrl" => "http://maps.google.com/x"})]
+               "workshops" => [item(), item(%{"destinationText" => String.duplicate("a", 501)})]
              })
              |> json_response(422)
 
     date = Date.add(Date.from_iso8601!(label_only["date"]), 7) |> Date.to_iso8601()
 
-    assert %{"data" => %{"venue" => "The Hub", "destinationName" => "The Hub, upstairs"}} =
+    assert %{"data" => %{"venue" => "The Hub", "destinationText" => "The Hub, upstairs"}} =
              coordinator
              |> post("/api/beginners-workshops/#{label_only["id"]}/reschedule", %{
                "date" => date,
                "startTime" => "18:30",
                "endTime" => "20:30",
                "venue" => "The Hub",
-               "destinationName" => "The Hub, upstairs"
+               "destinationText" => "The Hub, upstairs"
              })
              |> json_response(200)
   end
@@ -378,7 +374,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
   test "a selected Google place round-trips through schedule, update and clear (ALE-442)", %{
     conn: conn
   } do
-    selected = %{"destinationName" => "Our hall", "destinationPlaceId" => "place_hall"}
+    selected = %{"destinationText" => nil, "destinationPlaceId" => "place_hall"}
 
     [first, second] = schedule!(conn, [item(selected), item(selected)])
 
@@ -386,9 +382,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
       assert %{
                "destinationProvider" => "google",
                "destinationPlaceId" => "place_hall",
-               "destinationName" => "Our hall",
-               "destinationAddress" => nil,
-               "directionsUrl" => nil
+               "destinationText" => nil
              } = workshop
 
       refute Map.has_key?(workshop, "destinationAttributions")
@@ -401,13 +395,13 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              coordinator
              |> put(path, %{
                "venue" => first["venue"],
-               "destinationName" => "Our Own Hall",
+               "destinationText" => "Our Own Hall",
                "destinationPlaceId" => nil
              })
              |> json_response(200)
 
     assert %{
-             "destinationName" => "Our Own Hall",
+             "destinationText" => "Our Own Hall",
              "destinationProvider" => nil,
              "destinationPlaceId" => nil
            } = manual
@@ -434,34 +428,27 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
 
     body = %{
       "venue" => workshop["venue"],
-      "destinationName" => "National Basketball Arena",
-      "destinationAddress" => "Tymon Park, Dublin 6w",
-      "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+      "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
     }
 
     assert %{"data" => updated} = coordinator |> put(path, body) |> json_response(200)
-    assert updated["destinationName"] == "National Basketball Arena"
-    assert updated["directionsUrl"] == "https://maps.app.goo.gl/AbCdEf"
+    assert updated["destinationText"] == "National Basketball Arena, Tymon Park, Dublin 6w"
 
-    assert Map.drop(updated, ~w(destinationName destinationAddress directionsUrl)) ==
-             Map.drop(workshop, ~w(destinationName destinationAddress directionsUrl))
+    assert Map.drop(updated, ~w(destinationText)) == Map.drop(workshop, ~w(destinationText))
 
     # An omitted key keeps its value; `null` clears it.
-    assert %{
-             "data" => %{"destinationName" => "National Basketball Arena", "directionsUrl" => nil}
-           } =
+    assert %{"data" => %{"destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"}} =
              coordinator
-             |> put(path, %{"venue" => workshop["venue"], "directionsUrl" => nil})
+             |> put(path, %{"venue" => workshop["venue"]})
              |> json_response(200)
 
+    message = "Choose a suggested place or type the destination, not both"
+
     assert %{
-             "errors" =>
-               %{
-                 "fields" => %{"directionsUrl" => ["Directions link must be a Google Maps link"]}
-               } = errors
+             "errors" => %{"fields" => %{"destinationText" => [^message]}} = errors
            } =
              coordinator
-             |> put(path, Map.put(body, "directionsUrl", "https://evil.example.com/maps"))
+             |> put(path, Map.put(body, "destinationPlaceId", "place_hall"))
              |> json_response(422)
 
     refute Map.has_key?(errors, "code")

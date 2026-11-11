@@ -116,7 +116,7 @@ export const rescheduleWorkshop = form(
 			{
 				fallback:
 					input.operation === "destination"
-						? "Could not save the destination details"
+						? "Could not save the destination"
 						: "Could not reschedule the workshop",
 				formPath: rescheduleFormPath,
 			},

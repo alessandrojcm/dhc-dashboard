@@ -51,6 +51,10 @@ defmodule Dhc.Places do
   @input_max 120
   @attributions_max 10
   @provider_name_max 200
+  # Preview bounds for Google's text (never stored; ALE-442).
+  @preview_name_max 255
+  @preview_address_max 500
+  @provider_uri_max 2048
   @uuid_v4 ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
 
   @type error ::
@@ -212,8 +216,8 @@ defmodule Dhc.Places do
        %{
          provider: "google",
          place_id: id,
-         name: text(name, Destinations.name_max()),
-         address: text(address, Destinations.address_max()),
+         name: text(name, @preview_name_max),
+         address: text(address, @preview_address_max),
          attributions: attributions
        }}
     else
@@ -266,7 +270,7 @@ defmodule Dhc.Places do
   defp https_uri?(nil), do: true
 
   defp https_uri?(uri) do
-    String.length(uri) <= Destinations.url_max() and
+    String.length(uri) <= @provider_uri_max and
       match?(
         {:ok, %URI{scheme: "https", host: host, userinfo: nil}}
         when is_binary(host) and host != "",

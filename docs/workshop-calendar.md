@@ -98,9 +98,10 @@ Existing upcoming regular Workshops and Beginners' Workshops can be enriched wit
 from a one-off, human-reviewed mapping of short venue labels. A mapping entry
 asserts that the label and the destination are the same physical Venue; list a
 label under `ambiguous` (or leave it out) when it is not certain. The mapping
-accepts only `destination_name`, `destination_address` and `directions_url`: no
-Places search, provider identity or first-result choice, and it is not a
-reusable venue registry. Google-selected destinations (ALE-442) stay with the
+accepts only the manual `destination_text`: no Places search, provider identity
+or first-result choice, and it is not a reusable venue registry. A source is
+enriched only while it has no destination at all (neither text nor a place);
+different stored text is a `destination_conflict`. Google-selected destinations (ALE-442) stay with the
 editors' search: a mapping may echo `destination_place_id: null` but never
 names a place, and a workshop whose stored destination is a Google selection
 is refused as `destination_conflict` rather than overwritten or stripped of
@@ -108,10 +109,12 @@ its provider identity.
 
 A Google-selected destination stores only its Place ID (see
 [the Places validation](google-places-terms-validation.md#owner-decision-place-id-only-ale-442)).
-The Calendar `location` stays `Dhc.Destinations.calendar_location/3` over the
-staff-typed name and address, falling back to the label: it never carries
-Google's text, a Maps link or the Place ID, so selecting, replacing or
-removing a place alone changes no event.
+A saved destination is either manual text or a selected place, never both.
+The Calendar `location` is `Dhc.Destinations.calendar_location/2`: the manual
+text, else the label. It never carries Google's text, a Maps link or the Place
+ID, so a selected-place-only workshop's event shows its label (an accepted
+trade-off), and selecting, replacing or removing a place alone changes no
+event.
 
 Run these only in an authorized operator session:
 

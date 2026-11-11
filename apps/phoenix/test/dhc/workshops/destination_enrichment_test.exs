@@ -24,15 +24,11 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
   @finish ~U[2027-03-28 11:00:00Z]
 
   @arena %{
-    destination_name: "National Basketball Arena",
-    destination_address: "Tymon Park, Dublin 6w",
-    directions_url: "https://maps.app.goo.gl/AbCdEf",
+    destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
     destination_place_id: nil
   }
   @none %{
-    destination_name: nil,
-    destination_address: nil,
-    directions_url: nil,
+    destination_text: nil,
     destination_place_id: nil
   }
 
@@ -55,7 +51,7 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
 
       # The ordinary editor stays closed to a published Workshop.
       assert {:error, :not_editable} =
-               Workshops.update_workshop(workshop.id, %{destination_name: "Elsewhere"})
+               Workshops.update_workshop(workshop.id, %{destination_text: "Elsewhere"})
 
       assert {:ok, :changed} = enrich(staff, workshop)
 
@@ -93,12 +89,6 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
       assert Repo.get!(Workshop, workshop.id) == after_first
       assert committee_event(workshop.id) == event
       assert sync_jobs(workshop.id) == jobs
-    end
-
-    test "fills absent fields when the stored ones already agree", %{staff: staff} do
-      workshop = published!(destination_name: @arena.destination_name)
-      assert {:ok, :changed} = enrich(staff, workshop)
-      assert Map.take(Repo.get!(Workshop, workshop.id), Map.keys(@arena)) == @arena
     end
   end
 
@@ -142,7 +132,7 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
         rescheduled: %{reviewed | start_time: ~T[11:00:00]},
         rescheduled: %{reviewed | date: Date.add(reviewed.date, 1)},
         status_changed: %{reviewed | status: "planned"},
-        destination_changed: %{reviewed | destination: %{@none | destination_name: "Seen"}}
+        destination_changed: %{reviewed | destination: %{@none | destination_text: "Seen"}}
       ]
 
       for {reason, stale} <- cases do
@@ -154,7 +144,7 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
     end
 
     test "a different stored destination is a conflict, not enrichment", %{staff: staff} do
-      workshop = published!(destination_address: "Another street")
+      workshop = published!(destination_text: "Another street")
       assert {:error, :destination_conflict} = enrich(staff, workshop)
       assert Repo.get!(Workshop, workshop.id) == workshop
     end
@@ -164,7 +154,6 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
     test "a Google-selected destination is a conflict, not enrichment", %{staff: staff} do
       workshop =
         published!(
-          destination_name: @arena.destination_name,
           destination_provider: "google",
           destination_place_id: "ChIJ-selected",
           destination_selected_at: ~U[2027-02-01 12:00:00Z]
@@ -206,7 +195,7 @@ defmodule Dhc.Workshops.DestinationEnrichmentTest do
 
     test "an invalid proposal is refused without a write", %{staff: staff} do
       workshop = published!()
-      bad = %{@arena | directions_url: "https://example.com/not-maps"}
+      bad = %{@arena | destination_text: String.duplicate("a", 501)}
 
       assert {:error, :invalid_destination} =
                Workshops.enrich_destination(

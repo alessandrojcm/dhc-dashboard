@@ -530,7 +530,6 @@ export type {
 	TrainingAnnouncementConflictError,
 	ClientOptions,
 	DiscordDoctorCacheMetadata,
-	DestinationAttribution,
 	VenueLookupSuggestRequest,
 	VenueLookupResolveRequest,
 	VenueLookupSuggestion,

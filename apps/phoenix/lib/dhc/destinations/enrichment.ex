@@ -14,22 +14,20 @@ defmodule Dhc.Destinations.Enrichment do
 
   alias Dhc.Destinations
 
-  # The reviewed destination: the manual text fields plus the selected place
+  # The reviewed destination: the manual text plus the selected place
   # (ALE-442). A reviewed mapping only ever proposes manual text
   # (`destination_place_id: nil`), so a Google-selected destination is never
   # "absent" and is refused as a conflict rather than overwritten.
-  @fields Destinations.text_fields() ++ [:destination_place_id]
+  @fields Destinations.fields()
 
   @type destination :: %{
-          destination_name: String.t() | nil,
-          destination_address: String.t() | nil,
-          directions_url: String.t() | nil,
+          destination_text: String.t() | nil,
           destination_place_id: String.t() | nil
         }
 
   @doc """
-  The keys of a reviewed destination: `Dhc.Destinations.text_fields/0` and
-  `destination_place_id`.
+  The keys of a reviewed destination: `Dhc.Destinations.fields/0`
+  (`destination_text` and `destination_place_id`).
   """
   @spec fields() :: [atom()]
   def fields, do: @fields
@@ -82,11 +80,11 @@ defmodule Dhc.Destinations.Enrichment do
   How `proposed` compares with the `current` stored destination:
 
     * `:unchanged` — the stored destination already is the proposal;
-    * `:change` — every stored field is absent or already equal to the
-      proposal, and at least one differs;
-    * `{:refused, :destination_conflict}` — a stored value differs from the
-      proposal (including one the proposal would clear): a different
-      destination, which the source's ordinary editor owns.
+    * `:change` — no destination is stored (neither text nor a place), so
+      the proposal fills it;
+    * `{:refused, :destination_conflict}` — different text or a selected
+      place is stored: a different destination, which the source's ordinary
+      editor owns.
   """
   @spec outcome(destination(), destination()) ::
           :change | :unchanged | {:refused, :destination_conflict}

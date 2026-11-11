@@ -3,9 +3,9 @@ defmodule Dhc.Workshops.DestinationEnrichment do
   The one rule for a reviewed same-Venue destination enrichment of a regular
   Workshop (ALE-443).
 
-  Enrichment adds manually reviewed destination details (`destination_name`,
-  `destination_address`, `directions_url`) to an upcoming Workshop whose short
-  venue label a human has matched to the same physical Venue. It is the narrow
+  Enrichment adds manually reviewed destination text (`destination_text`) to
+  an upcoming Workshop whose short venue label a human has matched to the
+  same physical Venue. It is the narrow
   exception to the planned-only editor: it never changes the label, schedule,
   status or any place, payment or refund fact, and never moves a Workshop to
   another Venue.

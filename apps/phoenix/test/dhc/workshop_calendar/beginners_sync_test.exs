@@ -95,9 +95,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersSyncTest do
                {:update_destination, workshop.id,
                 %{
                   venue: "Club hall",
-                  destination_name: "National Basketball Arena",
-                  destination_address: "Tymon Park, Dublin 6w",
-                  directions_url: "https://maps.app.goo.gl/AbCdEf"
+                  destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
                 }}
              )
 
@@ -119,7 +117,10 @@ defmodule Dhc.WorkshopCalendar.BeginnersSyncTest do
              command(
                staff,
                {:update_destination, workshop.id,
-                %{venue: "Club hall", destination_name: "National Basketball Arena"}}
+                %{
+                  venue: "Club hall",
+                  destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
+                }}
              )
 
     assert revision(workshop.id) == revision + 1

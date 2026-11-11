@@ -21,12 +21,10 @@ const formattedTime = $derived.by(() => {
 	return `${formatDublinTime12h(workshop.start_date)} - ${formatDublinTime12h(workshop.end_date)}`;
 });
 
-// ALE-440: optional destination details and a safe external directions
+// ALE-440: the optional destination text and a safe external directions
 // link beside the familiar location label.
 const destinationFacts = $derived({
-	destinationName: workshop.destination_name,
-	destinationAddress: workshop.destination_address,
-	directionsUrl: workshop.directions_url,
+	destinationText: workshop.destination_text,
 	destinationProvider: workshop.destination_provider,
 	destinationPlaceId: workshop.destination_place_id,
 });

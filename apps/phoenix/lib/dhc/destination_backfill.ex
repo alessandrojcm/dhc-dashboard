@@ -43,9 +43,8 @@ defmodule Dhc.DestinationBackfill do
       {
         "mappings": [
           {"venue": "Club hall",
-           "destination": {"destination_name": "National Basketball Arena",
-                           "destination_address": "Tymon Park, Dublin 6w",
-                           "directions_url": "https://maps.app.goo.gl/..."}}
+           "destination": {"destination_text":
+                             "National Basketball Arena, Tymon Park, Dublin 6w"}}
         ],
         "ambiguous": ["Main hall"]
       }
@@ -53,7 +52,7 @@ defmodule Dhc.DestinationBackfill do
   Each entry is a reviewed manual destination for the same physical Venue as
   its label. Labels match after trimming, collapsing whitespace and ignoring
   case. A label listed as `ambiguous`, or mapped to two different
-  destinations, never matches. Only the three destination fields are accepted:
+  destinations, never matches. Only the manual `destination_text` is accepted:
   there is no provider identity, no search and no first-result choice, and the
   mapping is not a reusable venue registry.
 
@@ -85,7 +84,7 @@ defmodule Dhc.DestinationBackfill do
   # A mapping proposes manual text only; a reviewed destination also names the
   # selected place (`nil` for a manual one) so a Google selection is never
   # overwritten (`Dhc.Destinations.Enrichment.fields/0`).
-  @mapping_fields Destinations.text_fields()
+  @mapping_fields [:destination_text]
   @destination_types Map.new(@mapping_fields, &{&1, :string})
   @destination_keys Enum.map(Enrichment.fields(), &Atom.to_string/1)
   @entry_keys ~w(venue destination note)
@@ -198,7 +197,11 @@ defmodule Dhc.DestinationBackfill do
 
   defp changeset_issue(changeset) do
     changeset
-    |> Ecto.Changeset.traverse_errors(fn {message, _opts} -> message end)
+    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
+      Regex.replace(~r/%{(\w+)}/, message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
     |> Enum.map_join("; ", fn {field, messages} -> "#{field}: #{Enum.join(messages, ", ")}" end)
   end
 
@@ -322,12 +325,7 @@ defmodule Dhc.DestinationBackfill do
   end
 
   defp location(destination, label),
-    do:
-      Destinations.calendar_location(
-        destination.destination_name,
-        destination.destination_address,
-        label
-      )
+    do: Destinations.calendar_location(destination.destination_text, label)
 
   defp target(row) do
     %{

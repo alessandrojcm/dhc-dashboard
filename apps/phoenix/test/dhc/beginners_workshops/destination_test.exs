@@ -1,6 +1,7 @@
 defmodule Dhc.BeginnersWorkshops.DestinationTest do
   @moduledoc """
-  ALE-441: manual destinations on Beginners' Workshops through
+  ALE-441/ALE-442: destinations (manual text or a selected place) on
+  Beginners' Workshops through
   `Dhc.BeginnersWorkshops.execute/3` with fixed clocks — saved on schedule and
   reschedule, and changed on their own by `update_destination`, which is never
   a reschedule.
@@ -33,9 +34,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
   @now ~U[2026-10-22 12:00:00.000000Z]
 
   @destination %{
-    "destination_name" => "National Basketball Arena",
-    "destination_address" => "Tymon Park, Dublin 6w",
-    "directions_url" => "https://maps.app.goo.gl/AbCdEf"
+    "destination_text" => "National Basketball Arena, Tymon Park, Dublin 6w"
   }
 
   setup do
@@ -71,7 +70,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
   defp destination(workshop) do
     workshop
     |> stored()
-    |> Map.take([:destination_name, :destination_address, :directions_url])
+    |> Map.take([:destination_text, :destination_place_id])
   end
 
   defp email_logs(workshop) do
@@ -105,21 +104,19 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
 
       for view <- [first, second] do
         assert view.venue == "St. Andrew's Hall"
-        assert view.destination_name == "National Basketball Arena"
-        assert view.destination_address == "Tymon Park, Dublin 6w"
-        assert view.directions_url == "https://maps.app.goo.gl/AbCdEf"
+        assert view.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
       end
 
-      assert %{destination_name: nil, destination_address: nil, directions_url: nil} =
-               label_only
+      assert %{destination_text: nil, destination_place_id: nil} = label_only
 
       # Each workshop owns its saved copy: changing one leaves the other.
       assert {:ok, _} =
                update_destination(coordinator, stored(first), %{
-                 "destination_address" => "Tymon Road, Dublin 6w"
+                 "destination_text" => "Tymon Road, Dublin 6w"
                })
 
-      assert destination(second).destination_address == "Tymon Park, Dublin 6w"
+      assert destination(second).destination_text ==
+               "National Basketball Arena, Tymon Park, Dublin 6w"
     end
 
     test "blank destination text is absent and the venue keeps its email-sized limit", %{
@@ -127,12 +124,10 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
     } do
       view =
         scheduled_fixture(coordinator, %{
-          "destination_name" => "   ",
-          "destination_address" => "",
-          "directions_url" => ""
+          "destination_text" => "   "
         })
 
-      assert %{destination_name: nil, destination_address: nil, directions_url: nil} = view
+      assert %{destination_text: nil} = view
 
       assert {:error, {:workshop, 0, %Ecto.Changeset{} = changeset}} =
                run(
@@ -141,17 +136,13 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
                   [
                     workshop_attrs(%{
                       "venue" => String.duplicate("v", 81),
-                      "destination_name" => String.duplicate("n", 256),
-                      "directions_url" => "javascript:alert(1)"
+                      "destination_text" => String.duplicate("n", 501)
                     })
                   ]},
                  now()
                )
 
-      assert %{venue: [_], destination_name: [_], directions_url: [message]} =
-               errors_on(changeset)
-
-      assert message == "Directions link must be an https link"
+      assert %{venue: [_], destination_text: [_]} = errors_on(changeset)
     end
   end
 
@@ -171,9 +162,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
 
       assert {:ok, view} = update_destination(coordinator, workshop, @destination)
 
-      assert view.destination_name == "National Basketball Arena"
-      assert view.destination_address == "Tymon Park, Dublin 6w"
-      assert view.directions_url == "https://maps.app.goo.gl/AbCdEf"
+      assert view.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
 
       after_update = stored(workshop)
 
@@ -201,29 +190,28 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
 
       assert {:ok, _} =
                update_destination(coordinator, workshop, %{
-                 "destination_address" => "Tymon Road, Dublin 6w"
+                 "destination_text" => "Tymon Road, Dublin 6w"
                })
 
       assert destination(workshop) == %{
-               destination_name: "National Basketball Arena",
-               destination_address: "Tymon Road, Dublin 6w",
-               directions_url: "https://maps.app.goo.gl/AbCdEf"
+               destination_text: "Tymon Road, Dublin 6w",
+               destination_place_id: nil
              }
 
-      assert {:ok, view} =
-               update_destination(coordinator, workshop, %{
-                 "directions_url" => nil,
-                 "destination_name" => ""
-               })
-
-      assert %{destination_name: nil, directions_url: nil} = view
-      assert destination(workshop).destination_address == "Tymon Road, Dublin 6w"
+      # Omitting the key keeps the saved text.
+      assert {:ok, _} = update_destination(coordinator, workshop, %{})
+      assert destination(workshop).destination_text == "Tymon Road, Dublin 6w"
 
       # Settings and an unrelated reschedule keep the saved destination.
       assert {:ok, _} = run(coordinator, {:update_workshop, workshop.id, %{"capacity" => 20}})
 
       assert {:ok, _} = reschedule(coordinator, workshop, %{"date" => "2026-11-21"})
-      assert destination(workshop).destination_address == "Tymon Road, Dublin 6w"
+      assert destination(workshop).destination_text == "Tymon Road, Dublin 6w"
+
+      assert {:ok, view} =
+               update_destination(coordinator, workshop, %{"destination_text" => nil})
+
+      assert %{destination_text: nil} = view
     end
 
     test "an unchanged destination writes nothing", %{coordinator: coordinator} do
@@ -234,28 +222,43 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       assert stored(workshop).updated_at == before.updated_at
     end
 
-    test "a Maps link is validated and every field error is named", %{coordinator: coordinator} do
+    test "every destination field error is named", %{coordinator: coordinator} do
       workshop = scheduled_fixture(coordinator)
-
-      for {url, message} <- [
-            {"http://www.google.com/maps?q=Tallaght", "Directions link must be an https link"},
-            {"https://evil.example.com/maps", "Directions link must be a Google Maps link"},
-            {"https://user:pass@www.google.com/maps",
-             "Directions link must not include a username or password"}
-          ] do
-        assert {:error, %Ecto.Changeset{} = changeset} =
-                 update_destination(coordinator, workshop, %{"directions_url" => url})
-
-        assert %{directions_url: [^message]} = errors_on(changeset)
-      end
 
       assert {:error, %Ecto.Changeset{} = changeset} =
                update_destination(coordinator, workshop, %{
-                 "destination_address" => String.duplicate("a", 501)
+                 "destination_text" => String.duplicate("a", 501)
                })
 
-      assert %{destination_address: [_]} = errors_on(changeset)
-      assert destination(workshop).directions_url == nil
+      assert %{destination_text: [_]} = errors_on(changeset)
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               update_destination(coordinator, workshop, %{
+                 "destination_text" => "Hall",
+                 "destination_place_id" => "place_hall"
+               })
+
+      assert %{destination_text: ["Choose a suggested place or type the destination, not both"]} =
+               errors_on(changeset)
+
+      assert destination(workshop) == %{destination_text: nil, destination_place_id: nil}
+    end
+
+    test "the database refuses manual text beside a place for out-of-seam writers", %{
+      coordinator: coordinator
+    } do
+      workshop = scheduled_fixture(coordinator, @destination)
+
+      assert_raise Postgrex.Error, ~r/beginners_workshops_destination_text_or_place/, fn ->
+        Repo.update_all(
+          from(w in BeginnersWorkshop, where: w.id == ^workshop.id),
+          set: [
+            destination_provider: "google",
+            destination_place_id: "place_hall",
+            destination_selected_at: ~U[2026-01-01 00:00:00Z]
+          ]
+        )
+      end
     end
 
     test "names the venue it describes", %{coordinator: coordinator} do
@@ -314,7 +317,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
                )
 
       assert view.venue == "The Hub"
-      assert view.destination_name == "National Basketball Arena"
+      assert view.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
       assert stored(workshop).reschedule_count == 1
 
       assert [{_, "rescheduled", "rescheduled:1"}] =
@@ -328,7 +331,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
                reschedule(coordinator, workshop, @destination)
 
       assert %{date: [_]} = errors_on(changeset)
-      assert destination(workshop).destination_name == nil
+      assert destination(workshop).destination_text == nil
       assert stored(workshop).reschedule_count == 0
     end
   end
@@ -340,7 +343,9 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       {workshop, [{_intake, token}]} = contacted_fixture(coordinator, 1)
 
       assert {:ok, %{workshop: page}} = IntakePage.show(token, Clock.fixed(@now))
-      assert %{venue: "St. Andrew's Hall", destination_name: nil, directions_url: nil} = page
+
+      assert %{venue: "St. Andrew's Hall", destination_text: nil, destination_place_id: nil} =
+               page
 
       assert {:ok, _} = update_destination(coordinator, workshop, @destination)
 
@@ -348,9 +353,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
 
       assert %{
                venue: "St. Andrew's Hall",
-               destination_name: "National Basketball Arena",
-               destination_address: "Tymon Park, Dublin 6w",
-               directions_url: "https://maps.app.goo.gl/AbCdEf"
+               destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
              } = page
     end
 
@@ -367,13 +370,8 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
   # ── ALE-442: a destination selected from Google venue search ──
 
   describe "a selected Google place" do
-    # Staff text beside the selected place: Google's own text is never sent.
-    @selected %{
-      "destination_name" => "Our hall",
-      "destination_address" => nil,
-      "directions_url" => nil,
-      "destination_place_id" => "place_hall"
-    }
+    # The dialog sends the place and empty text: Google's own text is never sent.
+    @selected %{"destination_text" => "", "destination_place_id" => "place_hall"}
 
     defp provenance(workshop) do
       workshop
@@ -420,7 +418,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       assert {:ok, view} = update_destination(coordinator, workshop, @selected)
 
       assert %{
-               destination_name: "Our hall",
+               destination_text: nil,
                destination_provider: "google",
                destination_place_id: "place_hall"
              } = view
@@ -435,39 +433,38 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       assert {:ok, _} = update_destination(coordinator, workshop, @selected)
       assert stored(workshop).updated_at == before.updated_at
 
-      # Staff may edit their own text beside the selected place: it is kept.
-      assert {:ok, edited} =
+      # Text beside the selected place is refused: a place or text, never both.
+      assert {:error, %Ecto.Changeset{}} =
                update_destination(
                  coordinator,
                  workshop,
-                 Map.put(@selected, "destination_name", "Our hall, side door")
+                 Map.put(@selected, "destination_text", "Our hall, side door")
                )
-
-      assert %{destination_name: "Our hall, side door", destination_place_id: "place_hall"} =
-               edited
 
       assert %{destination_selected_at: ~U[2026-10-22 12:00:00Z]} = provenance(workshop)
 
       # A manual destination replaces the provider identity.
       assert {:ok, manual} =
                update_destination(coordinator, workshop, %{
-                 "destination_name" => "Our Own Hall",
-                 "destination_address" => "2 Other Road",
+                 "destination_text" => "Our Own Hall, 2 Other Road",
                  "destination_place_id" => nil
                })
 
-      assert %{destination_provider: nil, destination_place_id: nil} = manual
+      assert %{
+               destination_text: "Our Own Hall, 2 Other Road",
+               destination_provider: nil,
+               destination_place_id: nil
+             } = manual
 
       assert {:ok, _} = update_destination(coordinator, workshop, @selected)
 
       assert {:ok, cleared} =
                update_destination(coordinator, workshop, %{
-                 "destination_name" => nil,
-                 "destination_address" => nil,
+                 "destination_text" => nil,
                  "destination_place_id" => nil
                })
 
-      assert %{destination_name: nil, destination_place_id: nil} = cleared
+      assert %{destination_text: nil, destination_place_id: nil} = cleared
       assert email_logs(workshop) == logs
       assert notifications() == keys
       assert stored(workshop).reschedule_count == 0
@@ -490,7 +487,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
                Enum.filter(email_logs(workshop), &(elem(&1, 1) == "rescheduled"))
     end
 
-    test "the Intake page carries the staff text and the place, never Google text", %{
+    test "the Intake page carries the place, never Google text", %{
       coordinator: coordinator
     } do
       {workshop, [{_intake, token}]} = contacted_fixture(coordinator, 1)
@@ -499,8 +496,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       assert {:ok, %{workshop: page}} = IntakePage.show(token, Clock.fixed(@now))
 
       assert %{
-               destination_name: "Our hall",
-               destination_address: nil,
+               destination_text: nil,
                destination_provider: "google",
                destination_place_id: "place_hall"
              } = page
@@ -514,7 +510,6 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
 
       assert {:error, %Ecto.Changeset{} = changeset} =
                update_destination(coordinator, workshop, %{
-                 "destination_name" => "Hall",
                  "destination_place_id" => "not/a place"
                })
 

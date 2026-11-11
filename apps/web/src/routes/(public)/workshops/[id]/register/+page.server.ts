@@ -65,9 +65,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 				start_date: workshop.startDate,
 				end_date: workshop.endDate,
 				location: workshop.location,
-				destination_name: workshop.destinationName,
-				destination_address: workshop.destinationAddress,
-				directions_url: workshop.directionsUrl,
+				destination_text: workshop.destinationText,
 				// ALE-442: a selected place's ID, for its directions link only.
 				destination_provider: workshop.destinationProvider ?? null,
 				destination_place_id: workshop.destinationPlaceId ?? null,

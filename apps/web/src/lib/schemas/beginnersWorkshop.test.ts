@@ -44,9 +44,7 @@ describe("scheduleWorkshopsSchema", () => {
 					paymentCutoffDate: undefined,
 					contactFromDate: undefined,
 					venue: "St. Andrew's Hall",
-					destinationName: null,
-					destinationAddress: null,
-					directionsUrl: null,
+					destinationText: null,
 					destinationPlaceId: null,
 					startTime: "18:30",
 					endTime: "20:30",
@@ -61,9 +59,7 @@ describe("scheduleWorkshopsSchema", () => {
 					paymentCutoffDate: "2026-12-01",
 					contactFromDate: "2026-11-20",
 					venue: "St. Andrew's Hall",
-					destinationName: null,
-					destinationAddress: null,
-					directionsUrl: null,
+					destinationText: null,
 					destinationPlaceId: null,
 					startTime: "18:30",
 					endTime: "20:30",
@@ -323,16 +319,12 @@ describe("ALE-421: the Waitlist tab's money commands", () => {
 	});
 });
 
-describe("destination details (ALE-441)", () => {
+describe("destination (ALE-441/ALE-442)", () => {
 	const destination = {
-		destination_name: " National Basketball Arena ",
-		destination_address: "Tymon Park, Dublin 6w",
-		directions_url: "https://maps.app.goo.gl/AbCdEf",
+		destination_text: " National Basketball Arena, Tymon Park, Dublin 6w ",
 	};
 	const sent = {
-		destinationName: "National Basketball Arena",
-		destinationAddress: "Tymon Park, Dublin 6w",
-		directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+		destinationText: "National Basketball Arena, Tymon Park, Dublin 6w",
 		destinationPlaceId: null,
 	};
 
@@ -346,20 +338,17 @@ describe("destination details (ALE-441)", () => {
 		for (const workshop of workshops) expect(workshop).toMatchObject(sent);
 	});
 
-	it("refuses a non-https directions link on the field", () => {
+	it("refuses over-long destination text on the field", () => {
 		const result = v.safeParse(scheduleWorkshopsSchema, {
 			...shared,
-			directions_url: "javascript:alert(1)",
+			destination_text: "a".repeat(501),
 			workshops: [{ date: "2026-11-14" }],
 		});
 
 		expect(result.success).toBe(false);
-		expect(
-			(result.issues ?? []).map((issue) => [
-				v.getDotPath(issue),
-				issue.message,
-			]),
-		).toEqual([["directions_url", "Directions link must be an https link"]]);
+		expect((result.issues ?? []).map((issue) => v.getDotPath(issue))).toEqual([
+			"destination_text",
+		]);
 	});
 
 	const reschedule = {
@@ -399,9 +388,7 @@ describe("destination details (ALE-441)", () => {
 	it("sends a destination-only change with just the venue it describes", () => {
 		const output = v.parse(rescheduleWorkshopSchema, {
 			...reschedule,
-			destination_name: "",
-			destination_address: "Tymon Park, Dublin 6w",
-			directions_url: "",
+			destination_text: "Tymon Park, Dublin 6w",
 			operation: "destination",
 		});
 
@@ -411,27 +398,23 @@ describe("destination details (ALE-441)", () => {
 			operation: "destination",
 			body: {
 				venue: "St. Andrew's Hall",
-				destinationName: null,
-				destinationAddress: "Tymon Park, Dublin 6w",
-				directionsUrl: null,
+				destinationText: "Tymon Park, Dublin 6w",
 				destinationPlaceId: null,
 			},
 		});
 	});
 
-	it("sends a selected Google place's ID beside the staff text on every date (ALE-442)", () => {
+	it("sends only a selected Google place's ID on every date, never text (ALE-442)", () => {
 		const { workshops } = v.parse(scheduleWorkshopsSchema, {
 			...shared,
-			destination_name: "Our hall",
-			destination_address: "",
+			destination_text: "",
 			destination_place_id: "place_hall",
 			workshops: [{ date: "2026-11-14" }, { date: "2026-11-21" }],
 		});
 
 		for (const workshop of workshops) {
 			expect(workshop).toMatchObject({
-				destinationName: "Our hall",
-				destinationAddress: null,
+				destinationText: null,
 				destinationPlaceId: "place_hall",
 			});
 			expect(workshop).not.toHaveProperty("destinationAttributions");

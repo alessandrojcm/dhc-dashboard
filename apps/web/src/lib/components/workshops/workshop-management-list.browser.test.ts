@@ -15,9 +15,7 @@ function workshop(
 		title: "Clock change longsword",
 		description: null,
 		location: "Main Hall",
-		destinationName: null,
-		destinationAddress: null,
-		directionsUrl: null,
+		destinationText: null,
 		destinationProvider: null,
 		destinationPlaceId: null,
 		// 00:30 Irish Summer Time to 01:30 GMT on Sunday 25 October; in LA it
@@ -44,14 +42,12 @@ function workshop(
 }
 
 test("shows a saved destination with a safe directions link in the management modal", async () => {
-	// ALE-440: the familiar label stays, destination details sit beside it,
-	// and the validated manual Maps link opens externally.
+	// ALE-440: the familiar label stays, the manual destination text sits
+	// beside it, and its Maps search opens externally.
 	const screen = await render(WorkshopManagementListTestWrapper, {
 		workshops: [
 			workshop({
-				destinationName: "National Basketball Arena",
-				destinationAddress: "Tymon Park, Dublin 6w",
-				directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+				destinationText: "National Basketball Arena, Tymon Park, Dublin 6w",
 			}),
 		],
 	});
@@ -63,7 +59,7 @@ test("shows a saved destination with a safe directions link in the management mo
 	await expect.element(dialog.getByText("Main Hall")).toBeVisible();
 	await expect
 		.element(
-			dialog.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+			dialog.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
 		)
 		.toBeVisible();
 
@@ -71,7 +67,10 @@ test("shows a saved destination with a safe directions link in the management mo
 	await expect.element(directions).toBeVisible();
 	await expect
 		.element(directions)
-		.toHaveAttribute("href", "https://maps.app.goo.gl/AbCdEf");
+		.toHaveAttribute(
+			"href",
+			`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
+		);
 	await expect.element(directions).toHaveAttribute("target", "_blank");
 	await expect
 		.element(directions)

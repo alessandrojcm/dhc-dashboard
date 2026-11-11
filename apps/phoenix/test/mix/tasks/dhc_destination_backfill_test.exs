@@ -15,8 +15,7 @@ defmodule Mix.Tasks.DhcDestinationBackfillTest do
       %{
         "venue" => "Club hall",
         "destination" => %{
-          "destination_name" => "National Basketball Arena",
-          "destination_address" => "Tymon Park, Dublin 6w"
+          "destination_text" => "National Basketball Arena, Tymon Park, Dublin 6w"
         }
       }
     ]
@@ -51,7 +50,7 @@ defmodule Mix.Tasks.DhcDestinationBackfillTest do
     assert %{"workshops" => rows, "proposed_targets" => [target]} = Jason.decode!(output)
     assert Enum.any?(rows, &(&1["source_id"] == workshop.id and &1["outcome"] == "change"))
     assert target["source_id"] == workshop.id
-    assert %{destination_name: nil} = Repo.get!(Workshop, workshop.id)
+    assert %{destination_text: nil} = Repo.get!(Workshop, workshop.id)
 
     assert_raise Mix.Error, ~r/usage: mix dhc.destination_backfill.preview/, fn ->
       Preview.run([])
@@ -150,10 +149,9 @@ defmodule Mix.Tasks.DhcDestinationBackfillTest do
                {"beginners_workshop", beginners.id, "changed"}
              ])
 
-    assert %{destination_name: "National Basketball Arena"} = Repo.get!(Workshop, workshop.id)
-
-    assert %{destination_name: "National Basketball Arena"} =
-             Repo.get!(BeginnersWorkshop, beginners.id)
+    arena = "National Basketball Arena, Tymon Park, Dublin 6w"
+    assert %{destination_text: ^arena} = Repo.get!(Workshop, workshop.id)
+    assert %{destination_text: ^arena} = Repo.get!(BeginnersWorkshop, beginners.id)
 
     unknown = write!(dir, "unknown.json", %{"approved_targets" => []})
     assert_raise Mix.Error, ~r/Plan refused/, fn -> Apply.run([unknown, "--operator", staff]) end

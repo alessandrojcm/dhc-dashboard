@@ -81,12 +81,11 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
              ~w(action closedReason feeCents firstName paymentCutoff state workshop)
 
     # ALE-441: a label-only (legacy) workshop carries no destination.
-    assert %{"destinationName" => nil, "destinationAddress" => nil, "directionsUrl" => nil} =
-             data["workshop"]
+    assert %{"destinationText" => nil, "destinationPlaceId" => nil} = data["workshop"]
 
     assert Map.keys(data["workshop"]) |> Enum.sort() ==
-             ~w(date destinationAddress destinationName destinationPlaceId
-                destinationProvider directionsUrl endTime startTime venue)
+             ~w(date destinationPlaceId destinationProvider destinationText endTime startTime
+                venue)
   end
 
   test "the page carries a saved destination beside the label, still without a referrer", %{
@@ -100,9 +99,7 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
                {:update_destination, workshop.id,
                 %{
                   "venue" => workshop.venue,
-                  "destination_name" => "National Basketball Arena",
-                  "destination_address" => "Tymon Park, Dublin 6w",
-                  "directions_url" => "https://maps.app.goo.gl/AbCdEf"
+                  "destination_text" => "National Basketball Arena, Tymon Park, Dublin 6w"
                 }},
                clock: clock(DateTime.utc_now())
              )
@@ -114,15 +111,13 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
              "data" => %{
                "workshop" => %{
                  "venue" => "St. Andrew's Hall",
-                 "destinationName" => "National Basketball Arena",
-                 "destinationAddress" => "Tymon Park, Dublin 6w",
-                 "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+                 "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
                }
              }
            } = json_response(conn, 200)
   end
 
-  test "a selected place carries its Place ID beside the staff text, never Google text (ALE-442)",
+  test "a selected place carries its Place ID, never Google text (ALE-442)",
        %{
          conn: conn,
          token: token,
@@ -146,11 +141,9 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
              "data" => %{
                "workshop" => %{
                  "venue" => "St. Andrew's Hall",
-                 "destinationName" => nil,
-                 "destinationAddress" => nil,
+                 "destinationText" => nil,
                  "destinationProvider" => "google",
-                 "destinationPlaceId" => "place_hall",
-                 "directionsUrl" => nil
+                 "destinationPlaceId" => "place_hall"
                }
              }
            } = json_response(conn, 200)

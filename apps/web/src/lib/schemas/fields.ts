@@ -261,39 +261,15 @@ export const optionalPrincipalId = (message: string) =>
 export const principalIds = (message: string) =>
 	v.optional(v.array(v.pipe(v.string(), v.uuid(message))), []);
 
-const isHttpsUrl = (input: string) => {
-	try {
-		return new URL(input).protocol === "https:";
-	} catch {
-		return false;
-	}
-};
-
 /**
- * Optional destination details (ALE-440/ALE-441), shared by the regular
+ * The optional destination (ALE-440/ALE-441/ALE-442), shared by the regular
  * Workshop and Beginners' Workshop forms beside each domain's own required
- * short venue label. The keys are `destination-input.svelte`'s control names.
- * Client-side the directions link only gets a light https-shape check; Phoenix
- * owns the supported-Maps-destination rule and answers a rejection as a field
- * error on `directionsUrl`.
- *
- * ALE-442: a place selected from Google venue search submits only its Place
- * ID, through a hidden control (empty for a manual destination); the name and
- * address stay staff-typed. Phoenix owns the provenance rules.
+ * short venue label. The keys are `destination-input.svelte`'s hidden control
+ * names: the manual text exactly as typed, or the Place ID of a chosen Google
+ * suggestion (never both; Google's text is never submitted). Phoenix owns the
+ * provenance rules.
  */
 export const destinationEntries = {
-	destination_name: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
-	destination_address: v.optional(v.pipe(v.string(), v.maxLength(500)), ""),
-	directions_url: v.optional(
-		v.pipe(
-			v.string(),
-			v.maxLength(2048),
-			v.check(
-				(input) => input.trim() === "" || isHttpsUrl(input),
-				"Directions link must be an https link",
-			),
-		),
-		"",
-	),
+	destination_text: v.optional(v.pipe(v.string(), v.maxLength(500)), ""),
 	destination_place_id: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
 };

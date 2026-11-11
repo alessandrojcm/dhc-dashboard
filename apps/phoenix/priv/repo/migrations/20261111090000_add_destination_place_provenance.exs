@@ -11,8 +11,10 @@ defmodule Dhc.Repo.Migrations.AddDestinationPlaceProvenance do
   links for a selected place are derived at read time, so no provider-derived
   link is stored.
 
-  The provider, Place ID and selection timestamp are all set or all absent;
-  a manual destination carries none of them.
+  The provider, Place ID and selection timestamp are all set or all absent,
+  and a selected place carries no manual `destination_text`: a destination
+  is a place or text, never both (`Dhc.Destinations.validate_changeset/2`
+  enforces the same rule for a field error).
   """
 
   use Ecto.Migration
@@ -38,6 +40,12 @@ defmodule Dhc.Repo.Migrations.AddDestinationPlaceProvenance do
           check:
             "(destination_provider IS NULL) = (destination_place_id IS NULL) AND " <>
               "(destination_place_id IS NULL) = (destination_selected_at IS NULL)"
+        )
+      )
+
+      create(
+        constraint(table, :"#{table}_destination_text_or_place",
+          check: "destination_text IS NULL OR destination_place_id IS NULL"
         )
       )
 

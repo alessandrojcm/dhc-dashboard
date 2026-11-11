@@ -24,14 +24,10 @@ defmodule Dhc.DestinationBackfillTest do
   @now ~U[2027-03-01 12:00:00Z]
 
   @arena %{
-    "destination_name" => "National Basketball Arena",
-    "destination_address" => "Tymon Park, Dublin 6w",
-    "directions_url" => "https://maps.app.goo.gl/AbCdEf"
+    "destination_text" => "National Basketball Arena, Tymon Park, Dublin 6w"
   }
   @arena_fields %{
-    destination_name: "National Basketball Arena",
-    destination_address: "Tymon Park, Dublin 6w",
-    directions_url: "https://maps.app.goo.gl/AbCdEf",
+    destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
     destination_place_id: nil
   }
 
@@ -63,21 +59,23 @@ defmodule Dhc.DestinationBackfillTest do
                    %{
                      "venue" => "  Club hall ",
                      "note" => "Reviewed with the venue's booking page",
-                     "destination" => Map.put(@arena, "directions_url", " ")
+                     "destination" => %{
+                       "destination_text" => "  #{@arena["destination_text"]} "
+                     }
                    }
                  ]
                })
 
       assert [%{venue: "Club hall", destination: destination}] = mapping.entries
-      assert destination == %{@arena_fields | directions_url: nil}
+      assert destination == @arena_fields
     end
 
-    test "refuses provider identities, unknown keys, invalid links and empty destinations" do
+    test "refuses provider identities, unknown keys, invalid text and empty destinations" do
       document = %{
         "mappings" => [
           %{"venue" => "A", "destination" => Map.put(@arena, "place_id", "ChIJ123")},
-          %{"venue" => "B", "destination" => %{"directions_url" => "https://example.com/x"}},
-          %{"venue" => "C", "destination" => %{"destination_name" => " "}},
+          %{"venue" => "B", "destination" => %{"destination_text" => String.duplicate("a", 501)}},
+          %{"venue" => "C", "destination" => %{"destination_text" => " "}},
           %{"venue" => " ", "destination" => @arena},
           %{"venue" => "D", "destination" => @arena, "first_result" => true},
           "not an entry"
@@ -93,8 +91,20 @@ defmodule Dhc.DestinationBackfillTest do
         assert at in ats
       end
 
-      assert %{issue: "directions_url: Directions link must be a Google Maps link"} =
+      assert %{issue: "destination_text: should be at most 500 character(s)"} =
                Enum.find(issues, &(&1.at == "mappings[1].destination"))
+
+      # The retired name/address/link keys are unknown, never silently dropped.
+      assert {:error, [%{issue: "unknown key directions_url"}]} =
+               DestinationBackfill.parse_mapping(%{
+                 "mappings" => [
+                   %{
+                     "venue" => "E",
+                     "destination" =>
+                       Map.put(@arena, "directions_url", "https://maps.app.goo.gl/x")
+                   }
+                 ]
+               })
 
       assert {:error, _} = DestinationBackfill.parse_mapping(%{"venues" => []})
     end
@@ -129,7 +139,7 @@ defmodule Dhc.DestinationBackfillTest do
       unmatched = workshop!(location: "Somewhere unreviewed")
       ambiguous = workshop!(location: "Main hall")
       conflicting = workshop!(location: "Main hall annex")
-      different = workshop!(location: "Club hall", destination_address: "Other road")
+      different = workshop!(location: "Club hall", destination_text: "Other road")
       cancelled = workshop!(location: "Club hall", status: "cancelled")
       archived = workshop!(location: "Club hall", archived_at: ~U[2027-02-01 00:00:00Z])
 
@@ -163,7 +173,7 @@ defmodule Dhc.DestinationBackfillTest do
                outcome: :change,
                reason: nil,
                proposed_destination: @arena_fields,
-               current_destination: %{destination_name: nil},
+               current_destination: %{destination_text: nil},
                calendar: %{
                  location_before: "Club hall",
                  location_after: "National Basketball Arena, Tymon Park, Dublin 6w",
@@ -197,7 +207,7 @@ defmodule Dhc.DestinationBackfillTest do
                  date: ~D[2027-03-28],
                  start_time: ~T[10:00:00],
                  end_time: ~T[12:00:00],
-                 destination: %{destination_name: nil}
+                 destination: %{destination_text: nil}
                }
              } = Enum.find(preview.proposed_targets, &(&1.source_id == mapped.id))
 
@@ -255,8 +265,8 @@ defmodule Dhc.DestinationBackfillTest do
                Enum.sort([left_alone.id, discovered.id])
 
       assert destination(approved.id) == @arena_fields
-      assert destination(left_alone.id).destination_name == nil
-      assert destination(discovered.id).destination_name == nil
+      assert destination(left_alone.id).destination_text == nil
+      assert destination(discovered.id).destination_text == nil
 
       # Repeating the same plan is a no-op: no write and no Calendar intent.
       jobs = jobs()
@@ -328,8 +338,8 @@ defmodule Dhc.DestinationBackfillTest do
                {:refused, :invalid_target}
              ]
 
-      assert destination(rescheduled.id).destination_name == nil
-      assert destination(ambiguous.id).destination_name == nil
+      assert destination(rescheduled.id).destination_text == nil
+      assert destination(ambiguous.id).destination_text == nil
     end
 
     test "an unauthorized operator changes nothing" do
@@ -340,7 +350,7 @@ defmodule Dhc.DestinationBackfillTest do
       assert {:ok, %{results: [%{outcome: :refused, reason: :forbidden}]}} =
                DestinationBackfill.apply_plan(plan, {:staff, member.principal_id}, clock: clock())
 
-      assert destination(workshop.id).destination_name == nil
+      assert destination(workshop.id).destination_text == nil
     end
 
     test "a malformed plan or mapping is refused as a whole", %{staff: staff} do
@@ -398,7 +408,7 @@ defmodule Dhc.DestinationBackfillTest do
                end_time: ~T[12:00:00],
                match: :mapped,
                outcome: :change,
-               current_destination: %{destination_name: nil},
+               current_destination: %{destination_text: nil},
                proposed_destination: @arena_fields,
                calendar: %{
                  location_before: "Club hall",
@@ -483,8 +493,8 @@ defmodule Dhc.DestinationBackfillTest do
 
       assert destination(:beginners_workshop, bw.id) == @arena_fields
       # The regular twin with the same id and text is untouched and still owed.
-      assert destination(twin.id).destination_name == nil
-      assert destination(:beginners_workshop, other.id).destination_name == nil
+      assert destination(twin.id).destination_text == nil
+      assert destination(:beginners_workshop, other.id).destination_text == nil
 
       assert Enum.sort(Enum.map(result.discovered, &{&1.source_kind, &1.source_id})) ==
                Enum.sort([{:workshop, twin.id}, {:beginners_workshop, other.id}])
@@ -536,7 +546,7 @@ defmodule Dhc.DestinationBackfillTest do
                bw_run(
                  staff,
                  {:update_destination, edited.id,
-                  %{"venue" => "Club hall", "destination_address" => "Elsewhere"}}
+                  %{"venue" => "Club hall", "destination_text" => "Elsewhere"}}
                )
 
       plan =
@@ -557,9 +567,9 @@ defmodule Dhc.DestinationBackfillTest do
              }
 
       for workshop <- [rescheduled, moved, cancelled],
-          do: assert(destination(:beginners_workshop, workshop.id).destination_name == nil)
+          do: assert(destination(:beginners_workshop, workshop.id).destination_text == nil)
 
-      assert destination(:beginners_workshop, edited.id).destination_address == "Elsewhere"
+      assert destination(:beginners_workshop, edited.id).destination_text == "Elsewhere"
     end
 
     test "the start boundary is judged at apply time", %{staff: staff} do
@@ -588,7 +598,7 @@ defmodule Dhc.DestinationBackfillTest do
       assert Enum.sort(Enum.map(results, &{&1.source_kind, &1.outcome, &1.reason})) ==
                [{:beginners_workshop, :refused, :forbidden}, {:workshop, :changed, nil}]
 
-      assert destination(:beginners_workshop, bw.id).destination_name == nil
+      assert destination(:beginners_workshop, bw.id).destination_text == nil
     end
   end
 
@@ -601,7 +611,10 @@ defmodule Dhc.DestinationBackfillTest do
       "mappings" => [
         %{"venue" => "Club hall", "destination" => @arena},
         %{"venue" => "Main hall annex", "destination" => @arena},
-        %{"venue" => "Main hall annex", "destination" => Map.put(@arena, "directions_url", nil)}
+        %{
+          "venue" => "Main hall annex",
+          "destination" => %{"destination_text" => "Annex, Dublin 8"}
+        }
       ],
       "ambiguous" => ["Main hall"]
     }

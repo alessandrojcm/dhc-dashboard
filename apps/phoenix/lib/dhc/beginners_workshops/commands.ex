@@ -146,8 +146,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
   optional `venue`, `date`, `payment_cutoff_date`, `payment_cutoff_time` and
   `contact_from`; at least one schedule field must change.
 
-  Destination attributes (ALE-441) are the optional `destination_name`,
-  `destination_address` and `directions_url`: on a schedule, a reschedule,
+  Destination attributes (ALE-441/ALE-442) are the optional
+  `destination_text` and `destination_place_id` (never both): on a schedule,
+  a reschedule,
   or `update_destination`, which also names the `venue` it describes.
   Omitted keys keep their value and `nil` clears one. `enrich_destination`
   (ALE-444) takes `%{expected: reviewed_facts, destination: proposal}` from

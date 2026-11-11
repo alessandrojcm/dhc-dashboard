@@ -13,8 +13,9 @@
  *     selection, and it resolves exactly the suggestion the person picked.
  *
  * It holds suggestions only for the current search and drops them on choice,
- * dismissal or `destroy()`. It never touches the form: the input applies a
- * selection through `onSelect`.
+ * dismissal or `destroy()`; after a choice `query` is the chosen suggestion's
+ * text, for the input to show. It never touches the form: the input applies
+ * a selection through `onSelect`, and `clear()` empties the query.
  */
 import type {
 	VenueLookup,
@@ -82,7 +83,7 @@ export class VenueSearch {
 
 		if (trimmed.length > VENUE_SEARCH_MAX) {
 			this.#reset("failed");
-			this.message = `Search with up to ${VENUE_SEARCH_MAX} characters.`;
+			this.message = `Google suggestions need ${VENUE_SEARCH_MAX} characters or fewer; what you type is saved as written.`;
 			return;
 		}
 
@@ -128,7 +129,8 @@ export class VenueSearch {
 		if (result.ok) {
 			// The selection ends the session; the next search starts a new one.
 			this.#sessionToken = undefined;
-			this.query = "";
+			// The single destination input shows what was chosen.
+			this.query = suggestion.text;
 			this.#reset("idle");
 			this.#onSelect(result.data);
 		} else {
@@ -143,6 +145,14 @@ export class VenueSearch {
 		this.#request++;
 		this.#sessionToken = undefined;
 		this.#reset(this.status === "failed" ? "failed" : "idle");
+	}
+
+	/** Empties the query and closes any search (the input's clear button). */
+	clear() {
+		this.dismiss();
+		this.query = "";
+		this.status = "idle";
+		this.message = undefined;
 	}
 
 	/** Drops everything on unmount. */

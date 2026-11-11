@@ -187,9 +187,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "title" => "Demand Workshop",
                "description" => "Coordinator view",
                "location" => "Main Hall",
-               "destinationName" => nil,
-               "destinationAddress" => nil,
-               "directionsUrl" => nil,
+               "destinationText" => nil,
                "destinationProvider" => nil,
                "destinationPlaceId" => nil,
                "startDate" => "2026-07-01T10:00:00Z",
@@ -633,25 +631,22 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
     # ── ALE-440: manually entered destinations over the public contract ──
 
-    test "creates a Workshop with a manual destination and optional Maps link", %{conn: conn} do
+    test "creates a Workshop with a manual destination", %{conn: conn} do
       conn =
         conn
         |> auth_conn("workshop_coordinator")
         |> post(
           "/api/workshops",
           Map.merge(valid_workshop_payload(), %{
-            "destinationName" => "National Basketball Arena",
-            "destinationAddress" => "Tymon Park, Dublin 6w",
-            "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+            "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
           })
         )
 
       assert %{"data" => %{"workshop" => workshop}} = json_response(conn, 201)
 
       assert workshop["location"] == "Main Hall"
-      assert workshop["destinationName"] == "National Basketball Arena"
-      assert workshop["destinationAddress"] == "Tymon Park, Dublin 6w"
-      assert workshop["directionsUrl"] == "https://maps.app.goo.gl/AbCdEf"
+      assert workshop["destinationText"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+      assert workshop["destinationPlaceId"] == nil
     end
 
     test "keeps label-only payloads valid and reports legacy rows as null", %{conn: conn} do
@@ -661,37 +656,35 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> post("/api/workshops", valid_workshop_payload())
 
       assert %{"data" => %{"workshop" => workshop}} = json_response(conn, 201)
-      assert workshop["destinationName"] == nil
-      assert workshop["destinationAddress"] == nil
-      assert workshop["directionsUrl"] == nil
+      assert workshop["destinationText"] == nil
+      assert workshop["destinationPlaceId"] == nil
     end
 
-    test "rejects an unsafe directions link as a 422 field error", %{conn: conn} do
+    test "refuses manual text beside a Place ID as a 422 field error", %{conn: conn} do
       conn =
         conn
         |> auth_conn("workshop_coordinator")
         |> post(
           "/api/workshops",
           Map.merge(valid_workshop_payload(), %{
-            "directionsUrl" => "javascript:alert(1)"
+            "destinationText" => "Our hall",
+            "destinationPlaceId" => "place_hall"
           })
         )
 
+      message = "Choose a suggested place or type the destination, not both"
+
       assert json_response(conn, 422) == %{
                "errors" => %{
-                 "detail" => "directionsUrl: Directions link must be an https link",
-                 "fields" => %{"directionsUrl" => ["Directions link must be an https link"]}
+                 "detail" => "destinationText: " <> message,
+                 "fields" => %{"destinationText" => [message]}
                }
              }
     end
 
     test "an omitted destination field preserves the stored destination", %{conn: conn} do
       workshop =
-        insert_workshop(
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w",
-          directions_url: "https://maps.app.goo.gl/AbCdEf"
-        )
+        insert_workshop(destination_text: "National Basketball Arena, Tymon Park, Dublin 6w")
 
       conn =
         conn
@@ -701,33 +694,23 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
 
       assert payload["title"] == "Unrelated edit"
-      assert payload["destinationName"] == "National Basketball Arena"
-      assert payload["destinationAddress"] == "Tymon Park, Dublin 6w"
-      assert payload["directionsUrl"] == "https://maps.app.goo.gl/AbCdEf"
+      assert payload["destinationText"] == "National Basketball Arena, Tymon Park, Dublin 6w"
     end
 
-    test "an explicit null clears the optional destination details", %{conn: conn} do
+    test "an explicit null clears the optional destination", %{conn: conn} do
       workshop =
-        insert_workshop(
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w",
-          directions_url: "https://maps.app.goo.gl/AbCdEf"
-        )
+        insert_workshop(destination_text: "National Basketball Arena, Tymon Park, Dublin 6w")
 
       conn =
         conn
         |> auth_conn("workshop_coordinator")
         |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
-          "destinationName" => nil,
-          "destinationAddress" => nil,
-          "directionsUrl" => nil
+          "destinationText" => nil
         })
 
       assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
 
-      assert payload["destinationName"] == nil
-      assert payload["destinationAddress"] == nil
-      assert payload["directionsUrl"] == nil
+      assert payload["destinationText"] == nil
       assert payload["location"] == "Test Location"
     end
 
@@ -738,7 +721,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         conn
         |> auth_conn("workshop_coordinator")
         |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
-          "destinationName" => "Arena"
+          "destinationText" => "Arena"
         })
 
       assert %{
@@ -752,7 +735,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       conn =
         build_conn()
         |> auth_conn("workshop_coordinator")
-        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"directionsUrl" => nil})
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"destinationPlaceId" => nil})
 
       assert json_response(conn, 422)["errors"]["code"] == "not_editable"
     end
@@ -767,9 +750,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           is_public: true,
           price_non_member: 2500.0,
           max_capacity: 2,
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w",
-          directions_url: "https://maps.app.goo.gl/AbCdEf"
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
         )
 
       conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
@@ -778,9 +759,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "data" => %{
                  "canRegister" => true,
                  "workshop" => %{
-                   "destinationName" => "National Basketball Arena",
-                   "destinationAddress" => "Tymon Park, Dublin 6w",
-                   "directionsUrl" => "https://maps.app.goo.gl/AbCdEf"
+                   "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
                  }
                }
              } = json_response(conn, 200)
@@ -802,9 +781,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "data" => %{
                  "canRegister" => true,
                  "workshop" => %{
-                   "destinationName" => nil,
-                   "destinationAddress" => nil,
-                   "directionsUrl" => nil
+                   "destinationText" => nil
                  }
                }
              } = json_response(conn, 200)
@@ -814,13 +791,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
     test "a selected place round-trips through create, unrelated edits, replacement and clear",
          %{conn: conn} do
-      # Staff text beside the selected place; Google's own text is never sent.
-      selected = %{
-        "destinationName" => "Our hall",
-        "destinationAddress" => nil,
-        "directionsUrl" => "https://maps.app.goo.gl/Stale",
-        "destinationPlaceId" => "place_hall"
-      }
+      # The form sends the place and empty text; Google's own text is never sent.
+      selected = %{"destinationText" => nil, "destinationPlaceId" => "place_hall"}
 
       created =
         conn
@@ -831,12 +803,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert %{
                "location" => "Main Hall",
-               "destinationName" => "Our hall",
-               "destinationAddress" => nil,
+               "destinationText" => nil,
                "destinationProvider" => "google",
-               "destinationPlaceId" => "place_hall",
-               # A selected place's link is derived from it; no stale link is kept.
-               "directionsUrl" => nil
+               "destinationPlaceId" => "place_hall"
              } = created
 
       refute Map.has_key?(created, "destinationAttributions")
@@ -850,9 +819,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("workshop_coordinator")
         |> patch("/api/workshops/#{created["id"]}", %{
           "title" => "Renamed",
-          "destinationName" => "Our hall",
-          "destinationAddress" => nil,
-          "directionsUrl" => nil,
+          "destinationText" => nil,
           "destinationPlaceId" => "place_hall"
         })
         |> json_response(200)
@@ -864,27 +831,30 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert Repo.get!(Dhc.Workshops.Workshop, created["id"]).destination_selected_at ==
                stored.destination_selected_at
 
-      # Editing the staff text without naming the place drops the place, so
-      # it cannot keep pointing at what may now be another venue.
+      # Typed text without naming the place is a manual destination: the
+      # place is dropped, so it cannot keep pointing at another venue.
       unnamed =
         build_conn()
         |> auth_conn("workshop_coordinator")
-        |> patch("/api/workshops/#{created["id"]}", %{"destinationAddress" => "2 Other Road"})
+        |> patch("/api/workshops/#{created["id"]}", %{"destinationText" => "2 Other Road"})
         |> json_response(200)
         |> get_in(["data", "workshop"])
 
       assert %{
-               "destinationName" => "Our hall",
-               "destinationAddress" => "2 Other Road",
+               "destinationText" => "2 Other Road",
+               "destinationProvider" => nil,
                "destinationPlaceId" => nil
              } = unnamed
 
-      # Selecting again, then a different manual destination with a link,
-      # drops the provider identity.
+      # Selecting again replaces the manual text; typing again (the form
+      # sends the text and no place) drops the provider identity.
       assert %{"destinationPlaceId" => "place_hall"} =
                build_conn()
                |> auth_conn("workshop_coordinator")
-               |> patch("/api/workshops/#{created["id"]}", %{"destinationPlaceId" => "place_hall"})
+               |> patch("/api/workshops/#{created["id"]}", %{
+                 "destinationText" => nil,
+                 "destinationPlaceId" => "place_hall"
+               })
                |> json_response(200)
                |> get_in(["data", "workshop"])
 
@@ -892,17 +862,14 @@ defmodule DhcWeb.WorkshopsControllerTest do
         build_conn()
         |> auth_conn("workshop_coordinator")
         |> patch("/api/workshops/#{created["id"]}", %{
-          "destinationName" => "Our Own Hall",
-          "destinationAddress" => "2 Other Road",
-          "directionsUrl" => "https://maps.app.goo.gl/AbCdEf",
+          "destinationText" => "Our Own Hall, 2 Other Road",
           "destinationPlaceId" => nil
         })
         |> json_response(200)
         |> get_in(["data", "workshop"])
 
       assert %{
-               "destinationName" => "Our Own Hall",
-               "directionsUrl" => "https://maps.app.goo.gl/AbCdEf",
+               "destinationText" => "Our Own Hall, 2 Other Road",
                "destinationProvider" => nil,
                "destinationPlaceId" => nil
              } = manual
@@ -911,15 +878,13 @@ defmodule DhcWeb.WorkshopsControllerTest do
         build_conn()
         |> auth_conn("workshop_coordinator")
         |> patch("/api/workshops/#{created["id"]}", %{
-          "destinationName" => nil,
-          "destinationAddress" => nil,
-          "directionsUrl" => nil,
+          "destinationText" => nil,
           "destinationPlaceId" => nil
         })
         |> json_response(200)
         |> get_in(["data", "workshop"])
 
-      assert %{"destinationName" => nil, "destinationPlaceId" => nil} = cleared
+      assert %{"destinationText" => nil, "destinationPlaceId" => nil} = cleared
       assert cleared["location"] == "Main Hall"
     end
 
@@ -930,7 +895,6 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> post(
           "/api/workshops",
           Map.merge(valid_workshop_payload(), %{
-            "destinationName" => "Hall",
             "destinationPlaceId" => "../places/x"
           })
         )
@@ -945,15 +909,12 @@ defmodule DhcWeb.WorkshopsControllerTest do
       conn =
         conn
         |> auth_conn("workshop_coordinator")
-        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
-          "destinationName" => "Hall",
-          "destinationPlaceId" => "place_hall"
-        })
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"destinationPlaceId" => "place_hall"})
 
       assert json_response(conn, 422)["errors"]["code"] == "not_editable"
     end
 
-    test "attendee reads carry the staff text and the place for directions, never Google text",
+    test "attendee reads carry the place for directions, never Google text",
          %{conn: conn} do
       workshop =
         insert_workshop(
@@ -962,7 +923,6 @@ defmodule DhcWeb.WorkshopsControllerTest do
           is_public: true,
           price_non_member: 2500.0,
           max_capacity: 2,
-          destination_name: "Our hall",
           destination_provider: "google",
           destination_place_id: "place_hall",
           destination_selected_at: ~U[2026-11-01 10:00:00Z]
@@ -974,8 +934,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> json_response(200)
 
       assert %{
-               "destinationName" => "Our hall",
-               "destinationAddress" => nil,
+               "destinationText" => nil,
                "destinationProvider" => "google",
                "destinationPlaceId" => "place_hall"
              } = gate["data"]["workshop"]
@@ -2535,9 +2494,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       title: "Uncapped",
       description: nil,
       location: "Main Hall",
-      destination_name: nil,
-      destination_address: nil,
-      directions_url: nil,
+      destination_text: nil,
       destination_provider: nil,
       destination_place_id: nil,
       start_date: ~U[2026-07-01 10:00:00Z],

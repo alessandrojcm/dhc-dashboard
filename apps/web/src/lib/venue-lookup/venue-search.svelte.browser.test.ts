@@ -88,7 +88,8 @@ describe("VenueSearch", () => {
 		expect(resolve).toHaveBeenCalledWith("b", "token-1");
 		expect(onSelect).toHaveBeenCalledWith(hall);
 		expect(search.suggestions).toEqual([]);
-		expect(search.query).toBe("");
+		// The input now shows the chosen suggestion's own text.
+		expect(search.query).toBe(suggestions("a", "b")[1]?.text);
 
 		// The selection ended the session: a replacement search starts a new one.
 		search.input("annex");
@@ -166,6 +167,21 @@ describe("VenueSearch", () => {
 		expect(search.suggestions.map((s) => s.placeId)).toEqual(["gone"]);
 	});
 
+	it("clear() empties the query and closes the search", async () => {
+		const suggest = vi
+			.fn()
+			.mockResolvedValue({ ok: true, data: suggestions("a") });
+		const { search } = setup({ suggest });
+
+		search.input("hall");
+		await vi.waitFor(() => expect(search.status).toBe("ready"));
+		search.clear();
+
+		expect(search.query).toBe("");
+		expect(search.suggestions).toEqual([]);
+		expect(search.status).toBe("idle");
+	});
+
 	it("does not search blank or over-long text", async () => {
 		const suggest = vi.fn();
 		const { search } = setup({ suggest });
@@ -175,6 +191,6 @@ describe("VenueSearch", () => {
 		await new Promise((r) => setTimeout(r, 5));
 
 		expect(suggest).not.toHaveBeenCalled();
-		expect(search.message).toMatch(/up to 120/);
+		expect(search.message).toMatch(/120 characters or fewer/);
 	});
 });

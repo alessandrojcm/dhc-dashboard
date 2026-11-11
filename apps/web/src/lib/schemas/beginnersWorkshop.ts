@@ -115,9 +115,7 @@ export const scheduleWorkshopsSchema = v.pipe(
 		({
 			workshops,
 			venue,
-			destination_name,
-			destination_address,
-			directions_url,
+			destination_text,
 			destination_place_id,
 			startTime,
 			endTime,
@@ -132,9 +130,7 @@ export const scheduleWorkshopsSchema = v.pipe(
 					...workshop,
 					venue,
 					...destinationBody({
-						destination_name,
-						destination_address,
-						directions_url,
+						destination_text,
 						destination_place_id,
 					}),
 					startTime,
@@ -236,7 +232,7 @@ export const fastTrackWaitlistPersonSchema = v.pipe(
  * Batch 1 hasn't gone out) the contact-from date with the offsets Phoenix
  * keeps; Phoenix judges every cross-field rule.
  *
- * ALE-441: it also edits the destination details. `operation` is the
+ * ALE-441: it also edits the destination. `operation` is the
  * dialog's `rescheduleOperation`: a `reschedule` sends the move with the
  * destination; a `destination` change sends only the destination and the
  * venue it describes to `update_destination`, so nothing is emailed.
@@ -268,16 +264,12 @@ export const rescheduleWorkshopSchema = v.pipe(
 		({
 			id,
 			operation,
-			destination_name,
-			destination_address,
-			directions_url,
+			destination_text,
 			destination_place_id,
 			...schedule
 		}) => {
 			const destination = destinationBody({
-				destination_name,
-				destination_address,
-				directions_url,
+				destination_text,
 				destination_place_id,
 			});
 			return operation === "destination"

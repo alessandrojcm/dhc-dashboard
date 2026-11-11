@@ -167,7 +167,7 @@ test.describe("Beginners' Workshop journey", () => {
 		}
 	});
 
-	// ALE-441: manual destinations on schedule, a destination-only change
+	// ALE-441: manual destination text on schedule, a destination-only change
 	// that is not a reschedule, and directions on the person's Intake page.
 	test("shares a destination across scheduled dates, saves a destination-only change and gives the person directions", async ({
 		page,
@@ -189,12 +189,14 @@ test.describe("Beginners' Workshop journey", () => {
 			name: "Schedule Beginners' Workshops",
 		});
 		await dialog.getByLabel("Venue", { exact: true }).fill(venue);
-		await dialog
-			.getByLabel("Destination name")
-			.fill("National Basketball Arena");
-		await dialog
-			.getByLabel("Destination address")
-			.fill("Tymon Park, Dublin 6w");
+		// No suggestion matches, so the text is saved exactly as typed.
+		const destination = dialog.getByRole("combobox", { name: "Destination" });
+		await destination.pressSequentially(
+			"National Basketball Arena, Tymon Park, Dublin 6w",
+		);
+		await expect(
+			dialog.getByRole("status").filter({ hasText: "No places found" }),
+		).toBeVisible();
 		await dialog.getByLabel("Capacity").fill("1");
 		await dialog.getByLabel("Start time", { exact: true }).fill("18:30");
 		await dialog.getByLabel("End time", { exact: true }).fill("20:15");
@@ -225,7 +227,7 @@ test.describe("Beginners' Workshop journey", () => {
 
 		const workshopId = await open(firstDate);
 		await expect(
-			page.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+			page.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
 		).toBeVisible();
 		const batch = await seedE2EScenario("beginnersWorkshopBatch", {
 			workshopId,
@@ -239,45 +241,34 @@ test.describe("Beginners' Workshop journey", () => {
 		// Only the destination changes, so it is saved without emailing.
 		await page.getByRole("button", { name: "Reschedule", exact: true }).click();
 		const reschedule = page.getByRole("dialog", { name: /^Reschedule / });
-		await expect(reschedule.getByLabel("Destination name")).toHaveValue(
-			"National Basketball Arena",
+		const saved = reschedule.getByRole("combobox", { name: "Destination" });
+		await expect(saved).toHaveValue(
+			"National Basketball Arena, Tymon Park, Dublin 6w",
 		);
-		await reschedule
-			.getByLabel("Destination address")
-			.fill("Tymon Road, Dublin 6w");
-		await reschedule
-			.getByLabel("Google Maps directions link")
-			.fill("https://evil.example.com/maps");
+		await reschedule.getByRole("button", { name: "Clear destination" }).click();
+		await saved.pressSequentially(
+			"National Basketball Arena, Tymon Road, Dublin 6w",
+		);
+		await saved.press("Escape");
 		await expect(reschedule.getByTestId("reschedule-warning")).toHaveText(
-			"No emails will be sent: only the destination details change.",
+			"No emails will be sent: only the destination changes.",
 		);
 		await reschedule.getByRole("button", { name: "Save destination" }).click();
-		// Phoenix refuses the link on its field; the other values stay.
-		await expect(
-			reschedule.getByText("Directions link must be a Google Maps link"),
-		).toBeVisible();
-		await expect(reschedule.getByLabel("Destination address")).toHaveValue(
-			"Tymon Road, Dublin 6w",
-		);
-		await reschedule
-			.getByLabel("Google Maps directions link")
-			.fill("https://maps.app.goo.gl/AbCdEf");
-		await reschedule.getByRole("button", { name: "Save destination" }).click();
-		await expect(page.getByText("Destination details saved")).toBeVisible();
+		await expect(page.getByText("Destination saved")).toBeVisible();
 		await expect(reschedule).not.toBeVisible();
 		await gotoHydrated(
 			page,
 			`/dashboard/beginners-workshop/workshops/${workshopId}`,
 		);
 		await expect(
-			page.getByText("National Basketball Arena · Tymon Road, Dublin 6w"),
+			page.getByText("National Basketball Arena, Tymon Road, Dublin 6w"),
 		).toBeVisible();
 		await expect(page.getByText(/18:30.*20:15/)).toBeVisible();
 
 		// The other date owns its own copy.
 		await open(secondDate);
 		await expect(
-			page.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
+			page.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
 		).toBeVisible();
 
 		// The person sees the destination and a directions link, which never
@@ -294,12 +285,12 @@ test.describe("Beginners' Workshop journey", () => {
 			const details = personPage.getByRole("list", { name: "Workshop" });
 			await expect(details).toContainText(venue);
 			await expect(details).toContainText(
-				"National Basketball Arena · Tymon Road, Dublin 6w",
+				"National Basketball Arena, Tymon Road, Dublin 6w",
 			);
 			const directions = details.getByRole("link", { name: "Get directions" });
 			await expect(directions).toHaveAttribute(
 				"href",
-				"https://maps.app.goo.gl/AbCdEf",
+				`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Road, Dublin 6w")}`,
 			);
 			await expect(directions).toHaveAttribute("rel", "noopener noreferrer");
 		} finally {
@@ -337,17 +328,15 @@ test.describe("Beginners' Workshop journey", () => {
 		});
 		await dialog.getByLabel("Venue", { exact: true }).fill(venue);
 
-		const search = dialog.getByRole("combobox", { name: "Search Google Maps" });
+		const search = dialog.getByRole("combobox", { name: "Destination" });
 		await search.pressSequentially("Synthetic Fencing");
 		await expect(dialog.getByRole("option")).toHaveCount(2);
 		await search.press("ArrowDown");
 		await search.press("Enter");
-		const selected = dialog.getByRole("region", { name: "Selected place" });
-		await expect(selected).toContainText("Synthetic Fencing Hall");
-		await expect(selected).toContainText("Google Maps · Example Venue Guide");
-		await expect(
-			dialog.getByRole("textbox", { name: "Destination name", exact: true }),
-		).toHaveValue("");
+		await expect(search).toHaveValue(/^Synthetic Fencing Hall/);
+		await expect(dialog.getByTestId("destination-attribution")).toContainText(
+			"Google Maps · Example Venue Guide",
+		);
 		// Choosing a place does not submit the dialog.
 		await expect(dialog).toBeVisible();
 
@@ -389,24 +378,21 @@ test.describe("Beginners' Workshop journey", () => {
 		// Replacing the place at the same venue is a destination-only change.
 		await page.getByRole("button", { name: "Reschedule", exact: true }).click();
 		const reschedule = page.getByRole("dialog", { name: /^Reschedule / });
-		await expect(
-			reschedule.getByRole("region", { name: "Selected place" }),
-		).toContainText("Google Maps place selected");
-		const replace = reschedule.getByRole("combobox", {
-			name: "Replace with another place",
-		});
+		const replace = reschedule.getByRole("combobox", { name: "Destination" });
+		await expect(replace).toHaveAttribute(
+			"placeholder",
+			"Google Maps place selected",
+		);
 		await replace.pressSequentially("Annex");
 		await reschedule
 			.getByRole("option", { name: /Synthetic Fencing Annex/ })
 			.click();
-		await expect(
-			reschedule.getByRole("region", { name: "Selected place" }),
-		).toContainText("Synthetic Fencing Annex");
+		await expect(replace).toHaveValue(/^Synthetic Fencing Annex/);
 		await expect(reschedule.getByTestId("reschedule-warning")).toHaveText(
-			"No emails will be sent: only the destination details change.",
+			"No emails will be sent: only the destination changes.",
 		);
 		await reschedule.getByRole("button", { name: "Save destination" }).click();
-		await expect(page.getByText("Destination details saved")).toBeVisible();
+		await expect(page.getByText("Destination saved")).toBeVisible();
 
 		const link = await seedE2EScenario("beginnersWorkshopIntakeLink", {
 			waitlistId: person.waitlistId,

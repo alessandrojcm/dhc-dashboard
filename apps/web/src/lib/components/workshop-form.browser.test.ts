@@ -38,9 +38,7 @@ onHostTimeZone("America/Los_Angeles");
 type Submission = {
 	workshopDate: string;
 	workshopEndDate: string;
-	destinationName: string;
-	destinationAddress: string;
-	directionsUrl: string;
+	destinationText: string;
 	destinationPlaceId: string;
 	/** Present only if the form (wrongly) submitted Google's credits. */
 	destinationAttributions: string;
@@ -68,9 +66,7 @@ function recordSubmissions() {
 		submissions.push({
 			workshopDate: field("workshop_date"),
 			workshopEndDate: field("workshop_end_date"),
-			destinationName: field("destination_name"),
-			destinationAddress: field("destination_address"),
-			directionsUrl: field("directions_url"),
+			destinationText: field("destination_text"),
 			destinationPlaceId: field("destination_place_id"),
 			destinationAttributions: field("destination_attributions"),
 		});
@@ -104,9 +100,7 @@ const recorded = recordSubmissions();
 function renderForm(initialData?: {
 	start: string;
 	end: string;
-	destination_name?: string;
-	destination_address?: string;
-	directions_url?: string;
+	destination_text?: string;
 	destination_place_id?: string;
 }) {
 	return render(WorkshopForm, {
@@ -121,9 +115,7 @@ function renderForm(initialData?: {
 				...(initialData && {
 					workshop_date: new Date(initialData.start),
 					workshop_end_date: new Date(initialData.end),
-					destination_name: initialData.destination_name ?? "",
-					destination_address: initialData.destination_address ?? "",
-					directions_url: initialData.directions_url ?? "",
+					destination_text: initialData.destination_text ?? "",
 					destination_place_id: initialData.destination_place_id ?? "",
 				}),
 			},
@@ -279,148 +271,92 @@ describe("the workshop form on a host in Los Angeles", () => {
 	});
 });
 
-describe("the workshop form's destination details", () => {
-	const destinationControls = (screen: Screen) => ({
-		name: screen.getByRole("textbox", {
-			name: "Destination name",
-			exact: true,
-		}),
-		address: screen.getByRole("textbox", {
-			name: "Destination address",
-			exact: true,
-		}),
-		link: screen.getByRole("textbox", {
-			name: "Google Maps directions link",
-			exact: true,
-		}),
-	});
-
+// ALE-440/ALE-442: one autocomplete input. Typed text is saved exactly as
+// written unless a suggestion is deliberately chosen, which saves only its
+// Place ID.
+describe("the workshop form's destination input", () => {
 	// A complete edit form (title, label, dates, capacity, price all
 	// prefilled) so a submission passes the form's client-side preflight and
-	// the destination fields are what varies.
-	const completeEditForm = () =>
-		renderForm({
-			start: "2026-10-20T17:30:00Z",
-			end: "2026-10-20T19:30:00Z",
-		});
-
-	it("submits manually entered destination details beside the label", async () => {
-		const screen = await completeEditForm();
-		const controls = destinationControls(screen);
-
-		await userEvent.fill(controls.name, "National Basketball Arena");
-		await userEvent.fill(controls.address, "Tymon Park, Dublin 6w");
-		await userEvent.fill(controls.link, "https://maps.app.goo.gl/AbCdEf");
-
-		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "National Basketball Arena",
-			destinationAddress: "Tymon Park, Dublin 6w",
-			directionsUrl: "https://maps.app.goo.gl/AbCdEf",
-		});
-	});
-
-	it("submits empty destination fields when none are entered", async () => {
-		const screen = await completeEditForm();
-
-		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "",
-			destinationAddress: "",
-			directionsUrl: "",
-		});
-	});
-
-	it("prefills a stored destination on edit and resubmits it unchanged", async () => {
-		const screen = await renderForm({
-			start: "2026-10-20T17:30:00Z",
-			end: "2026-10-20T19:30:00Z",
-			destination_name: "National Basketball Arena",
-			destination_address: "Tymon Park, Dublin 6w",
-			directions_url: "https://maps.app.goo.gl/AbCdEf",
-		});
-		const controls = destinationControls(screen);
-
-		await expect
-			.element(controls.name)
-			.toHaveValue("National Basketball Arena");
-		await expect.element(controls.address).toHaveValue("Tymon Park, Dublin 6w");
-		await expect
-			.element(controls.link)
-			.toHaveValue("https://maps.app.goo.gl/AbCdEf");
-
-		// An unrelated edit resubmits the stored destination untouched.
-		await userEvent.fill(
-			screen.getByRole("textbox", { name: "Workshop title", exact: true }),
-			"Renamed workshop",
-		);
-		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "National Basketball Arena",
-			destinationAddress: "Tymon Park, Dublin 6w",
-			directionsUrl: "https://maps.app.goo.gl/AbCdEf",
-		});
-	});
-
-	it("an emptied destination field submits as a clear, not the stored value", async () => {
-		const screen = await renderForm({
-			start: "2026-10-20T17:30:00Z",
-			end: "2026-10-20T19:30:00Z",
-			destination_name: "National Basketball Arena",
-			destination_address: "Tymon Park, Dublin 6w",
-			directions_url: "https://maps.app.goo.gl/AbCdEf",
-		});
-		const controls = destinationControls(screen);
-
-		await userEvent.fill(controls.link, "");
-		await userEvent.fill(controls.address, "");
-
-		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "National Basketball Arena",
-			destinationAddress: "",
-			directionsUrl: "",
-		});
-	});
-
-	it("keeps entered destination values and shows the field issue when the link is not https", async () => {
-		const screen = await completeEditForm();
-		const controls = destinationControls(screen);
-
-		await userEvent.fill(controls.name, "Arena");
-		await userEvent.fill(
-			controls.link,
-			"http://www.google.com/maps?q=Tallaght",
-		);
-
-		await screen.getByRole("button", { name: "Update Workshop" }).click();
-
-		// No request leaves the browser: the form's own validation refused it.
-		await expect
-			.element(screen.getByText("Directions link must be an https link"))
-			.toBeVisible();
-		expect(recorded.requests()).toBe(0);
-		await expect.element(controls.name).toHaveValue("Arena");
-		await expect
-			.element(controls.link)
-			.toHaveValue("http://www.google.com/maps?q=Tallaght");
-	});
-});
-
-describe("the workshop form's Google venue search (ALE-442)", () => {
-	const completeEditForm = (extra = {}) =>
+	// the destination is what varies.
+	const completeEditForm = (
+		extra: { destination_text?: string; destination_place_id?: string } = {},
+	) =>
 		renderForm({
 			start: "2026-10-20T17:30:00Z",
 			end: "2026-10-20T19:30:00Z",
 			...extra,
 		});
 
-	const searchBox = (screen: Screen) =>
-		screen.getByRole("combobox", { name: "Search Google Maps" });
+	const destination = (screen: Screen) =>
+		screen.getByRole("combobox", { name: "Destination", exact: true });
 
-	it("chooses a place by keyboard without submitting, previews it with attribution, then saves only its ID", async () => {
+	it("is the only destination control: no separate name, address or link inputs", async () => {
+		const screen = await completeEditForm();
+
+		await expect.element(destination(screen)).toBeVisible();
+		for (const name of [
+			"Destination name",
+			"Destination address",
+			"Google Maps directions link",
+		])
+			expect(screen.getByRole("textbox", { name }).elements()).toHaveLength(0);
+	});
+
+	it("saves typed text exactly as written when no suggestion is chosen", async () => {
+		const screen = await completeEditForm();
+
+		await userEvent.click(destination(screen));
+		await userEvent.keyboard("Synthetic Fencing");
+		await expect.element(screen.getByRole("option").first()).toBeVisible();
+		// Moving on without choosing keeps the text, not a suggestion.
+		await userEvent.keyboard("{Escape}");
+		await expect
+			.element(screen.getByRole("option").first())
+			.not.toBeInTheDocument();
+
+		expect(lookup.resolveCalls).toEqual([]);
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationText: "Synthetic Fencing",
+			destinationPlaceId: "",
+			destinationAttributions: "",
+		});
+	});
+
+	it("submits an empty destination when none is entered", async () => {
+		const screen = await completeEditForm();
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationText: "",
+			destinationPlaceId: "",
+		});
+	});
+
+	it("prefills saved manual text on edit and resubmits it unchanged", async () => {
 		const screen = await completeEditForm({
-			destination_name: "Our hall",
-			directions_url: "https://maps.app.goo.gl/Stale",
+			destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
 		});
 
-		await userEvent.click(searchBox(screen));
+		await expect
+			.element(destination(screen))
+			.toHaveValue("National Basketball Arena, Tymon Park, Dublin 6w");
+		// An unrelated edit resubmits the stored destination untouched, and
+		// showing saved text never searches.
+		await userEvent.fill(
+			screen.getByRole("textbox", { name: "Workshop title", exact: true }),
+			"Renamed workshop",
+		);
+		expect(lookup.suggestCalls).toEqual([]);
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationText: "National Basketball Arena, Tymon Park, Dublin 6w",
+			destinationPlaceId: "",
+		});
+	});
+
+	it("chooses a suggestion by keyboard without submitting, shows its text with attribution, then saves only its ID", async () => {
+		const screen = await completeEditForm({ destination_text: "Our hall" });
+
+		await userEvent.fill(destination(screen), "");
+		await userEvent.click(destination(screen));
 		await userEvent.keyboard("Synthetic");
 		await expect.element(screen.getByRole("option").first()).toBeVisible();
 		await expect
@@ -429,19 +365,18 @@ describe("the workshop form's Google venue search (ALE-442)", () => {
 		// Nothing is chosen until the person chooses it.
 		expect(lookup.resolveCalls).toEqual([]);
 		await expect
-			.element(searchBox(screen))
+			.element(destination(screen))
 			.not.toHaveAttribute("aria-activedescendant");
 
 		await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
 
-		const preview = screen.getByRole("region", { name: "Selected place" });
-		await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
 		await expect
-			.element(preview)
-			.toHaveTextContent("1 Example Street, Dublin 8");
-		await expect.element(preview).toHaveTextContent("Google Maps");
+			.element(destination(screen))
+			.toHaveValue("Synthetic Fencing Hall, 1 Example Street, Dublin 8");
+		const attribution = screen.getByTestId("destination-attribution").last();
+		await expect.element(attribution).toHaveTextContent("Google Maps");
 		await expect
-			.element(preview.getByRole("link", { name: "Venue Guide" }))
+			.element(attribution.getByRole("link", { name: "Venue Guide" }))
 			.toHaveAttribute("referrerpolicy", "no-referrer");
 		// The choice resolves in the same session the search used.
 		expect(lookup.resolveCalls).toEqual([
@@ -451,166 +386,150 @@ describe("the workshop form's Google venue search (ALE-442)", () => {
 			},
 		]);
 		expect(recorded.requests()).toBe(0);
-		// The selection never fills the staff's own fields.
-		await expect
-			.element(
-				screen.getByRole("textbox", { name: "Destination name", exact: true }),
-			)
-			.toHaveValue("Our hall");
-		await expect
-			.element(
-				screen.getByRole("textbox", {
-					name: "Destination address",
-					exact: true,
-				}),
-			)
-			.toHaveValue("");
 
+		// Google's text is never submitted: only the Place ID.
 		expect(await submit(screen, "Update Workshop")).toEqual({
 			workshopDate: expect.any(String),
 			workshopEndDate: expect.any(String),
-			destinationName: "Our hall",
-			destinationAddress: "",
-			directionsUrl: "",
+			destinationText: "",
 			destinationPlaceId: "place_hall",
 			destinationAttributions: "",
 		});
 	});
 
-	it("staff may type their own name and address beside a selected place", async () => {
+	it("chooses a suggestion by pointer", async () => {
 		const screen = await completeEditForm();
 
-		await userEvent.click(searchBox(screen));
+		await userEvent.click(destination(screen));
 		await userEvent.keyboard("Annex");
 		await screen.getByRole("option", { name: /Annex/ }).click();
 		await expect
-			.element(screen.getByRole("region", { name: "Selected place" }))
-			.toHaveTextContent("Synthetic Fencing Annex");
-		// A selected place's link comes from the place.
+			.element(destination(screen))
+			.toHaveValue("Synthetic Fencing Annex, 2 Example Street, Dublin 8");
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationText: "",
+			destinationPlaceId: "place_annex",
+		});
+	});
+
+	it("typing again after a choice discards it and saves the new text", async () => {
+		const screen = await completeEditForm();
+
+		await userEvent.click(destination(screen));
+		await userEvent.keyboard("Annex");
+		await screen.getByRole("option", { name: /Annex/ }).click();
+		await expect
+			.element(destination(screen))
+			.toHaveValue("Synthetic Fencing Annex, 2 Example Street, Dublin 8");
+
+		await userEvent.keyboard(", back door");
+		await userEvent.keyboard("{Escape}");
 		expect(
-			screen
-				.getByRole("textbox", { name: "Google Maps directions link" })
-				.elements(),
+			screen.getByTestId("destination-attribution").elements(),
 		).toHaveLength(0);
 
-		await userEvent.fill(
-			screen.getByRole("textbox", { name: "Destination name", exact: true }),
-			"The annex, back door",
-		);
 		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "The annex, back door",
-			destinationAddress: "",
-			destinationPlaceId: "place_annex",
+			destinationText:
+				"Synthetic Fencing Annex, 2 Example Street, Dublin 8, back door",
+			destinationPlaceId: "",
+		});
+	});
+
+	it("the clear button empties the input and any selection", async () => {
+		const screen = await completeEditForm();
+
+		await userEvent.click(destination(screen));
+		await userEvent.keyboard("Synthetic");
+		await expect.element(screen.getByRole("option").first()).toBeVisible();
+		await userEvent.keyboard("{ArrowDown}{Enter}");
+		await expect
+			.element(destination(screen))
+			.toHaveValue("Synthetic Fencing Annex, 2 Example Street, Dublin 8");
+
+		await screen.getByRole("button", { name: "Clear destination" }).click();
+		await expect.element(destination(screen)).toHaveValue("");
+		await expect.element(destination(screen)).toHaveFocus();
+		expect(screen.getByText("Synthetic Fencing Annex").elements()).toHaveLength(
+			0,
+		);
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationText: "",
+			destinationPlaceId: "",
 			destinationAttributions: "",
 		});
 	});
 
-	it("dismisses suggestions with Escape and keeps manual entry working", async () => {
-		const screen = await completeEditForm();
-
-		await userEvent.click(searchBox(screen));
-		await userEvent.keyboard("Synthetic");
-		await expect.element(screen.getByRole("option").first()).toBeVisible();
-		await userEvent.keyboard("{Escape}");
-		await expect
-			.element(screen.getByRole("option").first())
-			.not.toBeInTheDocument();
-		expect(lookup.resolveCalls).toEqual([]);
-
-		await userEvent.fill(
-			screen.getByRole("textbox", { name: "Destination name", exact: true }),
-			"Our Own Hall",
-		);
-		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "Our Own Hall",
-			destinationPlaceId: "",
-		});
-	});
-
-	it("explains an unavailable or unconfigured Google and keeps entered values", async () => {
+	it("saves typed text when Google is unavailable or not set up", async () => {
 		lookup.suggestFailure =
-			"Google venue search isn't set up; enter the destination details manually";
+			"Google venue search isn't set up; type the destination and it is saved as written";
 		const screen = await completeEditForm();
-		const name = screen.getByRole("textbox", {
-			name: "Destination name",
-			exact: true,
-		});
-		await userEvent.fill(name, "Typed before searching");
 
-		await userEvent.click(searchBox(screen));
-		await userEvent.keyboard("Synthetic");
+		await userEvent.click(destination(screen));
+		await userEvent.keyboard("Typed while Google is down");
 		await expect
 			.element(screen.getByRole("status").filter({ hasText: "isn't set up" }))
 			.toBeVisible();
-		await expect.element(name).toHaveValue("Typed before searching");
 
 		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "Typed before searching",
+			destinationText: "Typed while Google is down",
 			destinationPlaceId: "",
 		});
 	});
 
-	it("says when nothing matches", async () => {
+	it("says when nothing matches, and the typed text still saves", async () => {
 		const screen = await completeEditForm();
 
-		await userEvent.click(searchBox(screen));
+		await userEvent.click(destination(screen));
 		await userEvent.keyboard("Nowhere");
 		await expect
 			.element(screen.getByText("No places found", { exact: false }))
 			.toBeVisible();
+
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationText: "Nowhere",
+			destinationPlaceId: "",
+		});
 	});
 
 	it("reopens a saved place without Google text and keeps it on an unrelated edit", async () => {
 		const screen = await completeEditForm({
-			destination_name: "Our hall",
 			destination_place_id: "place_hall",
 		});
 
-		const preview = screen.getByRole("region", { name: "Selected place" });
+		await expect.element(destination(screen)).toHaveValue("");
 		await expect
-			.element(preview)
-			.toHaveTextContent("Google Maps place selected");
+			.element(destination(screen))
+			.toHaveAttribute("placeholder", "Google Maps place selected");
+		await expect
+			.element(screen.getByRole("status").filter({ hasText: "place selected" }))
+			.toBeVisible();
 		// No stored Google text and no fresh Details lookup.
 		expect(lookup.resolveCalls).toEqual([]);
 		expect(
-			preview.getByTestId("destination-attribution").elements(),
+			screen.getByTestId("destination-attribution").elements(),
 		).toHaveLength(0);
 		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "Our hall",
+			destinationText: "",
 			destinationPlaceId: "place_hall",
 		});
 	});
 
-	it("removing a place discards its preview, keeps the staff text and offers the manual link again", async () => {
-		const screen = await completeEditForm({ destination_name: "Our hall" });
-
-		await userEvent.click(searchBox(screen));
-		await userEvent.keyboard("Synthetic");
-		await expect.element(screen.getByRole("option").first()).toBeVisible();
-		await userEvent.keyboard("{ArrowDown}{Enter}");
-		const preview = screen.getByRole("region", { name: "Selected place" });
-		await expect.element(preview).toHaveTextContent("Synthetic Fencing Annex");
-
-		await screen.getByRole("button", { name: "Remove place" }).click();
-		await expect.element(preview).not.toBeInTheDocument();
-		expect(screen.getByText("Synthetic Fencing Annex").elements()).toHaveLength(
-			0,
-		);
-		const name = screen.getByRole("textbox", {
-			name: "Destination name",
-			exact: true,
+	it("shows the attendee preview: the label plus text, or Get directions for a place", async () => {
+		const screen = await completeEditForm({
+			destination_text: "Arena, Dublin 6w",
 		});
-		await expect.element(name).toHaveValue("Our hall");
-		await userEvent.fill(
-			screen.getByRole("textbox", { name: "Google Maps directions link" }),
-			"https://maps.app.goo.gl/AbCdEf",
-		);
+		await expect
+			.element(screen.getByText("Arena, Dublin 6w").last())
+			.toBeVisible();
 
-		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "Our hall",
-			directionsUrl: "https://maps.app.goo.gl/AbCdEf",
-			destinationPlaceId: "",
-			destinationAttributions: "",
-		});
+		await userEvent.fill(destination(screen), "");
+		await userEvent.click(destination(screen));
+		await userEvent.keyboard("Annex");
+		await screen.getByRole("option", { name: /Annex/ }).click();
+		await expect
+			.element(screen.getByText("Get directions", { exact: true }))
+			.toBeVisible();
 	});
 });

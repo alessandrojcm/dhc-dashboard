@@ -24,14 +24,9 @@ defmodule Dhc.BeginnersWorkshops.CalendarProjection do
       status: calendar_status(workshop.status),
       start_date: start_date,
       end_date: end_date,
-      # ALE-441: the recognizable destination name/address when one is
-      # stored, else the short venue label; never a link.
-      location:
-        Destinations.calendar_location(
-          workshop.destination_name,
-          workshop.destination_address,
-          workshop.venue
-        )
+      # ALE-441: the manual destination text when one is stored, else the
+      # short venue label (also for a selected Google place); never a link.
+      location: Destinations.calendar_location(workshop.destination_text, workshop.venue)
     }
   end
 

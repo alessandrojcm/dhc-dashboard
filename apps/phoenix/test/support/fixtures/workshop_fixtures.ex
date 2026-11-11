@@ -36,8 +36,9 @@ defmodule Dhc.WorkshopFixtures do
     * `:status` (default `"planned"`)
     * `:announce_discord` / `:announce_email` (default `false`)
     * `:created_by` (default `nil`; must be a real Principal id if set)
-    * `:destination_name` / `:destination_address` / `:directions_url`
-      (default `nil`; ALE-440 optional destination details)
+    * `:destination_text` (default `nil`; ALE-440 optional manual
+      destination text) or a selected place (`:destination_provider`,
+      `:destination_place_id`, `:destination_selected_at`)
 
   Returns the inserted `Workshop` struct.
   """
@@ -53,9 +54,7 @@ defmodule Dhc.WorkshopFixtures do
         title: Map.get(attrs, :title, "Test Workshop"),
         description: Map.get(attrs, :description, "A test workshop"),
         location: Map.get(attrs, :location, "Test Location"),
-        destination_name: Map.get(attrs, :destination_name),
-        destination_address: Map.get(attrs, :destination_address),
-        directions_url: Map.get(attrs, :directions_url),
+        destination_text: Map.get(attrs, :destination_text),
         destination_provider: Map.get(attrs, :destination_provider),
         destination_place_id: Map.get(attrs, :destination_place_id),
         destination_selected_at: Map.get(attrs, :destination_selected_at),

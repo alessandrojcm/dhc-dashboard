@@ -25,21 +25,24 @@ retention question below: **store the Place ID and its provenance only**.
   application-generated `destination_selected_at` (the command clock). Place
   IDs may be stored indefinitely ([Places policy][policies]). No business
   name, address, credits, raw response or coordinates are stored.
-- Google's name, address and credits are a **transient editing preview**: shown
-  with Google Maps attribution in the suggestion list and the selected-place
-  card for the current form session only, discarded on remove, replace or
-  unmount, and never submitted, saved, shown to attendees or sent to Calendar.
-  A saved place reopens as "selected" without Google text; no fresh Details
-  lookup is made for it.
-- A selection never prefills the manual name/address fields: copying Google's
-  result into them would not be independent provenance. Those fields stay
-  staff-typed, may be filled beside a selected place, and are what attendees
-  and Calendar see (falling back to the short label).
-- Attendee directions for a selected place use
-  `https://www.google.com/maps/dir/?api=1&destination=<staff text or label>&destination_place_id=<id>`.
-  The link discloses only the staff text or label and the ID; it displays no
-  Google content, so attendee surfaces carry no Google attribution (an ID-only
-  map link is a documented exception; see [Maps URLs][urls]).
+- The form has **one destination input** with Google autocomplete beneath it.
+  Choosing a suggestion shows that suggestion's text in the input, with Google
+  Maps attribution, for the current form session only; only the Place ID is
+  submitted. Google's text and credits are discarded on typing again, clear or
+  unmount, and are never submitted, saved, shown to attendees or sent to
+  Calendar. A saved place reopens as "selected" without Google text; no fresh
+  Details lookup is made for it.
+- Text typed without choosing a suggestion (including when Google is
+  unconfigured, unavailable or has no match) is saved exactly as written as the
+  manual `destination_text`. A saved destination is manual text or a selected
+  place, never both, so no Google result is ever copied into stored text.
+- Attendees see the short label plus the manual text, or for a selected place
+  the label plus "Get directions", whose link is
+  `https://www.google.com/maps/dir/?api=1&destination=<label>&destination_place_id=<id>`.
+  The link discloses only the label and the ID; it displays no Google content,
+  so attendee surfaces carry no Google attribution (an ID-only map link is a
+  documented exception; see [Maps URLs][urls]). Calendar gets the manual text,
+  else the label.
 - Because no Google text or credits are retained, there is nothing to refresh
   or delete beyond the ID itself: replacing or removing the place clears it,
   and the 12-month ID refresh remains a later, review-only operation.
@@ -135,11 +138,11 @@ Workshop domain keeps its own storage and commands.
 - **Staff-owned short label:** preserve it separately; do not populate it
   automatically from Google's business name. Keep the Beginners' Workshop
   80-character limit and existing email copy.
-- **Independently supplied manual name/address/link:** can be saved, displayed
-  to attendees and projected to Calendar without a Places dependency. The Maps
-  link is optional and must pass server-side HTTPS/host/path/credential checks.
-  Omission preserves the destination; explicit clear removes it; a manual
-  replacement removes unrelated provider identity and derived links.
+- **Independently supplied manual text:** one `destination_text` field, saved
+  as typed, displayed to attendees (with a Maps search link) and projected to
+  Calendar without a Places dependency. (ALE-442 replaced the earlier
+  name/address/manual-link fields.) Omission preserves the destination;
+  explicit clear removes it; manual text replaces any selected place.
 - **Suggestion text:** display only for the current search with attribution;
   discard when replaced, abandoned or unmounted. No database, persistent draft,
   CDN/service-worker cache, analytics or raw-response fixtures.

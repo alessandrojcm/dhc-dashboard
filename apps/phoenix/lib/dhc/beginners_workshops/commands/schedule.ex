@@ -23,17 +23,17 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
 
   ## Destinations (ALE-441)
 
-  A workshop may carry optional, manually entered destination details
-  (`destination_name`, `destination_address`, `directions_url`) beside its
-  short `venue` label; `Dhc.Destinations` owns their shape and the Maps-link
-  rule. `schedule_workshop` takes them per workshop (the dashboard shares one
+  A workshop may carry an optional destination beside its short `venue`
+  label — manual `destination_text` or (ALE-442) a selected
+  `destination_place_id`, never both; `Dhc.Destinations` owns their shape
+  and provenance rules. `schedule_workshop` takes them per workshop (the dashboard shares one
   set across a Schedule's dates, and each workshop then owns its copy), and
   `reschedule_workshop` saves any it is given with the move. Omitted keys keep
   their value and `nil` clears one; `update_workshop` never touches them.
 
   `update_destination` is the destination-only change at the same venue: the
   request names the `venue` it describes (`:venue_changed` when the workshop's
-  label is no longer that) and changes only the three destination fields. It
+  label is no longer that) and changes only the destination fields. It
   is not a reschedule: no date, time, Payment Cutoff, contact-from date,
   Batch window, `reschedule_count`, email or Staff Notification changes, and
   it records only the Calendar intent. Destination details alone never count
@@ -191,9 +191,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     payment_cutoff_time: :time,
     contact_from: :date,
     payment_window_days: :integer,
-    destination_name: :string,
-    destination_address: :string,
-    directions_url: :string,
+    destination_text: :string,
     destination_place_id: :string
   }
 

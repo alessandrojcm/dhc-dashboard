@@ -280,9 +280,7 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
                {:update_destination, workshop.id,
                 %{
                   venue: workshop.venue,
-                  destination_name: "National Basketball Arena",
-                  destination_address: "Tymon Park, Dublin 6w",
-                  directions_url: "https://maps.app.goo.gl/AbCdEf"
+                  destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
                 }}
              )
 
@@ -314,46 +312,50 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
     assert HTTP.mutations(server) == after_update
   end
 
-  # ALE-442: staff text typed beside a Google selection reaches attendees as
-  # native location text with normal update notifications; the place itself
-  # (its ID, or Google's text) never does.
-  test "staff text beside a selected place notifies participants once, then a Place-only change stays silent",
+  # ALE-442: a Google selection never reaches attendees — Calendar keeps the
+  # label, so selecting or replacing a place is silent — while manual text
+  # reaches them as native location text with normal update notifications.
+  test "a selected place stays silent, then manual text notifies participants once",
        %{staff: staff, server: server} do
     {workshop, [{intake, token}]} = Fixtures.contacted_fixture(staff, 1)
     assert {:ok, %{outcome: :paid}} = intake |> hold!(token) |> Stripe.session() |> complete()
     assert :ok = sync(workshop.id)
     first = participant(server)
-    count = length(HTTP.mutations(server))
+    before = HTTP.mutations(server)
+    count = length(before)
 
     selection = %{
       venue: workshop.venue,
-      destination_name: "Our hall",
-      destination_address: "1 Example Street, Dublin 8",
+      destination_text: nil,
       destination_place_id: "place_hall"
     }
 
-    assert {:ok, _} = command(staff, {:update_destination, workshop.id, selection})
+    for place_id <- ["place_hall", "place_annex"] do
+      assert {:ok, _} =
+               command(
+                 staff,
+                 {:update_destination, workshop.id, %{selection | destination_place_id: place_id}}
+               )
+
+      assert :ok = sync(workshop.id)
+      assert HTTP.mutations(server) == before
+    end
+
+    manual = %{
+      selection
+      | destination_text: "Our hall, 1 Example Street, Dublin 8",
+        destination_place_id: nil
+    }
+
+    assert {:ok, _} = command(staff, {:update_destination, workshop.id, manual})
     assert :ok = sync(workshop.id)
     updated = participant(server)
     assert updated["id"] == first["id"]
     assert updated["location"] == "Our hall, 1 Example Street, Dublin 8"
     refute Map.has_key?(updated, "description")
     payloads = HTTP.mutations(server) |> Enum.map(& &1.payload) |> Jason.encode!()
-    refute payloads =~ "place_hall"
+    refute payloads =~ "place_"
     assert [%{query: "sendUpdates=all"}] = Enum.drop(HTTP.mutations(server), count)
-
-    # Replacing it with a different listing of the same text changes no event.
-    after_update = HTTP.mutations(server)
-
-    assert {:ok, _} =
-             command(
-               staff,
-               {:update_destination, workshop.id,
-                %{selection | destination_place_id: "place_annex"}}
-             )
-
-    assert :ok = sync(workshop.id)
-    assert HTTP.mutations(server) == after_update
   end
 
   test "early finalisation, check-in and later attendance corrections preserve historical invitations",

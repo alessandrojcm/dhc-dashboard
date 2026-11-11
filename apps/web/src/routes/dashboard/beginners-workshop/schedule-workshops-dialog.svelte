@@ -4,7 +4,7 @@
 	date may override its Payment Cutoff date and contact-from date. Phoenix
 	applies every default and rule — this form only collects values.
 	ALE-379: optional Staff, shared by every date.
-	ALE-441: optional destination details, shared by every date; each
+	ALE-441: the optional destination, shared by every date; each
 	scheduled workshop then owns its copy.
 -->
 <script lang="ts">

@@ -139,8 +139,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
           title: "Longsword",
           description: "PRIVATE notes, medical and payment details",
           location: "Club hall",
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w",
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
           start_date: ~U[2027-03-28 09:00:00Z],
           end_date: ~U[2027-03-28 11:00:00Z],
           max_capacity: 20,
@@ -158,9 +157,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     # mutations stay non-notifying.
     assert {:ok, _} =
              Workshops.update_workshop(workshop.id, %{
-               destination_name: "National Basketball Arena",
-               destination_address: "Tymon Road, Dublin 6w",
-               directions_url: "https://maps.app.goo.gl/AbCdEf"
+               destination_text: "National Basketball Arena, Tymon Road, Dublin 6w"
              })
 
     assert :ok = sync(workshop.id)
@@ -181,8 +178,8 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
 
   # ALE-442: a Google-selected destination reaches Calendar only as native
   # location text; its Place ID and credits never enter the event, and adding
-  # provider identity to an unchanged name/address is a silent no-op.
-  test "a selected place never reaches Calendar: the label or staff text is the native location" do
+  # one selected place for another is a silent no-op.
+  test "a selected place never reaches Calendar: the label or manual text is the native location" do
     server = google_surface!()
     %{principal_id: principal_id} = WorkshopFixtures.member_fixture()
 
@@ -202,7 +199,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
       )
 
     assert workshop.destination_provider == "google"
-    assert workshop.destination_name == nil
+    assert workshop.destination_text == nil
 
     # A Place ID alone: Calendar keeps the label.
     assert :ok = sync(workshop.id)
@@ -217,12 +214,11 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     assert :ok = sync(workshop.id)
     assert WorkshopCalendarHTTP.mutations(server) == mutations
 
-    # Staff text typed beside the place updates the same event.
-    assert {:ok, %{destination_place_id: "place_annex"}} =
+    # Typing a manual destination replaces the place and updates the same event.
+    assert {:ok, %{destination_place_id: nil}} =
              Workshops.update_workshop(workshop.id, %{
-               destination_name: "Our hall",
-               destination_address: "1 Example Street, Dublin 8",
-               destination_place_id: "place_annex"
+               destination_text: "Our hall, 1 Example Street, Dublin 8",
+               destination_place_id: nil
              })
 
     assert :ok = sync(workshop.id)

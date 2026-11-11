@@ -318,45 +318,38 @@ defmodule Dhc.WorkshopsTest do
       assert Workshops.workshop_summary(missing_id) == nil
     end
 
-    test "carries the manually entered destination details (ALE-440)" do
+    test "carries the manually entered destination text (ALE-440)" do
       workshop =
         WorkshopFixtures.workshop_fixture(
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w",
-          directions_url: "https://maps.app.goo.gl/AbCdEf"
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
         )
 
       summary = Workshops.workshop_summary(workshop.id)
 
-      assert summary.destination_name == "National Basketball Arena"
-      assert summary.destination_address == "Tymon Park, Dublin 6w"
-      assert summary.directions_url == "https://maps.app.goo.gl/AbCdEf"
+      assert summary.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
 
       legacy = WorkshopFixtures.workshop_fixture(title: "Legacy")
 
       legacy_summary = Workshops.workshop_summary(legacy.id)
 
-      assert legacy_summary.destination_name == nil
-      assert legacy_summary.destination_address == nil
-      assert legacy_summary.directions_url == nil
+      assert legacy_summary.destination_text == nil
     end
   end
 
   # ── Calendar source projection (ALE-440 destination location) ────────
 
   describe "calendar_projection/1" do
-    test "derives the native location from the destination name and address" do
+    test "derives the native location from the manual destination text" do
       workshop =
         WorkshopFixtures.workshop_fixture(
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w"
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
         )
 
       projection = Workshops.calendar_projection(workshop.id)
 
       assert projection.location == "National Basketball Arena, Tymon Park, Dublin 6w"
-      # The projection stays closed: no directions link or other new detail
-      # leaks into Calendar content.
+      # The projection stays closed: no place ID or other new detail leaks
+      # into Calendar content.
       assert Map.keys(projection) |> Enum.sort() ==
                [:end_date, :id, :location, :start_date, :status, :title]
     end
@@ -366,11 +359,16 @@ defmodule Dhc.WorkshopsTest do
 
       assert Workshops.calendar_projection(workshop.id).location == "Club hall"
 
-      # A destination that is only a link stays readable: the label is the
-      # Calendar location, and the link serves directions on the pages.
-      linked = WorkshopFixtures.workshop_fixture(directions_url: "https://maps.app.goo.gl/X")
+      # A selected Google place stores no text, so the label is the Calendar
+      # location and the place serves directions on the pages (ALE-442).
+      selected =
+        WorkshopFixtures.workshop_fixture(
+          destination_provider: "google",
+          destination_place_id: "place_hall",
+          destination_selected_at: ~U[2026-01-01 00:00:00Z]
+        )
 
-      assert Workshops.calendar_projection(linked.id).location == "Test Location"
+      assert Workshops.calendar_projection(selected.id).location == "Test Location"
     end
 
     test "keeps the launch projection's location consistent with the source projection" do
@@ -378,8 +376,7 @@ defmodule Dhc.WorkshopsTest do
 
       workshop =
         WorkshopFixtures.workshop_fixture(
-          destination_name: "Arena",
-          destination_address: "Tymon Park",
+          destination_text: "Arena, Tymon Park",
           start_date: DateTime.add(now, 1, :day) |> DateTime.truncate(:second)
         )
 
@@ -415,22 +412,18 @@ defmodule Dhc.WorkshopsTest do
 
     # ── ALE-440: manually entered destinations ───────────────────────────
 
-    test "creates a Workshop with a manual destination and an optional Maps link" do
+    test "creates a Workshop with a manual destination" do
       %{auth_user_id: creator_id} = WorkshopFixtures.member_fixture()
 
       assert {:ok, workshop} =
                Workshops.create_workshop(
                  valid_workshop_attrs(%{
-                   destination_name: "National Basketball Arena",
-                   destination_address: "Tymon Park, Dublin 6w",
-                   directions_url: "https://maps.app.goo.gl/AbCdEf"
+                   destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
                  }),
                  creator_id
                )
 
-      assert workshop.destination_name == "National Basketball Arena"
-      assert workshop.destination_address == "Tymon Park, Dublin 6w"
-      assert workshop.directions_url == "https://maps.app.goo.gl/AbCdEf"
+      assert workshop.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
       # The short venue label stays required and independent.
       assert workshop.location == "Main Hall"
     end
@@ -441,48 +434,36 @@ defmodule Dhc.WorkshopsTest do
       assert {:ok, workshop} =
                Workshops.create_workshop(valid_workshop_attrs(), creator_id)
 
-      assert workshop.destination_name == nil
-      assert workshop.destination_address == nil
-      assert workshop.directions_url == nil
+      assert workshop.destination_text == nil
+      assert workshop.destination_place_id == nil
     end
 
-    test "rejects a directions link that is not a supported HTTPS Maps destination" do
-      for unsafe <- [
-            "javascript:alert(1)",
-            "http://www.google.com/maps?q=Tallaght",
-            "https://user:pass@www.google.com/maps?q=Tallaght",
-            "https://evil.example.com/maps",
-            "https://www.google.com/search?q=venue",
-            "https://www.google.com:8443/maps?q=Tallaght"
-          ] do
-        assert {:error, changeset} =
-                 Workshops.create_workshop(
-                   valid_workshop_attrs(%{directions_url: unsafe}),
-                   Ecto.UUID.generate()
-                 )
+    test "refuses manual text beside a selected place (ALE-442)" do
+      assert {:error, changeset} =
+               Workshops.create_workshop(
+                 valid_workshop_attrs(%{
+                   destination_text: "Our hall",
+                   destination_place_id: "place_hall"
+                 }),
+                 Ecto.UUID.generate()
+               )
 
-        assert %{directions_url: [_]} = errors_on(changeset)
+      assert %{destination_text: [_]} = errors_on(changeset)
+    end
+
+    test "the database refuses manual text beside a place for out-of-seam writers" do
+      workshop = WorkshopFixtures.workshop_fixture(destination_text: "Our hall")
+
+      assert_raise Postgrex.Error, ~r/club_activities_destination_text_or_place/, fn ->
+        Repo.update_all(
+          from(w in Dhc.Workshops.Workshop, where: w.id == ^workshop.id),
+          set: [
+            destination_provider: "google",
+            destination_place_id: "place_hall",
+            destination_selected_at: ~U[2026-01-01 00:00:00Z]
+          ]
+        )
       end
-    end
-
-    test "words each unsafe-link refusal through the shared destination vocabulary" do
-      assert {:error, changeset} =
-               Workshops.create_workshop(
-                 valid_workshop_attrs(%{directions_url: "javascript:alert(1)"}),
-                 Ecto.UUID.generate()
-               )
-
-      assert %{directions_url: ["Directions link must be an https link"]} =
-               errors_on(changeset)
-
-      assert {:error, changeset} =
-               Workshops.create_workshop(
-                 valid_workshop_attrs(%{directions_url: "https://evil.example.com/maps"}),
-                 Ecto.UUID.generate()
-               )
-
-      assert %{directions_url: ["Directions link must be a Google Maps link"]} =
-               errors_on(changeset)
     end
 
     test "trims destination text and treats blank entries as absent" do
@@ -490,17 +471,19 @@ defmodule Dhc.WorkshopsTest do
 
       assert {:ok, workshop} =
                Workshops.create_workshop(
-                 valid_workshop_attrs(%{
-                   destination_name: "  Main Sports Hall  ",
-                   destination_address: "   ",
-                   directions_url: ""
-                 }),
+                 valid_workshop_attrs(%{destination_text: "  Main Sports Hall  "}),
                  creator_id
                )
 
-      assert workshop.destination_name == "Main Sports Hall"
-      assert workshop.destination_address == nil
-      assert workshop.directions_url == nil
+      assert workshop.destination_text == "Main Sports Hall"
+
+      assert {:ok, blank} =
+               Workshops.create_workshop(
+                 valid_workshop_attrs(%{destination_text: "   "}),
+                 creator_id
+               )
+
+      assert blank.destination_text == nil
     end
   end
 
@@ -553,100 +536,55 @@ defmodule Dhc.WorkshopsTest do
     test "omitted destination fields preserve the stored destination" do
       workshop =
         WorkshopFixtures.workshop_fixture(
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w",
-          directions_url: "https://maps.app.goo.gl/AbCdEf"
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
         )
 
       assert {:ok, updated} = Workshops.update_workshop(workshop.id, %{title: "Unrelated edit"})
 
       assert updated.title == "Unrelated edit"
-      assert updated.destination_name == "National Basketball Arena"
-      assert updated.destination_address == "Tymon Park, Dublin 6w"
-      assert updated.directions_url == "https://maps.app.goo.gl/AbCdEf"
+      assert updated.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
     end
 
-    test "an explicit clear removes the stored destination details" do
+    test "an explicit clear removes the stored destination" do
       workshop =
         WorkshopFixtures.workshop_fixture(
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w",
-          directions_url: "https://maps.app.goo.gl/AbCdEf"
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
         )
 
       assert {:ok, updated} =
                Workshops.update_workshop(workshop.id, %{
-                 destination_name: nil,
-                 destination_address: nil,
-                 directions_url: nil
+                 destination_text: nil
                })
 
-      assert updated.destination_name == nil
-      assert updated.destination_address == nil
-      assert updated.directions_url == nil
+      assert updated.destination_text == nil
       # The short label survives a destination clear.
       assert updated.location == "Test Location"
     end
 
-    test "an emptied destination field clears only that detail" do
+    test "replaces a stored destination" do
       workshop =
-        WorkshopFixtures.workshop_fixture(
-          destination_name: "National Basketball Arena",
-          destination_address: "Tymon Park, Dublin 6w"
-        )
-
-      assert {:ok, updated} =
-               Workshops.update_workshop(workshop.id, %{destination_address: "   "})
-
-      assert updated.destination_name == "National Basketball Arena"
-      assert updated.destination_address == nil
-    end
-
-    test "replaces a stored destination and its link together" do
-      workshop =
-        WorkshopFixtures.workshop_fixture(
-          destination_name: "Old Arena",
-          destination_address: "Old address",
-          directions_url: "https://maps.app.goo.gl/OldLink"
-        )
+        WorkshopFixtures.workshop_fixture(destination_text: "Old Arena, Old address")
 
       assert {:ok, updated} =
                Workshops.update_workshop(workshop.id, %{
-                 destination_name: "New Hall",
-                 destination_address: "New address",
-                 directions_url: "https://www.google.com/maps/place/New+Hall"
+                 destination_text: "New Hall, New address"
                })
 
-      assert updated.destination_name == "New Hall"
-      assert updated.destination_address == "New address"
-      assert updated.directions_url == "https://www.google.com/maps/place/New+Hall"
-    end
-
-    test "rejects an unsafe directions link on update" do
-      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
-
-      assert {:error, changeset} =
-               Workshops.update_workshop(workshop.id, %{
-                 directions_url: "https://evil.example.com/maps"
-               })
-
-      assert %{directions_url: ["Directions link must be a Google Maps link"]} =
-               errors_on(changeset)
+      assert updated.destination_text == "New Hall, New address"
     end
 
     test "destination edits are general edits, not covered by the pricing exception" do
       workshop =
         WorkshopFixtures.workshop_fixture(
           status: "published",
-          destination_name: nil,
-          directions_url: nil
+          destination_text: nil
         )
 
       assert {:error, :not_editable} =
-               Workshops.update_workshop(workshop.id, %{destination_name: "Arena"})
+               Workshops.update_workshop(workshop.id, %{destination_text: "Arena"})
 
       assert {:error, :not_editable} =
-               Workshops.update_workshop(workshop.id, %{directions_url: nil})
+               Workshops.update_workshop(workshop.id, %{destination_place_id: "place_hall"})
     end
   end
 

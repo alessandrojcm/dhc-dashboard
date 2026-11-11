@@ -75,7 +75,7 @@ describe("rescheduleWarning", () => {
 
 	it("never warns of emails for a destination-only change", () => {
 		expect(rescheduleWarning(3, "destination")).toBe(
-			"No emails will be sent: only the destination details change.",
+			"No emails will be sent: only the destination changes.",
 		);
 	});
 });
@@ -86,9 +86,7 @@ describe("rescheduleOperation", () => {
 		startTime: "18:30",
 		endTime: "20:30",
 		venue: "St. Andrew's Hall",
-		destinationName: "Arena",
-		destinationAddress: null,
-		directionsUrl: null,
+		destinationText: "Arena",
 		destinationProvider: null,
 		destinationPlaceId: null,
 	};
@@ -97,17 +95,14 @@ describe("rescheduleOperation", () => {
 		startTime: "18:30",
 		endTime: "20:30",
 		venue: "St. Andrew's Hall",
-		destination_name: "Arena",
-		destination_address: "",
-		directions_url: "",
+		destination_text: "Arena",
 		destination_place_id: "",
 	};
 
 	it("is a destination-only change while the date, times and venue stay", () => {
 		for (const edit of [
-			{ destination_address: "Tymon Park, Dublin 6w" },
-			{ destination_name: "" },
-			{ directions_url: "https://maps.app.goo.gl/AbCdEf" },
+			{ destination_text: "Arena, Tymon Park, Dublin 6w" },
+			{ destination_text: "" },
 		]) {
 			expect(rescheduleOperation(current, { ...unchanged, ...edit })).toBe(
 				"destination",
@@ -119,7 +114,7 @@ describe("rescheduleOperation", () => {
 				...unchanged,
 				startTime: "18:30:00",
 				venue: "  St. Andrew's Hall ",
-				destination_name: "Arena Two",
+				destination_text: "Arena Two",
 			}),
 		).toBe("destination");
 	});
@@ -128,17 +123,20 @@ describe("rescheduleOperation", () => {
 		expect(
 			rescheduleOperation(current, {
 				...unchanged,
+				destination_text: "",
 				destination_place_id: "place_hall",
 			}),
 		).toBe("destination");
 
 		const selected = {
 			...current,
+			destinationText: null,
 			destinationProvider: "google" as const,
 			destinationPlaceId: "place_hall",
 		};
 		const resubmitted = {
 			...unchanged,
+			destination_text: "",
 			destination_place_id: "place_hall",
 		};
 		expect(rescheduleOperation(selected, resubmitted)).toBe("reschedule");
@@ -155,7 +153,7 @@ describe("rescheduleOperation", () => {
 		expect(
 			rescheduleOperation(current, {
 				...unchanged,
-				destination_name: " Arena ",
+				destination_text: " Arena ",
 			}),
 		).toBe("reschedule");
 	});
@@ -165,7 +163,7 @@ describe("rescheduleOperation", () => {
 			{ date: "2026-11-21" },
 			{ startTime: "19:00" },
 			{ endTime: "21:00" },
-			{ venue: "The Hub", destination_name: "The Hub" },
+			{ venue: "The Hub", destination_text: "The Hub" },
 		]) {
 			expect(rescheduleOperation(current, { ...unchanged, ...moved })).toBe(
 				"reschedule",

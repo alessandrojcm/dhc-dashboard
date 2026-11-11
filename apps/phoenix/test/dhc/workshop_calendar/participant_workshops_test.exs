@@ -169,9 +169,7 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
         is_public: true,
         price_member: 1800.0,
         price_non_member: 2400.0,
-        destination_name: "National Basketball Arena",
-        destination_address: "Tymon Park, Dublin 6w",
-        directions_url: "https://maps.app.goo.gl/AbCdEf",
+        destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
         start_date: ~U[2027-03-28 09:00:00Z],
         end_date: ~U[2027-03-28 11:00:00Z]
       )
@@ -252,8 +250,7 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
 
     assert {:ok, _} =
              Workshops.update_workshop(workshop.id, %{
-               destination_name: "National Basketball Arena",
-               destination_address: "Tymon Park, Dublin 6w"
+               destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
              })
 
     assert :ok = sync(workshop.id)

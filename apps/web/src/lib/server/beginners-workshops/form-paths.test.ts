@@ -6,11 +6,8 @@ import {
 
 describe("destination field paths (ALE-441)", () => {
 	it("puts a scheduled date's destination refusal under the shared control", () => {
-		expect(scheduleFormPath("workshops.1.directionsUrl")).toEqual([
-			"directions_url",
-		]);
-		expect(scheduleFormPath("workshops.0.destinationName")).toEqual([
-			"destination_name",
+		expect(scheduleFormPath("workshops.1.destinationText")).toEqual([
+			"destination_text",
 		]);
 		// Per-date fields still land on that date's row.
 		expect(scheduleFormPath("workshops.1.date")).toEqual([
@@ -21,9 +18,7 @@ describe("destination field paths (ALE-441)", () => {
 	});
 
 	it("puts a reschedule or destination-only refusal under the dialog's control", () => {
-		expect(rescheduleFormPath("destinationAddress")).toEqual([
-			"destination_address",
-		]);
+		expect(rescheduleFormPath("destinationText")).toEqual(["destination_text"]);
 		expect(rescheduleFormPath("venue")).toEqual(["venue"]);
 		expect(rescheduleFormPath("feeCents")).toBeUndefined();
 	});

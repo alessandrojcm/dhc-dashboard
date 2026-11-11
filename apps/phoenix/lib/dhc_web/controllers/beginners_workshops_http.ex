@@ -26,9 +26,7 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     "paymentCutoffTime" => "payment_cutoff_time",
     "contactFromDate" => "contact_from",
     "paymentWindowDays" => "payment_window_days",
-    "destinationName" => "destination_name",
-    "destinationAddress" => "destination_address",
-    "directionsUrl" => "directions_url",
+    "destinationText" => "destination_text",
     "destinationPlaceId" => "destination_place_id",
     "coachPrincipalId" => "coach_principal_id",
     "assistantPrincipalIds" => "assistant_principal_ids"

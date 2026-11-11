@@ -52,9 +52,7 @@ interface Props {
 		title: string;
 		description: string;
 		location: string;
-		destination_name: string | null;
-		destination_address: string | null;
-		directions_url: string | null;
+		destination_text: string | null;
 		destination_place_id: string;
 		workshop_date: Date;
 		workshop_end_date: Date;
@@ -89,9 +87,7 @@ const baseInitialFormValue = $derived.by(() => ({
 	title: initialData?.title ?? "",
 	description: initialData?.description ?? "",
 	location: initialData?.location ?? "",
-	destination_name: initialData?.destination_name ?? "",
-	destination_address: initialData?.destination_address ?? "",
-	directions_url: initialData?.directions_url ?? "",
+	destination_text: initialData?.destination_text ?? "",
 	destination_place_id: initialData?.destination_place_id ?? "",
 	workshop_date: initialData?.workshop_date
 		? initialData.workshop_date.toISOString()
@@ -126,15 +122,20 @@ const workshopEndDate = $derived(remoteForm.fields.workshop_end_date.value());
 const isPublic = $derived(Boolean(remoteForm.fields.is_public.value()));
 const title = $derived(String(remoteForm.fields.title.value() ?? ""));
 const location = $derived(String(remoteForm.fields.location.value() ?? ""));
-// What attendees will see: the staff-typed destination text only (ALE-442:
-// a selected place's Google text is never shown to attendees).
+// What attendees will see: the label plus the manual destination text, or
+// "Get directions" for a selected place (ALE-442: a selected place's Google
+// text is never shown to attendees).
+const previewHasPlace = $derived(
+	String(remoteForm.fields.destination_place_id.value() ?? "").trim() !== "",
+);
 const previewDestination = $derived(
-	destinationLines({
-		destinationName: String(remoteForm.fields.destination_name.value() ?? ""),
-		destinationAddress: String(
-			remoteForm.fields.destination_address.value() ?? "",
-		),
-	}),
+	previewHasPlace
+		? []
+		: destinationLines({
+				destinationText: String(
+					remoteForm.fields.destination_text.value() ?? "",
+				),
+			}),
 );
 const maxCapacity = $derived(
 	Number(remoteForm.fields.max_capacity.value() ?? 0),
@@ -364,7 +365,7 @@ const successMessage = $derived(remoteForm.result?.success);
 					</Field.Field>
 				</div>
 
-				<!-- ALE-440: optional destination details beside the short label -->
+				<!-- ALE-440: the optional destination beside the short label -->
 				<DestinationInput
 					fields={remoteForm.fields}
 					disabled={!isWorkshopEditable}
@@ -818,6 +819,10 @@ const successMessage = $derived(remoteForm.result?.success);
 						{#if previewDestination.length > 0}
 							<p class="text-xs leading-5 text-muted-foreground">
 								{previewDestination.join(" · ")}
+							</p>
+						{:else if previewHasPlace}
+							<p class="text-xs font-medium leading-5 text-primary">
+								Get directions
 							</p>
 						{/if}
 					</div>

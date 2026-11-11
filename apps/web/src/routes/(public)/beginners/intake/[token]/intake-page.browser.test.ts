@@ -170,9 +170,7 @@ function page(
 			startTime: "18:30",
 			endTime: null,
 			venue: "St. Andrew's Hall",
-			destinationName: null,
-			destinationAddress: null,
-			directionsUrl: null,
+			destinationText: null,
 			destinationProvider: null,
 			destinationPlaceId: null,
 		},
@@ -214,9 +212,7 @@ test("ALE-441: the saved destination and a referrer-safe directions link sit bes
 			action: "none",
 			workshop: {
 				...page().workshop!,
-				destinationName: "National Basketball Arena",
-				destinationAddress: "Tymon Park, Dublin 6w",
-				directionsUrl: null,
+				destinationText: "National Basketball Arena, Tymon Park, Dublin 6w",
 				destinationProvider: null,
 				destinationPlaceId: null,
 			},
@@ -228,7 +224,7 @@ test("ALE-441: the saved destination and a referrer-safe directions link sit bes
 	await expect.element(workshop).toHaveTextContent("St. Andrew's Hall");
 	await expect
 		.element(workshop)
-		.toHaveTextContent("National Basketball Arena · Tymon Park, Dublin 6w");
+		.toHaveTextContent("National Basketball Arena, Tymon Park, Dublin 6w");
 
 	const directions = screen.getByRole("link", { name: "Get directions" });
 	await expect
@@ -253,9 +249,7 @@ test("ALE-442: a selected Google place links directions by its Place ID beside t
 			action: "none",
 			workshop: {
 				...page().workshop!,
-				destinationName: null,
-				destinationAddress: null,
-				directionsUrl: null,
+				destinationText: null,
 				destinationProvider: "google",
 				destinationPlaceId: "place_hall",
 			},

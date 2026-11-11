@@ -108,8 +108,8 @@ defmodule Dhc.Workshops do
   # passed into `build_summary/2` separately because each caller computes them
   # differently (a SQL aggregate for the list, the `registration_counts/1` +
   # `interest_count/1` helpers for the single archived read).
-  @summary_scalar_fields ~w(id title description location destination_name destination_address
-    directions_url destination_provider destination_place_id start_date end_date max_capacity price_member price_non_member is_public
+  @summary_scalar_fields ~w(id title description location destination_text
+    destination_provider destination_place_id start_date end_date max_capacity price_member price_non_member is_public
     refund_days status announce_discord announce_email created_by)a
 
   @doc """
@@ -214,8 +214,9 @@ defmodule Dhc.Workshops do
   pricing, and attendee data.
 
   ALE-440: `location` is the recognizable Calendar location string — the
-  manually entered destination name/address when one is stored, else the short
-  venue label. It is never a link.
+  manually entered destination text when one is stored, else the short venue
+  label (also for a selected Google place, whose text is never stored). It is
+  never a link.
   """
   @spec calendar_projection(binary()) ::
           %{
@@ -237,8 +238,7 @@ defmodule Dhc.Workshops do
         start_date: w.start_date,
         end_date: w.end_date,
         label: w.location,
-        destination_name: w.destination_name,
-        destination_address: w.destination_address
+        destination_text: w.destination_text
       }
     )
     |> Repo.one()
@@ -280,8 +280,7 @@ defmodule Dhc.Workshops do
         start_date: w.start_date,
         end_date: w.end_date,
         label: w.location,
-        destination_name: w.destination_name,
-        destination_address: w.destination_address
+        destination_text: w.destination_text
       }
     )
     |> Repo.all()
@@ -297,12 +296,7 @@ defmodule Dhc.Workshops do
       status: source.status,
       start_date: source.start_date,
       end_date: source.end_date,
-      location:
-        Destinations.calendar_location(
-          source.destination_name,
-          source.destination_address,
-          source.label
-        )
+      location: Destinations.calendar_location(source.destination_text, source.label)
     }
   end
 
@@ -1202,9 +1196,7 @@ defmodule Dhc.Workshops do
       start_date: workshop.start_date,
       end_date: workshop.end_date,
       location: workshop.location,
-      destination_name: workshop.destination_name,
-      destination_address: workshop.destination_address,
-      directions_url: workshop.directions_url,
+      destination_text: workshop.destination_text,
       destination_provider: workshop.destination_provider,
       destination_place_id: workshop.destination_place_id,
       price_non_member: trunc(workshop.price_non_member),
@@ -1324,9 +1316,7 @@ defmodule Dhc.Workshops do
         title: w.title,
         description: w.description,
         location: w.location,
-        destination_name: w.destination_name,
-        destination_address: w.destination_address,
-        directions_url: w.directions_url,
+        destination_text: w.destination_text,
         destination_provider: w.destination_provider,
         destination_place_id: w.destination_place_id,
         start_date: w.start_date,

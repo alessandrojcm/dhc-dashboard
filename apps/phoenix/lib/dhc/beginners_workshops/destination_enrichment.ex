@@ -4,9 +4,9 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichment do
   Beginners' Workshop (ALE-444), the Beginners' Workshop owner of the
   operator workflow in `Dhc.DestinationBackfill`.
 
-  Enrichment adds manually reviewed destination details (`destination_name`,
-  `destination_address`, `directions_url`) to an upcoming scheduled workshop
-  whose short `venue` label a human has matched to the same physical Venue.
+  Enrichment adds manually reviewed destination text (`destination_text`) to
+  an upcoming scheduled workshop whose short `venue` label a human has
+  matched to the same physical Venue.
   It is not a reschedule: the label, date, times, Payment Cutoff, offer
   rounds, `reschedule_count`, Staff and every place, payment, refund and
   attendance fact stay as they are, and no email or Staff Notification is

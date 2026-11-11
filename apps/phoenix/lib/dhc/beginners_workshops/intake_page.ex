@@ -25,9 +25,9 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
       Intake after the Payment Cutoff.
 
   It carries the first name, the
-  workshop date, start time and venue (with its optional destination name,
-  address and Maps link, ALE-441, and a selected Google place's public Place
-  ID for directions, never Google's text, ALE-442), the fee and one action — never
+  workshop date, start time and venue (with its optional manual destination
+  text, ALE-441, or a selected Google place's public Place ID for
+  directions, never Google's text, ALE-442), the fee and one action — never
   our ids or Stripe objects; an `inactive` page carries none of them. Seats come from
   the same `WorkshopFacts` and `WorkshopPolicy` the boundary decides with, so
   a stale page can be out of date but never judge differently.
@@ -63,9 +63,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
               start_time: Time.t(),
               end_time: Time.t() | nil,
               venue: String.t(),
-              destination_name: String.t() | nil,
-              destination_address: String.t() | nil,
-              directions_url: String.t() | nil,
+              destination_text: String.t() | nil,
               destination_provider: String.t() | nil,
               destination_place_id: String.t() | nil
             }
@@ -129,9 +127,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
             start_time: workshop.start_time,
             end_time: workshop.end_time,
             venue: workshop.venue,
-            destination_name: workshop.destination_name,
-            destination_address: workshop.destination_address,
-            directions_url: workshop.directions_url,
+            destination_text: workshop.destination_text,
             destination_provider: workshop.destination_provider,
             destination_place_id: workshop.destination_place_id
           },

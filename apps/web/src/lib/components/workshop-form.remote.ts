@@ -30,20 +30,11 @@ import {
  */
 function destinationFormField(
 	field: string,
-):
-	| "destination_name"
-	| "destination_address"
-	| "directions_url"
-	| "destination_place_id"
-	| undefined {
+): "destination_text" | "destination_place_id" | undefined {
 	switch (field) {
-		case "destinationName":
-			return "destination_name";
-		case "destinationAddress":
-			return "destination_address";
-		case "directionsUrl":
-			return "directions_url";
-		// ALE-442: a refused selection is shown on the selected place.
+		case "destinationText":
+			return "destination_text";
+		// ALE-442: a refused selection is shown on the destination input.
 		case "destinationPlaceId":
 			return "destination_place_id";
 	}
@@ -52,9 +43,7 @@ function destinationFormField(
 type DestinationIssueBuilder = (message: string) => CommandIssue;
 
 interface DestinationIssueRoot {
-	destination_name: DestinationIssueBuilder;
-	destination_address: DestinationIssueBuilder;
-	directions_url: DestinationIssueBuilder;
+	destination_text: DestinationIssueBuilder;
 	destination_place_id: DestinationIssueBuilder;
 }
 
@@ -80,50 +69,31 @@ function attributeDestinationRejection(issue: DestinationIssueRoot) {
 
 /**
  * Destination fields for the request body: an omitted field (`undefined`)
- * preserves the stored detail, an emptied field clears it (`null`), and a
- * value passes through. The edit form always submits the fields it
+ * preserves the stored destination, an emptied field clears it (`null`), and
+ * a value passes through. The edit form always submits the fields it
  * prefilled, so an unrelated edit resubmits the stored values.
  *
- * ALE-442: the selected Google Place ID follows the same rule; it is the
- * only part of a Google selection ever sent.
+ * ALE-442: a selected Google Place ID is the only part of a selection ever
+ * sent, and it sends no manual text beside it (a place or text, never both).
  */
 function destinationPayload(data: {
-	destination_name?: string;
-	destination_address?: string;
-	directions_url?: string;
+	destination_text?: string;
 	destination_place_id?: string;
 }): Pick<
 	WorkshopManagementUpdateRequest,
-	| "destinationName"
-	| "destinationAddress"
-	| "directionsUrl"
-	| "destinationPlaceId"
+	"destinationText" | "destinationPlaceId"
 > {
-	const payload: Pick<
-		WorkshopManagementUpdateRequest,
-		| "destinationName"
-		| "destinationAddress"
-		| "directionsUrl"
-		| "destinationPlaceId"
-	> = {
-		destinationName:
-			data.destination_name === undefined
+	const placeId = data.destination_place_id?.trim() || null;
+	return {
+		destinationText:
+			data.destination_text === undefined
 				? undefined
-				: data.destination_name || null,
-		destinationAddress:
-			data.destination_address === undefined
-				? undefined
-				: data.destination_address || null,
-		directionsUrl:
-			data.directions_url === undefined
-				? undefined
-				: data.directions_url || null,
+				: placeId
+					? null
+					: data.destination_text.trim() || null,
+		destinationPlaceId:
+			data.destination_place_id === undefined ? undefined : placeId,
 	};
-
-	if (data.destination_place_id !== undefined)
-		payload.destinationPlaceId = data.destination_place_id.trim() || null;
-
-	return payload;
 }
 
 export const createWorkshop = form(

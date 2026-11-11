@@ -13,9 +13,7 @@ const workshop: WorkshopCalendarItem = {
 	title: "Clock change longsword",
 	description: null,
 	location: "Main Hall",
-	destinationName: null,
-	destinationAddress: null,
-	directionsUrl: null,
+	destinationText: null,
 	destinationProvider: null,
 	destinationPlaceId: null,
 	// 00:30 Irish Summer Time on Sunday 25 October, the night the clocks go

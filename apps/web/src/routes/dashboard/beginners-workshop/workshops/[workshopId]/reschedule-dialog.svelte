@@ -4,7 +4,7 @@
 	prefilled with the offsets Phoenix keeps and following a new date or time
 	until edited. It says how many people the reschedule emails before saving.
 	Phoenix decides: it is refused only after finalisation or cancellation.
-	ALE-441: it also edits the destination details. While the date, times and
+	ALE-441: it also edits the destination. While the date, times and
 	venue stay as they are, saving changes only the destination (Phoenix's
 	destination-only command) and emails nobody.
 -->
@@ -65,13 +65,8 @@ const operation = $derived(
 		startTime: current("startTime"),
 		endTime: form.fields.endTime.value() || (workshop.endTime ?? ""),
 		venue: form.fields.venue.value() ?? workshop.venue,
-		destination_name:
-			form.fields.destination_name.value() ?? savedDestination.destination_name,
-		destination_address:
-			form.fields.destination_address.value() ??
-			savedDestination.destination_address,
-		directions_url:
-			form.fields.directions_url.value() ?? savedDestination.directions_url,
+		destination_text:
+			form.fields.destination_text.value() ?? savedDestination.destination_text,
 		destination_place_id:
 			form.fields.destination_place_id.value() ??
 			savedDestination.destination_place_id,
@@ -128,9 +123,8 @@ function setContactFrom(value: DateValue | undefined) {
 		<Dialog.Header>
 			<Dialog.Title>Reschedule {formatCivilDate(workshop.date)}</Dialog.Title>
 			<Dialog.Description>
-				Change the date, time or venue, or only the destination details.
-				Existing bookings stay confirmed and the number of places stays the
-				same.
+				Change the date, time or venue, or only the destination. Existing
+				bookings stay confirmed and the number of places stays the same.
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -142,7 +136,7 @@ function setContactFrom(value: DateValue | undefined) {
 				if (result?.ok) {
 					toast.success(
 						result.operation === "destination"
-							? "Destination details saved"
+							? "Destination saved"
 							: "Workshop rescheduled",
 					);
 					open = false;

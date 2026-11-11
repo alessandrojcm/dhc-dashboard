@@ -1,114 +1,13 @@
 defmodule Dhc.DestinationsTest do
   @moduledoc """
-  ALE-440: the domain-neutral destination rules shared by workshop-owning
-  contexts — which manually supplied URLs are supported HTTPS Maps
-  destinations, and how a destination composes the Calendar location string.
+  ALE-440/ALE-442: the domain-neutral destination rules shared by
+  workshop-owning contexts — manual text or a selected place, never both —
+  and how a destination composes the Calendar location string.
   """
 
   use ExUnit.Case, async: true
 
   alias Dhc.Destinations
-
-  describe "validate_maps_url/1" do
-    test "no link is always allowed" do
-      assert :ok = Destinations.validate_maps_url(nil)
-    end
-
-    test "accepts Google Maps place, search, and coordinate URLs" do
-      assert :ok =
-               Destinations.validate_maps_url(
-                 "https://www.google.com/maps/place/National+Basketball+Arena/@53.35,-6.25,17z"
-               )
-
-      assert :ok = Destinations.validate_maps_url("https://www.google.com/maps?q=Tallaght")
-      assert :ok = Destinations.validate_maps_url("https://maps.google.com/?q=Clontarf")
-      assert :ok = Destinations.validate_maps_url("https://google.com/maps/place/Some+Where")
-    end
-
-    test "accepts the Maps short-link hosts" do
-      assert :ok = Destinations.validate_maps_url("https://maps.app.goo.gl/AbCdEf")
-      assert :ok = Destinations.validate_maps_url("https://goo.gl/maps/AbCdEf")
-      assert :ok = Destinations.validate_maps_url("https://g.co/maps/AbCdEf")
-    end
-
-    test "accepts uppercase scheme and host" do
-      assert :ok = Destinations.validate_maps_url("HTTPS://WWW.GOOGLE.COM/maps?q=Tallaght")
-    end
-
-    test "rejects executable and non-secure schemes" do
-      assert {:error, :unsupported_scheme} =
-               Destinations.validate_maps_url("javascript:alert(1)")
-
-      # Unparseable executable payloads are refused at the same seam.
-      assert {:error, :invalid_url} = Destinations.validate_maps_url("data:text/html,<b>hi</b>")
-
-      assert {:error, :unsupported_scheme} =
-               Destinations.validate_maps_url("http://www.google.com/maps?q=Tallaght")
-
-      assert {:error, :unsupported_scheme} = Destinations.validate_maps_url("//google.com/maps")
-    end
-
-    test "rejects embedded credentials" do
-      assert {:error, :credentials} =
-               Destinations.validate_maps_url("https://user:pass@www.google.com/maps?q=X")
-
-      assert {:error, :credentials} =
-               Destinations.validate_maps_url("https://staff@maps.app.goo.gl/AbCdEf")
-    end
-
-    test "rejects an explicit port" do
-      assert {:error, :unsupported_target} =
-               Destinations.validate_maps_url("https://www.google.com:8443/maps?q=Tallaght")
-    end
-
-    test "rejects supported hosts outside Maps paths" do
-      assert {:error, :unsupported_target} =
-               Destinations.validate_maps_url("https://www.google.com/search?q=maps")
-
-      assert {:error, :unsupported_target} =
-               Destinations.validate_maps_url("https://google.com/search?q=maps")
-
-      assert {:error, :unsupported_target} =
-               Destinations.validate_maps_url("https://goo.gl/AbCdEf")
-
-      assert {:error, :unsupported_target} = Destinations.validate_maps_url("https://g.co/AbCdEf")
-
-      assert {:error, :unsupported_target} =
-               Destinations.validate_maps_url("https://www.google.com/mapsettings")
-    end
-
-    test "rejects unsupported hosts" do
-      assert {:error, :unsupported_target} =
-               Destinations.validate_maps_url("https://evil.example.com/maps?q=Tallaght")
-
-      assert {:error, :unsupported_target} =
-               Destinations.validate_maps_url("https://google.com.evil.example.com/maps")
-
-      assert {:error, :unsupported_target} =
-               Destinations.validate_maps_url("https://notgoogle.maps.example.com/place")
-    end
-
-    test "rejects unparseable input and over-long links" do
-      assert {:error, :invalid_url} = Destinations.validate_maps_url("not a url")
-      assert {:error, :invalid_url} = Destinations.validate_maps_url(42)
-      # No scheme at all cannot be an https Maps destination.
-      assert {:error, :unsupported_scheme} = Destinations.validate_maps_url("")
-      # A hostless URL is not a Maps destination.
-      assert match?(
-               {:error, _},
-               Destinations.validate_maps_url("https://")
-             )
-
-      assert {:error, :invalid_url} =
-               Destinations.validate_maps_url("https://" <> String.duplicate("a", 2048))
-    end
-
-    test "every refusal has one user-facing message" do
-      for reason <- [:invalid_url, :unsupported_scheme, :credentials, :unsupported_target] do
-        assert is_binary(Destinations.url_error_message(reason))
-      end
-    end
-  end
 
   describe "normalize_optional/1" do
     test "absent stays absent and whitespace is absent" do
@@ -123,71 +22,53 @@ defmodule Dhc.DestinationsTest do
     end
   end
 
-  describe "calendar_location/3" do
-    test "composes name and address" do
+  describe "calendar_location/2" do
+    test "the manual destination text is the location" do
       assert Destinations.calendar_location(
-               "National Basketball Arena",
-               "Tymon Park, Dublin 6w",
+               " National Basketball Arena, Tymon Park, Dublin 6w ",
                "Main hall"
              ) == "National Basketball Arena, Tymon Park, Dublin 6w"
     end
 
-    test "either half alone composes without a separator" do
-      assert Destinations.calendar_location("Arena", nil, "Main hall") == "Arena"
-
-      assert Destinations.calendar_location(nil, "Tymon Park, Dublin 6w", "Main hall") ==
-               "Tymon Park, Dublin 6w"
-    end
-
-    test "falls back to the label for legacy and label-only rows" do
-      assert Destinations.calendar_location(nil, nil, "Main hall") == "Main hall"
-      assert Destinations.calendar_location("  ", "", "Main hall") == "Main hall"
-    end
-
-    test "a destination that is only a link keeps the readable label" do
-      # A URL is not a location people can read; the Calendar location stays
-      # recognizable and the link is used for directions, not for the event.
-      assert Destinations.calendar_location(nil, nil, "Main hall") == "Main hall"
+    test "falls back to the label for legacy, label-only and selected-place rows" do
+      assert Destinations.calendar_location(nil, "Main hall") == "Main hall"
+      assert Destinations.calendar_location("  ", "Main hall") == "Main hall"
+      assert Destinations.calendar_location(nil, nil) == ""
     end
   end
 
   describe "validate_changeset/1" do
-    @types %{destination_name: :string, destination_address: :string, directions_url: :string}
+    @types %{destination_text: :string}
 
     defp cast(data \\ %{}, attrs),
       do: Ecto.Changeset.cast({data, @types}, attrs, Map.keys(@types))
 
-    test "blank text is absent and a supplied Maps link is judged with its one message" do
-      changeset =
-        cast(%{"destination_name" => "  ", "directions_url" => "http://maps.google.com/?q=x"})
-        |> Destinations.validate_changeset()
+    test "blank text is absent and clearing stored text is valid" do
+      assert Ecto.Changeset.get_change(
+               cast(%{"destination_text" => "  "}) |> Destinations.validate_changeset(),
+               :destination_text
+             ) == nil
 
-      assert Ecto.Changeset.get_change(changeset, :destination_name) == nil
-      assert changeset.errors[:directions_url] == {"Directions link must be an https link", []}
+      assert %{valid?: true, changes: %{destination_text: nil}} =
+               %{destination_text: "Arena"}
+               |> cast(%{"destination_text" => nil})
+               |> Destinations.validate_changeset()
     end
 
-    test "clearing a stored link is valid, and the lengths are the shared maxima" do
-      assert %{valid?: true} =
-               %{directions_url: "https://maps.app.goo.gl/AbCdEf"}
-               |> cast(%{"directions_url" => nil})
+    test "text is trimmed and bounded by the shared maximum" do
+      assert %{valid?: true, changes: %{destination_text: "Arena, Dublin"}} =
+               cast(%{"destination_text" => " Arena, Dublin "})
                |> Destinations.validate_changeset()
 
-      assert %{valid?: false, errors: errors} =
-               cast(%{
-                 "destination_name" => String.duplicate("n", Destinations.name_max() + 1),
-                 "destination_address" => String.duplicate("a", Destinations.address_max() + 1)
-               })
+      assert %{valid?: false, errors: [destination_text: _]} =
+               cast(%{"destination_text" => String.duplicate("n", Destinations.text_max() + 1)})
                |> Destinations.validate_changeset()
-
-      assert Keyword.keys(errors) |> Enum.sort() == [:destination_address, :destination_name]
     end
   end
 
   describe "validate_changeset/2 provenance (ALE-442)" do
     @place_types %{
-      destination_name: :string,
-      destination_address: :string,
-      directions_url: :string,
+      destination_text: :string,
       destination_provider: :string,
       destination_place_id: :string,
       destination_selected_at: :utc_datetime
@@ -195,15 +76,20 @@ defmodule Dhc.DestinationsTest do
 
     @now ~U[2026-11-11 09:30:00.123456Z]
 
-    # A selected place with staff-typed text beside it: Google's own name
-    # and address are never stored.
+    # A selected place: Google's own name and address are never stored, and
+    # a selected destination carries no manual text.
     @selected %{
-      destination_name: "Our hall",
-      destination_address: nil,
-      directions_url: nil,
+      destination_text: nil,
       destination_provider: "google",
       destination_place_id: "place_hall",
       destination_selected_at: ~U[2025-01-01 00:00:00Z]
+    }
+
+    @manual %{
+      destination_text: "Our hall, Dublin 8",
+      destination_provider: nil,
+      destination_place_id: nil,
+      destination_selected_at: nil
     }
 
     defp place_changeset(data, attrs) do
@@ -212,48 +98,35 @@ defmodule Dhc.DestinationsTest do
       |> Destinations.validate_changeset(now: @now)
     end
 
-    test "a new Place ID records only the selection's identity and drops a manual link" do
+    test "a new Place ID records only the selection's identity and drops the manual text" do
       changeset =
-        place_changeset(%{directions_url: "https://maps.app.goo.gl/Old"}, %{
+        place_changeset(@manual, %{
+          "destination_text" => "",
           "destination_place_id" => "place_hall"
         })
 
       assert changeset.valid?
 
       assert changeset.changes == %{
+               destination_text: nil,
                destination_provider: "google",
                destination_place_id: "place_hall",
-               destination_selected_at: ~U[2026-11-11 09:30:00Z],
-               directions_url: nil
+               destination_selected_at: ~U[2026-11-11 09:30:00Z]
              }
-    end
 
-    test "staff text typed beside a new selection is kept as typed" do
-      changeset =
-        place_changeset(%{}, %{
-          "destination_name" => " Our hall ",
-          "destination_place_id" => "place_hall"
-        })
-
-      assert changeset.valid?
-      assert changeset.changes.destination_name == "Our hall"
-      assert changeset.changes.destination_place_id == "place_hall"
-      refute Map.has_key?(changeset.changes, :destination_address)
+      # A caller that omits the text still never leaves both stored.
+      assert place_changeset(@manual, %{"destination_place_id" => "place_hall"}).changes.destination_text ==
+               nil
     end
 
     test "Destinations.fields/0 casts no provider text or credits" do
-      assert Destinations.fields() == [
-               :destination_name,
-               :destination_address,
-               :directions_url,
-               :destination_place_id
-             ]
+      assert Destinations.fields() == [:destination_text, :destination_place_id]
     end
 
     test "an unrelated resubmission preserves the selection and its timestamp" do
       changeset =
         place_changeset(@selected, %{
-          "destination_name" => "Our hall",
+          "destination_text" => "",
           "destination_place_id" => "place_hall"
         })
 
@@ -263,53 +136,44 @@ defmodule Dhc.DestinationsTest do
       assert place_changeset(@selected, %{}).changes == %{}
     end
 
-    test "editing the staff text beside the resubmitted place keeps the place" do
+    test "typed text without the place replaces the stored place" do
       changeset =
         place_changeset(@selected, %{
-          "destination_name" => "Our hall, side door",
-          "destination_address" => "Rear entrance",
-          "destination_place_id" => "place_hall"
+          "destination_text" => "Another venue",
+          "destination_place_id" => ""
         })
 
       assert changeset.valid?
 
       assert changeset.changes == %{
-               destination_name: "Our hall, side door",
-               destination_address: "Rear entrance"
-             }
-    end
-
-    test "editing the text without naming the place drops the stale place" do
-      changeset = place_changeset(@selected, %{"destination_name" => "Another venue"})
-
-      assert changeset.valid?
-
-      assert changeset.changes == %{
-               destination_name: "Another venue",
+               destination_text: "Another venue",
                destination_provider: nil,
                destination_place_id: nil,
                destination_selected_at: nil
              }
+
+      # Omitting the place entirely is the same manual destination.
+      assert %{valid?: true, changes: %{destination_place_id: nil}} =
+               place_changeset(@selected, %{"destination_text" => "Another venue"})
     end
 
-    test "a manual directions link replaces the place, even beside its Place ID" do
-      for attrs <- [
-            %{"directions_url" => "https://maps.app.goo.gl/AbCdEf"},
-            %{
-              "directions_url" => "https://maps.app.goo.gl/AbCdEf",
-              "destination_place_id" => "place_hall"
-            }
+    test "text beside a Place ID is refused: a destination is a place or text, never both" do
+      for {data, attrs} <- [
+            {%{}, %{"destination_text" => "Hall", "destination_place_id" => "place_hall"}},
+            {@selected, %{"destination_text" => "Hall", "destination_place_id" => "place_hall"}},
+            {@selected, %{"destination_text" => "Hall", "destination_place_id" => "place_annex"}},
+            # Stored text resubmitted unchanged beside a new place is still both.
+            {@manual,
+             %{
+               "destination_text" => @manual.destination_text,
+               "destination_place_id" => "place_hall"
+             }}
           ] do
-        changeset = place_changeset(@selected, attrs)
-
-        assert changeset.valid?
-        assert changeset.changes.destination_place_id == nil
-        assert changeset.changes.destination_provider == nil
-        assert changeset.changes.directions_url == "https://maps.app.goo.gl/AbCdEf"
+        assert %{valid?: false, errors: [destination_text: _]} = place_changeset(data, attrs)
       end
     end
 
-    test "replacing the place stamps a new selection and keeps the staff text" do
+    test "replacing the place stamps a new selection" do
       changeset = place_changeset(@selected, %{"destination_place_id" => "place_annex"})
 
       assert changeset.valid?
@@ -320,7 +184,7 @@ defmodule Dhc.DestinationsTest do
              }
     end
 
-    test "clearing the Place ID clears provider identity and keeps the staff text" do
+    test "clearing the Place ID clears provider identity" do
       changeset = place_changeset(@selected, %{"destination_place_id" => ""})
 
       assert changeset.valid?
@@ -333,7 +197,7 @@ defmodule Dhc.DestinationsTest do
     end
 
     test "a manual destination never gains a provider" do
-      changeset = place_changeset(%{}, %{"destination_name" => "Manual hall"})
+      changeset = place_changeset(%{}, %{"destination_text" => "Manual hall"})
 
       assert changeset.valid?
       refute Map.has_key?(changeset.changes, :destination_provider)

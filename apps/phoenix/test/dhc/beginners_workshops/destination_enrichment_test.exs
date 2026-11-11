@@ -41,15 +41,11 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichmentTest do
   @start ~U[2026-11-14 18:30:00Z]
 
   @arena %{
-    destination_name: "National Basketball Arena",
-    destination_address: "Tymon Park, Dublin 6w",
-    directions_url: "https://maps.app.goo.gl/AbCdEf",
+    destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
     destination_place_id: nil
   }
   @none %{
-    destination_name: nil,
-    destination_address: nil,
-    directions_url: nil,
+    destination_text: nil,
     destination_place_id: nil
   }
 
@@ -117,12 +113,12 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichmentTest do
       assert sync_jobs(workshop.id) == jobs
     end
 
-    test "fills absent fields when the stored ones already agree", %{coordinator: coordinator} do
-      workshop =
-        scheduled!(coordinator, %{"destination_name" => @arena.destination_name})
+    test "a selected Google place is a conflict, never overwritten", %{coordinator: coordinator} do
+      workshop = scheduled!(coordinator, %{"destination_place_id" => "ChIJ-selected"})
 
-      assert {:ok, :changed} = enrich(coordinator, workshop)
-      assert Map.take(stored(workshop), Map.keys(@arena)) == @arena
+      assert {:error, :destination_conflict} = enrich(coordinator, workshop)
+      assert stored(workshop).destination_place_id == "ChIJ-selected"
+      assert stored(workshop).destination_text == nil
     end
 
     test "a workshop with no known end time is enriched against its reviewed nil end",
@@ -198,11 +194,11 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichmentTest do
                run(
                  coordinator,
                  {:update_destination, workshop.id,
-                  %{"venue" => workshop.venue, "destination_name" => "Seen elsewhere"}}
+                  %{"venue" => workshop.venue, "destination_text" => "Seen elsewhere"}}
                )
 
       assert {:error, :destination_changed} = enrich(coordinator, workshop, expected: reviewed)
-      assert stored(workshop).destination_name == "Seen elsewhere"
+      assert stored(workshop).destination_text == "Seen elsewhere"
     end
 
     test "a cancellation since review is refused", %{coordinator: coordinator} do
@@ -228,7 +224,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichmentTest do
                  clock: fn -> @now end
                )
 
-      conflicting = scheduled!(coordinator, %{"destination_address" => "Another street"})
+      conflicting = scheduled!(coordinator, %{"destination_text" => "Another street"})
       assert {:error, :destination_conflict} = enrich(coordinator, conflicting)
       assert stored(conflicting) == conflicting
     end
@@ -253,7 +249,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationEnrichmentTest do
 
     test "an invalid proposal is refused without a write", %{coordinator: coordinator} do
       workshop = scheduled!(coordinator)
-      bad = %{@arena | directions_url: "https://example.com/not-maps"}
+      bad = %{@arena | destination_text: String.duplicate("a", 501)}
 
       assert {:error, :invalid_destination} =
                BeginnersWorkshops.enrich_destination(

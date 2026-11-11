@@ -123,14 +123,12 @@ test("shows each Workshop's day and times on the Dublin clock, either side of th
 });
 
 test("shows a saved destination and a safe directions link beside the label", async () => {
-	// ALE-440: members plan their journey from the list card; a manual Maps
-	// link opens externally, and no link is invented for a legacy row.
+	// ALE-440: members plan their journey from the list card; manual text
+	// links an ordinary Maps search, and no link is invented for a legacy row.
 	const screen = await render(WorkshopListTestWrapper, {
 		workshops: [
 			workshop({
-				destinationName: "National Basketball Arena",
-				destinationAddress: "Tymon Park, Dublin 6w",
-				directionsUrl: "https://maps.app.goo.gl/AbCdEf",
+				destinationText: "National Basketball Arena, Tymon Park, Dublin 6w",
 			}),
 			workshop({
 				id: "22222222-2222-2222-2222-222222222222",
@@ -142,15 +140,16 @@ test("shows a saved destination and a safe directions link beside the label", as
 	const card = screen.getByRole("article").first();
 	await expect.element(card.getByText("Main Hall")).toBeVisible();
 	await expect
-		.element(
-			card.getByText("National Basketball Arena · Tymon Park, Dublin 6w"),
-		)
+		.element(card.getByText("National Basketball Arena, Tymon Park, Dublin 6w"))
 		.toBeVisible();
 	const directions = card.getByRole("link", { name: "Get directions" });
 	await expect.element(directions).toBeVisible();
 	await expect
 		.element(directions)
-		.toHaveAttribute("href", "https://maps.app.goo.gl/AbCdEf");
+		.toHaveAttribute(
+			"href",
+			`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
+		);
 	await expect
 		.element(directions)
 		.toHaveAttribute("rel", "noopener noreferrer");
@@ -162,25 +161,18 @@ test("shows a saved destination and a safe directions link beside the label", as
 	).toHaveLength(0);
 });
 
-test("ALE-442: a selected Google place shows only staff text, never attribution, with place-bound directions", async () => {
+test("ALE-442: a selected Google place shows the label and place-bound directions, never Google text or attribution", async () => {
 	const screen = await render(WorkshopListTestWrapper, {
 		workshops: [
 			workshop({
-				destinationName: "Our hall",
 				destinationProvider: "google",
 				destinationPlaceId: "place_hall",
-			}),
-			workshop({
-				id: "22222222-2222-2222-2222-222222222222",
-				title: "Place only",
-				destinationProvider: "google",
-				destinationPlaceId: "place_annex",
 			}),
 		],
 	});
 
 	const card = screen.getByRole("article").first();
-	await expect.element(card).toHaveTextContent("Our hall");
+	await expect.element(card.getByText("Main Hall")).toBeVisible();
 	// No Google text is stored, so nothing on an attendee surface is Google's.
 	expect(card.getByTestId("destination-attribution").elements()).toHaveLength(
 		0,
@@ -189,17 +181,6 @@ test("ALE-442: a selected Google place shows only staff text, never attribution,
 		.element(card.getByRole("link", { name: "Get directions" }))
 		.toHaveAttribute(
 			"href",
-			"https://www.google.com/maps/dir/?api=1&destination=Our%20hall&destination_place_id=place_hall",
-		);
-
-	// A place with no staff text is named by the short location label.
-	const placeOnly = screen.getByRole("article").nth(1);
-	await expect
-		.element(placeOnly.getByRole("link", { name: "Get directions" }))
-		.toHaveAttribute(
-			"href",
-			expect.stringMatching(
-				/destination=[^&]+&destination_place_id=place_annex$/,
-			),
+			"https://www.google.com/maps/dir/?api=1&destination=Main%20Hall&destination_place_id=place_hall",
 		);
 });

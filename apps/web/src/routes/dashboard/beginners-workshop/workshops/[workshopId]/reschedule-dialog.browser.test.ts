@@ -32,9 +32,7 @@ function workshop(
 		id: uniqueWorkshopId(),
 		status: "scheduled",
 		venue: "St. Andrew's Hall",
-		destinationName: null,
-		destinationAddress: null,
-		directionsUrl: null,
+		destinationText: null,
 		destinationProvider: null,
 		destinationPlaceId: null,
 		date: "2026-11-14",
@@ -152,9 +150,7 @@ test("offers the contact-from date while Batch 1 hasn't gone out", async () => {
 
 test("ALE-441: a destination-only edit saves without emailing; a move is still a reschedule", async () => {
 	const { screen, form } = await openDialog(3, {
-		destinationName: "National Basketball Arena",
-		destinationAddress: null,
-		directionsUrl: null,
+		destinationText: "National Basketball Arena",
 		destinationProvider: null,
 		destinationPlaceId: null,
 	});
@@ -163,22 +159,17 @@ test("ALE-441: a destination-only edit saves without emailing; a move is still a
 			.element()
 			.querySelector<HTMLInputElement>('input[type=hidden][name*="operation"]')
 			?.value;
+	const destination = screen.getByRole("combobox", { name: "Destination" });
 
-	await expect
-		.element(screen.getByLabelText("Destination name"))
-		.toHaveValue("National Basketball Arena");
+	await expect.element(destination).toHaveValue("National Basketball Arena");
 	// Nothing changed yet: the dialog is a reschedule.
 	expect(operation()).toBe("reschedule");
 
-	await userEvent.fill(
-		screen.getByLabelText("Destination address"),
-		"Tymon Park, Dublin 6w",
-	);
+	await userEvent.click(destination);
+	await userEvent.keyboard(", Tymon Park");
 	await expect
 		.element(screen.getByTestId("reschedule-warning"))
-		.toHaveTextContent(
-			"No emails will be sent: only the destination details change.",
-		);
+		.toHaveTextContent("No emails will be sent: only the destination changes.");
 	await expect
 		.element(screen.getByRole("button", { name: "Save destination" }))
 		.toBeVisible();
@@ -191,26 +182,9 @@ test("ALE-441: a destination-only edit saves without emailing; a move is still a
 	expect(operation()).toBe("reschedule");
 });
 
-test("ALE-441: the destination link gets the shared https check before submitting", async () => {
-	const { screen } = await openDialog(0);
-
-	await userEvent.fill(
-		screen.getByLabelText("Google Maps directions link"),
-		"http://maps.google.com/?q=Tallaght",
-	);
-	await userEvent.click(
-		screen.getByRole("button", { name: "Save destination" }),
-	);
-
-	await expect
-		.element(screen.getByText("Directions link must be an https link"))
-		.toBeVisible();
-});
-
 test("ALE-442: replacing a saved Google place is a destination-only change, and Escape keeps the dialog open", async () => {
 	const { screen, form } = await openDialog(3, {
-		destinationName: "Our hall",
-		destinationAddress: null,
+		destinationText: null,
 		destinationProvider: "google",
 		destinationPlaceId: "place_hall",
 	});
@@ -219,22 +193,19 @@ test("ALE-442: replacing a saved Google place is a destination-only change, and 
 			.element()
 			.querySelector<HTMLInputElement>(`input[type=hidden][name*="${name}"]`)
 			?.value;
+	const destination = screen.getByRole("combobox", { name: "Destination" });
 
-	// A saved place has no stored Google text: it reopens as "selected" only,
-	// beside the staff-typed name.
-	const preview = screen.getByRole("region", { name: "Selected place" });
-	await expect.element(preview).toHaveTextContent("Google Maps place selected");
-	expect(
-		preview.getByTestId("destination-attribution").elements(),
-	).toHaveLength(0);
+	// A saved place has no stored Google text: it reopens as "selected" only.
+	await expect.element(destination).toHaveValue("");
 	await expect
-		.element(screen.getByRole("textbox", { name: "Destination name" }))
-		.toHaveValue("Our hall");
+		.element(destination)
+		.toHaveAttribute("placeholder", "Google Maps place selected");
+	expect(screen.getByTestId("destination-attribution").elements()).toHaveLength(
+		0,
+	);
 	expect(hidden("operation")).toBe("reschedule");
 
-	await userEvent.click(
-		screen.getByRole("combobox", { name: "Replace with another place" }),
-	);
+	await userEvent.click(destination);
 	await userEvent.keyboard("Annex");
 	await expect.element(screen.getByRole("option").first()).toBeVisible();
 	await userEvent.keyboard("{Escape}");
@@ -245,15 +216,13 @@ test("ALE-442: replacing a saved Google place is a destination-only change, and 
 
 	await userEvent.keyboard("{Backspace}");
 	await screen.getByRole("option", { name: /Annex/ }).click();
-	// Google's preview of the new place, for this session only; the staff
-	// text is untouched.
-	await expect.element(preview).toHaveTextContent("Synthetic Fencing Annex");
+	// Google's text for the new place, for this session only.
 	await expect
-		.element(preview.getByTestId("destination-attribution"))
+		.element(destination)
+		.toHaveValue("Synthetic Fencing Annex, 2 Example Street, Dublin 8");
+	await expect
+		.element(screen.getByTestId("destination-attribution"))
 		.toHaveTextContent("Google Maps");
-	await expect
-		.element(screen.getByRole("textbox", { name: "Destination name" }))
-		.toHaveValue("Our hall");
 	expect(lookup.resolveCalls.map((call) => call.placeId)).toEqual([
 		"place_annex",
 	]);
@@ -263,33 +232,29 @@ test("ALE-442: replacing a saved Google place is a destination-only change, and 
 		.toBeVisible();
 	expect(hidden("operation")).toBe("destination");
 	expect(hidden("destination_place_id")).toBe("place_annex");
+	expect(hidden("destination_text")).toBe("");
 	expect(
 		form.element().querySelector('[name*="destination_attributions"]'),
 	).toBeNull();
 });
 
-test("ALE-442: the search and a selected place fit a phone", async () => {
+test("ALE-442: the destination input and its clear button fit a phone", async () => {
 	await page.viewport(375, 740);
 	const { screen } = await openDialog(0, {
-		destinationName: "Our hall with a fairly long staff-typed name",
-		destinationAddress: "1 Example Street, Dublin 8, D08 X000, Ireland",
-		destinationProvider: "google",
-		destinationPlaceId: "place_hall",
+		destinationText:
+			"Our hall with a fairly long staff-typed name, 1 Example Street, Dublin 8, D08 X000, Ireland",
 	});
 
-	const preview = screen
-		.getByRole("region", { name: "Selected place" })
+	const clear = screen
+		.getByRole("button", { name: "Clear destination" })
 		.element();
-	const remove = screen.getByRole("button", { name: "Remove place" }).element();
-	const search = screen
-		.getByRole("combobox", { name: "Replace with another place" })
-		.element();
-	for (const element of [preview, remove, search]) {
+	const input = screen.getByRole("combobox", { name: "Destination" }).element();
+	for (const element of [clear, input]) {
 		const box = element.getBoundingClientRect();
 		expect(box.left).toBeGreaterThanOrEqual(0);
 		expect(box.right).toBeLessThanOrEqual(375);
 	}
 	// Touch-sized controls.
-	expect(remove.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
-	expect(search.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+	expect(clear.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
+	expect(input.getBoundingClientRect().height).toBeGreaterThanOrEqual(44);
 });

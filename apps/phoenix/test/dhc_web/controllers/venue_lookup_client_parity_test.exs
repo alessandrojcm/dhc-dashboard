@@ -30,14 +30,17 @@ defmodule DhcWeb.VenueLookupClientParityTest do
   end
 
   @tag :parity
-  test "the closed lookup and credit shapes reach the public surface", context do
+  test "the closed lookup shapes reach the public surface", context do
     types = File.read!(Path.join(context.generated, "types.gen.ts"))
     public = File.read!(context.public)
 
-    for schema <- ~w(DestinationAttribution VenueLookupSuggestion VenueLookupSelection) do
+    for schema <- ~w(VenueLookupSuggestion VenueLookupSelection) do
       assert types =~ "export type #{schema} =", "#{schema} is missing from the generated types"
       assert public =~ ~r/\n\t#{schema},\n/, "#{schema} is not re-exported from src/index.ts"
     end
+
+    # The credit shape is only ever read through a selection preview.
+    assert extract_type(types, "VenueLookupSelection") =~ "DestinationAttribution"
   end
 
   @tag :parity
@@ -48,9 +51,13 @@ defmodule DhcWeb.VenueLookupClientParityTest do
     for schema <- ~w(Workshop BeginnersWorkshop BeginnersIntakeWorkshop) do
       body = extract_type(types, schema)
 
-      for field <- ~w(destinationProvider destinationPlaceId) do
+      for field <- ~w(destinationText destinationProvider destinationPlaceId) do
         assert body =~ ~r/\b#{field}\b/, "#{schema} lacks #{field}"
       end
+
+      # One manual text field replaced the name, address and link (ALE-442).
+      refute body =~ ~r/\b(destinationName|destinationAddress|directionsUrl)\b/,
+             "#{schema} still carries the retired destination fields"
 
       # Only the Place ID is stored (ALE-442): no Google credits on a read.
       refute body =~ ~r/\bdestinationAttributions\b/, "#{schema} still carries credits"
@@ -60,6 +67,7 @@ defmodule DhcWeb.VenueLookupClientParityTest do
                      BeginnersWorkshopDestinationRequest) do
       body = extract_type(types, schema)
       assert body =~ ~r/\bdestinationPlaceId\b/, "#{schema} lacks destinationPlaceId"
+      assert body =~ ~r/\bdestinationText\b/, "#{schema} lacks destinationText"
       refute body =~ ~r/\bdestinationAttributions\b/, "#{schema} still accepts credits"
     end
   end

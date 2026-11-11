@@ -9,7 +9,7 @@
  *   before the workshop date, or comes forward to Dublin today when that
  *   would fall after the cutoff date.
  *
- * ALE-441: the same dialog edits the destination details. A submission that
+ * ALE-441: the same dialog edits the destination. A submission that
  * keeps the date, times and venue but changes the destination is a
  * destination-only change (`update_destination`), which Phoenix never treats
  * as a reschedule.
@@ -111,9 +111,7 @@ export function rescheduleOperation(
 		| "startTime"
 		| "endTime"
 		| "venue"
-		| "destinationName"
-		| "destinationAddress"
-		| "directionsUrl"
+		| "destinationText"
 		| "destinationProvider"
 		| "destinationPlaceId"
 	>,
@@ -129,9 +127,7 @@ export function rescheduleOperation(
 	const saved = destinationBody(destinationValues(workshop));
 	const next = destinationBody(values);
 	const changed =
-		next.destinationName !== saved.destinationName ||
-		next.destinationAddress !== saved.destinationAddress ||
-		next.directionsUrl !== saved.directionsUrl ||
+		next.destinationText !== saved.destinationText ||
 		// ALE-442: selecting, replacing or removing a Google place.
 		next.destinationPlaceId !== saved.destinationPlaceId;
 	return changed ? "destination" : "reschedule";
@@ -148,7 +144,7 @@ export function rescheduleWarning(
 	operation: RescheduleOperation = "reschedule",
 ): string {
 	if (operation === "destination")
-		return "No emails will be sent: only the destination details change.";
+		return "No emails will be sent: only the destination changes.";
 	if (recipients === 0)
 		return "No emails will be sent: nobody has an active workshop place.";
 	const people = recipients === 1 ? "1 person" : `${recipients} people`;

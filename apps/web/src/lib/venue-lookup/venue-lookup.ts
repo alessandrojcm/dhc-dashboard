@@ -57,4 +57,4 @@ export const VENUE_SEARCH_MAX = 120;
 
 /** Shown when the lookup itself could not be reached. */
 export const LOOKUP_UNAVAILABLE =
-	"Google venue search is unavailable right now; enter the destination details manually";
+	"Google venue search is unavailable right now; type the destination and it is saved as written";

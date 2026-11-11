@@ -165,15 +165,17 @@ test("offers optional Staff shared by every date (ALE-379)", async () => {
 test("ALE-442: a chosen Google place is shared by every date through its hidden Place ID only", async () => {
 	const { screen, form } = await openDialog();
 
-	await userEvent.click(
-		screen.getByRole("combobox", { name: "Search Google Maps" }),
-	);
+	const destination = screen.getByRole("combobox", { name: "Destination" });
+	await userEvent.click(destination);
 	await userEvent.keyboard("Synthetic");
 	await screen.getByRole("option", { name: /Synthetic Fencing Hall/ }).click();
 
-	const preview = screen.getByRole("region", { name: "Selected place" });
-	await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
-	await expect.element(preview).toHaveTextContent("Google Maps · Venue Guide");
+	await expect
+		.element(destination)
+		.toHaveValue(expect.stringContaining("Synthetic Fencing Hall"));
+	await expect
+		.element(screen.getByTestId("destination-attribution"))
+		.toHaveTextContent("Google Maps · Venue Guide");
 	// The short email-sized venue label stays the coordinator's own.
 	await expect.element(screen.getByLabelText("Venue")).toHaveValue("");
 	// Choosing a place never submits the dialog.
@@ -181,11 +183,7 @@ test("ALE-442: a chosen Google place is shared by every date through its hidden 
 
 	const element = formElement(form.element());
 	expect(fieldNames(element)).toEqual(
-		expect.arrayContaining([
-			"destination_name",
-			"destination_address",
-			"destination_place_id",
-		]),
+		expect.arrayContaining(["destination_text", "destination_place_id"]),
 	);
 	expect(fieldNames(element)).not.toContain("destination_attributions");
 	const value = (name: string) =>
@@ -196,6 +194,6 @@ test("ALE-442: a chosen Google place is shared by every date through its hidden 
 			)
 			.find((control) => control.name.split("/")[0] === name)?.value;
 	expect(value("destination_place_id")).toBe("place_hall");
-	// Google's name is a preview only: the name control stays the staff's.
-	expect(value("destination_name")).toBe("");
+	// Google's text is shown in the input only: none of it is submitted.
+	expect(value("destination_text")).toBe("");
 });

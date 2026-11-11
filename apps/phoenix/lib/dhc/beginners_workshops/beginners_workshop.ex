@@ -35,15 +35,14 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
   schema "beginners_workshops" do
     field :status, :string, default: "scheduled"
     field :venue, :string
-    # ALE-441: optional, manually entered destination details beside the
-    # short `venue` label, which stays required and email-sized. Nullable so
-    # legacy rows and label-only submissions remain valid.
-    field :destination_name, :string
-    field :destination_address, :string
-    field :directions_url, :string
+    # ALE-441: optional, manually entered destination text beside the short
+    # `venue` label, which stays required and email-sized. Nullable so legacy
+    # rows and label-only submissions remain valid.
+    field :destination_text, :string
     # ALE-442: the provider identity of a destination selected from Google
     # Maps venue search: its Place ID only, never Google's text
-    # (`Dhc.Destinations` owns the rules). All absent for a manual destination.
+    # (`Dhc.Destinations` owns the rules). All absent for a manual
+    # destination; a selected place carries no `destination_text`.
     field :destination_provider, :string
     field :destination_place_id, :string
     field :destination_selected_at, :utc_datetime
@@ -161,9 +160,10 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
 
   @doc """
   The shape of a destination-only change (`update_destination`, ALE-441):
-  the optional destination name, address and directions link, or (ALE-442)
-  a selected Google place, at the same venue. `opts[:now]` stamps a new
-  selection (`Dhc.Destinations.validate_changeset/2`). Omitted keys keep their value and `nil` clears one. It casts
+  the optional manual destination text or (ALE-442) a selected Google place,
+  at the same venue. `opts[:now]` stamps a new selection
+  (`Dhc.Destinations.validate_changeset/2`). Omitted keys keep their value
+  and `nil` clears one. It casts
   nothing else, so no schedule fact, the reschedule number or any policy
   field can change through it.
   """

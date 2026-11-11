@@ -30,15 +30,14 @@ defmodule Dhc.Workshops.Workshop do
     field :title, :string
     field :description, :string
     field :location, :string
-    # ALE-440: optional, manually entered destination details. The short
-    # venue label (`location`) stays required and independent; these are all
-    # nullable so legacy rows and label-only submissions remain valid.
-    field :destination_name, :string
-    field :destination_address, :string
-    field :directions_url, :string
+    # ALE-440: optional, manually entered destination text. The short venue
+    # label (`location`) stays required and independent; it is nullable so
+    # legacy rows and label-only submissions remain valid.
+    field :destination_text, :string
     # ALE-442: the provider identity of a destination selected from Google
     # Maps venue search: its Place ID only, never Google's text
-    # (`Dhc.Destinations` owns the rules). All absent for a manual destination.
+    # (`Dhc.Destinations` owns the rules). All absent for a manual
+    # destination; a selected place carries no `destination_text`.
     field :destination_provider, :string
     field :destination_place_id, :string
     field :destination_selected_at, :utc_datetime
@@ -62,8 +61,8 @@ defmodule Dhc.Workshops.Workshop do
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end
 
-  @management_fields ~w(title description location destination_name destination_address
-    directions_url destination_place_id start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
+  @management_fields ~w(title description location destination_text
+    destination_place_id start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
   @required_management_fields ~w(title location start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
 
   @doc false
@@ -85,7 +84,7 @@ defmodule Dhc.Workshops.Workshop do
 
   @doc """
   A destination-only change (ALE-443 reviewed enrichment): casts only the
-  three destination fields, so no label, schedule, status or pricing value can
+  destination fields, so no label, schedule, status or pricing value can
   ride along.
   """
   @spec destination_changeset(t(), map()) :: Ecto.Changeset.t()

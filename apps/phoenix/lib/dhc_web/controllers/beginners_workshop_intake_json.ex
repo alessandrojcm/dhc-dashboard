@@ -21,9 +21,7 @@ defmodule DhcWeb.BeginnersWorkshopIntakeJSON do
               endTime:
                 page.workshop.end_time && BeginnersWorkshopsJSON.hh_mm(page.workshop.end_time),
               venue: page.workshop.venue,
-              destinationName: page.workshop.destination_name,
-              destinationAddress: page.workshop.destination_address,
-              directionsUrl: page.workshop.directions_url,
+              destinationText: page.workshop.destination_text,
               destinationProvider: page.workshop.destination_provider,
               destinationPlaceId: page.workshop.destination_place_id
             },

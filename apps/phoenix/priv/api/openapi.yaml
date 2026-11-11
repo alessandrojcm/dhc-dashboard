@@ -3479,8 +3479,8 @@ paths:
         command endpoints. Pricing edits preserve the current looser rule:
         pricing may be changed while planned, or after publish only while there
         are zero active (`pending`/`confirmed`) registrations. Optional
-        destination fields (`destinationName`, `destinationAddress`,
-        `directionsUrl`) are general edits, not pricing: they follow the
+        destination fields (`destinationText`, `destinationPlaceId`) are
+        general edits, not pricing: they follow the
         planned-only rule, and an omitted key preserves the stored value while
         an explicit `null` clears it (ALE-440).
 
@@ -4202,10 +4202,10 @@ paths:
     put:
       operationId: beginnersWorkshops.updateDestination
       tags: [BeginnersWorkshops]
-      summary: Change a workshop's destination details at the same venue
+      summary: Change a workshop's destination at the same venue
       description: |
-        Saves only the optional destination name, address and Maps
-        directions link (ALE-441), before Attendance Finalisation. It is not a
+        Saves only the optional destination — manual text or a selected
+        Google place (ALE-441/ALE-442) — before Attendance Finalisation. It is not a
         reschedule: the date, times, venue, payment deadline, offer rounds
         and reschedule count stay as they are, nobody is emailed and the
         Staff are not notified; only the Calendar events follow the new
@@ -9446,9 +9446,7 @@ components:
         - id
         - status
         - venue
-        - destinationName
-        - destinationAddress
-        - directionsUrl
+        - destinationText
         - destinationProvider
         - destinationPlaceId
         - date
@@ -9470,38 +9468,29 @@ components:
         id: {type: string, format: uuid}
         status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
         venue: {type: string, maxLength: 80}
-        destinationName:
+        destinationText:
           type: string
           nullable: true
           description: |
-            Optional manually entered destination name for directions (ALE-441).
-            Null on legacy rows, which keep their short `venue` label only.
-        destinationAddress:
-          type: string
-          nullable: true
-          description: Optional manually entered destination address for directions.
-        directionsUrl:
-          type: string
-          nullable: true
-          description: |
-            Optional manually supplied Google Maps directions link, validated
-            server-side as a supported HTTPS Maps destination.
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
         destinationProvider:
           type: string
           enum: [google, null]
           nullable: true
           description: |
-            `google` when a place was deliberately selected from Google Maps
+            `google` when a suggestion was deliberately chosen from Google Maps
             venue search (ALE-442); `null` for a manual destination. Only the
-            Place ID is stored: the destination name and address are always
-            staff-typed, so no Google attribution applies to them.
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
             The selected place's Google Place ID, used only for the directions
-            link (`destination_place_id`, beside the staff text or the label);
-            `null` for a manual destination.
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         date: {type: string, format: date}
         startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'}
         endTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', nullable: true}
@@ -9708,40 +9697,28 @@ components:
         paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
         contactFromDate: {type: string, format: date}
         paymentWindowDays: {type: integer, minimum: 1}
-        destinationName:
-          type: string
-          nullable: true
-          maxLength: 255
-          description: |
-            Optional manually entered destination name (ALE-441), kept separate
-            from the short `venue` label.
-        destinationAddress:
+        destinationText:
           type: string
           nullable: true
           maxLength: 500
-          description: Optional manually entered destination address.
-        directionsUrl:
-          type: string
-          nullable: true
-          maxLength: 2048
           description: |
-            Optional manually supplied Google Maps directions link. Rejected
-            unless it is a supported HTTPS Maps destination (no executable
-            schemes, credentials, or unsupported targets).
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
         destinationPlaceId:
           type: string
           nullable: true
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a place chosen from venue search.
-            Only the ID is saved: Google's name and address are never sent or
-            stored, and `destinationName`/`destinationAddress` stay staff-typed
-            text beside it. A new Place ID records a Google selection (and drops
-            any manual directions link: the link is derived from the place);
-            `null` clears it. A manual directions link, or a name/address change
-            that does not resend the selected Place ID, removes the provider
-            identity so no stale place survives. Omission preserves.
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
         coachPrincipalId:
           type: string
           format: uuid
@@ -9792,40 +9769,29 @@ components:
         paymentCutoffDate: {type: string, format: date}
         paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
         contactFromDate: {type: string, format: date}
-        destinationName:
-          type: string
-          nullable: true
-          maxLength: 255
-          description: |
-            Optional manually entered destination name (ALE-441), kept separate
-            from the short `venue` label. Omitting the key keeps the stored value; `null` (or an empty string) clears it.
-        destinationAddress:
+        destinationText:
           type: string
           nullable: true
           maxLength: 500
-          description: Optional manually entered destination address. Omitting the key keeps the stored value; `null` (or an empty string) clears it.
-        directionsUrl:
-          type: string
-          nullable: true
-          maxLength: 2048
           description: |
-            Optional manually supplied Google Maps directions link. Rejected
-            unless it is a supported HTTPS Maps destination (no executable
-            schemes, credentials, or unsupported targets). Omitting the key keeps the stored value; `null` (or an empty string) clears it.
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
+            Omitting the key keeps the stored value; `null` (or an empty string) clears it.
         destinationPlaceId:
           type: string
           nullable: true
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a place chosen from venue search.
-            Only the ID is saved: Google's name and address are never sent or
-            stored, and `destinationName`/`destinationAddress` stay staff-typed
-            text beside it. A new Place ID records a Google selection (and drops
-            any manual directions link: the link is derived from the place);
-            `null` clears it. A manual directions link, or a name/address change
-            that does not resend the selected Place ID, removes the provider
-            identity so no stale place survives. Omission preserves.
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
       required: [startTime, endTime]
     BeginnersWorkshopDestinationRequest:
       type: object
@@ -9837,40 +9803,29 @@ components:
       required: [venue]
       properties:
         venue: {type: string, minLength: 1, maxLength: 80}
-        destinationName:
-          type: string
-          nullable: true
-          maxLength: 255
-          description: |
-            Optional manually entered destination name (ALE-441), kept separate
-            from the short `venue` label. Omitting the key keeps the stored value; `null` (or an empty string) clears it.
-        destinationAddress:
+        destinationText:
           type: string
           nullable: true
           maxLength: 500
-          description: Optional manually entered destination address. Omitting the key keeps the stored value; `null` (or an empty string) clears it.
-        directionsUrl:
-          type: string
-          nullable: true
-          maxLength: 2048
           description: |
-            Optional manually supplied Google Maps directions link. Rejected
-            unless it is a supported HTTPS Maps destination (no executable
-            schemes, credentials, or unsupported targets). Omitting the key keeps the stored value; `null` (or an empty string) clears it.
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
+            Omitting the key keeps the stored value; `null` (or an empty string) clears it.
         destinationPlaceId:
           type: string
           nullable: true
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a place chosen from venue search.
-            Only the ID is saved: Google's name and address are never sent or
-            stored, and `destinationName`/`destinationAddress` stay staff-typed
-            text beside it. A new Place ID records a Google selection (and drops
-            any manual directions link: the link is derived from the place);
-            `null` clears it. A manual directions link, or a name/address change
-            that does not resend the selected Place ID, removes the provider
-            identity so no stale place survives. Omission preserves.
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
     BeginnersWorkshopResponse:
       type: object
       required: [data]
@@ -10420,44 +10375,35 @@ components:
       enum: [inactive, payment_closed]
     BeginnersIntakeWorkshop:
       type: object
-      required: [date, startTime, endTime, venue, destinationName, destinationAddress, directionsUrl, destinationProvider, destinationPlaceId]
+      required: [date, startTime, endTime, venue, destinationText, destinationProvider, destinationPlaceId]
       properties:
         date: {type: string, format: date, description: Europe/Dublin civil date}
         startTime: {type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$", description: "Europe/Dublin HH:MM"}
         endTime: {type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$", nullable: true, description: "Europe/Dublin HH:MM"}
         venue: {type: string}
-        destinationName:
+        destinationText:
           type: string
           nullable: true
           description: |
-            Optional manually entered destination name for directions (ALE-441).
-            Null on legacy rows, which keep their short `venue` label only.
-        destinationAddress:
-          type: string
-          nullable: true
-          description: Optional manually entered destination address for directions.
-        directionsUrl:
-          type: string
-          nullable: true
-          description: |
-            Optional manually supplied Google Maps directions link, validated
-            server-side as a supported HTTPS Maps destination.
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
         destinationProvider:
           type: string
           enum: [google, null]
           nullable: true
           description: |
-            `google` when a place was deliberately selected from Google Maps
+            `google` when a suggestion was deliberately chosen from Google Maps
             venue search (ALE-442); `null` for a manual destination. Only the
-            Place ID is stored: the destination name and address are always
-            staff-typed, so no Google attribution applies to them.
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
             The selected place's Google Place ID, used only for the directions
-            link (`destination_place_id`, beside the staff text or the label);
-            `null` for a manual destination.
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
     BeginnersIntakePage:
       type: object
       description: |
@@ -13018,38 +12964,29 @@ components:
           format: date-time
         location:
           type: string
-        destinationName:
+        destinationText:
           type: string
           nullable: true
           description: |
-            Optional manually entered destination name for directions (ALE-440).
-            Null on legacy rows, which keep their short `location` label only.
-        destinationAddress:
-          type: string
-          nullable: true
-          description: Optional manually entered destination address for directions.
-        directionsUrl:
-          type: string
-          nullable: true
-          description: |
-            Optional manually supplied Google Maps directions link, validated
-            server-side as a supported HTTPS Maps destination.
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
         destinationProvider:
           type: string
           enum: [google, null]
           nullable: true
           description: |
-            `google` when a place was deliberately selected from Google Maps
+            `google` when a suggestion was deliberately chosen from Google Maps
             venue search (ALE-442); `null` for a manual destination. Only the
-            Place ID is stored: the destination name and address are always
-            staff-typed, so no Google attribution applies to them.
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
             The selected place's Google Place ID, used only for the directions
-            link (`destination_place_id`, beside the staff text or the label);
-            `null` for a manual destination.
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         priceNonMember:
           type: integer
           minimum: 0
@@ -13172,40 +13109,28 @@ components:
           type: boolean
         announceEmail:
           type: boolean
-        destinationName:
-          type: string
-          nullable: true
-          maxLength: 255
-          description: |
-            Optional manually entered destination name (ALE-440). Kept separate
-            from the required short venue label.
-        destinationAddress:
+        destinationText:
           type: string
           nullable: true
           maxLength: 500
-          description: Optional manually entered destination address.
-        directionsUrl:
-          type: string
-          nullable: true
-          maxLength: 2048
           description: |
-            Optional manually supplied Google Maps directions link. Rejected
-            unless it is a supported HTTPS Maps destination (no executable
-            schemes, credentials, or unsupported targets).
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
         destinationPlaceId:
           type: string
           nullable: true
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a place chosen from venue search.
-            Only the ID is saved: Google's name and address are never sent or
-            stored, and `destinationName`/`destinationAddress` stay staff-typed
-            text beside it. A new Place ID records a Google selection (and drops
-            any manual directions link: the link is derived from the place);
-            `null` clears it. A manual directions link, or a name/address change
-            that does not resend the selected Place ID, removes the provider
-            identity so no stale place survives. Omission preserves.
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
       description: |
         Coordinator Workshop management input. Lifecycle status and createdBy
         are server-owned and intentionally absent.
@@ -13248,45 +13173,28 @@ components:
           type: boolean
         announceEmail:
           type: boolean
-        destinationName:
-          type: string
-          nullable: true
-          maxLength: 255
-          description: |
-            Optional manually entered destination name (ALE-440). Omitting the
-            key preserves the stored value; an explicit `null` (or an empty
-            string) clears it.
-        destinationAddress:
+        destinationText:
           type: string
           nullable: true
           maxLength: 500
           description: |
-            Optional manually entered destination address. Omission preserves;
-            an explicit `null` clears.
-        directionsUrl:
-          type: string
-          nullable: true
-          maxLength: 2048
-          description: |
-            Optional manually supplied Google Maps directions link, validated
-            server-side as a supported HTTPS Maps destination. Omission
-            preserves; an explicit `null` clears. Destination edits are general
-            edits: they follow the planned-only rule and are not covered by the
-            pricing-only exception.
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
         destinationPlaceId:
           type: string
           nullable: true
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a place chosen from venue search.
-            Only the ID is saved: Google's name and address are never sent or
-            stored, and `destinationName`/`destinationAddress` stay staff-typed
-            text beside it. A new Place ID records a Google selection (and drops
-            any manual directions link: the link is derived from the place);
-            `null` clears it. A manual directions link, or a name/address change
-            that does not resend the selected Place ID, removes the provider
-            identity so no stale place survives. Omission preserves.
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
       description: |
         Partial Workshop management update. All fields from
         `WorkshopManagementRequest` are optional at runtime; lifecycle status is
@@ -13328,38 +13236,29 @@ components:
         location:
           type: string
           nullable: true
-        destinationName:
+        destinationText:
           type: string
           nullable: true
           description: |
-            Optional manually entered destination name for directions
-            (ALE-440). Null on legacy rows, which keep their label only.
-        destinationAddress:
-          type: string
-          nullable: true
-          description: Optional manually entered destination address for directions.
-        directionsUrl:
-          type: string
-          nullable: true
-          description: |
-            Optional manually supplied Google Maps directions link, validated
-            server-side as a supported HTTPS Maps destination.
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
         destinationProvider:
           type: string
           enum: [google, null]
           nullable: true
           description: |
-            `google` when a place was deliberately selected from Google Maps
+            `google` when a suggestion was deliberately chosen from Google Maps
             venue search (ALE-442); `null` for a manual destination. Only the
-            Place ID is stored: the destination name and address are always
-            staff-typed, so no Google attribution applies to them.
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
             The selected place's Google Place ID, used only for the directions
-            link (`destination_place_id`, beside the staff text or the label);
-            `null` for a manual destination.
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         startDate:
           type: string
           format: date-time
@@ -13415,9 +13314,7 @@ components:
         - title
         - description
         - location
-        - destinationName
-        - destinationAddress
-        - directionsUrl
+        - destinationText
         - destinationProvider
         - destinationPlaceId
         - startDate
@@ -13449,38 +13346,29 @@ components:
         location:
           type: string
           nullable: true
-        destinationName:
+        destinationText:
           type: string
           nullable: true
           description: |
-            Optional manually entered destination name for directions
-            (ALE-440). Null on legacy rows, which keep their label only.
-        destinationAddress:
-          type: string
-          nullable: true
-          description: Optional manually entered destination address for directions.
-        directionsUrl:
-          type: string
-          nullable: true
-          description: |
-            Optional manually supplied Google Maps directions link, validated
-            server-side as a supported HTTPS Maps destination.
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
         destinationProvider:
           type: string
           enum: [google, null]
           nullable: true
           description: |
-            `google` when a place was deliberately selected from Google Maps
+            `google` when a suggestion was deliberately chosen from Google Maps
             venue search (ALE-442); `null` for a manual destination. Only the
-            Place ID is stored: the destination name and address are always
-            staff-typed, so no Google attribution applies to them.
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
             The selected place's Google Place ID, used only for the directions
-            link (`destination_place_id`, beside the staff text or the label);
-            `null` for a manual destination.
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         startDate:
           type: string
           format: date-time
@@ -13587,38 +13475,29 @@ components:
           nullable: true
         location:
           type: string
-        destinationName:
+        destinationText:
           type: string
           nullable: true
           description: |
-            Optional manually entered destination name for directions
-            (ALE-440). Null on legacy rows, which keep their label only.
-        destinationAddress:
-          type: string
-          nullable: true
-          description: Optional manually entered destination address for directions.
-        directionsUrl:
-          type: string
-          nullable: true
-          description: |
-            Optional manually supplied Google Maps directions link, validated
-            server-side as a supported HTTPS Maps destination.
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
         destinationProvider:
           type: string
           enum: [google, null]
           nullable: true
           description: |
-            `google` when a place was deliberately selected from Google Maps
+            `google` when a suggestion was deliberately chosen from Google Maps
             venue search (ALE-442); `null` for a manual destination. Only the
-            Place ID is stored: the destination name and address are always
-            staff-typed, so no Google attribution applies to them.
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
             The selected place's Google Place ID, used only for the directions
-            link (`destination_place_id`, beside the staff text or the label);
-            `null` for a manual destination.
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         startDate:
           type: string
           format: date-time
