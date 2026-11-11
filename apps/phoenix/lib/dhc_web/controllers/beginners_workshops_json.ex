@@ -270,7 +270,6 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
       directionsUrl: view.directions_url,
       destinationProvider: view.destination_provider,
       destinationPlaceId: view.destination_place_id,
-      destinationAttributions: DhcWeb.DestinationJSON.attributions(view.destination_attributions),
       date: view.date,
       startTime: hh_mm(view.start_time),
       endTime: view.end_time && hh_mm(view.end_time),

@@ -7,7 +7,10 @@ defmodule Dhc.Places do
   (`docs/google-places-terms-validation.md`): Autocomplete (New), then Place
   Details (New) on selection. It has **no source-write authority** — it never
   reads or writes a workshop — and each Workshop domain saves a selection
-  through its own commands (`Dhc.Destinations` owns the persisted shape).
+  through its own commands. Only the Place ID of a selection is ever saved
+  (`Dhc.Destinations` owns that rule); the name, address and credits below
+  are a transient editing preview, never stored, shown to attendees or sent
+  to Calendar.
 
     * `suggest/2` — `POST /v1/places:autocomplete` with `input`, the
       caller's session token, `languageCode: en`, `regionCode: ie` and a
@@ -46,6 +49,8 @@ defmodule Dhc.Places do
   }
 
   @input_max 120
+  @attributions_max 10
+  @provider_name_max 200
   @uuid_v4 ~r/\A[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\z/i
 
   @type error ::
@@ -202,8 +207,7 @@ defmodule Dhc.Places do
     address = body["formattedAddress"]
 
     with true <- Destinations.valid_place_id?(id),
-         {:ok, attributions} <-
-           Destinations.normalize_attributions(Map.get(body, "attributions", [])) do
+         {:ok, attributions} <- attributions(Map.get(body, "attributions", [])) do
       {:ok,
        %{
          provider: "google",
@@ -227,4 +231,46 @@ defmodule Dhc.Places do
   end
 
   defp text(_value, _max), do: nil
+
+  # Third-party credits as `%{"provider" => name, "provider_uri" => https | nil}`,
+  # at most #{@attributions_max}; anything else makes the preview unusable.
+  defp attributions(list) when is_list(list) and length(list) <= @attributions_max do
+    list
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
+      case attribution(item) do
+        {:ok, credit} -> {:cont, {:ok, [credit | acc]}}
+        :error -> {:halt, :error}
+      end
+    end)
+    |> case do
+      {:ok, acc} -> {:ok, Enum.reverse(acc)}
+      :error -> :error
+    end
+  end
+
+  defp attributions(_other), do: :error
+
+  defp attribution(%{} = item) do
+    provider = text(item["provider"], @provider_name_max)
+
+    uri =
+      if is_binary(item["providerUri"]), do: Destinations.normalize_optional(item["providerUri"])
+
+    if is_binary(provider) and https_uri?(uri),
+      do: {:ok, %{"provider" => provider, "provider_uri" => uri}},
+      else: :error
+  end
+
+  defp attribution(_item), do: :error
+
+  defp https_uri?(nil), do: true
+
+  defp https_uri?(uri) do
+    String.length(uri) <= Destinations.url_max() and
+      match?(
+        {:ok, %URI{scheme: "https", host: host, userinfo: nil}}
+        when is_binary(host) and host != "",
+        URI.new(uri)
+      )
+  end
 end

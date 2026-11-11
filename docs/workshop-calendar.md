@@ -106,6 +106,13 @@ names a place, and a workshop whose stored destination is a Google selection
 is refused as `destination_conflict` rather than overwritten or stripped of
 its provider identity.
 
+A Google-selected destination stores only its Place ID (see
+[the Places validation](google-places-terms-validation.md#owner-decision-place-id-only-ale-442)).
+The Calendar `location` stays `Dhc.Destinations.calendar_location/3` over the
+staff-typed name and address, falling back to the label: it never carries
+Google's text, a Maps link or the Place ID, so selecting, replacing or
+removing a place alone changes no event.
+
 Run these only in an authorized operator session:
 
 ```sh

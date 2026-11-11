@@ -4,12 +4,7 @@ import {
 	formatDublinDateLong,
 	formatDublinTime12h,
 } from "#lib/club-calendar.js";
-import {
-	destinationAttribution,
-	destinationLines,
-	directionsHref,
-} from "#lib/destinations.js";
-import DestinationAttribution from "#lib/components/destination-attribution.svelte";
+import { destinationLines, directionsHref } from "#lib/destinations.js";
 import * as Alert from "#lib/components/ui/alert/index.js";
 import * as Card from "#lib/components/ui/card/index.js";
 import WorkshopRegistrationCheckout from "#lib/components/workshops/workshop-registration-checkout.svelte";
@@ -34,12 +29,11 @@ const destinationFacts = $derived({
 	directionsUrl: workshop.directions_url,
 	destinationProvider: workshop.destination_provider,
 	destinationPlaceId: workshop.destination_place_id,
-	destinationAttributions: workshop.destination_attributions,
 });
 const destinationDetail = $derived(destinationLines(destinationFacts));
-const destinationHref = $derived(directionsHref(destinationFacts));
-// ALE-442: Google Maps attribution beside a selected place's details.
-const attribution = $derived(destinationAttribution(destinationFacts));
+const destinationHref = $derived(
+	directionsHref(destinationFacts, workshop.location),
+);
 
 const formattedPrice = $derived.by(() => {
 	return Dinero({
@@ -92,9 +86,6 @@ const formattedPrice = $derived.by(() => {
 										<p class="text-muted-foreground">
 											{destinationDetail.join(" · ")}
 										</p>
-									{/if}
-									{#if attribution}
-										<DestinationAttribution credits={attribution.credits} />
 									{/if}
 									{#if destinationHref}
 										<a

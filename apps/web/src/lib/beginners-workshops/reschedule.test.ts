@@ -91,7 +91,6 @@ describe("rescheduleOperation", () => {
 		directionsUrl: null,
 		destinationProvider: null,
 		destinationPlaceId: null,
-		destinationAttributions: [],
 	};
 	const unchanged = {
 		date: "2026-11-14",
@@ -102,7 +101,6 @@ describe("rescheduleOperation", () => {
 		destination_address: "",
 		directions_url: "",
 		destination_place_id: "",
-		destination_attributions: "",
 	};
 
 	it("is a destination-only change while the date, times and venue stay", () => {
@@ -142,7 +140,6 @@ describe("rescheduleOperation", () => {
 		const resubmitted = {
 			...unchanged,
 			destination_place_id: "place_hall",
-			destination_attributions: "[]",
 		};
 		expect(rescheduleOperation(selected, resubmitted)).toBe("reschedule");
 		expect(

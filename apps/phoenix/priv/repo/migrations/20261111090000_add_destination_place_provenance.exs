@@ -4,15 +4,15 @@ defmodule Dhc.Repo.Migrations.AddDestinationPlaceProvenance do
   from Google Maps venue search, in each Workshop domain's own table
   (ADR 0029: regular Workshops and Beginners' Workshops share no storage).
 
-  Per the ALE-439 contract (`docs/google-places-terms-validation.md`) only
-  the Place ID, `provider: google`, an application-generated selection
-  timestamp and the third-party credits Google requires alongside the
-  selected name/address are kept — never raw responses, coordinates, photos,
-  reviews or contact details. Directions links for a selected destination
-  are derived at read time, so no provider-derived link is stored.
+  Per the owner's ALE-439 decision (`docs/google-places-terms-validation.md`)
+  only the Place ID, `provider: google` and an application-generated
+  selection timestamp are kept — never Google's name, address or credits,
+  raw responses, coordinates, photos, reviews or contact details. Directions
+  links for a selected place are derived at read time, so no provider-derived
+  link is stored.
 
   The provider, Place ID and selection timestamp are all set or all absent;
-  a manual destination carries none of them and no credits.
+  a manual destination carries none of them.
   """
 
   use Ecto.Migration
@@ -25,7 +25,6 @@ defmodule Dhc.Repo.Migrations.AddDestinationPlaceProvenance do
         add :destination_provider, :text
         add :destination_place_id, :text
         add :destination_selected_at, :utc_datetime
-        add :destination_attributions, {:array, :map}, null: false, default: []
       end
 
       create(
@@ -39,12 +38,6 @@ defmodule Dhc.Repo.Migrations.AddDestinationPlaceProvenance do
           check:
             "(destination_provider IS NULL) = (destination_place_id IS NULL) AND " <>
               "(destination_place_id IS NULL) = (destination_selected_at IS NULL)"
-        )
-      )
-
-      create(
-        constraint(table, :"#{table}_destination_attributions_need_place",
-          check: "destination_place_id IS NOT NULL OR cardinality(destination_attributions) = 0"
         )
       )
 

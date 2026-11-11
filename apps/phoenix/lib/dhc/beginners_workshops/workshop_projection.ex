@@ -5,7 +5,8 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
   disagree. Civil values are Europe/Dublin; the Payment Cutoff is given both
   as its instant and as its Dublin date and time. The optional destination
   details (ALE-441) sit beside the short `venue` label, with (ALE-442) a
-  selected Google place's identity and credits; legacy rows carry `nil`.
+  selected Google place's identity (its Place ID only, never Google's text);
+  legacy rows carry `nil`.
   """
 
   alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, WorkshopFacts, WorkshopPolicy}
@@ -20,7 +21,6 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
           directions_url: String.t() | nil,
           destination_provider: String.t() | nil,
           destination_place_id: String.t() | nil,
-          destination_attributions: [map()],
           date: Date.t(),
           start_time: Time.t(),
           end_time: Time.t() | nil,
@@ -50,7 +50,6 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
       directions_url: workshop.directions_url,
       destination_provider: workshop.destination_provider,
       destination_place_id: workshop.destination_place_id,
-      destination_attributions: workshop.destination_attributions,
       date: workshop.date,
       start_time: workshop.start_time,
       end_time: workshop.end_time,

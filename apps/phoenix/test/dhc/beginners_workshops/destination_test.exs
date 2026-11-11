@@ -367,14 +367,12 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
   # ── ALE-442: a destination selected from Google venue search ──
 
   describe "a selected Google place" do
+    # Staff text beside the selected place: Google's own text is never sent.
     @selected %{
-      "destination_name" => "Synthetic Fencing Hall",
-      "destination_address" => "1 Example Street, Dublin 8",
+      "destination_name" => "Our hall",
+      "destination_address" => nil,
       "directions_url" => nil,
-      "destination_place_id" => "place_hall",
-      "destination_attributions" => [
-        %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
-      ]
+      "destination_place_id" => "place_hall"
     }
 
     defp provenance(workshop) do
@@ -383,8 +381,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       |> Map.take([
         :destination_provider,
         :destination_place_id,
-        :destination_selected_at,
-        :destination_attributions
+        :destination_selected_at
       ])
     end
 
@@ -423,12 +420,12 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       assert {:ok, view} = update_destination(coordinator, workshop, @selected)
 
       assert %{
+               destination_name: "Our hall",
                destination_provider: "google",
-               destination_place_id: "place_hall",
-               destination_attributions: [
-                 %{"provider" => "Venue Guide", "provider_uri" => "https://guide.example.test/"}
-               ]
+               destination_place_id: "place_hall"
              } = view
+
+      refute Map.has_key?(view, :destination_attributions)
 
       assert %{destination_selected_at: ~U[2026-10-22 12:00:00Z]} = provenance(workshop)
       assert stored(workshop).reschedule_count == 0
@@ -438,7 +435,20 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       assert {:ok, _} = update_destination(coordinator, workshop, @selected)
       assert stored(workshop).updated_at == before.updated_at
 
-      # A manual destination replaces the provider identity and its credits.
+      # Staff may edit their own text beside the selected place: it is kept.
+      assert {:ok, edited} =
+               update_destination(
+                 coordinator,
+                 workshop,
+                 Map.put(@selected, "destination_name", "Our hall, side door")
+               )
+
+      assert %{destination_name: "Our hall, side door", destination_place_id: "place_hall"} =
+               edited
+
+      assert %{destination_selected_at: ~U[2026-10-22 12:00:00Z]} = provenance(workshop)
+
+      # A manual destination replaces the provider identity.
       assert {:ok, manual} =
                update_destination(coordinator, workshop, %{
                  "destination_name" => "Our Own Hall",
@@ -446,8 +456,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
                  "destination_place_id" => nil
                })
 
-      assert %{destination_provider: nil, destination_place_id: nil, destination_attributions: []} =
-               manual
+      assert %{destination_provider: nil, destination_place_id: nil} = manual
 
       assert {:ok, _} = update_destination(coordinator, workshop, @selected)
 
@@ -481,7 +490,7 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
                Enum.filter(email_logs(workshop), &(elem(&1, 1) == "rescheduled"))
     end
 
-    test "the Intake page carries the place and its credits, never more", %{
+    test "the Intake page carries the staff text and the place, never Google text", %{
       coordinator: coordinator
     } do
       {workshop, [{_intake, token}]} = contacted_fixture(coordinator, 1)
@@ -490,13 +499,14 @@ defmodule Dhc.BeginnersWorkshops.DestinationTest do
       assert {:ok, %{workshop: page}} = IntakePage.show(token, Clock.fixed(@now))
 
       assert %{
-               destination_name: "Synthetic Fencing Hall",
+               destination_name: "Our hall",
+               destination_address: nil,
                destination_provider: "google",
-               destination_place_id: "place_hall",
-               destination_attributions: [%{"provider" => "Venue Guide"}]
+               destination_place_id: "place_hall"
              } = page
 
       refute Map.has_key?(page, :destination_selected_at)
+      refute Map.has_key?(page, :destination_attributions)
     end
 
     test "a malformed selection is refused with a named field", %{coordinator: coordinator} do

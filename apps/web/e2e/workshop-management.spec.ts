@@ -452,13 +452,19 @@ test.describe("Workshop Management", () => {
 			await page
 				.getByRole("option", { name: /Synthetic Fencing Hall/ })
 				.click();
-			const selected = page.getByRole("region", {
-				name: "Selected destination",
-			});
+			// Google's text is a transient preview with attribution; the
+			// destination name stays the coordinator's own.
+			const selected = page.getByRole("region", { name: "Selected place" });
 			await expect(selected).toContainText(
 				"1 Example Street, Dublin 8, Ireland",
 			);
 			await expect(selected).toContainText("Google Maps · Example Venue Guide");
+			await expect(
+				page.getByRole("textbox", { name: "Destination name", exact: true }),
+			).toHaveValue("");
+			await page
+				.getByRole("textbox", { name: "Destination name", exact: true })
+				.fill("Our hall");
 
 			await pickWorkshopDate(page, workshopDate);
 			await page
@@ -475,18 +481,20 @@ test.describe("Workshop Management", () => {
 			).toBeVisible();
 			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
 
+			// Attendees see the staff text, never Google's, and directions bound
+			// to the place.
 			const dialog = await openWorkshopModal(page, title);
-			await expect(
-				dialog.getByText(
-					"Synthetic Fencing Hall · 1 Example Street, Dublin 8, Ireland",
-				),
-			).toBeVisible();
-			await expect(dialog.getByTestId("destination-attribution")).toContainText(
-				"Google Maps",
+			await expect(dialog.getByText("Our hall", { exact: true })).toBeVisible();
+			await expect(dialog.getByText("Synthetic Fencing Hall")).toHaveCount(0);
+			await expect(dialog.getByTestId("destination-attribution")).toHaveCount(
+				0,
 			);
 			await expect(
 				dialog.getByRole("link", { name: "Get directions" }),
-			).toHaveAttribute("href", /destination_place_id=e2e_place_hall$/);
+			).toHaveAttribute(
+				"href",
+				"https://www.google.com/maps/dir/?api=1&destination=Our%20hall&destination_place_id=e2e_place_hall",
+			);
 			// Editing it into a manual destination removes the provider identity.
 			await dialog.getByTestId("edit-workshop-button").click();
 			await expect(page).toHaveURL(/\/dashboard\/workshops\/[0-9a-f-]+\/edit$/);
@@ -497,12 +505,12 @@ test.describe("Workshop Management", () => {
 				)?.[0];
 			if (createdId) createdWorkshopIds.push(createdId);
 			await gotoHydrated(page, `/dashboard/workshops/${createdId}/edit`);
+			// No Google text was stored, so the saved place reopens as selected.
 			await expect(
-				page.getByRole("region", { name: "Selected destination" }),
-			).toContainText("Synthetic Fencing Hall");
-			await page
-				.getByRole("button", { name: "Remove and enter manually" })
-				.click();
+				page.getByRole("region", { name: "Selected place" }),
+			).toContainText("Google Maps place selected");
+			await expect(page.getByText("Synthetic Fencing Hall")).toHaveCount(0);
+			await page.getByRole("button", { name: "Remove place" }).click();
 			await page
 				.getByRole("textbox", { name: "Destination name", exact: true })
 				.fill("Our Own Hall");

@@ -15,6 +15,38 @@ These confirmations record scope and account region. They do not establish a
 licensing exception or authorize implementation, Google provisioning or
 production operations.
 
+## Owner decision: Place ID only (ALE-442)
+
+Recorded 11 November 2026. The owner decided how ALE-442 resolves the open
+retention question below: **store the Place ID and its provenance only**.
+
+- Saved per selection, in each Workshop domain's own table:
+  `destination_place_id`, `destination_provider: google` and an
+  application-generated `destination_selected_at` (the command clock). Place
+  IDs may be stored indefinitely ([Places policy][policies]). No business
+  name, address, credits, raw response or coordinates are stored.
+- Google's name, address and credits are a **transient editing preview**: shown
+  with Google Maps attribution in the suggestion list and the selected-place
+  card for the current form session only, discarded on remove, replace or
+  unmount, and never submitted, saved, shown to attendees or sent to Calendar.
+  A saved place reopens as "selected" without Google text; no fresh Details
+  lookup is made for it.
+- A selection never prefills the manual name/address fields: copying Google's
+  result into them would not be independent provenance. Those fields stay
+  staff-typed, may be filled beside a selected place, and are what attendees
+  and Calendar see (falling back to the short label).
+- Attendee directions for a selected place use
+  `https://www.google.com/maps/dir/?api=1&destination=<staff text or label>&destination_place_id=<id>`.
+  The link discloses only the staff text or label and the ID; it displays no
+  Google content, so attendee surfaces carry no Google attribution (an ID-only
+  map link is a documented exception; see [Maps URLs][urls]).
+- Because no Google text or credits are retained, there is nothing to refresh
+  or delete beyond the ID itself: replacing or removing the place clears it,
+  and the 12-month ID refresh remains a later, review-only operation.
+
+Sections below record the validation as it stood before this decision; where
+they call storage of Google text "unresolved", this decision applies instead.
+
 ## Short answer
 
 The feature is technically supported: search for a venue, select it, show the

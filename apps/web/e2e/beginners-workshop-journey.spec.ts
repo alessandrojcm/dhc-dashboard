@@ -312,10 +312,10 @@ test.describe("Beginners' Workshop journey", () => {
 	});
 
 	// ALE-442: Google venue search through the real Phoenix lookup (answered by
-	// the E2E server's synthetic Places catalogue), saved on schedule,
-	// replaced by a destination-only change, and shown to the person with
-	// attribution and place-bound directions.
-	test("schedules with a chosen Google place, replaces it without emailing and gives the person attributed directions", async ({
+	// the E2E server's synthetic Places catalogue): only the Place ID is saved
+	// on schedule and replaced by a destination-only change; the person sees
+	// the venue label, never Google's text, with place-bound directions.
+	test("schedules with a chosen Google place, replaces it without emailing and gives the person place-bound directions", async ({
 		page,
 		context,
 		browser,
@@ -342,11 +342,12 @@ test.describe("Beginners' Workshop journey", () => {
 		await expect(dialog.getByRole("option")).toHaveCount(2);
 		await search.press("ArrowDown");
 		await search.press("Enter");
-		const selected = dialog.getByRole("region", {
-			name: "Selected destination",
-		});
+		const selected = dialog.getByRole("region", { name: "Selected place" });
 		await expect(selected).toContainText("Synthetic Fencing Hall");
 		await expect(selected).toContainText("Google Maps · Example Venue Guide");
+		await expect(
+			dialog.getByRole("textbox", { name: "Destination name", exact: true }),
+		).toHaveValue("");
 		// Choosing a place does not submit the dialog.
 		await expect(dialog).toBeVisible();
 
@@ -372,14 +373,10 @@ test.describe("Beginners' Workshop journey", () => {
 			/\/dashboard\/beginners-workshop\/workshops\/[0-9a-f-]+$/,
 		);
 		const workshopId = page.url().split("/").pop() ?? "";
-		await expect(
-			page.getByText(
-				"Synthetic Fencing Hall · 1 Example Street, Dublin 8, Ireland",
-			),
-		).toBeVisible();
-		await expect(page.getByTestId("destination-attribution")).toContainText(
-			"Google Maps",
-		);
+		// No Google text is stored, so the console shows none.
+		await expect(page.getByText(venue).first()).toBeVisible();
+		await expect(page.getByText("Synthetic Fencing Hall")).toHaveCount(0);
+		await expect(page.getByTestId("destination-attribution")).toHaveCount(0);
 		const batch = await seedE2EScenario("beginnersWorkshopBatch", {
 			workshopId,
 		});
@@ -393,8 +390,8 @@ test.describe("Beginners' Workshop journey", () => {
 		await page.getByRole("button", { name: "Reschedule", exact: true }).click();
 		const reschedule = page.getByRole("dialog", { name: /^Reschedule / });
 		await expect(
-			reschedule.getByRole("region", { name: "Selected destination" }),
-		).toContainText("Synthetic Fencing Hall");
+			reschedule.getByRole("region", { name: "Selected place" }),
+		).toContainText("Google Maps place selected");
 		const replace = reschedule.getByRole("combobox", {
 			name: "Replace with another place",
 		});
@@ -403,7 +400,7 @@ test.describe("Beginners' Workshop journey", () => {
 			.getByRole("option", { name: /Synthetic Fencing Annex/ })
 			.click();
 		await expect(
-			reschedule.getByRole("region", { name: "Selected destination" }),
+			reschedule.getByRole("region", { name: "Selected place" }),
 		).toContainText("Synthetic Fencing Annex");
 		await expect(reschedule.getByTestId("reschedule-warning")).toHaveText(
 			"No emails will be sent: only the destination details change.",
@@ -422,16 +419,14 @@ test.describe("Beginners' Workshop journey", () => {
 			await gotoHydrated(personPage, link.path);
 			const details = personPage.getByRole("list", { name: "Workshop" });
 			await expect(details).toContainText(venue);
-			await expect(details).toContainText(
-				"Synthetic Fencing Annex · 2 Example Street, Dublin 8, Ireland",
-			);
-			await expect(details.getByTestId("destination-attribution")).toHaveText(
-				/Google Maps/,
+			await expect(details).not.toContainText("Synthetic Fencing");
+			await expect(details.getByTestId("destination-attribution")).toHaveCount(
+				0,
 			);
 			const directions = details.getByRole("link", { name: "Get directions" });
 			await expect(directions).toHaveAttribute(
 				"href",
-				/destination_place_id=e2e_place_annex$/,
+				`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(venue)}&destination_place_id=e2e_place_annex`,
 			);
 			await expect(directions).toHaveAttribute("referrerpolicy", "no-referrer");
 			expect(await directions.getAttribute("href")).not.toContain(link.path);

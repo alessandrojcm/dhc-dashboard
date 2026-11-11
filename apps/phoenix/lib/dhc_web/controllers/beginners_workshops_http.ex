@@ -30,7 +30,6 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     "destinationAddress" => "destination_address",
     "directionsUrl" => "directions_url",
     "destinationPlaceId" => "destination_place_id",
-    "destinationAttributions" => "destination_attributions",
     "coachPrincipalId" => "coach_principal_id",
     "assistantPrincipalIds" => "assistant_principal_ids"
   }

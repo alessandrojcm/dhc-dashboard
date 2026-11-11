@@ -42,12 +42,11 @@ defmodule Dhc.BeginnersWorkshops.BeginnersWorkshop do
     field :destination_address, :string
     field :directions_url, :string
     # ALE-442: the provider identity of a destination selected from Google
-    # Maps venue search (`Dhc.Destinations` owns the rules). All absent for a
-    # manual destination.
+    # Maps venue search: its Place ID only, never Google's text
+    # (`Dhc.Destinations` owns the rules). All absent for a manual destination.
     field :destination_provider, :string
     field :destination_place_id, :string
     field :destination_selected_at, :utc_datetime
-    field :destination_attributions, {:array, :map}, default: []
     field :date, :date
     field :start_time, :time
     field :end_time, :time

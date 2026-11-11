@@ -37,12 +37,11 @@ defmodule Dhc.Workshops.Workshop do
     field :destination_address, :string
     field :directions_url, :string
     # ALE-442: the provider identity of a destination selected from Google
-    # Maps venue search (`Dhc.Destinations` owns the rules). All absent for a
-    # manual destination.
+    # Maps venue search: its Place ID only, never Google's text
+    # (`Dhc.Destinations` owns the rules). All absent for a manual destination.
     field :destination_provider, :string
     field :destination_place_id, :string
     field :destination_selected_at, :utc_datetime
-    field :destination_attributions, {:array, :map}, default: []
     field :start_date, :utc_datetime
     field :end_date, :utc_datetime
     field :max_capacity, :integer
@@ -64,7 +63,7 @@ defmodule Dhc.Workshops.Workshop do
   end
 
   @management_fields ~w(title description location destination_name destination_address
-    directions_url destination_place_id destination_attributions start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
+    directions_url destination_place_id start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
   @required_management_fields ~w(title location start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
 
   @doc false

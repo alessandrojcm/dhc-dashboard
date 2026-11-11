@@ -162,40 +162,44 @@ test("shows a saved destination and a safe directions link beside the label", as
 	).toHaveLength(0);
 });
 
-test("ALE-442: a selected Google place shows its attribution and place-bound directions", async () => {
+test("ALE-442: a selected Google place shows only staff text, never attribution, with place-bound directions", async () => {
 	const screen = await render(WorkshopListTestWrapper, {
 		workshops: [
 			workshop({
-				destinationName: "Synthetic Fencing Hall",
-				destinationAddress: "1 Example Street, Dublin 8",
+				destinationName: "Our hall",
 				destinationProvider: "google",
 				destinationPlaceId: "place_hall",
-				destinationAttributions: [
-					{ provider: "Venue Guide", providerUri: null },
-				],
 			}),
 			workshop({
 				id: "22222222-2222-2222-2222-222222222222",
-				title: "Manual destination",
-				destinationName: "Our Own Hall",
+				title: "Place only",
+				destinationProvider: "google",
+				destinationPlaceId: "place_annex",
 			}),
 		],
 	});
 
 	const card = screen.getByRole("article").first();
-	await expect
-		.element(card.getByTestId("destination-attribution"))
-		.toHaveTextContent("Google Maps · Venue Guide");
+	await expect.element(card).toHaveTextContent("Our hall");
+	// No Google text is stored, so nothing on an attendee surface is Google's.
+	expect(card.getByTestId("destination-attribution").elements()).toHaveLength(
+		0,
+	);
 	await expect
 		.element(card.getByRole("link", { name: "Get directions" }))
 		.toHaveAttribute(
 			"href",
-			expect.stringContaining("destination_place_id=place_hall"),
+			"https://www.google.com/maps/dir/?api=1&destination=Our%20hall&destination_place_id=place_hall",
 		);
 
-	// A manual destination is never attributed to Google.
-	const manual = screen.getByRole("article").nth(1);
-	expect(manual.getByTestId("destination-attribution").elements()).toHaveLength(
-		0,
-	);
+	// A place with no staff text is named by the short location label.
+	const placeOnly = screen.getByRole("article").nth(1);
+	await expect
+		.element(placeOnly.getByRole("link", { name: "Get directions" }))
+		.toHaveAttribute(
+			"href",
+			expect.stringMatching(
+				/destination=[^&]+&destination_place_id=place_annex$/,
+			),
+		);
 });

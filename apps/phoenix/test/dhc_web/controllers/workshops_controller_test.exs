@@ -192,7 +192,6 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "directionsUrl" => nil,
                "destinationProvider" => nil,
                "destinationPlaceId" => nil,
-               "destinationAttributions" => [],
                "startDate" => "2026-07-01T10:00:00Z",
                "endDate" => "2026-07-01T12:00:00Z",
                "maxCapacity" => 12,
@@ -815,14 +814,12 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
     test "a selected place round-trips through create, unrelated edits, replacement and clear",
          %{conn: conn} do
+      # Staff text beside the selected place; Google's own text is never sent.
       selected = %{
-        "destinationName" => "Synthetic Fencing Hall",
-        "destinationAddress" => "1 Example Street, Dublin 8",
+        "destinationName" => "Our hall",
+        "destinationAddress" => nil,
         "directionsUrl" => "https://maps.app.goo.gl/Stale",
-        "destinationPlaceId" => "place_hall",
-        "destinationAttributions" => [
-          %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
-        ]
+        "destinationPlaceId" => "place_hall"
       }
 
       created =
@@ -834,15 +831,15 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert %{
                "location" => "Main Hall",
-               "destinationName" => "Synthetic Fencing Hall",
+               "destinationName" => "Our hall",
+               "destinationAddress" => nil,
                "destinationProvider" => "google",
                "destinationPlaceId" => "place_hall",
                # A selected place's link is derived from it; no stale link is kept.
-               "directionsUrl" => nil,
-               "destinationAttributions" => [
-                 %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
-               ]
+               "directionsUrl" => nil
              } = created
+
+      refute Map.has_key?(created, "destinationAttributions")
 
       stored = Repo.get!(Dhc.Workshops.Workshop, created["id"])
       assert %DateTime{} = stored.destination_selected_at
@@ -853,23 +850,44 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("workshop_coordinator")
         |> patch("/api/workshops/#{created["id"]}", %{
           "title" => "Renamed",
-          "destinationName" => "Synthetic Fencing Hall",
-          "destinationAddress" => "1 Example Street, Dublin 8",
+          "destinationName" => "Our hall",
+          "destinationAddress" => nil,
           "directionsUrl" => nil,
-          "destinationPlaceId" => "place_hall",
-          "destinationAttributions" => []
+          "destinationPlaceId" => "place_hall"
         })
         |> json_response(200)
         |> get_in(["data", "workshop"])
 
       assert edited["title"] == "Renamed"
       assert edited["destinationPlaceId"] == "place_hall"
-      assert [%{"provider" => "Venue Guide"}] = edited["destinationAttributions"]
 
       assert Repo.get!(Dhc.Workshops.Workshop, created["id"]).destination_selected_at ==
                stored.destination_selected_at
 
-      # A different, manual destination drops the provider identity and credits.
+      # Editing the staff text without naming the place drops the place, so
+      # it cannot keep pointing at what may now be another venue.
+      unnamed =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{created["id"]}", %{"destinationAddress" => "2 Other Road"})
+        |> json_response(200)
+        |> get_in(["data", "workshop"])
+
+      assert %{
+               "destinationName" => "Our hall",
+               "destinationAddress" => "2 Other Road",
+               "destinationPlaceId" => nil
+             } = unnamed
+
+      # Selecting again, then a different manual destination with a link,
+      # drops the provider identity.
+      assert %{"destinationPlaceId" => "place_hall"} =
+               build_conn()
+               |> auth_conn("workshop_coordinator")
+               |> patch("/api/workshops/#{created["id"]}", %{"destinationPlaceId" => "place_hall"})
+               |> json_response(200)
+               |> get_in(["data", "workshop"])
+
       manual =
         build_conn()
         |> auth_conn("workshop_coordinator")
@@ -886,8 +904,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "destinationName" => "Our Own Hall",
                "directionsUrl" => "https://maps.app.goo.gl/AbCdEf",
                "destinationProvider" => nil,
-               "destinationPlaceId" => nil,
-               "destinationAttributions" => []
+               "destinationPlaceId" => nil
              } = manual
 
       cleared =
@@ -936,7 +953,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert json_response(conn, 422)["errors"]["code"] == "not_editable"
     end
 
-    test "attendee reads carry the selected place for directions and attribution", %{conn: conn} do
+    test "attendee reads carry the staff text and the place for directions, never Google text",
+         %{conn: conn} do
       workshop =
         insert_workshop(
           title: "Public Selected Workshop",
@@ -944,12 +962,10 @@ defmodule DhcWeb.WorkshopsControllerTest do
           is_public: true,
           price_non_member: 2500.0,
           max_capacity: 2,
-          destination_name: "Synthetic Fencing Hall",
-          destination_address: "1 Example Street, Dublin 8",
+          destination_name: "Our hall",
           destination_provider: "google",
           destination_place_id: "place_hall",
-          destination_selected_at: ~U[2026-11-01 10:00:00Z],
-          destination_attributions: [%{"provider" => "Venue Guide", "provider_uri" => nil}]
+          destination_selected_at: ~U[2026-11-01 10:00:00Z]
         )
 
       gate =
@@ -958,10 +974,13 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> json_response(200)
 
       assert %{
+               "destinationName" => "Our hall",
+               "destinationAddress" => nil,
                "destinationProvider" => "google",
-               "destinationPlaceId" => "place_hall",
-               "destinationAttributions" => [%{"provider" => "Venue Guide", "providerUri" => nil}]
+               "destinationPlaceId" => "place_hall"
              } = gate["data"]["workshop"]
+
+      refute Map.has_key?(gate["data"]["workshop"], "destinationAttributions")
 
       member_list =
         build_conn()
@@ -2521,7 +2540,6 @@ defmodule DhcWeb.WorkshopsControllerTest do
       directions_url: nil,
       destination_provider: nil,
       destination_place_id: nil,
-      destination_attributions: [],
       start_date: ~U[2026-07-01 10:00:00Z],
       end_date: ~U[2026-07-01 12:00:00Z],
       max_capacity: nil,

@@ -190,152 +190,158 @@ defmodule Dhc.DestinationsTest do
       directions_url: :string,
       destination_provider: :string,
       destination_place_id: :string,
-      destination_selected_at: :utc_datetime,
-      destination_attributions: {:array, :map}
+      destination_selected_at: :utc_datetime
     }
 
     @now ~U[2026-11-11 09:30:00.123456Z]
 
+    # A selected place with staff-typed text beside it: Google's own name
+    # and address are never stored.
     @selected %{
-      destination_name: "Synthetic Fencing Hall",
-      destination_address: "1 Example Street, Dublin 8",
+      destination_name: "Our hall",
+      destination_address: nil,
       directions_url: nil,
       destination_provider: "google",
       destination_place_id: "place_hall",
-      destination_selected_at: ~U[2025-01-01 00:00:00Z],
-      destination_attributions: [%{"provider" => "Venue Guide", "provider_uri" => nil}]
+      destination_selected_at: ~U[2025-01-01 00:00:00Z]
     }
 
     defp place_changeset(data, attrs) do
-      data = Map.merge(%{destination_attributions: []}, data)
-
       {data, @place_types}
       |> Ecto.Changeset.cast(attrs, Destinations.fields())
       |> Destinations.validate_changeset(now: @now)
     end
 
-    test "a new Place ID records a Google selection, its credits and no manual link" do
+    test "a new Place ID records only the selection's identity and drops a manual link" do
       changeset =
         place_changeset(%{directions_url: "https://maps.app.goo.gl/Old"}, %{
-          "destination_name" => "Synthetic Fencing Hall",
-          "destination_address" => "1 Example Street",
-          "destination_place_id" => "place_hall",
-          "destination_attributions" => [
-            %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
-          ]
+          "destination_place_id" => "place_hall"
         })
-
-      assert changeset.valid?
-
-      assert %{
-               destination_provider: "google",
-               destination_place_id: "place_hall",
-               destination_selected_at: ~U[2026-11-11 09:30:00Z],
-               directions_url: nil,
-               destination_attributions: [
-                 %{"provider" => "Venue Guide", "provider_uri" => "https://guide.example.test/"}
-               ]
-             } = changeset.changes
-    end
-
-    test "an unrelated resubmission preserves the selection and ignores sent credits" do
-      changeset =
-        place_changeset(@selected, %{
-          "destination_name" => @selected.destination_name,
-          "destination_address" => @selected.destination_address,
-          "destination_place_id" => "place_hall",
-          "destination_attributions" => [%{"provider" => "Someone else"}]
-        })
-
-      assert changeset.valid?
-      assert changeset.changes == %{}
-    end
-
-    test "editing the text without the selected Place ID turns the destination manual" do
-      changeset = place_changeset(@selected, %{"destination_name" => "Our own hall name"})
 
       assert changeset.valid?
 
       assert changeset.changes == %{
-               destination_name: "Our own hall name",
-               destination_provider: nil,
-               destination_place_id: nil,
-               destination_selected_at: nil,
-               destination_attributions: []
+               destination_provider: "google",
+               destination_place_id: "place_hall",
+               destination_selected_at: ~U[2026-11-11 09:30:00Z],
+               directions_url: nil
              }
     end
 
-    test "a manual directions link replaces the selection's provider identity" do
-      changeset =
-        place_changeset(@selected, %{"directions_url" => "https://maps.app.goo.gl/AbCdEf"})
-
-      assert changeset.valid?
-      assert changeset.changes.destination_place_id == nil
-      assert changeset.changes.directions_url == "https://maps.app.goo.gl/AbCdEf"
-    end
-
-    test "the same place sent again with new details is a fresh selection" do
-      changeset =
-        place_changeset(@selected, %{
-          "destination_address" => "1 Example Street, Dublin 8, D08 X000",
-          "destination_place_id" => "place_hall",
-          "destination_attributions" => []
-        })
-
-      assert changeset.valid?
-      assert changeset.changes.destination_selected_at == ~U[2026-11-11 09:30:00Z]
-      assert changeset.changes.destination_attributions == []
-      refute Map.has_key?(changeset.changes, :destination_place_id)
-    end
-
-    test "clearing the Place ID clears provider identity and credits" do
-      changeset =
-        place_changeset(@selected, %{
-          "destination_name" => nil,
-          "destination_address" => nil,
-          "destination_place_id" => nil
-        })
-
-      assert changeset.valid?
-
-      assert %{
-               destination_provider: nil,
-               destination_place_id: nil,
-               destination_selected_at: nil,
-               destination_attributions: []
-             } = changeset.changes
-    end
-
-    test "credits never arrive without a selection" do
+    test "staff text typed beside a new selection is kept as typed" do
       changeset =
         place_changeset(%{}, %{
-          "destination_name" => "Manual hall",
-          "destination_attributions" => [%{"provider" => "Venue Guide"}]
+          "destination_name" => " Our hall ",
+          "destination_place_id" => "place_hall"
         })
 
       assert changeset.valid?
-      refute Map.has_key?(changeset.changes, :destination_attributions)
+      assert changeset.changes.destination_name == "Our hall"
+      assert changeset.changes.destination_place_id == "place_hall"
+      refute Map.has_key?(changeset.changes, :destination_address)
+    end
+
+    test "Destinations.fields/0 casts no provider text or credits" do
+      assert Destinations.fields() == [
+               :destination_name,
+               :destination_address,
+               :directions_url,
+               :destination_place_id
+             ]
+    end
+
+    test "an unrelated resubmission preserves the selection and its timestamp" do
+      changeset =
+        place_changeset(@selected, %{
+          "destination_name" => "Our hall",
+          "destination_place_id" => "place_hall"
+        })
+
+      assert changeset.valid?
+      assert changeset.changes == %{}
+
+      assert place_changeset(@selected, %{}).changes == %{}
+    end
+
+    test "editing the staff text beside the resubmitted place keeps the place" do
+      changeset =
+        place_changeset(@selected, %{
+          "destination_name" => "Our hall, side door",
+          "destination_address" => "Rear entrance",
+          "destination_place_id" => "place_hall"
+        })
+
+      assert changeset.valid?
+
+      assert changeset.changes == %{
+               destination_name: "Our hall, side door",
+               destination_address: "Rear entrance"
+             }
+    end
+
+    test "editing the text without naming the place drops the stale place" do
+      changeset = place_changeset(@selected, %{"destination_name" => "Another venue"})
+
+      assert changeset.valid?
+
+      assert changeset.changes == %{
+               destination_name: "Another venue",
+               destination_provider: nil,
+               destination_place_id: nil,
+               destination_selected_at: nil
+             }
+    end
+
+    test "a manual directions link replaces the place, even beside its Place ID" do
+      for attrs <- [
+            %{"directions_url" => "https://maps.app.goo.gl/AbCdEf"},
+            %{
+              "directions_url" => "https://maps.app.goo.gl/AbCdEf",
+              "destination_place_id" => "place_hall"
+            }
+          ] do
+        changeset = place_changeset(@selected, attrs)
+
+        assert changeset.valid?
+        assert changeset.changes.destination_place_id == nil
+        assert changeset.changes.destination_provider == nil
+        assert changeset.changes.directions_url == "https://maps.app.goo.gl/AbCdEf"
+      end
+    end
+
+    test "replacing the place stamps a new selection and keeps the staff text" do
+      changeset = place_changeset(@selected, %{"destination_place_id" => "place_annex"})
+
+      assert changeset.valid?
+
+      assert changeset.changes == %{
+               destination_place_id: "place_annex",
+               destination_selected_at: ~U[2026-11-11 09:30:00Z]
+             }
+    end
+
+    test "clearing the Place ID clears provider identity and keeps the staff text" do
+      changeset = place_changeset(@selected, %{"destination_place_id" => ""})
+
+      assert changeset.valid?
+
+      assert changeset.changes == %{
+               destination_provider: nil,
+               destination_place_id: nil,
+               destination_selected_at: nil
+             }
+    end
+
+    test "a manual destination never gains a provider" do
+      changeset = place_changeset(%{}, %{"destination_name" => "Manual hall"})
+
+      assert changeset.valid?
       refute Map.has_key?(changeset.changes, :destination_provider)
     end
 
-    test "a malformed Place ID, a selection without text and bad credits are refused" do
+    test "a malformed Place ID is refused" do
       assert %{errors: [destination_place_id: {"is not a valid place", []}]} =
-               place_changeset(%{}, %{
-                 "destination_name" => "Hall",
-                 "destination_place_id" => "../places/x"
-               })
-
-      assert %{errors: [destination_name: {"A selected place needs its name or address", []}]} =
-               place_changeset(%{}, %{"destination_place_id" => "place_hall"})
-
-      assert %{errors: [destination_attributions: _]} =
-               place_changeset(%{}, %{
-                 "destination_name" => "Hall",
-                 "destination_place_id" => "place_hall",
-                 "destination_attributions" => [
-                   %{"provider" => "X", "providerUri" => "javascript:alert(1)"}
-                 ]
-               })
+               place_changeset(%{}, %{"destination_place_id" => "../places/x"})
     end
   end
 end

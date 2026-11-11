@@ -42,6 +42,7 @@ type Submission = {
 	destinationAddress: string;
 	directionsUrl: string;
 	destinationPlaceId: string;
+	/** Present only if the form (wrongly) submitted Google's credits. */
 	destinationAttributions: string;
 };
 
@@ -107,7 +108,6 @@ function renderForm(initialData?: {
 	destination_address?: string;
 	directions_url?: string;
 	destination_place_id?: string;
-	destination_attributions?: string;
 }) {
 	return render(WorkshopForm, {
 		context: venueLookupContext(lookup),
@@ -125,7 +125,6 @@ function renderForm(initialData?: {
 					destination_address: initialData.destination_address ?? "",
 					directions_url: initialData.directions_url ?? "",
 					destination_place_id: initialData.destination_place_id ?? "",
-					destination_attributions: initialData.destination_attributions ?? "",
 				}),
 			},
 		},
@@ -415,8 +414,9 @@ describe("the workshop form's Google venue search (ALE-442)", () => {
 	const searchBox = (screen: Screen) =>
 		screen.getByRole("combobox", { name: "Search Google Maps" });
 
-	it("chooses a place by keyboard without submitting, previews it with attribution, then saves it", async () => {
+	it("chooses a place by keyboard without submitting, previews it with attribution, then saves only its ID", async () => {
 		const screen = await completeEditForm({
+			destination_name: "Our hall",
 			directions_url: "https://maps.app.goo.gl/Stale",
 		});
 
@@ -434,9 +434,7 @@ describe("the workshop form's Google venue search (ALE-442)", () => {
 
 		await userEvent.keyboard("{ArrowDown}{ArrowDown}{Enter}");
 
-		const preview = screen.getByRole("region", {
-			name: "Selected destination",
-		});
+		const preview = screen.getByRole("region", { name: "Selected place" });
 		await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
 		await expect
 			.element(preview)
@@ -453,13 +451,57 @@ describe("the workshop form's Google venue search (ALE-442)", () => {
 			},
 		]);
 		expect(recorded.requests()).toBe(0);
+		// The selection never fills the staff's own fields.
+		await expect
+			.element(
+				screen.getByRole("textbox", { name: "Destination name", exact: true }),
+			)
+			.toHaveValue("Our hall");
+		await expect
+			.element(
+				screen.getByRole("textbox", {
+					name: "Destination address",
+					exact: true,
+				}),
+			)
+			.toHaveValue("");
 
-		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "Synthetic Fencing Hall",
-			destinationAddress: "1 Example Street, Dublin 8",
+		expect(await submit(screen, "Update Workshop")).toEqual({
+			workshopDate: expect.any(String),
+			workshopEndDate: expect.any(String),
+			destinationName: "Our hall",
+			destinationAddress: "",
 			directionsUrl: "",
 			destinationPlaceId: "place_hall",
-			destinationAttributions: JSON.stringify(hall.attributions),
+			destinationAttributions: "",
+		});
+	});
+
+	it("staff may type their own name and address beside a selected place", async () => {
+		const screen = await completeEditForm();
+
+		await userEvent.click(searchBox(screen));
+		await userEvent.keyboard("Annex");
+		await screen.getByRole("option", { name: /Annex/ }).click();
+		await expect
+			.element(screen.getByRole("region", { name: "Selected place" }))
+			.toHaveTextContent("Synthetic Fencing Annex");
+		// A selected place's link comes from the place.
+		expect(
+			screen
+				.getByRole("textbox", { name: "Google Maps directions link" })
+				.elements(),
+		).toHaveLength(0);
+
+		await userEvent.fill(
+			screen.getByRole("textbox", { name: "Destination name", exact: true }),
+			"The annex, back door",
+		);
+		expect(await submit(screen, "Update Workshop")).toMatchObject({
+			destinationName: "The annex, back door",
+			destinationAddress: "",
+			destinationPlaceId: "place_annex",
+			destinationAttributions: "",
 		});
 	});
 
@@ -518,45 +560,55 @@ describe("the workshop form's Google venue search (ALE-442)", () => {
 			.toBeVisible();
 	});
 
-	it("keeps a saved selection on an unrelated edit", async () => {
+	it("reopens a saved place without Google text and keeps it on an unrelated edit", async () => {
 		const screen = await completeEditForm({
-			destination_name: "Synthetic Fencing Hall",
-			destination_address: "1 Example Street, Dublin 8",
+			destination_name: "Our hall",
 			destination_place_id: "place_hall",
-			destination_attributions: "[]",
 		});
 
-		const preview = screen.getByRole("region", {
-			name: "Selected destination",
-		});
-		await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
+		const preview = screen.getByRole("region", { name: "Selected place" });
+		await expect
+			.element(preview)
+			.toHaveTextContent("Google Maps place selected");
+		// No stored Google text and no fresh Details lookup.
+		expect(lookup.resolveCalls).toEqual([]);
+		expect(
+			preview.getByTestId("destination-attribution").elements(),
+		).toHaveLength(0);
 		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "Synthetic Fencing Hall",
+			destinationName: "Our hall",
 			destinationPlaceId: "place_hall",
 		});
 	});
 
-	it("removing a selection clears its provider identity before a manual destination", async () => {
-		const screen = await completeEditForm({
-			destination_name: "Synthetic Fencing Hall",
-			destination_address: "1 Example Street, Dublin 8",
-			destination_place_id: "place_hall",
-			destination_attributions: "[]",
-		});
+	it("removing a place discards its preview, keeps the staff text and offers the manual link again", async () => {
+		const screen = await completeEditForm({ destination_name: "Our hall" });
 
-		await screen
-			.getByRole("button", { name: "Remove and enter manually" })
-			.click();
+		await userEvent.click(searchBox(screen));
+		await userEvent.keyboard("Synthetic");
+		await expect.element(screen.getByRole("option").first()).toBeVisible();
+		await userEvent.keyboard("{ArrowDown}{Enter}");
+		const preview = screen.getByRole("region", { name: "Selected place" });
+		await expect.element(preview).toHaveTextContent("Synthetic Fencing Annex");
+
+		await screen.getByRole("button", { name: "Remove place" }).click();
+		await expect.element(preview).not.toBeInTheDocument();
+		expect(screen.getByText("Synthetic Fencing Annex").elements()).toHaveLength(
+			0,
+		);
 		const name = screen.getByRole("textbox", {
 			name: "Destination name",
 			exact: true,
 		});
-		await expect.element(name).toHaveValue("");
-		await userEvent.fill(name, "Our Own Hall");
+		await expect.element(name).toHaveValue("Our hall");
+		await userEvent.fill(
+			screen.getByRole("textbox", { name: "Google Maps directions link" }),
+			"https://maps.app.goo.gl/AbCdEf",
+		);
 
 		expect(await submit(screen, "Update Workshop")).toMatchObject({
-			destinationName: "Our Own Hall",
-			destinationAddress: "",
+			destinationName: "Our hall",
+			directionsUrl: "https://maps.app.goo.gl/AbCdEf",
 			destinationPlaceId: "",
 			destinationAttributions: "",
 		});

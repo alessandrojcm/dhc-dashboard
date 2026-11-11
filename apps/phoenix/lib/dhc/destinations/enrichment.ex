@@ -17,8 +17,7 @@ defmodule Dhc.Destinations.Enrichment do
   # The reviewed destination: the manual text fields plus the selected place
   # (ALE-442). A reviewed mapping only ever proposes manual text
   # (`destination_place_id: nil`), so a Google-selected destination is never
-  # "absent" and is refused as a conflict rather than overwritten; its
-  # attributions travel with the place and are not compared.
+  # "absent" and is refused as a conflict rather than overwritten.
   @fields Destinations.text_fields() ++ [:destination_place_id]
 
   @type destination :: %{

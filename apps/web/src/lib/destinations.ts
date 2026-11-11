@@ -8,18 +8,13 @@
  * short venue label only — nothing here fabricates a place for unreviewed
  * text.
  *
- * ALE-442: a destination selected from Google venue search also carries its
- * Place ID and the credits Google requires beside it. Its directions link is
- * a Maps directions URL naming the place (`destination_place_id`), and it is
- * shown with Google Maps attribution (`destinationAttribution`).
+ * ALE-442: a place selected from Google venue search is stored as its Place
+ * ID only. The destination name and address are always staff-typed, so no
+ * Google text (and no Google attribution) ever reaches an attendee surface.
+ * A selected place's directions link is a Maps directions URL naming the
+ * place (`destination_place_id`) beside the staff text, or the short label
+ * when there is none.
  */
-import * as v from "valibot";
-
-/** A third-party credit Google returned with a selected place. */
-export interface DestinationCredit {
-	provider: string;
-	providerUri: string | null;
-}
 
 /** The destination facts a workshop read carries (all optional/nullable). */
 export interface DestinationFacts {
@@ -28,7 +23,6 @@ export interface DestinationFacts {
 	directionsUrl?: string | null;
 	destinationProvider?: "google" | null;
 	destinationPlaceId?: string | null;
-	destinationAttributions?: DestinationCredit[] | null;
 }
 
 const trimmed = (value: string | null | undefined) =>
@@ -36,8 +30,8 @@ const trimmed = (value: string | null | undefined) =>
 
 /**
  * The recognizable destination detail lines to show beside the familiar
- * venue label: the name, then the address. Empty when the row has no
- * destination details.
+ * venue label: the staff-typed name, then the address. Empty when the row has
+ * no destination details.
  */
 export function destinationLines(workshop: DestinationFacts): string[] {
 	return [
@@ -50,42 +44,33 @@ export function destinationLines(workshop: DestinationFacts): string[] {
  * The external directions link for an attendee, or `undefined` when there is
  * nothing useful to link to.
  *
- * The manually supplied Maps link wins; otherwise the destination name and
- * address build a Maps search. A directions link alone (no name/address) is
- * still a usable destination.
+ * The manually supplied Maps link wins; a selected place links Maps
+ * directions to its Place ID, named by the staff text or else the domain's
+ * short `label`; otherwise the destination name and address build a Maps
+ * search. A legacy label-only row gets no link.
  */
-export function directionsHref(workshop: DestinationFacts): string | undefined {
+export function directionsHref(
+	workshop: DestinationFacts,
+	label?: string | null,
+): string | undefined {
 	const manual = trimmed(workshop.directionsUrl);
 	if (manual) return manual;
 
-	const query = destinationLines(workshop).join(", ");
-	if (!query) return undefined;
-
+	const text = destinationLines(workshop).join(", ");
 	const placeId = selectedPlaceId(workshop);
 	if (placeId) {
-		return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}&destination_place_id=${encodeURIComponent(placeId)}`;
+		const destination = text || trimmed(label) || "";
+		return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}&destination_place_id=${encodeURIComponent(placeId)}`;
 	}
 
-	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+	if (!text) return undefined;
+	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(text)}`;
 }
 
 const selectedPlaceId = (workshop: DestinationFacts) =>
 	workshop.destinationProvider === "google"
 		? trimmed(workshop.destinationPlaceId)
 		: undefined;
-
-/**
- * The attribution to show beside a Google-selected destination's name and
- * address — Google Maps plus any third-party credits — or `undefined` for a
- * manual destination, which must not be attributed to Google.
- */
-export function destinationAttribution(
-	workshop: DestinationFacts,
-): { credits: DestinationCredit[] } | undefined {
-	if (!selectedPlaceId(workshop) || destinationLines(workshop).length === 0)
-		return undefined;
-	return { credits: workshop.destinationAttributions ?? [] };
-}
 
 /** The destination controls `destination-input.svelte` submits. */
 export interface DestinationFields {
@@ -94,45 +79,20 @@ export interface DestinationFields {
 	directions_url: string;
 	/** ALE-442: the selected Google Place ID; empty for a manual destination. */
 	destination_place_id: string;
-	/** ALE-442: the selection's credits, as a JSON array (hidden control). */
-	destination_attributions: string;
-}
-
-const CreditsSchema = v.array(
-	v.object({
-		provider: v.pipe(v.string(), v.nonEmpty(), v.maxLength(200)),
-		providerUri: v.nullable(v.pipe(v.string(), v.maxLength(2048))),
-	}),
-);
-
-/**
- * The credits a hidden control carries. Anything that is not a credit list
- * is no credits; Phoenix validates them again with the selection.
- */
-export function parseCredits(json: string): DestinationCredit[] {
-	if (!json.trim()) return [];
-	try {
-		const parsed = v.safeParse(CreditsSchema, JSON.parse(json));
-		return parsed.success ? parsed.output : [];
-	} catch {
-		return [];
-	}
 }
 
 /**
  * The destination controls as Phoenix request fields: every key is sent, so
- * an emptied control clears the saved value (`null`) rather than keeping it.
+ * an emptied control clears the saved value (`null`) rather than keeping it,
+ * and the selected Place ID always travels beside the staff text (Phoenix
+ * drops a place a text edit does not resend).
  */
 export function destinationBody(fields: DestinationFields) {
-	const placeId = fields.destination_place_id.trim() || null;
 	return {
 		destinationName: fields.destination_name.trim() || null,
 		destinationAddress: fields.destination_address.trim() || null,
 		directionsUrl: fields.directions_url.trim() || null,
-		destinationPlaceId: placeId,
-		destinationAttributions: placeId
-			? parseCredits(fields.destination_attributions)
-			: [],
+		destinationPlaceId: fields.destination_place_id.trim() || null,
 	};
 }
 
@@ -145,8 +105,5 @@ export function destinationValues(
 		destination_address: workshop.destinationAddress ?? "",
 		directions_url: workshop.directionsUrl ?? "",
 		destination_place_id: selectedPlaceId(workshop) ?? "",
-		destination_attributions: selectedPlaceId(workshop)
-			? JSON.stringify(workshop.destinationAttributions ?? [])
-			: "",
 	};
 }

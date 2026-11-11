@@ -23,7 +23,6 @@ const pay: BeginnersIntakePage = {
 		directionsUrl: null,
 		destinationProvider: null,
 		destinationPlaceId: null,
-		destinationAttributions: [],
 	},
 	feeCents: 4000,
 };
@@ -59,7 +58,6 @@ describe("the Intake page presentation (ALE-381)", () => {
 			venue: "St. Andrew's Hall",
 			destination: [],
 			directionsHref: null,
-			attribution: null,
 			fee: "€40.00",
 		});
 		expect(intakeDetails(INACTIVE_PAGE)).toBeNull();

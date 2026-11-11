@@ -36,7 +36,6 @@ export const LLMCreateWorkshopSchema = v.object({
 		"destination_address",
 		"directions_url",
 		"destination_place_id",
-		"destination_attributions",
 	]).entries,
 	workshop_date: v.pipe(
 		v.string(),

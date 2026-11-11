@@ -38,7 +38,6 @@ export const BaseWorkshopSchema = v.object({
 	destination_address: destinationDetails.destination_address,
 	directions_url: destinationDetails.directions_url,
 	destination_place_id: destinationDetails.destination_place_id,
-	destination_attributions: destinationDetails.destination_attributions,
 	workshop_date: v.pipe(
 		v.date(),
 		v.check(
@@ -103,7 +102,6 @@ export const CreateWorkshopRemoteSchema = v.object({
 	destination_address: destinationDetails.destination_address,
 	directions_url: destinationDetails.directions_url,
 	destination_place_id: destinationDetails.destination_place_id,
-	destination_attributions: destinationDetails.destination_attributions,
 	workshop_date: v.pipe(v.string(), v.nonEmpty("Workshop date is required")),
 	workshop_end_date: v.pipe(
 		v.string(),

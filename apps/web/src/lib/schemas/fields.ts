@@ -277,9 +277,9 @@ const isHttpsUrl = (input: string) => {
  * owns the supported-Maps-destination rule and answers a rejection as a field
  * error on `directionsUrl`.
  *
- * ALE-442: a destination selected from Google venue search also submits its
- * Place ID and credits through two hidden controls (empty for a manual
- * destination); Phoenix owns the provenance rules.
+ * ALE-442: a place selected from Google venue search submits only its Place
+ * ID, through a hidden control (empty for a manual destination); the name and
+ * address stay staff-typed. Phoenix owns the provenance rules.
  */
 export const destinationEntries = {
 	destination_name: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
@@ -296,8 +296,4 @@ export const destinationEntries = {
 		"",
 	),
 	destination_place_id: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
-	destination_attributions: v.optional(
-		v.pipe(v.string(), v.maxLength(8192)),
-		"",
-	),
 };

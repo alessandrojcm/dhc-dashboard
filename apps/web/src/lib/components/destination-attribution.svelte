@@ -1,15 +1,15 @@
 <script lang="ts">
-import type { DestinationCredit } from "#lib/destinations.js";
+import type { DestinationCredit } from "#lib/venue-lookup/venue-lookup.js";
 
 /**
- * Google Maps attribution for a destination selected from Google venue
- * search (ALE-442): the "Google Maps" text mark plus any third-party credits
- * Google returned with the place, kept together beside the name and address
- * they credit. Render it only for Google-derived data
- * (`destinationAttribution`); a manual destination is never attributed.
+ * Google Maps attribution for Google content shown while staff edit a
+ * destination (ALE-442): the suggestion list and the transient place
+ * preview. The "Google Maps" text mark plus any third-party credits Google
+ * returned with the place, kept together beside the text they credit.
+ * Attendee surfaces never show Google text (only the Place ID is stored), so
+ * they never render it; staff-typed text is never attributed to Google.
  *
- * Credit links open without a referrer, so a credential-bearing page (the
- * Intake page) never discloses its URL.
+ * Credit links open without a referrer.
  */
 let {
 	credits = [],

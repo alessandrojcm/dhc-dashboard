@@ -28,12 +28,13 @@ describe("destination field paths (ALE-441)", () => {
 		expect(rescheduleFormPath("feeCents")).toBeUndefined();
 	});
 
-	it("puts a refused Google selection under the destination name (ALE-442)", () => {
+	it("puts a refused Google selection on the selected place (ALE-442)", () => {
 		expect(scheduleFormPath("workshops.0.destinationPlaceId")).toEqual([
-			"destination_name",
+			"destination_place_id",
 		]);
-		expect(rescheduleFormPath("destinationAttributions")).toEqual([
-			"destination_name",
+		expect(rescheduleFormPath("destinationPlaceId")).toEqual([
+			"destination_place_id",
 		]);
+		expect(rescheduleFormPath("destinationAttributions")).toBeUndefined();
 	});
 });

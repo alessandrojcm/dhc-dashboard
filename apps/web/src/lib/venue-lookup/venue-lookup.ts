@@ -3,19 +3,27 @@
  *
  * Every Workshop form's destination input searches Google Maps through one
  * boundary — `venue-lookup.remote.ts`, which calls Phoenix's `Dhc.Places` —
- * and never writes a workshop: a chosen place only fills the form, which
- * saves it through its own domain's operation. Suggestions and previews are
- * transient: nothing here caches, persists or reports them.
+ * and never writes a workshop: a chosen place only sets the form's Place ID,
+ * which the form saves through its own domain's operation. Suggestions and
+ * previews (Google's name, address and credits) are transient: nothing here
+ * caches, persists, submits or reports them.
  */
-import type { DestinationCredit } from "#lib/destinations.js";
-
 /** One Google suggestion, for the current search only. */
 export interface VenueSuggestion {
 	placeId: string;
 	text: string;
 }
 
-/** The closed preview of a deliberately chosen suggestion. */
+/** A third-party credit Google returned with a place preview. */
+export interface DestinationCredit {
+	provider: string;
+	providerUri: string | null;
+}
+
+/**
+ * The closed preview of a deliberately chosen suggestion. Shown only while
+ * staff edit the destination: only `placeId` is ever submitted or saved.
+ */
 export interface VenueSelection {
 	provider: "google";
 	placeId: string;

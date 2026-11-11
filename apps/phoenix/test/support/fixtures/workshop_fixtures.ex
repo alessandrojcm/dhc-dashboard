@@ -59,7 +59,6 @@ defmodule Dhc.WorkshopFixtures do
         destination_provider: Map.get(attrs, :destination_provider),
         destination_place_id: Map.get(attrs, :destination_place_id),
         destination_selected_at: Map.get(attrs, :destination_selected_at),
-        destination_attributions: Map.get(attrs, :destination_attributions, []),
         start_date: start_date,
         end_date: Map.get(attrs, :end_date, default_end),
         max_capacity: Map.get(attrs, :max_capacity, 20),

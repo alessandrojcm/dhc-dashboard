@@ -79,7 +79,6 @@ defmodule DhcWeb.WorkshopsHTTP do
       destination_address: "destinationAddress",
       directions_url: "directionsUrl",
       destination_place_id: "destinationPlaceId",
-      destination_attributions: "destinationAttributions",
       announce_discord: "announceDiscord",
       announce_email: "announceEmail"
     }

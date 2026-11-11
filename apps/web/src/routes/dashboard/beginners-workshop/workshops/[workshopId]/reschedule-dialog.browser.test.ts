@@ -37,7 +37,6 @@ function workshop(
 		directionsUrl: null,
 		destinationProvider: null,
 		destinationPlaceId: null,
-		destinationAttributions: [],
 		date: "2026-11-14",
 		startTime: "18:30",
 		endTime: "20:30",
@@ -158,7 +157,6 @@ test("ALE-441: a destination-only edit saves without emailing; a move is still a
 		directionsUrl: null,
 		destinationProvider: null,
 		destinationPlaceId: null,
-		destinationAttributions: [],
 	});
 	const operation = () =>
 		form
@@ -211,11 +209,10 @@ test("ALE-441: the destination link gets the shared https check before submittin
 
 test("ALE-442: replacing a saved Google place is a destination-only change, and Escape keeps the dialog open", async () => {
 	const { screen, form } = await openDialog(3, {
-		destinationName: "Synthetic Fencing Hall",
-		destinationAddress: "1 Example Street, Dublin 8",
+		destinationName: "Our hall",
+		destinationAddress: null,
 		destinationProvider: "google",
 		destinationPlaceId: "place_hall",
-		destinationAttributions: [{ provider: "Venue Guide", providerUri: null }],
 	});
 	const hidden = (name: string) =>
 		form
@@ -223,9 +220,16 @@ test("ALE-442: replacing a saved Google place is a destination-only change, and 
 			.querySelector<HTMLInputElement>(`input[type=hidden][name*="${name}"]`)
 			?.value;
 
-	const preview = screen.getByRole("region", { name: "Selected destination" });
-	await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
-	await expect.element(preview).toHaveTextContent("Venue Guide");
+	// A saved place has no stored Google text: it reopens as "selected" only,
+	// beside the staff-typed name.
+	const preview = screen.getByRole("region", { name: "Selected place" });
+	await expect.element(preview).toHaveTextContent("Google Maps place selected");
+	expect(
+		preview.getByTestId("destination-attribution").elements(),
+	).toHaveLength(0);
+	await expect
+		.element(screen.getByRole("textbox", { name: "Destination name" }))
+		.toHaveValue("Our hall");
 	expect(hidden("operation")).toBe("reschedule");
 
 	await userEvent.click(
@@ -241,7 +245,15 @@ test("ALE-442: replacing a saved Google place is a destination-only change, and 
 
 	await userEvent.keyboard("{Backspace}");
 	await screen.getByRole("option", { name: /Annex/ }).click();
+	// Google's preview of the new place, for this session only; the staff
+	// text is untouched.
 	await expect.element(preview).toHaveTextContent("Synthetic Fencing Annex");
+	await expect
+		.element(preview.getByTestId("destination-attribution"))
+		.toHaveTextContent("Google Maps");
+	await expect
+		.element(screen.getByRole("textbox", { name: "Destination name" }))
+		.toHaveValue("Our hall");
 	expect(lookup.resolveCalls.map((call) => call.placeId)).toEqual([
 		"place_annex",
 	]);
@@ -251,25 +263,24 @@ test("ALE-442: replacing a saved Google place is a destination-only change, and 
 		.toBeVisible();
 	expect(hidden("operation")).toBe("destination");
 	expect(hidden("destination_place_id")).toBe("place_annex");
-	expect(hidden("destination_attributions")).toBe("[]");
+	expect(
+		form.element().querySelector('[name*="destination_attributions"]'),
+	).toBeNull();
 });
 
 test("ALE-442: the search and a selected place fit a phone", async () => {
 	await page.viewport(375, 740);
 	const { screen } = await openDialog(0, {
-		destinationName: "Synthetic Fencing Hall with a fairly long listing name",
+		destinationName: "Our hall with a fairly long staff-typed name",
 		destinationAddress: "1 Example Street, Dublin 8, D08 X000, Ireland",
 		destinationProvider: "google",
 		destinationPlaceId: "place_hall",
-		destinationAttributions: [],
 	});
 
 	const preview = screen
-		.getByRole("region", { name: "Selected destination" })
+		.getByRole("region", { name: "Selected place" })
 		.element();
-	const remove = screen
-		.getByRole("button", { name: "Remove and enter manually" })
-		.element();
+	const remove = screen.getByRole("button", { name: "Remove place" }).element();
 	const search = screen
 		.getByRole("combobox", { name: "Replace with another place" })
 		.element();

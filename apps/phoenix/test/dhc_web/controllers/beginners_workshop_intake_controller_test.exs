@@ -85,7 +85,7 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
              data["workshop"]
 
     assert Map.keys(data["workshop"]) |> Enum.sort() ==
-             ~w(date destinationAddress destinationAttributions destinationName destinationPlaceId
+             ~w(date destinationAddress destinationName destinationPlaceId
                 destinationProvider directionsUrl endTime startTime venue)
   end
 
@@ -122,21 +122,19 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
            } = json_response(conn, 200)
   end
 
-  test "a selected place carries its Place ID and credits for attribution (ALE-442)", %{
-    conn: conn,
-    token: token,
-    workshop: workshop
-  } do
+  test "a selected place carries its Place ID beside the staff text, never Google text (ALE-442)",
+       %{
+         conn: conn,
+         token: token,
+         workshop: workshop
+       } do
     assert {:ok, _} =
              Dhc.BeginnersWorkshops.execute(
                {:staff, staff_fixture("beginners_coordinator")},
                {:update_destination, workshop.id,
                 %{
                   "venue" => workshop.venue,
-                  "destination_name" => "Synthetic Fencing Hall",
-                  "destination_address" => "1 Example Street, Dublin 8",
-                  "destination_place_id" => "place_hall",
-                  "destination_attributions" => [%{"provider" => "Venue Guide"}]
+                  "destination_place_id" => "place_hall"
                 }},
                clock: clock(DateTime.utc_now())
              )
@@ -148,13 +146,11 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
              "data" => %{
                "workshop" => %{
                  "venue" => "St. Andrew's Hall",
-                 "destinationName" => "Synthetic Fencing Hall",
+                 "destinationName" => nil,
+                 "destinationAddress" => nil,
                  "destinationProvider" => "google",
                  "destinationPlaceId" => "place_hall",
-                 "directionsUrl" => nil,
-                 "destinationAttributions" => [
-                   %{"provider" => "Venue Guide", "providerUri" => nil}
-                 ]
+                 "directionsUrl" => nil
                }
              }
            } = json_response(conn, 200)

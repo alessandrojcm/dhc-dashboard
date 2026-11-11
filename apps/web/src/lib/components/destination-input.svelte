@@ -6,7 +6,6 @@ import { Input } from "#lib/components/ui/input/index.js";
 import * as Field from "#lib/components/ui/field/index.js";
 import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
 import DestinationAttribution from "#lib/components/destination-attribution.svelte";
-import { parseCredits } from "#lib/destinations.js";
 import type { VenueSelection } from "#lib/venue-lookup/venue-lookup.js";
 import { currentVenueLookup } from "#lib/venue-lookup/venue-lookup-context.js";
 import { VenueSearch } from "#lib/venue-lookup/venue-search.svelte.js";
@@ -14,33 +13,36 @@ import { ExternalLink, MapPin, Search } from "@lucide/svelte";
 
 /**
  * The destination input (ALE-440, ALE-442): optional destination details
- * beside a domain's own short venue label, found with Google Maps venue
- * search or entered by hand.
+ * beside a domain's own short venue label, typed by staff, plus an optional
+ * place chosen with Google Maps venue search for directions.
  *
  * Domain-neutral on purpose — regular Workshop create/edit and the
  * Beginners' Workshop schedule/reschedule forms (ALE-441) compose the same
  * fields without importing either domain's policy. It renders the shared
  * field vocabulary (`destination_name`, `destination_address`,
- * `directions_url`, and the selected place's hidden `destination_place_id`
- * and `destination_attributions`) through the remote-form field API, so
- * control names, restored values, `aria-invalid` and field issues all stay
- * connected to the submitting form.
+ * `directions_url`, and the selected place's hidden `destination_place_id`)
+ * through the remote-form field API, so control names, restored values,
+ * `aria-invalid` and field issues all stay connected to the submitting form.
  *
  * Search goes through the one venue lookup boundary
  * (`venue-lookup.remote.ts`, or a `VenueLookup` provided through
- * `venue-lookup-context.ts`). A suggestion becomes the destination only when
- * it is deliberately chosen; choosing never submits the form. A chosen place
- * is shown with Google Maps attribution and saved through the owning form;
- * "Remove" returns to manual entry, which always works — including when
- * Google is not set up, over quota or unavailable.
+ * `venue-lookup-context.ts`). A suggestion becomes the selected place only
+ * when it is deliberately chosen; choosing never submits the form. Only the
+ * Place ID is submitted and saved: Google's name, address and credits are a
+ * preview held in this component for the current editing session, shown with
+ * Google Maps attribution and discarded on remove, replace or unmount. The
+ * name and address controls stay independent staff-typed text — a selection
+ * never fills them — and are what attendees and Calendar see. A saved place
+ * reopens without Google text (none is stored, and none is fetched again).
+ * Manual entry always works, including when Google is not set up, over quota
+ * or unavailable.
  */
 type TextField = RemoteFormField<string>;
 type DestinationKey =
 	| "destination_name"
 	| "destination_address"
 	| "directions_url"
-	| "destination_place_id"
-	| "destination_attributions";
+	| "destination_place_id";
 
 let {
 	fields,
@@ -57,6 +59,9 @@ let {
 	disabled?: boolean;
 } = $props();
 
+/** Google's preview of the place chosen in this session; never submitted. */
+let preview = $state<VenueSelection | undefined>(undefined);
+
 const search = new VenueSearch({
 	lookup: currentVenueLookup(),
 	onSelect: applySelection,
@@ -71,33 +76,24 @@ const optionId = (index: number) => `${uid}-venue-option-${index}`;
 const current = (key: DestinationKey) =>
 	String(fields[key].value() ?? values?.[key] ?? "");
 
-const placeId = $derived(current("destination_place_id"));
-const selectedName = $derived(current("destination_name"));
-const selectedAddress = $derived(current("destination_address"));
-const selectedCredits = $derived(
-	parseCredits(current("destination_attributions")),
+const placeId = $derived(current("destination_place_id").trim());
+const isSelected = $derived(placeId !== "");
+// The preview belongs to the selected place only: a restored or replaced ID
+// never shows another place's Google text.
+const shownPreview = $derived(
+	preview && preview.placeId === placeId ? preview : undefined,
 );
-const isSelected = $derived(placeId.trim() !== "");
 
 function applySelection(selection: VenueSelection) {
-	fields.destination_name.set(selection.name ?? "");
-	fields.destination_address.set(selection.address ?? "");
+	preview = selection;
 	// A selected place's directions link is derived from it.
 	fields.directions_url.set("");
 	fields.destination_place_id.set(selection.placeId);
-	fields.destination_attributions.set(JSON.stringify(selection.attributions));
 }
 
 function removeSelection() {
-	for (const key of [
-		"destination_name",
-		"destination_address",
-		"directions_url",
-		"destination_place_id",
-		"destination_attributions",
-	] as const) {
-		fields[key].set("");
-	}
+	preview = undefined;
+	fields.destination_place_id.set("");
 }
 
 function onSearchKeydown(event: KeyboardEvent) {
@@ -138,11 +134,6 @@ const statusText = $derived.by(() => {
 			return undefined;
 	}
 });
-
-const destinationIssues = $derived([
-	...(fields.destination_name.issues() ?? []),
-	...(fields.destination_address.issues() ?? []),
-]);
 </script>
 
 <div
@@ -241,39 +232,38 @@ const destinationIssues = $derived([
 			class="text-sm leading-5 text-muted-foreground"
 		>
 			{statusText ??
-				"Choose a suggestion to fill in the destination; nothing is saved until you save the form."}
+				"Choose a suggestion to link directions to that place; nothing is saved until you save the form."}
 		</p>
 	</Field.Field>
 
 	{#if isSelected}
-		<!-- A deliberately chosen place: shown before saving, with attribution. -->
-		<input {...fields.destination_name.as("hidden", selectedName)} />
-		<input {...fields.destination_address.as("hidden", selectedAddress)} />
-		<input {...fields.directions_url.as("hidden", "")} />
 		<input {...fields.destination_place_id.as("hidden", placeId)} />
-		<input
-			{...fields.destination_attributions.as(
-				"hidden",
-				current("destination_attributions"),
-			)}
-		/>
+		<input {...fields.directions_url.as("hidden", "")} />
 
 		<section
-			aria-label="Selected destination"
+			aria-label="Selected place"
 			class="grid gap-3 rounded-lg border border-border bg-background p-4 sm:flex sm:items-start sm:justify-between"
 		>
 			<div class="grid gap-1">
-				<p class="text-sm font-semibold">{selectedName || selectedAddress}</p>
-				{#if selectedName && selectedAddress}
-					<p class="text-sm leading-5 text-muted-foreground">
-						{selectedAddress}
+				{#if shownPreview}
+					<!-- Google's text for this editing session only, with attribution. -->
+					<p class="text-sm font-semibold">
+						{shownPreview.name || shownPreview.address || "Google Maps place"}
 					</p>
+					{#if shownPreview.name && shownPreview.address}
+						<p class="text-sm leading-5 text-muted-foreground">
+							{shownPreview.address}
+						</p>
+					{/if}
+					<DestinationAttribution credits={shownPreview.attributions} />
+				{:else}
+					<p class="text-sm font-semibold">Google Maps place selected</p>
 				{/if}
-				<DestinationAttribution credits={selectedCredits} />
 				<p class="text-sm leading-5 text-muted-foreground">
-					Attendees get directions to this place.
+					Attendees get directions to this place. They see the name and address
+					you enter below, or the location label when those are empty.
 				</p>
-				{#each destinationIssues as issue, index (`${issue.message}-${index}`)}
+				{#each fields.destination_place_id.issues() as issue, index (`${issue.message}-${index}`)}
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
 			</div>
@@ -284,51 +274,52 @@ const destinationIssues = $derived([
 				onclick={removeSelection}
 				{disabled}
 			>
-				Remove and enter manually
+				Remove place
 			</Button>
 		</section>
 	{:else}
 		<input {...fields.destination_place_id.as("hidden", "")} />
-		<input {...fields.destination_attributions.as("hidden", "")} />
+	{/if}
 
-		<div class="grid grid-cols-1 gap-5 md:grid-cols-2">
-			<Field.Field>
-				{@const nameField = fields.destination_name.as(
-					"text",
-					values?.destination_name,
-				)}
-				<Field.Label for={nameField.name}>Destination name</Field.Label>
-				<Input
-					{...nameField}
-					id={nameField.name}
-					placeholder="e.g. National Basketball Arena"
-					class="h-11"
-					{disabled}
-				/>
-				{#each fields.destination_name.issues() as issue, index (`${issue.message}-${index}`)}
-					<Field.Error>{issue.message}</Field.Error>
-				{/each}
-			</Field.Field>
+	<div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+		<Field.Field>
+			{@const nameField = fields.destination_name.as(
+				"text",
+				values?.destination_name,
+			)}
+			<Field.Label for={nameField.name}>Destination name</Field.Label>
+			<Input
+				{...nameField}
+				id={nameField.name}
+				placeholder="e.g. National Basketball Arena"
+				class="h-11"
+				{disabled}
+			/>
+			{#each fields.destination_name.issues() as issue, index (`${issue.message}-${index}`)}
+				<Field.Error>{issue.message}</Field.Error>
+			{/each}
+		</Field.Field>
 
-			<Field.Field>
-				{@const addressField = fields.destination_address.as(
-					"text",
-					values?.destination_address,
-				)}
-				<Field.Label for={addressField.name}>Destination address</Field.Label>
-				<Input
-					{...addressField}
-					id={addressField.name}
-					placeholder="e.g. Tymon Park, Dublin 6w"
-					class="h-11"
-					{disabled}
-				/>
-				{#each fields.destination_address.issues() as issue, index (`${issue.message}-${index}`)}
-					<Field.Error>{issue.message}</Field.Error>
-				{/each}
-			</Field.Field>
-		</div>
+		<Field.Field>
+			{@const addressField = fields.destination_address.as(
+				"text",
+				values?.destination_address,
+			)}
+			<Field.Label for={addressField.name}>Destination address</Field.Label>
+			<Input
+				{...addressField}
+				id={addressField.name}
+				placeholder="e.g. Tymon Park, Dublin 6w"
+				class="h-11"
+				{disabled}
+			/>
+			{#each fields.destination_address.issues() as issue, index (`${issue.message}-${index}`)}
+				<Field.Error>{issue.message}</Field.Error>
+			{/each}
+		</Field.Field>
+	</div>
 
+	{#if !isSelected}
 		<Field.Field>
 			{@const linkField = fields.directions_url.as(
 				"text",

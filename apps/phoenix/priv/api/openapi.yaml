@@ -506,8 +506,11 @@ paths:
       summary: Preview a chosen venue suggestion
       description: |
         Google Place Details (New) for a deliberately chosen suggestion, as a
-        closed preview with the credits that must be shown beside it. Saving
-        it is a separate Workshop operation. `Cache-Control: no-store`.
+        closed preview with the credits that must be shown beside it. The
+        preview is shown only while staff edit a destination: only its
+        `placeId` is ever saved, through a separate Workshop operation, and
+        its name, address and credits are never stored or shown to
+        attendees. `Cache-Control: no-store`.
       security:
         - cookieSession: []
       requestBody:
@@ -8903,8 +8906,9 @@ components:
     DestinationAttribution:
       type: object
       description: |
-        A third-party credit Google returned with a selected place (ALE-442),
-        shown beside the destination's name and address.
+        A third-party credit Google returned with a place preview (ALE-442),
+        shown beside Google's name and address while staff edit a
+        destination. Never stored.
       required: [provider, providerUri]
       properties:
         provider: {type: string, maxLength: 200}
@@ -9447,7 +9451,6 @@ components:
         - directionsUrl
         - destinationProvider
         - destinationPlaceId
-        - destinationAttributions
         - date
         - startTime
         - endTime
@@ -9488,21 +9491,17 @@ components:
           enum: [google, null]
           nullable: true
           description: |
-            `google` when the destination was deliberately selected from Google
-            Maps venue search (ALE-442); `null` for a manual destination. Show
-            Google Maps attribution beside a `google` destination's name and address.
+            `google` when a place was deliberately selected from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored: the destination name and address are always
+            staff-typed, so no Google attribution applies to them.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
-            The selected destination's Google Place ID, for a directions link
-            (`destination_place_id`); `null` for a manual destination.
-        destinationAttributions:
-          type: array
-          description: |
-            Third-party credits Google requires beside the selected
-            destination's name and address. Empty for a manual destination.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, beside the staff text or the label);
+            `null` for a manual destination.
         date: {type: string, format: date}
         startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'}
         endTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', nullable: true}
@@ -9735,20 +9734,14 @@ components:
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a destination chosen from venue
-            search, sent with the selection's name and address. A new Place ID
-            records a Google selection (and drops any manual directions link:
-            the link is derived from the place); `null` clears it. Changing the
-            name, address or link without sending the selected Place ID turns
-            the destination manual and removes its provider identity. Omission
-            preserves.
-        destinationAttributions:
-          type: array
-          maxItems: 10
-          description: |
-            The selection's third-party credits, accepted only with a newly
-            sent `destinationPlaceId`.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            ALE-442: the Google Place ID of a place chosen from venue search.
+            Only the ID is saved: Google's name and address are never sent or
+            stored, and `destinationName`/`destinationAddress` stay staff-typed
+            text beside it. A new Place ID records a Google selection (and drops
+            any manual directions link: the link is derived from the place);
+            `null` clears it. A manual directions link, or a name/address change
+            that does not resend the selected Place ID, removes the provider
+            identity so no stale place survives. Omission preserves.
         coachPrincipalId:
           type: string
           format: uuid
@@ -9825,20 +9818,14 @@ components:
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a destination chosen from venue
-            search, sent with the selection's name and address. A new Place ID
-            records a Google selection (and drops any manual directions link:
-            the link is derived from the place); `null` clears it. Changing the
-            name, address or link without sending the selected Place ID turns
-            the destination manual and removes its provider identity. Omission
-            preserves.
-        destinationAttributions:
-          type: array
-          maxItems: 10
-          description: |
-            The selection's third-party credits, accepted only with a newly
-            sent `destinationPlaceId`.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            ALE-442: the Google Place ID of a place chosen from venue search.
+            Only the ID is saved: Google's name and address are never sent or
+            stored, and `destinationName`/`destinationAddress` stay staff-typed
+            text beside it. A new Place ID records a Google selection (and drops
+            any manual directions link: the link is derived from the place);
+            `null` clears it. A manual directions link, or a name/address change
+            that does not resend the selected Place ID, removes the provider
+            identity so no stale place survives. Omission preserves.
       required: [startTime, endTime]
     BeginnersWorkshopDestinationRequest:
       type: object
@@ -9876,20 +9863,14 @@ components:
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a destination chosen from venue
-            search, sent with the selection's name and address. A new Place ID
-            records a Google selection (and drops any manual directions link:
-            the link is derived from the place); `null` clears it. Changing the
-            name, address or link without sending the selected Place ID turns
-            the destination manual and removes its provider identity. Omission
-            preserves.
-        destinationAttributions:
-          type: array
-          maxItems: 10
-          description: |
-            The selection's third-party credits, accepted only with a newly
-            sent `destinationPlaceId`.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            ALE-442: the Google Place ID of a place chosen from venue search.
+            Only the ID is saved: Google's name and address are never sent or
+            stored, and `destinationName`/`destinationAddress` stay staff-typed
+            text beside it. A new Place ID records a Google selection (and drops
+            any manual directions link: the link is derived from the place);
+            `null` clears it. A manual directions link, or a name/address change
+            that does not resend the selected Place ID, removes the provider
+            identity so no stale place survives. Omission preserves.
     BeginnersWorkshopResponse:
       type: object
       required: [data]
@@ -10439,7 +10420,7 @@ components:
       enum: [inactive, payment_closed]
     BeginnersIntakeWorkshop:
       type: object
-      required: [date, startTime, endTime, venue, destinationName, destinationAddress, directionsUrl, destinationProvider, destinationPlaceId, destinationAttributions]
+      required: [date, startTime, endTime, venue, destinationName, destinationAddress, directionsUrl, destinationProvider, destinationPlaceId]
       properties:
         date: {type: string, format: date, description: Europe/Dublin civil date}
         startTime: {type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$", description: "Europe/Dublin HH:MM"}
@@ -10466,21 +10447,17 @@ components:
           enum: [google, null]
           nullable: true
           description: |
-            `google` when the destination was deliberately selected from Google
-            Maps venue search (ALE-442); `null` for a manual destination. Show
-            Google Maps attribution beside a `google` destination's name and address.
+            `google` when a place was deliberately selected from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored: the destination name and address are always
+            staff-typed, so no Google attribution applies to them.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
-            The selected destination's Google Place ID, for a directions link
-            (`destination_place_id`); `null` for a manual destination.
-        destinationAttributions:
-          type: array
-          description: |
-            Third-party credits Google requires beside the selected
-            destination's name and address. Empty for a manual destination.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, beside the staff text or the label);
+            `null` for a manual destination.
     BeginnersIntakePage:
       type: object
       description: |
@@ -13062,21 +13039,17 @@ components:
           enum: [google, null]
           nullable: true
           description: |
-            `google` when the destination was deliberately selected from Google
-            Maps venue search (ALE-442); `null` for a manual destination. Show
-            Google Maps attribution beside a `google` destination's name and address.
+            `google` when a place was deliberately selected from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored: the destination name and address are always
+            staff-typed, so no Google attribution applies to them.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
-            The selected destination's Google Place ID, for a directions link
-            (`destination_place_id`); `null` for a manual destination.
-        destinationAttributions:
-          type: array
-          description: |
-            Third-party credits Google requires beside the selected
-            destination's name and address. Empty for a manual destination.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, beside the staff text or the label);
+            `null` for a manual destination.
         priceNonMember:
           type: integer
           minimum: 0
@@ -13225,20 +13198,14 @@ components:
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a destination chosen from venue
-            search, sent with the selection's name and address. A new Place ID
-            records a Google selection (and drops any manual directions link:
-            the link is derived from the place); `null` clears it. Changing the
-            name, address or link without sending the selected Place ID turns
-            the destination manual and removes its provider identity. Omission
-            preserves.
-        destinationAttributions:
-          type: array
-          maxItems: 10
-          description: |
-            The selection's third-party credits, accepted only with a newly
-            sent `destinationPlaceId`.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            ALE-442: the Google Place ID of a place chosen from venue search.
+            Only the ID is saved: Google's name and address are never sent or
+            stored, and `destinationName`/`destinationAddress` stay staff-typed
+            text beside it. A new Place ID records a Google selection (and drops
+            any manual directions link: the link is derived from the place);
+            `null` clears it. A manual directions link, or a name/address change
+            that does not resend the selected Place ID, removes the provider
+            identity so no stale place survives. Omission preserves.
       description: |
         Coordinator Workshop management input. Lifecycle status and createdBy
         are server-owned and intentionally absent.
@@ -13312,20 +13279,14 @@ components:
           maxLength: 255
           pattern: '^[A-Za-z0-9_-]+$'
           description: |
-            ALE-442: the Google Place ID of a destination chosen from venue
-            search, sent with the selection's name and address. A new Place ID
-            records a Google selection (and drops any manual directions link:
-            the link is derived from the place); `null` clears it. Changing the
-            name, address or link without sending the selected Place ID turns
-            the destination manual and removes its provider identity. Omission
-            preserves.
-        destinationAttributions:
-          type: array
-          maxItems: 10
-          description: |
-            The selection's third-party credits, accepted only with a newly
-            sent `destinationPlaceId`.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            ALE-442: the Google Place ID of a place chosen from venue search.
+            Only the ID is saved: Google's name and address are never sent or
+            stored, and `destinationName`/`destinationAddress` stay staff-typed
+            text beside it. A new Place ID records a Google selection (and drops
+            any manual directions link: the link is derived from the place);
+            `null` clears it. A manual directions link, or a name/address change
+            that does not resend the selected Place ID, removes the provider
+            identity so no stale place survives. Omission preserves.
       description: |
         Partial Workshop management update. All fields from
         `WorkshopManagementRequest` are optional at runtime; lifecycle status is
@@ -13388,21 +13349,17 @@ components:
           enum: [google, null]
           nullable: true
           description: |
-            `google` when the destination was deliberately selected from Google
-            Maps venue search (ALE-442); `null` for a manual destination. Show
-            Google Maps attribution beside a `google` destination's name and address.
+            `google` when a place was deliberately selected from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored: the destination name and address are always
+            staff-typed, so no Google attribution applies to them.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
-            The selected destination's Google Place ID, for a directions link
-            (`destination_place_id`); `null` for a manual destination.
-        destinationAttributions:
-          type: array
-          description: |
-            Third-party credits Google requires beside the selected
-            destination's name and address. Empty for a manual destination.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, beside the staff text or the label);
+            `null` for a manual destination.
         startDate:
           type: string
           format: date-time
@@ -13463,7 +13420,6 @@ components:
         - directionsUrl
         - destinationProvider
         - destinationPlaceId
-        - destinationAttributions
         - startDate
         - endDate
         - maxCapacity
@@ -13514,21 +13470,17 @@ components:
           enum: [google, null]
           nullable: true
           description: |
-            `google` when the destination was deliberately selected from Google
-            Maps venue search (ALE-442); `null` for a manual destination. Show
-            Google Maps attribution beside a `google` destination's name and address.
+            `google` when a place was deliberately selected from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored: the destination name and address are always
+            staff-typed, so no Google attribution applies to them.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
-            The selected destination's Google Place ID, for a directions link
-            (`destination_place_id`); `null` for a manual destination.
-        destinationAttributions:
-          type: array
-          description: |
-            Third-party credits Google requires beside the selected
-            destination's name and address. Empty for a manual destination.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, beside the staff text or the label);
+            `null` for a manual destination.
         startDate:
           type: string
           format: date-time
@@ -13656,21 +13608,17 @@ components:
           enum: [google, null]
           nullable: true
           description: |
-            `google` when the destination was deliberately selected from Google
-            Maps venue search (ALE-442); `null` for a manual destination. Show
-            Google Maps attribution beside a `google` destination's name and address.
+            `google` when a place was deliberately selected from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored: the destination name and address are always
+            staff-typed, so no Google attribution applies to them.
         destinationPlaceId:
           type: string
           nullable: true
           description: |
-            The selected destination's Google Place ID, for a directions link
-            (`destination_place_id`); `null` for a manual destination.
-        destinationAttributions:
-          type: array
-          description: |
-            Third-party credits Google requires beside the selected
-            destination's name and address. Empty for a manual destination.
-          items: {$ref: "#/components/schemas/DestinationAttribution"}
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, beside the staff text or the label);
+            `null` for a manual destination.
         startDate:
           type: string
           format: date-time

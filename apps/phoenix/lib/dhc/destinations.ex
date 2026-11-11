@@ -21,24 +21,31 @@ defmodule Dhc.Destinations do
   here: lookups go through the separate `Dhc.Places` boundary, which writes
   nothing.
 
-  ## Selected Google destinations (ALE-442)
+  ## Selected Google places (ALE-442)
 
   A destination staff deliberately selected from Google Maps venue search
-  also carries its provider identity, under the ALE-439 contract
+  keeps only its provider identity, under the owner's ALE-439 decision
   (`docs/google-places-terms-validation.md`): `destination_provider`
-  (`"google"`), `destination_place_id`, an application-generated
-  `destination_selected_at`, and the third-party credits Google returned
-  with the place (`destination_attributions`), retained beside the name and
-  address they credit. `validate_changeset/2` owns the provenance rules:
+  (`"google"`), `destination_place_id` and an application-generated
+  `destination_selected_at`. Google's name, address and credits are a
+  transient editing preview (`Dhc.Places.resolve/2`) and are never stored:
+  `destination_name` and `destination_address` are always staff-typed text,
+  whether or not a place is selected, and are what attendees and Calendar
+  see. `validate_changeset/2` owns the provenance rules:
 
     * a new Place ID is a new selection: provider and timestamp are set, the
-      credits come only with it, and no manual link is kept, because a
-      selected destination's directions link is derived from the place;
-    * clearing the Place ID clears the provider identity and credits;
-    * editing the name, address or link without a new Place ID turns the
-      destination manual, so stale provider identity and credits are
-      removed rather than carried onto text Google did not supply;
-    * an unrelated edit (the destination resubmitted unchanged) preserves it.
+      staff text is kept as typed, and no manual link is kept, because a
+      selected place's directions link is derived from the place;
+    * clearing the Place ID clears the provider identity;
+    * a manual directions link replaces the place: a supplied link means the
+      staff chose a manual destination;
+    * the place survives a name/address edit only when the same request
+      resubmits its Place ID (the form shows the selected place beside the
+      text and sends it back), so a caller that changes the text without
+      naming the place cannot leave a stale ID pointing at another venue —
+      the provider identity is cleared instead;
+    * an unrelated edit (the destination omitted or resubmitted unchanged)
+      preserves it, including its original selection timestamp.
 
   ## URL scope
 
@@ -66,43 +73,28 @@ defmodule Dhc.Destinations do
   @type url_error ::
           :invalid_url | :unsupported_scheme | :credentials | :unsupported_target
 
-  @place_id_max 255
-  @attributions_max 10
-  @provider_name_max 200
   @place_id_format ~r/\A[A-Za-z0-9_-]{1,255}\z/
 
   @text_fields [:destination_name, :destination_address, :directions_url]
-  @fields @text_fields ++ [:destination_place_id, :destination_attributions]
-  @provenance_fields [:destination_provider, :destination_place_id, :destination_selected_at]
+  @fields @text_fields ++ [:destination_place_id]
 
   @doc """
   The destination fields a source context casts from a request, under the
   same names in every workshop-owning schema: `destination_name`,
   `destination_address`, `directions_url`, and (ALE-442) the selected
-  `destination_place_id` with its `destination_attributions`. The provider
-  and selection timestamp are never cast: `validate_changeset/2` sets them.
+  `destination_place_id`. The provider and selection timestamp are never
+  cast: `validate_changeset/2` sets them.
   """
   @spec fields() :: [atom()]
   def fields, do: @fields
 
   @doc """
-  The manually entered destination fields (`destination_name`,
+  The staff-entered destination fields (`destination_name`,
   `destination_address`, `directions_url`), without the selected-place
   identity of `fields/0`.
   """
   @spec text_fields() :: [atom()]
   def text_fields, do: @text_fields
-
-  @doc """
-  Every stored destination column, for read models that select them:
-  `fields/0` plus `destination_provider` and `destination_selected_at`.
-  """
-  @spec stored_fields() :: [atom()]
-  def stored_fields, do: @text_fields ++ @provenance_fields ++ [:destination_attributions]
-
-  @doc "The maximum length of a Google Place ID."
-  @spec place_id_max() :: pos_integer()
-  def place_id_max, do: @place_id_max
 
   @doc "Whether `id` has the shape of a Google Place ID (safe in a URL path)."
   @spec valid_place_id?(term()) :: boolean()
@@ -150,36 +142,45 @@ defmodule Dhc.Destinations do
         select_place(changeset, place_id, opts)
 
       :error ->
-        stored = Ecto.Changeset.get_field(changeset, :destination_place_id)
-        text_changed? = Enum.any?(@text_fields, &Map.has_key?(changeset.changes, &1))
+        stored = changeset.data |> Map.get(:destination_place_id)
 
         cond do
-          stored == nil or not text_changed? ->
-            Ecto.Changeset.delete_change(changeset, :destination_attributions)
+          stored == nil ->
+            changeset
 
-          # The same place submitted again with new text is a fresh selection
-          # of that place (Google's details for it changed).
-          resubmitted_place_id(changeset) == stored ->
-            select_place(changeset, stored, opts)
-
-          # New text without the place it came from: a manual destination.
-          true ->
+          # A supplied manual link is a manual destination.
+          is_binary(Ecto.Changeset.get_change(changeset, :directions_url)) ->
             clear_provenance(changeset)
+
+          # New text without the place beside it: never keep a place the
+          # caller did not name, which may now be a different venue.
+          text_changed?(changeset) and resubmitted_place_id(changeset) != stored ->
+            clear_provenance(changeset)
+
+          true ->
+            changeset
         end
     end
   end
+
+  defp text_changed?(changeset),
+    do:
+      Map.has_key?(changeset.changes, :destination_name) or
+        Map.has_key?(changeset.changes, :destination_address)
 
   defp resubmitted_place_id(%Ecto.Changeset{params: params}) when is_map(params),
     do: params |> Map.get("destination_place_id") |> text_value()
 
   defp resubmitted_place_id(_changeset), do: nil
 
+  defp text_value(value) when is_binary(value), do: normalize_optional(value)
+  defp text_value(_value), do: nil
+
   defp clear_provenance(changeset) do
     changeset
     |> Ecto.Changeset.put_change(:destination_provider, nil)
     |> Ecto.Changeset.put_change(:destination_place_id, nil)
     |> Ecto.Changeset.put_change(:destination_selected_at, nil)
-    |> Ecto.Changeset.put_change(:destination_attributions, [])
   end
 
   defp select_place(changeset, place_id, opts) do
@@ -192,99 +193,13 @@ defmodule Dhc.Destinations do
       changeset
       |> Ecto.Changeset.put_change(:destination_provider, "google")
       |> Ecto.Changeset.put_change(:destination_selected_at, now)
-      # A selected destination's directions link is derived from the place,
-      # so no manually supplied (possibly stale) link survives a selection.
+      # A selected place's directions link is derived from it, so no
+      # manually supplied (possibly stale) link survives a selection.
       |> Ecto.Changeset.put_change(:directions_url, nil)
-      |> put_attributions()
 
-    cond do
-      not valid_place_id?(place_id) ->
-        Ecto.Changeset.add_error(changeset, :destination_place_id, "is not a valid place")
-
-      Ecto.Changeset.get_field(changeset, :destination_name) == nil and
-          Ecto.Changeset.get_field(changeset, :destination_address) == nil ->
-        Ecto.Changeset.add_error(
-          changeset,
-          :destination_name,
-          "A selected place needs its name or address"
-        )
-
-      true ->
-        changeset
-    end
-  end
-
-  defp put_attributions(changeset) do
-    raw = Ecto.Changeset.get_change(changeset, :destination_attributions, [])
-
-    case normalize_attributions(raw) do
-      {:ok, attributions} ->
-        Ecto.Changeset.put_change(changeset, :destination_attributions, attributions)
-
-      :error ->
-        Ecto.Changeset.add_error(
-          changeset,
-          :destination_attributions,
-          "must list each provider's name and an optional https link"
-        )
-    end
-  end
-
-  @doc """
-  Normalizes the third-party credits of a selected place to the stored shape
-  `%{"provider" => name, "provider_uri" => https_url | nil}`, accepting the
-  public `providerUri` key. At most #{@attributions_max} credits are kept;
-  anything else is `:error`.
-  """
-  @spec normalize_attributions(term()) :: {:ok, [map()]} | :error
-  def normalize_attributions(nil), do: {:ok, []}
-
-  def normalize_attributions(list) when is_list(list) and length(list) <= @attributions_max do
-    list
-    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
-      case normalize_attribution(item) do
-        {:ok, attribution} -> {:cont, {:ok, [attribution | acc]}}
-        :error -> {:halt, :error}
-      end
-    end)
-    |> case do
-      {:ok, acc} -> {:ok, Enum.reverse(acc)}
-      :error -> :error
-    end
-  end
-
-  def normalize_attributions(_other), do: :error
-
-  defp normalize_attribution(%{} = item) do
-    provider = item |> attribution_value(["provider", :provider]) |> text_value()
-
-    uri =
-      item
-      |> attribution_value(["providerUri", "provider_uri", :provider_uri, :providerUri])
-      |> text_value()
-
-    if is_binary(provider) and String.length(provider) <= @provider_name_max and https_uri?(uri),
-      do: {:ok, %{"provider" => provider, "provider_uri" => uri}},
-      else: :error
-  end
-
-  defp normalize_attribution(_item), do: :error
-
-  defp attribution_value(item, keys),
-    do: Enum.find_value(keys, &Map.get(item, &1))
-
-  defp text_value(value) when is_binary(value), do: normalize_optional(value)
-  defp text_value(_value), do: nil
-
-  defp https_uri?(nil), do: true
-
-  defp https_uri?(uri) do
-    String.length(uri) <= @url_max and
-      match?(
-        {:ok, %URI{scheme: "https", host: host, userinfo: nil}}
-        when is_binary(host) and host != "",
-        URI.new(uri)
-      )
+    if valid_place_id?(place_id),
+      do: changeset,
+      else: Ecto.Changeset.add_error(changeset, :destination_place_id, "is not a valid place")
   end
 
   # Only a *supplied* link is judged; clearing it (nil) is a valid edit.

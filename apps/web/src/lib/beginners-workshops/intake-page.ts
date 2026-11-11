@@ -19,11 +19,7 @@ import type {
 } from "@dhc/api-client";
 import { formatFee } from "#lib/beginners-workshops/presentation.js";
 import { formatCivilDate, formatCivilTimeRange } from "#lib/club-calendar.js";
-import {
-	destinationAttribution,
-	destinationLines,
-	directionsHref,
-} from "#lib/destinations.js";
+import { destinationLines, directionsHref } from "#lib/destinations.js";
 
 /** What an unknown link shows: the same as a closed Intake. */
 export const INACTIVE_PAGE: BeginnersIntakePage = {
@@ -130,9 +126,7 @@ export function intakeDetails(page: BeginnersIntakePage) {
 		time: formatCivilTimeRange(page.workshop.startTime, page.workshop.endTime),
 		venue: page.workshop.venue,
 		destination: destinationLines(page.workshop),
-		directionsHref: directionsHref(page.workshop) ?? null,
-		// ALE-442: Google Maps attribution for a selected place.
-		attribution: destinationAttribution(page.workshop) ?? null,
+		directionsHref: directionsHref(page.workshop, page.workshop.venue) ?? null,
 		fee: page.feeCents === null ? null : formatFee(page.feeCents),
 	};
 }

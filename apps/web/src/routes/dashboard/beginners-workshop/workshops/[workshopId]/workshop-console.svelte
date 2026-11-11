@@ -62,8 +62,7 @@ import {
 	staffSummary,
 } from "#lib/beginners-workshops/presentation.js";
 import { rescheduleRecipients } from "#lib/beginners-workshops/reschedule.js";
-import { destinationAttribution, destinationLines } from "#lib/destinations.js";
-import DestinationAttribution from "#lib/components/destination-attribution.svelte";
+import { destinationLines } from "#lib/destinations.js";
 import { workshopScope } from "#lib/beginners-workshops/refunds/scope.js";
 import FailedRefundFollowUp from "#lib/components/beginners-workshops/refunds/failed-refund-follow-up.svelte";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
@@ -113,8 +112,6 @@ let fastTrackMounted = $state(false);
 const workshop = $derived(view.workshop);
 // ALE-441: the saved destination, shown beside the short venue label.
 const destination = $derived(destinationLines(workshop));
-// ALE-442: Google Maps attribution beside a selected place's details.
-const attribution = $derived(destinationAttribution(workshop));
 const next = $derived(view.nextBatch);
 const steps = $derived(consoleTimeline(view));
 const now = $derived(nowCard(view));
@@ -182,9 +179,6 @@ const attentionClass =
 								>&nbsp;· {destination.join(" · ")}</span
 							>{/if}
 					</p>
-					{#if attribution}
-						<DestinationAttribution credits={attribution.credits} />
-					{/if}
 					<p class="flex items-center gap-2" data-testid="console-staff">
 						<Users
 							class="size-4 text-primary"

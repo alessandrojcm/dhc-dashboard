@@ -38,12 +38,7 @@ import {
 	dublinWallClock,
 	formatCivilDate,
 } from "#lib/club-calendar.js";
-import {
-	destinationAttribution,
-	destinationLines,
-	parseCredits,
-} from "#lib/destinations.js";
-import DestinationAttribution from "#lib/components/destination-attribution.svelte";
+import { destinationLines } from "#lib/destinations.js";
 import { untrack } from "svelte";
 
 // The form asks for the workshop's date and times on the Dublin clock,
@@ -61,7 +56,6 @@ interface Props {
 		destination_address: string | null;
 		directions_url: string | null;
 		destination_place_id: string;
-		destination_attributions: string;
 		workshop_date: Date;
 		workshop_end_date: Date;
 		max_capacity: number;
@@ -99,7 +93,6 @@ const baseInitialFormValue = $derived.by(() => ({
 	destination_address: initialData?.destination_address ?? "",
 	directions_url: initialData?.directions_url ?? "",
 	destination_place_id: initialData?.destination_place_id ?? "",
-	destination_attributions: initialData?.destination_attributions ?? "",
 	workshop_date: initialData?.workshop_date
 		? initialData.workshop_date.toISOString()
 		: "",
@@ -133,24 +126,16 @@ const workshopEndDate = $derived(remoteForm.fields.workshop_end_date.value());
 const isPublic = $derived(Boolean(remoteForm.fields.is_public.value()));
 const title = $derived(String(remoteForm.fields.title.value() ?? ""));
 const location = $derived(String(remoteForm.fields.location.value() ?? ""));
-const previewFacts = $derived({
-	destinationName: String(remoteForm.fields.destination_name.value() ?? ""),
-	destinationAddress: String(
-		remoteForm.fields.destination_address.value() ?? "",
-	),
-	destinationProvider: remoteForm.fields.destination_place_id.value()
-		? ("google" as const)
-		: null,
-	destinationPlaceId: String(
-		remoteForm.fields.destination_place_id.value() ?? "",
-	),
-	destinationAttributions: parseCredits(
-		String(remoteForm.fields.destination_attributions.value() ?? ""),
-	),
-});
-const previewDestination = $derived(destinationLines(previewFacts));
-// ALE-442: a selected place's preview keeps its Google Maps attribution.
-const previewAttribution = $derived(destinationAttribution(previewFacts));
+// What attendees will see: the staff-typed destination text only (ALE-442:
+// a selected place's Google text is never shown to attendees).
+const previewDestination = $derived(
+	destinationLines({
+		destinationName: String(remoteForm.fields.destination_name.value() ?? ""),
+		destinationAddress: String(
+			remoteForm.fields.destination_address.value() ?? "",
+		),
+	}),
+);
 const maxCapacity = $derived(
 	Number(remoteForm.fields.max_capacity.value() ?? 0),
 );
@@ -834,9 +819,6 @@ const successMessage = $derived(remoteForm.result?.success);
 							<p class="text-xs leading-5 text-muted-foreground">
 								{previewDestination.join(" · ")}
 							</p>
-						{/if}
-						{#if previewAttribution}
-							<DestinationAttribution credits={previewAttribution.credits} />
 						{/if}
 					</div>
 

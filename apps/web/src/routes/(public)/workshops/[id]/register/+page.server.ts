@@ -68,10 +68,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
 				destination_name: workshop.destinationName,
 				destination_address: workshop.destinationAddress,
 				directions_url: workshop.directionsUrl,
-				// ALE-442: a selected place, for its directions link and attribution.
+				// ALE-442: a selected place's ID, for its directions link only.
 				destination_provider: workshop.destinationProvider ?? null,
 				destination_place_id: workshop.destinationPlaceId ?? null,
-				destination_attributions: workshop.destinationAttributions ?? [],
 				price_non_member: workshop.priceNonMember,
 				max_capacity: workshop.maxCapacity,
 			},

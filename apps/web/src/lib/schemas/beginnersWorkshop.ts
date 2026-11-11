@@ -119,7 +119,6 @@ export const scheduleWorkshopsSchema = v.pipe(
 			destination_address,
 			directions_url,
 			destination_place_id,
-			destination_attributions,
 			startTime,
 			endTime,
 			capacity,
@@ -137,7 +136,6 @@ export const scheduleWorkshopsSchema = v.pipe(
 						destination_address,
 						directions_url,
 						destination_place_id,
-						destination_attributions,
 					}),
 					startTime,
 					endTime,
@@ -274,7 +272,6 @@ export const rescheduleWorkshopSchema = v.pipe(
 			destination_address,
 			directions_url,
 			destination_place_id,
-			destination_attributions,
 			...schedule
 		}) => {
 			const destination = destinationBody({
@@ -282,7 +279,6 @@ export const rescheduleWorkshopSchema = v.pipe(
 				destination_address,
 				directions_url,
 				destination_place_id,
-				destination_attributions,
 			});
 			return operation === "destination"
 				? {

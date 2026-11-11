@@ -162,7 +162,7 @@ test("offers optional Staff shared by every date (ALE-379)", async () => {
 	expect(fieldNames(formElement(form.element()))).toContain("coachPrincipalId");
 });
 
-test("ALE-442: a chosen Google place is shared by every date through named hidden controls", async () => {
+test("ALE-442: a chosen Google place is shared by every date through its hidden Place ID only", async () => {
 	const { screen, form } = await openDialog();
 
 	await userEvent.click(
@@ -171,7 +171,7 @@ test("ALE-442: a chosen Google place is shared by every date through named hidde
 	await userEvent.keyboard("Synthetic");
 	await screen.getByRole("option", { name: /Synthetic Fencing Hall/ }).click();
 
-	const preview = screen.getByRole("region", { name: "Selected destination" });
+	const preview = screen.getByRole("region", { name: "Selected place" });
 	await expect.element(preview).toHaveTextContent("Synthetic Fencing Hall");
 	await expect.element(preview).toHaveTextContent("Google Maps · Venue Guide");
 	// The short email-sized venue label stays the coordinator's own.
@@ -185,9 +185,9 @@ test("ALE-442: a chosen Google place is shared by every date through named hidde
 			"destination_name",
 			"destination_address",
 			"destination_place_id",
-			"destination_attributions",
 		]),
 	);
+	expect(fieldNames(element)).not.toContain("destination_attributions");
 	const value = (name: string) =>
 		[...element.elements]
 			.filter(
@@ -196,5 +196,6 @@ test("ALE-442: a chosen Google place is shared by every date through named hidde
 			)
 			.find((control) => control.name.split("/")[0] === name)?.value;
 	expect(value("destination_place_id")).toBe("place_hall");
-	expect(value("destination_name")).toBe("Synthetic Fencing Hall");
+	// Google's name is a preview only: the name control stays the staff's.
+	expect(value("destination_name")).toBe("");
 });

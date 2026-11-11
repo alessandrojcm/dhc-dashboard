@@ -182,7 +182,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
   # ALE-442: a Google-selected destination reaches Calendar only as native
   # location text; its Place ID and credits never enter the event, and adding
   # provider identity to an unchanged name/address is a silent no-op.
-  test "a selected place updates the native location, and a Place ID alone stays silent" do
+  test "a selected place never reaches Calendar: the label or staff text is the native location" do
     server = google_surface!()
     %{principal_id: principal_id} = WorkshopFixtures.member_fixture()
 
@@ -191,8 +191,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
         %{
           title: "Longsword",
           location: "Club hall",
-          destination_name: "Synthetic Fencing Hall",
-          destination_address: "1 Example Street, Dublin 8",
+          destination_place_id: "place_hall",
           start_date: ~U[2027-03-28 09:00:00Z],
           end_date: ~U[2027-03-28 11:00:00Z],
           max_capacity: 20,
@@ -202,36 +201,35 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
         principal_id
       )
 
+    assert workshop.destination_provider == "google"
+    assert workshop.destination_name == nil
+
+    # A Place ID alone: Calendar keeps the label.
     assert :ok = sync(workshop.id)
     [event] = Map.values(WorkshopCalendarHTTP.events(server))
+    assert event["location"] == "Club hall"
     mutations = WorkshopCalendarHTTP.mutations(server)
 
-    # Selecting the same place with the same text: provider identity only.
-    assert {:ok, %{destination_place_id: "place_hall"}} =
-             Workshops.update_workshop(workshop.id, %{
-               destination_name: "Synthetic Fencing Hall",
-               destination_address: "1 Example Street, Dublin 8",
-               destination_place_id: "place_hall",
-               destination_attributions: [%{"provider" => "Venue Guide"}]
-             })
+    # Replacing the place changes nothing Calendar carries: silent.
+    assert {:ok, %{destination_place_id: "place_annex"}} =
+             Workshops.update_workshop(workshop.id, %{destination_place_id: "place_annex"})
 
     assert :ok = sync(workshop.id)
     assert WorkshopCalendarHTTP.mutations(server) == mutations
 
-    # Selecting a fuller listing of the same venue updates the same event.
-    assert {:ok, _} =
+    # Staff text typed beside the place updates the same event.
+    assert {:ok, %{destination_place_id: "place_annex"}} =
              Workshops.update_workshop(workshop.id, %{
-               destination_name: "Synthetic Fencing Hall",
-               destination_address: "1 Example Street, Dublin 8, D08 X000",
-               destination_place_id: "place_hall"
+               destination_name: "Our hall",
+               destination_address: "1 Example Street, Dublin 8",
+               destination_place_id: "place_annex"
              })
 
     assert :ok = sync(workshop.id)
     [updated] = Map.values(WorkshopCalendarHTTP.events(server))
     assert updated["id"] == event["id"]
-    assert updated["location"] == "Synthetic Fencing Hall, 1 Example Street, Dublin 8, D08 X000"
-    refute Jason.encode!(updated) =~ "place_hall"
-    refute Jason.encode!(updated) =~ "Venue Guide"
+    assert updated["location"] == "Our hall, 1 Example Street, Dublin 8"
+    refute Jason.encode!(WorkshopCalendarHTTP.mutations(server)) =~ "place_"
     assert Enum.all?(WorkshopCalendarHTTP.mutations(server), &(&1.query == "sendUpdates=none"))
   end
 

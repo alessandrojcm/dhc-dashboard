@@ -41,22 +41,26 @@ defmodule DhcWeb.VenueLookupClientParityTest do
   end
 
   @tag :parity
-  test "every workshop read and destination request carries the selected place", context do
+  test "every workshop read and destination request carries the selected place, not its credits",
+       context do
     types = File.read!(Path.join(context.generated, "types.gen.ts"))
 
     for schema <- ~w(Workshop BeginnersWorkshop BeginnersIntakeWorkshop) do
       body = extract_type(types, schema)
 
-      for field <- ~w(destinationProvider destinationPlaceId destinationAttributions) do
+      for field <- ~w(destinationProvider destinationPlaceId) do
         assert body =~ ~r/\b#{field}\b/, "#{schema} lacks #{field}"
       end
+
+      # Only the Place ID is stored (ALE-442): no Google credits on a read.
+      refute body =~ ~r/\bdestinationAttributions\b/, "#{schema} still carries credits"
     end
 
     for schema <- ~w(WorkshopManagementRequest WorkshopManagementUpdateRequest
                      BeginnersWorkshopDestinationRequest) do
       body = extract_type(types, schema)
       assert body =~ ~r/\bdestinationPlaceId\b/, "#{schema} lacks destinationPlaceId"
-      assert body =~ ~r/\bdestinationAttributions\b/, "#{schema} lacks destinationAttributions"
+      refute body =~ ~r/\bdestinationAttributions\b/, "#{schema} still accepts credits"
     end
   end
 

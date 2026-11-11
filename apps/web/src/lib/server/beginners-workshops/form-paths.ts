@@ -10,13 +10,12 @@ import {
 
 // ALE-441: Phoenix's destination fields → the shared destination input's
 // control names (`destination-input.svelte`). ALE-442: a refused selection
-// shows where the selected place does, under the destination name.
+// shows on the selected place, the hidden Place ID control.
 const DESTINATION_CONTROLS = new Map([
 	["destinationName", "destination_name"],
 	["destinationAddress", "destination_address"],
 	["directionsUrl", "directions_url"],
-	["destinationPlaceId", "destination_name"],
-	["destinationAttributions", "destination_name"],
+	["destinationPlaceId", "destination_place_id"],
 ]);
 
 // Values the Schedule form asks once for every date it schedules.

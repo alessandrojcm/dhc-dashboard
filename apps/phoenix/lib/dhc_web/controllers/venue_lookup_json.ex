@@ -2,10 +2,9 @@ defmodule DhcWeb.VenueLookupJSON do
   @moduledoc """
   The closed venue lookup bodies (ALE-442): ordered `{placeId, text}`
   suggestions and a `{provider, placeId, name, address, attributions}`
-  preview. Never a provider response.
+  preview. Never a provider response. The preview is shown only while
+  staff edit a destination; no part of it but the Place ID is ever saved.
   """
-
-  alias DhcWeb.DestinationJSON
 
   def suggestions(%{suggestions: suggestions}) do
     %{
@@ -22,7 +21,11 @@ defmodule DhcWeb.VenueLookupJSON do
         placeId: selection.place_id,
         name: selection.name,
         address: selection.address,
-        attributions: DestinationJSON.attributions(selection.attributions)
+        attributions:
+          for(
+            credit <- selection.attributions,
+            do: %{provider: credit["provider"], providerUri: credit["provider_uri"]}
+          )
       }
     }
   end

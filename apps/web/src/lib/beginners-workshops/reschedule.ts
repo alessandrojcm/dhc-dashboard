@@ -116,7 +116,6 @@ export function rescheduleOperation(
 		| "directionsUrl"
 		| "destinationProvider"
 		| "destinationPlaceId"
-		| "destinationAttributions"
 	>,
 	values: ScheduleValues & DestinationFields,
 ): RescheduleOperation {

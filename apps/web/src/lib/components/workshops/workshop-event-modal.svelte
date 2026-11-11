@@ -24,12 +24,7 @@ import {
 	formatDublinDateLong,
 	formatDublinTime12h,
 } from "#lib/club-calendar.js";
-import {
-	destinationAttribution,
-	destinationLines,
-	directionsHref,
-} from "#lib/destinations.js";
-import DestinationAttribution from "#lib/components/destination-attribution.svelte";
+import { destinationLines, directionsHref } from "#lib/destinations.js";
 import type { WorkshopCalendarEvent } from "#lib/types.js";
 import Dinero from "dinero.js";
 import {
@@ -72,11 +67,10 @@ const publicRegisterPath = $derived(
 	resolve(`workshops/${workshop.id}/register`),
 );
 // ALE-440: the destination details an attendee can navigate with, beside the
-// familiar label. Legacy rows keep their label only.
+// familiar label. Legacy rows keep their label only; a selected place
+// (ALE-442) links directions by its Place ID beside the staff text or label.
 const destinationDetail = $derived(destinationLines(workshop));
-const destinationHref = $derived(directionsHref(workshop));
-// ALE-442: Google Maps attribution beside a selected place's details.
-const attribution = $derived(destinationAttribution(workshop));
+const destinationHref = $derived(directionsHref(workshop, workshop.location));
 
 function getStatusVariant(status: typeof workshop.status) {
 	if (status === "planned") return "secondary" as const;
@@ -293,11 +287,6 @@ const hasEditAction = $derived(!!event.handleEdit);
 						{#if destinationDetail.length > 0}
 							<dd class="mt-1 text-sm leading-5 text-muted-foreground">
 								{destinationDetail.join(" · ")}
-							</dd>
-						{/if}
-						{#if attribution}
-							<dd class="mt-1">
-								<DestinationAttribution credits={attribution.credits} />
 							</dd>
 						{/if}
 						{#if destinationHref}

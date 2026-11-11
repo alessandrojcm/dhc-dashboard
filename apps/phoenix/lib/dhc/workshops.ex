@@ -109,7 +109,7 @@ defmodule Dhc.Workshops do
   # differently (a SQL aggregate for the list, the `registration_counts/1` +
   # `interest_count/1` helpers for the single archived read).
   @summary_scalar_fields ~w(id title description location destination_name destination_address
-    directions_url destination_provider destination_place_id destination_attributions start_date end_date max_capacity price_member price_non_member is_public
+    directions_url destination_provider destination_place_id start_date end_date max_capacity price_member price_non_member is_public
     refund_days status announce_discord announce_email created_by)a
 
   @doc """
@@ -1207,7 +1207,6 @@ defmodule Dhc.Workshops do
       directions_url: workshop.directions_url,
       destination_provider: workshop.destination_provider,
       destination_place_id: workshop.destination_place_id,
-      destination_attributions: workshop.destination_attributions,
       price_non_member: trunc(workshop.price_non_member),
       max_capacity: workshop.max_capacity
     }
@@ -1330,7 +1329,6 @@ defmodule Dhc.Workshops do
         directions_url: w.directions_url,
         destination_provider: w.destination_provider,
         destination_place_id: w.destination_place_id,
-        destination_attributions: w.destination_attributions,
         start_date: w.start_date,
         end_date: w.end_date,
         max_capacity: w.max_capacity,

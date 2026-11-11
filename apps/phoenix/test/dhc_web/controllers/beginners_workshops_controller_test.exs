@@ -378,14 +378,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
   test "a selected Google place round-trips through schedule, update and clear (ALE-442)", %{
     conn: conn
   } do
-    selected = %{
-      "destinationName" => "Synthetic Fencing Hall",
-      "destinationAddress" => "1 Example Street, Dublin 8",
-      "destinationPlaceId" => "place_hall",
-      "destinationAttributions" => [
-        %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
-      ]
-    }
+    selected = %{"destinationName" => "Our hall", "destinationPlaceId" => "place_hall"}
 
     [first, second] = schedule!(conn, [item(selected), item(selected)])
 
@@ -393,11 +386,12 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
       assert %{
                "destinationProvider" => "google",
                "destinationPlaceId" => "place_hall",
-               "directionsUrl" => nil,
-               "destinationAttributions" => [
-                 %{"provider" => "Venue Guide", "providerUri" => "https://guide.example.test/"}
-               ]
+               "destinationName" => "Our hall",
+               "destinationAddress" => nil,
+               "directionsUrl" => nil
              } = workshop
+
+      refute Map.has_key?(workshop, "destinationAttributions")
     end
 
     coordinator = as_role(conn, "beginners_coordinator")
@@ -415,8 +409,7 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
     assert %{
              "destinationName" => "Our Own Hall",
              "destinationProvider" => nil,
-             "destinationPlaceId" => nil,
-             "destinationAttributions" => []
+             "destinationPlaceId" => nil
            } = manual
 
     assert %{"errors" => %{"fields" => %{"destinationPlaceId" => ["is not a valid place"]}}} =

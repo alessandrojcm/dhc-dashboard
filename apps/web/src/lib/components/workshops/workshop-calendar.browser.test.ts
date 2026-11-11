@@ -18,7 +18,6 @@ const workshop: WorkshopCalendarItem = {
 	directionsUrl: null,
 	destinationProvider: null,
 	destinationPlaceId: null,
-	destinationAttributions: [],
 	// 00:30 Irish Summer Time on Sunday 25 October, the night the clocks go
 	// back; in LA it is still Saturday afternoon.
 	startDate: "2026-10-24T23:30:00Z",

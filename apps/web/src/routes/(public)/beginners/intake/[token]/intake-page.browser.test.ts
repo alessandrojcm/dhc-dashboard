@@ -175,7 +175,6 @@ function page(
 			directionsUrl: null,
 			destinationProvider: null,
 			destinationPlaceId: null,
-			destinationAttributions: [],
 		},
 		feeCents: 4000,
 		...overrides,
@@ -220,7 +219,6 @@ test("ALE-441: the saved destination and a referrer-safe directions link sit bes
 				directionsUrl: null,
 				destinationProvider: null,
 				destinationPlaceId: null,
-				destinationAttributions: [],
 			},
 		}),
 		token,
@@ -248,41 +246,35 @@ test("ALE-441: the saved destination and a referrer-safe directions link sit bes
 	expect(directions.element().getAttribute("href")).not.toContain(token);
 });
 
-test("ALE-442: a selected Google place links directions by its Place ID with attribution and no referrer", async () => {
+test("ALE-442: a selected Google place links directions by its Place ID beside the label, with no Google text or referrer", async () => {
 	const screen = await render(IntakePage, {
 		page: page({
 			state: "paid",
 			action: "none",
 			workshop: {
 				...page().workshop!,
-				destinationName: "Synthetic Fencing Hall",
-				destinationAddress: "1 Example Street, Dublin 8",
+				destinationName: null,
+				destinationAddress: null,
 				directionsUrl: null,
 				destinationProvider: "google",
 				destinationPlaceId: "place_hall",
-				destinationAttributions: [
-					{
-						provider: "Venue Guide",
-						providerUri: "https://guide.example.test/",
-					},
-				],
 			},
 		}),
 		token,
 	});
 
 	const workshop = screen.getByRole("list", { name: "Workshop" });
-	await expect.element(workshop).toHaveTextContent("Google Maps");
-	const credit = workshop.getByRole("link", { name: "Venue Guide" });
-	await expect.element(credit).toHaveAttribute("referrerpolicy", "no-referrer");
-	await expect.element(credit).toHaveAttribute("rel", "noopener noreferrer");
+	expect(screen.getByTestId("destination-attribution").elements()).toHaveLength(
+		0,
+	);
+	await expect.element(workshop).not.toHaveTextContent("Google Maps");
 
 	const directions = screen.getByRole("link", { name: "Get directions" });
 	await expect
 		.element(directions)
 		.toHaveAttribute(
 			"href",
-			"https://www.google.com/maps/dir/?api=1&destination=Synthetic%20Fencing%20Hall%2C%201%20Example%20Street%2C%20Dublin%208&destination_place_id=place_hall",
+			"https://www.google.com/maps/dir/?api=1&destination=St.%20Andrew's%20Hall&destination_place_id=place_hall",
 		);
 	await expect
 		.element(directions)

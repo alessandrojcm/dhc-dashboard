@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	destinationAttribution,
 	destinationBody,
 	destinationLines,
 	destinationValues,
@@ -87,84 +86,72 @@ describe("destinationBody", () => {
 				destination_address: "",
 				directions_url: "   ",
 				destination_place_id: "",
-				destination_attributions: '[{"provider":"Ignored","providerUri":null}]',
 			}),
 		).toEqual({
 			destinationName: "Arena",
 			destinationAddress: null,
 			directionsUrl: null,
 			destinationPlaceId: null,
-			destinationAttributions: [],
 		});
 	});
 
-	it("sends a selected place with its credits, and drops malformed credits (ALE-442)", () => {
-		const selected = {
-			destination_name: "Synthetic Fencing Hall",
-			destination_address: "1 Example Street",
-			directions_url: "",
-			destination_place_id: "place_hall",
-		};
+	it("sends a selected place's ID beside the staff text, and no Google text (ALE-442)", () => {
 		expect(
 			destinationBody({
-				...selected,
-				destination_attributions:
-					'[{"provider":"Venue Guide","providerUri":"https://guide.test/"}]',
+				destination_name: "Our hall",
+				destination_address: "",
+				directions_url: "",
+				destination_place_id: "place_hall",
 			}),
-		).toMatchObject({
+		).toEqual({
+			destinationName: "Our hall",
+			destinationAddress: null,
+			directionsUrl: null,
 			destinationPlaceId: "place_hall",
-			destinationAttributions: [
-				{ provider: "Venue Guide", providerUri: "https://guide.test/" },
-			],
 		});
-		expect(
-			destinationBody({ ...selected, destination_attributions: "{not json" })
-				.destinationAttributions,
-		).toEqual([]);
-		expect(
-			destinationBody({
-				...selected,
-				destination_attributions: '[{"provider":""}]',
-			}).destinationAttributions,
-		).toEqual([]);
 	});
 });
 
 describe("selected Google places (ALE-442)", () => {
 	const selected = {
-		destinationName: "Synthetic Fencing Hall",
+		destinationName: "Our hall",
 		destinationAddress: "1 Example Street, Dublin 8",
 		directionsUrl: null,
 		destinationProvider: "google" as const,
 		destinationPlaceId: "place_hall",
-		destinationAttributions: [{ provider: "Venue Guide", providerUri: null }],
 	};
 
-	it("links directions to the selected place by its Place ID", () => {
-		expect(directionsHref(selected)).toBe(
-			"https://www.google.com/maps/dir/?api=1&destination=Synthetic%20Fencing%20Hall%2C%201%20Example%20Street%2C%20Dublin%208&destination_place_id=place_hall",
+	it("links directions to the place by its Place ID, named by the staff text", () => {
+		expect(directionsHref(selected, "Club hall")).toBe(
+			"https://www.google.com/maps/dir/?api=1&destination=Our%20hall%2C%201%20Example%20Street%2C%20Dublin%208&destination_place_id=place_hall",
 		);
 	});
 
-	it("attributes only Google-derived destinations", () => {
-		expect(destinationAttribution(selected)).toEqual({
-			credits: [{ provider: "Venue Guide", providerUri: null }],
-		});
+	it("names the place by the label when there is no staff text", () => {
 		expect(
-			destinationAttribution({ ...selected, destinationProvider: null }),
-		).toBeUndefined();
-		expect(destinationAttribution({ destinationName: "Hall" })).toBeUndefined();
+			directionsHref(
+				{ destinationProvider: "google", destinationPlaceId: "place hall" },
+				"St. Andrew's Hall",
+			),
+		).toBe(
+			"https://www.google.com/maps/dir/?api=1&destination=St.%20Andrew's%20Hall&destination_place_id=place%20hall",
+		);
 	});
 
-	it("prefills the hidden selection controls only for a selected place", () => {
+	it("ignores a Place ID without the Google provider", () => {
+		expect(
+			directionsHref({ destinationPlaceId: "place_hall" }, "Club hall"),
+		).toBeUndefined();
+	});
+
+	it("prefills the hidden Place ID control only for a selected place", () => {
 		expect(destinationValues(selected)).toMatchObject({
+			destination_name: "Our hall",
 			destination_place_id: "place_hall",
-			destination_attributions:
-				'[{"provider":"Venue Guide","providerUri":null}]',
 		});
 		expect(
 			destinationValues({ ...selected, destinationProvider: null }),
-		).toMatchObject({ destination_place_id: "", destination_attributions: "" });
+		).toMatchObject({ destination_place_id: "" });
 	});
 });
 
@@ -181,14 +168,12 @@ describe("destinationValues", () => {
 			destination_address: "",
 			directions_url: "https://maps.app.goo.gl/AbCdEf",
 			destination_place_id: "",
-			destination_attributions: "",
 		});
 		expect(destinationValues({})).toEqual({
 			destination_name: "",
 			destination_address: "",
 			directions_url: "",
 			destination_place_id: "",
-			destination_attributions: "",
 		});
 	});
 });

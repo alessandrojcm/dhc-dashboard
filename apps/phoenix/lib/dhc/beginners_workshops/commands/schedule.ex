@@ -55,8 +55,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
   `:invalid_destination`.
 
   ALE-442: schedule, reschedule and `update_destination` also take a
-  selected Google place (`destination_place_id` with its
-  `destination_attributions`); the selection is stamped with the command's
+  selected Google place (`destination_place_id` only: Google's name and
+  address are never stored); the selection is stamped with the command's
   clock reading, and `Dhc.Destinations` decides when provider identity is
   kept, replaced or removed. Selecting a place for the same venue is an
   `update_destination` like any other destination enrichment.
@@ -194,8 +194,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Schedule do
     destination_name: :string,
     destination_address: :string,
     directions_url: :string,
-    destination_place_id: :string,
-    destination_attributions: {:array, :map}
+    destination_place_id: :string
   }
 
   @update_fields ~w(capacity fee_cents payment_cutoff_date payment_cutoff_time contact_from payment_window_days)a

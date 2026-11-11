@@ -15,7 +15,6 @@ import {
 	commandResult,
 } from "#lib/server/api/command-result.js";
 import { apiClientOptions } from "#lib/server/api-client.js";
-import { parseCredits } from "#lib/destinations.js";
 import {
 	CreateWorkshopRemoteSchema,
 	UpdateWorkshopRemoteSchema,
@@ -31,7 +30,12 @@ import {
  */
 function destinationFormField(
 	field: string,
-): "destination_name" | "destination_address" | "directions_url" | undefined {
+):
+	| "destination_name"
+	| "destination_address"
+	| "directions_url"
+	| "destination_place_id"
+	| undefined {
 	switch (field) {
 		case "destinationName":
 			return "destination_name";
@@ -39,11 +43,9 @@ function destinationFormField(
 			return "destination_address";
 		case "directionsUrl":
 			return "directions_url";
-		// ALE-442: a refused selection is shown where the selection is: the
-		// destination name, beside the selected place.
+		// ALE-442: a refused selection is shown on the selected place.
 		case "destinationPlaceId":
-		case "destinationAttributions":
-			return "destination_name";
+			return "destination_place_id";
 	}
 }
 
@@ -53,6 +55,7 @@ interface DestinationIssueRoot {
 	destination_name: DestinationIssueBuilder;
 	destination_address: DestinationIssueBuilder;
 	directions_url: DestinationIssueBuilder;
+	destination_place_id: DestinationIssueBuilder;
 }
 
 function attributeDestinationRejection(issue: DestinationIssueRoot) {
@@ -81,22 +84,20 @@ function attributeDestinationRejection(issue: DestinationIssueRoot) {
  * value passes through. The edit form always submits the fields it
  * prefilled, so an unrelated edit resubmits the stored values.
  *
- * ALE-442: the selected Google Place ID and its credits follow the same
- * rule; credits are sent only with a Place ID.
+ * ALE-442: the selected Google Place ID follows the same rule; it is the
+ * only part of a Google selection ever sent.
  */
 function destinationPayload(data: {
 	destination_name?: string;
 	destination_address?: string;
 	directions_url?: string;
 	destination_place_id?: string;
-	destination_attributions?: string;
 }): Pick<
 	WorkshopManagementUpdateRequest,
 	| "destinationName"
 	| "destinationAddress"
 	| "directionsUrl"
 	| "destinationPlaceId"
-	| "destinationAttributions"
 > {
 	const payload: Pick<
 		WorkshopManagementUpdateRequest,
@@ -104,7 +105,6 @@ function destinationPayload(data: {
 		| "destinationAddress"
 		| "directionsUrl"
 		| "destinationPlaceId"
-		| "destinationAttributions"
 	> = {
 		destinationName:
 			data.destination_name === undefined
@@ -120,13 +120,8 @@ function destinationPayload(data: {
 				: data.directions_url || null,
 	};
 
-	if (data.destination_place_id !== undefined) {
-		const placeId = data.destination_place_id.trim() || null;
-		payload.destinationPlaceId = placeId;
-		payload.destinationAttributions = placeId
-			? parseCredits(data.destination_attributions ?? "")
-			: [];
-	}
+	if (data.destination_place_id !== undefined)
+		payload.destinationPlaceId = data.destination_place_id.trim() || null;
 
 	return payload;
 }
