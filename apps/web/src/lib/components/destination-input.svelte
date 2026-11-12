@@ -191,11 +191,13 @@ const statusText = $derived.by(() => {
 			{disabled}
 		/>
 		{#if search.query !== "" || isSelected}
+			<!-- Same height as the input, so no translate centring: the Button's
+			     pressed-state translate would move it out from under the pointer. -->
 			<Button
 				type="button"
 				variant="ghost"
 				size="icon"
-				class="absolute right-0 top-1/2 -translate-y-1/2 text-muted-foreground"
+				class="absolute right-0 top-0 text-muted-foreground"
 				aria-label="Clear destination"
 				onclick={clear}
 				{disabled}

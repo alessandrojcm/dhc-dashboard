@@ -249,7 +249,10 @@ test.describe("Beginners' Workshop journey", () => {
 		await saved.pressSequentially(
 			"National Basketball Arena, Tymon Road, Dublin 6w",
 		);
-		await saved.press("Escape");
+		// No suggestion matches; Escape here would close the dialog itself.
+		await expect(
+			reschedule.getByRole("status").filter({ hasText: "No places found" }),
+		).toBeVisible();
 		await expect(reschedule.getByTestId("reschedule-warning")).toHaveText(
 			"No emails will be sent: only the destination changes.",
 		);
