@@ -94,6 +94,16 @@ if config_env() != :test and is_binary(typesafe_api_key) and
   config :dhc, :typesafe_api_key, typesafe_api_key
 end
 
+# Google Places venue lookup (ALE-442). Optional: unset, venue search answers
+# "not set up" and staff enter destinations manually. A server-only key,
+# restricted to Places API (New) and the deployment's egress IPs; separate
+# from the Calendar organizer OAuth configuration.
+places_api_key = System.get_env("GOOGLE_PLACES_API_KEY")
+
+if config_env() != :test and is_binary(places_api_key) and String.trim(places_api_key) != "" do
+  config :dhc, :places_api_key, String.trim(places_api_key)
+end
+
 config :dhc,
        :intake_reply_forward_to,
        System.get_env("INTAKE_REPLY_FORWARD_TO", "contact@dublinhemaclub.com")

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	keptContactFrom,
 	keptCutoff,
+	rescheduleOperation,
 	rescheduleWarning,
 } from "#lib/beginners-workshops/reschedule.js";
 
@@ -69,6 +70,120 @@ describe("rescheduleWarning", () => {
 		);
 		expect(rescheduleWarning(0)).toBe(
 			"No emails will be sent: nobody has an active workshop place.",
+		);
+	});
+
+	it("never warns of emails for a destination-only change", () => {
+		expect(rescheduleWarning(3, "destination")).toBe(
+			"No emails will be sent: only the destination changes.",
+		);
+	});
+});
+
+describe("rescheduleOperation", () => {
+	const current = {
+		date: "2026-11-14",
+		startTime: "18:30",
+		endTime: "20:30",
+		venue: "St. Andrew's Hall",
+		paymentCutoffDate: "2026-11-11",
+		paymentCutoffTime: "18:30",
+		contactFromDate: "2026-10-20",
+		destinationText: "Arena",
+		destinationProvider: null,
+		destinationPlaceId: null,
+	};
+	const unchanged = {
+		date: "2026-11-14",
+		startTime: "18:30",
+		endTime: "20:30",
+		venue: "St. Andrew's Hall",
+		paymentCutoffDate: "2026-11-11",
+		paymentCutoffTime: "18:30",
+		contactFromDate: "2026-10-20",
+		destination_text: "Arena",
+		destination_place_id: "",
+	};
+
+	it("is a destination-only change while the date, times and venue stay", () => {
+		for (const edit of [
+			{ destination_text: "Arena, Tymon Park, Dublin 6w" },
+			{ destination_text: "" },
+		]) {
+			expect(rescheduleOperation(current, { ...unchanged, ...edit })).toBe(
+				"destination",
+			);
+		}
+		// Surrounding whitespace and seconds are not a move.
+		expect(
+			rescheduleOperation(current, {
+				...unchanged,
+				startTime: "18:30:00",
+				paymentCutoffTime: "18:30:00",
+				venue: "  St. Andrew's Hall ",
+				destination_text: "Arena Two",
+			}),
+		).toBe("destination");
+	});
+
+	it("selecting, replacing or removing a Google place is a destination-only change (ALE-442)", () => {
+		expect(
+			rescheduleOperation(current, {
+				...unchanged,
+				destination_text: "",
+				destination_place_id: "place_hall",
+			}),
+		).toBe("destination");
+
+		const selected = {
+			...current,
+			destinationText: null,
+			destinationProvider: "google" as const,
+			destinationPlaceId: "place_hall",
+		};
+		const resubmitted = {
+			...unchanged,
+			destination_text: "",
+			destination_place_id: "place_hall",
+		};
+		expect(rescheduleOperation(selected, resubmitted)).toBe("reschedule");
+		expect(
+			rescheduleOperation(selected, {
+				...resubmitted,
+				destination_place_id: "place_annex",
+			}),
+		).toBe("destination");
+		expect(rescheduleOperation(selected, unchanged)).toBe("destination");
+	});
+
+	it("stays a reschedule when nothing changed, so Phoenix asks for a move", () => {
+		expect(
+			rescheduleOperation(current, {
+				...unchanged,
+				destination_text: " Arena ",
+			}),
+		).toBe("reschedule");
+	});
+
+	it("is a reschedule when any schedule value moves, destination or not", () => {
+		for (const moved of [
+			{ date: "2026-11-21" },
+			{ startTime: "19:00" },
+			{ endTime: "21:00" },
+			{ venue: "The Hub", destination_text: "The Hub" },
+			{ paymentCutoffDate: "2026-11-10", destination_text: "Arena Two" },
+			{ paymentCutoffTime: "17:30:00", destination_text: "Arena Two" },
+			{ contactFromDate: "2026-10-21", destination_text: "Arena Two" },
+		]) {
+			expect(rescheduleOperation(current, { ...unchanged, ...moved })).toBe(
+				"reschedule",
+			);
+		}
+	});
+
+	it("treats an explicit end on a legacy workshop with no end as a move", () => {
+		expect(rescheduleOperation({ ...current, endTime: null }, unchanged)).toBe(
+			"reschedule",
 		);
 	});
 });

@@ -9,6 +9,7 @@ import type {
 	BeginnersWorkshopCancelRequest,
 	BeginnersWorkshopCorrectAttendanceRequest,
 	BeginnersWorkshopDeletePersonRequest,
+	BeginnersWorkshopDestinationRequest,
 	BeginnersWorkshopFastTrackRequest,
 	BeginnersWorkshopIntakeCommandRequest,
 	BeginnersWorkshopManualRefundRequest,
@@ -25,9 +26,11 @@ import {
 	ATTENDANCE_CORRECTIONS,
 	INTAKE_BUTTON_COMMANDS,
 } from "#lib/beginners-workshops/console.js";
+import { destinationBody } from "#lib/destinations.js";
 import { waitlistRegistrationEntries } from "#lib/schemas/beginnersWaitlist.js";
 import {
 	civilDate,
+	destinationEntries,
 	euroAmountInCents,
 	guardianRules,
 	optionalCivilDate,
@@ -67,6 +70,7 @@ const venue = v.pipe(
 
 const scheduleEntries = {
 	venue,
+	...destinationEntries,
 	startTime: wallTime("Enter the start time."),
 	endTime: wallTime("Enter the end time."),
 	...settingsEntries,
@@ -92,9 +96,10 @@ const scheduleEntries = {
 };
 
 /**
- * Schedule one or several workshops that share a venue, start time,
- * capacity, fee, window length and optional Staff; each date may override
- * its cutoff date and contact-from date.
+ * Schedule one or several workshops that share a venue, destination details
+ * (ALE-441), start time, capacity, fee, window length and optional Staff;
+ * each date may override its cutoff date and contact-from date. Every
+ * workshop is sent its own copy of the destination.
  */
 export const scheduleWorkshopsSchema = v.pipe(
 	v.object(scheduleEntries),
@@ -110,6 +115,8 @@ export const scheduleWorkshopsSchema = v.pipe(
 		({
 			workshops,
 			venue,
+			destination_text,
+			destination_place_id,
 			startTime,
 			endTime,
 			capacity,
@@ -122,6 +129,10 @@ export const scheduleWorkshopsSchema = v.pipe(
 				workshops: workshops.map((workshop) => ({
 					...workshop,
 					venue,
+					...destinationBody({
+						destination_text,
+						destination_place_id,
+					}),
 					startTime,
 					endTime,
 					capacity,
@@ -220,10 +231,17 @@ export const fastTrackWaitlistPersonSchema = v.pipe(
  * ALE-394: the Reschedule dialog. The dialog prefills the cutoff and (while
  * Batch 1 hasn't gone out) the contact-from date with the offsets Phoenix
  * keeps; Phoenix judges every cross-field rule.
+ *
+ * ALE-441: it also edits the destination. `operation` is the
+ * dialog's `rescheduleOperation`: a `reschedule` sends the move with the
+ * destination; a `destination` change sends only the destination and the
+ * venue it describes to `update_destination`, so nothing is emailed.
  */
 export const rescheduleWorkshopSchema = v.pipe(
 	v.object({
 		id: workshopId,
+		operation: v.picklist(["reschedule", "destination"], "Unknown change."),
+		...destinationEntries,
 		date: civilDate("Pick the new date."),
 		startTime: wallTime("Enter the start time."),
 		endTime: wallTime("Enter the end time."),
@@ -242,10 +260,37 @@ export const rescheduleWorkshopSchema = v.pipe(
 		),
 		["endTime"],
 	),
-	v.transform(({ id, ...body }) => ({
-		id,
-		body: body satisfies BeginnersWorkshopRescheduleRequest,
-	})),
+	v.transform(
+		({
+			id,
+			operation,
+			destination_text,
+			destination_place_id,
+			...schedule
+		}) => {
+			const destination = destinationBody({
+				destination_text,
+				destination_place_id,
+			});
+			return operation === "destination"
+				? {
+						id,
+						operation,
+						body: {
+							venue: schedule.venue,
+							...destination,
+						} satisfies BeginnersWorkshopDestinationRequest,
+					}
+				: {
+						id,
+						operation,
+						body: {
+							...schedule,
+							...destination,
+						} satisfies BeginnersWorkshopRescheduleRequest,
+					};
+		},
+	),
 );
 
 export type RescheduleWorkshopInput = v.InferInput<

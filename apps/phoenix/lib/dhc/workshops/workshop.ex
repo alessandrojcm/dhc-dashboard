@@ -20,6 +20,8 @@ defmodule Dhc.Workshops.Workshop do
 
   import Ecto.Changeset
 
+  alias Dhc.Destinations
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   @type t :: %__MODULE__{}
@@ -28,6 +30,17 @@ defmodule Dhc.Workshops.Workshop do
     field :title, :string
     field :description, :string
     field :location, :string
+    # ALE-440: optional, manually entered destination text. The short venue
+    # label (`location`) stays required and independent; it is nullable so
+    # legacy rows and label-only submissions remain valid.
+    field :destination_text, :string
+    # ALE-442: the provider identity of a destination selected from Google
+    # Maps venue search: its Place ID only, never Google's text
+    # (`Dhc.Destinations` owns the rules). All absent for a manual
+    # destination; a selected place carries no `destination_text`.
+    field :destination_provider, :string
+    field :destination_place_id, :string
+    field :destination_selected_at, :utc_datetime
     field :start_date, :utc_datetime
     field :end_date, :utc_datetime
     field :max_capacity, :integer
@@ -48,13 +61,18 @@ defmodule Dhc.Workshops.Workshop do
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end
 
-  @management_fields ~w(title description location start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
+  @management_fields ~w(title description location destination_text
+    destination_place_id start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
   @required_management_fields ~w(title location start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
 
   @doc false
   def management_changeset(workshop, attrs) do
     workshop
     |> cast(attrs, @management_fields)
+    # ALE-440: an emptied destination field means "absent"; the label itself
+    # stays required exactly as before. The rule is shared with Beginners'
+    # Workshops through `Dhc.Destinations`.
+    |> Destinations.validate_changeset()
     |> validate_required(@required_management_fields)
     |> validate_length(:title, min: 1, max: 255)
     |> validate_number(:max_capacity, greater_than: 0)
@@ -62,6 +80,18 @@ defmodule Dhc.Workshops.Workshop do
     |> validate_number(:price_non_member, greater_than_or_equal_to: 0)
     |> validate_number(:refund_days, greater_than_or_equal_to: 0)
     |> validate_end_after_start()
+  end
+
+  @doc """
+  A destination-only change (ALE-443 reviewed enrichment): casts only the
+  destination fields, so no label, schedule, status or pricing value can
+  ride along.
+  """
+  @spec destination_changeset(t(), map()) :: Ecto.Changeset.t()
+  def destination_changeset(%__MODULE__{} = workshop, attrs) do
+    workshop
+    |> cast(attrs, Destinations.fields())
+    |> Destinations.validate_changeset()
   end
 
   defp validate_end_after_start(changeset) do

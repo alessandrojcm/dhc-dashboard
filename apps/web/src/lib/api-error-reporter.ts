@@ -61,6 +61,19 @@ export function registerApiErrorReporter(
 		) {
 			return error;
 		}
+		// ALE-442: Google venue search that is not set up, over its quota, or
+		// whose chosen place has gone is an expected, worded outcome (staff
+		// enter the destination manually). Provider rejections and outages
+		// (502) stay reported; no search text is in a lookup's URL.
+		if (
+			request?.method === "POST" &&
+			(path === "/api/venue-lookup/suggestions" ||
+				path === "/api/venue-lookup/selections") &&
+			(response?.status === 404 || response?.status === 503) &&
+			apiProblem(error)?.detail !== undefined
+		) {
+			return error;
+		}
 		// The best-effort notification bridge retries token transport failures
 		// with bounded backoff and logs their unavailability. They are not
 		// application exceptions; retain reporting for HTTP and other failures.

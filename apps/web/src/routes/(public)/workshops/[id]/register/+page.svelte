@@ -4,6 +4,8 @@ import {
 	formatDublinDateLong,
 	formatDublinTime12h,
 } from "#lib/club-calendar.js";
+import { destinationLines, directionsHref } from "#lib/destinations.js";
+import * as Alert from "#lib/components/ui/alert/index.js";
 import * as Card from "#lib/components/ui/card/index.js";
 import WorkshopRegistrationCheckout from "#lib/components/workshops/workshop-registration-checkout.svelte";
 import type { PageData } from "./$types";
@@ -18,6 +20,18 @@ const formattedDate = $derived.by(() => {
 const formattedTime = $derived.by(() => {
 	return `${formatDublinTime12h(workshop.start_date)} - ${formatDublinTime12h(workshop.end_date)}`;
 });
+
+// ALE-440: the optional destination text and a safe external directions
+// link beside the familiar location label.
+const destinationFacts = $derived({
+	destinationText: workshop.destination_text,
+	destinationProvider: workshop.destination_provider,
+	destinationPlaceId: workshop.destination_place_id,
+});
+const destinationDetail = $derived(destinationLines(destinationFacts));
+const destinationHref = $derived(
+	directionsHref(destinationFacts, workshop.location),
+);
 
 const formattedPrice = $derived.by(() => {
 	return Dinero({
@@ -66,6 +80,21 @@ const formattedPrice = $derived.by(() => {
 								<div>
 									<p class="font-medium text-foreground">Location</p>
 									<p class="text-muted-foreground">{workshop.location}</p>
+									{#if destinationDetail.length > 0}
+										<p class="text-muted-foreground">
+											{destinationDetail.join(" · ")}
+										</p>
+									{/if}
+									{#if destinationHref}
+										<a
+											href={destinationHref}
+											target="_blank"
+											rel="noopener noreferrer"
+											class="mt-1 inline-flex min-h-11 items-center gap-1.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
+										>
+											Get directions
+										</a>
+									{/if}
 								</div>
 								<div>
 									<p class="font-medium text-foreground">Price</p>

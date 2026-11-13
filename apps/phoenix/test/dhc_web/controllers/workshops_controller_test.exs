@@ -187,6 +187,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "title" => "Demand Workshop",
                "description" => "Coordinator view",
                "location" => "Main Hall",
+               "destinationText" => nil,
+               "destinationProvider" => nil,
+               "destinationPlaceId" => nil,
                "startDate" => "2026-07-01T10:00:00Z",
                "endDate" => "2026-07-01T12:00:00Z",
                "maxCapacity" => 12,
@@ -624,6 +627,328 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
       assert payload["title"] == "Updated API Workshop"
       assert payload["status"] == "planned"
+    end
+
+    # ── ALE-440: manually entered destinations over the public contract ──
+
+    test "creates a Workshop with a manual destination", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops",
+          Map.merge(valid_workshop_payload(), %{
+            "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
+          })
+        )
+
+      assert %{"data" => %{"workshop" => workshop}} = json_response(conn, 201)
+
+      assert workshop["location"] == "Main Hall"
+      assert workshop["destinationText"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+      assert workshop["destinationPlaceId"] == nil
+    end
+
+    test "keeps label-only payloads valid and reports legacy rows as null", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops", valid_workshop_payload())
+
+      assert %{"data" => %{"workshop" => workshop}} = json_response(conn, 201)
+      assert workshop["destinationText"] == nil
+      assert workshop["destinationPlaceId"] == nil
+    end
+
+    test "refuses manual text beside a Place ID as a 422 field error", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops",
+          Map.merge(valid_workshop_payload(), %{
+            "destinationText" => "Our hall",
+            "destinationPlaceId" => "place_hall"
+          })
+        )
+
+      message = "Choose a suggested place or type the destination, not both"
+
+      assert json_response(conn, 422) == %{
+               "errors" => %{
+                 "detail" => "destinationText: " <> message,
+                 "fields" => %{"destinationText" => [message]}
+               }
+             }
+    end
+
+    test "an omitted destination field preserves the stored destination", %{conn: conn} do
+      workshop =
+        insert_workshop(destination_text: "National Basketball Arena, Tymon Park, Dublin 6w")
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"title" => "Unrelated edit"})
+
+      assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
+
+      assert payload["title"] == "Unrelated edit"
+      assert payload["destinationText"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+    end
+
+    test "an explicit null clears the optional destination", %{conn: conn} do
+      workshop =
+        insert_workshop(destination_text: "National Basketball Arena, Tymon Park, Dublin 6w")
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
+          "destinationText" => nil
+        })
+
+      assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
+
+      assert payload["destinationText"] == nil
+      assert payload["location"] == "Test Location"
+    end
+
+    test "destination edits on a published Workshop are refused as not editable", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
+          "destinationText" => "Arena"
+        })
+
+      assert %{
+               "errors" => %{
+                 "detail" => "Only planned workshops can be edited",
+                 "code" => "not_editable"
+               }
+             } =
+               json_response(conn, 422)
+
+      conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"destinationPlaceId" => nil})
+
+      assert json_response(conn, 422)["errors"]["code"] == "not_editable"
+    end
+
+    test "the public external-registration gate carries the destination for directions", %{
+      conn: conn
+    } do
+      workshop =
+        insert_workshop(
+          title: "Public Destination Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2,
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
+        )
+
+      conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+
+      assert %{
+               "data" => %{
+                 "canRegister" => true,
+                 "workshop" => %{
+                   "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
+                 }
+               }
+             } = json_response(conn, 200)
+    end
+
+    test "a legacy gate Workshop reports null destination fields", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          title: "Legacy Public Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2
+        )
+
+      conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+
+      assert %{
+               "data" => %{
+                 "canRegister" => true,
+                 "workshop" => %{
+                   "destinationText" => nil
+                 }
+               }
+             } = json_response(conn, 200)
+    end
+
+    # ── ALE-442: a destination selected from Google venue search ──
+
+    test "a selected place round-trips through create, unrelated edits, replacement and clear",
+         %{conn: conn} do
+      # The form sends the place and empty text; Google's own text is never sent.
+      selected = %{"destinationText" => nil, "destinationPlaceId" => "place_hall"}
+
+      created =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops", Map.merge(valid_workshop_payload(), selected))
+        |> json_response(201)
+        |> get_in(["data", "workshop"])
+
+      assert %{
+               "location" => "Main Hall",
+               "destinationText" => nil,
+               "destinationProvider" => "google",
+               "destinationPlaceId" => "place_hall"
+             } = created
+
+      refute Map.has_key?(created, "destinationAttributions")
+
+      stored = Repo.get!(Dhc.Workshops.Workshop, created["id"])
+      assert %DateTime{} = stored.destination_selected_at
+
+      # The edit form resubmits the selection unchanged with an unrelated edit.
+      edited =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{created["id"]}", %{
+          "title" => "Renamed",
+          "destinationText" => nil,
+          "destinationPlaceId" => "place_hall"
+        })
+        |> json_response(200)
+        |> get_in(["data", "workshop"])
+
+      assert edited["title"] == "Renamed"
+      assert edited["destinationPlaceId"] == "place_hall"
+
+      assert Repo.get!(Dhc.Workshops.Workshop, created["id"]).destination_selected_at ==
+               stored.destination_selected_at
+
+      # Typed text without naming the place is a manual destination: the
+      # place is dropped, so it cannot keep pointing at another venue.
+      unnamed =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{created["id"]}", %{"destinationText" => "2 Other Road"})
+        |> json_response(200)
+        |> get_in(["data", "workshop"])
+
+      assert %{
+               "destinationText" => "2 Other Road",
+               "destinationProvider" => nil,
+               "destinationPlaceId" => nil
+             } = unnamed
+
+      # Selecting again replaces the manual text; typing again (the form
+      # sends the text and no place) drops the provider identity.
+      assert %{"destinationPlaceId" => "place_hall"} =
+               build_conn()
+               |> auth_conn("workshop_coordinator")
+               |> patch("/api/workshops/#{created["id"]}", %{
+                 "destinationText" => nil,
+                 "destinationPlaceId" => "place_hall"
+               })
+               |> json_response(200)
+               |> get_in(["data", "workshop"])
+
+      manual =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{created["id"]}", %{
+          "destinationText" => "Our Own Hall, 2 Other Road",
+          "destinationPlaceId" => nil
+        })
+        |> json_response(200)
+        |> get_in(["data", "workshop"])
+
+      assert %{
+               "destinationText" => "Our Own Hall, 2 Other Road",
+               "destinationProvider" => nil,
+               "destinationPlaceId" => nil
+             } = manual
+
+      cleared =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{created["id"]}", %{
+          "destinationText" => nil,
+          "destinationPlaceId" => nil
+        })
+        |> json_response(200)
+        |> get_in(["data", "workshop"])
+
+      assert %{"destinationText" => nil, "destinationPlaceId" => nil} = cleared
+      assert cleared["location"] == "Main Hall"
+    end
+
+    test "an invalid selection is a field error and saves nothing", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops",
+          Map.merge(valid_workshop_payload(), %{
+            "destinationPlaceId" => "../places/x"
+          })
+        )
+
+      assert %{"errors" => %{"fields" => %{"destinationPlaceId" => ["is not a valid place"]}}} =
+               json_response(conn, 422)
+    end
+
+    test "selecting a place for a published Workshop keeps the planned-only rule", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"destinationPlaceId" => "place_hall"})
+
+      assert json_response(conn, 422)["errors"]["code"] == "not_editable"
+    end
+
+    test "attendee reads carry the place for directions, never Google text",
+         %{conn: conn} do
+      workshop =
+        insert_workshop(
+          title: "Public Selected Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2,
+          destination_provider: "google",
+          destination_place_id: "place_hall",
+          destination_selected_at: ~U[2026-11-01 10:00:00Z]
+        )
+
+      gate =
+        conn
+        |> get("/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+        |> json_response(200)
+
+      assert %{
+               "destinationText" => nil,
+               "destinationProvider" => "google",
+               "destinationPlaceId" => "place_hall"
+             } = gate["data"]["workshop"]
+
+      refute Map.has_key?(gate["data"]["workshop"], "destinationAttributions")
+
+      member_list =
+        build_conn()
+        |> auth_conn("member")
+        |> get("/api/workshops")
+        |> json_response(200)
+
+      assert %{"destinationProvider" => "google", "destinationPlaceId" => "place_hall"} =
+               Enum.find(member_list["data"]["workshops"], &(&1["id"] == to_uuid(workshop.id)))
     end
 
     test "allows published pricing edits only while there are no active registrations", %{
@@ -2169,6 +2494,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
       title: "Uncapped",
       description: nil,
       location: "Main Hall",
+      destination_text: nil,
+      destination_provider: nil,
+      destination_place_id: nil,
       start_date: ~U[2026-07-01 10:00:00Z],
       end_date: ~U[2026-07-01 12:00:00Z],
       max_capacity: nil,

@@ -7,6 +7,10 @@
  *
  * ALE-388: a Carried Fee holder's page carries no fee (`feeCents: null`) —
  * their fee is a prepaid seat — so `full` and `paid` word it for them.
+ *
+ * ALE-441: the venue label is joined by the optional destination lines and
+ * a directions link built only from the saved destination facts, never from
+ * the page's private link.
  */
 import type {
 	BeginnersIntakeAction,
@@ -15,6 +19,7 @@ import type {
 } from "@dhc/api-client";
 import { formatFee } from "#lib/beginners-workshops/presentation.js";
 import { formatCivilDate, formatCivilTimeRange } from "#lib/club-calendar.js";
+import { destinationLines, directionsHref } from "#lib/destinations.js";
 
 /** What an unknown link shows: the same as a closed Intake. */
 export const INACTIVE_PAGE: BeginnersIntakePage = {
@@ -120,6 +125,8 @@ export function intakeDetails(page: BeginnersIntakePage) {
 		date: formatCivilDate(page.workshop.date),
 		time: formatCivilTimeRange(page.workshop.startTime, page.workshop.endTime),
 		venue: page.workshop.venue,
+		destination: destinationLines(page.workshop),
+		directionsHref: directionsHref(page.workshop, page.workshop.venue) ?? null,
 		fee: page.feeCents === null ? null : formatFee(page.feeCents),
 	};
 }

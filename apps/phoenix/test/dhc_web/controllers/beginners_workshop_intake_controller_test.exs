@@ -79,6 +79,74 @@ defmodule DhcWeb.BeginnersWorkshopIntakeControllerTest do
 
     assert Map.keys(data) |> Enum.sort() ==
              ~w(action closedReason feeCents firstName paymentCutoff state workshop)
+
+    # ALE-441: a label-only (legacy) workshop carries no destination.
+    assert %{"destinationText" => nil, "destinationPlaceId" => nil} = data["workshop"]
+
+    assert Map.keys(data["workshop"]) |> Enum.sort() ==
+             ~w(date destinationPlaceId destinationProvider destinationText endTime startTime
+                venue)
+  end
+
+  test "the page carries a saved destination beside the label, still without a referrer", %{
+    conn: conn,
+    token: token,
+    workshop: workshop
+  } do
+    assert {:ok, _} =
+             Dhc.BeginnersWorkshops.execute(
+               {:staff, staff_fixture("beginners_coordinator")},
+               {:update_destination, workshop.id,
+                %{
+                  "venue" => workshop.venue,
+                  "destination_text" => "National Basketball Arena, Tymon Park, Dublin 6w"
+                }},
+               clock: clock(DateTime.utc_now())
+             )
+
+    conn = get(conn, "/api/beginners/intake/#{token}")
+    assert no_referrer?(conn)
+
+    assert %{
+             "data" => %{
+               "workshop" => %{
+                 "venue" => "St. Andrew's Hall",
+                 "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
+               }
+             }
+           } = json_response(conn, 200)
+  end
+
+  test "a selected place carries its Place ID, never Google text (ALE-442)",
+       %{
+         conn: conn,
+         token: token,
+         workshop: workshop
+       } do
+    assert {:ok, _} =
+             Dhc.BeginnersWorkshops.execute(
+               {:staff, staff_fixture("beginners_coordinator")},
+               {:update_destination, workshop.id,
+                %{
+                  "venue" => workshop.venue,
+                  "destination_place_id" => "place_hall"
+                }},
+               clock: clock(DateTime.utc_now())
+             )
+
+    conn = get(conn, "/api/beginners/intake/#{token}")
+    assert no_referrer?(conn)
+
+    assert %{
+             "data" => %{
+               "workshop" => %{
+                 "venue" => "St. Andrew's Hall",
+                 "destinationText" => nil,
+                 "destinationProvider" => "google",
+                 "destinationPlaceId" => "place_hall"
+               }
+             }
+           } = json_response(conn, 200)
   end
 
   test "an unknown link is 404, still without a referrer", %{conn: conn} do

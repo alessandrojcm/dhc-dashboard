@@ -376,10 +376,15 @@ defmodule DhcWeb.WorkshopsController do
   end
 
   defp management_attrs(params) do
+    # `put_if_present` carries an explicit JSON `null` through, which is how a
+    # PATCH distinguishes "clear this optional destination detail" from
+    # "leave it alone" (an omitted key). The label stays required.
     %{}
     |> put_if_present(params, "title", :title)
     |> put_if_present(params, "description", :description)
     |> put_if_present(params, "location", :location)
+    |> put_if_present(params, "destinationText", :destination_text)
+    |> put_if_present(params, "destinationPlaceId", :destination_place_id)
     |> put_datetime_if_present(params, "startDate", :start_date)
     |> put_datetime_if_present(params, "endDate", :end_date)
     |> put_if_present(params, "maxCapacity", :max_capacity)

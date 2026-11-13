@@ -25,8 +25,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
       Intake after the Payment Cutoff.
 
   It carries the first name, the
-  workshop date, start time and venue, the fee and one action — never ids or
-  Stripe objects; an `inactive` page carries none of them. Seats come from
+  workshop date, start time and venue (with its optional manual destination
+  text, ALE-441, or a selected Google place's public Place ID for
+  directions, never Google's text, ALE-442), the fee and one action — never
+  our ids or Stripe objects; an `inactive` page carries none of them. Seats come from
   the same `WorkshopFacts` and `WorkshopPolicy` the boundary decides with, so
   a stale page can be out of date but never judge differently.
   """
@@ -56,7 +58,15 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
           closed_reason: :inactive | :payment_closed | nil,
           first_name: String.t() | nil,
           workshop:
-            %{date: Date.t(), start_time: Time.t(), end_time: Time.t() | nil, venue: String.t()}
+            %{
+              date: Date.t(),
+              start_time: Time.t(),
+              end_time: Time.t() | nil,
+              venue: String.t(),
+              destination_text: String.t() | nil,
+              destination_provider: String.t() | nil,
+              destination_place_id: String.t() | nil
+            }
             | nil,
           fee_cents: pos_integer() | nil,
           payment_cutoff: DateTime.t() | nil
@@ -116,7 +126,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
             date: workshop.date,
             start_time: workshop.start_time,
             end_time: workshop.end_time,
-            venue: workshop.venue
+            venue: workshop.venue,
+            destination_text: workshop.destination_text,
+            destination_provider: workshop.destination_provider,
+            destination_place_id: workshop.destination_place_id
           },
           fee_cents: fee_cents(intake, workshop, hold, holder?),
           payment_cutoff: if(action == :pay, do: workshop.payment_cutoff)

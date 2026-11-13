@@ -190,11 +190,14 @@ function setup({
 }
 
 let createdSockets: FakeSocket[] = [];
-const createSocketFactory = (): SocketFactory => {
+const createSocketFactory = (
+	configure?: (socket: FakeSocket, index: number) => void,
+): SocketFactory => {
 	createdSockets = [];
 	return (url, options) => {
 		const socket = makeFakeSocket(url, options);
 		createdSockets.push(socket);
+		configure?.(socket, createdSockets.length - 1);
 		return socket;
 	};
 };
@@ -269,6 +272,87 @@ describe("connectNotificationRealtime (ALE-164 socket-token path)", () => {
 		expect(createdSockets[0].channels[0].topic).toBe("notifications:self");
 
 		handle.destroy();
+	});
+
+	it("handles a synchronous lifecycle error during socket setup as current", async () => {
+		vi.useFakeTimers();
+		const createSocket = createSocketFactory((socket, index) => {
+			if (index !== 0) return;
+			socket.onError = vi.fn((callback) => {
+				socket.onErrorCb = callback;
+				callback("synchronous setup failure");
+				return "error";
+			});
+		});
+		const getSocketToken = vi.fn(async () => "socket-token");
+		const { handle } = setup({ getSocketToken, createSocket });
+
+		await vi.advanceTimersByTimeAsync(1_000);
+
+		// The first socket is current even though its callback fires before the
+		// constructSocket assign action commits it. It is retired and recovered,
+		// rather than being treated as an already-retired socket.
+		expect(createdSockets).toHaveLength(2);
+		expect(createdSockets[0].channels[0].leaveMock).toHaveBeenCalledTimes(1);
+		expect(createdSockets[0].disconnected).toBe(true);
+		expect(getSocketToken).toHaveBeenCalledTimes(2);
+
+		handle.destroy();
+	});
+
+	it("does not disconnect a socket when onOpen fires synchronously during setup", async () => {
+		const createSocket = createSocketFactory((socket, index) => {
+			if (index !== 0) return;
+			socket.onOpen = vi.fn((callback) => {
+				socket.onOpenCb = callback;
+				callback();
+				return "open";
+			});
+		});
+		const { handle } = setup({
+			getSocketToken: async () => "socket-token",
+			createSocket,
+		});
+		await flush();
+
+		expect(createdSockets[0].disconnectCount).toBe(0);
+
+		handle.destroy();
+	});
+
+	it("leaves the channel if wiring its listener fails", async () => {
+		vi.useFakeTimers();
+		vi.spyOn(console, "warn").mockImplementation(() => {});
+		const channel = makeFakeChannel("notifications:self");
+		channel.on = vi.fn(() => {
+			throw new Error("wiring failed");
+		});
+		const createSocket = createSocketFactory((socket, index) => {
+			if (index === 0) socket.channel = vi.fn(() => channel);
+		});
+		const { handle } = setup({
+			getSocketToken: async () => "token",
+			createSocket,
+		});
+		await vi.advanceTimersByTimeAsync(0);
+		expect(channel.leaveMock).toHaveBeenCalledTimes(1);
+		expect(createdSockets[0].disconnected).toBe(true);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(createdSockets).toHaveLength(2);
+		handle.destroy();
+	});
+
+	it("destroy is idempotent", async () => {
+		const { handle } = setup({
+			getSocketToken: async () => "token",
+			createSocket: createSocketFactory(),
+		});
+		await flush();
+		const socket = createdSockets[0];
+		handle.destroy();
+		handle.destroy();
+		expect(socket.channels[0].leaveMock).toHaveBeenCalledTimes(1);
+		expect(socket.disconnectCount).toBe(1);
 	});
 
 	it("disconnects an existing bridge permanently when its session ends", async () => {

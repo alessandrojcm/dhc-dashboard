@@ -2429,6 +2429,7 @@ defmodule Dhc.E2EHarness do
       title: Map.get(attrs, "title"),
       description: Map.get(attrs, "description"),
       location: Map.get(attrs, "location"),
+      destination_text: Map.get(attrs, "destinationText"),
       start_date: parse_datetime(Map.get(attrs, "startDate")),
       end_date: parse_datetime(Map.get(attrs, "endDate")),
       max_capacity: Map.get(attrs, "maxCapacity"),

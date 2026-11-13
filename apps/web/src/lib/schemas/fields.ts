@@ -260,3 +260,16 @@ export const optionalPrincipalId = (message: string) =>
 /** ALE-379: several Member picks (one hidden input each); none is `[]`. */
 export const principalIds = (message: string) =>
 	v.optional(v.array(v.pipe(v.string(), v.uuid(message))), []);
+
+/**
+ * The optional destination (ALE-440/ALE-441/ALE-442), shared by the regular
+ * Workshop and Beginners' Workshop forms beside each domain's own required
+ * short venue label. The keys are `destination-input.svelte`'s hidden control
+ * names: the manual text exactly as typed, or the Place ID of a chosen Google
+ * suggestion (never both; Google's text is never submitted). Phoenix owns the
+ * provenance rules.
+ */
+export const destinationEntries = {
+	destination_text: v.optional(v.pipe(v.string(), v.maxLength(500)), ""),
+	destination_place_id: v.optional(v.pipe(v.string(), v.maxLength(255)), ""),
+};

@@ -1,5 +1,6 @@
 import * as v from "valibot";
 import { dublinToday } from "#lib/club-calendar.js";
+import { destinationEntries as destinationDetails } from "#lib/schemas/fields.js";
 
 /**
  * Whether a workshop starting at `start` would start on Dublin's today, as
@@ -33,6 +34,8 @@ export const BaseWorkshopSchema = v.object({
 	),
 	description: v.optional(v.string(), ""),
 	location: v.pipe(v.string(), v.minLength(1, "Location is required")),
+	destination_text: destinationDetails.destination_text,
+	destination_place_id: destinationDetails.destination_place_id,
 	workshop_date: v.pipe(
 		v.date(),
 		v.check(
@@ -93,6 +96,8 @@ export const CreateWorkshopRemoteSchema = v.object({
 	),
 	description: v.optional(v.string(), ""),
 	location: v.pipe(v.string(), v.minLength(1, "Location is required")),
+	destination_text: destinationDetails.destination_text,
+	destination_place_id: destinationDetails.destination_place_id,
 	workshop_date: v.pipe(v.string(), v.nonEmpty("Workshop date is required")),
 	workshop_end_date: v.pipe(
 		v.string(),

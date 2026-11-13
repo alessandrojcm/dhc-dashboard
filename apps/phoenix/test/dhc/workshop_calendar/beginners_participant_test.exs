@@ -259,6 +259,105 @@ defmodule Dhc.WorkshopCalendar.BeginnersParticipantTest do
     assert List.last(HTTP.mutations(server)).query == "sendUpdates=all"
   end
 
+  test "a destination update revises the participant event, keeps its RSVP and privacy, then stays silent",
+       %{staff: staff, server: server} do
+    {workshop, [{intake, token}]} = Fixtures.contacted_fixture(staff, 1)
+    assert {:ok, %{outcome: :paid}} = intake |> hold!(token) |> Stripe.session() |> complete()
+    assert :ok = sync(workshop.id)
+    first = participant(server)
+    guest = first["attendees"] |> hd() |> Map.put("responseStatus", "accepted")
+
+    Agent.update(
+      server,
+      &%{&1 | events: Map.put(&1.events, first["id"], Map.put(first, "attendees", [guest]))}
+    )
+
+    count = length(HTTP.mutations(server))
+
+    assert {:ok, _} =
+             command(
+               staff,
+               {:update_destination, workshop.id,
+                %{
+                  venue: workshop.venue,
+                  destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
+                }}
+             )
+
+    assert :ok = sync(workshop.id)
+    updated = participant(server)
+    assert updated["id"] == first["id"]
+    assert updated["attendees"] == [guest]
+    assert updated["start"] == first["start"]
+    assert updated["location"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+    assert updated["visibility"] == "private"
+    refute Map.has_key?(updated, "description")
+    payloads = HTTP.mutations(server) |> Enum.map(& &1.payload) |> Jason.encode!()
+    refute payloads =~ "maps.app.goo.gl"
+    refute payloads =~ "/beginners/intake/"
+    refute payloads =~ token
+    assert [%{query: "sendUpdates=all"}] = Enum.drop(HTTP.mutations(server), count)
+    assert Repo.get!(Intake, intake.id).state == "paid"
+
+    # The committee audience shows the same destination.
+    assert :ok = WorkshopCalendar.sync(:beginners_workshop, workshop.id, clock: fn -> @now end)
+
+    [committee] =
+      HTTP.events(server) |> Map.values() |> Enum.reject(&Map.has_key?(&1, "attendees"))
+
+    assert committee["location"] == updated["location"]
+
+    after_update = HTTP.mutations(server)
+    assert :ok = sync(workshop.id)
+    assert HTTP.mutations(server) == after_update
+  end
+
+  # ALE-442: a Google selection never reaches attendees — Calendar keeps the
+  # label, so selecting or replacing a place is silent — while manual text
+  # reaches them as native location text with normal update notifications.
+  test "a selected place stays silent, then manual text notifies participants once",
+       %{staff: staff, server: server} do
+    {workshop, [{intake, token}]} = Fixtures.contacted_fixture(staff, 1)
+    assert {:ok, %{outcome: :paid}} = intake |> hold!(token) |> Stripe.session() |> complete()
+    assert :ok = sync(workshop.id)
+    first = participant(server)
+    before = HTTP.mutations(server)
+    count = length(before)
+
+    selection = %{
+      venue: workshop.venue,
+      destination_text: nil,
+      destination_place_id: "place_hall"
+    }
+
+    for place_id <- ["place_hall", "place_annex"] do
+      assert {:ok, _} =
+               command(
+                 staff,
+                 {:update_destination, workshop.id, %{selection | destination_place_id: place_id}}
+               )
+
+      assert :ok = sync(workshop.id)
+      assert HTTP.mutations(server) == before
+    end
+
+    manual = %{
+      selection
+      | destination_text: "Our hall, 1 Example Street, Dublin 8",
+        destination_place_id: nil
+    }
+
+    assert {:ok, _} = command(staff, {:update_destination, workshop.id, manual})
+    assert :ok = sync(workshop.id)
+    updated = participant(server)
+    assert updated["id"] == first["id"]
+    assert updated["location"] == "Our hall, 1 Example Street, Dublin 8"
+    refute Map.has_key?(updated, "description")
+    payloads = HTTP.mutations(server) |> Enum.map(& &1.payload) |> Jason.encode!()
+    refute payloads =~ "place_"
+    assert [%{query: "sendUpdates=all"}] = Enum.drop(HTTP.mutations(server), count)
+  end
+
   test "early finalisation, check-in and later attendance corrections preserve historical invitations",
        %{staff: staff, server: server} do
     {workshop, intakes} = Fixtures.contacted_fixture(staff, 2)

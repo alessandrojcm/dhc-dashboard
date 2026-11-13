@@ -6,6 +6,7 @@ import {
 	createTestWorkshop,
 } from "./attendee-test-helpers";
 import { createMember, createWorkshop } from "./setupFunctions";
+import { stubEmbeddedCheckout } from "./beginners-workshop-checkout";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import type { E2ERegistrationSeedRequest } from "./e2eApi";
 import { loginAsUser } from "./auth";
@@ -356,6 +357,183 @@ test.describe("Workshop Management", () => {
 				.toBe("/dashboard/workshops/create");
 		});
 
+		test("creates a workshop with a manual destination through the UI", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+			await gotoHydrated(page, "/dashboard/workshops/create");
+
+			const ts = Date.now();
+			const title = `Destination Workshop ${ts}`;
+			const workshopDate = dayjs().add(2, "day");
+
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(title);
+			await page.getByRole("textbox", { name: /location/i }).fill("Main hall");
+			// No suggestion matches, so the text is saved exactly as typed.
+			const destination = page.getByRole("combobox", {
+				name: "Destination",
+				exact: true,
+			});
+			await destination.pressSequentially(
+				"National Basketball Arena, Tymon Park, Dublin 6w",
+			);
+			await expect(
+				page.getByRole("status").filter({ hasText: "No places found" }),
+			).toBeVisible();
+			await pickWorkshopDate(page, workshopDate);
+			await page
+				.getByRole("spinbutton", { name: "Available places", exact: true })
+				.fill("15");
+			await page
+				.getByRole("spinbutton", { name: "Member price", exact: true })
+				.fill("15");
+
+			await page
+				.getByRole("button", { name: "Create Workshop", exact: true })
+				.click();
+
+			await expect(
+				page.getByText(`Workshop "${title}" created successfully!`),
+			).toBeVisible();
+			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
+
+			// The destination round-trips: the management modal shows the label,
+			// the manual text, and a Maps search for exactly that text.
+			const dialog = await openWorkshopModal(page, title);
+			await expect(dialog.getByText("Main hall")).toBeVisible();
+			await expect(
+				dialog.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
+			).toBeVisible();
+			await expect(
+				dialog.getByRole("link", { name: "Get directions" }),
+			).toHaveAttribute(
+				"href",
+				`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
+			);
+
+			// Track the created workshop for teardown from the modal's edit link.
+			const editHref = await dialog
+				.getByTestId("edit-workshop-button")
+				.getAttribute("href");
+			const createdId = editHref?.match(
+				/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+			)?.[0];
+			if (createdId) createdWorkshopIds.push(createdId);
+		});
+
+		// ALE-442: Google venue search through the real Phoenix lookup, answered
+		// by the E2E server's synthetic Places catalogue.
+		test("creates a workshop with a chosen Google place, then replaces it with a manual destination", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+			await gotoHydrated(page, "/dashboard/workshops/create");
+
+			const ts = Date.now();
+			const title = `Google Place Workshop ${ts}`;
+			const workshopDate = dayjs().add(2, "day");
+
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(title);
+			await page.getByRole("textbox", { name: /location/i }).fill("Main hall");
+
+			// A quota failure explains itself and keeps typed text working.
+			const destination = page.getByRole("combobox", {
+				name: "Destination",
+				exact: true,
+			});
+			await destination.pressSequentially("quota");
+			await expect(
+				page.getByRole("status").filter({ hasText: "reached its limit" }),
+			).toBeVisible();
+			await page.getByRole("button", { name: "Clear destination" }).click();
+			await destination.pressSequentially("Synthetic Fencing Hall");
+			await page
+				.getByRole("option", { name: /Synthetic Fencing Hall/ })
+				.click();
+			// Google's text shows in the input with attribution, for this
+			// editing session only.
+			await expect(destination).toHaveValue(
+				"Synthetic Fencing Hall, 1 Example Street, Dublin 8, Ireland",
+			);
+			await expect(page.getByTestId("destination-attribution")).toContainText(
+				"Google Maps · Example Venue Guide",
+			);
+
+			await pickWorkshopDate(page, workshopDate);
+			await page
+				.getByRole("spinbutton", { name: "Available places", exact: true })
+				.fill("15");
+			await page
+				.getByRole("spinbutton", { name: "Member price", exact: true })
+				.fill("15");
+			await page
+				.getByRole("button", { name: "Create Workshop", exact: true })
+				.click();
+			await expect(
+				page.getByText(`Workshop "${title}" created successfully!`),
+			).toBeVisible();
+			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
+
+			// Attendees see the label, never Google's text, and directions bound
+			// to the place.
+			const dialog = await openWorkshopModal(page, title);
+			await expect(dialog.getByText("Main hall")).toBeVisible();
+			await expect(dialog.getByText("Synthetic Fencing Hall")).toHaveCount(0);
+			await expect(dialog.getByTestId("destination-attribution")).toHaveCount(
+				0,
+			);
+			await expect(
+				dialog.getByRole("link", { name: "Get directions" }),
+			).toHaveAttribute(
+				"href",
+				"https://www.google.com/maps/dir/?api=1&destination=Main%20hall&destination_place_id=e2e_place_hall",
+			);
+			// Editing it into a manual destination removes the provider identity.
+			await dialog.getByTestId("edit-workshop-button").click();
+			await expect(page).toHaveURL(/\/dashboard\/workshops\/[0-9a-f-]+\/edit$/);
+			const createdId = page
+				.url()
+				.match(
+					/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+				)?.[0];
+			if (createdId) createdWorkshopIds.push(createdId);
+			await gotoHydrated(page, `/dashboard/workshops/${createdId}/edit`);
+			// No Google text was stored, so the saved place reopens as selected.
+			const saved = page.getByRole("combobox", {
+				name: "Destination",
+				exact: true,
+			});
+			await expect(saved).toHaveValue("");
+			await expect(saved).toHaveAttribute(
+				"placeholder",
+				"Google Maps place selected",
+			);
+			await expect(page.getByText("Synthetic Fencing Hall")).toHaveCount(0);
+			// Typing replaces the place with manual text.
+			await saved.pressSequentially("Our Own Hall");
+			await saved.press("Escape");
+			await page
+				.getByRole("button", { name: "Update Workshop", exact: true })
+				.click();
+			await expect(page.getByText(/updated successfully/)).toBeVisible();
+
+			await gotoHydrated(page, "/dashboard/workshops");
+			const updated = await openWorkshopModal(page, title);
+			await expect(updated.getByText("Our Own Hall")).toBeVisible();
+			await expect(updated.getByTestId("destination-attribution")).toHaveCount(
+				0,
+			);
+			await expect(
+				updated.getByRole("link", { name: "Get directions" }),
+			).not.toHaveAttribute("href", /destination_place_id/);
+		});
+
 		test("creates a workshop through the UI", async ({ page, context }) => {
 			await loginAsUser(context, adminData.email);
 			await gotoHydrated(page, "/dashboard/workshops/create");
@@ -481,6 +659,69 @@ test.describe("Workshop Management", () => {
 			await expect(page).toHaveURL("/dashboard/workshops", { timeout: 10000 });
 		});
 
+		test("prefills a saved destination, keeps it through an unrelated edit, updates and clears it", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+
+			const ts = Date.now();
+			const title = `Destination Edit ${ts}`;
+			const workshop = await createTestWorkshop(page, {
+				title,
+				location: "Main hall",
+				destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
+				max_capacity: 10,
+				price_member: 1500,
+				price_non_member: 2500,
+				is_public: false,
+				status: "planned",
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			const destination = () =>
+				page.getByRole("combobox", { name: "Destination", exact: true });
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(destination()).toHaveValue(
+				"National Basketball Arena, Tymon Park, Dublin 6w",
+			);
+
+			// An unrelated edit resubmits the stored destination untouched.
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(`Renamed ${title}`);
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+			await expect(page.getByText(/updated successfully/i)).toBeVisible();
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(destination()).toHaveValue(
+				"National Basketball Arena, Tymon Park, Dublin 6w",
+			);
+
+			// A deliberate change replaces the destination.
+			await page.getByRole("button", { name: "Clear destination" }).click();
+			await destination().pressSequentially("Clontarf Cricket Club");
+			await destination().press("Escape");
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+			await expect(page.getByText(/updated successfully/i)).toBeVisible();
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(destination()).toHaveValue("Clontarf Cricket Club");
+
+			// Clearing it removes the optional destination.
+			await page.getByRole("button", { name: "Clear destination" }).click();
+			await page.getByRole("button", { name: "Update Workshop" }).click();
+			await expect(page.getByText(/updated successfully/i)).toBeVisible();
+
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
+			await expect(destination()).toHaveValue("");
+			// The short label was never touched by the destination edits.
+			await expect(
+				page.getByRole("textbox", { name: /location/i }),
+			).toHaveValue("Main hall");
+		});
+
 		test("locks editing for a published workshop", async ({
 			page,
 			context,
@@ -516,6 +757,11 @@ test.describe("Workshop Management", () => {
 			).toBeDisabled();
 			await expect(
 				page.getByRole("textbox", { name: /location/i }),
+			).toBeDisabled();
+			// Destination controls are locked with the rest: the published
+			// pricing exception does not permit venue edits (ALE-440).
+			await expect(
+				page.getByRole("combobox", { name: "Destination", exact: true }),
 			).toBeDisabled();
 			await expect(
 				page.getByRole("button", { name: "Update Workshop" }),
@@ -765,6 +1011,96 @@ test.describe("Workshop Management", () => {
 			// Remove from cleanup list since it's already deleted.
 			const idx = createdWorkshopIds.indexOf(workshop.id);
 			if (idx >= 0) createdWorkshopIds.splice(idx, 1);
+		});
+	});
+
+	test.describe("attendee directions (ALE-440)", () => {
+		test("members see the destination and a directions link on their workshop list", async ({
+			page,
+			context,
+		}) => {
+			const ts = Date.now();
+			const start = dayjs().add(3, "day").hour(14).minute(0);
+			const workshop = await createWorkshop({
+				title: `Member Directions ${ts}`,
+				description: "Attendee directions fixture",
+				location: "Main hall",
+				destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
+				start_date: start.toDate(),
+				end_date: start.add(2, "hour").toDate(),
+				max_capacity: 10,
+				price_member: 1000,
+				price_non_member: 2000,
+				is_public: true,
+				refund_days: 3,
+				created_by: adminData.userId!,
+				status: "published",
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			await loginAsUser(context, memberData.email);
+			await gotoHydrated(page, "/dashboard/my-workshops");
+
+			const card = page.getByRole("article").filter({
+				has: page.getByRole("heading", { name: `Member Directions ${ts}` }),
+			});
+			await expect(card.getByText("Main hall")).toBeVisible();
+			await expect(
+				card.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
+			).toBeVisible();
+			await expect(
+				card.getByRole("link", { name: "Get directions" }),
+			).toHaveAttribute(
+				"href",
+				`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
+			);
+			await expect(
+				card.getByRole("link", { name: "Get directions" }),
+			).toHaveAttribute("rel", "noopener noreferrer");
+		});
+
+		test("external attendees see the destination and directions on the registration page", async ({
+			page,
+		}) => {
+			const ts = Date.now();
+			const start = dayjs().add(3, "day").hour(14).minute(0);
+			const workshop = await createWorkshop({
+				title: `External Directions ${ts}`,
+				description: "External attendee directions fixture",
+				location: "Main hall",
+				destination_text: "National Basketball Arena, Tymon Park, Dublin 6w",
+				start_date: start.toDate(),
+				end_date: start.add(2, "hour").toDate(),
+				max_capacity: 10,
+				price_member: 1000,
+				price_non_member: 2000,
+				is_public: true,
+				refund_days: 3,
+				created_by: adminData.userId!,
+				status: "published",
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			// Stub Stripe's embedded Checkout so the public page mounts without
+			// leaving the browser; Phoenix still opens a real test-mode session,
+			// which the cleanup expires.
+			const expireSessions = await stubEmbeddedCheckout(page);
+
+			try {
+				await gotoHydrated(page, `/workshops/${workshop.id}/register`);
+				await expect(page.getByText("Main hall")).toBeVisible();
+				await expect(
+					page.getByText("National Basketball Arena, Tymon Park, Dublin 6w"),
+				).toBeVisible();
+				const directions = page.getByRole("link", { name: "Get directions" });
+				await expect(directions).toHaveAttribute(
+					"href",
+					`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
+				);
+				await expect(directions).toHaveAttribute("rel", "noopener noreferrer");
+			} finally {
+				await expireSessions();
+			}
 		});
 	});
 

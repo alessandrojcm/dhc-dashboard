@@ -76,6 +76,8 @@ const RULES = {
 	"members.settings.edit": {},
 	"membership.reactivate": {},
 	"training_announcements.manage": {},
+	// ALE-442: Google venue search for whoever schedules either kind of workshop.
+	"venues.lookup": {},
 	"workshops.manage": {},
 	"workshops.own.read": {},
 } satisfies Record<Capability, CapabilityRule>;

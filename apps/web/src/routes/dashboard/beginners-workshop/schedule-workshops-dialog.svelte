@@ -4,6 +4,8 @@
 	date may override its Payment Cutoff date and contact-from date. Phoenix
 	applies every default and rule — this form only collects values.
 	ALE-379: optional Staff, shared by every date.
+	ALE-441: the optional destination, shared by every date; each
+	scheduled workshop then owns its copy.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopStaffCandidate } from "@dhc/api-client";
@@ -21,6 +23,7 @@ import {
 	scheduleWorkshopsSchema,
 	VENUE_MAX,
 } from "#lib/schemas/beginnersWorkshop.js";
+import DestinationInput from "#lib/components/destination-input.svelte";
 import StaffPickers from "./staff-pickers.svelte";
 import WorkshopDialog from "#lib/components/beginners-workshops/workshop-dialog.svelte";
 import { scheduleWorkshops } from "./workshops.remote";
@@ -130,6 +133,8 @@ function reset() {
 					{/each}
 				</Field.Field>
 			</Field.Group>
+
+			<DestinationInput {fields} />
 
 			<Field.Group class="grid gap-4 sm:grid-cols-3">
 				<Field.Field>

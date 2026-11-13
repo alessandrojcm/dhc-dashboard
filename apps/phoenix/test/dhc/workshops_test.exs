@@ -317,6 +317,74 @@ defmodule Dhc.WorkshopsTest do
 
       assert Workshops.workshop_summary(missing_id) == nil
     end
+
+    test "carries the manually entered destination text (ALE-440)" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
+        )
+
+      summary = Workshops.workshop_summary(workshop.id)
+
+      assert summary.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
+
+      legacy = WorkshopFixtures.workshop_fixture(title: "Legacy")
+
+      legacy_summary = Workshops.workshop_summary(legacy.id)
+
+      assert legacy_summary.destination_text == nil
+    end
+  end
+
+  # ── Calendar source projection (ALE-440 destination location) ────────
+
+  describe "calendar_projection/1" do
+    test "derives the native location from the manual destination text" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
+        )
+
+      projection = Workshops.calendar_projection(workshop.id)
+
+      assert projection.location == "National Basketball Arena, Tymon Park, Dublin 6w"
+      # The projection stays closed: no place ID or other new detail leaks
+      # into Calendar content.
+      assert Map.keys(projection) |> Enum.sort() ==
+               [:end_date, :id, :location, :start_date, :status, :title]
+    end
+
+    test "falls back to the short venue label for legacy and label-only rows" do
+      workshop = WorkshopFixtures.workshop_fixture(location: "Club hall")
+
+      assert Workshops.calendar_projection(workshop.id).location == "Club hall"
+
+      # A selected Google place stores no text, so the label is the Calendar
+      # location and the place serves directions on the pages (ALE-442).
+      selected =
+        WorkshopFixtures.workshop_fixture(
+          destination_provider: "google",
+          destination_place_id: "place_hall",
+          destination_selected_at: ~U[2026-01-01 00:00:00Z]
+        )
+
+      assert Workshops.calendar_projection(selected.id).location == "Test Location"
+    end
+
+    test "keeps the launch projection's location consistent with the source projection" do
+      now = DateTime.utc_now()
+
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          destination_text: "Arena, Tymon Park",
+          start_date: DateTime.add(now, 1, :day) |> DateTime.truncate(:second)
+        )
+
+      [source] = Workshops.calendar_launch_sources(now)
+      assert source.id == uuid_to_string(workshop.id)
+      assert source.location == "Arena, Tymon Park"
+      assert source.location == Workshops.calendar_projection(workshop.id).location
+    end
   end
 
   # ── Workshop management lifecycle ─────────────────────────────────────
@@ -340,6 +408,82 @@ defmodule Dhc.WorkshopsTest do
       assert {:error, changeset} = Workshops.create_workshop(%{title: ""}, Ecto.UUID.generate())
 
       assert %{title: [_], location: [_], start_date: [_], end_date: [_]} = errors_on(changeset)
+    end
+
+    # ── ALE-440: manually entered destinations ───────────────────────────
+
+    test "creates a Workshop with a manual destination" do
+      %{auth_user_id: creator_id} = WorkshopFixtures.member_fixture()
+
+      assert {:ok, workshop} =
+               Workshops.create_workshop(
+                 valid_workshop_attrs(%{
+                   destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
+                 }),
+                 creator_id
+               )
+
+      assert workshop.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
+      # The short venue label stays required and independent.
+      assert workshop.location == "Main Hall"
+    end
+
+    test "creates a label-only Workshop with no destination" do
+      %{auth_user_id: creator_id} = WorkshopFixtures.member_fixture()
+
+      assert {:ok, workshop} =
+               Workshops.create_workshop(valid_workshop_attrs(), creator_id)
+
+      assert workshop.destination_text == nil
+      assert workshop.destination_place_id == nil
+    end
+
+    test "refuses manual text beside a selected place (ALE-442)" do
+      assert {:error, changeset} =
+               Workshops.create_workshop(
+                 valid_workshop_attrs(%{
+                   destination_text: "Our hall",
+                   destination_place_id: "place_hall"
+                 }),
+                 Ecto.UUID.generate()
+               )
+
+      assert %{destination_text: [_]} = errors_on(changeset)
+    end
+
+    test "the database refuses manual text beside a place for out-of-seam writers" do
+      workshop = WorkshopFixtures.workshop_fixture(destination_text: "Our hall")
+
+      assert_raise Postgrex.Error, ~r/club_activities_destination_text_or_place/, fn ->
+        Repo.update_all(
+          from(w in Dhc.Workshops.Workshop, where: w.id == ^workshop.id),
+          set: [
+            destination_provider: "google",
+            destination_place_id: "place_hall",
+            destination_selected_at: ~U[2026-01-01 00:00:00Z]
+          ]
+        )
+      end
+    end
+
+    test "trims destination text and treats blank entries as absent" do
+      %{auth_user_id: creator_id} = WorkshopFixtures.member_fixture()
+
+      assert {:ok, workshop} =
+               Workshops.create_workshop(
+                 valid_workshop_attrs(%{destination_text: "  Main Sports Hall  "}),
+                 creator_id
+               )
+
+      assert workshop.destination_text == "Main Sports Hall"
+
+      assert {:ok, blank} =
+               Workshops.create_workshop(
+                 valid_workshop_attrs(%{destination_text: "   "}),
+                 creator_id
+               )
+
+      assert blank.destination_text == nil
     end
   end
 
@@ -385,6 +529,62 @@ defmodule Dhc.WorkshopsTest do
 
       assert {:error, :pricing_locked} =
                Workshops.update_workshop(workshop.id, %{price_member: 1200.0})
+    end
+
+    # ── ALE-440: manually entered destinations on update ────────────────
+
+    test "omitted destination fields preserve the stored destination" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
+        )
+
+      assert {:ok, updated} = Workshops.update_workshop(workshop.id, %{title: "Unrelated edit"})
+
+      assert updated.title == "Unrelated edit"
+      assert updated.destination_text == "National Basketball Arena, Tymon Park, Dublin 6w"
+    end
+
+    test "an explicit clear removes the stored destination" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          destination_text: "National Basketball Arena, Tymon Park, Dublin 6w"
+        )
+
+      assert {:ok, updated} =
+               Workshops.update_workshop(workshop.id, %{
+                 destination_text: nil
+               })
+
+      assert updated.destination_text == nil
+      # The short label survives a destination clear.
+      assert updated.location == "Test Location"
+    end
+
+    test "replaces a stored destination" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(destination_text: "Old Arena, Old address")
+
+      assert {:ok, updated} =
+               Workshops.update_workshop(workshop.id, %{
+                 destination_text: "New Hall, New address"
+               })
+
+      assert updated.destination_text == "New Hall, New address"
+    end
+
+    test "destination edits are general edits, not covered by the pricing exception" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          status: "published",
+          destination_text: nil
+        )
+
+      assert {:error, :not_editable} =
+               Workshops.update_workshop(workshop.id, %{destination_text: "Arena"})
+
+      assert {:error, :not_editable} =
+               Workshops.update_workshop(workshop.id, %{destination_place_id: "place_hall"})
     end
   end
 

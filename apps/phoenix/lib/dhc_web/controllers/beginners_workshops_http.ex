@@ -26,6 +26,8 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     "paymentCutoffTime" => "payment_cutoff_time",
     "contactFromDate" => "contact_from",
     "paymentWindowDays" => "payment_window_days",
+    "destinationText" => "destination_text",
+    "destinationPlaceId" => "destination_place_id",
     "coachPrincipalId" => "coach_principal_id",
     "assistantPrincipalIds" => "assistant_principal_ids"
   }
@@ -53,7 +55,8 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
     refund_choice_required: "refund",
     invalid_refund_choice: "refund",
     invalid_payment_reference: "paymentIntentId",
-    invalid_correction: "to"
+    invalid_correction: "to",
+    venue_changed: "venue"
   }
 
   use DhcWeb.Problem,
@@ -61,6 +64,8 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       not_found: {404, "Beginners' Workshop not found"},
       after_finalisation: {409, "This workshop's attendance is final; it can no longer change"},
       already_cancelled: {409, "This workshop is cancelled"},
+      venue_changed:
+        {409, "The venue changed while you were editing; reopen the workshop and try again"},
       invalid_reason: {422, "Keep the reason under 500 characters"},
       contact_from_locked:
         {409, "The first offer round has gone out, so the date offers start can no longer change"},

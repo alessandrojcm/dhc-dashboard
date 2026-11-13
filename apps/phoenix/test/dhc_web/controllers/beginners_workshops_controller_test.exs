@@ -328,6 +328,149 @@ defmodule DhcWeb.BeginnersWorkshopsControllerTest do
              coordinator |> post(path, %{"venue" => "Elsewhere"}) |> json_response(409)
   end
 
+  test "schedules and reschedules with destination details, mapping field errors (ALE-441)", %{
+    conn: conn
+  } do
+    destination = %{
+      "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
+    }
+
+    [with_destination, label_only] = schedule!(conn, [item(destination), item()])
+    assert Map.take(with_destination, Map.keys(destination)) == destination
+
+    assert Map.take(label_only, Map.keys(destination)) == %{
+             "destinationText" => nil
+           }
+
+    coordinator = as_role(conn, "beginners_coordinator")
+
+    assert %{
+             "errors" => %{
+               "fields" => %{
+                 "workshops.1.destinationText" => [_]
+               }
+             }
+           } =
+             coordinator
+             |> post("/api/beginners-workshops", %{
+               "workshops" => [item(), item(%{"destinationText" => String.duplicate("a", 501)})]
+             })
+             |> json_response(422)
+
+    date = Date.add(Date.from_iso8601!(label_only["date"]), 7) |> Date.to_iso8601()
+
+    assert %{"data" => %{"venue" => "The Hub", "destinationText" => "The Hub, upstairs"}} =
+             coordinator
+             |> post("/api/beginners-workshops/#{label_only["id"]}/reschedule", %{
+               "date" => date,
+               "startTime" => "18:30",
+               "endTime" => "20:30",
+               "venue" => "The Hub",
+               "destinationText" => "The Hub, upstairs"
+             })
+             |> json_response(200)
+  end
+
+  test "a selected Google place round-trips through schedule, update and clear (ALE-442)", %{
+    conn: conn
+  } do
+    selected = %{"destinationText" => nil, "destinationPlaceId" => "place_hall"}
+
+    [first, second] = schedule!(conn, [item(selected), item(selected)])
+
+    for workshop <- [first, second] do
+      assert %{
+               "destinationProvider" => "google",
+               "destinationPlaceId" => "place_hall",
+               "destinationText" => nil
+             } = workshop
+
+      refute Map.has_key?(workshop, "destinationAttributions")
+    end
+
+    coordinator = as_role(conn, "beginners_coordinator")
+    path = "/api/beginners-workshops/#{first["id"]}/destination"
+
+    assert %{"data" => manual} =
+             coordinator
+             |> put(path, %{
+               "venue" => first["venue"],
+               "destinationText" => "Our Own Hall",
+               "destinationPlaceId" => nil
+             })
+             |> json_response(200)
+
+    assert %{
+             "destinationText" => "Our Own Hall",
+             "destinationProvider" => nil,
+             "destinationPlaceId" => nil
+           } = manual
+
+    assert %{"errors" => %{"fields" => %{"destinationPlaceId" => ["is not a valid place"]}}} =
+             coordinator
+             |> put(
+               path,
+               Map.merge(selected, %{"venue" => first["venue"], "destinationPlaceId" => "x/y"})
+             )
+             |> json_response(422)
+
+    # The other date keeps its own copy of the selection.
+    assert %{"data" => %{"workshop" => %{"destinationPlaceId" => "place_hall"}}} =
+             coordinator
+             |> get("/api/beginners-workshops/#{second["id"]}/console")
+             |> json_response(200)
+  end
+
+  test "updates only the destination and maps every refusal (ALE-441)", %{conn: conn} do
+    [workshop] = schedule!(conn)
+    path = "/api/beginners-workshops/#{workshop["id"]}/destination"
+    coordinator = as_role(conn, "beginners_coordinator")
+
+    body = %{
+      "venue" => workshop["venue"],
+      "destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"
+    }
+
+    assert %{"data" => updated} = coordinator |> put(path, body) |> json_response(200)
+    assert updated["destinationText"] == "National Basketball Arena, Tymon Park, Dublin 6w"
+
+    assert Map.drop(updated, ~w(destinationText)) == Map.drop(workshop, ~w(destinationText))
+
+    # An omitted key keeps its value; `null` clears it.
+    assert %{"data" => %{"destinationText" => "National Basketball Arena, Tymon Park, Dublin 6w"}} =
+             coordinator
+             |> put(path, %{"venue" => workshop["venue"]})
+             |> json_response(200)
+
+    message = "Choose a suggested place or type the destination, not both"
+
+    assert %{
+             "errors" => %{"fields" => %{"destinationText" => [^message]}} = errors
+           } =
+             coordinator
+             |> put(path, Map.put(body, "destinationPlaceId", "place_hall"))
+             |> json_response(422)
+
+    refute Map.has_key?(errors, "code")
+
+    assert %{"errors" => %{"code" => "venue_changed", "fields" => %{"venue" => [_]}}} =
+             coordinator |> put(path, Map.put(body, "venue", "Elsewhere")) |> json_response(409)
+
+    assert %{"errors" => %{"fields" => %{"venue" => [_]}}} =
+             coordinator |> put(path, Map.delete(body, "venue")) |> json_response(422)
+
+    assert coordinator
+           |> put("/api/beginners-workshops/#{Ecto.UUID.generate()}/destination", body)
+           |> json_response(404)
+
+    assert conn |> as_role("treasurer") |> put(path, body) |> json_response(403)
+
+    BeginnersWorkshopFixtures.force_status!(workshop["id"], "cancelled")
+
+    assert %{"errors" => %{"code" => "already_cancelled"}} =
+             coordinator |> put(path, body) |> json_response(409)
+  end
+
   test "cancels a workshop and maps every refusal (ALE-395)", %{conn: conn} do
     [workshop] = schedule!(conn)
     path = "/api/beginners-workshops/#{workshop["id"]}/cancel"

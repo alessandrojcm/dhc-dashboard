@@ -68,10 +68,14 @@ defmodule Dhc.Workshops do
 
   import Ecto.Query
 
+  alias Dhc.Auth
+  alias Dhc.Auth.{Capabilities, Principal}
+  alias Dhc.Destinations
   alias Dhc.Repo
   alias Dhc.WorkshopCalendar
 
   alias Dhc.Workshops.{
+    DestinationEnrichment,
     PaymentAttempt,
     PaymentCommands,
     Refund,
@@ -104,9 +108,9 @@ defmodule Dhc.Workshops do
   # passed into `build_summary/2` separately because each caller computes them
   # differently (a SQL aggregate for the list, the `registration_counts/1` +
   # `interest_count/1` helpers for the single archived read).
-  @summary_scalar_fields ~w(id title description location start_date end_date
-    max_capacity price_member price_non_member is_public refund_days status
-    announce_discord announce_email created_by)a
+  @summary_scalar_fields ~w(id title description location destination_text
+    destination_provider destination_place_id start_date end_date max_capacity price_member price_non_member is_public
+    refund_days status announce_discord announce_email created_by)a
 
   @doc """
   Returns the member-visible Workshop statuses (`planned`, `published`).
@@ -208,6 +212,11 @@ defmodule Dhc.Workshops do
   Workshop from dashboard reads, but does not alter its committee Calendar
   event. The projection deliberately excludes descriptions, notes, capacity,
   pricing, and attendee data.
+
+  ALE-440: `location` is the recognizable Calendar location string — the
+  manually entered destination text when one is stored, else the short venue
+  label (also for a selected Google place, whose text is never stored). It is
+  never a link.
   """
   @spec calendar_projection(binary()) ::
           %{
@@ -228,10 +237,18 @@ defmodule Dhc.Workshops do
         status: w.status,
         start_date: w.start_date,
         end_date: w.end_date,
-        location: w.location
+        label: w.location,
+        destination_text: w.destination_text
       }
     )
     |> Repo.one()
+    |> case do
+      nil ->
+        nil
+
+      source ->
+        calendar_source(source)
+    end
   end
 
   @doc """
@@ -262,10 +279,25 @@ defmodule Dhc.Workshops do
         status: w.status,
         start_date: w.start_date,
         end_date: w.end_date,
-        location: w.location
+        label: w.location,
+        destination_text: w.destination_text
       }
     )
     |> Repo.all()
+    |> Enum.map(&calendar_source/1)
+  end
+
+  # Keep the Calendar projection closed. The intermediate fields are selected only
+  # to derive the native location and must never escape to the shared protocol.
+  defp calendar_source(source) do
+    %{
+      id: source.id,
+      title: source.title,
+      status: source.status,
+      start_date: source.start_date,
+      end_date: source.end_date,
+      location: Destinations.calendar_location(source.destination_text, source.label)
+    }
   end
 
   @doc "Current confirmed Workshop places and their saved registration addresses."
@@ -288,6 +320,123 @@ defmodule Dhc.Workshops do
     case PaymentCommands.execute(:system, {:materialize_calendar_launch, workshop_id, clock}) do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # ── Reviewed destination enrichment (ALE-443) ────────────────────────
+
+  @doc """
+  The closed facts (`Dhc.Workshops.DestinationEnrichment.facts/1`) of every
+  Workshop that has not yet ended at `now`, for a reviewed destination
+  backfill preview. Cancelled, archived and already-started Workshops are
+  included so the preview can report why each is refused. Read-only.
+  """
+  @spec destination_backfill_sources(DateTime.t()) :: [DestinationEnrichment.facts()]
+  def destination_backfill_sources(%DateTime{} = now) do
+    from(w in Workshop, where: w.end_date > ^now, order_by: [asc: w.start_date, asc: w.id])
+    |> Repo.all()
+    |> Enum.map(&DestinationEnrichment.facts/1)
+  end
+
+  @doc """
+  The advisory enrichment reading for one Workshop's facts: the same rule
+  `enrich_destination/4` applies under the lock, without the reviewed-facts
+  comparison.
+  """
+  @spec check_destination_enrichment(
+          DestinationEnrichment.facts() | nil,
+          DestinationEnrichment.destination(),
+          DateTime.t()
+        ) :: :change | :unchanged | {:refused, DestinationEnrichment.refusal()}
+  defdelegate check_destination_enrichment(facts, proposed, now),
+    to: DestinationEnrichment,
+    as: :check
+
+  @doc """
+  Applies one reviewed same-Venue destination enrichment, including to a
+  published Workshop outside the ordinary planned-only edit window.
+
+  `actor` is `{:staff, principal_id}` and must hold `workshops.manage`; it is
+  authorized before any read. Under the Workshop lock the row is re-read and
+  judged by `DestinationEnrichment.check_reviewed/4` against the clock read
+  inside the lock (`opts[:clock]`, default `DateTime.utc_now/0`): the start
+  must still be in the future and the label, Dublin schedule, status and
+  destination must still be the reviewed `expected` facts. Only the three
+  destination fields change; the label, schedule and every place, payment and
+  refund fact stay as they are, and no email is queued. A change records the
+  identifier-only Calendar intent in the same transaction; an unchanged
+  destination writes nothing.
+  """
+  @spec enrich_destination(
+          {:staff, binary()},
+          binary(),
+          %{
+            expected: DestinationEnrichment.expected(),
+            destination: DestinationEnrichment.destination()
+          },
+          keyword()
+        ) ::
+          {:ok, :changed | :unchanged}
+          | {:error, :forbidden | :invalid_destination | DestinationEnrichment.refusal()}
+  def enrich_destination(actor, workshop_id, review, opts \\ [])
+
+  def enrich_destination(
+        actor,
+        workshop_id,
+        %{expected: expected, destination: destination},
+        opts
+      )
+      when is_binary(workshop_id) do
+    clock = Keyword.get(opts, :clock, &DateTime.utc_now/0)
+
+    with :ok <- authorize_manager(actor),
+         {:ok, id} <- cast_workshop_id(workshop_id) do
+      {:ok, result} =
+        Repo.transaction(fn ->
+          workshop = Repo.one(from(w in Workshop, where: w.id == ^id, lock: "FOR UPDATE"))
+          facts = workshop && DestinationEnrichment.facts(workshop)
+
+          facts
+          |> DestinationEnrichment.check_reviewed(expected, destination, clock.())
+          |> enrich_locked(workshop, destination)
+        end)
+
+      result
+    end
+  end
+
+  defp enrich_locked(:unchanged, _workshop, _destination), do: {:ok, :unchanged}
+  defp enrich_locked({:refused, reason}, _workshop, _destination), do: {:error, reason}
+
+  defp enrich_locked(:change, workshop, destination) do
+    case workshop |> Workshop.destination_changeset(destination) |> Repo.update() do
+      {:ok, updated} ->
+        :ok = WorkshopCalendar.record_change(:workshop, updated.id)
+        {:ok, :changed}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:error, :invalid_destination}
+    end
+  end
+
+  # The CLI operator is a staff principal, judged like a dashboard session:
+  # an active profile whose roles grant `workshops.manage`.
+  defp authorize_manager({:staff, principal_id}) when is_binary(principal_id) do
+    with {:ok, id} <- Ecto.UUID.cast(principal_id),
+         {:ok, projection} <- Auth.load_session_principal(%Principal{id: id}),
+         :ok <- Capabilities.authorize(projection, :"workshops.manage") do
+      :ok
+    else
+      _denied -> {:error, :forbidden}
+    end
+  end
+
+  defp authorize_manager(_actor), do: {:error, :forbidden}
+
+  defp cast_workshop_id(workshop_id) do
+    case Ecto.UUID.cast(workshop_id) do
+      {:ok, id} -> {:ok, id}
+      :error -> {:error, :not_found}
     end
   end
 
@@ -1047,6 +1196,9 @@ defmodule Dhc.Workshops do
       start_date: workshop.start_date,
       end_date: workshop.end_date,
       location: workshop.location,
+      destination_text: workshop.destination_text,
+      destination_provider: workshop.destination_provider,
+      destination_place_id: workshop.destination_place_id,
       price_non_member: trunc(workshop.price_non_member),
       max_capacity: workshop.max_capacity
     }
@@ -1164,6 +1316,9 @@ defmodule Dhc.Workshops do
         title: w.title,
         description: w.description,
         location: w.location,
+        destination_text: w.destination_text,
+        destination_provider: w.destination_provider,
+        destination_place_id: w.destination_place_id,
         start_date: w.start_date,
         end_date: w.end_date,
         max_capacity: w.max_capacity,

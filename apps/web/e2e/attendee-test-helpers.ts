@@ -46,6 +46,8 @@ type CreateTestWorkshopOverrides = Partial<{
 	title: string;
 	description: string;
 	location: string;
+	/** ALE-440: optional manually entered destination text. */
+	destination_text: string;
 	start_date: string;
 	end_date: string;
 	max_capacity: number;
@@ -104,6 +106,9 @@ export async function createTestWorkshop(
 		title: defaultWorkshop.title,
 		description: defaultWorkshop.description,
 		location: defaultWorkshop.location,
+		...(overrides.destination_text !== undefined && {
+			destinationText: overrides.destination_text,
+		}),
 		startDate: defaultWorkshop.start_date,
 		endDate: defaultWorkshop.end_date,
 		maxCapacity: defaultWorkshop.max_capacity,

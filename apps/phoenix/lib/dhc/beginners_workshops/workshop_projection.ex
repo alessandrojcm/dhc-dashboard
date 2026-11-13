@@ -3,7 +3,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
   The one closed view of a Beginners' Workshop row. The Workshops list and
   every workshop command return it, so a command result and a list row cannot
   disagree. Civil values are Europe/Dublin; the Payment Cutoff is given both
-  as its instant and as its Dublin date and time.
+  as its instant and as its Dublin date and time. The optional destination
+  details (ALE-441) sit beside the short `venue` label, with (ALE-442) a
+  selected Google place's identity (its Place ID only, never Google's text);
+  legacy rows carry `nil`.
   """
 
   alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, WorkshopFacts, WorkshopPolicy}
@@ -13,6 +16,9 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
           id: binary(),
           status: String.t(),
           venue: String.t(),
+          destination_text: String.t() | nil,
+          destination_provider: String.t() | nil,
+          destination_place_id: String.t() | nil,
           date: Date.t(),
           start_time: Time.t(),
           end_time: Time.t() | nil,
@@ -37,6 +43,9 @@ defmodule Dhc.BeginnersWorkshops.WorkshopProjection do
       id: workshop.id,
       status: workshop.status,
       venue: workshop.venue,
+      destination_text: workshop.destination_text,
+      destination_provider: workshop.destination_provider,
+      destination_place_id: workshop.destination_place_id,
       date: workshop.date,
       start_time: workshop.start_time,
       end_time: workshop.end_time,

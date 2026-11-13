@@ -121,3 +121,66 @@ test("shows each Workshop's day and times on the Dublin clock, either side of th
 		.element(screen.getByRole("article").first())
 		.toHaveTextContent(/Oct\s*25\s*Sun/);
 });
+
+test("shows a saved destination and a safe directions link beside the label", async () => {
+	// ALE-440: members plan their journey from the list card; manual text
+	// links an ordinary Maps search, and no link is invented for a legacy row.
+	const screen = await render(WorkshopListTestWrapper, {
+		workshops: [
+			workshop({
+				destinationText: "National Basketball Arena, Tymon Park, Dublin 6w",
+			}),
+			workshop({
+				id: "22222222-2222-2222-2222-222222222222",
+				title: "Legacy workshop",
+			}),
+		],
+	});
+
+	const card = screen.getByRole("article").first();
+	await expect.element(card.getByText("Main Hall")).toBeVisible();
+	await expect
+		.element(card.getByText("National Basketball Arena, Tymon Park, Dublin 6w"))
+		.toBeVisible();
+	const directions = card.getByRole("link", { name: "Get directions" });
+	await expect.element(directions).toBeVisible();
+	await expect
+		.element(directions)
+		.toHaveAttribute(
+			"href",
+			`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent("National Basketball Arena, Tymon Park, Dublin 6w")}`,
+		);
+	await expect
+		.element(directions)
+		.toHaveAttribute("rel", "noopener noreferrer");
+
+	// The legacy, label-only row keeps its label with no directions link.
+	const legacy = screen.getByRole("article").nth(1);
+	expect(
+		legacy.getByRole("link", { name: "Get directions" }).elements(),
+	).toHaveLength(0);
+});
+
+test("ALE-442: a selected Google place shows the label and place-bound directions, never Google text or attribution", async () => {
+	const screen = await render(WorkshopListTestWrapper, {
+		workshops: [
+			workshop({
+				destinationProvider: "google",
+				destinationPlaceId: "place_hall",
+			}),
+		],
+	});
+
+	const card = screen.getByRole("article").first();
+	await expect.element(card.getByText("Main Hall")).toBeVisible();
+	// No Google text is stored, so nothing on an attendee surface is Google's.
+	expect(card.getByTestId("destination-attribution").elements()).toHaveLength(
+		0,
+	);
+	await expect
+		.element(card.getByRole("link", { name: "Get directions" }))
+		.toHaveAttribute(
+			"href",
+			"https://www.google.com/maps/dir/?api=1&destination=Main%20Hall&destination_place_id=place_hall",
+		);
+});

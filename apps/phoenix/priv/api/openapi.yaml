@@ -15,6 +15,13 @@ servers:
     description: Relative path (same origin)
 
 tags:
+  - name: VenueLookup
+    description: |
+      ALE-442: the domain-neutral Google Maps venue lookup used by every
+      Workshop form. It searches and previews only; each Workshop domain saves
+      a selection through its own operations.
+    x-context: Dhc.Places
+    x-resource: Place
   - name: TrainingAnnouncements
     description: Committee-managed Training Announcements and absolute-date exceptions.
     x-context: Dhc.TrainingAnnouncements
@@ -433,6 +440,129 @@ paths:
         "403": {$ref: "#/components/responses/TrainingAnnouncementForbidden"}
         "404": {$ref: "#/components/responses/TrainingAnnouncementNotFound"}
         "409": {$ref: "#/components/responses/TrainingAnnouncementConflict"}
+  /venue-lookup/suggestions:
+    post:
+      operationId: venueLookup.suggest
+      tags:
+        - VenueLookup
+      summary: Search Google Maps for venues
+      description: |
+        Google Places Autocomplete (New) for a venue name or address, biased
+        toward Dublin without excluding other places. Suggestions are ordered
+        and transient (`Cache-Control: no-store`); none is an empty list.
+        `sessionToken` is a client-generated UUID v4 for one search
+        interaction, reused by the selection that ends it.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueLookupSuggestRequest"
+      responses:
+        "200":
+          description: Ordered suggestions for the search.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueLookupSuggestionsResponse"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Venue lookup capability required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid search or session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Google rejected the request or is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Google venue search is not set up or has reached its quota.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /venue-lookup/selections:
+    post:
+      operationId: venueLookup.resolve
+      tags:
+        - VenueLookup
+      summary: Preview a chosen venue suggestion
+      description: |
+        Google Place Details (New) for a deliberately chosen suggestion, as a
+        closed preview with the credits that must be shown beside it. The
+        preview is shown only while staff edit a destination: only its
+        `placeId` is ever saved, through a separate Workshop operation, and
+        its name, address and credits are never stored or shown to
+        attendees. `Cache-Control: no-store`.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VenueLookupResolveRequest"
+      responses:
+        "200":
+          description: The chosen place's preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VenueLookupSelectionResponse"
+        "404":
+          description: The place is no longer available.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Venue lookup capability required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid search or session token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Google rejected the request or is unavailable.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Google venue search is not set up or has reached its quota.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /discord-doctor/report:
     get:
       operationId: discordDoctor.report
@@ -3348,7 +3478,11 @@ paths:
         Lifecycle/status is not directly writable here; use publish/cancel
         command endpoints. Pricing edits preserve the current looser rule:
         pricing may be changed while planned, or after publish only while there
-        are zero active (`pending`/`confirmed`) registrations.
+        are zero active (`pending`/`confirmed`) registrations. Optional
+        destination fields (`destinationText`, `destinationPlaceId`) are
+        general edits, not pricing: they follow the
+        planned-only rule, and an omitted key preserves the stored value while
+        an explicit `null` clears it (ALE-440).
 
         Requires `workshop_coordinator`, `president`, or `admin`.
       security:
@@ -4055,6 +4189,37 @@ paths:
       responses:
         "200":
           description: The rescheduled workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404": {$ref: "#/components/responses/BeginnersWorkshopNotFound"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopConflict"}
+        "422": {$ref: "#/components/responses/BeginnersWorkshopInvalid"}
+  /beginners-workshops/{id}/destination:
+    parameters: [{$ref: "#/components/parameters/BeginnersWorkshopId"}]
+    put:
+      operationId: beginnersWorkshops.updateDestination
+      tags: [BeginnersWorkshops]
+      summary: Change a workshop's destination at the same venue
+      description: |
+        Saves only the optional destination — manual text or a selected
+        Google place (ALE-441/ALE-442) — before Attendance Finalisation. It is not a
+        reschedule: the date, times, venue, payment deadline, offer rounds
+        and reschedule count stay as they are, nobody is emailed and the
+        Staff are not notified; only the Calendar events follow the new
+        location. An unchanged destination is a no-op. Requires
+        `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopDestinationRequest"}
+      responses:
+        "200":
+          description: The workshop with its saved destination
           content:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopResponse"}
@@ -8738,6 +8903,61 @@ components:
         format: uuid
       description: The Loan id.
   schemas:
+    DestinationAttribution:
+      type: object
+      description: |
+        A third-party credit Google returned with a place preview (ALE-442),
+        shown beside Google's name and address while staff edit a
+        destination. Never stored.
+      required: [provider, providerUri]
+      properties:
+        provider: {type: string, maxLength: 200}
+        providerUri: {type: string, nullable: true, maxLength: 2048, description: An https link to the provider}
+    VenueLookupSuggestRequest:
+      type: object
+      required: [input, sessionToken]
+      properties:
+        input: {type: string, minLength: 1, maxLength: 120}
+        sessionToken: {type: string, format: uuid}
+    VenueLookupResolveRequest:
+      type: object
+      required: [placeId, sessionToken]
+      properties:
+        placeId: {type: string, maxLength: 255, pattern: '^[A-Za-z0-9_-]+$'}
+        sessionToken: {type: string, format: uuid}
+    VenueLookupSuggestion:
+      type: object
+      required: [placeId, text]
+      properties:
+        placeId: {type: string}
+        text: {type: string, description: "Google's suggestion text, for this search only"}
+    VenueLookupSuggestionsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [suggestions]
+          properties:
+            suggestions:
+              type: array
+              items: {$ref: "#/components/schemas/VenueLookupSuggestion"}
+    VenueLookupSelection:
+      type: object
+      required: [provider, placeId, name, address, attributions]
+      properties:
+        provider: {type: string, enum: [google]}
+        placeId: {type: string}
+        name: {type: string, nullable: true}
+        address: {type: string, nullable: true}
+        attributions:
+          type: array
+          items: {$ref: "#/components/schemas/DestinationAttribution"}
+    VenueLookupSelectionResponse:
+      type: object
+      required: [data]
+      properties:
+        data: {$ref: "#/components/schemas/VenueLookupSelection"}
     MemberAnnouncementDocument:
       type: object
       description: |
@@ -9226,6 +9446,9 @@ components:
         - id
         - status
         - venue
+        - destinationText
+        - destinationProvider
+        - destinationPlaceId
         - date
         - startTime
         - endTime
@@ -9245,6 +9468,29 @@ components:
         id: {type: string, format: uuid}
         status: {$ref: "#/components/schemas/BeginnersWorkshopStatus"}
         venue: {type: string, maxLength: 80}
+        destinationText:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when a suggestion was deliberately chosen from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         date: {type: string, format: date}
         startTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$'}
         endTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', nullable: true}
@@ -9451,6 +9697,28 @@ components:
         paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
         contactFromDate: {type: string, format: date}
         paymentWindowDays: {type: integer, minimum: 1}
+        destinationText:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: |
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
         coachPrincipalId:
           type: string
           format: uuid
@@ -9490,7 +9758,9 @@ components:
         same date; overnight workshops are unsupported. Optionally
         optionally with a new Payment Cutoff date or time and, while Batch 1
         has not gone out, a new contact-from date. Omitted fields keep their
-        value or their offset before the start.
+        value or their offset before the start. Destination details may be
+        saved with a move but never count as one: a destination-only change
+        goes through `PUT /beginners-workshops/{id}/destination`.
       properties:
         venue: {type: string, minLength: 1, maxLength: 80}
         date: {type: string, format: date}
@@ -9499,7 +9769,63 @@ components:
         paymentCutoffDate: {type: string, format: date}
         paymentCutoffTime: {type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$'}
         contactFromDate: {type: string, format: date}
+        destinationText:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: |
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
+            Omitting the key keeps the stored value; `null` (or an empty string) clears it.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
       required: [startTime, endTime]
+    BeginnersWorkshopDestinationRequest:
+      type: object
+      description: |
+        A destination-only change at the same venue (ALE-441). `venue` names
+        the short label the destination describes and must equal the
+        workshop's current venue (409 `venue_changed` otherwise); it is never
+        changed here. Omitted destination keys keep their stored value.
+      required: [venue]
+      properties:
+        venue: {type: string, minLength: 1, maxLength: 80}
+        destinationText:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: |
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
+            Omitting the key keeps the stored value; `null` (or an empty string) clears it.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
     BeginnersWorkshopResponse:
       type: object
       required: [data]
@@ -10049,12 +10375,35 @@ components:
       enum: [inactive, payment_closed]
     BeginnersIntakeWorkshop:
       type: object
-      required: [date, startTime, endTime, venue]
+      required: [date, startTime, endTime, venue, destinationText, destinationProvider, destinationPlaceId]
       properties:
         date: {type: string, format: date, description: Europe/Dublin civil date}
         startTime: {type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$", description: "Europe/Dublin HH:MM"}
         endTime: {type: string, pattern: "^[0-2][0-9]:[0-5][0-9]$", nullable: true, description: "Europe/Dublin HH:MM"}
         venue: {type: string}
+        destinationText:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when a suggestion was deliberately chosen from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
     BeginnersIntakePage:
       type: object
       description: |
@@ -12615,6 +12964,29 @@ components:
           format: date-time
         location:
           type: string
+        destinationText:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when a suggestion was deliberately chosen from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         priceNonMember:
           type: integer
           minimum: 0
@@ -12737,6 +13109,28 @@ components:
           type: boolean
         announceEmail:
           type: boolean
+        destinationText:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: |
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
       description: |
         Coordinator Workshop management input. Lifecycle status and createdBy
         are server-owned and intentionally absent.
@@ -12779,6 +13173,28 @@ components:
           type: boolean
         announceEmail:
           type: boolean
+        destinationText:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: |
+            Optional manual destination text (ALE-440/ALE-441): what staff typed
+            in the destination input without choosing a suggestion, saved as
+            written (trimmed) and kept separate from the short label. A
+            destination is manual text or a selected place, never both: text
+            beside a `destinationPlaceId` is refused (422 on `destinationText`),
+            and text sent without the stored Place ID replaces that place.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          maxLength: 255
+          pattern: '^[A-Za-z0-9_-]+$'
+          description: |
+            ALE-442: the Google Place ID of a suggestion chosen in the
+            destination input. Only the ID is saved: Google's name, address and
+            credits are never sent or stored. A new Place ID records a Google
+            selection and clears any stored manual text; `null` clears it.
+            Omission preserves.
       description: |
         Partial Workshop management update. All fields from
         `WorkshopManagementRequest` are optional at runtime; lifecycle status is
@@ -12820,6 +13236,29 @@ components:
         location:
           type: string
           nullable: true
+        destinationText:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when a suggestion was deliberately chosen from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         startDate:
           type: string
           format: date-time
@@ -12875,6 +13314,9 @@ components:
         - title
         - description
         - location
+        - destinationText
+        - destinationProvider
+        - destinationPlaceId
         - startDate
         - endDate
         - maxCapacity
@@ -12904,6 +13346,29 @@ components:
         location:
           type: string
           nullable: true
+        destinationText:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when a suggestion was deliberately chosen from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         startDate:
           type: string
           format: date-time
@@ -13010,6 +13475,29 @@ components:
           nullable: true
         location:
           type: string
+        destinationText:
+          type: string
+          nullable: true
+          description: |
+            Optional manually entered destination text (ALE-440/ALE-441), shown
+            to attendees beside the short label. `null` on legacy and label-only
+            rows, and always `null` when a place is selected.
+        destinationProvider:
+          type: string
+          enum: [google, null]
+          nullable: true
+          description: |
+            `google` when a suggestion was deliberately chosen from Google Maps
+            venue search (ALE-442); `null` for a manual destination. Only the
+            Place ID is stored, never Google's text, so attendee surfaces carry
+            no Google attribution.
+        destinationPlaceId:
+          type: string
+          nullable: true
+          description: |
+            The selected place's Google Place ID, used only for the directions
+            link (`destination_place_id`, named by the short label); `null` for
+            a manual destination.
         startDate:
           type: string
           format: date-time
@@ -15057,6 +15545,7 @@ components:
         - members.settings.edit
         - membership.reactivate
         - training_announcements.manage
+        - venues.lookup
         - workshops.manage
         - workshops.own.read
     AuthSessionProjection:

@@ -8,9 +8,18 @@ import {
 	type FormPath,
 } from "#lib/server/beginners-workshops/command.js";
 
+// ALE-441: Phoenix's destination fields → the shared destination input's
+// control names (`destination-input.svelte`). ALE-442: a refused selection
+// shows on the destination input through its hidden Place ID control.
+const DESTINATION_CONTROLS = new Map([
+	["destinationText", "destination_text"],
+	["destinationPlaceId", "destination_place_id"],
+]);
+
 // Values the Schedule form asks once for every date it schedules.
 const SCHEDULE_SHARED_FIELDS = new Set([
 	"venue",
+	...DESTINATION_CONTROLS.values(),
 	"startTime",
 	"endTime",
 	"capacity",
@@ -39,7 +48,9 @@ function sameNameFormPath(fields: ReadonlySet<string>) {
 
 /** Public Phoenix field name → the form's own name. */
 function formField(field: string): string {
-	return field === "feeCents" ? "fee" : field;
+	return field === "feeCents"
+		? "fee"
+		: (DESTINATION_CONTROLS.get(field) ?? field);
 }
 
 /** `workshops.<i>.<field>` → the shared control, or that date's control. */
@@ -67,10 +78,17 @@ const RESCHEDULE_FIELDS = new Set([
 	"paymentCutoffDate",
 	"paymentCutoffTime",
 	"contactFromDate",
+	...DESTINATION_CONTROLS.values(),
 ]);
 
-/** A reschedule field → its control in the Reschedule dialog. */
-export const rescheduleFormPath = sameNameFormPath(RESCHEDULE_FIELDS);
+/**
+ * A reschedule or (ALE-441) destination-only field → its control in the
+ * Reschedule dialog.
+ */
+const rescheduleField = sameNameFormPath(RESCHEDULE_FIELDS);
+export function rescheduleFormPath(field: string): FormPath | undefined {
+	return rescheduleField(formField(field));
+}
 
 /** A Staff field → its picker in the Staff dialog. */
 export const staffFormPath = sameNameFormPath(STAFF_FIELDS);
