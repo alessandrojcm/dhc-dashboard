@@ -1,22 +1,15 @@
 <script lang="ts">
-import { PUBLIC_STRIPE_KEY } from "$app/env/public";
-import { loadStripe, type StripeEmbeddedCheckout } from "@stripe/stripe-js";
 import Dinero from "dinero.js";
-import { onMount } from "svelte";
 import {
 	formatDublinDateLong,
 	formatDublinTime12h,
 } from "#lib/club-calendar.js";
-import * as Alert from "#lib/components/ui/alert/index.js";
 import * as Card from "#lib/components/ui/card/index.js";
-import LoaderCircle from "#lib/components/ui/loader-circle.svelte";
+import WorkshopRegistrationCheckout from "#lib/components/workshops/workshop-registration-checkout.svelte";
 import type { PageData } from "./$types";
 
 const { data }: { data: PageData } = $props();
 const workshop = $derived(data.workshop);
-
-let flowError = $state<string | null>(null);
-let checkoutInitializing = $state(true);
 
 const formattedDate = $derived.by(() => {
 	return formatDublinDateLong(workshop.start_date);
@@ -31,60 +24,6 @@ const formattedPrice = $derived.by(() => {
 		amount: workshop.price_non_member,
 		currency: "EUR",
 	}).toFormat();
-});
-
-onMount(() => {
-	let destroyed = false;
-	let embeddedCheckout: StripeEmbeddedCheckout | null = null;
-
-	async function mountEmbeddedCheckout() {
-		if (!PUBLIC_STRIPE_KEY) {
-			flowError = "Payment is currently unavailable. Please try again later.";
-			checkoutInitializing = false;
-			return;
-		}
-
-		if (!data.checkoutClientSecret) {
-			flowError =
-				"Failed to initialize checkout. Please refresh and try again.";
-			checkoutInitializing = false;
-			return;
-		}
-
-		try {
-			const stripe = await loadStripe(PUBLIC_STRIPE_KEY);
-
-			if (!stripe) {
-				flowError =
-					"Failed to initialize secure payment. Please refresh and try again.";
-				return;
-			}
-
-			embeddedCheckout = await stripe.initEmbeddedCheckout({
-				clientSecret: data.checkoutClientSecret,
-			});
-
-			if (destroyed) {
-				embeddedCheckout.destroy();
-				return;
-			}
-			embeddedCheckout.mount("#workshop-checkout");
-		} catch (error) {
-			flowError =
-				error instanceof Error
-					? error.message
-					: "Failed to initialize checkout. Please try again.";
-		} finally {
-			checkoutInitializing = false;
-		}
-	}
-
-	void mountEmbeddedCheckout();
-
-	return () => {
-		destroyed = true;
-		embeddedCheckout?.destroy();
-	};
 });
 </script>
 
@@ -143,26 +82,11 @@ onMount(() => {
 					</div>
 
 					<div class="min-w-0 space-y-3">
-						{#if flowError}
-							<Alert.Root variant="destructive" class="w-full">
-								<Alert.Title>Registration error</Alert.Title>
-								<Alert.Description>{flowError}</Alert.Description>
-							</Alert.Root>
-						{/if}
-
-						{#if checkoutInitializing}
-							<div
-								class="flex items-center gap-2 text-sm text-muted-foreground"
-							>
-								<LoaderCircle class="h-4 w-4" />
-								Loading payment form...
-							</div>
-						{/if}
-
-						<div
-							id="workshop-checkout"
-							class="h-[70vh] min-h-[460px] max-h-[820px] w-full min-w-0 overflow-y-auto overflow-x-hidden rounded-lg border bg-background"
-						></div>
+						{#key data.checkoutSessionId}
+							<WorkshopRegistrationCheckout
+								clientSecret={data.checkoutClientSecret}
+							/>
+						{/key}
 
 						<p class="text-xs text-muted-foreground">
 							A payment receipt will be sent by email after successful checkout.

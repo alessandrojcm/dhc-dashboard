@@ -217,7 +217,8 @@ const resumeMutation = createMutation(() => ({
 const memberIsInactive = $derived(data.member.membership_status === "inactive");
 const canReactivate = $derived(Boolean(data.canReactivate) && memberIsInactive);
 
-let showReactivateModal = $state(false);
+// The member whose reactivation dialog is open; `null` closes it.
+let reactivatingMemberId = $state<string | null>(null);
 </script>
 
 <svelte:head>
@@ -730,7 +731,7 @@ let showReactivateModal = $state(false);
 								type="button"
 								class="w-full"
 								onclick={() => {
-									showReactivateModal = true;
+									reactivatingMemberId = requireMemberId();
 								}}
 							>
 								<RotateCcw class="size-4" aria-hidden="true" />
@@ -847,10 +848,14 @@ let showReactivateModal = $state(false);
 	/>
 {/if}
 
-{#if showReactivateModal}
-	<ReactivateMemberDialog
-		bind:open={showReactivateModal}
-		memberId={requireMemberId()}
-		onSettled={() => invalidate(detailDependency(requireMemberId()))}
-	/>
+{#if reactivatingMemberId}
+	{#key reactivatingMemberId}
+		<ReactivateMemberDialog
+			memberId={reactivatingMemberId}
+			onClose={() => {
+				reactivatingMemberId = null;
+			}}
+			onSettled={(memberId) => invalidate(detailDependency(memberId))}
+		/>
+	{/key}
 {/if}

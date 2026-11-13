@@ -13,163 +13,171 @@ import {
 	membershipReactivateMutation,
 	membershipReactivationPreviewAmountsOptions,
 	membershipReactivationPreviewOptions,
-	type MembershipReactivateAnnualFeeMode,
 } from "@dhc/api-client";
+import { useMachine } from "@xstate/svelte";
+import { fromPromise } from "xstate";
 import { page } from "$app/state";
+import { untrack } from "svelte";
 import { toast } from "svelte-sonner";
+import {
+	reactivationMachine,
+	reactivationView,
+	type ReactivationOutcome,
+} from "#lib/membership/reactivation-machine.js";
+import { reactivationStartWindow } from "#lib/membership/reactivation-start-window.js";
 import ReactivateMembershipModal from "./reactivate-membership-modal.svelte";
 
 /**
- * Self-contained reactivation interaction (ALE-252): fetches the saved SEPA
- * method preview while open, submits the reactivation through the generated
- * mutation options, reports pending/succeeded/declined outcomes as toasts,
- * and reconciles the standard membership queries on success.
+ * One reactivation dialog for one member (ALE-252, ALE-450). Mount it only
+ * while the dialog is open, keyed by the member: it runs its own
+ * `reactivationMachine` actor, which stops when this unmounts, so a late
+ * answer for a previous member can never reach a replacement.
+ *
+ * TanStack Query owns every read and the cache: the machine's actors are the
+ * generated preview query and mutations, and the amounts preview is a query
+ * keyed off the machine's selection.
  */
 let {
-	/** Member to reactivate; falsy unmounts nothing but disables queries. */
 	memberId,
-	open = $bindable(false),
-	/** Extra caller-side reconciliation (e.g. SvelteKit load dependencies). */
+	/** The dialog finished (an outcome, or dismissed): unmount it. */
+	onClose,
+	/**
+	 * Extra caller-side reconciliation (e.g. SvelteKit load dependencies) for
+	 * the member reactivated; it may run after this dialog unmounted.
+	 */
 	onSettled,
 }: {
 	memberId: string;
-	open?: boolean;
-	onSettled?: () => Promise<void> | void;
+	onClose: () => void;
+	onSettled?: (memberId: string) => Promise<void> | void;
 } = $props();
 
 const queryClient = useQueryClient();
+// Read once: the machine is this member's, and so is everything below.
+const member = untrack(() => memberId);
+// One reading for the machine's initial start date and the date picker.
+const startWindow = reactivationStartWindow();
 
-// Saved SEPA method shown BEFORE any charge; fetched lazily through the
-// generated preview query options while the dialog is open.
-const reactivationPreview = createQuery(() => ({
-	...membershipReactivationPreviewOptions({
-		path: { memberId },
+const reactivateMutation = createMutation(() => membershipReactivateMutation());
+const billingPortalMutation = createMutation(() =>
+	membershipBillingPortalMutation(),
+);
+
+const OUTCOME_TOASTS = {
+	succeeded: () =>
+		toast.success("Membership reactivated.", { position: "top-right" }),
+	terminal: () =>
+		toast.error(
+			"Reactivation submitted, but the bank declined the charge. Use the billing portal to sort out payment.",
+			{ position: "top-right", duration: 10000 },
+		),
+	pending: awaitingBank,
+	needs_action: awaitingBank,
+} satisfies Record<ReactivationOutcome, () => void>;
+
+function awaitingBank() {
+	toast.info(
+		"Awaiting bank confirmation. SEPA direct debits usually settle within a few business days.",
+		{ position: "top-right", duration: 10000 },
+	);
+}
+
+/**
+ * Runs as the dialog closes and outlives this component on purpose: the
+ * reactivation already happened, so its reads go stale either way.
+ */
+async function reconcile(
+	reactivated: string,
+	settled: ((memberId: string) => Promise<void> | void) | undefined,
+) {
+	const ownProfile = page.data.session?.principal?.id === reactivated;
+	await Promise.all([
+		queryClient.invalidateQueries({ queryKey: membersListQueryKey() }),
+		queryClient.invalidateQueries({
+			queryKey: membersShowQueryKey({ path: { memberId: reactivated } }),
+		}),
+		queryClient.invalidateQueries({ queryKey: membersAnalyticsQueryKey() }),
+		ownProfile
+			? queryClient.invalidateQueries({ queryKey: membersMeQueryKey() })
+			: Promise.resolve(),
+	]);
+	await settled?.(reactivated);
+}
+
+const { snapshot, send } = useMachine(
+	reactivationMachine.provide({
+		actors: {
+			lookUpMethod: fromPromise(async ({ input, signal }) => {
+				const options = membershipReactivationPreviewOptions({
+					path: { memberId: input.memberId },
+				});
+				// Closing mid-lookup cancels the request the query client runs.
+				signal.addEventListener("abort", () => {
+					void queryClient.cancelQueries({ queryKey: options.queryKey });
+				});
+				const response = await queryClient.fetchQuery(options);
+				return response.data;
+			}),
+			reactivate: fromPromise(async ({ input }) => {
+				const response = await reactivateMutation.mutateAsync({
+					path: { memberId: input.memberId },
+					body: input.selection,
+				});
+				return response.data;
+			}),
+			openBillingPortal: fromPromise(async ({ input }) => {
+				const response = await billingPortalMutation.mutateAsync({
+					path: { memberId: input.memberId },
+					body: { returnUrl: window.location.href },
+				});
+				return response.data;
+			}),
+		},
+		actions: {
+			report: (_, outcome) => OUTCOME_TOASTS[outcome](),
+			reconcile: ({ context }) => {
+				void reconcile(context.memberId, onSettled);
+			},
+			showPortal: (_, { url }) => {
+				window.open(url, "_blank", "noopener,noreferrer");
+			},
+			portalFailed: (_, { detail }) => {
+				toast.error(detail);
+			},
+			close: () => onClose(),
+		},
 	}),
-	enabled: open && memberId !== "",
-}));
+	{ input: { memberId: member, startDate: startWindow.earliest.toString() } },
+);
 
-// The selected start date and annual fee mode are owned by the modal (date
-// picker + radio group) and reported up through onSelectionChange so the
-// amounts query can key off both (ALE-254, ALE-253).
-let previewStartDate = $state<string | null>(null);
-let previewAnnualFeeMode =
-	$state<MembershipReactivateAnnualFeeMode>("prorated_now");
+const view = $derived(reactivationView($snapshot));
+const selection = $derived($snapshot.context.selection);
 
 // Stripe-computed amounts for the chosen selection, fetched only once a
 // saved method exists (otherwise the operator gets the billing-portal
 // fallback instead). Keyed by startDate AND annualFeeMode, so changing
-// either refetches. Failure degrades gracefully: the modal hides amounts
-// and keeps the form usable — this query failing must never block a valid
-// charge.
+// either refetches. Failure degrades gracefully: the modal hides amounts and
+// keeps the form usable, so this query failing never blocks a valid charge.
 const reactivationAmounts = createQuery(() => ({
 	...membershipReactivationPreviewAmountsOptions({
-		path: { memberId },
+		path: { memberId: member },
 		query: {
-			startDate: previewStartDate ?? "",
-			annualFeeMode: previewAnnualFeeMode,
+			startDate: selection.startDate,
+			annualFeeMode: selection.annualFeeMode,
 		},
 	}),
-	enabled:
-		open &&
-		memberId !== "" &&
-		previewStartDate !== null &&
-		Boolean(reactivationPreview.data?.data.savedPaymentMethod),
-}));
-
-// Submission error kept inside the modal so the operator can retry without
-// losing context; `noSavedMethod` switches it to the billing-portal fallback.
-let submitError = $state<{
-	detail: string;
-	noSavedMethod: boolean;
-} | null>(null);
-
-function isOwnProfile(): boolean {
-	return page.data.session?.principal?.id === memberId;
-}
-
-async function reconcile() {
-	await Promise.all([
-		queryClient.invalidateQueries({ queryKey: membersListQueryKey() }),
-		queryClient.invalidateQueries({
-			queryKey: membersShowQueryKey({ path: { memberId } }),
-		}),
-		queryClient.invalidateQueries({ queryKey: membersAnalyticsQueryKey() }),
-		isOwnProfile()
-			? queryClient.invalidateQueries({ queryKey: membersMeQueryKey() })
-			: Promise.resolve(),
-	]);
-}
-
-const reactivateMutation = createMutation(() => ({
-	...membershipReactivateMutation(),
-	onSuccess: async ({ data: result }) => {
-		open = false;
-		submitError = null;
-		if (result.paymentState === "succeeded") {
-			toast.success("Membership reactivated.", { position: "top-right" });
-		} else if (result.paymentState === "terminal") {
-			toast.error(
-				"Reactivation submitted, but the bank declined the charge. Use the billing portal to sort out payment.",
-				{ position: "top-right", duration: 10000 },
-			);
-		} else if (
-			result.paymentState === "pending" ||
-			result.paymentState === "needs_action"
-		) {
-			toast.info(
-				"Awaiting bank confirmation. SEPA direct debits usually settle within a few business days.",
-				{ position: "top-right", duration: 10000 },
-			);
-		}
-		await reconcile();
-		await onSettled?.();
-	},
-	onError: (error) => {
-		submitError = {
-			detail: error.errors?.detail ?? "Failed to reactivate membership",
-			noSavedMethod: error.errors?.code === "no_saved_payment_method",
-		};
-	},
-}));
-
-// Manual fallback when the member has no usable saved method (ALE-252):
-// the operator opens the Stripe-hosted portal for the member.
-const billingPortalMutation = createMutation(() => ({
-	...membershipBillingPortalMutation(),
-	onSuccess: (response) => {
-		window.open(response.data.url, "_blank", "noopener,noreferrer");
-	},
-	onError: (error) => {
-		toast.error(error.errors?.detail ?? "Failed to open billing portal");
-	},
+	enabled: view.phase === "ready",
 }));
 </script>
 
 <ReactivateMembershipModal
-	bind:open
-	isPending={reactivateMutation.isPending}
-	isLoadingPreview={reactivationPreview.isPending}
-	savedPaymentMethod={reactivationPreview.data?.data.savedPaymentMethod ??
-		undefined}
-	membershipCoverage={reactivationPreview.data?.data.membershipCoverage}
+	{view}
+	{selection}
+	{startWindow}
 	amounts={reactivationAmounts.data?.data ?? null}
 	isLoadingAmounts={reactivationAmounts.isFetching}
-	errorDetail={submitError?.detail ?? null}
-	paymentMethodUnavailable={submitError?.noSavedMethod ?? false}
-	onOpenBillingPortal={() =>
-		billingPortalMutation.mutate({
-			path: { memberId },
-			body: { returnUrl: window.location.href },
-		})}
-	onSelectionChange={({ startDate, annualFeeMode }) => {
-		previewStartDate = startDate;
-		previewAnnualFeeMode = annualFeeMode;
-	}}
-	onConfirm={({ startDate, annualFeeMode }) => {
-		submitError = null;
-		reactivateMutation.mutate({
-			path: { memberId },
-			body: { startDate, annualFeeMode },
-		});
-	}}
+	onSelect={(next) => send({ type: "SELECT", ...next })}
+	onConfirm={() => send({ type: "CONFIRM" })}
+	onOpenBillingPortal={() => send({ type: "OPEN_PORTAL" })}
+	onClose={() => send({ type: "CLOSE" })}
 />

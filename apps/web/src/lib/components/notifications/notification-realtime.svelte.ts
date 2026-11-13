@@ -1,4 +1,5 @@
 import { Socket as PhoenixSocket } from "phoenix";
+import { assign, createActor, fromPromise, setup } from "xstate";
 import type { PhoenixPayload } from "phoenix";
 import { authSessionSocketToken } from "@dhc/api-client";
 
@@ -148,238 +149,297 @@ function warn(context: string, cause: unknown): void {
 	console.warn(`NotificationCenter realtime: ${context}`, cause);
 }
 
+type NotificationRealtimeMachineInput = {
+	socketUrl: string;
+	getSocketToken: SocketTokenFetcher;
+	invalidate: InvalidateNotifications;
+	createSocket: SocketFactory;
+};
+
+type NotificationRealtimeMachineContext = NotificationRealtimeMachineInput & {
+	socket: RealtimeSocket | null;
+	channel: RealtimeChannel | null;
+	attemptsSinceJoin: number;
+};
+
+type NotificationRealtimeMachineEvent =
+	| { type: "SOCKET_LOST"; socket: RealtimeSocket; reason?: string }
+	| { type: "CONNECTION_FAILED"; cause: unknown }
+	| { type: "CHANNEL_JOINED"; socket: RealtimeSocket }
+	| { type: "NOTIFICATION_CREATED"; socket: RealtimeSocket }
+	| { type: "DESTROY" }
+	// XState emits these for the invoked token-fetch actor. Listing them keeps
+	// guards and actions type-safe while the actor remains cancellable on exit.
+	| {
+			type: "xstate.done.actor.fetchSocketToken";
+			output: Awaited<ReturnType<SocketTokenFetcher>>;
+	  }
+	| { type: "xstate.error.actor.fetchSocketToken"; error: unknown };
+
+function disconnect(socket: RealtimeSocket, context: string): void {
+	try {
+		socket.disconnect();
+	} catch (error) {
+		warn(context, error);
+	}
+}
+
+function leave(channel: RealtimeChannel): void {
+	try {
+		channel
+			.leave()
+			.receive("error", (reason) => warn("channel leave rejected", reason));
+	} catch (error) {
+		warn("channel leave threw", error);
+	}
+}
+
+/**
+ * A definition is safely shared, but each connection factory below creates its
+ * own actor. Its context contains every injected browser dependency and the
+ * current socket/channel; no recovery state is shared between page mounts.
+ */
+const notificationRealtimeMachine = setup({
+	// SAFETY: XState reads these placeholders as types only.
+	types: {
+		context: {} as NotificationRealtimeMachineContext,
+		events: {} as NotificationRealtimeMachineEvent,
+		input: {} as NotificationRealtimeMachineInput,
+	},
+	actors: {
+		fetchSocketToken: fromPromise<
+			Awaited<ReturnType<SocketTokenFetcher>>,
+			SocketTokenFetcher
+		>(async ({ input }) => input()),
+	},
+	delays: {
+		backoff: ({ context }) =>
+			RECONNECT_BACKOFF_MS[
+				Math.min(context.attemptsSinceJoin, RECONNECT_BACKOFF_MS.length - 1)
+			],
+	},
+	guards: {
+		isUnauthorized: ({ event }) =>
+			event.type === "xstate.done.actor.fetchSocketToken" &&
+			event.output === socketSessionUnauthorized,
+		hasToken: ({ event }) =>
+			event.type === "xstate.done.actor.fetchSocketToken" &&
+			event.output !== socketSessionUnauthorized &&
+			!!event.output,
+		isCurrentSocket: ({ context, event }) =>
+			("socket" in event && context.socket === event.socket) || false,
+	},
+	actions: {
+		warnUnavailableToken: () => warn("socket token unavailable", undefined),
+		warnTokenTimeout: () => warn("socket token fetch timed out", undefined),
+		warnTokenFailure: ({ event }) => {
+			if (event.type === "xstate.error.actor.fetchSocketToken") {
+				warn("socket token fetch threw", event.error);
+			}
+		},
+		warnConnectionFailure: ({ event }) => {
+			if (event.type === "CONNECTION_FAILED") {
+				warn("realtime connection failed", event.cause);
+			}
+		},
+		invalidate: ({ context }) => {
+			try {
+				context.invalidate();
+			} catch (error) {
+				warn("invalidation callback threw", error);
+			}
+		},
+		resetBackoff: assign({ attemptsSinceJoin: 0 }),
+		countRetry: assign(({ context }) => ({
+			attemptsSinceJoin: context.attemptsSinceJoin + 1,
+		})),
+		constructSocket: assign(({ context, event, self }) => {
+			if (
+				event.type !== "xstate.done.actor.fetchSocketToken" ||
+				!event.output ||
+				event.output === socketSessionUnauthorized
+			) {
+				return {};
+			}
+
+			let socket: RealtimeSocket;
+			try {
+				socket = context.createSocket(context.socketUrl, {
+					authToken: event.output,
+					reconnectAfterMs: () => NEVER_MS,
+				});
+			} catch (error) {
+				self.send({ type: "CONNECTION_FAILED", cause: error });
+				return {};
+			}
+
+			const retired = () => {
+				const snapshot = self.getSnapshot();
+				return (
+					snapshot.status !== "active" || snapshot.context.socket !== socket
+				);
+			};
+			const lost = (reason?: string) => {
+				if (retired()) {
+					disconnect(socket, "retired socket disconnect threw");
+					return;
+				}
+				warn("socket lost", reason);
+				self.send({ type: "SOCKET_LOST", socket, reason });
+			};
+
+			try {
+				socket.onError(lost);
+				socket.onClose(() => lost());
+				socket.onOpen(() => {
+					if (retired()) disconnect(socket, "retired socket disconnect threw");
+				});
+			} catch (error) {
+				warn("socket lifecycle wiring failed", error);
+			}
+			try {
+				const channel = socket.channel("notifications:self");
+				channel.on(NOTIFICATION_CREATED_EVENT, () => {
+					const snapshot = self.getSnapshot();
+					if (
+						snapshot.status === "active" &&
+						snapshot.context.socket === socket
+					) {
+						self.send({ type: "NOTIFICATION_CREATED", socket });
+					}
+				});
+				return { socket, channel };
+			} catch (error) {
+				self.send({ type: "CONNECTION_FAILED", cause: error });
+				disconnect(socket, "socket disconnect threw");
+				return { socket: null, channel: null };
+			}
+		}),
+		connectAndJoin: ({ context, self }) => {
+			if (!context.socket || !context.channel) return;
+			try {
+				context.socket.connect();
+				context.channel
+					.join()
+					.receive("ok", () =>
+						self.send({ type: "CHANNEL_JOINED", socket: context.socket! }),
+					)
+					.receive("error", (reason) => warn("channel join rejected", reason))
+					.receive("timeout", () => warn("channel join timed out", undefined));
+			} catch (error) {
+				self.send({ type: "CONNECTION_FAILED", cause: error });
+			}
+		},
+		retireCurrent: assign(({ context }) => {
+			if (context.channel) leave(context.channel);
+			if (context.socket) disconnect(context.socket, "socket disconnect threw");
+			return { socket: null, channel: null };
+		}),
+		retireStaleSocket: ({ event }) => {
+			if (event.type === "SOCKET_LOST") {
+				disconnect(event.socket, "retired socket disconnect threw");
+			}
+		},
+	},
+}).createMachine({
+	id: "notificationRealtime",
+	context: ({ input }) => ({
+		...input,
+		socket: null,
+		channel: null,
+		attemptsSinceJoin: 0,
+	}),
+	initial: "fetchingToken",
+	states: {
+		fetchingToken: {
+			invoke: {
+				id: "fetchSocketToken",
+				src: "fetchSocketToken",
+				input: ({ context }) => context.getSocketToken,
+				onDone: [
+					{ guard: "isUnauthorized", target: "stopped" },
+					{
+						guard: "hasToken",
+						target: "connected",
+						actions: "constructSocket",
+					},
+					{ target: "backingOff", actions: "warnUnavailableToken" },
+				],
+				onError: { target: "backingOff", actions: "warnTokenFailure" },
+			},
+			after: {
+				[TOKEN_FETCH_TIMEOUT_MS]: {
+					target: "backingOff",
+					actions: "warnTokenTimeout",
+				},
+			},
+		},
+		connected: {
+			entry: "connectAndJoin",
+			on: {
+				SOCKET_LOST: [
+					{
+						guard: "isCurrentSocket",
+						target: "backingOff",
+						actions: "retireCurrent",
+					},
+					{ actions: "retireStaleSocket" },
+				],
+				CONNECTION_FAILED: {
+					target: "backingOff",
+					actions: ["warnConnectionFailure", "retireCurrent"],
+				},
+				CHANNEL_JOINED: {
+					guard: "isCurrentSocket",
+					actions: ["resetBackoff", "invalidate"],
+				},
+				NOTIFICATION_CREATED: {
+					guard: "isCurrentSocket",
+					actions: "invalidate",
+				},
+			},
+		},
+		backingOff: {
+			after: { backoff: { target: "fetchingToken", actions: "countRetry" } },
+		},
+		stopped: { type: "final", entry: "retireCurrent" },
+	},
+	on: { DESTROY: { target: ".stopped" } },
+});
+
 /**
  * Connect a Phoenix Socket, join the user's Notification topic, and keep it
  * connected. Every connect (initial and recovery) fetches a fresh socket
  * token because the token is short-lived; a socket error or close replaces
  * the socket after a bounded backoff.
  *
- * Returns a handle whose `destroy()` cancels any pending reconnect, leaves
- * the channel, and disconnects the socket. All realtime failures are
- * swallowed and logged; `invalidate` is only ever called as a best-effort
- * refetch trigger, never as an error path.
+ * Each call starts its own actor; the returned handle's `destroy()` stops it,
+ * which cancels any pending token fetch or reconnect, leaves the channel, and
+ * disconnects the socket. All realtime failures are swallowed and logged;
+ * `invalidate` is only ever called as a best-effort refetch trigger, never as
+ * an error path.
  *
- * The `userId` (topic suffix) is read from the decoded socket token —
- * Phoenix assigns `current_user.sub` on connect, and the channel join
- * authorizes the topic against that sub. The browser does not need to know
- * its own user id here; it learns the topic from the server's join response.
+ * The browser joins the `notifications:self` alias: Phoenix assigns
+ * `current_user.sub` from the socket token on connect, and the channel join
+ * authorizes the topic against that sub.
  */
 export function connectNotificationRealtime(
 	config: NotificationRealtimeConfig,
 ): NotificationRealtimeHandle {
-	const {
-		socketUrl,
-		getSocketToken = defaultGetSocketToken,
-		invalidate,
-		createSocket = defaultCreateSocket,
-	} = config;
-
-	let socket: RealtimeSocket | null = null;
-	let channel: RealtimeChannel | null = null;
-	let destroyed = false;
-	/** Incremented per connect attempt; a stale attempt drops its results. */
-	let attempt = 0;
-	/** Attempts since the last successful join; indexes the backoff. */
-	let attemptsSinceJoin = 0;
-	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-	function invalidateSafely(): void {
-		try {
-			invalidate();
-		} catch (error) {
-			warn("invalidation callback threw", error);
-		}
-	}
-
-	function teardownChannel(): void {
-		if (!channel) return;
-		const current = channel;
-		channel = null;
-		try {
-			current
-				.leave()
-				.receive("error", (reason) => warn("channel leave rejected", reason));
-		} catch (error) {
-			warn("channel leave threw", error);
-		}
-	}
-
-	function disconnectSocket(): void {
-		if (!socket) return;
-		const current = socket;
-		socket = null;
-		try {
-			current.disconnect();
-		} catch (error) {
-			warn("socket disconnect threw", error);
-		}
-	}
-
-	/**
-	 * Drop the current connection and schedule a fresh-token connect after the
-	 * next backoff delay. Disconnecting the dead socket also resets Phoenix's
-	 * own reconnect timer, so the two loops never compete.
-	 */
-	function scheduleReconnect(): void {
-		if (destroyed || reconnectTimer) return;
-		teardownChannel();
-		disconnectSocket();
-		const delay =
-			RECONNECT_BACKOFF_MS[
-				Math.min(attemptsSinceJoin, RECONNECT_BACKOFF_MS.length - 1)
-			];
-		attemptsSinceJoin += 1;
-		reconnectTimer = setTimeout(() => {
-			reconnectTimer = null;
-			void connectWithFreshToken();
-		}, delay);
-	}
-
-	/**
-	 * Fetch a fresh socket token and connect. Replaces any existing connection
-	 * wholesale: a reconnect after a long disconnect needs a fresh token
-	 * because the socket-token validity window is short.
-	 */
-	async function connectWithFreshToken(): Promise<void> {
-		if (destroyed) return;
-		const current = ++attempt;
-		const isStale = () => destroyed || current !== attempt;
-
-		// A hung fetch would otherwise stall recovery forever. Abandoning it
-		// supersedes this attempt, so its late result is dropped below.
-		const fetchTimeout = setTimeout(() => {
-			if (isStale()) return;
-			attempt += 1;
-			warn("socket token fetch timed out", undefined);
-			scheduleReconnect();
-		}, TOKEN_FETCH_TIMEOUT_MS);
-
-		let token: Awaited<ReturnType<SocketTokenFetcher>>;
-		try {
-			token = await getSocketToken();
-		} catch (error) {
-			if (isStale()) return;
-			warn("socket token fetch threw", error);
-			scheduleReconnect();
-			return;
-		} finally {
-			clearTimeout(fetchTimeout);
-		}
-		if (isStale()) return;
-		if (token === socketSessionUnauthorized) {
-			destroy();
-			return;
-		}
-		if (!token) {
-			warn("socket token unavailable", undefined);
-			scheduleReconnect();
-			return;
-		}
-
-		teardownChannel();
-		disconnectSocket();
-
-		let newSocket: RealtimeSocket;
-		try {
-			newSocket = createSocket(socketUrl, {
-				authToken: token,
-				reconnectAfterMs: () => NEVER_MS,
-			});
-		} catch (error) {
-			warn("socket construction failed", error);
-			scheduleReconnect();
-			return;
-		}
-		socket = newSocket;
-
-		// A retired socket (replaced, or its bridge destroyed) can still revive
-		// itself: Phoenix's heartbeat-timeout teardown schedules a reconnect even
-		// after `disconnect()`, and `pageshow` reconnects after bfcache restore.
-		// Any lifecycle event from a retired socket disconnects it again.
-		const isRetired = () => destroyed || socket !== newSocket;
-		const retire = () => {
-			try {
-				newSocket.disconnect();
-			} catch (error) {
-				warn("retired socket disconnect threw", error);
-			}
-		};
-		const onSocketLost = (context: string) => (reason?: string) => {
-			if (isRetired()) {
-				retire();
-				return;
-			}
-			warn(context, reason);
-			scheduleReconnect();
-		};
-		try {
-			newSocket.onError(onSocketLost("socket error"));
-			newSocket.onClose(onSocketLost("socket closed"));
-			newSocket.onOpen(() => {
-				if (isRetired()) retire();
-			});
-		} catch (error) {
-			warn("socket lifecycle wiring failed", error);
-		}
-
-		try {
-			newSocket.connect();
-		} catch (error) {
-			warn("socket connect failed", error);
-			scheduleReconnect();
-			return;
-		}
-
-		// The channel topic is `notifications:<sub>`. The browser does not know
-		// its own sub (the socket token is opaque), so it joins a generic
-		// `notifications:self` topic and relies on the server's join/3 to
-		// authorize against `socket.assigns.current_user.sub`. The channel
-		// module already rejects any mismatched topic suffix.
-		let newChannel: RealtimeChannel;
-		try {
-			newChannel = newSocket.channel("notifications:self");
-		} catch (error) {
-			warn("channel construction failed", error);
-			return;
-		}
-		channel = newChannel;
-
-		try {
-			newChannel.on(NOTIFICATION_CREATED_EVENT, () => invalidateSafely());
-		} catch (error) {
-			warn("channel.on wiring failed", error);
-		}
-
-		// Rejoin (and initial join) invalidation: recovers events missed while
-		// disconnected by refetching authoritative state. The `ok` hook fires
-		// on the initial join and on every successful rejoin after an error.
-		try {
-			newChannel
-				.join()
-				.receive("ok", () => {
-					if (socket !== newSocket) return;
-					attemptsSinceJoin = 0;
-					invalidateSafely();
-				})
-				.receive("error", (reason) => warn("channel join rejected", reason))
-				.receive("timeout", () => warn("channel join timed out", undefined));
-		} catch (error) {
-			warn("channel join threw", error);
-		}
-	}
-
-	// Fire and forget; all failures are swallowed inside `connectWithFreshToken`.
-	void connectWithFreshToken();
-
-	function destroy() {
-		if (destroyed) return;
-		destroyed = true;
-		if (reconnectTimer) {
-			clearTimeout(reconnectTimer);
-			reconnectTimer = null;
-		}
-		teardownChannel();
-		disconnectSocket();
-	}
-	return { destroy };
+	const actor = createActor(notificationRealtimeMachine, {
+		input: {
+			socketUrl: config.socketUrl,
+			getSocketToken: config.getSocketToken ?? defaultGetSocketToken,
+			invalidate: config.invalidate,
+			createSocket: config.createSocket ?? defaultCreateSocket,
+		},
+	});
+	actor.start();
+	return {
+		destroy: () => {
+			if (actor.getSnapshot().status !== "active") return;
+			actor.send({ type: "DESTROY" });
+			actor.stop();
+		},
+	};
 }

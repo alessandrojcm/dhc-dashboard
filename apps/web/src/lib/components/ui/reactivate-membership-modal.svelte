@@ -11,130 +11,97 @@ import CreditCard from "@lucide/svelte/icons/credit-card";
 import ExternalLink from "@lucide/svelte/icons/external-link";
 import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 import type { DateValue } from "@internationalized/date";
-import { civilIsoDate, formatCivilDate } from "#lib/club-calendar.js";
+import {
+	civilCalendarDate,
+	civilIsoDate,
+	formatCivilDate,
+} from "#lib/club-calendar.js";
 import {
 	isFutureStart,
 	reactivationStartWindow,
+	type ReactivationStartWindow,
 } from "#lib/membership/reactivation-start-window.js";
+import type {
+	AnnualFeeMode,
+	ReactivationSelection,
+	ReactivationView,
+} from "#lib/membership/reactivation-machine.js";
 import Dinero from "dinero.js";
 import { untrack } from "svelte";
-import type {
-	MembershipReactivateAnnualFeeMode,
-	MembershipReactivationPreviewAmountsResponse,
-	MembershipReactivationPreviewResponse,
-} from "@dhc/api-client";
+import type { MembershipReactivationPreviewAmountsResponse } from "@dhc/api-client";
 
-// Mirrors the savedPaymentMethod summary projected by
-// GET /members/{memberId}/membership/reactivation-preview.
-type SavedPaymentMethod = NonNullable<
-	MembershipReactivationPreviewResponse["data"]["savedPaymentMethod"]
->;
+/**
+ * Presentational reactivation dialog (ALE-450). It renders one phase of
+ * `reactivationMachine` (through `reactivationView`) and reports the
+ * operator's intents; the machine owns the protocol and the selection.
+ * Mounted only while the dialog is open.
+ */
 
 // Mirrors the Stripe-computed amounts projected by
 // GET /members/{memberId}/membership/reactivation-preview/amounts (ALE-254).
 type ReactivationAmounts = MembershipReactivationPreviewAmountsResponse["data"];
-type MembershipCoverage =
-	MembershipReactivationPreviewResponse["data"]["membershipCoverage"];
-
-// ALE-253: how the annual membership fee begins — charged prorated now, or
-// deferred to next January's anchor behind a free trial.
-type AnnualFeeMode = MembershipReactivateAnnualFeeMode;
 
 function isAnnualFeeMode(value: string): value is AnnualFeeMode {
 	return value === "prorated_now" || value === "deferred_next_year";
 }
 
 type Props = {
-	open: boolean;
-	onConfirm: ({
-		startDate,
-		annualFeeMode,
-	}: {
-		startDate: string;
-		annualFeeMode: AnnualFeeMode;
-	}) => void;
-	isPending: boolean;
-	savedPaymentMethod?: SavedPaymentMethod | null;
-	membershipCoverage?: MembershipCoverage;
-	isLoadingPreview?: boolean;
-	/** The saved-method preview itself failed to load (e.g. Stripe 502). */
-	previewError?: boolean;
-	errorDetail?: string | null;
-	paymentMethodUnavailable?: boolean;
-	onOpenBillingPortal?: () => void;
+	view: ReactivationView;
+	/** Start date + annual fee mode, owned by the machine. */
+	selection: ReactivationSelection;
+	/** The start dates to offer; read once by the host for the machine too. */
+	startWindow?: ReactivationStartWindow;
 	/** Stripe-computed reactivation amounts; hidden on failure. */
 	amounts?: ReactivationAmounts | null;
 	isLoadingAmounts?: boolean;
-	/** Optional initial selection when the caller already has a requested date. */
-	initialStartDate?: DateValue;
-	/** Reports start date + annual fee mode so the container can fetch amounts. */
-	onSelectionChange?: (selection: {
-		startDate: string;
-		annualFeeMode: AnnualFeeMode;
-	}) => void;
+	onSelect: (selection: ReactivationSelection) => void;
+	onConfirm: () => void;
+	onOpenBillingPortal: () => void;
+	/** The operator asked to dismiss the dialog. */
+	onClose: () => void;
 };
 
 let {
-	open = $bindable(false),
-	onConfirm,
-	isPending,
-	savedPaymentMethod,
-	membershipCoverage = { monthly: "lapsed", annual: "lapsed" },
-	isLoadingPreview = false,
-	previewError = false,
-	errorDetail = null,
-	paymentMethodUnavailable = false,
-	onOpenBillingPortal,
+	view,
+	selection,
+	startWindow = untrack(() => reactivationStartWindow()),
 	amounts = null,
 	isLoadingAmounts = false,
-	initialStartDate,
-	onSelectionChange,
+	onSelect,
+	onConfirm,
+	onOpenBillingPortal,
+	onClose,
 }: Props = $props();
 
 // Phoenix accepts a start date from its (UTC) today up to 366 days ahead;
-// the window module reconciles that with Dublin's today. Read once per mount:
-// the page mounts the modal inside {#if} only while open.
-const { earliest: minDate, latest: maxDate } = reactivationStartWindow();
-let selectedDate = $state<DateValue>(
-	untrack(() => initialStartDate ?? minDate),
+// the window module reconciles that with Dublin's today.
+const minDate = $derived(startWindow.earliest);
+const maxDate = $derived(startWindow.latest);
+const selectedDate = $derived<DateValue>(
+	civilCalendarDate(selection.startDate) ?? startWindow.earliest,
 );
-// ALE-253: default keeps the initial-release semantics (annual charged
-// prorated for the remainder of this year).
-let annualFeeMode = $state<AnnualFeeMode>("prorated_now");
 
+const membershipCoverage = $derived(view.coverage);
+const isPending = $derived(view.phase === "ready" && view.submitting);
 const startDateIso = $derived(civilIsoDate(selectedDate));
-const deferredAnnual = $derived(annualFeeMode === "deferred_next_year");
+const deferredAnnual = $derived(
+	selection.annualFeeMode === "deferred_next_year",
+);
 const monthlyActive = $derived(membershipCoverage.monthly === "active");
 const annualActive = $derived(membershipCoverage.annual === "active");
 const completeCoverage = $derived(monthlyActive && annualActive);
 const futureStart = $derived(isFutureStart(startDateIso));
 const formattedStartDate = $derived(formatCivilDate(startDateIso));
-// Distinguishes "Stripe says there is nothing to charge" (fallback applies)
-// from "the preview lookup itself failed" (plain error, retry by reopening).
-const methodUnavailable = $derived(
-	paymentMethodUnavailable ||
-		(!isLoadingPreview &&
-			!previewError &&
-			(savedPaymentMethod ?? null) === null),
-);
 
 function handleConfirm(event: Event) {
 	event.preventDefault();
 	event.stopPropagation();
-	if (!selectedDate || isPending || methodUnavailable || completeCoverage)
-		return;
-	onConfirm({ startDate: startDateIso, annualFeeMode });
+	onConfirm();
 }
-
-// The container fetches Stripe-computed amounts for the selection; the query
-// key changes with either field, so this fires on mount and on every change.
-$effect(() => {
-	onSelectionChange?.({ startDate: startDateIso, annualFeeMode });
-});
 
 function handleModeChange(value: string) {
 	if (isAnnualFeeMode(value)) {
-		annualFeeMode = value;
+		onSelect({ startDate: selection.startDate, annualFeeMode: value });
 	}
 }
 
@@ -146,11 +113,24 @@ function formatMoney(money: ReactivationAmounts["dueToday"]) {
 }
 
 function handleDateChange(date: DateValue | undefined) {
-	if (date) selectedDate = date;
+	if (date)
+		onSelect({
+			startDate: civilIsoDate(date),
+			annualFeeMode: selection.annualFeeMode,
+		});
 }
 </script>
 
-<Dialog.Root bind:open>
+<!-- Open for as long as the host mounts it; a dismissal is a request the
+     machine may refuse (while a charge is being submitted). -->
+<Dialog.Root
+	bind:open={
+		() => true,
+		(open) => {
+			if (!open) onClose();
+		}
+	}
+>
 	<!-- ALE-253 grew this dialog taller than some viewports: keep the whole
 	     content scrollable so the confirm footer stays reachable. -->
 	<Dialog.Content class="max-h-[85vh] overflow-y-auto">
@@ -174,12 +154,12 @@ function handleDateChange(date: DateValue | undefined) {
 			</Dialog.Description>
 		</Dialog.Header>
 
-		{#if isLoadingPreview}
+		{#if view.phase === "lookingUp"}
 			<div class="flex items-center gap-2 text-sm text-muted-foreground">
 				<LoaderCircle class="size-4 animate-spin" />
 				Checking saved payment method…
 			</div>
-		{:else if previewError}
+		{:else if view.phase === "lookupFailed"}
 			<Alert.Root variant="destructive">
 				<TriangleAlert />
 				<Alert.Title>Could not check the saved payment method</Alert.Title>
@@ -188,7 +168,7 @@ function handleDateChange(date: DateValue | undefined) {
 					try again; nothing has been charged.
 				</Alert.Description>
 			</Alert.Root>
-		{:else if methodUnavailable}
+		{:else if view.phase === "noSavedMethod"}
 			<Alert.Root>
 				<TriangleAlert />
 				<Alert.Title>No saved payment method</Alert.Title>
@@ -199,13 +179,17 @@ function handleDateChange(date: DateValue | undefined) {
 					subscription themselves.
 				</Alert.Description>
 			</Alert.Root>
-			{#if onOpenBillingPortal}
-				<Button variant="outline" class="w-full" onclick={onOpenBillingPortal}>
-					Open billing portal
-					<ExternalLink class="size-4" aria-hidden="true" />
-				</Button>
-			{/if}
-		{:else if savedPaymentMethod}
+			<Button
+				variant="outline"
+				class="w-full"
+				disabled={view.openingPortal}
+				onclick={onOpenBillingPortal}
+			>
+				Open billing portal
+				<ExternalLink class="size-4" aria-hidden="true" />
+			</Button>
+		{:else if view.phase === "ready"}
+			{@const savedPaymentMethod = view.method}
 			<div class="space-y-4">
 				<div class="grid gap-2 sm:grid-cols-2" aria-label="Membership coverage">
 					<div
@@ -289,7 +273,7 @@ function handleDateChange(date: DateValue | undefined) {
 						<RadioGroup.Root
 							name="annualFeeMode"
 							class="grid gap-2"
-							value={annualFeeMode}
+							value={selection.annualFeeMode}
 							onValueChange={handleModeChange}
 						>
 							<Label
@@ -446,11 +430,11 @@ function handleDateChange(date: DateValue | undefined) {
 					</div>
 				{/if}
 
-				{#if errorDetail}
+				{#if view.problem}
 					<Alert.Root variant="destructive">
 						<TriangleAlert />
 						<Alert.Title>Reactivation failed</Alert.Title>
-						<Alert.Description>{errorDetail}</Alert.Description>
+						<Alert.Description>{view.problem}</Alert.Description>
 					</Alert.Root>
 				{/if}
 			</div>
@@ -460,7 +444,7 @@ function handleDateChange(date: DateValue | undefined) {
 			<Button
 				type="button"
 				variant="outline"
-				onclick={() => (open = false)}
+				onclick={onClose}
 				disabled={isPending}
 			>
 				Cancel
@@ -468,11 +452,7 @@ function handleDateChange(date: DateValue | undefined) {
 			<Button
 				type="button"
 				onclick={handleConfirm}
-				disabled={isPending ||
-					isLoadingPreview ||
-					previewError ||
-					methodUnavailable ||
-					completeCoverage}
+				disabled={view.phase !== "ready" || isPending || completeCoverage}
 			>
 				{#if isPending}
 					<LoaderCircle class="size-4" />

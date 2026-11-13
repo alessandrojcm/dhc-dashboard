@@ -1,16 +1,21 @@
 /**
- * Runes controller for the quartermaster Items page (ALE-416).
+ * Runes controller for the quartermaster Items page (ALE-416, ALE-451).
  *
  * Owns everything on the page that is not markup:
  *
  * - the list request, URL-backed through `createCursorTableUrl` (search,
  *   archive and availability filters, cursor): search and filters replace
  *   the history entry and drop the cursor, paging pushes one;
- * - routed selection: `[[itemId]]` is an item's code (or id), `new` the
- *   create form, and `?slug=` a deep link that resolves to the item's route;
- * - the drafts behind the create and management forms, and their dirty state;
- * - every Item command's outcome: the toast, what is refreshed, and the
- *   submit button's success flash.
+ * - the reads the forms need, and the drafts behind the create and
+ *   management forms with their dirty state (independent runes state);
+ * - one `itemWorkbenchMachine` actor (`item-workbench-machine.ts`), created
+ *   with the controller and stopped with it, which owns the routed mode
+ *   (`[[itemId]]` is an item's code or id, `new` the create form, `?slug=` a
+ *   deep link that resolves to the item's route) and every Item command's
+ *   outcome: what is adopted and refreshed, which drafts rebase, the toast,
+ *   the submit button's success flash and the navigation after create and
+ *   delete. The controller feeds it the URL and each command's answer, and
+ *   provides its effects (query cache, `visit`, toasts, `rebasedDrafts`).
  *
  * Every Item command is a remote form in `data.remote.ts`; the page spreads
  * `form.preflight(schema).enhance(workbench.enhance.<command>)`, so the
@@ -54,7 +59,7 @@ import {
 } from "@dhc/api-client";
 import { untrack } from "svelte";
 import { toast } from "svelte-sonner";
-import { apiErrorMessage } from "#lib/api-error.js";
+import { createActor, fromPromise } from "xstate";
 import {
 	createCursorTableUrl,
 	type CursorTableNavigate,
@@ -63,14 +68,30 @@ import {
 	draftFromItem,
 	encodePropertyDraft,
 	type PropertyDraft,
-	sameDraft,
 	withDraftInput,
 } from "#lib/inventory/property-values.js";
+import {
+	dirtyOf,
+	type ItemDrafts,
+	type ItemFields,
+	itemDrafts,
+	rebasedDrafts,
+} from "./item-drafts";
+import {
+	type FlashedForm,
+	type ItemCommand,
+	type ItemCommandResult,
+	itemsHref,
+	itemWorkbenchMachine,
+	itemWorkbenchView,
+	type WorkbenchRoute,
+} from "./item-workbench-machine";
 
-export const ITEMS_PATH = "/dashboard/inventory/items";
-
-/** How long a submit button shows its success state. */
-const SUCCESS_FLASH_MS = 650;
+export {
+	type FlashedForm,
+	type ItemCommandResult,
+	ITEMS_PATH,
+} from "./item-workbench-machine";
 
 export type AvailabilityFilter =
 	| "all"
@@ -128,21 +149,8 @@ const MANAGEMENT_TABS = [
 
 export type ManagementTab = (typeof MANAGEMENT_TABS)[number]["value"];
 
-/** The forms whose submit button flashes on success. */
-export type FlashedForm =
-	| "create"
-	| "details"
-	| "placement"
-	| "category"
-	| "maintenance";
-
 /** Which property draft a value control writes to. */
 export type DraftTarget = "create" | "details" | "category";
-
-/** What an Item command's remote form answers (`inventoryCommand`). */
-export type ItemCommandResult =
-	| { ok: true; data: InventoryOperatorItem }
-	| { ok: false; error: string };
 
 /** The part of a remote form's `enhance` instance the controller uses. */
 export type ItemCommandSubmission = {
@@ -197,92 +205,10 @@ type CreateFields = {
 	values: PropertyDraft;
 };
 
-type ItemFields = {
-	notes: string;
-	values: PropertyDraft;
-	containerId: string;
-	categoryId: string;
-	categoryValues: PropertyDraft;
-	maintenanceReason: string;
-	maintenanceEndNote: string;
-	archiveReason: string;
-};
-
-/** The management forms' drafts, and the item they started from. */
-function itemDrafts(item: InventoryOperatorItem) {
-	const fields = $state<ItemFields>({
-		notes: item.notes ?? "",
-		values: draftFromItem(item),
-		containerId: item.containerId ?? "",
-		categoryId: item.categoryId,
-		categoryValues: draftFromItem(item),
-		maintenanceReason: "",
-		maintenanceEndNote: "",
-		archiveReason: "",
-	});
-	return { item, fields };
-}
-
-type ItemDrafts = ReturnType<typeof itemDrafts>;
-
-/** The management forms an Item command's success answers for. */
-type DraftGroup = Exclude<FlashedForm, "create"> | "archive";
-
-/** Whether each item-backed form's draft differs from the item it started from. */
-function dirtyOf({ item, fields }: ItemDrafts) {
-	const stored = draftFromItem(item);
-	return {
-		details:
-			fields.notes.trim() !== (item.notes ?? "") ||
-			!sameDraft(fields.values, stored),
-		placement: fields.containerId !== (item.containerId ?? ""),
-		category:
-			fields.categoryId !== item.categoryId ||
-			!sameDraft(fields.categoryValues, stored),
-	};
-}
-
-/**
- * The drafts once a command answered with `item` (ALE-416 follow-up). The
- * submitting form (`own`) starts again from the answer. Another form keeps
- * what the operator typed but has not saved yet, so a slow command cannot wipe
- * an edit made while it ran: the maintenance and archive notes always, and an
- * item-backed draft while it is unsaved and the answer left the facts it edits
- * unchanged. Every other draft follows the answer.
- */
-function rebasedDrafts(
-	current: ItemDrafts | undefined,
-	item: InventoryOperatorItem,
-	own: DraftGroup,
-): ItemDrafts {
-	const next = itemDrafts(item);
-	if (!current || current.item.id !== item.id) return next;
-	const before = current.item;
-	const sameValues = sameDraft(draftFromItem(before), draftFromItem(item));
-	const dirty = dirtyOf(current);
-	const keeps = (group: keyof typeof dirty, unchanged: boolean) =>
-		group !== own && dirty[group] && unchanged;
-	const { fields } = current;
-
-	if (
-		keeps("details", (before.notes ?? "") === (item.notes ?? "") && sameValues)
-	) {
-		next.fields.notes = fields.notes;
-		next.fields.values = fields.values;
-	}
-	if (keeps("placement", before.containerId === item.containerId)) {
-		next.fields.containerId = fields.containerId;
-	}
-	if (keeps("category", before.categoryId === item.categoryId && sameValues)) {
-		next.fields.categoryId = fields.categoryId;
-		next.fields.categoryValues = fields.categoryValues;
-	}
-	if (own !== "maintenance") {
-		next.fields.maintenanceReason = fields.maintenanceReason;
-		next.fields.maintenanceEndNote = fields.maintenanceEndNote;
-	}
-	if (own !== "archive") next.fields.archiveReason = fields.archiveReason;
-	return next;
+/** Live drafts: the page binds to `fields`, so they are deeply reactive. */
+function liveDrafts({ item, fields }: ItemDrafts): ItemDrafts {
+	const live = $state<ItemFields>(fields);
+	return { item, fields: live };
 }
 
 export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
@@ -293,7 +219,6 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 	const itemId = deps.itemId ?? (() => page.params.itemId);
 	const visit = deps.visit ?? ((href: string) => goto(href));
 	const notify = deps.notify ?? toast;
-	const successFlashMs = deps.successFlashMs ?? SUCCESS_FLASH_MS;
 
 	// ── List ──────────────────────────────────────────────────────────────
 
@@ -325,23 +250,6 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		},
 	);
 
-	const routeId = $derived(itemId());
-	const creating = $derived(routeId === "new");
-	const managedId = $derived(routeId && !creating ? routeId : undefined);
-
-	const list = createQuery(
-		() => ({
-			...inventoryItemsListOptions({ query: listRequest }),
-			...(requests.list && {
-				queryFn: () => requests.list!({ query: listRequest }),
-			}),
-			enabled: !routeId,
-			placeholderData: keepPreviousData,
-			select: (response: InventoryItemsListResponse) => response.data,
-		}),
-		client,
-	);
-
 	/** The list's own query string, carried to item routes and back. */
 	const listSearch = $derived.by(() => {
 		const params = new URLSearchParams(url().searchParams.toString());
@@ -350,10 +258,18 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 		return query ? `?${query}` : "";
 	});
 
-	const listHref = () => `${ITEMS_PATH}${listSearch}`;
-	const itemHref = (slug: string) => `${ITEMS_PATH}/${slug}${listSearch}`;
+	const listHref = () => itemsHref(listSearch);
+	const itemHref = (slug: string) => itemsHref(listSearch, slug);
 
-	// ── Routed selection ─────────────────────────────────────────────────
+	// ── Workflow ─────────────────────────────────────────────────────────
+
+	function currentRoute(): WorkbenchRoute {
+		return {
+			routeId: itemId(),
+			slug: url().searchParams.get("slug")?.trim() || undefined,
+			search: listSearch,
+		};
+	}
 
 	function showQuery(slugOrId: string) {
 		return {
@@ -363,6 +279,101 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 			}),
 		};
 	}
+
+	const actor = createActor(
+		itemWorkbenchMachine.provide({
+			actors: {
+				lookUpItem: fromPromise(async ({ input }) => {
+					const response = await queryClient.fetchQuery(showQuery(input.slug));
+					return response.data;
+				}),
+			},
+			actions: {
+				adopt: (_, { routeId, item }) => {
+					queryClient.setQueryData<InventoryItemsShowResponse>(
+						inventoryItemsShowQueryKey({ path: { slugOrId: routeId } }),
+						{ data: item },
+					);
+				},
+				forget: (_, { routeId }) => {
+					queryClient.removeQueries({
+						queryKey: inventoryItemsShowQueryKey({
+							path: { slugOrId: routeId },
+						}),
+					});
+				},
+				invalidateLists: (_, { slug }) => {
+					// Partial key: matches every filtered or paged Item list.
+					void queryClient.invalidateQueries({
+						queryKey: inventoryItemsListQueryKey(),
+					});
+					if (slug) {
+						void queryClient.invalidateQueries({
+							queryKey: inventoryItemsListMaintenanceQueryKey({
+								path: { slugOrId: slug },
+							}),
+						});
+					}
+				},
+				rebase: (_, { item, own }) => {
+					const current = drafts && {
+						item: drafts.item,
+						fields: $state.snapshot(drafts.fields),
+					};
+					drafts = liveDrafts(rebasedDrafts(current, item, own));
+				},
+				resetCreate: () => resetCreate(),
+				visit: (_, { href }) => void visit(href),
+				notifySuccess: (_, { message }) => notify.success(message),
+				notifyError: (_, { message }) => notify.error(message),
+			},
+		}),
+		{
+			input: {
+				...untrack(currentRoute),
+				...(deps.successFlashMs !== undefined && {
+					successFlashMs: deps.successFlashMs,
+				}),
+			},
+		},
+	);
+	let snapshot = $state.raw(actor.getSnapshot());
+	actor.subscribe((next) => {
+		snapshot = next;
+	});
+	actor.start();
+	// Stopping cancels the flash, a pending open of a created item and a
+	// deep-link lookup; a command's late answer is then dropped.
+	$effect(() => () => actor.stop());
+
+	function sync(route: WorkbenchRoute) {
+		if (actor.getSnapshot().status !== "active") return;
+		actor.send({ type: "ROUTED", ...route });
+	}
+
+	// Before the DOM updates, so markup never shows the previous route's mode.
+	$effect.pre(() => {
+		const route = currentRoute();
+		untrack(() => sync(route));
+	});
+
+	const view = $derived(itemWorkbenchView(snapshot));
+	const managedId = $derived(view.managedId);
+
+	const list = createQuery(
+		() => ({
+			...inventoryItemsListOptions({ query: listRequest }),
+			...(requests.list && {
+				queryFn: () => requests.list!({ query: listRequest }),
+			}),
+			enabled: view.mode === "list",
+			placeholderData: keepPreviousData,
+			select: (response: InventoryItemsListResponse) => response.data,
+		}),
+		client,
+	);
+
+	// ── Routed selection ─────────────────────────────────────────────────
 
 	const routedItem = createQuery(
 		() => ({
@@ -376,26 +387,6 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 	const selected = $derived(managedId ? routedItem.data : undefined);
 	// A primitive, so a refetch of the same item does not reset the drafts.
 	const selectedSlug = $derived(selected?.slug);
-
-	// Deep link for the loan queue's "Open item" maintenance links: `?slug=`
-	// resolves through the show endpoint (archive-agnostic) and lands on the
-	// item's route. Day-to-day code search goes through the list's `q`.
-	let lookedUpSlug: string | undefined;
-	$effect(() => {
-		const slug = url().searchParams.get("slug")?.trim();
-		if (!slug || slug === lookedUpSlug) return;
-		lookedUpSlug = slug;
-		void lookUpSlug(slug);
-	});
-
-	async function lookUpSlug(slug: string) {
-		try {
-			const response = await queryClient.fetchQuery(showQuery(slug));
-			await visit(`${ITEMS_PATH}/${response.data.slug}`);
-		} catch (cause) {
-			notify.error(apiErrorMessage(cause, "No item matches that code"));
-		}
-	}
 
 	// ── Reads the forms need ─────────────────────────────────────────────
 
@@ -478,17 +469,15 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 	// them on the item Phoenix answered with (`rebasedDrafts`).
 	let drafts = $derived.by(() => {
 		if (!selectedSlug) return undefined;
-		return untrack(() => (selected ? itemDrafts(selected) : undefined));
+		return untrack(() =>
+			selected ? liveDrafts(itemDrafts(selected)) : undefined,
+		);
 	});
 	// Writable deriveds: reading `selectedSlug` resets them to their initial
 	// value whenever another item is selected; the page may assign them.
 	let managementTab = $derived.by((): ManagementTab => {
 		void selectedSlug;
 		return "details";
-	});
-	let deleteConfirmOpen = $derived.by(() => {
-		void selectedSlug;
-		return false;
 	});
 
 	const createDefinitions = definitionsOf(() => create.categoryId);
@@ -541,132 +530,44 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 			categoryId === drafts.item.categoryId ? draftFromItem(drafts.item) : {};
 	}
 
-	// ── Command outcomes ─────────────────────────────────────────────────
-
-	let flashing = $state<FlashedForm | null>(null);
-	let flashTimer: ReturnType<typeof setTimeout> | undefined;
-	$effect(() => () => clearTimeout(flashTimer));
-
-	function flash(form: FlashedForm, after?: () => void) {
-		flashing = form;
-		clearTimeout(flashTimer);
-		flashTimer = setTimeout(() => {
-			flashing = null;
-			after?.();
-		}, successFlashMs);
-	}
-
-	async function invalidateLists(slug: string) {
-		await Promise.all([
-			// Partial key: matches every filtered or paged Item list.
-			queryClient.invalidateQueries({ queryKey: inventoryItemsListQueryKey() }),
-			queryClient.invalidateQueries({
-				queryKey: inventoryItemsListMaintenanceQueryKey({
-					path: { slugOrId: slug },
-				}),
-			}),
-		]);
-	}
+	// ── Commands ─────────────────────────────────────────────────────────
 
 	/**
-	 * Adopts the item Phoenix answered `own`'s command with: detail, drafts
-	 * (only `own`'s start again; see `rebasedDrafts`), then lists.
+	 * An `enhance` callback: submits, then hands Phoenix's answer (never a
+	 * validation failure, which the form shows itself) to the machine, tagged
+	 * with the route it was submitted under.
 	 */
-	async function adopt(item: InventoryOperatorItem, own: DraftGroup) {
-		if (managedId) {
-			queryClient.setQueryData<InventoryItemsShowResponse>(
-				inventoryItemsShowQueryKey({ path: { slugOrId: managedId } }),
-				{ data: item },
-			);
-		}
-		drafts = rebasedDrafts(drafts, item, own);
-		await invalidateLists(item.slug);
-	}
-
-	/**
-	 * An `enhance` callback: submits, then hands a result (never a
-	 * validation failure, which the form shows itself) to `outcome`.
-	 */
-	function submitted(
-		outcome: (result: ItemCommandResult) => void | Promise<void>,
-	) {
+	function submitted(command: ItemCommand) {
 		return async (form: ItemCommandSubmission) => {
+			untrack(() => sync(currentRoute()));
+			const { generation, route } = actor.getSnapshot().context;
 			if (!(await form.submit())) return;
 			const result = form.result;
-			if (result) await outcome(result);
+			if (!result) return;
+			// The route may have changed while Phoenix answered.
+			untrack(() => sync(currentRoute()));
+			if (actor.getSnapshot().status !== "active") return;
+			actor.send({
+				type: "SETTLED",
+				command,
+				generation,
+				routeId: route.routeId,
+				result,
+			});
 		};
 	}
 
-	/**
-	 * A management form's command. A refusal stays inline in the form; a
-	 * success adopts the item and flashes the form's button.
-	 */
-	function edited(form: Exclude<FlashedForm, "create">) {
-		return submitted(async (result) => {
-			if (!result.ok) return;
-			flash(form);
-			await adopt(result.data, form);
-		});
-	}
-
-	/** Archive and restore answer with a toast either way. */
-	function lifecycle(success: string) {
-		return submitted(async (result) => {
-			if (!result.ok) {
-				notify.error(result.error);
-				return;
-			}
-			notify.success(success);
-			await adopt(result.data, "archive");
-		});
-	}
-
 	const enhance = {
-		/**
-		 * Flashes the button, then opens the new item's route. No toast: it
-		 * would cover the next submit.
-		 */
-		create: submitted(async (result) => {
-			if (!result.ok) return;
-			const item = result.data;
-			const href = itemHref(item.slug);
-			queryClient.setQueryData<InventoryItemsShowResponse>(
-				inventoryItemsShowQueryKey({ path: { slugOrId: item.slug } }),
-				{ data: item },
-			);
-			flash("create", () => {
-				resetCreate();
-				void visit(href);
-			});
-			await invalidateLists(item.slug);
-		}),
-		update: edited("details"),
-		move: edited("placement"),
-		changeCategory: edited("category"),
-		startMaintenance: edited("maintenance"),
-		endMaintenance: edited("maintenance"),
-		archive: lifecycle("Item archived"),
-		restore: lifecycle("Item restored"),
-		/** Returns to the list: the navigation is the feedback, no toast. */
-		delete: submitted(async (result) => {
-			if (!result.ok) {
-				notify.error(result.error);
-				return;
-			}
-			deleteConfirmOpen = false;
-			if (managedId) {
-				queryClient.removeQueries({
-					queryKey: inventoryItemsShowQueryKey({
-						path: { slugOrId: managedId },
-					}),
-				});
-			}
-			await visit(listHref());
-			await queryClient.invalidateQueries({
-				queryKey: inventoryItemsListQueryKey(),
-			});
-		}),
-	};
+		create: submitted("create"),
+		update: submitted("update"),
+		move: submitted("move"),
+		changeCategory: submitted("changeCategory"),
+		startMaintenance: submitted("startMaintenance"),
+		endMaintenance: submitted("endMaintenance"),
+		archive: submitted("archive"),
+		restore: submitted("restore"),
+		delete: submitted("delete"),
+	} satisfies Record<ItemCommand, ReturnType<typeof submitted>>;
 
 	return {
 		// List
@@ -728,17 +629,17 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 			return listHref();
 		},
 		get newItemHref() {
-			return `${ITEMS_PATH}/new${listSearch}`;
+			return itemsHref(listSearch, "new");
 		},
 		itemHref,
 
 		// Routed selection
 		/** Whether the route is an item or the create form, not the list. */
 		get routed() {
-			return Boolean(routeId);
+			return view.mode !== "list";
 		},
 		get creating() {
-			return creating;
+			return view.mode === "create";
 		},
 		routedItem,
 		/** The managed item, once loaded. */
@@ -793,17 +694,17 @@ export function createItemWorkbench(deps: ItemWorkbenchDeps = {}) {
 			managementTab = pickOption(MANAGEMENT_TABS, tab, managementTab);
 		},
 		get deleteConfirmOpen() {
-			return deleteConfirmOpen;
+			return view.deleteConfirmOpen;
 		},
 		set deleteConfirmOpen(open: boolean) {
-			deleteConfirmOpen = open;
+			actor.send({ type: "CONFIRM_DELETE", open });
 		},
 
 		// Commands
 		enhance,
 		/** Whether `form`'s submit button is showing its success state. */
 		succeeded(form: FlashedForm) {
-			return flashing === form;
+			return view.flashing === form;
 		},
 	};
 }

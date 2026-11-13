@@ -1,18 +1,44 @@
 import type { BeginnersIntakePage } from "@dhc/api-client";
+import type { StripeEmbeddedCheckoutOptions } from "@stripe/stripe-js";
 import { expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { ComponentProps } from "svelte";
 import { INACTIVE_PAGE } from "#lib/beginners-workshops/intake-page.js";
+import type { IntakePaymentStart } from "#lib/beginners-workshops/intake-payment-machine.js";
 import IntakePage from "./intake-page.svelte";
 
 const token = "intake-link-token";
+const opened: IntakePaymentStart = {
+	ok: true,
+	clientSecret: "cs_test_secret",
+	sessionId: "cs_test",
+};
+
+/** A start that never answers, so the page stays on its loading line. */
+const pending = () => new Promise<IntakePaymentStart>(() => {});
+
+function stripeStub() {
+	let widget: HTMLParagraphElement | undefined;
+	const embedded = {
+		mount: vi.fn((container: HTMLElement) => {
+			widget = document.createElement("p");
+			widget.textContent = "Payment widget";
+			container.appendChild(widget);
+		}),
+		destroy: vi.fn(() => widget?.remove()),
+	};
+	const init = vi.fn(
+		async (_options: StripeEmbeddedCheckoutOptions) => embedded,
+	);
+	return { embedded, init };
+}
 
 function renderPage(props: ComponentProps<typeof IntakePage>) {
-	return render(IntakePage, { startPayment: async () => true, ...props });
+	return render(IntakePage, { startPayment: pending, ...props });
 }
 
 test("a failed automatic start shows a safe error and only then offers Try again", async () => {
-	const startPayment = vi.fn(async () => {
+	const startPayment = vi.fn(async (): Promise<IntakePaymentStart> => {
 		throw new Error("credential-must-not-render");
 	});
 	const screen = await renderPage({ page: page(), token, startPayment });
@@ -32,10 +58,30 @@ test("a failed automatic start shows a safe error and only then offers Try again
 	expect(startPayment).toHaveBeenCalledOnce();
 });
 
+test("Try again starts payment once more and mounts the session it opens", async () => {
+	const { embedded, init } = stripeStub();
+	const startPayment = vi
+		.fn<() => Promise<IntakePaymentStart>>()
+		.mockResolvedValueOnce({ ok: false, error: "The workshop is full." })
+		.mockResolvedValueOnce(opened);
+	const screen = await renderPage({
+		page: page(),
+		token,
+		startPayment,
+		createCheckout: init,
+	});
+	await expect.element(screen.getByText("The workshop is full.")).toBeVisible();
+	await screen.getByRole("button", { name: "Try again" }).click();
+	await vi.waitFor(() => expect(embedded.mount).toHaveBeenCalledOnce());
+	expect(startPayment).toHaveBeenCalledTimes(2);
+	expect(init.mock.calls[0][0].clientSecret).toBe("cs_test_secret");
+	expect(screen.getByText("The workshop is full.").elements()).toHaveLength(0);
+});
+
 test.each(["pay", "continue_payment"] as const)(
 	"%s opens payment automatically, once",
 	async (action) => {
-		const startPayment = vi.fn(async () => true);
+		const startPayment = vi.fn(pending);
 		const screen = await renderPage({
 			page: page({ action }),
 			token,
@@ -47,17 +93,62 @@ test.each(["pay", "continue_payment"] as const)(
 	},
 );
 
+test("the reload after the POST keeps the open widget in place", async () => {
+	const { embedded, init } = stripeStub();
+	const startPayment = vi.fn(async () => opened);
+	const screen = await renderPage({
+		page: page(),
+		token,
+		startPayment,
+		createCheckout: init,
+	});
+	await vi.waitFor(() => expect(embedded.mount).toHaveBeenCalledOnce());
+	// Phoenix now reports the live hold the POST took.
+	await screen.rerender({ page: page({ action: "continue_payment" }) });
+	await expect.element(screen.getByText("Payment widget")).toBeVisible();
+	expect(init).toHaveBeenCalledOnce();
+	expect(embedded.destroy).not.toHaveBeenCalled();
+	expect(startPayment).toHaveBeenCalledOnce();
+});
+
+test("once the view left payment, a returning payment action is started by hand", async () => {
+	const { embedded, init } = stripeStub();
+	const startPayment = vi.fn(async () => opened);
+	const screen = await renderPage({
+		page: page(),
+		token,
+		startPayment,
+		createCheckout: init,
+		refresh: vi.fn(),
+		refreshMs: 60_000,
+	});
+	await vi.waitFor(() => expect(embedded.mount).toHaveBeenCalledOnce());
+	await screen.rerender({
+		page: page({ state: "payment_in_progress", action: "check_again" }),
+	});
+	await vi.waitFor(() => expect(embedded.destroy).toHaveBeenCalledOnce());
+	await screen.rerender({ page: page() });
+	await expect
+		.element(screen.getByRole("button", { name: "Pay for your place" }))
+		.toBeVisible();
+	expect(startPayment).toHaveBeenCalledOnce();
+	expect(init).toHaveBeenCalledOnce();
+	await screen.getByRole("button", { name: "Pay for your place" }).click();
+	await vi.waitFor(() => expect(init).toHaveBeenCalledTimes(2));
+	expect(startPayment).toHaveBeenCalledTimes(2);
+});
+
 test.each(["confirm", "check_again", "none"] as const)(
 	"%s never starts a payment automatically",
 	async (action) => {
-		const startPayment = vi.fn(async () => true);
+		const startPayment = vi.fn(pending);
 		await renderPage({ page: page({ action }), token, startPayment });
 		expect(startPayment).not.toHaveBeenCalled();
 	},
 );
 
 test("pay shows Phoenix's deadline on the Dublin clock", async () => {
-	const screen = await render(IntakePage, {
+	const screen = await renderPage({
 		page: page({ paymentCutoff: "2026-11-11T18:00:00Z" }),
 		token,
 	});
@@ -86,7 +177,7 @@ function page(
 }
 
 test("pay: the person's name, the workshop, the fee and payment loading with no extra Pay button", async () => {
-	const screen = await render(IntakePage, { page: page(), token });
+	const screen = await renderPage({ page: page(), token });
 
 	await expect.element(screen.getByText("Hi Aoife,")).toBeVisible();
 	const workshop = screen.getByRole("list", { name: "Workshop" });
@@ -112,7 +203,7 @@ test("pay: the person's name, the workshop, the fee and payment loading with no 
 });
 
 test("pay with a live hold opens checkout without a Continue button", async () => {
-	const screen = await render(IntakePage, {
+	const screen = await renderPage({
 		page: page({ action: "continue_payment" }),
 		token,
 	});
@@ -125,10 +216,12 @@ test("pay with a live hold opens checkout without a Continue button", async () =
 	).toHaveLength(0);
 });
 
-test("payment_in_progress refreshes on its own until Phoenix reports paid", async () => {
+test("payment_in_progress refreshes on its own, once per view, until Phoenix reports paid", async () => {
 	const refresh = vi.fn();
+	const inProgress = () =>
+		page({ state: "payment_in_progress", action: "check_again" });
 	const screen = await render(IntakePage, {
-		page: page({ state: "payment_in_progress", action: "check_again" }),
+		page: inProgress(),
 		token,
 		refresh,
 		refreshMs: 20,
@@ -138,10 +231,16 @@ test("payment_in_progress refreshes on its own until Phoenix reports paid", asyn
 		.element(screen.getByRole("heading", { name: "Payment in progress" }))
 		.toBeVisible();
 	await expect.element(screen.getByText(/no need to pay again/)).toBeVisible();
-	await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+	await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
 	expect(screen.getByRole("button", { name: /Pay/ }).elements()).toHaveLength(
 		0,
 	);
+	// Phoenix's next view, still in progress, arms the next refresh.
+	await screen.rerender({ page: inProgress() });
+	await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+	await screen.rerender({ page: page({ state: "paid", action: "none" }) });
+	await new Promise((done) => setTimeout(done, 60));
+	expect(refresh).toHaveBeenCalledTimes(2);
 });
 
 test("full: places may free up, so check again", async () => {

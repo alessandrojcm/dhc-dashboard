@@ -1,12 +1,21 @@
 import "../../../app.css";
 import { page } from "vitest/browser";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeAll, expect, test, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type {
 	BeginnersWorkshopInvitable,
 	WaitlistEntry,
 } from "@dhc/api-client";
 import SectionLayout from "./section-layout.test-wrapper.svelte";
+
+beforeAll(async () => {
+	// app.css loads Calistoga from Google Fonts; snapshot it, not its fallback.
+	// Its @font-face only exists once that stylesheet arrives, so wait for it.
+	for (let tries = 0; tries < 100; tries += 1) {
+		if ((await document.fonts.load('1em "Calistoga"')).length > 0) return;
+		await new Promise((resolve) => setTimeout(resolve, 50));
+	}
+});
 
 afterEach(async () => {
 	await page.viewport(1280, 900);

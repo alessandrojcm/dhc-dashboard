@@ -4,6 +4,7 @@ import {
 	type InventoryOperatorItem,
 	type Options,
 	inventoryItemsListQueryKey,
+	inventoryItemsShowQueryKey,
 } from "@dhc/api-client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -82,6 +83,15 @@ function listPage(
 
 function submission(result: ItemCommandResult, valid = true) {
 	return { submit: async () => valid, result };
+}
+
+/** A submission Phoenix answers only when the test says so. */
+function pendingSubmission(result: ItemCommandResult) {
+	let answer!: () => void;
+	const answered = new Promise<boolean>((resolve) => {
+		answer = () => resolve(true);
+	});
+	return { form: { submit: () => answered, result }, answer };
 }
 
 type Navigation = { href: string; replace: boolean };
@@ -163,6 +173,8 @@ function harness(
 	});
 	return {
 		workbench,
+		/** Tears the workbench down, as leaving the page does. */
+		destroy,
 		queryClient,
 		navigations,
 		visits,
@@ -722,6 +734,76 @@ describe("createItemWorkbench", () => {
 			);
 			expect(h.workbench.deleteConfirmOpen).toBe(true);
 			expect(h.visits).toEqual([]);
+		});
+	});
+
+	// The workflow lives in `item-workbench-machine.ts` (its own pure tests);
+	// these check the controller feeds it the route and each answer.
+	describe("workflow wiring", () => {
+		it("clears the success flash after its time", async () => {
+			const h = harness({ path: `${LIST}/item-000001`, successFlashMs: 20 });
+			await h.selectedLoaded();
+
+			await h.workbench.enhance.update(submission({ ok: true, data: item() }));
+			expect(h.workbench.succeeded("details")).toBe(true);
+
+			await vi.waitFor(() =>
+				expect(h.workbench.succeeded("details")).toBe(false),
+			);
+		});
+
+		it("does not rebase, flash or adopt into another item an answer that landed after the operator moved on", async () => {
+			const h = harness({ path: `${LIST}/item-000001` });
+			await h.selectedLoaded();
+			const pending = pendingSubmission({
+				ok: true,
+				data: item({ notes: "Sharpened" }),
+			});
+			const running = h.workbench.enhance.update(pending.form);
+
+			h.go(`${LIST}/item-000002`);
+			await vi.waitFor(() =>
+				expect(h.workbench.selected?.slug).toBe("item-000002"),
+			);
+			h.workbench.drafts!.notes = "Mask note";
+			pending.answer();
+			await running;
+
+			expect(h.workbench.selected?.slug).toBe("item-000002");
+			expect(h.workbench.drafts?.notes).toBe("Mask note");
+			expect(h.workbench.succeeded("details")).toBe(false);
+			// The answer still lands in its own item's cache.
+			expect(
+				h.queryClient.getQueryData(
+					inventoryItemsShowQueryKey({ path: { slugOrId: "item-000001" } }),
+				),
+			).toEqual({ data: item({ notes: "Sharpened" }) });
+		});
+
+		it("does not open a created item once the page is gone", async () => {
+			const h = harness({ path: `${LIST}/new`, successFlashMs: 20 });
+
+			await h.workbench.enhance.create(
+				submission({ ok: true, data: item({ slug: "item-000003" }) }),
+			);
+			h.destroy();
+			await new Promise((resolve) => setTimeout(resolve, 60));
+
+			expect(h.visits).toEqual([]);
+		});
+
+		it("drops a delete answered after the page is gone", async () => {
+			const h = harness({ path: `${LIST}/item-000001` });
+			await h.selectedLoaded();
+			const pending = pendingSubmission({ ok: true, data: item() });
+			const running = h.workbench.enhance.delete(pending.form);
+
+			h.destroy();
+			pending.answer();
+			await running;
+
+			expect(h.visits).toEqual([]);
+			expect(h.notify.error).not.toHaveBeenCalled();
 		});
 	});
 });
