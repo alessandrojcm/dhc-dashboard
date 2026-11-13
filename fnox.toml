@@ -1,63 +1,62 @@
-default_provider = "1Password"
+default_provider = "doppler"
 
-[providers.1Password]
-type = "1password"
-vault = "xelibksfzlrthste2s2zkbgz3a"
-account = "my.1password.com"
+[providers.doppler]
+type = "doppler"
+project = "dhc-dashboard"
+config = "prd"
 
 [profiles.production.secrets]
-DATABASE_URL = { provider = "1Password", value = "DATABASE_URL" }
-SECRET_KEY_BASE = { provider = "1Password", value = "SECRET_KEY_BASE" }
-DISCORD_WEBHOOK_URL = { provider = "1Password", value = "DISCORD_WEBHOOK_URL" }
-DISCORD_CLIENT_ID = { provider = "1Password", value = "DISCORD_CLIENT_ID" }
-DISCORD_CLIENT_SECRET = { provider = "1Password", value = "DISCORD_CLIENT_SECRET" }
-DISCORD_SUBJECT_FINGERPRINT_KEY = { provider = "1Password", value = "DISCORD_SUBJECT_FINGERPRINT_KEY" }
-DISCORD_BOT_TOKEN = { provider = "1Password", value = "DISCORD_BOT_TOKEN" }
-DISCORD_GUILD_ID = { provider = "1Password", value = "DISCORD_GUILD_ID" }
-# Optional Training Announcement destinations. Leave unset until cutover;
-# absence blocks only the corresponding kind and does not fail Phoenix boot.
-# Uncomment each mapping after provisioning its production 1Password item.
-DISCORD_ROLL_CALL_CHANNEL_ID = { provider = "1Password", value = "DISCORD_ROLL_CALL_CHANNEL_ID" }
-DISCORD_SPARRING_CHANNEL_ID = { provider = "1Password", value = "DISCORD_SPARRING_CHANNEL_ID" }
-DISCORD_TRAINING_ANNOUNCEMENTS_CHANNEL_ID = { provider = "1Password", value = "DISCORD_TRAINING_ANNOUNCEMENTS_CHANNEL_ID" }
-STRIPE_SECRET_KEY = { provider = "1Password", value = "STRIPE_SECRET_KEY" }
-STRIPE_WEBHOOK_SIGNING_SECRET = { provider = "1Password", value = "STRIPE_WEBHOOK_SIGNING_SECRET" }
-SENTRY_DSN = { provider = "1Password", value = "SENTRY_DSN" }
-INVITATION_VERIFICATION_TOKEN_SALT = { provider = "1Password", value = "INVITATION_VERIFICATION_TOKEN_SALT" }
-INVITATION_ACCEPTANCE_SUBJECT_FINGERPRINT_SECRET = { provider = "1Password", value = "INVITATION_ACCEPTANCE_SUBJECT_FINGERPRINT_SECRET" }
-RESEND_API_KEY = { provider = "1Password", value = "RESEND_API_KEY" }
-STRIPE_STUDENT_COUPON_ID = { provider = "1Password", value = "STRIPE_STUDENT_COUPON_ID" }
-STRIPE_COACH_COUPON_ID = { provider = "1Password", value = "STRIPE_COACH_COUPON_ID" }
-OPENHOLIDAYS_API_URL = { provider = "1Password", value = "OPENHOLIDAYS_API_URL" }
-WEB_PUSH_VAPID_PRIVATE_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PRIVATE_KEY" }
-WEB_PUSH_VAPID_PUBLIC_KEY = { provider = "1Password", value = "WEB_PUSH_VAPID_PUBLIC_KEY" }
-WEB_PUSH_VAPID_SUBJECT= { provider = "1Password", value = "WEB_PUSH_VAPID_SUBJECT" }
+DATABASE_URL = { provider = "doppler", value = "DATABASE_URL" }
+SECRET_KEY_BASE = { provider = "doppler", value = "SECRET_KEY_BASE" }
+DISCORD_WEBHOOK_URL = { provider = "doppler", value = "DISCORD_WEBHOOK_URL" }
+DISCORD_CLIENT_ID = { provider = "doppler", value = "DISCORD_CLIENT_ID" }
+DISCORD_CLIENT_SECRET = { provider = "doppler", value = "DISCORD_CLIENT_SECRET" }
+DISCORD_SUBJECT_FINGERPRINT_KEY = { provider = "doppler", value = "DISCORD_SUBJECT_FINGERPRINT_KEY" }
+DISCORD_BOT_TOKEN = { provider = "doppler", value = "DISCORD_BOT_TOKEN" }
+DISCORD_GUILD_ID = { provider = "doppler", value = "DISCORD_GUILD_ID" }
+# Training Announcement destinations. Phoenix can leave a destination unset, but
+# FNOX_IF_MISSING=error requires these Doppler secrets while mapped here.
+DISCORD_ROLL_CALL_CHANNEL_ID = { provider = "doppler", value = "DISCORD_ROLL_CALL_CHANNEL_ID" }
+DISCORD_SPARRING_CHANNEL_ID = { provider = "doppler", value = "DISCORD_SPARRING_CHANNEL_ID" }
+DISCORD_TRAINING_ANNOUNCEMENTS_CHANNEL_ID = { provider = "doppler", value = "DISCORD_TRAINING_ANNOUNCEMENTS_CHANNEL_ID" }
+STRIPE_SECRET_KEY = { provider = "doppler", value = "STRIPE_SECRET_KEY" }
+STRIPE_WEBHOOK_SIGNING_SECRET = { provider = "doppler", value = "STRIPE_WEBHOOK_SIGNING_SECRET" }
+SENTRY_DSN = { provider = "doppler", value = "SENTRY_DSN" }
+INVITATION_VERIFICATION_TOKEN_SALT = { provider = "doppler", value = "INVITATION_VERIFICATION_TOKEN_SALT" }
+INVITATION_ACCEPTANCE_SUBJECT_FINGERPRINT_SECRET = { provider = "doppler", value = "INVITATION_ACCEPTANCE_SUBJECT_FINGERPRINT_SECRET" }
+RESEND_API_KEY = { provider = "doppler", value = "RESEND_API_KEY" }
+STRIPE_STUDENT_COUPON_ID = { provider = "doppler", value = "STRIPE_STUDENT_COUPON_ID" }
+STRIPE_COACH_COUPON_ID = { provider = "doppler", value = "STRIPE_COACH_COUPON_ID" }
+OPENHOLIDAYS_API_URL = { provider = "doppler", value = "OPENHOLIDAYS_API_URL" }
+WEB_PUSH_VAPID_PRIVATE_KEY = { provider = "doppler", value = "WEB_PUSH_VAPID_PRIVATE_KEY" }
+WEB_PUSH_VAPID_PUBLIC_KEY = { provider = "doppler", value = "WEB_PUSH_VAPID_PUBLIC_KEY" }
+WEB_PUSH_VAPID_SUBJECT= { provider = "doppler", value = "WEB_PUSH_VAPID_SUBJECT" }
 # Authenticates the SvelteKit server's forwarded `x-dhc-client-ip` header.
 # Optional to Phoenix (unset = header ignored), but fly.toml sets
-# FNOX_IF_MISSING=error, so create the 1Password item before deploying.
+# FNOX_IF_MISSING=error, so create the Doppler secret before deploying.
 # Must equal the web app's TRUSTED_FORWARDING_SECRET (Cloudflare Worker secret).
-TRUSTED_FORWARDING_SECRET = { provider = "1Password", value = "TRUSTED_FORWARDING_SECRET" }
-# Jev classifier for Intake Replies (ALE-410). Optional to Phoenix, but
-# FNOX_IF_MISSING=error, so create the 1Password item before deploying.
-TYPESAFE_API_KEY = { provider = "1Password", value = "TYPESAFE_API_KEY" }
+TRUSTED_FORWARDING_SECRET = { provider = "doppler", value = "TRUSTED_FORWARDING_SECRET" }
+# Jev classifier for Intake Replies (ALE-410). Optional at runtime, but
+# FNOX_IF_MISSING=error requires this Doppler secret while mapped here.
+TYPESAFE_API_KEY = { provider = "doppler", value = "TYPESAFE_API_KEY" }
 # Google venue search (ALE-442). Optional: the empty default keeps venue search
-# "not set up" (manual destinations) until the 1Password item exists.
-GOOGLE_PLACES_API_KEY = { provider = "1Password", value = "GOOGLE_PLACES_API_KEY", default = "" }
-RESEND_WEBHOOK_SIGNING_SECRET= { provider = "1Password", value = "RESEND_WEBHOOK_SIGNING_SECRET" }
-INTAKE_REPLY_DOMAIN = { provider = "1Password", value = "INTAKE_REPLY_DOMAIN" }
-# Provision all six 1Password items before deployment (FNOX_IF_MISSING=error).
+# "not set up" (manual destinations) until the Doppler secret exists.
+GOOGLE_PLACES_API_KEY = { provider = "doppler", value = "GOOGLE_PLACES_API_KEY", default = "" }
+RESEND_WEBHOOK_SIGNING_SECRET= { provider = "doppler", value = "RESEND_WEBHOOK_SIGNING_SECRET" }
+INTAKE_REPLY_DOMAIN = { provider = "doppler", value = "INTAKE_REPLY_DOMAIN" }
+# Provision all six Doppler secrets before deployment (FNOX_IF_MISSING=error).
 # Credentials alone do not activate Calendar sending.
-WORKSHOP_CALENDAR_ENVIRONMENT = { provider = "1Password", value = "WORKSHOP_CALENDAR_ENVIRONMENT" }
-WORKSHOP_CALENDAR_CLIENT_ID = { provider = "1Password", value = "WORKSHOP_CALENDAR_CLIENT_ID" }
-WORKSHOP_CALENDAR_CLIENT_SECRET = { provider = "1Password", value = "WORKSHOP_CALENDAR_CLIENT_SECRET" }
-WORKSHOP_CALENDAR_REFRESH_TOKEN = { provider = "1Password", value = "WORKSHOP_CALENDAR_REFRESH_TOKEN" }
-WORKSHOP_CALENDAR_COMMITTEE_ID = { provider = "1Password", value = "WORKSHOP_CALENDAR_COMMITTEE_ID" }
-WORKSHOP_CALENDAR_PARTICIPANT_ID = { provider = "1Password", value = "WORKSHOP_CALENDAR_PARTICIPANT_ID" }
+WORKSHOP_CALENDAR_ENVIRONMENT = { provider = "doppler", value = "WORKSHOP_CALENDAR_ENVIRONMENT" }
+WORKSHOP_CALENDAR_CLIENT_ID = { provider = "doppler", value = "WORKSHOP_CALENDAR_CLIENT_ID" }
+WORKSHOP_CALENDAR_CLIENT_SECRET = { provider = "doppler", value = "WORKSHOP_CALENDAR_CLIENT_SECRET" }
+WORKSHOP_CALENDAR_REFRESH_TOKEN = { provider = "doppler", value = "WORKSHOP_CALENDAR_REFRESH_TOKEN" }
+WORKSHOP_CALENDAR_COMMITTEE_ID = { provider = "doppler", value = "WORKSHOP_CALENDAR_COMMITTEE_ID" }
+WORKSHOP_CALENDAR_PARTICIPANT_ID = { provider = "doppler", value = "WORKSHOP_CALENDAR_PARTICIPANT_ID" }
 # Optional training-calendar ACL sync. Safe defaults keep deployment inactive
 # before these items exist, even with FNOX_IF_MISSING=error. An enabled sync
 # with missing credentials fails explicitly in the worker instead of sending.
-TRAINING_CALENDAR_ENABLED = { provider = "1Password", value = "TRAINING_CALENDAR_ENABLED", default = "false" }
-TRAINING_CALENDAR_ID = { provider = "1Password", value = "TRAINING_CALENDAR_ID", default = "" }
-TRAINING_CALENDAR_CLIENT_ID = { provider = "1Password", value = "TRAINING_CALENDAR_CLIENT_ID", default = "" }
-TRAINING_CALENDAR_CLIENT_SECRET = { provider = "1Password", value = "TRAINING_CALENDAR_CLIENT_SECRET", default = "" }
-TRAINING_CALENDAR_REFRESH_TOKEN = { provider = "1Password", value = "TRAINING_CALENDAR_REFRESH_TOKEN", default = "" }
+TRAINING_CALENDAR_ENABLED = { provider = "doppler", value = "TRAINING_CALENDAR_ENABLED", default = "false" }
+TRAINING_CALENDAR_ID = { provider = "doppler", value = "TRAINING_CALENDAR_ID", default = "" }
+TRAINING_CALENDAR_CLIENT_ID = { provider = "doppler", value = "TRAINING_CALENDAR_CLIENT_ID", default = "" }
+TRAINING_CALENDAR_CLIENT_SECRET = { provider = "doppler", value = "TRAINING_CALENDAR_CLIENT_SECRET", default = "" }
+TRAINING_CALENDAR_REFRESH_TOKEN = { provider = "doppler", value = "TRAINING_CALENDAR_REFRESH_TOKEN", default = "" }

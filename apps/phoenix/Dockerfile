@@ -84,11 +84,12 @@ FROM ${RUNNER_IMAGE} AS runner
 
 RUN apt-get update -y && \
     apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates curl gpg && \
-    curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
-      gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/$(dpkg --print-architecture) stable main" > /etc/apt/sources.list.d/1password.list && \
+    curl -sLf --retry 3 --tlsv1.2 --proto "=https" \
+      "https://packages.doppler.com/public/cli/gpg.DE2A7741A397C129.key" | \
+      gpg --dearmor --output /usr/share/keyrings/doppler-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/doppler-archive-keyring.gpg] https://packages.doppler.com/public/cli/deb/debian any-version main" > /etc/apt/sources.list.d/doppler-cli.list && \
     apt-get update -y && \
-    apt-get install -y --no-install-recommends 1password-cli && \
+    apt-get install -y --no-install-recommends doppler && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /root/.gnupg && \
     sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
     locale-gen

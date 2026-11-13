@@ -43,7 +43,7 @@ jobs:
           cache: pnpm
 
       - name: Check deployment workflow invariants
-        run: node --test tools/deployment-workflow.test.mjs
+        run: node --test tools/deployment-workflow.test.mjs tools/production-secrets.test.mjs
 
       - name: Install email template dependencies
         run: pnpm install --frozen-lockfile --filter @dhc/email-templates... --ignore-scripts

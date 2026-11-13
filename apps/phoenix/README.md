@@ -1,6 +1,6 @@
 # DHC Phoenix API
 
-Phoenix JSON API for the Dublin HEMA Club dashboard. The production deploy target is Fly.io, with runtime application secrets loaded by `fnox` from 1Password.
+Phoenix JSON API for the Dublin HEMA Club dashboard. The production deploy target is Fly.io, with runtime application secrets loaded by `fnox` from Doppler.
 
 ## Local development
 
@@ -35,7 +35,7 @@ Production uses:
 - `fly.toml` at the repo root for Fly app configuration.
 - `apps/phoenix/Dockerfile` for the release image.
 - `fnox.toml` at the repo root for runtime secret references.
-- 1Password vault: `Production-phoenix-api`.
+- Doppler project: `dhc-dashboard`, config: `prd`.
 
 The container starts the app through:
 
@@ -53,15 +53,15 @@ fnox exec --profile production -- /app/bin/dhc eval 'Dhc.Release.migrate()'
 
 ### 1. Fly secrets
 
-Only set the 1Password bootstrap token in Fly:
+Only set the fnox-specific Doppler service token in Fly:
 
 ```bash
-fly secrets set OP_SERVICE_ACCOUNT_TOKEN=ops_... --app dhc-dashboard
+fly secrets set FNOX_DOPPLER_TOKEN=dp.st.prd_... --app dhc-dashboard
 ```
 
-This token should be a 1Password service account token scoped to the `Production-phoenix-api` vault.
+This token must be a Doppler service token scoped to the `dhc-dashboard` project's `prd` config.
 
-Do **not** put all application secrets in Fly. App secrets are resolved by `fnox` from 1Password when the container starts. If an app secret changes, update it in 1Password and restart the Fly machines to reload the environment.
+Do **not** put application secrets in Fly. `fnox` resolves them from Doppler when the container starts. If an app secret changes, update Doppler and restart the Fly machines to reload the environment.
 
 ### 2. Fly non-secret env vars
 
@@ -83,52 +83,17 @@ These are committed in `fly.toml` under `[env]`:
 
 If the Fly app name or primary hostname changes, update `PHX_HOST` and `DNS_CLUSTER_QUERY`.
 
-Optional, once Web Push is enabled (see [Enabling Web Push](#5-enabling-web-push-ale-299)):
+Web Push and Intake Reply values are fnox/Doppler mappings, not Fly `[env]` entries. Phoenix treats a partial Web Push configuration and an unset Intake Reply domain as inactive, but their mappings have no fnox `default`; with `FNOX_IF_MISSING=error`, they still need values in Doppler. "Optional" for those features describes runtime behavior, not production-secret provisioning.
 
-| Variable | Value | Purpose |
-| --- | --- | --- |
-| `WEB_PUSH_VAPID_PUBLIC_KEY` | base64url key from `mix web_push_ex.vapid` | VAPID public key browsers use as `applicationServerKey` |
-| `WEB_PUSH_VAPID_SUBJECT` | `mailto:contact@dublinhemaclub.com` | VAPID contact the push services may use to reach us |
+### 3. Doppler secrets referenced by fnox
 
-Optional, after Resend Inbound is configured for Intake Replies (ALE-413):
+Create every variable referenced by `fnox.toml` in the `dhc-dashboard` project's `prd` config. At runtime fnox uses the image's Doppler CLI and Fly's `FNOX_DOPPLER_TOKEN`. The config is the authoritative variable list.
 
-| Variable | Value | Purpose |
-| --- | --- | --- |
-| `INTAKE_REPLY_DOMAIN` | `reply.dublinhemaclub.com` | Domain for per-email Intake Reply addresses; leave unset until inbound receiving is ready |
-| `RESEND_WEBHOOK_SIGNING_SECRET` | `whsec_…` from the Resend webhook for `POST /api/webhooks/resend` | Verifies the Svix signature of `email.received` deliveries |
-| `RESEND_RECEIVING_API_KEY` | optional override (defaults to `RESEND_API_KEY`) | Only needed if receiving reads ever move off the main full-access key |
-| `INTAKE_REPLY_FORWARD_TO` | `contact@dublinhemaclub.com` (default) | Inbox every Intake Reply is forwarded to |
-
-### 3. 1Password items referenced by fnox
-
-Create one item per variable in the `Production-phoenix-api` vault. For simple references like `DATABASE_URL`, fnox reads the item's `password` field.
-
-Required production items:
-
-| 1Password item | Secret? | Purpose |
-| --- | --- | --- |
-| `DATABASE_URL` | Yes | Production Postgres connection URL |
-| `SECRET_KEY_BASE` | Yes | Phoenix signing/encryption secret |
-| `DISCORD_WEBHOOK_URL` | Yes | Discord webhook target |
-| `RESEND_API_KEY` | Yes | Resend full-access API key (sending + Intake Reply receiving reads) |
-| `STRIPE_SECRET_KEY` | Yes | Stripe API key |
-| `STRIPE_WEBHOOK_SIGNING_SECRET` | Yes | Stripe webhook signature secret |
-| `SUPABASE_URL` | No/low sensitivity | Supabase project URL used for auth/service clients |
-| `SUPABASE_ANON_KEY` | No/low sensitivity | Supabase anon key used for JWT/auth integration |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase admin/service-role key |
-| `SENTRY_DSN` | No/low sensitivity | Sentry DSN for production error reporting |
-
-`SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SENTRY_DSN` are not high-sensitivity secrets, but they are currently loaded via fnox for one consistent production config path.
-
-Optional, once Web Push is enabled:
-
-| 1Password item | Secret? | Purpose |
-| --- | --- | --- |
-| `WEB_PUSH_VAPID_PRIVATE_KEY` | Yes | VAPID private key that signs every push request (ALE-299) |
+`FNOX_IF_MISSING=error` means every mapping without a `default` must exist, including values for features not yet enabled. The five `TRAINING_CALENDAR_*` mappings have inactive defaults and may be absent. In particular, the Web Push, Intake Reply, and Resend webhook mappings are not optional while they remain in `fnox.toml`.
 
 ### 4. GitHub Actions secrets and variables
 
-GitHub Actions deploys the image; the running container loads app secrets from 1Password.
+GitHub Actions deploys the image; the running container loads app secrets from Doppler.
 
 Required GitHub Actions secret:
 
@@ -151,9 +116,8 @@ Web Push is off until all three `WEB_PUSH_VAPID_*` values are present; a partial
 Rollout order matters because `FNOX_IF_MISSING=error` fails startup on a missing fnox item:
 
 1. Generate a pair locally: `cd apps/phoenix && mix web_push_ex.vapid`.
-2. Create the `WEB_PUSH_VAPID_PRIVATE_KEY` item in the `Production-phoenix-api` vault (password field = private key).
-3. Uncomment `WEB_PUSH_VAPID_PRIVATE_KEY` in `fnox.toml` and `WEB_PUSH_VAPID_PUBLIC_KEY` / `WEB_PUSH_VAPID_SUBJECT` under `[env]` in `fly.toml`, filling in the public key.
-4. Deploy. `GET /api/notifications/push/config` should answer `{"enabled": true, "vapidPublicKey": "..."}`; the toggle in the notification centre then offers to enable push.
+2. Create all three `WEB_PUSH_VAPID_*` values in Doppler's `dhc-dashboard` / `prd` config.
+3. Deploy. `GET /api/notifications/push/config` should answer `{"enabled": true, "vapidPublicKey": "..."}`; the toggle in the notification centre then offers to enable push.
 
 Nothing is needed on the Cloudflare/SvelteKit side: the browser fetches the public key from the API.
 
