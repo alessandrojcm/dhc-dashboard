@@ -94,7 +94,11 @@ const cards = $derived([
 	{
 		label: "Waiting",
 		value: formatNumber(waiting),
-		note: `${formatNumber(uncontactedWaiting)} never offered a place · ${formatNumber(contactedWaiting)} offered, awaiting a reply`,
+		note: "People still in the queue",
+		breakdown: [
+			{ label: "Never offered a place", value: uncontactedWaiting },
+			{ label: "Offered, awaiting a reply", value: contactedWaiting },
+		],
 		icon: Users,
 	},
 	{
@@ -176,6 +180,22 @@ const cards = $derived([
 					<p class="mt-2 text-xs leading-5 text-muted-foreground">
 						{card.note}
 					</p>
+					{#if card.breakdown}
+						<ul class="mt-3 space-y-1.5">
+							{#each card.breakdown as item (item.label)}
+								<li
+									class="flex items-center justify-between gap-2 text-xs"
+								>
+									<span class="text-muted-foreground"
+										>{item.label}</span
+									>
+									<span class="font-semibold tabular-nums text-foreground"
+										>{formatNumber(item.value)}</span
+									>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</Card.Root>
 			{/each}
 		</div>
