@@ -93,16 +93,18 @@ export interface ScheduleValues {
 	startTime: string;
 	endTime: string;
 	venue: string;
+	paymentCutoffDate: string;
+	paymentCutoffTime: string;
+	contactFromDate: string;
 }
 
 const wall = (time: string | null | undefined) => (time ?? "").slice(0, 5);
 
 /**
- * A reschedule when the date, start time, end time or venue changes (the
- * fields `reschedule_workshop` counts as a move). Otherwise a changed
- * destination is a destination-only change; with nothing changed at all the
- * dialog stays a reschedule, which Phoenix refuses as no move. A legacy
- * workshop with no end time is moved by any explicit end.
+ * A reschedule when a schedule field changes. Otherwise a changed destination
+ * is a destination-only change; with nothing changed at all the dialog stays
+ * a reschedule, which Phoenix refuses as no move. A legacy workshop with no
+ * end time is moved by any explicit end.
  */
 export function rescheduleOperation(
 	workshop: Pick<
@@ -111,6 +113,9 @@ export function rescheduleOperation(
 		| "startTime"
 		| "endTime"
 		| "venue"
+		| "paymentCutoffDate"
+		| "paymentCutoffTime"
+		| "contactFromDate"
 		| "destinationText"
 		| "destinationProvider"
 		| "destinationPlaceId"
@@ -121,7 +126,10 @@ export function rescheduleOperation(
 		values.date !== workshop.date ||
 		wall(values.startTime) !== wall(workshop.startTime) ||
 		wall(values.endTime) !== wall(workshop.endTime) ||
-		values.venue.trim() !== workshop.venue;
+		values.venue.trim() !== workshop.venue ||
+		values.paymentCutoffDate !== workshop.paymentCutoffDate ||
+		wall(values.paymentCutoffTime) !== wall(workshop.paymentCutoffTime) ||
+		values.contactFromDate !== workshop.contactFromDate;
 	if (moved) return "reschedule";
 
 	const saved = destinationBody(destinationValues(workshop));

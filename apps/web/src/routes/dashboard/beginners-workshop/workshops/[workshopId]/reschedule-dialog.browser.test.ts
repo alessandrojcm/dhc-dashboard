@@ -180,6 +180,16 @@ test("ALE-441: a destination-only edit saves without emailing; a move is still a
 		.element(screen.getByRole("button", { name: "Reschedule and email 3" }))
 		.toBeVisible();
 	expect(operation()).toBe("reschedule");
+
+	await userEvent.fill(screen.getByLabelText("Venue"), "St. Andrew's Hall");
+	await userEvent.fill(screen.getByLabelText("Payment deadline time"), "17:30");
+	await expect
+		.element(screen.getByTestId("reschedule-warning"))
+		.toHaveTextContent("This emails 3 people “Workshop rescheduled”.");
+	await expect
+		.element(screen.getByRole("button", { name: "Reschedule and email 3" }))
+		.toBeVisible();
+	expect(operation()).toBe("reschedule");
 });
 
 test("ALE-442: replacing a saved Google place is a destination-only change, and Escape keeps the dialog open", async () => {

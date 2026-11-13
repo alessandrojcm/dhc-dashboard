@@ -126,6 +126,8 @@ The Beginners' Workshop report (ALE-397) is the Dashboard tab's read model, `Dhc
 
 ## Navigation
 
+- Beginners' Workshop `rescheduleOperation` compares payment deadline date/time and offers-start date as well as venue/date/times before choosing the destination-only endpoint; otherwise a destination edit can silently discard schedule edits. Keep the dialog's inputs and helper tests aligned with that full comparison.
+
 - Workshop non-response is normal waiting, not an alert: `workshop-people.svelte` renders one People roster with visible counted status filters from `rosterGroups` and neutral payment/confirmation guidance; reserve “Needs attention” for workshop issues and failed refunds. Keep each person in one rendered list rather than adding a second response list or disclosure; payment deadlines and automatic outcomes stay Phoenix-owned.
 
 - Beginners' Workshop section pages scroll as a document below `lg`; only desktop constrains the dashboard and panels to the viewport. Keep the responsive height/overflow chain aligned in the dashboard layout, `section-shell.svelte`, and list panels: fixed phone heights let filters squeeze the list to zero. `section-layout.browser.test.ts` covers initial and scrolled views with tracked Chromium/macOS screenshot baselines; review updates, then rerun without `-u`. Its `beforeAll` waits for the Calistoga web font (loaded from Google Fonts); a mismatch showing the fallback heading font is a font-load problem, not hover state.

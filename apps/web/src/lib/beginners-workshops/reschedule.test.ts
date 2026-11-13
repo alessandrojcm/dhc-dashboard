@@ -86,6 +86,9 @@ describe("rescheduleOperation", () => {
 		startTime: "18:30",
 		endTime: "20:30",
 		venue: "St. Andrew's Hall",
+		paymentCutoffDate: "2026-11-11",
+		paymentCutoffTime: "18:30",
+		contactFromDate: "2026-10-20",
 		destinationText: "Arena",
 		destinationProvider: null,
 		destinationPlaceId: null,
@@ -95,6 +98,9 @@ describe("rescheduleOperation", () => {
 		startTime: "18:30",
 		endTime: "20:30",
 		venue: "St. Andrew's Hall",
+		paymentCutoffDate: "2026-11-11",
+		paymentCutoffTime: "18:30",
+		contactFromDate: "2026-10-20",
 		destination_text: "Arena",
 		destination_place_id: "",
 	};
@@ -113,6 +119,7 @@ describe("rescheduleOperation", () => {
 			rescheduleOperation(current, {
 				...unchanged,
 				startTime: "18:30:00",
+				paymentCutoffTime: "18:30:00",
 				venue: "  St. Andrew's Hall ",
 				destination_text: "Arena Two",
 			}),
@@ -164,6 +171,9 @@ describe("rescheduleOperation", () => {
 			{ startTime: "19:00" },
 			{ endTime: "21:00" },
 			{ venue: "The Hub", destination_text: "The Hub" },
+			{ paymentCutoffDate: "2026-11-10", destination_text: "Arena Two" },
+			{ paymentCutoffTime: "17:30:00", destination_text: "Arena Two" },
+			{ contactFromDate: "2026-10-21", destination_text: "Arena Two" },
 		]) {
 			expect(rescheduleOperation(current, { ...unchanged, ...moved })).toBe(
 				"reschedule",

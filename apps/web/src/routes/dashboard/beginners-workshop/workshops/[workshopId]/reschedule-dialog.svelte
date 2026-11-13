@@ -65,6 +65,12 @@ const operation = $derived(
 		startTime: current("startTime"),
 		endTime: form.fields.endTime.value() || (workshop.endTime ?? ""),
 		venue: form.fields.venue.value() ?? workshop.venue,
+		paymentCutoffDate:
+			form.fields.paymentCutoffDate.value() ?? workshop.paymentCutoffDate,
+		paymentCutoffTime:
+			form.fields.paymentCutoffTime.value() ?? workshop.paymentCutoffTime,
+		contactFromDate:
+			form.fields.contactFromDate.value() ?? workshop.contactFromDate,
 		destination_text:
 			form.fields.destination_text.value() ?? savedDestination.destination_text,
 		destination_place_id:
