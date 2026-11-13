@@ -1,0 +1,81 @@
+{
+  "cli_version": "0.13.1",
+  "checkpoint_id": "01M7A8PKZRJPDAJEWVSMDGXJTR",
+  "strategy": "manual-commit",
+  "branch": "feature/google-maps",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "AGENTS.md",
+    "apps/phoenix/config/config.exs",
+    "apps/phoenix/lib/dhc/beginners_workshops/beginners_workshop.ex",
+    "apps/phoenix/lib/dhc/beginners_workshops/calendar_projection.ex",
+    "apps/phoenix/lib/dhc/beginners_workshops/commands.ex",
+    "apps/phoenix/lib/dhc/beginners_workshops/commands/schedule.ex",
+    "apps/phoenix/lib/dhc/beginners_workshops/intake_page.ex",
+    "apps/phoenix/lib/dhc/beginners_workshops/workshop_projection.ex",
+    "apps/phoenix/lib/dhc/invitations.ex",
+    "apps/phoenix/lib/dhc/invitations/repository.ex",
+    "apps/phoenix/lib/dhc/invitations/validity.ex",
+    "apps/phoenix/lib/dhc_web/controllers/beginners_workshop_intake_json.ex",
+    "apps/phoenix/lib/dhc_web/controllers/beginners_workshops_controller.ex",
+    "apps/phoenix/lib/dhc_web/controllers/beginners_workshops_http.ex",
+    "apps/phoenix/lib/dhc_web/controllers/beginners_workshops_json.ex",
+    "apps/phoenix/lib/dhc_web/router.ex",
+    "apps/phoenix/priv/api/openapi.yaml",
+    "apps/phoenix/test/dhc/beginners_workshops/calendar_projection_test.exs",
+    "apps/phoenix/test/dhc/beginners_workshops/commands_test.exs",
+    "apps/phoenix/test/dhc/beginners_workshops/reschedule_test.exs",
+    "apps/phoenix/test/dhc/invitations/validity_test.exs",
+    "apps/phoenix/test/dhc/workshop_calendar/beginners_participant_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/beginners_workshops_client_parity_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/beginners_workshops_controller_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/invitations_controller_test.exs",
+    "apps/web/e2e/beginners-workshop-journey.spec.ts",
+    "apps/web/src/lib/components/destination-input.svelte",
+    "apps/web/src/lib/schemas/beginnersWorkshop.test.ts",
+    "apps/web/src/lib/schemas/beginnersWorkshop.ts",
+    "apps/web/src/lib/server/beginners-workshops/command.test.ts",
+    "apps/web/src/lib/server/beginners-workshops/form-paths.ts",
+    "apps/web/src/routes/(public)/beginners/intake/[token]/intake-page.browser.test.ts",
+    "apps/web/src/routes/(public)/beginners/intake/[token]/intake-page.svelte",
+    "apps/web/src/routes/dashboard/beginners-workshop/schedule-workshops-dialog.browser.test.ts",
+    "apps/web/src/routes/dashboard/beginners-workshop/schedule-workshops-dialog.svelte",
+    "apps/web/src/routes/dashboard/beginners-workshop/workshops/[workshopId]/console.remote.ts",
+    "apps/web/src/routes/dashboard/beginners-workshop/workshops/[workshopId]/reschedule-dialog.browser.test.ts",
+    "apps/web/src/routes/dashboard/beginners-workshop/workshops/[workshopId]/reschedule-dialog.svelte",
+    "apps/web/src/routes/dashboard/beginners-workshop/workshops/[workshopId]/workshop-console.svelte",
+    "packages/api-client/src/index.ts",
+    "packages/email-templates/emails/invite-member.tsx",
+    "skills-lock.json"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 68891,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1240064,
+    "output_tokens": 3092,
+    "api_call_count": 27
+  },
+  "redaction": {
+    "replacements": 34,
+    "layers": {
+      "betterleaks": 2,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 28,
+      "credentialed_uri": 0,
+      "entropy": 8,
+      "key_context": 0,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
