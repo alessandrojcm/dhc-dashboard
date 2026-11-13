@@ -1,0 +1,17 @@
+Set up browse so you can use my Chrome: run curl -fsSL https://opencode.ai/browse/install | bash
+
+---
+
+try again
+
+---
+
+try again
+
+---
+
+how do i stop it idk what that process is
+
+---
+
+do it and keep trying to configure the other one
