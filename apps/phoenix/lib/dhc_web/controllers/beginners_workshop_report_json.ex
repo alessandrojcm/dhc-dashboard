@@ -14,6 +14,8 @@ defmodule DhcWeb.BeginnersWorkshopReportJSON do
   defp queue(queue) do
     %{
       waiting: queue.waiting,
+      contactedWaiting: queue.contacted_waiting,
+      uncontactedWaiting: queue.uncontacted_waiting,
       medianWaitDays: queue.median_wait_days,
       longestWaitDays: queue.longest_wait_days,
       medianDaysToSeat: queue.median_days_to_seat,

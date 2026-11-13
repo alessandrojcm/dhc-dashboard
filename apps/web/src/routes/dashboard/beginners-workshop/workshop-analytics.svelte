@@ -83,12 +83,18 @@ const genderDistribution = $derived.by(() => {
 // The report counts every waiting entry; the analytics only profiles with a
 // date of birth. Prefer the report's queue size when it is loaded.
 const waiting = $derived(report?.queue.waiting ?? analytics?.totalCount ?? 0);
+const contactedWaiting = $derived(
+	report?.queue.contactedWaiting ?? analytics?.contactedCount ?? 0,
+);
+const uncontactedWaiting = $derived(
+	report?.queue.uncontactedWaiting ?? analytics?.uncontactedCount ?? 0,
+);
 
 const cards = $derived([
 	{
 		label: "Waiting",
 		value: formatNumber(waiting),
-		note: "People in the queue now",
+		note: `${formatNumber(uncontactedWaiting)} never offered a place · ${formatNumber(contactedWaiting)} offered, awaiting a reply`,
 		icon: Users,
 	},
 	{

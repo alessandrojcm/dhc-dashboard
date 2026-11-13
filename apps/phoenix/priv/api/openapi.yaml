@@ -10766,9 +10766,11 @@ components:
     BeginnersWorkshopReportQueue:
       type: object
       description: Queue health now, over today's `waiting` people, plus the liabilities.
-      required: [waiting, medianWaitDays, longestWaitDays, medianDaysToSeat, workshopsToClear, removedInRetention, invitable, carriedFees]
+      required: [waiting, contactedWaiting, uncontactedWaiting, medianWaitDays, longestWaitDays, medianDaysToSeat, workshopsToClear, removedInRetention, invitable, carriedFees]
       properties:
         waiting: {type: integer, minimum: 0}
+        contactedWaiting: {type: integer, minimum: 0}
+        uncontactedWaiting: {type: integer, minimum: 0}
         medianWaitDays: {type: number, nullable: true, description: Median days since the priority date of today's waiting people}
         longestWaitDays: {type: integer, nullable: true}
         medianDaysToSeat:
@@ -11609,11 +11611,19 @@ components:
           type: object
           required:
             - totalCount
+            - contactedCount
+            - uncontactedCount
             - averageAge
             - genderDistribution
             - ageDistribution
           properties:
             totalCount:
+              type: integer
+              minimum: 0
+            contactedCount:
+              type: integer
+              minimum: 0
+            uncontactedCount:
               type: integer
               minimum: 0
             averageAge:
