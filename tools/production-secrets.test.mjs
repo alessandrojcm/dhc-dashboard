@@ -49,7 +49,7 @@ test("the deployment guide distinguishes runtime-optional features from fnox def
 
 	assert.match(
 		readme,
-		/the five `TRAINING_CALENDAR_\*` mappings have inactive defaults/i,
+		/one batched Doppler lookup, so a single missing key fails the request/i,
 	);
 	assert.match(readme, /"Optional" for those features describes runtime behavior, not production-secret provisioning/);
 });
