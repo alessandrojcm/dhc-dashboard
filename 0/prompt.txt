@@ -1,0 +1,5 @@
+can you make the default invitation validity to be 7 days
+
+---
+
+ok commit, push and open a pr
