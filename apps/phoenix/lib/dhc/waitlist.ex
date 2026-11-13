@@ -86,6 +86,8 @@ defmodule Dhc.Waitlist do
   """
   @spec analytics() :: %{
           total_count: non_neg_integer(),
+          contacted_count: non_neg_integer(),
+          uncontacted_count: non_neg_integer(),
           average_age: number(),
           gender_distribution: [%{gender: String.t(), value: non_neg_integer()}],
           age_distribution: [%{age: non_neg_integer(), value: non_neg_integer()}]
@@ -96,12 +98,14 @@ defmodule Dhc.Waitlist do
     # Each task checks out its own pool connection.
     [
       total_count: &total_count/0,
+      contacted_count: &contacted_waiting_count/0,
       average_age: &average_age/0,
       gender_distribution: &gender_distribution/0,
       age_distribution: &age_distribution/0
     ]
     |> Task.async_stream(fn {key, fun} -> {key, fun.()} end, timeout: :infinity)
     |> Map.new(fn {:ok, {key, value}} -> {key, value} end)
+    |> then(fn result -> Map.put(result, :uncontacted_count, result.total_count - result.contacted_count) end)
   end
 
   @doc """
@@ -113,7 +117,9 @@ defmodule Dhc.Waitlist do
   """
   @spec queue_report(DateTime.t()) :: %{
           waiting_since: [DateTime.t()],
-          removed_in_retention: non_neg_integer()
+          removed_in_retention: non_neg_integer(),
+          contacted_waiting: non_neg_integer(),
+          uncontacted_waiting: non_neg_integer()
         }
   def queue_report(%DateTime{} = now) do
     waiting_since =
@@ -132,7 +138,14 @@ defmodule Dhc.Waitlist do
       |> Repo.all()
       |> Enum.count(&restorable?(&1, now))
 
-    %{waiting_since: waiting_since, removed_in_retention: removed_in_retention}
+    contacted = contacted_waiting_count()
+
+    %{
+      waiting_since: waiting_since,
+      removed_in_retention: removed_in_retention,
+      contacted_waiting: contacted,
+      uncontacted_waiting: length(waiting_since) - contacted
+    }
   end
 
   @doc """
@@ -529,6 +542,23 @@ defmodule Dhc.Waitlist do
   # and gender figures are limited to people who have that data.
   defp total_count do
     Repo.aggregate(waiting_query(), :count)
+  end
+
+  @doc false
+  @spec contacted_waiting_count() :: non_neg_integer()
+  def contacted_waiting_count do
+    from(w in WaitlistEntry,
+      as: :entry,
+      where: w.status == "waiting",
+      where:
+        exists(
+          from(i in "beginners_workshop_intakes",
+            where: field(i, :waitlist_id) == parent_as(:entry).id and field(i, :state) in ["contacted", "paid"],
+            select: 1
+          )
+        )
+    )
+    |> Repo.aggregate(:count)
   end
 
   defp waiting_query, do: from(w in WaitlistEntry, where: w.status == "waiting")

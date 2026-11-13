@@ -366,6 +366,8 @@ defmodule Dhc.BeginnersWorkshops.Report do
 
     %{
       waiting: waiting,
+      contacted_waiting: queue.contacted_waiting,
+      uncontacted_waiting: queue.uncontacted_waiting,
       median_wait_days: median(waits),
       longest_wait_days: Enum.max(waits, fn -> nil end),
       median_days_to_seat: median(twelve_months.days_to_seat),

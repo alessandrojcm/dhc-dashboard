@@ -83,12 +83,22 @@ const genderDistribution = $derived.by(() => {
 // The report counts every waiting entry; the analytics only profiles with a
 // date of birth. Prefer the report's queue size when it is loaded.
 const waiting = $derived(report?.queue.waiting ?? analytics?.totalCount ?? 0);
+const contactedWaiting = $derived(
+	report?.queue.contactedWaiting ?? analytics?.contactedCount ?? 0,
+);
+const uncontactedWaiting = $derived(
+	report?.queue.uncontactedWaiting ?? analytics?.uncontactedCount ?? 0,
+);
 
 const cards = $derived([
 	{
 		label: "Waiting",
 		value: formatNumber(waiting),
-		note: "People in the queue now",
+		note: "People still in the queue",
+		breakdown: [
+			{ label: "Never offered a place", value: uncontactedWaiting },
+			{ label: "Offered, awaiting a reply", value: contactedWaiting },
+		],
 		icon: Users,
 	},
 	{
@@ -170,6 +180,22 @@ const cards = $derived([
 					<p class="mt-2 text-xs leading-5 text-muted-foreground">
 						{card.note}
 					</p>
+					{#if card.breakdown}
+						<ul class="mt-3 space-y-1.5">
+							{#each card.breakdown as item (item.label)}
+								<li
+									class="flex items-center justify-between gap-2 text-xs"
+								>
+									<span class="text-muted-foreground"
+										>{item.label}</span
+									>
+									<span class="font-semibold tabular-nums text-foreground"
+										>{formatNumber(item.value)}</span
+									>
+								</li>
+							{/each}
+						</ul>
+					{/if}
 				</Card.Root>
 			{/each}
 		</div>

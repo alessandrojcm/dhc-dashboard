@@ -75,6 +75,8 @@ const report = (
 ): BeginnersWorkshopReport => ({
 	queue: {
 		waiting: 4,
+		contactedWaiting: 2,
+		uncontactedWaiting: 2,
 		medianWaitDays: 20,
 		longestWaitDays: 180,
 		medianDaysToSeat: 274.5,

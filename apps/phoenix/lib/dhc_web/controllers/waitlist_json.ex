@@ -9,6 +9,8 @@ defmodule DhcWeb.WaitlistJSON do
     %{
       data: %{
         totalCount: analytics.total_count,
+        contactedCount: analytics.contacted_count,
+        uncontactedCount: analytics.uncontacted_count,
         averageAge: analytics.average_age,
         genderDistribution: analytics.gender_distribution,
         ageDistribution: analytics.age_distribution

@@ -23,37 +23,87 @@ defmodule Dhc.Repo.Migrations.AddDestinationPlaceProvenance do
 
   def change do
     for table <- @tables do
-      alter table(table) do
-        add :destination_provider, :text
-        add :destination_place_id, :text
-        add :destination_selected_at, :utc_datetime
+      # Repair: older databases may be missing the `destination_text` column
+      # that ALE-440/ALE-441 added (the provenance constraint references it).
+      execute("""
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = '#{table}' AND column_name = 'destination_text'
+        ) THEN
+          ALTER TABLE "#{table}" ADD COLUMN destination_text text;
+        END IF;
+      END $$;
+      """)
+
+      # Add the provenance columns if they are not already present, so a
+      # partially-applied migration can be re-run safely.
+      for column <- [:destination_provider, :destination_place_id, :destination_selected_at] do
+        type =
+          case column do
+            :destination_selected_at -> "timestamp without time zone"
+            _ -> "text"
+          end
+
+        execute("""
+        DO $$ BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = '#{table}' AND column_name = '#{column}'
+          ) THEN
+            ALTER TABLE "#{table}" ADD COLUMN "#{column}" #{type};
+          END IF;
+        END $$;
+        """)
       end
 
-      create(
-        constraint(table, :"#{table}_destination_provider_known",
-          check: "destination_provider IS NULL OR destination_provider = 'google'"
-        )
-      )
+      # Constraints, guarded so re-runs do not fail on existing objects.
+      execute("""
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = '#{table}_destination_provider_known'
+        ) THEN
+          ALTER TABLE "#{table}" ADD CONSTRAINT "#{table}_destination_provider_known"
+            CHECK (destination_provider IS NULL OR destination_provider = 'google');
+        END IF;
+      END $$;
+      """)
 
-      create(
-        constraint(table, :"#{table}_destination_place_complete",
-          check:
-            "(destination_provider IS NULL) = (destination_place_id IS NULL) AND " <>
-              "(destination_place_id IS NULL) = (destination_selected_at IS NULL)"
-        )
-      )
+      execute("""
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = '#{table}_destination_place_complete'
+        ) THEN
+          ALTER TABLE "#{table}" ADD CONSTRAINT "#{table}_destination_place_complete"
+            CHECK (
+              (destination_provider IS NULL) = (destination_place_id IS NULL) AND
+              (destination_place_id IS NULL) = (destination_selected_at IS NULL)
+            );
+        END IF;
+      END $$;
+      """)
 
-      create(
-        constraint(table, :"#{table}_destination_text_or_place",
-          check: "destination_text IS NULL OR destination_place_id IS NULL"
-        )
-      )
+      execute("""
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = '#{table}_destination_text_or_place'
+        ) THEN
+          ALTER TABLE "#{table}" ADD CONSTRAINT "#{table}_destination_text_or_place"
+            CHECK (destination_text IS NULL OR destination_place_id IS NULL);
+        END IF;
+      END $$;
+      """)
 
-      create(
-        constraint(table, :"#{table}_destination_place_id_length",
-          check: "char_length(destination_place_id) <= 255"
-        )
-      )
+      execute("""
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = '#{table}_destination_place_id_length'
+        ) THEN
+          ALTER TABLE "#{table}" ADD CONSTRAINT "#{table}_destination_place_id_length"
+            CHECK (char_length(destination_place_id) <= 255);
+        END IF;
+      END $$;
+      """)
     end
   end
 end
