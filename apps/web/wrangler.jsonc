@@ -2,6 +2,9 @@
   "name": "dhc-dashboard",
   "main": ".svelte-kit/cloudflare/_worker.js",
   "compatibility_date": "2025-04-01",
+  "placement": {
+    "region": "aws:eu-west-1",
+  },
   "assets": {
     "directory": ".cloudflare/public",
     "binding": "ASSETS",
