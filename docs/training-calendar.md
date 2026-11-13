@@ -81,7 +81,8 @@ live Google.
    Calendar's event-only refresh grant; there is no domain-wide delegation.
 4. Review existing manual, group, domain and public sharing. Preserving it means
    this sync cannot guarantee that only eligible people have effective access.
-5. Provision these production 1Password items using the existing secret-manager
+5. Provision these production Doppler secrets in the `dhc-dashboard` project's
+   `prd` config using the existing secret-manager
    workflow; `fnox.toml` includes their references and inactive/empty fallbacks:
 
    ```text

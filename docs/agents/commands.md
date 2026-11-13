@@ -132,7 +132,7 @@ pnpm --filter @dhc/email-templates verify:html-variable
                              # one real send to delivered@resend.dev: is {{{MESSAGE_HTML}}} inserted unescaped?
 ```
 
-The sync, smoke and verify commands need a Full Access key as `RESEND_API_KEY` (`fnox` reads that name in the `production` profile through the 1Password `op` CLI with the desktop app integration turned on; the production key is now full-access, and `RESEND_API_KEY_CI`, a GitHub Actions secret that fnox does not hold, also works for syncs and the verify send). The GitHub
+The sync, smoke and verify commands need a Full Access key as `RESEND_API_KEY` (`fnox` reads that name in the `production` profile from Doppler's `dhc-dashboard` / `prd` config; authenticate the local Doppler CLI or provide `DOPPLER_TOKEN`; the production key is now full-access, and `RESEND_API_KEY_CI`, a GitHub Actions secret that fnox does not hold, also works for syncs and the verify send). The GitHub
 Actions workflow `.github/workflows/email-templates.yml` runs the same pipeline:
 drafts on pull requests, publish + smoke on main, gated by change detection on
 `packages/email-templates/**`.
@@ -417,15 +417,15 @@ Phoenix deploys to Fly.io as an Elixir release built by `apps/phoenix/Dockerfile
 mise run phx-fly-deploy        # fly deploy --depot (Fly Depot builder, persistent org-scoped layer cache)
 ```
 
-The container runs Phoenix through `fnox exec --profile production -- /app/bin/dhc start`, and the Fly release command runs migrations through the same fnox profile. `fnox.toml` uses the `production` profile and 1Password vault `Production-phoenix-api`. Create one 1Password item per runtime env var (for example `DATABASE_URL`, `SECRET_KEY_BASE`, `STRIPE_SECRET_KEY`) with the value in the item's password field.
+The container runs Phoenix through `fnox exec --profile production -- /app/bin/dhc start`, and the Fly release command runs migrations through the same fnox profile. `fnox.toml` reads the `dhc-dashboard` Doppler project's `prd` config. Create every runtime environment variable referenced by `fnox.toml` there (for example `DATABASE_URL`, `SECRET_KEY_BASE`, `STRIPE_SECRET_KEY`).
 
-The only runtime bootstrap secret stored in Fly should be `OP_SERVICE_ACCOUNT_TOKEN`, scoped to the 1Password production vault:
+The only runtime bootstrap secret stored in Fly should be `FNOX_DOPPLER_TOKEN`, a service token scoped to `dhc-dashboard` / `prd`. fnox reserves this name for its Doppler provider; local development instead uses a logged-in Doppler CLI or `DOPPLER_TOKEN`:
 
 ```bash
-fly secrets set OP_SERVICE_ACCOUNT_TOKEN=ops_... --app dhc-dashboard
+fly secrets set FNOX_DOPPLER_TOKEN=dp.st.prd_... --app dhc-dashboard
 ```
 
-Rotating app secrets in 1Password does not require `fly secrets set` or a new image; restart Machines to reload them through `fnox exec`. Only rotate the Fly secret when the 1Password service account token itself changes.
+Rotating application secrets in Doppler does not require `fly secrets set` or a new image; restart Machines to reload them through `fnox exec`. Only rotate the Fly secret when the Doppler service token changes.
 
 GitHub Actions workflow: `.github/workflows/deploy-phoenix-fly.yml`. Required GitHub secret: `FLY_API_TOKEN`. Optional GitHub variable: `FLY_PHOENIX_APP` (defaults to `dhc-dashboard`).
 
