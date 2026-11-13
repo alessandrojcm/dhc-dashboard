@@ -16,6 +16,7 @@ elixir = "1.20.5"     # Phoenix (mix.exs requires ~> 1.15)
 pnpm = "12"
 fnox = "latest"
 entire = "0.13.1"
+doppler = "latest"
 
 # ── Environment ────────────────────────────────────────────────
 # These vars are available in every task and via `mise exec`.

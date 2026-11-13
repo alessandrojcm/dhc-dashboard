@@ -89,7 +89,7 @@ Web Push and Intake Reply values are fnox/Doppler mappings, not Fly `[env]` entr
 
 Create every variable referenced by `fnox.toml` in the `dhc-dashboard` project's `prd` config. At runtime fnox uses the image's Doppler CLI and Fly's `FNOX_DOPPLER_TOKEN`. The config is the authoritative variable list.
 
-`FNOX_IF_MISSING=error` means every mapping without a `default` must exist, including values for features not yet enabled. The five `TRAINING_CALENDAR_*` mappings have inactive defaults and may be absent. In particular, the Web Push, Intake Reply, and Resend webhook mappings are not optional while they remain in `fnox.toml`.
+`FNOX_IF_MISSING=error` means every key in `fnox.toml` needs a value in `prd`, including keys for features not yet enabled. A `default` is only a fallback value: fnox resolves mapped names with one batched Doppler lookup, so a single missing key fails the request and every secret in it. The five `TRAINING_CALENDAR_*` keys therefore need values too — placeholders holding their defaults keep the sync inactive; they are not an exception. Web Push, Intake Reply, and Resend webhook values are equally required while their mappings remain in `fnox.toml`.
 
 ### 4. GitHub Actions secrets and variables
 
