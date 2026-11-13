@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_380bade6a51a4589991970d5d0ebd548",
+  "agent_id": "ses_e38ab7baeffe1o6J82v55rqpqX",
+  "subagent_type": "browser",
+  "task_description": "Inspect invitation interface",
+  "token_usage": {
+    "input_tokens": 29506,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 29404,
+    "output_tokens": 80,
+    "api_call_count": 2
+  },
+  "started_at": "2026-11-10T21:19:27.311Z",
+  "completed_at": "2026-11-10T21:19:47.382812Z"
+}

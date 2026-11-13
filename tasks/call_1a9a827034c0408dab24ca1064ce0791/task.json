@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "call_1a9a827034c0408dab24ca1064ce0791",
+  "agent_id": "ses_e389ad41dffeiTLh9v1Oe8iyyu",
+  "subagent_type": "browser",
+  "task_description": "Capture inventory screens",
+  "token_usage": {
+    "input_tokens": 63142,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3069312,
+    "output_tokens": 6860,
+    "api_call_count": 62
+  },
+  "started_at": "2026-11-10T21:37:38.785Z",
+  "completed_at": "2026-11-10T21:41:49.895041Z"
+}
