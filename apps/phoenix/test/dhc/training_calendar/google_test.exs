@@ -3,18 +3,14 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
 
   alias Dhc.TrainingCalendar.Google
 
-  @scope "https://www.googleapis.com/auth/calendar.acls"
-
   setup do
     original = Application.get_env(:dhc, Dhc.TrainingCalendar)
 
     Application.put_env(:dhc, Dhc.TrainingCalendar,
-      client_id: "training-client",
-      client_secret: "training-secret",
-      refresh_token: "training-refresh-token",
       req_options: [plug: {Req.Test, Dhc.TrainingCalendar.Google}]
     )
 
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
     on_exit(fn -> restore_config(original) end)
     :ok
   end
@@ -23,8 +19,8 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
     Req.Test.expect(Google, 3, fn conn ->
       case {conn.method, conn.request_path} do
         {"POST", "/token"} ->
-          assert conn.body_params["scope"] == @scope
-          Req.Test.json(conn, %{"access_token" => "short-lived", "scope" => @scope})
+          assert conn.body_params["client_id"] == "organizer-client"
+          Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived"))
 
         {"GET", "/calendar/v3/calendars/training/acl"} ->
           assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer short-lived"]
@@ -61,7 +57,7 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
         ] do
       Req.Test.expect(Google, fn conn ->
         assert {"POST", "/token"} == {conn.method, conn.request_path}
-        Req.Test.json(conn, %{"access_token" => "short-lived"})
+        Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived"))
       end)
 
       if response["nextPageToken"] do
@@ -86,7 +82,7 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
     Req.Test.expect(Google, 3, fn conn ->
       case {conn.request_path, conn.query_params} do
         {"/token", _params} ->
-          Req.Test.json(conn, %{"access_token" => "short-lived"})
+          Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived"))
 
         {"/calendar/v3/calendars/training/acl", %{"pageToken" => "later"}} ->
           Plug.Conn.send_resp(conn, 500, "PRIVATE later-page provider body")
@@ -103,7 +99,7 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
     Req.Test.expect(Google, 2, fn conn ->
       case {conn.method, conn.request_path} do
         {"POST", "/token"} ->
-          Req.Test.json(conn, %{"access_token" => "short-lived"})
+          Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived"))
 
         {"POST", "/calendar/v3/calendars/training%40example.com/acl"} ->
           assert conn.query_params == %{"sendNotifications" => "true"}
@@ -128,7 +124,7 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
       Req.Test.expect(Google, 2, fn conn ->
         case {conn.method, conn.request_path} do
           {"POST", "/token"} ->
-            Req.Test.json(conn, %{"access_token" => "short-lived"})
+            Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived"))
 
           {"DELETE", "/calendar/v3/calendars/training/acl/rule-1"} ->
             assert Plug.Conn.get_req_header(conn, "if-match") == ["etag-1"]
@@ -144,7 +140,7 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
     Req.Test.expect(Google, 2, fn conn ->
       case {conn.method, conn.request_path} do
         {"POST", "/token"} ->
-          Req.Test.json(conn, %{"access_token" => "short-lived"})
+          Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived"))
 
         {"DELETE",
          "/calendar/v3/calendars/training%40example.com/acl/user%3Amember%2Btag%40example.com"} ->
@@ -160,7 +156,7 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
   test "malformed successful insert acknowledgments remain uncertain, not definite refusals" do
     Req.Test.expect(Google, 2, fn conn ->
       if conn.request_path == "/token",
-        do: Req.Test.json(conn, %{"access_token" => "short-lived"}),
+        do: Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived")),
         else: Req.Test.json(conn, %{"id" => "created-without-acknowledgment"})
     end)
 
@@ -176,27 +172,11 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
         ] do
       Req.Test.expect(Google, 2, fn conn ->
         if conn.request_path == "/token",
-          do: Req.Test.json(conn, %{"access_token" => "short-lived"}),
+          do: Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived")),
           else: Req.Test.json(conn, body)
       end)
 
       assert {:error, :rejected} = Google.list("training")
-    end
-  end
-
-  test "a declared OAuth scope must be exactly ACL-only, never a broad or Workshop grant" do
-    for scope <- [
-          "https://www.googleapis.com/auth/calendar.events.owned",
-          @scope <> " https://www.googleapis.com/auth/calendar",
-          "https://www.googleapis.com/auth/calendar",
-          []
-        ] do
-      Req.Test.expect(Google, fn conn ->
-        assert conn.request_path == "/token"
-        Req.Test.json(conn, %{"access_token" => "short-lived", "scope" => scope})
-      end)
-
-      assert {:error, :configuration} = Google.list("training")
     end
   end
 
@@ -213,7 +193,7 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
         ] do
       Req.Test.stub(Google, fn conn ->
         if conn.request_path == "/token" do
-          Req.Test.json(conn, %{"access_token" => "short-lived"})
+          Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived"))
         else
           conn
           |> Plug.Conn.put_resp_content_type("application/json")
@@ -223,29 +203,12 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
 
       assert {:error, ^expected} = Google.list("training")
     end
-
-    Req.Test.stub(Google, fn conn ->
-      conn
-      |> Plug.Conn.put_status(400)
-      |> Req.Test.json(%{
-        "error" => "invalid_grant",
-        "error_description" => "PRIVATE provider error"
-      })
-    end)
-
-    assert {:error, :unauthorized} = Google.list("training")
-
-    Req.Test.stub(Google, fn conn ->
-      Req.Test.json(conn, %{"access_token" => "short-lived", "scope" => "calendar.readonly"})
-    end)
-
-    assert {:error, :configuration} = Google.list("training")
   end
 
   test "does not log provider bodies or credentials" do
     Req.Test.stub(Google, fn conn ->
       if conn.request_path == "/token" do
-        Req.Test.json(conn, %{"access_token" => "short-lived"})
+        Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("short-lived"))
       else
         Plug.Conn.send_resp(conn, 500, "PRIVATE provider response")
       end
@@ -256,7 +219,7 @@ defmodule Dhc.TrainingCalendar.GoogleTest do
         assert {:error, :transient} = Google.list("training")
       end)
 
-    for forbidden <- ["training-secret", "training-refresh-token", "PRIVATE provider response"] do
+    for forbidden <- ["organizer-secret", "organizer-refresh-token", "PRIVATE provider response"] do
       refute log =~ forbidden
     end
   end

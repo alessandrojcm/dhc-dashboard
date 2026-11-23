@@ -75,10 +75,10 @@ live Google.
 2. Choose an explicit existing training-calendar ID, distinct from the Workshop
    committee and participant calendars. The `primary` alias and either configured
    Workshop calendar ID are refused.
-3. Use separate organizer OAuth credentials with offline consent for only
-   `https://www.googleapis.com/auth/calendar.acls`. The organizer must be allowed
-   to manage sharing on this target. Do **not** broaden or reuse the Workshop
-   Calendar's event-only refresh grant; there is no domain-wide delegation.
+3. Use the [shared organizer connection](google-calendar.md), with offline consent
+   for exactly `calendar.events.owned` and `calendar.acls` (ADR 0031). The organizer
+   must be allowed to manage sharing on this target. The target and its grant
+   ledger remain independent of Workshop events; there is no domain-wide delegation.
 4. Review existing manual, group, domain and public sharing. Preserving it means
    this sync cannot guarantee that only eligible people have effective access.
 5. Provision these production Doppler secrets in the `dhc-dashboard` project's
@@ -88,9 +88,9 @@ live Google.
    ```text
    TRAINING_CALENDAR_ENABLED=false
    TRAINING_CALENDAR_ID
-   TRAINING_CALENDAR_CLIENT_ID
-   TRAINING_CALENDAR_CLIENT_SECRET
-   TRAINING_CALENDAR_REFRESH_TOKEN
+   GOOGLE_CALENDAR_CLIENT_ID
+   GOOGLE_CALENDAR_CLIENT_SECRET
+   GOOGLE_CALENDAR_REFRESH_TOKEN
    ```
 
 6. Verify the behavior first with separate isolated credentials/calendar and

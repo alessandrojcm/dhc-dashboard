@@ -2,22 +2,22 @@ defmodule Dhc.TrainingCalendar.Google do
   @moduledoc """
   Google Calendar ACL transport for the training calendar roster.
 
-  The transport exchanges its dedicated refresh token for every public
-  operation. It deliberately exposes only closed outcomes: credentials,
+  The transport obtains a token from the shared GoogleCalendar.Auth module for
+  every public operation. It deliberately exposes only closed outcomes: credentials,
   provider payloads, and transport exceptions do not escape this boundary.
   """
 
-  @scope "https://www.googleapis.com/auth/calendar.acls"
-  @token_url "https://oauth2.googleapis.com/token"
+  alias Dhc.GoogleCalendar.Auth
+
   @calendar_url "https://www.googleapis.com/calendar/v3"
   @max_results 250
 
-  @type error :: :configuration | :unauthorized | :transient | :conflict | :rejected | :missing
+  @type error :: Auth.error() | :unauthorized | :conflict | :rejected | :missing
 
   @doc "Lists every ACL rule on a calendar."
   @spec list(String.t()) :: {:ok, [map()]} | {:error, error()}
   def list(calendar_id) when is_binary(calendar_id) and calendar_id != "" do
-    with {:ok, token} <- access_token() do
+    with {:ok, token} <- Auth.access_token() do
       list_pages(calendar_id, token, nil, MapSet.new(), [])
     end
   end
@@ -28,7 +28,7 @@ defmodule Dhc.TrainingCalendar.Google do
   @spec insert(String.t(), String.t()) :: {:ok, map()} | {:error, error()}
   def insert(calendar_id, email)
       when is_binary(calendar_id) and calendar_id != "" and is_binary(email) and email != "" do
-    with {:ok, token} <- access_token(),
+    with {:ok, token} <- Auth.access_token(),
          {:ok, response} <-
            request(:post, acl_path(calendar_id), token,
              json: %{"role" => "reader", "scope" => %{"type" => "user", "value" => email}},
@@ -45,7 +45,7 @@ defmodule Dhc.TrainingCalendar.Google do
   def delete(calendar_id, rule_id, etag)
       when is_binary(calendar_id) and calendar_id != "" and is_binary(rule_id) and rule_id != "" and
              is_binary(etag) and etag != "" do
-    with {:ok, token} <- access_token(),
+    with {:ok, token} <- Auth.access_token(),
          {:ok, response} <-
            request(:delete, rule_path(calendar_id, rule_id), token, headers: [{"if-match", etag}]) do
       case response do
@@ -84,68 +84,6 @@ defmodule Dhc.TrainingCalendar.Google do
       error -> error
     end
   end
-
-  defp access_token do
-    with {:ok, credentials} <- credentials(),
-         {:ok, response} <- refresh(credentials) do
-      token_response(response)
-    end
-  end
-
-  defp credentials do
-    config = Application.get_env(:dhc, Dhc.TrainingCalendar, [])
-
-    case {Keyword.get(config, :client_id), Keyword.get(config, :client_secret),
-          Keyword.get(config, :refresh_token)} do
-      {client_id, client_secret, refresh_token}
-      when is_binary(client_id) and client_id != "" and is_binary(client_secret) and
-             client_secret != "" and is_binary(refresh_token) and refresh_token != "" ->
-        {:ok, {client_id, client_secret, refresh_token}}
-
-      _missing ->
-        {:error, :configuration}
-    end
-  end
-
-  defp refresh({client_id, client_secret, refresh_token}) do
-    request_options(
-      method: :post,
-      url: @token_url,
-      form: [
-        grant_type: "refresh_token",
-        client_id: client_id,
-        client_secret: client_secret,
-        refresh_token: refresh_token,
-        scope: @scope
-      ]
-    )
-    |> Req.request()
-    |> transport_safe()
-  rescue
-    _exception -> {:error, :transient}
-  end
-
-  defp token_response(%Req.Response{status: status, body: body}) when status in 200..299 do
-    case body do
-      %{"access_token" => token} when is_binary(token) and token != "" ->
-        if valid_oauth_scope?(Map.get(body, "scope")),
-          do: {:ok, token},
-          else: {:error, :configuration}
-
-      _invalid_body ->
-        {:error, :configuration}
-    end
-  end
-
-  defp token_response(%Req.Response{status: 400, body: %{"error" => "invalid_grant"}}),
-    do: {:error, :unauthorized}
-
-  defp token_response(%Req.Response{status: 401}), do: {:error, :unauthorized}
-
-  defp token_response(%Req.Response{status: status}) when status in 429..599,
-    do: {:error, :transient}
-
-  defp token_response(%Req.Response{}), do: {:error, :configuration}
 
   defp request(method, path, token, options) do
     headers = [{"authorization", "Bearer #{token}"} | Keyword.get(options, :headers, [])]
@@ -237,13 +175,6 @@ defmodule Dhc.TrainingCalendar.Google do
   end
 
   defp rate_limited?(_body), do: false
-
-  defp valid_oauth_scope?(nil), do: true
-
-  defp valid_oauth_scope?(scope) when is_binary(scope),
-    do: String.split(scope, " ", trim: true) == [@scope]
-
-  defp valid_oauth_scope?(_scope), do: false
 
   defp acl_path(calendar_id), do: "/calendars/#{segment(calendar_id)}/acl"
   defp rule_path(calendar_id, rule_id), do: "#{acl_path(calendar_id)}/#{segment(rule_id)}"

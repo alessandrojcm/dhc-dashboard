@@ -25,12 +25,10 @@ defmodule Dhc.WorkshopCalendar.ParticipantConcurrencyTest do
       active: true,
       committee_calendar_id: "committee@test.invalid",
       participant_calendar_id: "participants@test.invalid",
-      client_id: "participant-concurrency-client",
-      client_secret: "participant-concurrency-secret",
-      refresh_token: "participant-concurrency-refresh",
       req_options: [plug: {Req.Test, Google}]
     )
 
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
     restore_stripe = StripeStub.install()
 
     on_exit(fn ->

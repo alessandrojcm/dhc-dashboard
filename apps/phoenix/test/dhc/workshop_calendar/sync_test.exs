@@ -20,12 +20,10 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
       active: true,
       committee_calendar_id: "committee@test.invalid",
       participant_calendar_id: "participants@test.invalid",
-      client_id: "calendar-client",
-      client_secret: "calendar-secret",
-      refresh_token: "calendar-refresh",
       req_options: [plug: {Req.Test, Google}]
     )
 
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
     on_exit(fn -> Application.put_env(:dhc, WorkshopCalendar, previous) end)
     :ok
   end
@@ -36,7 +34,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     Req.Test.stub(Google, fn conn ->
       case {conn.host, conn.method} do
         {"oauth2.googleapis.com", "POST"} ->
-          Req.Test.json(conn, %{access_token: "calendar-access", token_type: "Bearer"})
+          Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("calendar-access"))
 
         {"www.googleapis.com", "GET"} ->
           if String.ends_with?(conn.request_path, "/events"),
@@ -70,7 +68,7 @@ defmodule Dhc.WorkshopCalendar.SyncTest do
     Req.Test.stub(Google, fn conn ->
       case {conn.host, conn.method} do
         {"oauth2.googleapis.com", "POST"} ->
-          Req.Test.json(conn, %{access_token: "calendar-access", token_type: "Bearer"})
+          Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("calendar-access"))
 
         {"www.googleapis.com", "GET"} ->
           Req.Test.json(conn, Map.put(event, "etag", "\"first\""))

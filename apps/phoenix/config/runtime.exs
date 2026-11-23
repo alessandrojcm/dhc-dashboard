@@ -3,21 +3,20 @@ import Config
 # Supplying credentials does not activate sending. The explicit operator launch
 # binds activation to this target. Tests never inherit live credentials.
 unless config_env() == :test do
+  config :dhc, Dhc.GoogleCalendar.Auth,
+    client_id: System.get_env("GOOGLE_CALENDAR_CLIENT_ID"),
+    client_secret: System.get_env("GOOGLE_CALENDAR_CLIENT_SECRET"),
+    refresh_token: System.get_env("GOOGLE_CALENDAR_REFRESH_TOKEN")
+
   config :dhc, Dhc.WorkshopCalendar,
     environment: System.get_env("WORKSHOP_CALENDAR_ENVIRONMENT"),
-    client_id: System.get_env("WORKSHOP_CALENDAR_CLIENT_ID"),
-    client_secret: System.get_env("WORKSHOP_CALENDAR_CLIENT_SECRET"),
-    refresh_token: System.get_env("WORKSHOP_CALENDAR_REFRESH_TOKEN"),
     committee_calendar_id: System.get_env("WORKSHOP_CALENDAR_COMMITTEE_ID"),
     participant_calendar_id: System.get_env("WORKSHOP_CALENDAR_PARTICIPANT_ID")
 
-  # Sharing is a separate integration/credential: never broaden Workshop OAuth.
+  # Sharing and events retain distinct targets and enablement, not credentials.
   config :dhc, Dhc.TrainingCalendar,
     enabled: System.get_env("TRAINING_CALENDAR_ENABLED") == "true",
-    calendar_id: System.get_env("TRAINING_CALENDAR_ID"),
-    client_id: System.get_env("TRAINING_CALENDAR_CLIENT_ID"),
-    client_secret: System.get_env("TRAINING_CALENDAR_CLIENT_SECRET"),
-    refresh_token: System.get_env("TRAINING_CALENDAR_REFRESH_TOKEN")
+    calendar_id: System.get_env("TRAINING_CALENDAR_ID")
 end
 
 # Test protocol probes own the REST limiter and must never use inherited bot

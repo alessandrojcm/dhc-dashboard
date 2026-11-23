@@ -67,7 +67,7 @@ defmodule Dhc.WorkshopCalendarHTTP do
           %{"error" => "invalid_grant", "error_description" => "PRIVATE provider body"}}, state}
 
       request.host == "oauth2.googleapis.com" ->
-        {{:json, 200, %{access_token: "isolated-access", token_type: "Bearer"}}, state}
+        {{:json, 200, Dhc.GoogleCalendarAuthConfig.token("isolated-access")}, state}
 
       state.status ->
         {{:json, state.status, %{error: %{message: "PRIVATE provider body"}}}, state}

@@ -44,12 +44,14 @@ TYPESAFE_API_KEY = { provider = "doppler", value = "TYPESAFE_API_KEY" }
 GOOGLE_PLACES_API_KEY = { provider = "doppler", value = "GOOGLE_PLACES_API_KEY", default = "" }
 RESEND_WEBHOOK_SIGNING_SECRET= { provider = "doppler", value = "RESEND_WEBHOOK_SIGNING_SECRET" }
 INTAKE_REPLY_DOMAIN = { provider = "doppler", value = "INTAKE_REPLY_DOMAIN" }
-# Provision all six Doppler secrets before deployment (FNOX_IF_MISSING=error).
-# Credentials alone do not activate Calendar sending.
+# One organizer connection, shared by event and sharing transports.
+# Provision the combined events.owned + acls grant before deploying this change:
+# fnox resolves all mappings together and FNOX_IF_MISSING=error forbids missing keys.
+GOOGLE_CALENDAR_CLIENT_ID = { provider = "doppler", value = "GOOGLE_CALENDAR_CLIENT_ID" }
+GOOGLE_CALENDAR_CLIENT_SECRET = { provider = "doppler", value = "GOOGLE_CALENDAR_CLIENT_SECRET" }
+GOOGLE_CALENDAR_REFRESH_TOKEN = { provider = "doppler", value = "GOOGLE_CALENDAR_REFRESH_TOKEN" }
+# Targets and sending controls remain independent of the connection.
 WORKSHOP_CALENDAR_ENVIRONMENT = { provider = "doppler", value = "WORKSHOP_CALENDAR_ENVIRONMENT" }
-WORKSHOP_CALENDAR_CLIENT_ID = { provider = "doppler", value = "WORKSHOP_CALENDAR_CLIENT_ID" }
-WORKSHOP_CALENDAR_CLIENT_SECRET = { provider = "doppler", value = "WORKSHOP_CALENDAR_CLIENT_SECRET" }
-WORKSHOP_CALENDAR_REFRESH_TOKEN = { provider = "doppler", value = "WORKSHOP_CALENDAR_REFRESH_TOKEN" }
 WORKSHOP_CALENDAR_COMMITTEE_ID = { provider = "doppler", value = "WORKSHOP_CALENDAR_COMMITTEE_ID" }
 WORKSHOP_CALENDAR_PARTICIPANT_ID = { provider = "doppler", value = "WORKSHOP_CALENDAR_PARTICIPANT_ID" }
 # Optional training-calendar ACL sync. Safe defaults keep deployment inactive
@@ -57,6 +59,3 @@ WORKSHOP_CALENDAR_PARTICIPANT_ID = { provider = "doppler", value = "WORKSHOP_CAL
 # with missing credentials fails explicitly in the worker instead of sending.
 TRAINING_CALENDAR_ENABLED = { provider = "doppler", value = "TRAINING_CALENDAR_ENABLED", default = "false" }
 TRAINING_CALENDAR_ID = { provider = "doppler", value = "TRAINING_CALENDAR_ID", default = "" }
-TRAINING_CALENDAR_CLIENT_ID = { provider = "doppler", value = "TRAINING_CALENDAR_CLIENT_ID", default = "" }
-TRAINING_CALENDAR_CLIENT_SECRET = { provider = "doppler", value = "TRAINING_CALENDAR_CLIENT_SECRET", default = "" }
-TRAINING_CALENDAR_REFRESH_TOKEN = { provider = "doppler", value = "TRAINING_CALENDAR_REFRESH_TOKEN", default = "" }

@@ -45,12 +45,10 @@ defmodule Dhc.WorkshopCalendar.DestinationBackfillSyncTest do
       active: true,
       committee_calendar_id: "committee@test.invalid",
       participant_calendar_id: "participants@test.invalid",
-      client_id: "backfill-sync-client",
-      client_secret: "backfill-sync-secret",
-      refresh_token: "backfill-sync-refresh",
       req_options: [plug: {Req.Test, Google}]
     )
 
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
     on_exit(fn -> Application.put_env(:dhc, WorkshopCalendar, previous) end)
 
     server = start_supervised!({Agent, fn -> WorkshopCalendarHTTP.initial() end})

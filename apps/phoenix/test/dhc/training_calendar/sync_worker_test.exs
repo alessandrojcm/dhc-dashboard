@@ -12,18 +12,16 @@ defmodule Dhc.TrainingCalendar.SyncWorkerTest do
     Application.put_env(:dhc, TrainingCalendar,
       enabled: true,
       calendar_id: "training@example.com",
-      client_id: "client",
-      client_secret: "secret",
-      refresh_token: "refresh",
       req_options: [plug: {Req.Test, Google}]
     )
 
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
     on_exit(fn -> Application.put_env(:dhc, TrainingCalendar, original) end)
     test = self()
 
     Req.Test.stub(Google, fn conn ->
       if conn.request_path == "/token" do
-        Req.Test.json(conn, %{"access_token" => "access"})
+        Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("access"))
       else
         assert conn.method == "GET"
         send(test, :sync_read)
@@ -82,7 +80,7 @@ defmodule Dhc.TrainingCalendar.SyncWorkerTest do
       |> Req.Test.json(%{"error" => "invalid_grant", "error_description" => "PRIVATE"})
     end)
 
-    assert {:error, :unauthorized} = SyncWorker.perform(%Oban.Job{args: %{}})
+    assert {:error, :reauthorization_required} = SyncWorker.perform(%Oban.Job{args: %{}})
   end
 
   test "pending ticks are unique and job arguments contain no roster or credentials" do

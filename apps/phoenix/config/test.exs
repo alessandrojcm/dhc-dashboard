@@ -44,6 +44,8 @@ config :dhc, Oban,
   queues: false
 
 # Never use inherited organizer credentials or live Google in automated tests.
+config :dhc, Dhc.GoogleCalendar.Auth, req_options: [plug: {Req.Test, Dhc.GoogleCalendar.Auth}]
+
 config :dhc, Dhc.WorkshopCalendar,
   active: false,
   req_options: [plug: {Req.Test, Dhc.WorkshopCalendar.Google}]
