@@ -100,11 +100,11 @@ defmodule DhcWeb.UserSocketTest do
       assert {:ok, state} = DhcWeb.UserSocket.init({%{}, socket})
       assert_receive disconnect = %Phoenix.Socket.Broadcast{event: "disconnect"}
 
-      assert {:stop, {:shutdown, :disconnected}, 1001, ^state} =
+      assert {:stop, {:shutdown, :disconnected}, ^state} =
                DhcWeb.UserSocket.handle_info(disconnect, state)
 
       # Even an inbound join queued before the disconnect cannot be handled.
-      assert {:stop, {:shutdown, :disconnected}, 1001, ^state} =
+      assert {:stop, {:shutdown, :disconnected}, ^state} =
                DhcWeb.UserSocket.handle_in({"queued join", []}, state)
     end
 
