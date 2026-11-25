@@ -251,6 +251,10 @@ export function createWaitlistTable(deps: WaitlistTableDeps = {}) {
 		get isFetching() {
 			return query.isFetching;
 		},
+		/** No page has arrived yet, so the count and rows are not known. */
+		get isLoading() {
+			return query.isPending;
+		},
 		/** The person's live Carried Fee status, or `null` without one (or until known). */
 		carriedFee(id: string): BeginnersCarriedFeeStatus | null {
 			return people.data?.[id]?.carriedFee ?? null;

@@ -5,6 +5,7 @@ import {
 	holdLabel,
 	intakeOrigin,
 	intakeStateLabel,
+	matchesPersonSearch,
 	personName,
 	refundLabel,
 	rosterGroups,
@@ -16,6 +17,9 @@ import { formatDublinInstant, formatDublinTime } from "#lib/club-calendar.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import * as Empty from "#lib/components/ui/empty/index.js";
+import { Input } from "#lib/components/ui/input/index.js";
+import { Label } from "#lib/components/ui/label/index.js";
+import { ChevronRight, Search, X } from "@lucide/svelte";
 import * as Tabs from "#lib/components/ui/tabs/index.js";
 import { cn } from "#lib/utils.js";
 import InviteButton from "../../invite-button.svelte";
@@ -32,20 +36,40 @@ let {
 } = $props();
 
 let selected = $state("all");
-const groups = $derived(rosterGroups(view));
+// Client-side: a workshop's roster is short. The search narrows every status
+// filter at once, so switching filters keeps it and clearing it keeps the filter.
+let search = $state("");
+const allGroups = $derived(rosterGroups(view));
+const groups = $derived(
+	allGroups.map((group) => ({
+		...group,
+		intakes: group.intakes.filter((intake) =>
+			matchesPersonSearch(intake, search),
+		),
+	})),
+);
+const searching = $derived(search.trim() !== "");
 // Finalisation replaces the live filters. A stale selection falls back to All.
 const active = $derived(
 	groups.find((group) => group.key === selected) ?? groups[0]!,
 );
+// The guidance follows the whole roster, not the search, so it stays put.
 const unpaid = $derived(
-	groups.find((group) => group.key === "awaitingPayment")?.intakes ?? [],
+	allGroups.find((group) => group.key === "awaitingPayment")?.intakes ?? [],
 );
 const unconfirmed = $derived(
-	groups.find((group) => group.key === "awaitingConfirmation")?.intakes ?? [],
+	allGroups.find((group) => group.key === "awaitingConfirmation")?.intakes ??
+		[],
 );
 const overdue = $derived(
 	new Set(view.unpaidAfterWindow.map((person) => person.id)),
 );
+
+type RosterIntake = ReturnType<typeof rosterGroups>[number]["intakes"][number];
+const rowCanInvite = (intake: RosterIntake) =>
+	intake.state === "attended" && intake.standing === "attended" && canInvite;
+const rowHasAction = (intake: RosterIntake) =>
+	rowCanInvite(intake) || intake.availableCommands.includes("re_offer");
 </script>
 
 <section
@@ -53,6 +77,35 @@ const overdue = $derived(
 	aria-label="People"
 >
 	<h2 class="font-heading text-xl">People</h2>
+	<div class="grid gap-2">
+		<Label for="workshop-people-search" class="sr-only">Search people</Label>
+		<div class="relative max-w-md">
+			<Search
+				class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+				aria-hidden="true"
+			/>
+			<Input
+				id="workshop-people-search"
+				type="search"
+				bind:value={search}
+				placeholder="Search by name"
+				autocomplete="off"
+				class="h-11 w-full pl-10 pr-11"
+			/>
+			{#if search}
+				<Button
+					variant="ghost"
+					size="icon"
+					class="absolute right-0 top-0"
+					type="button"
+					aria-label="Clear search"
+					onclick={() => (search = "")}
+				>
+					<X class="size-4" aria-hidden="true" />
+				</Button>
+			{/if}
+		</div>
+	</div>
 	<Tabs.Root
 		value={active.key}
 		onValueChange={(value) => (selected = value)}
@@ -99,22 +152,34 @@ const overdue = $derived(
 						confirm their place for them.
 					</p>
 				{/if}
-				{#if active.intakes.length}
-					<ul class="space-y-2" aria-label="Workshop people">
-						{#each active.intakes as intake (intake.id)}
-							{@const refund = refundLabel(intake)}
-							<li
-								class="flex flex-wrap items-center gap-2"
-								data-testid="person-row"
-							>
-								<Button
-									variant="outline"
-									class="h-auto min-h-11 min-w-0 flex-1 flex-wrap justify-start gap-3 rounded-xl bg-background/50 px-4 py-3 text-left font-normal whitespace-normal shadow-none focus-visible:border-primary"
-									aria-label={`${personName(intake)} — ${intakeStateLabel(intake.state)} — View person`}
-									onclick={() => onSelect(intake.id)}
+				<!-- A fixed height that scrolls, so searching or switching filters
+				     never moves the rest of the page. -->
+				<div
+					class="h-[28rem] overflow-y-auto overscroll-contain rounded-xl sm:h-[32rem]"
+					data-testid="people-list"
+				>
+					{#if active.intakes.length}
+						<ul class="space-y-2 p-0.5" aria-label="Workshop people">
+							{#each active.intakes as intake (intake.id)}
+								{@const refund = refundLabel(intake)}
+								<!-- The whole card opens the person: the name's button stretches
+								     over it (`after:inset-0`). Row actions sit above that layer
+								     (`relative z-10`), inside the card, so every row keeps the
+								     same width whether or not it has one. -->
+								<li
+									class="relative flex min-h-13 flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-border bg-background/50 py-2 pr-10 pl-4 transition-colors sm:pr-4 hover:bg-muted/60 has-[[data-row-open]:focus-visible]:ring-2 has-[[data-row-open]:focus-visible]:ring-ring"
+									data-testid="person-row"
 								>
-									<span class="min-w-0 flex-1 basis-48">
-										<span class="block font-medium">{personName(intake)}</span>
+									<div class="min-w-0 flex-1 basis-48">
+										<Button
+											variant="ghost"
+											data-row-open
+											class="h-auto justify-start p-0 text-left font-medium whitespace-normal after:absolute after:inset-0 after:rounded-xl after:content-[''] hover:bg-transparent hover:text-foreground focus-visible:border-transparent focus-visible:ring-0 active:translate-none"
+											aria-label={`${personName(intake)} — ${intakeStateLabel(intake.state)} — View person`}
+											onclick={() => onSelect(intake.id)}
+										>
+											{personName(intake)}
+										</Button>
 										{#if intake.state === "contacted"}
 											<span
 												class="block text-xs text-muted-foreground"
@@ -131,105 +196,123 @@ const overdue = $derived(
 												{/if}
 											</span>
 										{/if}
-									</span>
-									{#if intake.minor}<Badge variant="outline">Minor</Badge>{/if}
-									<span class="text-xs text-muted-foreground"
-										>{intakeOrigin(intake)}</span
-									>
-									{#if refund}
-										<Badge
-											variant="outline"
-											class={cn(
-												refund.tone === "failed" &&
-													"border-destructive bg-destructive text-white",
-												refund.tone === "progress" &&
-													"border-amber-500 text-amber-900",
-												refund.tone === "done" &&
-													"border-emerald-700 text-emerald-900",
-											)}
-											data-testid="refund-status">{refund.text}</Badge
+									</div>
+									<!-- The action sits left of the badges, so badges and chevron
+									     stay flush right on every row; on phones it drops below. -->
+									{#if rowHasAction(intake)}
+										<div
+											class="relative z-10 flex items-center gap-2 max-sm:order-last"
 										>
+											{#if rowCanInvite(intake)}
+												<InviteButton
+													compact
+													workshopId={view.workshop.id}
+													intakeId={intake.id}
+													name={personName(intake)}
+												/>
+											{/if}
+											{#if intake.availableCommands.includes("re_offer")}
+												<ReOfferButton
+													workshopId={view.workshop.id}
+													intakeId={intake.id}
+													name={personName(intake)}
+												/>
+											{/if}
+										</div>
 									{/if}
-									{#if carriedFeeLabel(intake.carriedFee)}
-										<Badge
-											variant="outline"
-											data-testid="carried-fee"
-											class="capitalize"
-											>{carriedFeeLabel(intake.carriedFee)}</Badge
+									<div class="flex flex-wrap items-center gap-2">
+										{#if intake.minor}<Badge variant="outline">Minor</Badge
+											>{/if}
+										<span class="text-xs text-muted-foreground"
+											>{intakeOrigin(intake)}</span
 										>
-									{/if}
-									{#if holdLabel(intake)}
-										<Badge
-											variant="outline"
-											class="border-sky-600 text-sky-800"
-											data-testid="hold-expiry">{holdLabel(intake)}</Badge
-										>
-									{/if}
-									{#if intake.checkedInAt}
-										<Badge
-											variant="outline"
-											class="border-emerald-600 text-emerald-800"
-											data-testid="checked-in"
-											>In {formatDublinTime(intake.checkedInAt)}</Badge
-										>
-									{/if}
-									<Badge variant="outline">
-										{intake.state === "contacted"
-											? intake.carriedFee === "held"
-												? "Awaiting confirmation"
-												: "Awaiting payment"
-											: intakeStateLabel(intake.state)}
-									</Badge>
-									<span class="text-sm font-semibold text-primary"
-										>View person</span
-									>
-								</Button>
-								{#if intake.state === "attended"}
-									{#if intake.standing === "attended" && canInvite}
-										<InviteButton
-											workshopId={view.workshop.id}
-											intakeId={intake.id}
-											name={personName(intake)}
-										/>
-									{:else if standingLabel(intake.standing)}
-										<Badge
-											variant="outline"
-											class="border-emerald-700 text-emerald-900"
-											data-testid="invitation-standing"
-											>{standingLabel(intake.standing)}</Badge
-										>
-									{/if}
-								{/if}
-								{#if intake.availableCommands.includes("re_offer")}
-									<ReOfferButton
-										workshopId={view.workshop.id}
-										intakeId={intake.id}
-										name={personName(intake)}
+										{#if refund}
+											<Badge
+												variant="outline"
+												class={cn(
+													refund.tone === "failed" &&
+														"border-destructive bg-destructive text-white",
+													refund.tone === "progress" &&
+														"border-amber-500 text-amber-900",
+													refund.tone === "done" &&
+														"border-emerald-700 text-emerald-900",
+												)}
+												data-testid="refund-status">{refund.text}</Badge
+											>
+										{/if}
+										{#if carriedFeeLabel(intake.carriedFee)}
+											<Badge
+												variant="outline"
+												data-testid="carried-fee"
+												class="capitalize"
+												>{carriedFeeLabel(intake.carriedFee)}</Badge
+											>
+										{/if}
+										{#if holdLabel(intake)}
+											<Badge
+												variant="outline"
+												class="border-sky-600 text-sky-800"
+												data-testid="hold-expiry">{holdLabel(intake)}</Badge
+											>
+										{/if}
+										{#if intake.checkedInAt}
+											<Badge
+												variant="outline"
+												class="border-emerald-600 text-emerald-800"
+												data-testid="checked-in"
+												>In {formatDublinTime(intake.checkedInAt)}</Badge
+											>
+										{/if}
+										<Badge variant="outline">
+											{intake.state === "contacted"
+												? intake.carriedFee === "held"
+													? "Awaiting confirmation"
+													: "Awaiting payment"
+												: intakeStateLabel(intake.state)}
+										</Badge>
+										{#if intake.state === "attended" && !(intake.standing === "attended" && canInvite) && standingLabel(intake.standing)}
+											<Badge
+												variant="outline"
+												class="border-emerald-700 text-emerald-900"
+												data-testid="invitation-standing"
+												>{standingLabel(intake.standing)}</Badge
+											>
+										{/if}
+									</div>
+									<ChevronRight
+										class="absolute top-4 right-4 size-4 shrink-0 text-muted-foreground sm:static"
+										aria-hidden="true"
 									/>
-								{/if}
-							</li>
-						{/each}
-					</ul>
-				{:else}
-					<Empty.Root class="border">
-						<Empty.Header>
-							<Empty.Title
-								>{groups[0]!.intakes.length
-									? "No people in this group"
-									: "Nobody contacted yet"}</Empty.Title
-							>
-							<Empty.Description>
-								{#if groups[0]!.intakes.length}
-									Choose another status to view the other people in this
-									workshop.
-								{:else}
-									People appear here after they receive a place offer,
-									automatically or from staff.
-								{/if}
-							</Empty.Description>
-						</Empty.Header>
-					</Empty.Root>
-				{/if}
+								</li>
+							{/each}
+						</ul>
+					{:else}
+						<Empty.Root class="h-full border">
+							<Empty.Header>
+								<Empty.Title
+									>{searching && allGroups[0]!.intakes.length
+										? "Nobody matches your search"
+										: groups[0]!.intakes.length
+											? "No people in this group"
+											: "Nobody contacted yet"}</Empty.Title
+								>
+								<Empty.Description>
+									{#if searching && allGroups[0]!.intakes.length}
+										{groups[0]!.intakes.length
+											? "Some people match under another status."
+											: "Check the spelling, or clear the search."}
+									{:else if groups[0]!.intakes.length}
+										Choose another status to view the other people in this
+										workshop.
+									{:else}
+										People appear here after they receive a place offer,
+										automatically or from staff.
+									{/if}
+								</Empty.Description>
+							</Empty.Header>
+						</Empty.Root>
+					{/if}
+				</div>
 			</Tabs.Content>
 		{/key}
 	</Tabs.Root>

@@ -13,7 +13,14 @@ let {
 	workshopId,
 	intakeId,
 	name,
-}: { workshopId: string; intakeId: string; name: string } = $props();
+	compact = false,
+}: {
+	workshopId: string;
+	intakeId: string;
+	name: string;
+	// Badge-height, for a row action that must not change the row's height.
+	compact?: boolean;
+} = $props();
 
 const invite = $derived(inviteAttendee.for(intakeId));
 const refusal = $derived(
@@ -32,7 +39,14 @@ const refusal = $derived(
 >
 	<input {...invite.fields.id.as("hidden", workshopId)} />
 	<input {...invite.fields.intakeId.as("hidden", intakeId)} />
-	<Button type="submit" class="min-w-28" disabled={!!invite.pending}>
+	<Button
+		type="submit"
+		variant={compact ? "outline" : "default"}
+		class={compact
+			? "h-7 gap-1.5 rounded-md px-2.5 text-xs shadow-none has-[>svg]:px-2.5 [&_svg]:size-3.5"
+			: "min-w-28"}
+		disabled={!!invite.pending}
+	>
 		{#if invite.pending}<LoaderCircle
 				class="size-4 animate-spin motion-reduce:animate-none"
 				aria-hidden="true"

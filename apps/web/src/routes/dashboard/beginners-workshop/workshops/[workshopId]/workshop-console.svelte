@@ -158,7 +158,7 @@ const attentionClass =
 			class="w-fit"
 			href="/dashboard/beginners-workshop/workshops"
 		>
-			<ArrowLeft /> Beginners' Workshops
+			<ArrowLeft /> Workshops
 		</Button>
 		<div class="flex flex-wrap items-start justify-between gap-4">
 			<div class="space-y-3">
@@ -346,7 +346,7 @@ const attentionClass =
 				aria-label="Now"
 			>
 				<p
-					class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+					class="font-sans text-xs font-bold tracking-wider text-muted-foreground uppercase"
 				>
 					Now
 				</p>
@@ -379,7 +379,7 @@ const attentionClass =
 				>
 					<h2
 						id="bw-attention"
-						class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+						class="font-sans text-xs font-bold tracking-wider text-muted-foreground uppercase"
 					>
 						Needs attention
 					</h2>
@@ -416,7 +416,7 @@ const attentionClass =
 						<div class="flex flex-col gap-1">
 							<h2
 								id="bw-next-batch"
-								class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+								class="font-sans text-xs font-bold tracking-wider text-muted-foreground uppercase"
 							>
 								Next offer round
 							</h2>

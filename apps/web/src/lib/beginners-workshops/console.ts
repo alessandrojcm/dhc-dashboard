@@ -25,7 +25,11 @@ import type {
 	BeginnersWorkshopUnpaidAfterWindow,
 } from "@dhc/api-client";
 import { stageLabel } from "#lib/beginners-workshops/presentation.js";
-import { formatDublinInstant, formatDublinTime } from "#lib/club-calendar.js";
+import {
+	dublinInstant,
+	formatDublinInstant,
+	formatDublinTime,
+} from "#lib/club-calendar.js";
 
 export type TimelineStep = {
 	label: string;
@@ -89,7 +93,7 @@ export function consoleTimeline(
 	});
 	steps.push({
 		label: "Workshop · check-in from an hour before",
-		when: `${workshop.date} ${workshop.startTime}`,
+		when: workshopStartsAt(workshop.date, workshop.startTime),
 		state: finalised
 			? "done"
 			: pending(stage === "today_before_check_in" || stage === "check_in_open"),
@@ -164,7 +168,10 @@ export function nextBatchSize(next: BeginnersWorkshopNextBatch): string {
 /** The console's "Now" card. */
 export type NowCard = { title: string; body: string };
 
-/** The "Now" card for the workshop's stage. */
+/**
+ * The "Now" card for the workshop's stage. The title stays a short state (it
+ * is set as a display heading); when and by whom go first in the body.
+ */
 export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 	const { workshop, batches, nextBatch } = view;
 	const latest = batches.at(-1);
@@ -172,8 +179,8 @@ export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 	switch (workshop.stage) {
 		case "window_open":
 			return {
-				title: `Offer round ${latest?.number ?? 1}: waiting for replies${latest ? ` until ${formatDublinInstant(latest.windowEndsAt)}` : ""}`,
-				body: `${seats}. ${nextBatchHeadline(nextBatch)}.`,
+				title: `Offer round ${latest?.number ?? 1}: waiting for replies`,
+				body: `${latest ? `Replies close ${formatDublinInstant(latest.windowEndsAt)}. ` : ""}${seats}. ${nextBatchHeadline(nextBatch)}.`,
 			};
 		case "before_contact_from":
 		case "next_batch_due":
@@ -210,22 +217,28 @@ export function nowCard(view: BeginnersWorkshopConsole): NowCard {
 		case "finalised":
 			return {
 				title: view.finalisation
-					? `Attendance confirmed ${formatDublinInstant(view.finalisation.at)} ${
-							view.finalisation.by
-								? `by ${view.finalisation.by}`
-								: "automatically at the end of the day"
-						}`
+					? "Attendance confirmed"
 					: stageLabel(workshop.stage),
-				body: `${workshop.seats.attended} attended · ${workshop.seats.noShow} did not attend. Attendees get a follow-up email at 10:00 the next morning. You can correct attendance or send membership invitations.`,
+				body: `${
+					view.finalisation
+						? `Confirmed ${formatDublinInstant(view.finalisation.at)} ${
+								view.finalisation.by
+									? `by ${view.finalisation.by}`
+									: "automatically at the end of the day"
+							}. `
+						: ""
+				}${workshop.seats.attended} attended · ${workshop.seats.noShow} did not attend. Attendees get a follow-up email at 10:00 the next morning. You can correct attendance or send membership invitations.`,
 			};
 		case "cancelled":
 			return {
-				title: view.cancellation
-					? `Cancelled ${formatDublinInstant(view.cancellation.at)}${
-							view.cancellation.by ? ` by ${view.cancellation.by}` : ""
-						}`
-					: stageLabel(workshop.stage),
-				body: cancelledBody(view),
+				title: view.cancellation ? "Cancelled" : stageLabel(workshop.stage),
+				body: `${
+					view.cancellation
+						? `Cancelled ${formatDublinInstant(view.cancellation.at)}${
+								view.cancellation.by ? ` by ${view.cancellation.by}` : ""
+							}. `
+						: ""
+				}${cancelledBody(view)}`,
 			};
 		default:
 			return { title: stageLabel(workshop.stage), body: seats };
@@ -734,4 +747,34 @@ export function unpaidAfterWindowText(
 		? `Offer round ${person.batchNumber} reply period`
 		: "Reply period";
 	return `${window} ended ${formatDublinInstant(person.windowEndsAt)}`;
+}
+
+/** A workshop's civil start as the timeline writes instants: `Sat 28 Nov, 18:30`. */
+function workshopStartsAt(date: string, startTime: string): string {
+	const instant = dublinInstant(date, startTime);
+	return instant ? formatDublinInstant(instant) : `${date} ${startTime}`;
+}
+
+/** Lower-cased with accents removed, so `sean` finds `Seán`. */
+function foldForSearch(text: string): string {
+	return text
+		.normalize("NFD")
+		.replace(/\p{Diacritic}/gu, "")
+		.toLowerCase();
+}
+
+/**
+ * Whether a roster person matches the People search: every word typed must
+ * appear in their name, in any order. An empty search matches everyone.
+ */
+export function matchesPersonSearch(
+	person: { firstName: string | null; lastName: string | null },
+	search: string,
+): boolean {
+	const words = foldForSearch(search).split(/\s+/).filter(Boolean);
+	if (!words.length) return true;
+	const name = foldForSearch(
+		[person.firstName, person.lastName].filter(Boolean).join(" "),
+	);
+	return words.every((word) => name.includes(word));
 }

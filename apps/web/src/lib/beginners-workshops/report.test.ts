@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+	afterAttendingDetail,
+	attendanceDetail,
 	carriedFeesNote,
+	contactedDetail,
 	countWithRate,
 	exitsAfterPayingDetail,
 	exitsBeforePayingDetail,
 	formatDays,
 	formatFigure,
 	formatRate,
+	groupDetail,
 	groupLabel,
 } from "#lib/beginners-workshops/report.js";
 
@@ -59,6 +63,38 @@ describe("report wording", () => {
 				windowEndsAt: null,
 			}),
 		).toBe("Added by staff");
+	});
+
+	it("details who was offered, who attended and who is still to join, skipping zeros", () => {
+		expect(contactedDetail({ batch: 36, fastTrack: 0 })).toBe("36 automatic");
+		expect(contactedDetail({ batch: 3, fastTrack: 5 })).toBe(
+			"3 automatic · 5 added by staff",
+		);
+		expect(contactedDetail({ batch: 0, fastTrack: 0 })).toBe("");
+		expect(attendanceDetail({ attended: 0, noShow: 1 })).toBe(
+			"1 did not attend",
+		);
+		expect(
+			afterAttendingDetail({ joined: 0, invitable: 0, invitedNotJoined: 0 }),
+		).toBe("");
+		expect(
+			afterAttendingDetail({ joined: 2, invitable: 1, invitedNotJoined: 1 }),
+		).toBe("1 ready to invite · 1 invited, not yet joined");
+	});
+
+	it("puts an offer round on one line, skipping empty outcomes", () => {
+		expect(
+			groupDetail({
+				kind: "batch",
+				number: 1,
+				windowEndsAt: null,
+				contacted: 5,
+				paidInWindow: 3,
+				paidLater: 0,
+				declined: 0,
+				unpaidAtCutoff: 2,
+			}),
+		).toBe("5 contacted · 3 paid within reply period · 2 unpaid at deadline");
 	});
 
 	it("details the exits, skipping empty kinds", () => {

@@ -13,7 +13,7 @@ import {
 let { data }: { data: PageData } = $props();
 
 const navIcons = {
-	"Beginners Workshop": GraduationCap,
+	"Beginners' Workshops": GraduationCap,
 	Members: UsersRound,
 	Workshops: CalendarDays,
 	"My Workshops": Swords,
@@ -21,7 +21,7 @@ const navIcons = {
 };
 
 const descriptions = {
-	"Beginners Workshop": "Manage the beginners course and waiting list.",
+	"Beginners' Workshops": "Manage the beginners course and waiting list.",
 	Members: "View and manage club members.",
 	Workshops: "Create workshops and manage registrations.",
 	"My Workshops": "View your upcoming and previous workshops.",

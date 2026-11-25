@@ -28,7 +28,7 @@ let workshop = $derived<BeginnersWorkshopDoor>(data.workshop);
 		size="sm"
 		class="w-fit"
 		href={data.canManageWorkshops
-			? resolve("/dashboard/beginners-workshop")
+			? resolve("/dashboard/beginners-workshop/workshops")
 			: resolve("/dashboard/my-beginners-workshops")}
 	>
 		<ArrowLeft />
@@ -41,7 +41,7 @@ let workshop = $derived<BeginnersWorkshopDoor>(data.workshop);
 	>
 		<div class="space-y-3">
 			<p
-				class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+				class="font-sans text-xs font-bold tracking-wider text-muted-foreground uppercase"
 			>
 				Beginners' Workshop · Door check-in
 			</p>

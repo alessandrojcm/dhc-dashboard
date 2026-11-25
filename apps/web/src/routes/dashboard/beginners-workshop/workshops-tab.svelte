@@ -24,7 +24,11 @@ import {
 	staffSummary,
 	stageTone,
 } from "#lib/beginners-workshops/presentation.js";
-import { civilDateTile, formatCivilTimeRange } from "#lib/club-calendar.js";
+import {
+	civilDateTile,
+	formatCivilDate,
+	formatCivilTimeRange,
+} from "#lib/club-calendar.js";
 import WorkshopAlerts from "#lib/components/beginners-workshops/workshop-alerts.svelte";
 import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
@@ -70,6 +74,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 
 {#snippet row(workshop: BeginnersWorkshop)}
 	{@const tile = civilDateTile(workshop.date)}
+	{@const day = formatCivilDate(workshop.date)}
 	<li
 		class="grid grid-cols-[4.5rem_1fr] items-center gap-4 rounded-2xl border border-border bg-card p-4 shadow-[4px_4px_0_rgb(18_24_39/12%)] sm:grid-cols-[4.5rem_1fr_14rem_auto]"
 		data-testid="beginners-workshop-row"
@@ -94,12 +99,12 @@ function editStaff(workshop: BeginnersWorkshop) {
 				>
 				<WorkshopAlerts alerts={workshop.alerts} />
 			</div>
-			<p class="truncate text-sm text-muted-foreground">
+			<p class="text-sm text-muted-foreground">
 				{workshop.venue} · {formatFee(workshop.feeCents)}
 			</p>
-			<p class="flex items-center gap-1.5 truncate text-sm">
-				<Users class="size-4 shrink-0 text-muted-foreground" />
-				<span class="truncate">{staffSummary(workshop.staff)}</span>
+			<p class="flex items-start gap-1.5 text-sm">
+				<Users class="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+				<span>{staffSummary(workshop.staff)}</span>
 			</p>
 		</div>
 		<div class="col-span-2 sm:col-span-1">
@@ -115,7 +120,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 				href={resolve("/dashboard/beginners-workshop/workshops/[workshopId]", {
 					workshopId: workshop.id,
 				})}
-				aria-label={`Manage workshop on ${workshop.date}`}
+				aria-label={`Manage workshop on ${day}`}
 			>
 				<PanelsTopLeft /> Manage
 			</Button>
@@ -126,7 +131,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 							{...props}
 							variant="ghost"
 							size="icon"
-							aria-label={`Check-in for ${workshop.date}`}
+							aria-label={`Check-in for ${day}`}
 							href={resolve(
 								"/dashboard/beginners-workshop/workshops/[workshopId]/door",
 								{ workshopId: workshop.id },
@@ -146,7 +151,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 								{...props}
 								variant="ghost"
 								size="icon"
-								aria-label={`Staff for ${workshop.date}`}
+								aria-label={`Staff for ${day}`}
 								onclick={() => editStaff(workshop)}
 							>
 								<Users />
@@ -162,7 +167,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 								{...props}
 								variant="ghost"
 								size="icon"
-								aria-label={`Places, fee and payment deadline for ${workshop.date}`}
+								aria-label={`Places, fee and payment deadline for ${day}`}
 								onclick={() => editSettings(workshop)}
 							>
 								<Settings2 />
@@ -182,7 +187,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 			class="flex shrink-0 flex-wrap items-end justify-between gap-4 border-b border-border py-4"
 		>
 			<div>
-				<h2 class="font-heading text-3xl">Beginners' Workshops</h2>
+				<h2 class="font-heading text-3xl">Workshops</h2>
 				<p class="text-sm text-muted-foreground">
 					Offer places to people on the waitlist and manage each workshop. These
 					workshops are not listed publicly.
@@ -200,7 +205,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 			<section class="flex flex-col gap-3" aria-labelledby="bw-upcoming">
 				<h3
 					id="bw-upcoming"
-					class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+					class="font-sans text-xs font-bold tracking-[0.16em] text-primary uppercase"
 				>
 					Upcoming
 				</h3>
@@ -227,7 +232,7 @@ function editStaff(workshop: BeginnersWorkshop) {
 				<section class="flex flex-col gap-3" aria-labelledby="bw-past">
 					<h3
 						id="bw-past"
-						class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+						class="font-sans text-xs font-bold tracking-[0.16em] text-primary uppercase"
 					>
 						Past and cancelled
 					</h3>

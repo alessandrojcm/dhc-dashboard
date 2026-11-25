@@ -23,6 +23,7 @@ import {
 	nowCard,
 	refundLabel,
 	isIntakeButtonCommand,
+	matchesPersonSearch,
 	rosterGroups,
 	unconfirmedCarriedFeeText,
 	standingLabel,
@@ -270,16 +271,19 @@ describe("ALE-395 cancellation", () => {
 						reason: null,
 					},
 				}),
-			).title,
-		).toBe("Cancelled Thu 22 Oct, 13:00");
+			),
+		).toMatchObject({
+			title: "Cancelled",
+			body: expect.stringMatching(/^Cancelled Thu 22 Oct, 13:00\. /),
+		});
 	});
 });
 
 describe("nowCard", () => {
 	it("pairs the stage with the Next Batch", () => {
 		expect(nowCard(view())).toEqual({
-			title: "Offer round 1: waiting for replies until Tue 27 Oct, 23:59",
-			body: "1 of 3 paid. Offer round 2 goes out Wed 28 Oct, 10:00.",
+			title: "Offer round 1: waiting for replies",
+			body: "Replies close Tue 27 Oct, 23:59. 1 of 3 paid. Offer round 2 goes out Wed 28 Oct, 10:00.",
 		});
 	});
 
@@ -508,11 +512,11 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 
 	it("says who finalised it and the outcome", () => {
 		expect(nowCard(finalised())).toEqual({
-			title: "Attendance confirmed Sat 14 Nov, 20:05 by Aoife Coach",
-			body: "2 attended · 1 did not attend. Attendees get a follow-up email at 10:00 the next morning. You can correct attendance or send membership invitations.",
+			title: "Attendance confirmed",
+			body: "Confirmed Sat 14 Nov, 20:05 by Aoife Coach. 2 attended · 1 did not attend. Attendees get a follow-up email at 10:00 the next morning. You can correct attendance or send membership invitations.",
 		});
-		expect(nowCard(finalised(null)).title).toBe(
-			"Attendance confirmed Sat 14 Nov, 20:05 automatically at the end of the day",
+		expect(nowCard(finalised(null)).body).toMatch(
+			/^Confirmed Sat 14 Nov, 20:05 automatically at the end of the day\. /,
 		);
 	});
 
@@ -870,5 +874,22 @@ describe("ALE-387: the Intake detail's command buttons", () => {
 		expect(isIntakeButtonCommand("withdraw")).toBe(false);
 		expect(isIntakeButtonCommand("refund_carried_fee")).toBe(false);
 		expect(isIntakeButtonCommand("cancel_with_refund")).toBe(true);
+	});
+});
+
+describe("matchesPersonSearch", () => {
+	const seán = { firstName: "Seán", lastName: "Ó Briain" };
+
+	it("matches every typed word, ignoring case, accents and order", () => {
+		expect(matchesPersonSearch(seán, "sean")).toBe(true);
+		expect(matchesPersonSearch(seán, "BRIAIN sea")).toBe(true);
+		expect(matchesPersonSearch(seán, "sean murphy")).toBe(false);
+	});
+
+	it("matches everyone on an empty search, and nobody without a name", () => {
+		expect(matchesPersonSearch(seán, "   ")).toBe(true);
+		expect(
+			matchesPersonSearch({ firstName: null, lastName: null }, "sean"),
+		).toBe(false);
 	});
 });

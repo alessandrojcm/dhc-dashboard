@@ -95,7 +95,7 @@ test("shows Phoenix's stage, seat meter and alerts, upcoming before past", async
 	await expect
 		.element(
 			screen.getByRole("button", {
-				name: "Places, fee and payment deadline for 2026-11-14",
+				name: "Places, fee and payment deadline for Sat 14 Nov 2026",
 			}),
 		)
 		.toBeVisible();
@@ -130,7 +130,9 @@ test.each(actions)(
 			candidates: [],
 			workshops: { upcoming: [workshop({})], past: [] },
 		});
-		const trigger = screen.getByRole(role, { name: `${label} for 2026-11-14` });
+		const trigger = screen.getByRole(role, {
+			name: `${label} for Sat 14 Nov 2026`,
+		});
 		await trigger.hover();
 		await expect.element(page.getByText(label, { exact: true })).toBeVisible();
 	},
@@ -147,7 +149,7 @@ test("shows action tooltips when tabbing through the workshop list", async () =>
 	for (const { role, label } of actions) {
 		await userEvent.tab();
 		await expect
-			.element(screen.getByRole(role, { name: `${label} for 2026-11-14` }))
+			.element(screen.getByRole(role, { name: `${label} for Sat 14 Nov 2026` }))
 			.toHaveFocus();
 		await expect.element(page.getByText(label, { exact: true })).toBeVisible();
 	}

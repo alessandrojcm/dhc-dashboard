@@ -299,7 +299,7 @@ test("one People roster has visible status counts and filters without duplicate 
 	await expect
 		.element(screen.getByRole("region", { name: "Now" }))
 		.toHaveTextContent(
-			"Offer round 1: waiting for replies until Tue 27 Oct, 23:59",
+			"Offer round 1: waiting for replies Replies close Tue 27 Oct, 23:59",
 		);
 });
 
@@ -533,7 +533,9 @@ test("ALE-391: a finalised workshop reads attended / no-show and is read-only", 
 		.toHaveTextContent("Dara Nolan");
 	await expect
 		.element(screen.getByRole("region", { name: "Now" }))
-		.toHaveTextContent("Attendance confirmed Sat 14 Nov, 20:05 by Aoife Coach");
+		.toHaveTextContent(
+			"Attendance confirmed Confirmed Sat 14 Nov, 20:05 by Aoife Coach",
+		);
 	expect(
 		screen
 			.getByRole("button", { name: /Add a person|Pause offers/ })
@@ -722,14 +724,16 @@ test("ALE-382/421: each failed refund needs attention through the refund module,
 	await expect
 		.element(
 			screen
-				.getByRole("button", { name: /^Dara Nolan —/ })
+				.getByTestId("person-row")
+				.filter({ hasText: "Dara Nolan" })
 				.getByTestId("refund-status"),
 		)
 		.toHaveTextContent("Refund failed");
 	await expect
 		.element(
 			screen
-				.getByRole("button", { name: /^Cian Doyle —/ })
+				.getByTestId("person-row")
+				.filter({ hasText: "Cian Doyle" })
 				.getByTestId("refund-status"),
 		)
 		.toHaveTextContent("Refunded manually");
@@ -815,7 +819,7 @@ test("ALE-395: a cancelled workshop is read-only, says who and why, and points t
 	const now = screen.getByRole("region", { name: "Now" });
 	await expect
 		.element(now)
-		.toHaveTextContent("Cancelled Thu 22 Oct, 13:00 by Clare Coord");
+		.toHaveTextContent("Cancelled Cancelled Thu 22 Oct, 13:00 by Clare Coord");
 	await expect
 		.element(now)
 		.toHaveTextContent(
@@ -1415,7 +1419,7 @@ test("ALE-388: credit holders await confirmation quietly and retain their detail
 		.element(screen.getByRole("region", { name: "Needs attention" }))
 		.not.toBeInTheDocument();
 	await expect
-		.element(screen.getByRole("button", { name: /^Cian Doyle/ }))
+		.element(screen.getByTestId("person-row").filter({ hasText: "Cian Doyle" }))
 		.toHaveTextContent("Workshop credit used for this place");
 	await people.getByRole("tab", { name: "Awaiting confirmation 1" }).click();
 	expect(people.getByTestId("person-row").elements()).toHaveLength(1);
@@ -1451,6 +1455,40 @@ test("ALE-388: credit holders await confirmation quietly and retain their detail
 	await closeIntake(screen);
 });
 
+test("People search narrows every status filter by name, and keeps the filter", async () => {
+	const screen = await render(WorkshopConsole, { view: view() });
+	const people = screen.getByRole("region", { name: "People" });
+	const rows = people.getByTestId("person-row");
+	await expect.element(rows.filter({ hasText: "Cian Doyle" })).toBeVisible();
+
+	await people.getByRole("searchbox", { name: "Search people" }).fill("dára");
+	await expect
+		.element(people.getByRole("tab", { name: "All 1" }))
+		.toBeVisible();
+	await expect
+		.element(people.getByRole("tab", { name: "Confirmed 0" }))
+		.toBeVisible();
+	expect(rows.elements()).toHaveLength(1);
+	await expect.element(rows.first()).toHaveTextContent("Dara Nolan");
+
+	// A filter with no match says so, and the search stays.
+	await people.getByRole("tab", { name: "Confirmed 0" }).click();
+	await expect
+		.element(people.getByText("Nobody matches your search"))
+		.toBeVisible();
+	await expect
+		.element(people.getByText("Some people match under another status."))
+		.toBeVisible();
+
+	// Clearing the search keeps the chosen filter.
+	await people.getByRole("button", { name: "Clear search" }).click();
+	await expect
+		.element(people.getByRole("tab", { name: "Confirmed 1" }))
+		.toHaveAttribute("aria-selected", "true");
+	expect(rows.elements()).toHaveLength(1);
+	await expect.element(rows.first()).toHaveTextContent("Cian Doyle");
+});
+
 test("Re-offer: a lapsed person's row offers Offer place again, and its dialog takes an optional note", async () => {
 	const base = view();
 	const lapsed = {
@@ -1472,14 +1510,16 @@ test("Re-offer: a lapsed person's row offers Offer place again, and its dialog t
 
 	const people = screen.getByRole("region", { name: "People" });
 	const rows = people.getByTestId("person-row");
-	const offer = people.getByRole("button", { name: "Offer place again" });
+	const offer = people.getByRole("button", {
+		name: /^Offer .+ their place again$/,
+	});
 	// Only the row Phoenix lists it for.
 	expect(offer.elements()).toHaveLength(1);
 	await expect
 		.element(
 			rows
 				.filter({ hasText: "Eimear Ryan" })
-				.getByRole("button", { name: "Offer place again" }),
+				.getByRole("button", { name: "Offer Eimear Ryan their place again" }),
 		)
 		.toBeVisible();
 

@@ -160,7 +160,7 @@ const refundHint = $derived(
 	<section class="flex flex-col gap-2" aria-labelledby="intake-commands">
 		<h4
 			id="intake-commands"
-			class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+			class="font-sans text-xs font-bold tracking-wider text-muted-foreground uppercase"
 		>
 			Actions
 		</h4>
@@ -329,7 +329,7 @@ const refundHint = $derived(
 	<section class="flex flex-col gap-1.5" aria-labelledby="intake-emails">
 		<h4
 			id="intake-emails"
-			class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+			class="font-sans text-xs font-bold tracking-wider text-muted-foreground uppercase"
 		>
 			Emails to this person
 		</h4>
@@ -358,7 +358,7 @@ const refundHint = $derived(
 	<section class="flex flex-col gap-1.5" aria-labelledby="intake-history">
 		<h4
 			id="intake-history"
-			class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+			class="font-sans text-xs font-bold tracking-wider text-muted-foreground uppercase"
 		>
 			History
 		</h4>

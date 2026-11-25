@@ -17,7 +17,11 @@ import {
 import { browserPushManager } from "#lib/notifications/web-push/browser.js";
 import { forgetPushSubscription } from "#lib/notifications/web-push/workflow.js";
 import type { Snippet } from "svelte";
-import { isBeginnersWorkshopSection } from "#lib/beginners-workshops/sections.js";
+import { formatCivilDate } from "#lib/club-calendar.js";
+import {
+	BEGINNERS_WORKSHOP_SECTIONS,
+	isBeginnersWorkshopSection,
+} from "#lib/beginners-workshops/sections.js";
 
 let { children, data }: { data: LayoutData; children: Snippet } = $props();
 let paths = $derived.by(() => page.url.pathname.split("/"));
@@ -102,11 +106,24 @@ const WORKSHOP_ID_ROUTES = new Set([
 ]);
 
 function getBreadcrumbLabel(item: string, index: number): string {
+	if (paths[index - 1] === "dashboard" && item === "beginners-workshop") {
+		return "Beginners' Workshops";
+	}
+	if (paths[index - 1] === "beginners-workshop") {
+		const section = BEGINNERS_WORKSHOP_SECTIONS.find(({ id }) => id === item);
+		if (section) return section.label;
+	}
 	if (
 		item === page.params.workshopId &&
 		page.route.id?.startsWith("/dashboard/beginners-workshop/workshops/")
 	) {
-		return page.data.console?.workshop.date ?? "Workshop";
+		// The Manage page loads `console`, the door page `workshop`.
+		// SAFETY: on these routes `workshop` is the door load's
+		// BeginnersWorkshopDoor, whose civil `date` is all that is read.
+		const date =
+			page.data.console?.workshop.date ??
+			(page.data.workshop as { date?: string } | undefined)?.date;
+		return date ? formatCivilDate(date) : "Workshop";
 	}
 	const isMemberProfile =
 		page.route.id === "/dashboard/members/[memberId]" &&
@@ -173,8 +190,9 @@ function getBreadcrumbLabel(item: string, index: number): string {
 				</div>
 				<Breadcrumb.Root>
 					<Breadcrumb.List class="ml-14 md:ml-0">
-						{#each paths as item, index (item)}
-							{#if index !== paths.length - 1}
+						<!-- The pathname's leading "/" splits into an empty first segment: skip it. -->
+						{#each paths as item, index (index)}
+							{#if item === ""}{:else if index !== paths.length - 1}
 								<Breadcrumb.Item>
 									<Breadcrumb.Link class="capitalize" href={getLink(item)}>
 										{getBreadcrumbLabel(item, index)}
@@ -187,7 +205,7 @@ function getBreadcrumbLabel(item: string, index: number): string {
 									</Breadcrumb.Page>
 								</Breadcrumb.Item>
 							{/if}
-							{#if index < paths.length - 1}
+							{#if item !== "" && index < paths.length - 1}
 								<Breadcrumb.Separator>/</Breadcrumb.Separator>
 							{/if}
 						{/each}
@@ -214,7 +232,9 @@ main {
 	width: 100%;
 	margin: 0 auto;
 	box-sizing: border-box;
-	overflow-x: hidden;
+	/* `clip`, not `hidden`: `hidden` makes <main> a scroll container, so the
+	   sticky header stops sticking wherever the document scrolls instead. */
+	overflow-x: clip;
 }
 
 @media (min-width: 768px) {
