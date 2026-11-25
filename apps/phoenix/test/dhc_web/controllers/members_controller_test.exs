@@ -290,7 +290,30 @@ defmodule DhcWeb.MembersControllerTest do
                desc
     end
 
-    test "supports websearch text search", %{conn: conn} do
+    test "search matches partial names and emails, case-insensitively", %{conn: conn} do
+      insert_member(first_name: "Alessandro", last_name: "Lovelace", email: "al@gmail.com")
+      insert_member(first_name: "Alex", last_name: "Hopper", email: "hopper@example.com")
+
+      for {q, expected} <- [
+            {"ale", ["Alessandro", "Alex"]},
+            {"LOVE", ["Alessandro"]},
+            {"ale  hop", ["Alex"]},
+            {"@gmail", ["Alessandro"]},
+            {"zzz", []}
+          ] do
+        names =
+          conn
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> get("/api/members", q: q, sort: "firstName", direction: "asc")
+          |> json_response(200)
+          |> get_in(["data", "members"])
+          |> Enum.map(& &1["firstName"])
+
+        assert names == expected, "q=#{inspect(q)}"
+      end
+    end
+
+    test "supports text search", %{conn: conn} do
       insert_member(first_name: "Needle", last_name: "Person")
       insert_member(first_name: "Haystack", last_name: "Person")
 
