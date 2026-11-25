@@ -1,5 +1,6 @@
 <!--
-	ALE-386: one Intake on the workshop console — its state, minor badge,
+	ALE-386: one Intake on the workshop console (the person's latest; their
+	earlier places in this workshop head its history) — its state, minor badge,
 	medical flag, origin, live hold, refund, Carried Fee (ALE-388), the Intake Email log (scheduled
 	emails marked), its history and link generation — and the commands
 	Phoenix says are valid now (`availableCommands`; after finalisation,
@@ -20,6 +21,7 @@ import { HeartPulse, Link2 } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import {
 	carriedFeeLabel,
+	earlierIntakeLine,
 	emailLogLine,
 	historyLine,
 	holdLabel,
@@ -50,6 +52,7 @@ import {
 	intakeCommandSchema,
 } from "#lib/schemas/beginnersWorkshop.js";
 import { correctAttendance, runIntakeCommand } from "./console.remote";
+import ReOfferButton from "./re-offer-button.svelte";
 import * as Alert from "#lib/components/ui/alert/index.js";
 
 let {
@@ -76,6 +79,7 @@ const buttonCommands = $derived(
 	intake.availableCommands.filter(isIntakeButtonCommand),
 );
 const canWithdraw = $derived(intake.availableCommands.includes("withdraw"));
+const canReOffer = $derived(intake.availableCommands.includes("re_offer"));
 const canRefundCredit = $derived(
 	intake.availableCommands.includes("refund_carried_fee"),
 );
@@ -246,7 +250,16 @@ const refundHint = $derived(
 				{/if}
 			</div>
 		{/if}
-		{#if !buttonCommands.length && !canRefundCredit && !canWithdraw && !canCorrect}
+		{#if canReOffer}
+			<div data-testid="re-offer-command">
+				<ReOfferButton
+					{workshopId}
+					intakeId={intake.id}
+					name={personName(intake)}
+				/>
+			</div>
+		{/if}
+		{#if !buttonCommands.length && !canRefundCredit && !canWithdraw && !canCorrect && !canReOffer}
 			<p class="text-muted-foreground">
 				No actions are available for this workshop place.
 			</p>
@@ -350,6 +363,11 @@ const refundHint = $derived(
 			History
 		</h4>
 		<ol class="flex flex-col gap-1.5" data-testid="intake-history">
+			{#each intake.earlierIntakes as earlier (earlier.id)}
+				<li class="text-muted-foreground" data-testid="earlier-intake">
+					{earlierIntakeLine(earlier)}
+				</li>
+			{/each}
 			{#each intake.history as entry, index (index)}
 				<li class="flex flex-col">
 					<span>{historyLine(entry)}</span>
@@ -358,7 +376,9 @@ const refundHint = $derived(
 						>{/if}
 				</li>
 			{:else}
-				<li class="text-muted-foreground">No actions recorded yet.</li>
+				{#if !intake.earlierIntakes.length}
+					<li class="text-muted-foreground">No actions recorded yet.</li>
+				{/if}
 			{/each}
 		</ol>
 	</section>

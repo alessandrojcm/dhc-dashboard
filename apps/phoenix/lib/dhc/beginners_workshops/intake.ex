@@ -4,8 +4,9 @@ defmodule Dhc.BeginnersWorkshops.Intake do
   "Intake"): one person's place in one Beginners' Workshop.
 
   It references the Waitlist person (`waitlist_id`, nulled on anonymisation)
-  and stores no copy of them. `origin` is `batch` (with `batch_id`) or
-  `fast_track`; `queue_date` is the person's priority date when drafted.
+  and stores no copy of them. `origin` is `batch` (with `batch_id`),
+  `fast_track`, or `re_offer` (a Re-offer: a new offer, in the same workshop,
+  to a person whose earlier Intake there lapsed or was returned); `queue_date` is the person's priority date when drafted.
   `contacted` and `paid` are open states; a person has at most one open
   Intake (partial unique index). `state` changes only through the boundary's
   transition table.
@@ -25,7 +26,7 @@ defmodule Dhc.BeginnersWorkshops.Intake do
 
   @states ~w(contacted paid attended no_show lapsed declined returned deferred cancelled_refunded withdrawn)
   @open_states ~w(contacted paid)
-  @origins ~w(batch fast_track)
+  @origins ~w(batch fast_track re_offer)
   @paid_via ~w(stripe carried_fee)
   @invitation_outcomes ~w(not_invited invited joined)
 

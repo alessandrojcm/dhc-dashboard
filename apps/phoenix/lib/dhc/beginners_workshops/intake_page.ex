@@ -6,9 +6,11 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
 
   The view is closed and its `state` is the discriminator:
 
-    * `pay` — a `contacted` Intake before the Payment Cutoff with a free seat,
-      or with its own live Seat Hold (then the action continues that
-      checkout instead of starting one);
+    * `pay` — a `contacted` Intake before the Payment Cutoff (or, for a
+      Re-offer made after it, before the workshop starts:
+      `WorkshopPolicy.intake_payment_open?/3`) with a free seat, or with its
+      own live Seat Hold (then the action continues that checkout instead
+      of starting one);
     * `payment_in_progress` — the person came back from a checkout whose
       session is still open on our side, or their hold ran out and Stripe has
       not ended it yet; the page refreshes until Phoenix reports `paid`;
@@ -22,12 +24,14 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
     * `paid`;
     * `closed` — `inactive` for an Intake that is no longer open (or whose
       workshop is no longer scheduled), `payment_closed` for a contacted
-      Intake after the Payment Cutoff.
+      Intake after the Payment Cutoff (a late Re-offer: after the start).
 
   It carries the first name, the
   workshop date, start time and venue (with its optional manual destination
   text, ALE-441, or a selected Google place's public Place ID for
-  directions, never Google's text, ALE-442), the fee and one action — never
+  directions, never Google's text, ALE-442), the fee, the payment deadline
+  while the action is `pay` (`payment_cutoff`: the Payment Cutoff, or the
+  workshop start for a late Re-offer) and one action — never
   our ids or Stripe objects; an `inactive` page carries none of them. Seats come from
   the same `WorkshopFacts` and `WorkshopPolicy` the boundary decides with, so
   a stale page can be out of date but never judge differently.
@@ -132,7 +136,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
             destination_place_id: workshop.destination_place_id
           },
           fee_cents: fee_cents(intake, workshop, hold, holder?),
-          payment_cutoff: if(action == :pay, do: workshop.payment_cutoff)
+          payment_cutoff:
+            if(action == :pay, do: WorkshopPolicy.intake_payment_closes_at(workshop, intake))
         }
     end
   end
@@ -147,7 +152,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
     do: {:paid, :none, nil}
 
   defp decide(
-         %Intake{state: "contacted"},
+         %Intake{state: "contacted"} = intake,
          %BeginnersWorkshop{status: "scheduled"} = w,
          %{hold: hold, returned: ret} = context,
          r
@@ -162,7 +167,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePage do
       context.holder? ->
         holder_page(w)
 
-      not WorkshopPolicy.payment_open?(w, r) ->
+      not WorkshopPolicy.intake_payment_open?(w, intake, r) ->
         {:closed, :none, :payment_closed}
 
       not WorkshopPolicy.seat_free?(w, facts(w)) ->

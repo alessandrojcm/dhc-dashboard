@@ -86,6 +86,8 @@ defmodule Dhc.BeginnersWorkshops.PersonPolicy do
           latest_fee_refunded: live == nil and match?(%{status: "refunded"}, latest),
           workshop_status: nil,
           correction: nil,
+          # The person's open Intake (or none) is never re-offered.
+          re_offer: nil,
           now: now
         ),
       carried_fee:

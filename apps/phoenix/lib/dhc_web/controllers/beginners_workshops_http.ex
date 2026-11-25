@@ -170,7 +170,13 @@ defmodule DhcWeb.BeginnersWorkshopsHTTP do
       invalid_correction: {422, "Choose attended, no-show or deferred"},
       # Hard delete (ALE-396).
       not_deletable:
-        {409, "This person has been invited or has joined, so they can't be deleted here"}
+        {409, "This person has been invited or has joined, so they can't be deleted here"},
+      # Re-offer: offer a place again to someone who missed the payment deadline.
+      not_re_offerable:
+        {409, "Only someone who missed the payment deadline can be offered their place again"},
+      workshop_started: {409, "This workshop has already started"},
+      no_free_place:
+        {409, "Every place is taken; raise the capacity in Edit workshop to offer one again"}
     },
     fields: @internal_to_public
 

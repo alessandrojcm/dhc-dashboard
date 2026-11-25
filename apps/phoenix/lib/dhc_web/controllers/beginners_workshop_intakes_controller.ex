@@ -3,7 +3,7 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
   The `beginnersWorkshopIntakes` slice (ALE-386): the console's Intake
   commands — Decline, Defer and Confirm (ALE-388), Cancel with refund and
   Withdraw (ALE-387), Resend link, Rotate link and Correct attendance
-  (ALE-393) — each with an optional
+  (ALE-393) and Re-offer — each with an optional
   note recorded in the Intake's history, plus the Waitlist tab's Withdraw of
   a person. The router gates them on their capability
   (`beginners.workshops.manage`; withdraw `beginners.waitlist.manage`); the
@@ -70,6 +70,14 @@ defmodule DhcWeb.BeginnersWorkshopIntakesController do
   `attended`, `no_show` or `deferred`.
   """
   def correct_attendance(conn, params), do: command(conn, :correct_attendance, params)
+
+  @doc """
+  POST /beginners-workshops/{id}/intakes/{intakeId}/re-offer: a Re-offer —
+  a new place offer, in this workshop, to the person whose place here
+  lapsed or was returned at the payment deadline. The result is their new
+  place.
+  """
+  def re_offer(conn, params), do: command(conn, :re_offer, params)
 
   defp command(conn, name, %{"id" => id, "intakeId" => intake_id} = params) do
     command = {name, id, intake_id, command_attrs(params)}

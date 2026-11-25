@@ -133,6 +133,28 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
   (the same `follow_up_email/3`); before then the sweep sends it. Other
   corrections email nobody.
 
+  ## Re-offer
+
+  `re_offer` (`beginners.workshops.manage`, the Fast-track capability)
+  makes an exception for a person who did not pay in time (`CONTEXT.md`,
+  **Re-offer**): a new offer of a place in the same workshop to a person
+  whose Intake there `lapsed` or was `returned` at the Payment Cutoff, at
+  any time before the workshop starts — after the cutoff included. It locks
+  Beginners' Workshop → the person's Waitlist entry → the lapsed or returned
+  Intake → their live Carried Fee, decides with `IntakePolicy.check/2`
+  (refused with `:not_re_offerable`, `:after_finalisation`,
+  `:already_cancelled`, `:workshop_started`, `:open_intake`, `:no_free_place` and
+  `:not_eligible`; already done once a later Intake of the person for this
+  workshop exists), then, exactly as Fast-track: a `removed` person is
+  restored to `waiting` (`Commands.Batches.place_existing/2`, inside this
+  transaction) and the new `contacted` Intake, origin `re_offer`, is
+  created by `Commands.Batches.contact/4`, which queues the Contact email.
+  The earlier Intake stays as it is; the history row (with the note) is
+  written on the new one. Made after the cutoff, the new Intake may start
+  payment until the workshop starts and its Payment Window ends at the
+  start (`WorkshopPolicy.late_re_offer?/2`); the cutoff pass leaves it
+  alone, and Attendance Finalisation settles it if it is still unpaid.
+
   ## Used by other families
 
     * `intake_command_context/3`, `intake_command_spec/2` and
@@ -144,7 +166,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
     * `locked_intake_facts/3` — the ALE-402 parity seam, delegated from
       `Commands`.
 
-  A family never calls another family's private functions (ALE-405).
+  It calls `Commands.Batches`' `contact/4`, `place_existing/2` and
+  `contactable/1` for `re_offer`, qualified. A family never calls another family's private functions (ALE-405).
   """
 
   import Ecto.Query
@@ -194,6 +217,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
   alias Dhc.BeginnersWorkshops.Commands
 
   alias Dhc.BeginnersWorkshops.Commands.{
+    Batches,
     Settlement
   }
 
@@ -355,7 +379,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
   end
 
   # ALE-389: refunding the person's Carried Fee locks their entry and the fee.
-  def intake_command_spec(:refund_carried_fee, peek) do
+  # A Re-offer locks the same: it restores the standing and creates the new
+  # Intake under the entry lock, and its Contact email reads the live fee.
+  def intake_command_spec(command, peek) when command in [:refund_carried_fee, :re_offer] do
     peek
     |> intake_spec(nil)
     |> Map.put(:waitlist_entry, entry_query(peek))
@@ -508,6 +534,14 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
     end
   end
 
+  # A Re-offer: the person is placed exactly as Fast-track places them, and
+  # the new Intake (on which the history row is written) is the result.
+  defp act_on_intake(:re_offer, %{workshop: workshop, waitlist_entry: entry}, _id, reading) do
+    with {:ok, entry, _placed} <- Batches.place_existing(entry, reading),
+         {:ok, intake, _delivery} <- Batches.contact(workshop, :re_offer, entry, reading),
+         do: {:ok, intake}
+  end
+
   # ALE-393: fix a door mistake, or turn a no-show into a Deferral.
   defp act_on_intake(:correct_attendance, locked, _event_id, reading) do
     %{waitlist_entry: entry, intake: intake, context: context} = locked
@@ -562,7 +596,47 @@ defmodule Dhc.BeginnersWorkshops.Commands.IntakeCommands do
         fee == nil and is_binary(intake.waitlist_id) and fee_refunded?(intake.waitlist_id),
       workshop_status: locked.workshop.status,
       correction: Map.get(context.options, :to),
+      re_offer: re_offer_facts(locked, reading),
       now: reading.now
+    )
+  end
+
+  # What a Re-offer reads, for a lapsed or returned Intake only (the same
+  # values `WorkshopConsole` selects): seats under the workshop lock, and the
+  # person's other Intakes under their entry lock, which every Intake writer
+  # takes.
+  defp re_offer_facts(%{intake: intake, workshop: workshop} = locked, reading) do
+    if intake.state in IntakePolicy.re_offerable_states() do
+      entry = Map.get(locked, :waitlist_entry)
+
+      %{
+        seat_free: WorkshopPolicy.seat_free?(workshop, facts_for(workshop)),
+        workshop_started: not WorkshopPolicy.starts_after?(workshop, reading.now),
+        superseded: superseded?(intake),
+        open_intake: open_intake?(intake),
+        contactable: entry != nil and Batches.contactable(entry) == :ok
+      }
+    end
+  end
+
+  # A later Intake of the same person for this workshop: the Re-offer ran.
+  defp superseded?(%Intake{waitlist_id: nil}), do: false
+
+  defp superseded?(%Intake{} = intake) do
+    Repo.exists?(
+      from(i in Intake,
+        where:
+          i.workshop_id == ^intake.workshop_id and i.waitlist_id == ^intake.waitlist_id and
+            i.id != ^intake.id and i.contacted_at > ^intake.contacted_at
+      )
+    )
+  end
+
+  defp open_intake?(%Intake{waitlist_id: nil}), do: false
+
+  defp open_intake?(%Intake{waitlist_id: waitlist_id}) do
+    Repo.exists?(
+      from(i in Intake, where: i.waitlist_id == ^waitlist_id and i.state in ^Intake.open_states())
     )
   end
 

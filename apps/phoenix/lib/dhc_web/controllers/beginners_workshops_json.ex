@@ -157,6 +157,10 @@ defmodule DhcWeb.BeginnersWorkshopsJSON do
             byEmailReply: entry.by_email_reply
           }
         end),
+      earlierIntakes:
+        Enum.map(row.earlier_intakes, fn earlier ->
+          %{id: earlier.id, state: earlier.state, contactedAt: earlier.contacted_at}
+        end),
       availableCommands: row.available_commands,
       attendanceCorrections: row.attendance_corrections,
       paidVia: row.paid_via,

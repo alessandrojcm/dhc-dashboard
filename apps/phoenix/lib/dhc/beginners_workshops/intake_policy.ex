@@ -33,6 +33,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
           | :resend_link
           | :rotate_link
           | :correct_attendance
+          | :re_offer
   @type decision :: :ok | :already_done | {:error, atom()}
 
   @typedoc """
@@ -50,7 +51,15 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       their latest one was refunded;
     * `workshop_status`, and `correction` — the state a
       `correct_attendance` asks for (`nil` when the console asks whether any
-      correction is possible).
+      correction is possible);
+    * `re_offer` — for a `lapsed` or `returned` Intake only (`nil` for every
+      other state), what a Re-offer needs to know: `seat_free`
+      (`WorkshopPolicy.seat_free?/2`), `workshop_started`, `superseded` (a
+      later Intake of the same person for this workshop exists: the Re-offer
+      already happened), `open_intake` (the person has an open Intake in any
+      workshop), `contactable` (an email and a first name to address the
+      Contact email to) and `restorable` (the person is `waiting`, or
+      `removed` within the retention window, `Dhc.Waitlist.restorable?/2`).
 
   A boundary command's facts hold only the rows it locks; each `check/2`
   clause reads only what its command locks.
@@ -62,9 +71,20 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
           carried_fee: CarriedFeePolicy.t() | nil,
           latest_fee_refunded: boolean(),
           workshop_status: String.t() | nil,
-          correction: String.t() | nil
+          correction: String.t() | nil,
+          re_offer: re_offer_facts() | nil
         }
   @type facts :: t()
+
+  @typedoc "What a Re-offer reads (see `t/0`)."
+  @type re_offer_facts :: %{
+          seat_free: boolean(),
+          workshop_started: boolean(),
+          superseded: boolean(),
+          open_intake: boolean(),
+          contactable: boolean(),
+          restorable: boolean()
+        }
 
   @enforce_keys [
     :state,
@@ -73,7 +93,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
     :carried_fee,
     :latest_fee_refunded,
     :workshop_status,
-    :correction
+    :correction,
+    :re_offer
   ]
   defstruct @enforce_keys
 
@@ -86,9 +107,14 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
     :refund_carried_fee,
     :resend_link,
     :rotate_link,
-    :correct_attendance
+    :correct_attendance,
+    :re_offer
   ]
   @open_states ~w(contacted paid)
+
+  # A Re-offer (`CONTEXT.md`) acts only on an Intake unpaid at the cutoff.
+  @re_offerable_states ~w(lapsed returned)
+  @re_offer_raw_keys [:seat_free, :workshop_started, :superseded, :open_intake, :contactable]
 
   # ALE-393: the attendance corrections, from → the states it may become.
   @corrections %{"attended" => ~w(no_show), "no_show" => ~w(attended deferred)}
@@ -110,7 +136,11 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       that fee's latest refund as `%{status: _, followed_up: _}`, or `nil`;
     * `latest_fee_refunded:` — with no live fee, whether the person's
       latest Carried Fee was refunded;
-    * `workshop_status:`, `correction:` and `now:`.
+    * `workshop_status:`, `correction:` and `now:`;
+    * `re_offer:` — for a `lapsed` or `returned` Intake, a map of
+      `seat_free`, `workshop_started`, `superseded`, `open_intake` and
+      `contactable` (booleans); ignored, and may be `nil`, for any other
+      state. `restorable` is derived here from `entry:` and `now:`.
   """
   @spec facts(keyword()) :: t()
   def facts(opts) do
@@ -127,9 +157,35 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       carried_fee: live_fee(fee, refund, entry, now),
       latest_fee_refunded: Keyword.fetch!(opts, :latest_fee_refunded),
       workshop_status: Keyword.fetch!(opts, :workshop_status),
-      correction: Keyword.fetch!(opts, :correction)
+      correction: Keyword.fetch!(opts, :correction),
+      re_offer: re_offer_facts(intake, Keyword.fetch!(opts, :re_offer), entry, now)
     }
   end
+
+  @doc "The Intake states a Re-offer acts on: `lapsed` and `returned`."
+  @spec re_offerable_states() :: [String.t()]
+  def re_offerable_states, do: @re_offerable_states
+
+  defp re_offer_facts(%{state: state}, %{} = raw, entry, now)
+       when state in @re_offerable_states do
+    @re_offer_raw_keys
+    |> Map.new(&{&1, Map.fetch!(raw, &1) == true})
+    |> Map.put(:restorable, restorable?(entry, now))
+  end
+
+  defp re_offer_facts(%{state: state}, nil, _entry, _now) when state in @re_offerable_states,
+    do: raise(ArgumentError, "IntakePolicy.facts/1 needs re_offer facts for a #{state} Intake")
+
+  defp re_offer_facts(_intake, _raw, _entry, _now), do: nil
+
+  # Fast-track's rule (`Commands.Batches.place_existing/2`): someone
+  # waiting, or removed within the retention window.
+  defp restorable?(%{status: "waiting"}, _now), do: true
+
+  defp restorable?(%{status: "removed", removed_at: %DateTime{} = removed_at}, now),
+    do: Dhc.Waitlist.restorable?(removed_at, now)
+
+  defp restorable?(_entry, _now), do: false
 
   defp standing(%{status: status}, _intake), do: status
 
@@ -196,7 +252,18 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       standing is `invited` or `joined` it is `:already_invited` (membership
       never rests on a changed record); any other move is
       `:not_correctable`. Without a `correction` it answers whether any
-      correction is possible (the console's question).
+      correction is possible (the console's question);
+    * `re_offer` — a Re-offer (`CONTEXT.md`) of a `lapsed` or `returned`
+      Intake (every other state is `:not_re_offerable`) creates a new
+      `contacted` Intake for the same person and workshop. It is already
+      done once a later Intake of the person for this workshop exists
+      (`superseded`). Otherwise it needs a scheduled workshop
+      (`:after_finalisation`, `:already_cancelled`) that has not started
+      (`:workshop_started`), no open Intake of the person anywhere
+      (`:open_intake`), a free seat (`:no_free_place`; staff raise the
+      capacity first, there is no overflow), and a person who is waiting
+      or removed within retention and can be emailed (`:not_eligible`). The
+      Payment Cutoff does not stop it: that is the point of a Re-offer.
 
   A plain map is read as `legacy_facts/1` reads it.
   """
@@ -267,6 +334,29 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
     end
   end
 
+  defp decide(:re_offer, %{state: state, re_offer: %{} = re_offer} = facts)
+       when state in @re_offerable_states do
+    cond do
+      re_offer.superseded -> :already_done
+      facts.workshop_status == "finalised" -> {:error, :after_finalisation}
+      facts.workshop_status == "cancelled" -> {:error, :already_cancelled}
+      re_offer.workshop_started -> {:error, :workshop_started}
+      true -> re_offer_person(re_offer)
+    end
+  end
+
+  defp decide(:re_offer, _facts), do: {:error, :not_re_offerable}
+
+  # The workshop takes the Re-offer: now the seat and the person.
+  defp re_offer_person(re_offer) do
+    cond do
+      re_offer.open_intake -> {:error, :open_intake}
+      not re_offer.seat_free -> {:error, :no_free_place}
+      not (re_offer.restorable and re_offer.contactable) -> {:error, :not_eligible}
+      true -> :ok
+    end
+  end
+
   defp live_status(%{carried_fee: nil}), do: nil
   defp live_status(%{carried_fee: %CarriedFeePolicy{status: status}}), do: status
 
@@ -330,7 +420,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
 
   # The pre-ALE-402 partial-map shape, kept so the direct table tests of
   # that era still read the same rule: `state` is required; `paid_via`,
-  # `standing`, `workshop_status` and `correction` absent are `nil`;
+  # `standing`, `workshop_status` and `correction` absent are `nil`, and
+  # there are no Re-offer facts (so `re_offer` is never available);
   # `carried_fee` is the live fee's status (absent: none), refundable unless
   # `fee_refundable: false` and taken to be linked; `carried_fee_refunded`
   # absent is false. No adapter uses it: they build `facts/1`.
@@ -356,7 +447,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicy do
       carried_fee: legacy_fee(given.carried_fee, given.fee_refundable),
       latest_fee_refunded: given.carried_fee_refunded,
       workshop_status: given.workshop_status,
-      correction: given.correction
+      correction: given.correction,
+      re_offer: nil
     }
   end
 

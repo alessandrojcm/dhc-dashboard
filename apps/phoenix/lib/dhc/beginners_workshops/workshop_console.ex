@@ -16,7 +16,12 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       capacity − paid, and the live `BatchProposal` — exactly the people
       `send_due_batch` would contact now — with minors badged and Carried
       Fee holders marked `confirms` (ALE-388);
-    * `roster` — Intakes grouped by meaning: before finalisation `seated`
+    * `roster` — one row per person, their latest Intake for this workshop
+      (a Re-offer or a Fast-track after a Decline gives a person a second
+      one); the earlier ones are listed in the row's `earlier_intakes` (id,
+      state, when contacted) and their history is merged into the row's.
+      An anonymised Intake is a row of its own. Rows are grouped by meaning:
+      before finalisation `seated`
       (paid), `asked` (contacted, not paid yet) and `out`; after it
       (ALE-391) `attended`, `no_show` and `out`. Each Intake with a live
       Seat Hold carries when its hold runs out (ALE-381), each paid Intake
@@ -35,7 +40,11 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       After finalisation (ALE-393) a correctable Intake offers
       `correct_attendance`, and `attendance_corrections` lists the states it
       may be corrected to (`IntakePolicy.attendance_corrections/1`); a
-      correction's history row names its `correction`;
+      correction's history row names its `correction`. A `lapsed` or
+      `returned` latest Intake offers `re_offer` (a Re-offer, `CONTEXT.md`)
+      exactly when the boundary would make it: its facts (seats, start,
+      the person's other Intakes, whether they can be emailed) are the
+      values `Commands.locked_intake_facts/3` reads under the locks;
     * `unpaid_after_window` — the Needs attention list of `contacted`
       people whose Payment Window (`WorkshopPolicy.payment_window_end/3`)
       has ended, oldest window first (ALE-386);
@@ -268,6 +277,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         |> Map.put(:available_commands, IntakePolicy.available_commands(facts))
         |> Map.put(:attendance_corrections, IntakePolicy.attendance_corrections(facts))
       end)
+      |> one_row_per_person()
 
     %{
       seated: Enum.filter(rows, &(&1.state == "paid")),
@@ -276,6 +286,36 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       no_show: Enum.filter(rows, &(&1.state == "no_show")),
       out: Enum.reject(rows, &(&1.state in @not_out))
     }
+  end
+
+  # One row per person (a Re-offer, or a Fast-track after a Decline, gives
+  # them a second Intake here): their latest Intake, with the earlier ones
+  # listed in `earlier_intakes` and their history merged into the row's, in
+  # time order. An anonymised Intake has no person, so it stays its own row.
+  defp one_row_per_person(rows) do
+    key = &(&1.waitlist_id || {:anonymised, &1.id})
+    groups = Enum.group_by(rows, key)
+
+    rows
+    |> Enum.uniq_by(key)
+    |> Enum.map(&(groups |> Map.fetch!(key.(&1)) |> person_row()))
+  end
+
+  defp person_row(intakes) do
+    [latest | earlier] = Enum.sort_by(intakes, & &1.contacted_at, {:desc, DateTime})
+    earlier = Enum.reverse(earlier)
+
+    latest
+    |> Map.delete(:waitlist_id)
+    |> Map.put(:earlier_intakes, Enum.map(earlier, &Map.take(&1, [:id, :state, :contacted_at])))
+    |> Map.put(
+      :history,
+      Enum.sort_by(
+        Enum.flat_map(earlier, & &1.history) ++ latest.history,
+        & &1.occurred_at,
+        DateTime
+      )
+    )
   end
 
   @doc false
@@ -315,6 +355,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
         select: {
           %{
             id: i.id,
+            waitlist_id: i.waitlist_id,
             state: i.state,
             paid_via: i.paid_via,
             origin: i.origin,
@@ -340,6 +381,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
             waitlist_id: i.waitlist_id,
             entry_status: e.status,
             removed_at: e.removed_at,
+            email: e.email,
             live_fee: %{
               id: live_fee.id,
               status: live_fee.status,
@@ -356,11 +398,62 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     fees = for {_row, %{live_fee: %{id: id}}} <- rows, id != nil, do: id
     fee_refunds = fees |> IntakeRefund.latest_of_fees_query() |> Repo.all() |> Map.new()
     latest = latest_fee_statuses(Enum.map(rows, fn {_row, raw} -> raw.waitlist_id end))
+    re_offer = re_offer_context(workshop, rows, reading)
 
-    Enum.map(rows, &{elem(&1, 0), facts(&1, fee_refunds, latest, workshop, reading)})
+    Enum.map(rows, &{elem(&1, 0), facts(&1, fee_refunds, latest, re_offer, workshop, reading)})
   end
 
-  defp facts({row, raw}, fee_refunds, latest, workshop, reading) do
+  # What every row's Re-offer facts share: the seats, whether the workshop
+  # has started, each person's latest contact here and who holds an open
+  # Intake anywhere — the values the boundary reads under its locks.
+  defp re_offer_context(workshop, rows, reading) do
+    facts = Map.fetch!(WorkshopFacts.load([workshop.id]), workshop.id)
+    people = for {_row, %{waitlist_id: id}} <- rows, id != nil, uniq: true, do: id
+
+    %{
+      seat_free: WorkshopPolicy.seat_free?(workshop, facts),
+      workshop_started: not WorkshopPolicy.starts_after?(workshop, reading.now),
+      latest_contact:
+        rows
+        |> Enum.filter(fn {_row, raw} -> raw.waitlist_id end)
+        |> Enum.group_by(fn {_row, raw} -> raw.waitlist_id end, fn {row, _raw} ->
+          row.contacted_at
+        end)
+        |> Map.new(fn {id, times} -> {id, Enum.max(times, DateTime)} end),
+      open_intake:
+        from(i in Intake,
+          where: i.waitlist_id in ^people and i.state in ^Intake.open_states(),
+          distinct: true,
+          select: i.waitlist_id
+        )
+        |> Repo.all()
+        |> MapSet.new()
+    }
+  end
+
+  defp re_offer_facts({_row, %{waitlist_id: nil}}, context) do
+    %{
+      seat_free: context.seat_free,
+      workshop_started: context.workshop_started,
+      superseded: false,
+      open_intake: false,
+      contactable: false
+    }
+  end
+
+  defp re_offer_facts({row, raw}, context) do
+    %{
+      seat_free: context.seat_free,
+      workshop_started: context.workshop_started,
+      superseded:
+        DateTime.compare(Map.fetch!(context.latest_contact, raw.waitlist_id), row.contacted_at) ==
+          :gt,
+      open_intake: MapSet.member?(context.open_intake, raw.waitlist_id),
+      contactable: raw.email != nil and row.first_name != nil
+    }
+  end
+
+  defp facts({row, raw} = pair, fee_refunds, latest, re_offer, workshop, reading) do
     # A left join's absent fee selects as a map of nils.
     fee = if raw.live_fee.id, do: raw.live_fee
 
@@ -376,6 +469,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       latest_fee_refunded: fee == nil and Map.get(latest, raw.waitlist_id) == "refunded",
       workshop_status: workshop.status,
       correction: nil,
+      re_offer: re_offer_facts(pair, re_offer),
       now: reading.now
     )
   end

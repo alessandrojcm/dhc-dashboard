@@ -34,8 +34,14 @@ defmodule Dhc.BeginnersWorkshops.Commands.Attendance do
   when seats were free, `returned` (standing left `waiting`, so the
   original priority stands) when the workshop was full, and left alone
   while its own Seat Hold is live — the cutoff stops only new holds, so a
-  later sweep settles it once Stripe ends the hold. Neither close sends an
-  email. An Intake that becomes `paid` after the cutoff gets Pre-workshop
+  later sweep settles it once Stripe ends the hold. Two `contacted` Intakes
+  are left open: a Carried Fee holder's (they may confirm until
+  finalisation) and a Re-offer made at or after the current cutoff
+  (`WorkshopPolicy.late_re_offer?/2`: the person may pay until the workshop
+  starts). Attendance Finalisation settles either by the same rule if it is
+  still unpaid. A Re-offer made before the current cutoff (a reschedule
+  moved the cutoff past it) is settled like any other. Neither close sends
+  an email. An Intake that becomes `paid` after the cutoff gets Pre-workshop
   info in the same transaction (`complete_payment`). Re-running the pass
   finds nothing owed, so it is exactly-once.
 
@@ -377,10 +383,13 @@ defmodule Dhc.BeginnersWorkshops.Commands.Attendance do
     end
   end
 
+  # A Carried Fee holder may still confirm and a late Re-offer may still pay
+  # (until finalisation and the start respectively), so both stay open.
   defp pass_intake(%Intake{state: "contacted"} = intake, pass) do
-    if MapSet.member?(pass.fee_holders, intake.waitlist_id),
-      do: {:ok, nil},
-      else: settle_at_cutoff(intake, pass)
+    if MapSet.member?(pass.fee_holders, intake.waitlist_id) or
+         WorkshopPolicy.late_re_offer?(pass.workshop, intake),
+       do: {:ok, nil},
+       else: settle_at_cutoff(intake, pass)
   end
 
   defp settle_at_cutoff(intake, pass) do

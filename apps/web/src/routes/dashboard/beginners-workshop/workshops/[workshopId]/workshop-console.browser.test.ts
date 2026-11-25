@@ -149,6 +149,7 @@ function view(
 					linkGeneration: 1,
 					emailLog: [],
 					history: [],
+					earlierIntakes: [],
 					availableCommands: [],
 					attendanceCorrections: [],
 					paidVia: null,
@@ -177,6 +178,7 @@ function view(
 					linkGeneration: 1,
 					emailLog: [],
 					history: [],
+					earlierIntakes: [],
 					availableCommands: [],
 					attendanceCorrections: [],
 					paidVia: null,
@@ -472,6 +474,7 @@ test("shows a fast-tracked Intake's origin as Fast-track", async () => {
 						linkGeneration: 1,
 						emailLog: [],
 						history: [],
+						earlierIntakes: [],
 						availableCommands: [],
 						attendanceCorrections: [],
 						paidVia: null,
@@ -1445,5 +1448,108 @@ test("ALE-388: credit holders await confirmation quietly and retain their detail
 	await expect
 		.element(detail.getByTestId("intake-history"))
 		.toHaveTextContent("Place confirmed using workshop credit · by the person");
+	await closeIntake(screen);
+});
+
+test("Re-offer: a lapsed person's row offers Offer place again, and its dialog takes an optional note", async () => {
+	const base = view();
+	const lapsed = {
+		...base.roster.asked[0]!,
+		id: "0b0c3b2e-8a43-4a8d-9a39-5b9d8a2ab003",
+		state: "lapsed" as const,
+		firstName: "Eimear",
+		lastName: "Ryan",
+		standing: "removed" as const,
+		availableCommands: ["re_offer" as const],
+	};
+	const screen = await render(WorkshopConsole, {
+		view: view({
+			roster: { ...base.roster, out: [lapsed] },
+			fastTrackOpen: false,
+			fastTrackHoldersOnly: true,
+		}),
+	});
+
+	const people = screen.getByRole("region", { name: "People" });
+	const rows = people.getByTestId("person-row");
+	const offer = people.getByRole("button", { name: "Offer place again" });
+	// Only the row Phoenix lists it for.
+	expect(offer.elements()).toHaveLength(1);
+	await expect
+		.element(
+			rows
+				.filter({ hasText: "Eimear Ryan" })
+				.getByRole("button", { name: "Offer place again" }),
+		)
+		.toBeVisible();
+
+	await offer.click();
+	const dialog = screen.getByRole("dialog");
+	await expect
+		.element(
+			dialog.getByRole("heading", {
+				name: "Offer Eimear Ryan their place again?",
+			}),
+		)
+		.toBeVisible();
+	await expect
+		.element(dialog)
+		.toHaveTextContent("can pay until the workshop starts");
+	await expect.element(dialog.getByLabelText(/^Note/)).toBeVisible();
+	await expect
+		.element(dialog.getByRole("button", { name: "Offer place and email them" }))
+		.toBeVisible();
+	await dialog.getByRole("button", { name: "Not now" }).click();
+	await expect.element(dialog).not.toBeInTheDocument();
+});
+
+test("Re-offer: one row per person, the earlier place heading its history", async () => {
+	const base = view();
+	const reOffered = {
+		...base.roster.asked[0]!,
+		origin: "re_offer" as const,
+		batchNumber: null,
+		contactedAt: "2026-11-12T12:00:00Z",
+		windowEndsAt: "2026-11-14T18:30:00Z",
+		earlierIntakes: [
+			{
+				id: "0b0c3b2e-8a43-4a8d-9a39-5b9d8a2ab009",
+				state: "lapsed" as const,
+				contactedAt: "2026-10-20T09:00:00Z",
+			},
+		],
+		history: [
+			{
+				command: "re_offer" as const,
+				actor: "Róisín Walsh",
+				occurredAt: "2026-11-12T12:00:00Z",
+				note: "Rang on 12 Nov",
+				correction: null,
+				byEmailReply: false,
+			},
+		],
+	};
+	const screen = await render(WorkshopConsole, {
+		view: view({ roster: { ...base.roster, asked: [reOffered] } }),
+	});
+
+	const people = screen.getByRole("region", { name: "People" });
+	expect(
+		people
+			.getByTestId("person-row")
+			.filter({ hasText: "Dara Nolan" })
+			.elements(),
+	).toHaveLength(1);
+
+	const detail = await openIntake(screen, /^Dara Nolan/);
+	await expect
+		.element(detail.getByTestId("earlier-intake"))
+		.toHaveTextContent(
+			"Earlier offer (Tue 20 Oct, 10:00): Payment deadline missed",
+		);
+	await expect
+		.element(detail.getByTestId("intake-history"))
+		.toHaveTextContent("Place offered again · Róisín Walsh");
+	await expect.element(detail).toHaveTextContent("Offered again by staff");
 	await closeIntake(screen);
 });

@@ -13,7 +13,9 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
   `WorkshopFacts` counts them and `WorkshopPolicy` judges them.
 
     * `start_payment` (`{:intake_link, token}`) is refused with
-      `:after_cutoff` or `:full`. Otherwise it takes the Seat Hold under the
+      `:after_cutoff` (`WorkshopPolicy.intake_payment_open?/3`: a Re-offer
+      made after the Payment Cutoff may still pay until the workshop
+      starts) or `:full`. Otherwise it takes the Seat Hold under the
       Beginners' Workshop lock — an `open` payment row with the fee frozen
       and 30 minutes to run — and then, **between transactions**, creates the
       Checkout Session (`IntakeCheckout.create/2`, idempotency key
@@ -215,7 +217,8 @@ defmodule Dhc.BeginnersWorkshops.Commands.Payments do
   # reschedule can never change what a replayed create sends.
   defp new_hold(workshop, intake, entry, reading) do
     cond do
-      not WorkshopPolicy.payment_open?(workshop, reading) ->
+      # A late Re-offer may pay until the workshop starts (`CONTEXT.md`).
+      not WorkshopPolicy.intake_payment_open?(workshop, intake, reading) ->
         {:error, :after_cutoff}
 
       not WorkshopPolicy.seat_free?(workshop, facts_for(workshop)) ->

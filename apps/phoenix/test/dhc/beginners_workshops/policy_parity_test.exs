@@ -30,6 +30,7 @@ defmodule Dhc.BeginnersWorkshops.PolicyParityTest do
   }
 
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
 
   @now ~U[2026-10-22 12:00:00.000000Z]
 
@@ -156,6 +157,21 @@ defmodule Dhc.BeginnersWorkshops.PolicyParityTest do
     anonymised = person!("attended")
     anonymised_not_invited = person!("attended")
 
+    # Re-offer: the person's standing, other Intakes and profile.
+    lapsed_recently = removed!(20)
+    lapsed_long_ago = removed!(200)
+    returned = person!()
+    re_offered = removed!(20)
+    re_offered_lapsed = intake!(workshop, re_offered, "lapsed")
+    {re_offered_new, _token} = intake_fixture!(workshop.id, re_offered, at(-1))
+    elsewhere = removed!(20)
+    elsewhere_lapsed = intake!(workshop, elsewhere, "lapsed")
+    other_workshop = scheduled_fixture(staff_fixture(), %{"venue" => "Elsewhere Hall"})
+    intake_fixture!(other_workshop.id, elsewhere)
+    no_profile = person!()
+    no_profile_lapsed = intake!(workshop, no_profile, "lapsed")
+    Repo.delete_all(from(p in UserProfile, where: p.waitlist_id == ^no_profile.id))
+
     [
       {"contacted, no fee", plain, intake!(workshop, plain, "contacted")},
       {"contacted, unlinked held fee", unlinked, intake!(workshop, unlinked, "contacted")},
@@ -178,7 +194,15 @@ defmodule Dhc.BeginnersWorkshops.PolicyParityTest do
       {"anonymised attendee, invited", nil,
        workshop |> intake!(anonymised, "attended") |> anonymise!("invited")},
       {"anonymised attendee, not invited", nil,
-       workshop |> intake!(anonymised_not_invited, "attended") |> anonymise!("not_invited")}
+       workshop |> intake!(anonymised_not_invited, "attended") |> anonymise!("not_invited")},
+      {"lapsed, removed recently", lapsed_recently, intake!(workshop, lapsed_recently, "lapsed")},
+      {"lapsed, removed long ago", lapsed_long_ago, intake!(workshop, lapsed_long_ago, "lapsed")},
+      {"returned, waiting", returned, intake!(workshop, returned, "returned")},
+      {"lapsed, re-offered since", nil, re_offered_lapsed},
+      {"re-offered, contacted", re_offered, Repo.reload!(re_offered_new)},
+      {"lapsed, open Intake elsewhere", elsewhere, elsewhere_lapsed},
+      {"lapsed, no profile", nil, no_profile_lapsed},
+      {"lapsed, anonymised", nil, workshop |> intake!(person!(), "lapsed") |> anonymise!(nil)}
     ]
   end
 
@@ -200,8 +224,22 @@ defmodule Dhc.BeginnersWorkshops.PolicyParityTest do
                  Commands.locked_intake_facts(workshop.id, id, Clock.fixed(@now))
 
         assert console[id] == locked, label
-        assert rows[id].available_commands == IntakePolicy.available_commands(locked), label
+
+        # One row per person: an Intake a Re-offer followed is in its
+        # person's row's history, not a row of its own.
+        case rows[id] do
+          nil ->
+            assert label == "lapsed, re-offered since"
+            assert locked.re_offer.superseded
+
+          row ->
+            assert row.available_commands == IntakePolicy.available_commands(locked), label
+        end
       end
+
+      # The matrix reaches a Re-offer the console offers.
+      assert Enum.any?(Map.values(rows), &(:re_offer in &1.available_commands)) ==
+               (@status == "scheduled")
     end
   end
 

@@ -8,7 +8,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   `Dhc.BeginnersWorkshops.WorkshopFacts`.
   """
 
-  alias Dhc.BeginnersWorkshops.BeginnersWorkshop
+  alias Dhc.BeginnersWorkshops.{BeginnersWorkshop, Intake}
   alias Dhc.ClubCalendar
 
   @default_cutoff_days 3
@@ -88,9 +88,10 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   the date its Intake Emails ask the person to pay or confirm by.
 
   An Intake from a Batch ends with its Batch's `window_ends_at`
-  (`batch_window_end`). A Fast-track (`nil`) ends at the Payment Cutoff when
-  contacted before it, else — a Carried Fee holder placed after the cutoff —
-  at the workshop start.
+  (`batch_window_end`). A Fast-track or a Re-offer (`nil`) ends at the
+  Payment Cutoff when contacted before it, else — a Carried Fee holder
+  placed after the cutoff, or a Re-offer made after it — at the workshop
+  start.
   """
   @spec payment_window_end(
           BeginnersWorkshop.t()
@@ -209,13 +210,59 @@ defmodule Dhc.BeginnersWorkshops.WorkshopPolicy do
   before its Payment Cutoff. `fast_track` (ALE-384) and a new Seat Hold
   (`start_payment`, ALE-381) are refused after it, and
   the console offers Fast-track only while it holds; the Carried Fee holder
-  exception joins this rule with the defer-and-confirm ticket.
+  exception joins this rule with the defer-and-confirm ticket. A Re-offer
+  made after the cutoff is the one per-Intake exception
+  (`intake_payment_open?/3`).
   """
   @spec payment_open?(BeginnersWorkshop.t(), map()) :: boolean()
   def payment_open?(%BeginnersWorkshop{status: "scheduled", payment_cutoff: cutoff}, reading),
     do: DateTime.compare(reading.now, cutoff) == :lt
 
   def payment_open?(%BeginnersWorkshop{}, _reading), do: false
+
+  @doc """
+  Whether `intake` is a Re-offer made at or after the workshop's *current*
+  Payment Cutoff (`CONTEXT.md`, **Re-offer**): the one exception to the
+  cutoff. Judged from the Intake's origin and contact time against the
+  cutoff now, never a stored flag, so a reschedule that moves the cutoff
+  past the Intake's `contacted_at` makes it an ordinary contacted Intake
+  again: it pays by the new cutoff and that cutoff's pass settles it.
+  """
+  @spec late_re_offer?(
+          BeginnersWorkshop.t() | %{payment_cutoff: DateTime.t()},
+          %{origin: String.t(), contacted_at: DateTime.t()}
+        ) :: boolean()
+  def late_re_offer?(%{payment_cutoff: cutoff}, %{origin: "re_offer", contacted_at: contacted_at}),
+      do: DateTime.compare(contacted_at, cutoff) != :lt
+
+  def late_re_offer?(_workshop, _intake), do: false
+
+  @doc """
+  Whether this one Intake may start a payment (a new Seat Hold) at
+  `reading`: the workshop takes payment (`payment_open?/2`), or the Intake
+  is a late Re-offer (`late_re_offer?/2`) and the scheduled workshop has not
+  started. Seats are judged separately (`seat_free?/2`). `start_payment` and
+  the Intake page decide by it; Batches, Fast-track and the console's
+  workshop stage keep the workshop-wide `payment_open?/2`.
+  """
+  @spec intake_payment_open?(BeginnersWorkshop.t(), Intake.t() | map(), map()) :: boolean()
+  def intake_payment_open?(%BeginnersWorkshop{} = workshop, intake, reading) do
+    payment_open?(workshop, reading) or
+      (workshop.status == "scheduled" and late_re_offer?(workshop, intake) and
+         starts_after?(workshop, reading.now))
+  end
+
+  @doc """
+  When payment closes for this one Intake — the deadline its Intake page
+  shows: the workshop start for a late Re-offer (`late_re_offer?/2`), the
+  Payment Cutoff for everyone else.
+  """
+  @spec intake_payment_closes_at(BeginnersWorkshop.t(), Intake.t() | map()) :: DateTime.t()
+  def intake_payment_closes_at(%BeginnersWorkshop{} = workshop, intake) do
+    if late_re_offer?(workshop, intake),
+      do: starts_at(workshop),
+      else: workshop.payment_cutoff
+  end
 
   @typedoc """
   When the next Batch goes out: `:due` (at the next sweep), `{:at, instant}`,

@@ -39,9 +39,8 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsConcurrencyTest do
   @now ~U[2026-10-22 12:00:00.000000Z]
   @people 5
 
-  defp pay(token),
-    do:
-      BeginnersWorkshops.execute({:intake_link, token}, :start_payment, clock: Clock.fixed(@now))
+  defp pay(token, at \\ @now),
+    do: BeginnersWorkshops.execute({:intake_link, token}, :start_payment, clock: Clock.fixed(at))
 
   defp complete(session),
     do:
@@ -64,6 +63,34 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsConcurrencyTest do
       assert [%IntakePayment{status: "open"}] =
                Repo.all(from(p in IntakePayment, where: p.workshop_id == ^workshop.id))
     end)
+  end
+
+  # A Re-offer made after the cutoff pays by the same seat rule, under the
+  # same workshop lock, as everyone else.
+  test "re-offered people pressing Pay for the last seat after the cutoff get exactly one hold" do
+    after_cutoff = ~U[2026-11-12 12:00:00.000000Z]
+
+    committed(
+      1,
+      fn %{workshop: workshop, tokens: tokens} ->
+        Stripe.stub_create()
+
+        results =
+          hold_lock_then(
+            "SELECT id FROM beginners_workshops WHERE id = $1 FOR UPDATE",
+            [Ecto.UUID.dump!(workshop.id)],
+            Enum.map(tokens, fn token -> fn -> pay(token, after_cutoff) end end)
+          )
+
+        assert Enum.count(results, &match?({:ok, %{checkout_url: _}}, &1)) == 1
+        assert Enum.count(results, &(&1 == {:error, :full})) == @people - 1
+
+        assert [%IntakePayment{status: "open"}] =
+                 Repo.all(from(p in IntakePayment, where: p.workshop_id == ^workshop.id))
+      end,
+      origin: "re_offer",
+      contacted_at: ~U[2026-11-12 09:00:00.000000Z]
+    )
   end
 
   test "the webhook and the success return completing one payment give one transition and one email" do
@@ -144,9 +171,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsConcurrencyTest do
     end)
   end
 
-  # A workshop with `capacity` seats and `@people` contacted (fast-track)
-  # Intakes, committed outside the sandbox and deleted afterwards.
-  defp committed(capacity, fun) do
+  # A workshop with `capacity` seats and `@people` contacted (fast-track,
+  # unless `origin:` and `contacted_at:` say otherwise) Intakes, committed
+  # outside the sandbox and deleted afterwards.
+  defp committed(capacity, fun, opts \\ []) do
     ctx =
       outside_sandbox(fn ->
         workshop =
@@ -174,10 +202,10 @@ defmodule Dhc.BeginnersWorkshops.IntakePaymentsConcurrencyTest do
               id: id,
               workshop_id: workshop.id,
               waitlist_id: person.id,
-              origin: "fast_track",
+              origin: Keyword.get(opts, :origin, "fast_track"),
               queue_date: person.initial_registration_date,
               link_token_hash: IntakeLink.hash(IntakeLink.token(id, 1)),
-              contacted_at: @now
+              contacted_at: Keyword.get(opts, :contacted_at, @now)
             }
             |> Intake.contact_changeset()
             |> Repo.insert!()

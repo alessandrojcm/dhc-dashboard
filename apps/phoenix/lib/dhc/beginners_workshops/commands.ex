@@ -75,7 +75,8 @@ defmodule Dhc.BeginnersWorkshops.Commands do
       writer);
     * `Commands.IntakeCommands` — the console Intake commands (`decline`,
       `defer`, `confirm`, `cancel_with_refund`, `withdraw`, `resend_link`,
-      `rotate_link`, `refund_carried_fee`, `correct_attendance`);
+      `rotate_link`, `refund_carried_fee`, `correct_attendance`,
+      `re_offer`);
     * `Commands.People` — the Waitlist tab's `withdraw` and
       `refund_carried_fee`, `link_carried_fee_payment`, `delete_person`,
       `purge_retention`, `import_carried_fee`;
@@ -300,6 +301,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
           | :invalid_correction
           | :not_deletable
           | :not_restorable
+          | :not_re_offerable
+          | :workshop_started
+          | :no_free_place
           | :invalid_destination
           | Dhc.BeginnersWorkshops.DestinationEnrichment.refusal()
           | Ecto.Changeset.t()
@@ -345,6 +349,9 @@ defmodule Dhc.BeginnersWorkshops.Commands do
     forfeit_carried_fee: :"beginners.workshops.manage",
     # ALE-393.
     correct_attendance: :"beginners.workshops.manage",
+    # A Re-offer places a person again, so it needs Fast-track's capability
+    # (never assigned Staff's).
+    re_offer: :"beginners.workshops.manage",
     # ALE-396: deleting a person is a Waitlist decision (the money choice is
     # the one `withdraw` already asks).
     delete_person: :"beginners.waitlist.manage"

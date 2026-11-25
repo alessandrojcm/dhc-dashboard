@@ -10,6 +10,7 @@ import type {
 	BeginnersWorkshopAttendanceCorrection,
 	BeginnersWorkshopConsole,
 	BeginnersWorkshopConsoleInvitations,
+	BeginnersWorkshopEarlierIntake,
 	BeginnersWorkshopFollowUp,
 	BeginnersWorkshopIntakeCommand,
 	BeginnersWorkshopIntakeEmailLogEntry,
@@ -377,11 +378,23 @@ export function holdLabel(
 		: "Paying now · checkout ending";
 }
 
-/** `Batch 2` or `Fast-track`. */
+/** `Batch 2`, `Fast-track` or a Re-offer. */
 export function intakeOrigin(intake: BeginnersWorkshopRosterIntake): string {
-	return intake.origin === "batch" && intake.batchNumber
-		? `Offer round ${intake.batchNumber}`
+	if (intake.origin === "batch" && intake.batchNumber)
+		return `Offer round ${intake.batchNumber}`;
+	return intake.origin === "re_offer"
+		? "Offered again by staff"
 		: "Added by staff";
+}
+
+/**
+ * One of a person's earlier places in this workshop on their history — for
+ * example the one that missed the payment deadline before a Re-offer.
+ */
+export function earlierIntakeLine(
+	earlier: BeginnersWorkshopEarlierIntake,
+): string {
+	return `Earlier offer (${formatDublinInstant(earlier.contactedAt)}): ${intakeStateLabel(earlier.state)}`;
 }
 
 /** A person's name, or that they were anonymised. */
@@ -504,6 +517,11 @@ const INTAKE_COMMAND_COPY = {
 		done: "Attendance corrected",
 		history: "Attendance corrected",
 	},
+	re_offer: {
+		label: "Offer place again",
+		done: "Place offered again. They have been emailed a new link to pay",
+		history: "Place offered again",
+	},
 } satisfies Record<
 	BeginnersWorkshopIntakeCommand,
 	{ label: string; done: string; history: string }
@@ -520,6 +538,7 @@ export const INTAKE_COMMANDS = [
 	"resend_link",
 	"rotate_link",
 	"correct_attendance",
+	"re_offer",
 ] as const satisfies readonly BeginnersWorkshopIntakeCommand[];
 
 /**

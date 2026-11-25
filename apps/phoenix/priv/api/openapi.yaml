@@ -5168,6 +5168,56 @@ paths:
           content:
             application/json:
               schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
+  /beginners-workshops/{id}/intakes/{intakeId}/re-offer:
+    parameters:
+      - $ref: "#/components/parameters/BeginnersWorkshopId"
+      - $ref: "#/components/parameters/BeginnersWorkshopIntakeId"
+    post:
+      operationId: beginnersWorkshopIntakes.reOffer
+      tags: [BeginnersWorkshops]
+      summary: Offer a place again to a person who did not pay in time
+      description: |
+        A Re-offer (`CONTEXT.md`): the Intake (`lapsed` or `returned` at the
+        Payment Cutoff) stays as it is, and the person gets a new
+        `contacted` Intake in the same workshop, origin `re_offer`, with the
+        same Contact email a Batch or Fast-track sends. A `removed` person
+        is restored to `waiting`. It works at any time while the workshop is
+        scheduled and before it starts, after the Payment Cutoff included;
+        made after the cutoff, the new Intake may pay until the workshop
+        starts and its Payment Window ends at the start. The response is the
+        new Intake. Repeating it once the new Intake exists answers
+        `already_done`. Refused: `not_re_offerable` (not `lapsed` or
+        `returned`), `after_finalisation`, `already_cancelled`,
+        `workshop_started`, `open_intake` (the person has an open Intake in
+        any workshop), `no_free_place` (raise the capacity first), and
+        `not_eligible` (not waiting or removed within retention, or no email
+        or first name). The optional note is recorded in the new Intake's
+        history. Requires `beginners.workshops.manage`.
+      security: [{cookieSession: []}]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandRequest"}
+      responses:
+        "200":
+          description: The new Intake (or, already done, the one named)
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopIntakeCommandResponse"}
+        "401": {$ref: "#/components/responses/BeginnersWorkshopUnauthorized"}
+        "403": {$ref: "#/components/responses/BeginnersWorkshopForbidden"}
+        "404":
+          description: Intake not found in this workshop
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/BeginnersWorkshopIntakeCommandConflict"}
+        "422":
+          description: Invalid note
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/BeginnersWorkshopInvalidError"}
   /beginners-workshops/{id}/intakes/{intakeId}/withdraw:
     parameters:
       - $ref: "#/components/parameters/BeginnersWorkshopId"
@@ -9949,13 +9999,19 @@ components:
         - withdrawn
     BeginnersWorkshopIntakeOrigin:
       type: string
-      enum: [batch, fast_track]
+      description: |
+        How the Intake was created: a Batch, a Fast-track, or a Re-offer (a
+        new offer to a person whose earlier Intake here lapsed or was
+        returned).
+      enum: [batch, fast_track, re_offer]
     BeginnersWorkshopRosterIntake:
       type: object
       description: |
-        One Intake on the console roster. Names are null once the person is
-        anonymised; `batchNumber` is null for a fast-track.
-      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, availableCommands, attendanceCorrections, paidVia, carriedFee, standing, refundChoice, refundTimingDaysToGo]
+        One person on the console roster: their latest Intake for this
+        workshop, with any earlier ones in `earlierIntakes`. Names are null
+        once the person is anonymised (each anonymised Intake is its own
+        row); `batchNumber` is null for a fast-track or a re-offer.
+      required: [id, state, origin, batchNumber, firstName, lastName, minor, medical, queueDate, contactedAt, windowEndsAt, holdExpiresAt, checkedInAt, refund, linkGeneration, emailLog, history, earlierIntakes, availableCommands, attendanceCorrections, paidVia, carriedFee, standing, refundChoice, refundTimingDaysToGo]
       properties:
         id: {type: string, format: uuid}
         state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
@@ -9972,7 +10028,7 @@ components:
         windowEndsAt:
           type: string
           format: date-time
-          description: When the person's payment window ends — their Batch's, or the Payment Cutoff for a fast-track.
+          description: When the person's payment window ends — their Batch's, or the Payment Cutoff for a fast-track or re-offer, or the workshop start for one placed after the cutoff.
         holdExpiresAt:
           type: string
           format: date-time
@@ -10006,8 +10062,15 @@ components:
           items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeEmailLogEntry"}
         history:
           type: array
-          description: The console commands, cancellation and door check-ins and undos on the Intake, oldest first.
+          description: The console commands, cancellation and door check-ins and undos on the Intake and on the person's earlier Intakes here, oldest first.
           items: {$ref: "#/components/schemas/BeginnersWorkshopIntakeHistoryEntry"}
+        earlierIntakes:
+          type: array
+          description: |
+            The person's earlier Intakes for this workshop, oldest first (for
+            example the lapsed or returned one a Re-offer followed). Empty for
+            most people.
+          items: {$ref: "#/components/schemas/BeginnersWorkshopEarlierIntake"}
         availableCommands:
           type: array
           description: |
@@ -10050,6 +10113,13 @@ components:
             The refund-timing hint (story 77): the whole Dublin days left
             until the workshop when that is 7 or fewer, for an Intake with a
             `refundChoice`; null otherwise. Judged on Phoenix's clock.
+    BeginnersWorkshopEarlierIntake:
+      type: object
+      required: [id, state, contactedAt]
+      properties:
+        id: {type: string, format: uuid}
+        state: {$ref: "#/components/schemas/BeginnersWorkshopIntakeState"}
+        contactedAt: {type: string, format: date-time}
     BeginnersWorkshopRefundChoice:
       type: object
       description: |
@@ -10084,6 +10154,7 @@ components:
         - resend_link
         - rotate_link
         - correct_attendance
+        - re_offer
     BeginnersWorkshopAttendanceCorrection:
       type: string
       description: |
@@ -10120,7 +10191,7 @@ components:
         (ALE-395) `cancel_workshop`, the workshop's cancellation, or a door
         `check_in` / `undo_check_in` (who did it and when, kept after an
         undo or an unassignment).
-      enum: [decline, defer, confirm, cancel_with_refund, withdraw, refund_carried_fee, resend_link, rotate_link, correct_attendance, cancel_workshop, check_in, undo_check_in]
+      enum: [decline, defer, confirm, cancel_with_refund, withdraw, refund_carried_fee, resend_link, rotate_link, correct_attendance, re_offer, cancel_workshop, check_in, undo_check_in]
     BeginnersWorkshopIntakeHistoryEntry:
       type: object
       description: |
@@ -10427,7 +10498,10 @@ components:
           type: string
           format: date-time
           nullable: true
-          description: Deadline for starting payment; null when the page does not offer a new payment.
+          description: |
+            Deadline for starting payment — the Payment Cutoff, or the
+            workshop start for a Re-offer made after the cutoff; null when
+            the page does not offer a new payment.
     BeginnersIntakePageResponse:
       type: object
       required: [data]
@@ -11008,6 +11082,11 @@ components:
                     - already_cancelled
                     - not_correctable
                     - open_intake
+                    - not_re_offerable
+                    - after_finalisation
+                    - workshop_started
+                    - no_free_place
+                    - not_eligible
     BeginnersWorkshopDeletePersonConflictError:
       description: 409 refusal of a person's delete (ALE-396).
       allOf:
