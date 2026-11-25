@@ -21,6 +21,13 @@ defmodule Dhc.Repo.Migrations.AddDestinationPlaceProvenance do
 
   @tables [:club_activities, :beginners_workshops]
 
+  # The provenance columns and their SQL types.
+  @provenance_columns [
+    destination_provider: "text",
+    destination_place_id: "text",
+    destination_selected_at: "timestamp without time zone"
+  ]
+
   def change do
     for table <- @tables do
       # Repair: older databases may be missing the `destination_text` column
@@ -38,13 +45,7 @@ defmodule Dhc.Repo.Migrations.AddDestinationPlaceProvenance do
 
       # Add the provenance columns if they are not already present, so a
       # partially-applied migration can be re-run safely.
-      for column <- [:destination_provider, :destination_place_id, :destination_selected_at] do
-        type =
-          case column do
-            :destination_selected_at -> "timestamp without time zone"
-            _ -> "text"
-          end
-
+      for {column, type} <- @provenance_columns do
         execute("""
         DO $$ BEGIN
           IF NOT EXISTS (

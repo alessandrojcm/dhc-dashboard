@@ -338,7 +338,9 @@ defmodule Dhc.BeginnersWorkshops.IntakeCommandsTest do
   describe "the console Intake" do
     test "availableCommands agrees with the boundary's decision in every state", %{coordinator: c} do
       states = Intake.states()
-      commands = IntakePolicy.commands()
+      # A Re-offer reads facts beyond the state (seats, the person's other
+      # Intakes); `re_offer_test.exs` holds it to the boundary.
+      commands = IntakePolicy.commands() -- [:re_offer]
       {workshop, intakes} = contacted_fixture(c, length(states) * length(commands))
 
       cases =
@@ -352,7 +354,7 @@ defmodule Dhc.BeginnersWorkshops.IntakeCommandsTest do
         end
 
       for {state, name, intake} <- cases do
-        offered = console_row(workshop, intake).available_commands
+        offered = console_row(workshop, intake).available_commands -- [:re_offer]
         assert offered == IntakePolicy.available_commands(%{state: state})
 
         # `withdraw`'s refund-or-forfeit choice and a correction's target

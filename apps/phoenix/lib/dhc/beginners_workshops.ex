@@ -285,7 +285,8 @@ defmodule Dhc.BeginnersWorkshops do
   workshop still before its Payment Cutoff; `reap_holds` (ALE-381) runs once
   across every workshop, because a Seat Hold may outlive the cutoff; then
   `pass_payment_cutoff` (ALE-385) runs for each scheduled workshop past its
-  cutoff that still owes something (a `contacted` Intake, or a `paid` one
+  cutoff that still owes something (a `contacted` Intake the pass would
+  settle — not a Carried Fee holder's or a late Re-offer's — or a `paid` one
   without Pre-workshop info), after the reaper so a hold Stripe ended in
   this sweep is settled in it too. Then `finalise_attendance` (ALE-391)
   runs for each scheduled workshop whose Dublin date has ended, and
@@ -462,17 +463,25 @@ defmodule Dhc.BeginnersWorkshops do
 
   # Only a filter, so a quiet workshop is not locked every sweep: the pass
   # itself decides what is owed under the lock. Pre-workshop info is owed
-  # once per schedule (`IntakeEmails.owing/1`, ALE-394).
-  defp cutoff_owed_ids(now) do
+  # once per schedule (`IntakeEmails.owing/1`, ALE-394). Public only so a
+  # test holds it in step with the pass's own skips.
+  @doc false
+  @spec cutoff_owed_ids(DateTime.t()) :: [binary()]
+  def cutoff_owed_ids(now) do
     pre_workshop = :pre_workshop |> IntakeEmails.owing() |> select([intake: i], i.id)
 
     owed =
       from(i in Intake,
         as: :intake,
+        join: w in BeginnersWorkshop,
+        on: w.id == i.workshop_id,
         # A Carried Fee holder's contacted Intake stays open until
-        # finalisation (ALE-388), so it owes the cutoff pass nothing.
+        # finalisation (ALE-388), and a Re-offer made at or after the current
+        # cutoff until the start (`WorkshopPolicy.late_re_offer?/2`, the rule
+        # the pass applies), so neither owes the cutoff pass anything.
         where:
           (i.state == "contacted" and
+             not (i.origin == "re_offer" and i.contacted_at >= w.payment_cutoff) and
              not exists(
                from(f in CarriedFee,
                  where: f.waitlist_id == parent_as(:intake).waitlist_id and f.status == "held",

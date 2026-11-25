@@ -146,6 +146,7 @@ function rosterIntake(
 		linkGeneration: 1,
 		emailLog: [],
 		history: [],
+		earlierIntakes: [],
 		availableCommands: [],
 		attendanceCorrections: [],
 		paidVia: null,
@@ -303,6 +304,7 @@ describe("nowCard", () => {
 			linkGeneration: 1,
 			emailLog: [],
 			history: [],
+			earlierIntakes: [],
 			availableCommands: [],
 			attendanceCorrections: [],
 			paidVia: null,
@@ -350,6 +352,7 @@ describe("nowCard after the Payment Cutoff (ALE-385)", () => {
 		linkGeneration: 1,
 		emailLog: [],
 		history: [],
+		earlierIntakes: [],
 		availableCommands: [],
 		attendanceCorrections: [],
 		paidVia: null,
@@ -448,6 +451,7 @@ describe("after Attendance Finalisation (ALE-391)", () => {
 		linkGeneration: 1,
 		emailLog: [],
 		history: [],
+		earlierIntakes: [],
 		availableCommands: [],
 		attendanceCorrections: [],
 		paidVia: null,
@@ -670,6 +674,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			"resend_link",
 			"rotate_link",
 			"correct_attendance",
+			"re_offer",
 		]);
 		expect(INTAKE_COMMANDS.map(intakeCommandLabel)).toEqual([
 			"Decline place",
@@ -681,6 +686,7 @@ describe("ALE-386: console Intake commands, email log and history", () => {
 			"Resend link",
 			"Replace link",
 			"Correct attendance",
+			"Offer place again",
 		]);
 		expect(intakeCommandDone("rotate_link", "done")).toBe(
 			"New link emailed. The old link no longer works",

@@ -411,6 +411,33 @@ export const intakeCommandSchema = v.pipe(
 );
 
 /**
+ * A Re-offer: offer the place again to the person whose Intake lapsed or was
+ * returned at the payment deadline, with an optional note for the history.
+ * A blank note is left out.
+ */
+export const reOfferSchema = v.pipe(
+	v.object({
+		id: workshopId,
+		intakeId,
+		note: v.optional(
+			v.pipe(
+				v.string(),
+				v.trim(),
+				v.maxLength(500, "Keep the note under 500 characters."),
+			),
+			"",
+		),
+	}),
+	v.transform(({ id, intakeId, note }) => ({
+		id,
+		intakeId,
+		body: (note
+			? { note }
+			: {}) satisfies BeginnersWorkshopIntakeCommandRequest,
+	})),
+);
+
+/**
  * ALE-393: correct an Intake's attendance after finalisation. The pressed
  * button is the target (`to`), so the note goes with whichever is pressed.
  */

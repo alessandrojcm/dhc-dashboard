@@ -19,6 +19,7 @@ import * as Empty from "#lib/components/ui/empty/index.js";
 import * as Tabs from "#lib/components/ui/tabs/index.js";
 import { cn } from "#lib/utils.js";
 import InviteButton from "../../invite-button.svelte";
+import ReOfferButton from "./re-offer-button.svelte";
 
 let {
 	view,
@@ -198,6 +199,13 @@ const overdue = $derived(
 											>{standingLabel(intake.standing)}</Badge
 										>
 									{/if}
+								{/if}
+								{#if intake.availableCommands.includes("re_offer")}
+									<ReOfferButton
+										workshopId={view.workshop.id}
+										intakeId={intake.id}
+										name={personName(intake)}
+									/>
 								{/if}
 							</li>
 						{/each}

@@ -14,23 +14,23 @@ defmodule Dhc.MixProject do
       hex: [
         # Hackney is test-only (Bypass and Testcontainers pull it in), and its
         # advisories have no 1.x fixes: CVE-2026-47069/47071/47075/47076 and
-        # CVE-2026-115693 are fixed only in the 4.0.1+ line, while
-        # Testcontainers still requires Hackney ~> 1.20. Keep these exceptions
-        # until Testcontainers supports Hackney 4, and re-check on every
-        # Testcontainers release. In tests Hackney talks to the local Docker
-        # socket over the Unix transport with default trust, never a proxy,
-        # never a custom CA, and no cross-scheme redirects, so these have no
-        # production exposure.
+        # CVE-2026-115693 are fixed only in the 4.x line, while
+        # Testcontainers (2.4.0 included) still requires Hackney ~> 1.20.
+        # Keep these exceptions until Testcontainers supports Hackney 4, and
+        # re-check on every Testcontainers release. In tests Hackney talks to
+        # the local Docker socket over the Unix transport with default trust,
+        # never a proxy, never a custom CA, and no cross-scheme redirects, so
+        # these have no production exposure.
         #
-        # CVE-2026-43966 (cow_http_struct_hd response splitting) has no fixed
-        # Cowlib release: upstream treats the surrounding guards as the fix —
-        # cowboy 2.16+ `invalid_response_headers` (server side) and gun 2.4+
-        # `invalid_request_headers` (client side, defaults to `raise`). Gun is
-        # floored at 2.7.0 in deps/0 below, so Nostrum's REST calls go through
-        # the guarded client, and the app builds no structured-field headers
-        # from untrusted input. Keep ignoring until a fixed Cowlib ships.
+        # CVE-2026-117678 (idna: punycode labels decoded before the 63-octet
+        # length check, super-linear CPU) is fixed only in idna 8.0.0. Unlike
+        # the Hackney ones it does reach production: Swoosh needs idna to
+        # encode recipient domains (`:idna.utf8_to_ascii/1`), and Swoosh
+        # 1.30+ accepts idna 8. The shared lockfile cannot resolve idna 8
+        # while test-only Hackney 1.x pins idna ~> 6.1.0, so it is ignored
+        # for the same reason, and goes with the Hackney exceptions.
         ignore_advisories: [
-          "CVE-2026-43966",
+          "CVE-2026-117678",
           "CVE-2026-47069",
           "CVE-2026-47071",
           "CVE-2026-47075",
@@ -69,7 +69,17 @@ defmodule Dhc.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix, "~> 1.8.11"},
+      # 1.8.17 fixes CVE-2026-129344 (a client-selected V1 serializer crashes
+      # shared broadcast dispatch) and CVE-2026-128361 (an unsanitized
+      # Presence key crashes the tracker).
+      {:phoenix, "~> 1.8.17"},
+      # Plug and DBConnection are transitive (Phoenix, Ecto); direct floor
+      # constraints because `mix deps.update` has no per-version form.
+      # Plug 1.20.4 fixes CVE-2026-120287 (multipart `:length` not charged for
+      # part and header framing); DBConnection 2.10.3 fixes CVE-2026-133555
+      # (code execution via the `:log` option of a forged stream struct).
+      {:plug, "~> 1.20.4"},
+      {:db_connection, "~> 2.10.3"},
       {:phoenix_ecto, "~> 4.5"},
       # Floor Ecto at 3.14.3 for CVE-2026-118391 (query-cache growth from
       # interpolated JSON paths and splice lists).
@@ -120,6 +130,14 @@ defmodule Dhc.MixProject do
       # incoming WebSocket frames; the Discord gateway (Nostrum's consumer)
       # is not used here — only the REST API — so the cap cannot bite.
       {:gun, "~> 2.7"},
+      # Cowlib (Gun's, and Cowboy's in tests) floored at 2.22.0: it fixes
+      # CVE-2026-113431 (unbounded decoded HTTP/2 header lists, HPACK
+      # amplification) and CVE-2026-43966 (response splitting through
+      # `cow_http_struct_hd:escape_string/2`). Cowboy, test-only through
+      # Bypass's plug_cowboy, is floored at 2.21.0 for CVE-2026-115701
+      # (unbounded buffering of pipelined HTTP/1.1 data).
+      {:cowlib, "~> 2.22"},
+      {:cowboy, "~> 2.21", only: :test},
       {:assent, "~> 0.3.2"},
       # Floor transitive OAuth and certificate-verification dependencies at
       # their patched releases.

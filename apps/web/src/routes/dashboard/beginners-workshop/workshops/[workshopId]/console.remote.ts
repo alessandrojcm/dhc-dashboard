@@ -8,7 +8,8 @@
  * its optional note; the console offers only Phoenix's `availableCommands`.
  * (ALE-393) `correctAttendance` corrects a finalised Intake to Phoenix's
  * `attendanceCorrections` target. (ALE-395) `cancelWorkshop` cancels the
- * workshop with an optional reason. Withdraw, Refund credit and the
+ * workshop with an optional reason. `reOffer` offers a place again to
+ * someone who missed the payment deadline (a Re-offer). Withdraw, Refund credit and the
  * failed-refund follow-ups are the refund module's (ALE-421,
  * `#lib/components/beginners-workshops/refunds/refunds.remote.ts`).
  */
@@ -23,6 +24,7 @@ import {
 	beginnersWorkshopIntakesCancelWithRefund,
 	beginnersWorkshopIntakesDecline,
 	beginnersWorkshopIntakesDefer,
+	beginnersWorkshopIntakesReOffer,
 	beginnersWorkshopIntakesResendLink,
 	beginnersWorkshopIntakesRotateLink,
 	beginnersWorkshopsCancel,
@@ -36,6 +38,7 @@ import {
 	fastTrackNewPersonSchema,
 	fastTrackWaitlistPersonSchema,
 	intakeCommandSchema,
+	reOfferSchema,
 	rescheduleWorkshopSchema,
 } from "#lib/schemas/beginnersWorkshop.js";
 import { beginnersWorkshopCommand } from "#lib/server/beginners-workshops/command.js";
@@ -184,3 +187,23 @@ export const correctAttendance = form(
 		return result.ok ? { ...result, to: body.to } : result;
 	},
 );
+
+/**
+ * A Re-offer: a new place offer, in this workshop, to the person whose place
+ * lapsed or was returned at the payment deadline. Phoenix decides whether it
+ * may run (`availableCommands`) and again under its locks.
+ */
+export const reOffer = form(reOfferSchema, async ({ id, intakeId, body }) => {
+	const options = await beginnersWorkshopsManageOptions();
+	return beginnersWorkshopCommand(
+		beginnersWorkshopIntakesReOffer({
+			...options,
+			path: { id, intakeId },
+			body,
+		}),
+		{
+			fallback: "Could not offer the place again",
+			formPath: (field) => (field === "note" ? ["note"] : undefined),
+		},
+	);
+});

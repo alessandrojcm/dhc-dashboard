@@ -105,7 +105,9 @@ defmodule Dhc.Waitlist do
     ]
     |> Task.async_stream(fn {key, fun} -> {key, fun.()} end, timeout: :infinity)
     |> Map.new(fn {:ok, {key, value}} -> {key, value} end)
-    |> then(fn result -> Map.put(result, :uncontacted_count, result.total_count - result.contacted_count) end)
+    |> then(fn result ->
+      Map.put(result, :uncontacted_count, result.total_count - result.contacted_count)
+    end)
   end
 
   @doc """
@@ -553,7 +555,9 @@ defmodule Dhc.Waitlist do
       where:
         exists(
           from(i in "beginners_workshop_intakes",
-            where: field(i, :waitlist_id) == parent_as(:entry).id and field(i, :state) in ["contacted", "paid"],
+            where:
+              field(i, :waitlist_id) == parent_as(:entry).id and
+                field(i, :state) in ["contacted", "paid"],
             select: 1
           )
         )

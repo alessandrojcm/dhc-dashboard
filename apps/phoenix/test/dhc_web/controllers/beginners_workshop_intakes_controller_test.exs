@@ -398,6 +398,68 @@ defmodule DhcWeb.BeginnersWorkshopIntakesControllerTest do
     end
   end
 
+  describe "re-offer" do
+    test "needs beginners.workshops.manage", %{conn: conn, workshop: w, contacted: contacted} do
+      assert conn |> post(intake_path(w, contacted.id, "re-offer"), %{}) |> json_response(401)
+
+      for role <- ~w(coach member),
+          do:
+            assert(
+              conn
+              |> as_role(role)
+              |> post(intake_path(w, contacted.id, "re-offer"), %{})
+              |> json_response(403)
+            )
+    end
+
+    test "refuses an Intake that did not lapse and a workshop that has started",
+         %{conn: conn, workshop: w, contacted: contacted} do
+      coordinator = as_role(conn, "beginners_coordinator")
+
+      assert %{"errors" => %{"code" => "not_re_offerable"}} =
+               coordinator
+               |> post(intake_path(w, contacted.id, "re-offer"), %{})
+               |> json_response(409)
+
+      # The fixture workshop's date (14 November 2026) is past on the wall
+      # clock the HTTP path reads.
+      BeginnersWorkshopFixtures.force_intake_state!(contacted.id, "lapsed")
+
+      assert %{"errors" => %{"code" => "workshop_started"}} =
+               coordinator
+               |> post(intake_path(w, contacted.id, "re-offer"), %{})
+               |> json_response(409)
+    end
+
+    test "offers the place again; the console shows one row with the earlier Intake",
+         %{conn: conn, workshop: w, contacted: contacted} do
+      coordinator = as_role(conn, "beginners_coordinator")
+      BeginnersWorkshopFixtures.force_intake_state!(contacted.id, "lapsed")
+      # A workshop still to come whose payment deadline has passed.
+      Repo.update_all(from(b in Dhc.BeginnersWorkshops.BeginnersWorkshop, where: b.id == ^w.id),
+        set: [date: Date.add(Date.utc_today(), 30)]
+      )
+
+      assert %{"data" => %{"roster" => %{"out" => [lapsed]}}} = console(coordinator, w)
+      assert "re_offer" in lapsed["availableCommands"]
+
+      assert %{"data" => %{"id" => new_id, "state" => "contacted", "outcome" => "done"}} =
+               coordinator
+               |> post(intake_path(w, contacted.id, "re-offer"), %{"note" => "Rang us"})
+               |> json_response(200)
+
+      assert %{"data" => %{"roster" => %{"asked" => [row], "out" => []}}} =
+               console(coordinator, w)
+
+      assert %{
+               "id" => ^new_id,
+               "origin" => "re_offer",
+               "earlierIntakes" => [%{"state" => "lapsed"}],
+               "history" => [%{"command" => "re_offer", "note" => "Rang us"}]
+             } = row
+    end
+  end
+
   describe "delete a person (ALE-396)" do
     defp delete_path(id), do: "/api/beginners-workshops/people/#{id}/delete"
 

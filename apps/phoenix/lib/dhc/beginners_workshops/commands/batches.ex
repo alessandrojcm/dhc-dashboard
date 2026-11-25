@@ -3,8 +3,10 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
   The commands that contact people (ALE-405): `send_due_batch` (`:system`)
   and `fast_track` (`beginners.workshops.manage`). Both create `contacted`
   Intakes through one `contact/4`, whose Contact email
-  (`IntakeEmails.deliver/5` with `:contact`) is the one Contact-email path.
-  `Dhc.BeginnersWorkshops.Commands` authorizes the actor and routes here.
+  (`IntakeEmails.deliver/5` with `:contact`) is the one Contact-email path;
+  the console's Re-offer (`Commands.IntakeCommands`) creates its Intake
+  through it too. `Dhc.BeginnersWorkshops.Commands` authorizes the actor and
+  routes here.
 
   ## Automatic Batches (ALE-380)
 
@@ -46,6 +48,16 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
 
   No staff command sends email itself; `fast_track`'s Contact email is
   queued by the Intake it creates, exactly as a Batch's is.
+
+  Fast-track is not a Re-offer (`CONTEXT.md`): a person whose offer for this
+  workshop ran out at the Payment Cutoff (`lapsed` or `returned`) is offered
+  a place again from their console row, which may happen after the cutoff.
+
+  ## Used by other families
+
+    * `contact/4`, `place_existing/2` and `contactable/1` —
+      `Commands.IntakeCommands`' `re_offer`, which restores a removed person
+      and creates its `re_offer` Intake exactly as Fast-track does.
 
   ## Cross-family calls
 
@@ -260,12 +272,15 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
     end
   end
 
-  defp place_existing(%WaitlistEntry{status: "waiting"} = entry, _reading),
+  @doc false
+  @spec place_existing(WaitlistEntry.t(), Clock.reading()) ::
+          {:ok, WaitlistEntry.t(), :waiting | :restored} | {:error, term()}
+  def place_existing(%WaitlistEntry{status: "waiting"} = entry, _reading),
     do: {:ok, entry, :waiting}
 
   # Checked here first so the restore (which runs in this transaction)
   # cannot refuse and leave it marked for rollback.
-  defp place_existing(%WaitlistEntry{status: "removed", removed_at: %DateTime{}} = entry, reading) do
+  def place_existing(%WaitlistEntry{status: "removed", removed_at: %DateTime{}} = entry, reading) do
     if Waitlist.restorable?(entry.removed_at, reading.now) do
       with {:ok, _view} <- Waitlist.restore(entry.id, now: reading.now) do
         {:ok, Repo.get!(WaitlistEntry, entry.id), :restored}
@@ -275,7 +290,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
     end
   end
 
-  defp place_existing(%WaitlistEntry{}, _reading), do: {:error, :not_eligible}
+  def place_existing(%WaitlistEntry{}, _reading), do: {:error, :not_eligible}
 
   # Read under the person's entry lock, which every Intake writer takes; the
   # one-open-Intake index is the backstop.
@@ -289,9 +304,11 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
 
   # The Contact email is addressed by first name, so an anonymised person
   # (no email or profile) cannot be placed.
-  defp contactable(%WaitlistEntry{email: nil}), do: {:error, :not_eligible}
+  @doc false
+  @spec contactable(WaitlistEntry.t()) :: :ok | {:error, :not_eligible}
+  def contactable(%WaitlistEntry{email: nil}), do: {:error, :not_eligible}
 
-  defp contactable(%WaitlistEntry{id: id}) do
+  def contactable(%WaitlistEntry{id: id}) do
     case Repo.one(from(p in UserProfile, where: p.waitlist_id == ^id, select: p.first_name)) do
       nil -> {:error, :not_eligible}
       _first_name -> :ok
@@ -339,7 +356,16 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
 
   # One new `contacted` Intake and its Contact email (with the person's own
   # link and the Intake's Payment Window), logged — all in this transaction.
-  defp contact(workshop, origin, entry, reading) do
+  # The one Intake-creation path: Batches, Fast-track and (from
+  # `Commands.IntakeCommands`) Re-offers.
+  @doc false
+  @spec contact(
+          BeginnersWorkshop.t(),
+          {:batch, Batch.t()} | :fast_track | :re_offer,
+          WaitlistEntry.t(),
+          Clock.reading()
+        ) :: {:ok, Intake.t(), term()} | {:error, term()}
+  def contact(workshop, origin, entry, reading) do
     intake_id = Ecto.UUID.generate()
     token = IntakeLink.token(intake_id, 1)
 
@@ -347,6 +373,7 @@ defmodule Dhc.BeginnersWorkshops.Commands.Batches do
       case origin do
         {:batch, %Batch{id: batch_id}} -> {"batch", batch_id}
         :fast_track -> {"fast_track", nil}
+        :re_offer -> {"re_offer", nil}
       end
 
     with {:ok, intake} <-

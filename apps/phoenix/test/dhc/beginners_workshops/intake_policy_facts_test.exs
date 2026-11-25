@@ -27,6 +27,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicyFactsTest do
       latest_fee_refunded: false,
       workshop_status: "scheduled",
       correction: nil,
+      re_offer: nil,
       now: @now
     ]
     |> Keyword.merge(opts)
@@ -46,6 +47,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicyFactsTest do
         :latest_fee_refunded,
         :workshop_status,
         :correction,
+        :re_offer,
         :now
       ]
 
@@ -59,6 +61,7 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicyFactsTest do
             latest_fee_refunded: false,
             workshop_status: nil,
             correction: nil,
+            re_offer: nil,
             now: @now
           ]
           |> Keyword.delete(key)
@@ -174,5 +177,65 @@ defmodule Dhc.BeginnersWorkshops.IntakePolicyFactsTest do
            ) == {:error, :already_invited}
 
     assert IntakePolicy.attendance_corrections(finalised.([])) == ["no_show"]
+  end
+
+  describe "re_offer" do
+    @free %{
+      seat_free: true,
+      workshop_started: false,
+      superseded: false,
+      open_intake: false,
+      contactable: true
+    }
+
+    defp lapsed(opts \\ []) do
+      facts(
+        Keyword.merge(
+          [
+            intake: intake("lapsed"),
+            entry: %{status: "removed", removed_at: DateTime.add(@now, -10 * 86_400)},
+            re_offer: @free
+          ],
+          opts
+        )
+      )
+    end
+
+    test "facts/1 keeps the Re-offer facts only for a lapsed or returned Intake" do
+      assert %{restorable: true, seat_free: true} = lapsed().re_offer
+      assert facts(re_offer: @free).re_offer == nil
+
+      assert_raise ArgumentError, fn -> lapsed(re_offer: nil) end
+    end
+
+    test "is offered on a lapsed or returned Intake exactly when it would act" do
+      assert IntakePolicy.check(:re_offer, lapsed()) == :ok
+      assert :re_offer in IntakePolicy.available_commands(lapsed())
+
+      assert IntakePolicy.check(
+               :re_offer,
+               lapsed(intake: intake("returned"), entry: %{status: "waiting", removed_at: nil})
+             ) == :ok
+
+      cases = [
+        {lapsed(re_offer: %{@free | superseded: true}), :already_done},
+        {lapsed(workshop_status: "finalised"), {:error, :after_finalisation}},
+        {lapsed(workshop_status: "cancelled"), {:error, :already_cancelled}},
+        {lapsed(re_offer: %{@free | workshop_started: true}), {:error, :workshop_started}},
+        {lapsed(re_offer: %{@free | open_intake: true}), {:error, :open_intake}},
+        {lapsed(re_offer: %{@free | seat_free: false}), {:error, :no_free_place}},
+        {lapsed(re_offer: %{@free | contactable: false}), {:error, :not_eligible}},
+        {lapsed(entry: %{status: "removed", removed_at: ~U[2026-01-01 12:00:00Z]}),
+         {:error, :not_eligible}},
+        {lapsed(entry: nil), {:error, :not_eligible}},
+        {facts(intake: intake("declined")), {:error, :not_re_offerable}},
+        {facts([]), {:error, :not_re_offerable}}
+      ]
+
+      for {facts, decision} <- cases do
+        assert IntakePolicy.check(:re_offer, facts) == decision, inspect(facts)
+        refute :re_offer in IntakePolicy.available_commands(facts)
+      end
+    end
   end
 end

@@ -161,6 +161,9 @@ defmodule DhcWeb.Router do
       :correct_attendance
     )
 
+    # Re-offer: a place offered again after the payment deadline.
+    post("/:id/intakes/:intakeId/re-offer", BeginnersWorkshopIntakesController, :re_offer)
+
     # ALE-383 — Intake Email templates.
     get("/email-templates", BeginnersWorkshopEmailTemplatesController, :list)
     put("/email-templates/:emailType", BeginnersWorkshopEmailTemplatesController, :update)
