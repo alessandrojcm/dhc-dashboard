@@ -161,7 +161,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
       facts = Map.fetch!(WorkshopFacts.load([id]), id)
       reading = Clock.read(clock)
       next_batch = next_batch(workshop, facts, reading)
-      roster = roster(workshop, reading)
+      roster = roster(workshop, facts, reading)
 
       {:ok,
        %{
@@ -241,7 +241,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     }
   end
 
-  defp roster(workshop, reading) do
+  defp roster(workshop, facts, reading) do
     refunds = latest_refunds(workshop.id)
     paying = paying_payments(workshop.id)
     hint_days = WorkshopPolicy.refund_hint_days(workshop, reading)
@@ -250,7 +250,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
 
     rows =
       workshop
-      |> roster_rows(reading)
+      |> roster_rows(facts, reading)
       |> Enum.map(fn {row, facts} ->
         logged = Map.get(emails, row.id, [])
 
@@ -324,15 +324,16 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
   @spec intake_facts(binary(), Clock.t()) :: %{binary() => IntakePolicy.t()}
   def intake_facts(workshop_id, %Clock{} = clock) do
     workshop = Repo.get!(BeginnersWorkshop, workshop_id)
+    facts = Map.fetch!(WorkshopFacts.load([workshop_id]), workshop_id)
 
     workshop
-    |> roster_rows(Clock.read(clock))
+    |> roster_rows(facts, Clock.read(clock))
     |> Map.new(fn {row, facts} -> {row.id, facts} end)
   end
 
   # Each Intake's roster row (its output columns) and its `IntakePolicy`
   # facts (`IntakePolicy.facts/1`) from the same SQL row.
-  defp roster_rows(workshop, reading) do
+  defp roster_rows(workshop, workshop_facts, reading) do
     rows =
       from(i in Intake,
         left_join: b in Batch,
@@ -398,7 +399,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
     fees = for {_row, %{live_fee: %{id: id}}} <- rows, id != nil, do: id
     fee_refunds = fees |> IntakeRefund.latest_of_fees_query() |> Repo.all() |> Map.new()
     latest = latest_fee_statuses(Enum.map(rows, fn {_row, raw} -> raw.waitlist_id end))
-    re_offer = re_offer_context(workshop, rows, reading)
+    re_offer = re_offer_context(workshop, workshop_facts, rows, reading)
 
     Enum.map(rows, &{elem(&1, 0), facts(&1, fee_refunds, latest, re_offer, workshop, reading)})
   end
@@ -406,8 +407,7 @@ defmodule Dhc.BeginnersWorkshops.WorkshopConsole do
   # What every row's Re-offer facts share: the seats, whether the workshop
   # has started, each person's latest contact here and who holds an open
   # Intake anywhere — the values the boundary reads under its locks.
-  defp re_offer_context(workshop, rows, reading) do
-    facts = Map.fetch!(WorkshopFacts.load([workshop.id]), workshop.id)
+  defp re_offer_context(workshop, facts, rows, reading) do
     people = for {_row, %{waitlist_id: id}} <- rows, id != nil, uniq: true, do: id
 
     %{

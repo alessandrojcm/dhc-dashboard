@@ -1494,7 +1494,9 @@ test("Re-offer: a lapsed person's row offers Offer place again, and its dialog t
 		.toBeVisible();
 	await expect
 		.element(dialog)
-		.toHaveTextContent("can pay until the workshop starts");
+		.toHaveTextContent(
+			"Once the payment deadline has passed, they can pay until the workshop starts",
+		);
 	await expect.element(dialog.getByLabelText(/^Note/)).toBeVisible();
 	await expect
 		.element(dialog.getByRole("button", { name: "Offer place and email them" }))

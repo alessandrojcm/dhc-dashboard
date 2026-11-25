@@ -50,8 +50,9 @@ const form = $derived(reOffer.for(intakeId));
 		<Dialog.Header>
 			<Dialog.Title>Offer {name} their place again?</Dialog.Title>
 			<Dialog.Description>
-				They missed the payment deadline. They will be emailed a new link and
-				can pay until the workshop starts, as long as a place is still free.
+				They missed the payment deadline. They will be emailed a new link to pay
+				while a place is still free. Once the payment deadline has passed, they
+				can pay until the workshop starts.
 			</Dialog.Description>
 		</Dialog.Header>
 
