@@ -183,12 +183,8 @@ const cards = $derived([
 					{#if card.breakdown}
 						<ul class="mt-3 space-y-1.5">
 							{#each card.breakdown as item (item.label)}
-								<li
-									class="flex items-center justify-between gap-2 text-xs"
-								>
-									<span class="text-muted-foreground"
-										>{item.label}</span
-									>
+								<li class="flex items-center justify-between gap-2 text-xs">
+									<span class="text-muted-foreground">{item.label}</span>
 									<span class="font-semibold tabular-nums text-foreground"
 										>{formatNumber(item.value)}</span
 									>
