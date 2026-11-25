@@ -1,26 +1,25 @@
 defmodule Dhc.WorkshopCalendar.Google do
   @moduledoc """
-   Google Calendar transport boundary for the two organizer calendars.
+  Google Calendar event transport for the two organizer calendars.
 
-  Each operation exchanges the dedicated organizer refresh token for a
-  short-lived access token, then makes exactly one Calendar API request. The
-  boundary neither caches credentials nor retries: callers own retry and
+  Each operation obtains a token from the shared GoogleCalendar.Auth module,
+  then makes exactly one Calendar request. This module never retries: callers own retry and
   reconciliation. Provider responses and transport exceptions are deliberately
   collapsed into closed atoms so credentials and provider bodies never become
   logs, errors, or exception metadata.
   """
 
-  @scope "https://www.googleapis.com/auth/calendar.events.owned"
-  @token_url "https://oauth2.googleapis.com/token"
+  alias Dhc.GoogleCalendar.Auth
+
   @calendar_url "https://www.googleapis.com/calendar/v3"
 
   @type error ::
-          :missing | :gone | :unauthorized | :configuration | :conflict | :transient | :rejected
+          Auth.error() | :missing | :gone | :unauthorized | :conflict | :rejected
 
   @doc "Gets an event from an organizer calendar."
   @spec get(String.t(), String.t()) :: {:ok, map()} | {:error, error()}
   def get(calendar_id, event_id) do
-    with {:ok, token} <- access_token(),
+    with {:ok, token} <- Auth.access_token(),
          {:ok, response} <- request(:get, event_path(calendar_id, event_id), token) do
       event_response(response)
     end
@@ -29,7 +28,7 @@ defmodule Dhc.WorkshopCalendar.Google do
   @doc "Checks that the organizer credential can read the configured calendar."
   @spec check_calendar(String.t()) :: :ok | {:error, error()}
   def check_calendar(calendar_id) do
-    with {:ok, token} <- access_token(),
+    with {:ok, token} <- Auth.access_token(),
          {:ok, response} <-
            request(:get, events_path(calendar_id), token, params: [maxResults: 1, fields: "kind"]) do
       calendar_check_response(response)
@@ -43,7 +42,7 @@ defmodule Dhc.WorkshopCalendar.Google do
 
   def insert(calendar_id, event, opts) when is_map(event) and is_list(opts) do
     with :ok <- audience_event(event, opts),
-         {:ok, token} <- access_token(),
+         {:ok, token} <- Auth.access_token(),
          :ok <- before_mutation(opts),
          {:ok, response} <-
            request(:post, events_path(calendar_id), token,
@@ -66,7 +65,7 @@ defmodule Dhc.WorkshopCalendar.Google do
   def update(calendar_id, event_id, event, etag, opts)
       when is_map(event) and is_binary(etag) and is_list(opts) do
     with :ok <- audience_event(event, opts),
-         {:ok, token} <- access_token(),
+         {:ok, token} <- Auth.access_token(),
          :ok <- before_mutation(opts),
          {:ok, response} <-
            request(:put, event_path(calendar_id, event_id), token,
@@ -88,7 +87,7 @@ defmodule Dhc.WorkshopCalendar.Google do
   def delete(calendar_id, event_id, etag, opts \\ [])
 
   def delete(calendar_id, event_id, etag, opts) when is_binary(etag) and is_list(opts) do
-    with {:ok, token} <- access_token(),
+    with {:ok, token} <- Auth.access_token(),
          :ok <- before_mutation(opts),
          {:ok, response} <-
            request(:delete, event_path(calendar_id, event_id), token,
@@ -103,67 +102,6 @@ defmodule Dhc.WorkshopCalendar.Google do
   end
 
   def delete(_calendar_id, _event_id, _etag, _opts), do: {:error, :rejected}
-
-  defp access_token do
-    with {:ok, credentials} <- credentials(),
-         {:ok, response} <- refresh(credentials) do
-      token_response(response)
-    end
-  end
-
-  defp credentials do
-    config = Application.get_env(:dhc, Dhc.WorkshopCalendar, [])
-
-    case {Keyword.get(config, :client_id), Keyword.get(config, :client_secret),
-          Keyword.get(config, :refresh_token)} do
-      {client_id, client_secret, refresh_token}
-      when is_binary(client_id) and client_id != "" and is_binary(client_secret) and
-             client_secret != "" and
-             is_binary(refresh_token) and refresh_token != "" ->
-        {:ok, {client_id, client_secret, refresh_token}}
-
-      _missing ->
-        {:error, :configuration}
-    end
-  end
-
-  defp refresh({client_id, client_secret, refresh_token}) do
-    request_options(
-      method: :post,
-      url: @token_url,
-      form: [
-        grant_type: "refresh_token",
-        client_id: client_id,
-        client_secret: client_secret,
-        refresh_token: refresh_token,
-        scope: @scope
-      ]
-    )
-    |> Req.request()
-    |> transport_safe()
-  rescue
-    _exception -> {:error, :transient}
-  end
-
-  defp token_response(%Req.Response{status: status, body: body}) when status in 200..299 do
-    case body do
-      %{"access_token" => token} when is_binary(token) and token != "" ->
-        if valid_scope?(Map.get(body, "scope")), do: {:ok, token}, else: {:error, :configuration}
-
-      _invalid_body ->
-        {:error, :configuration}
-    end
-  end
-
-  defp token_response(%Req.Response{status: 400, body: %{"error" => "invalid_grant"}}),
-    do: {:error, :unauthorized}
-
-  defp token_response(%Req.Response{status: 401}), do: {:error, :unauthorized}
-
-  defp token_response(%Req.Response{status: status}) when status in 429..599,
-    do: {:error, :transient}
-
-  defp token_response(%Req.Response{}), do: {:error, :configuration}
 
   defp request(method, path, token, options \\ []) do
     headers = [{"authorization", "Bearer #{token}"} | Keyword.get(options, :headers, [])]
@@ -225,14 +163,6 @@ defmodule Dhc.WorkshopCalendar.Google do
   end
 
   defp rate_limited?(_body), do: false
-
-  defp valid_scope?(nil), do: true
-
-  defp valid_scope?(scope) when is_binary(scope) do
-    String.split(scope, " ", trim: true) == [@scope]
-  end
-
-  defp valid_scope?(_scope), do: false
 
   defp updates(opts) do
     if Keyword.get(opts, :audience) == :participant,

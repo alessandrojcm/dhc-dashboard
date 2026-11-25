@@ -302,7 +302,7 @@ defmodule Dhc.WorkshopCalendar.Launch do
 
     if Keyword.get(config, :environment) in ["isolated", "production"] and
          Sync.validate_configuration() == :ok and
-         Enum.all?([:client_id, :client_secret, :refresh_token], &nonempty?(config[&1])),
+         match?({:ok, _client_id}, Dhc.GoogleCalendar.Auth.client_id()),
        do: [],
        else: [:configuration]
   end
@@ -311,11 +311,13 @@ defmodule Dhc.WorkshopCalendar.Launch do
     config = WorkshopCalendar.config()
 
     if configuration_issues() == [] do
+      {:ok, client_id} = Dhc.GoogleCalendar.Auth.client_id()
+
       [
         config[:environment],
         config[:committee_calendar_id],
         config[:participant_calendar_id],
-        config[:client_id]
+        client_id
       ]
       |> :erlang.term_to_binary()
       |> then(&:crypto.hash(:sha256, &1))
@@ -323,7 +325,6 @@ defmodule Dhc.WorkshopCalendar.Launch do
     end
   end
 
-  defp nonempty?(value), do: is_binary(value) and String.trim(value) != ""
   defp clock(opts), do: Keyword.get(opts, :clock, &DateTime.utc_now/0)
   defp source_kind("workshop"), do: :workshop
   defp source_kind("beginners_workshop"), do: :beginners_workshop

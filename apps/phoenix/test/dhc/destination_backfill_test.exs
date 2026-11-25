@@ -41,12 +41,10 @@ defmodule Dhc.DestinationBackfillTest do
       active: false,
       committee_calendar_id: "committee@test.invalid",
       participant_calendar_id: "participants@test.invalid",
-      client_id: "backfill-client",
-      client_secret: "backfill-secret",
-      refresh_token: "backfill-refresh",
       req_options: [plug: {Req.Test, Google}]
     )
 
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
     on_exit(fn -> Application.put_env(:dhc, WorkshopCalendar, previous) end)
     :ok
   end

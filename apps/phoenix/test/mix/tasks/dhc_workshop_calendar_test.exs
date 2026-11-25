@@ -12,11 +12,10 @@ defmodule Mix.Tasks.DhcWorkshopCalendarTest do
       environment: "isolated",
       committee_calendar_id: "task-committee@test.invalid",
       participant_calendar_id: "task-participants@test.invalid",
-      client_id: "task-client",
-      client_secret: "task-secret",
-      refresh_token: "task-refresh",
       req_options: [plug: {Req.Test, Dhc.WorkshopCalendar.Google}]
     )
+
+    Dhc.GoogleCalendarAuthConfig.configure!(Dhc.WorkshopCalendar.Google)
 
     on_exit(fn ->
       Application.put_env(:dhc, WorkshopCalendar, previous_config)

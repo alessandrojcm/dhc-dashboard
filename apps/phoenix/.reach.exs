@@ -32,6 +32,13 @@
   ],
   calls: [
     forbidden: [
+      # ADR 0031: raw Calendar access tokens belong only to the two HTTP adapters.
+      {["Dhc.*", "DhcWeb.*"], ["Dhc.GoogleCalendar.Auth.access_token"],
+       except: [
+         "Dhc.GoogleCalendar.Auth",
+         "Dhc.WorkshopCalendar.Google",
+         "Dhc.TrainingCalendar.Google"
+       ]},
       # ALE-432: Calendar consumes only the two public context projections,
       # never their command families or payment/storage APIs.
       {["Dhc.WorkshopCalendar", "Dhc.WorkshopCalendar.*"],

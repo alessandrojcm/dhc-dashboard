@@ -20,12 +20,10 @@ defmodule Dhc.TrainingCalendar.SyncTest do
     Application.put_env(:dhc, TrainingCalendar,
       enabled: true,
       calendar_id: @calendar,
-      client_id: "training-client",
-      client_secret: "training-secret",
-      refresh_token: "training-refresh",
       req_options: [plug: {Req.Test, Google}]
     )
 
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
     on_exit(fn -> Application.put_env(:dhc, TrainingCalendar, original) end)
 
     provider =
@@ -319,7 +317,9 @@ defmodule Dhc.TrainingCalendar.SyncTest do
     assert {:error, :configuration} = TrainingCalendar.sync()
     config(calendar_id: "primary")
     assert {:error, :configuration} = TrainingCalendar.sync()
-    config(calendar_id: @calendar, client_secret: nil)
+    config(calendar_id: @calendar)
+    auth = Application.fetch_env!(:dhc, Dhc.GoogleCalendar.Auth)
+    Application.put_env(:dhc, Dhc.GoogleCalendar.Auth, Keyword.put(auth, :client_secret, nil))
     assert {:error, :configuration} = TrainingCalendar.sync()
     assert writes(provider) == []
   end
@@ -334,7 +334,7 @@ defmodule Dhc.TrainingCalendar.SyncTest do
 
     Req.Test.stub(Google, fn conn ->
       if conn.request_path == "/token" do
-        Req.Test.json(conn, %{"access_token" => "access"})
+        Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("access"))
       else
         assert conn.method == "GET"
         assert conn.request_path == "/calendar/v3/calendars/other%40example.com/acl"
@@ -395,7 +395,7 @@ defmodule Dhc.TrainingCalendar.SyncTest do
     do: Agent.update(provider, &put_in(&1, [:failures, operation], reason))
 
   defp google(%{request_path: "/token"} = conn, _provider),
-    do: Req.Test.json(conn, %{"access_token" => "access"})
+    do: Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("access"))
 
   defp google(conn, provider) do
     response = Agent.get_and_update(provider, &google_response(conn, &1))

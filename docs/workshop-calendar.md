@@ -22,11 +22,13 @@ activation key binds that environment, both calendar IDs, and the OAuth client
 ID; changing any of them returns sending to inactive until another explicit
 activation.
 
-The optional runtime credential names are:
+The organizer connection is shared with Training Calendar sharing. Provisioning,
+scope policy, diagnostics and credential cutover are owned by
+[Google Calendar connection](google-calendar.md). The runtime credential names are:
 
-- `WORKSHOP_CALENDAR_CLIENT_ID`
-- `WORKSHOP_CALENDAR_CLIENT_SECRET`
-- `WORKSHOP_CALENDAR_REFRESH_TOKEN`
+- `GOOGLE_CALENDAR_CLIENT_ID`
+- `GOOGLE_CALENDAR_CLIENT_SECRET`
+- `GOOGLE_CALENDAR_REFRESH_TOKEN`
 - `WORKSHOP_CALENDAR_COMMITTEE_ID`
 - `WORKSHOP_CALENDAR_PARTICIPANT_ID`
 
@@ -51,10 +53,11 @@ entire activation atomically. Missing or invalid recipients remain per-place
 follow-up and do not stop eligible recipients from being activated.
 
 Provision them using the existing production secret-manager workflow, not checked
-in configuration. Use a dedicated organizer owning **both** distinct calendars
-and only `https://www.googleapis.com/auth/calendar.events.owned`. Calendar/ACL
-administration and domain-wide delegation are not used. The integration does
-not create calendars or manage sharing.
+in configuration. Use a dedicated organizer owning **both** distinct calendars.
+The shared grant permits `calendar.events.owned` and `calendar.acls` (ADR 0031).
+This event integration still does not create calendars or manage sharing;
+Training Calendar sharing remains a separate workflow. Domain-wide delegation
+is not used.
 
 Share the committee calendar read-only with the Workspace committee group. Keep
 the participant calendar restricted and unshared with that group. Review public

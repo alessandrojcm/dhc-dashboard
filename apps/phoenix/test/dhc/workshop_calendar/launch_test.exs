@@ -24,12 +24,10 @@ defmodule Dhc.WorkshopCalendar.LaunchTest do
       environment: "isolated",
       committee_calendar_id: "launch-committee@test.invalid",
       participant_calendar_id: "launch-participants@test.invalid",
-      client_id: "launch-client",
-      client_secret: "launch-secret",
-      refresh_token: "launch-refresh",
       req_options: [plug: {Req.Test, Google}]
     )
 
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
     on_exit(fn -> Application.put_env(:dhc, WorkshopCalendar, previous) end)
     server = start_supervised!({Agent, fn -> WorkshopCalendarHTTP.initial() end})
     WorkshopCalendarHTTP.stub(server)
@@ -231,6 +229,35 @@ defmodule Dhc.WorkshopCalendar.LaunchTest do
 
     assert [_, _] = Sentry.Test.pop_sentry_reports()
     refute Repo.get_by!(Recipient, place_id: missing.id).recipient == "payer@example.test"
+  end
+
+  test "shared connection identity remains activation-bound but secret rotation preserves activation" do
+    assert {:ok, _} = WorkshopCalendar.activate("isolated", clock: fn -> @now end)
+    auth = Application.fetch_env!(:dhc, Dhc.GoogleCalendar.Auth)
+    assert WorkshopCalendar.outbound?()
+
+    Application.put_env(
+      :dhc,
+      Dhc.GoogleCalendar.Auth,
+      Keyword.put(auth, :client_secret, "rotated")
+    )
+
+    assert WorkshopCalendar.outbound?()
+
+    Application.put_env(
+      :dhc,
+      Dhc.GoogleCalendar.Auth,
+      Keyword.put(auth, :client_id, "new-client")
+    )
+
+    refute WorkshopCalendar.outbound?()
+
+    Application.put_env(:dhc, Dhc.GoogleCalendar.Auth, auth)
+    assert WorkshopCalendar.outbound?()
+
+    Application.put_env(:dhc, Dhc.GoogleCalendar.Auth, Keyword.put(auth, :refresh_token, nil))
+    refute WorkshopCalendar.outbound?()
+    refute WorkshopCalendar.preview(clock: fn -> @now end).ready
   end
 
   test "a changed target configuration disables durable sending, while an unchanged redeploy preserves it" do

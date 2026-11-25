@@ -22,11 +22,10 @@ defmodule Dhc.WorkshopCalendar.ParticipantWorkshopsTest do
       active: true,
       committee_calendar_id: "committee@test.invalid",
       participant_calendar_id: "participants@test.invalid",
-      client_id: "calendar-client",
-      client_secret: "calendar-secret",
-      refresh_token: "calendar-refresh",
       req_options: [plug: {Req.Test, Google}]
     )
+
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
 
     on_exit(fn ->
       Application.put_env(:dhc, WorkshopCalendar, previous)

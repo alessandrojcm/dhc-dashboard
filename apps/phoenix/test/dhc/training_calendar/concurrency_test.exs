@@ -22,11 +22,10 @@ defmodule Dhc.TrainingCalendar.ConcurrencyTest do
     Application.put_env(:dhc, TrainingCalendar,
       enabled: true,
       calendar_id: calendar,
-      client_id: "client",
-      client_secret: "secret",
-      refresh_token: "refresh",
       req_options: [plug: {Req.Test, Google}]
     )
+
+    Dhc.GoogleCalendarAuthConfig.configure!(Google)
 
     on_exit(fn ->
       Application.put_env(:dhc, TrainingCalendar, original)
@@ -44,7 +43,7 @@ defmodule Dhc.TrainingCalendar.ConcurrencyTest do
     Req.Test.stub(Google, fn conn ->
       case {conn.method, conn.request_path} do
         {"POST", "/token"} ->
-          Req.Test.json(conn, %{"access_token" => "access"})
+          Req.Test.json(conn, Dhc.GoogleCalendarAuthConfig.token("access"))
 
         {"GET", _path} ->
           send(test, {:observing, self()})
