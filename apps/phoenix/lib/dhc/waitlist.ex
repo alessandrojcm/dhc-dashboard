@@ -13,6 +13,9 @@ defmodule Dhc.Waitlist do
   alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Repo
+  alias Dhc.TermSearch
+
+  require Dhc.TermSearch
 
   @waitlist_open_key "waitlist_open"
   # The first name fills the Intake Email `firstName` placeholder, so it is
@@ -999,11 +1002,23 @@ defmodule Dhc.Waitlist do
 
   defp filter_entries_search(query, nil), do: query
 
+  # Every term must appear in the first name, last name or email.
   defp filter_entries_search(query, q) do
+    matches_every_term =
+      TermSearch.every_term(q, fn term ->
+        dynamic(
+          [w, p],
+          TermSearch.contains(p.first_name, ^term) or TermSearch.contains(p.last_name, ^term) or
+            TermSearch.contains(w.email, ^term)
+        )
+      end)
+
     matching_entries =
-      from p in UserProfile,
-        where: fragment("? @@ websearch_to_tsquery('english', ?)", field(p, :search_text), ^q),
-        select: p.waitlist_id
+      from w in WaitlistEntry,
+        join: p in UserProfile,
+        on: p.waitlist_id == w.id,
+        where: ^matches_every_term,
+        select: w.id
 
     where(query, [w], w.id in subquery(matching_entries))
   end

@@ -22,9 +22,12 @@ defmodule Dhc.Invitations do
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
+  alias Dhc.TermSearch
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist
   alias Dhc.Waitlist.WaitlistEntry
+
+  require Dhc.TermSearch
 
   @invite_email_template "inviteMember"
 
@@ -743,15 +746,13 @@ defmodule Dhc.Invitations do
     |> filter_list_search(opts.q)
   end
 
-  # `search_text` is a generated tsvector column on `invitations`; websearch
-  # over it replaces the prior client-side `textSearch("search_text", ...)`.
   defp filter_list_search(query, nil), do: query
 
+  # Every term must appear in the email.
   defp filter_list_search(query, q) do
     where(
       query,
-      [i],
-      fragment("? @@ websearch_to_tsquery('english', ?)", field(i, :search_text), ^q)
+      ^TermSearch.every_term(q, fn term -> dynamic([i], TermSearch.contains(i.email, ^term)) end)
     )
   end
 

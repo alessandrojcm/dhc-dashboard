@@ -302,11 +302,7 @@ defmodule DhcWeb.InvitationsControllerTest do
                json_response(conn, 200)
     end
 
-    test "supports websearch text search", %{conn: conn} do
-      # `invitations.search_text` is generated from the full email as a single
-      # tsvector token, so websearch matches the complete email address (the
-      # prior client-side `textSearch("search_text", ...)` behaved the same
-      # way — partial local-parts did not match).
+    test "supports text search", %{conn: conn} do
       insert_invitation(email: "needle@example.com", status: "pending", seconds: 1)
       insert_invitation(email: "haystack@example.com", status: "pending", seconds: 2)
 
@@ -322,6 +318,28 @@ defmodule DhcWeb.InvitationsControllerTest do
                }
              } =
                json_response(conn, 200)
+    end
+
+    test "search matches part of an email, case-insensitively", %{conn: conn} do
+      insert_invitation(email: "needle.person@gmail.com", status: "pending", seconds: 1)
+      insert_invitation(email: "haystack@example.com", status: "pending", seconds: 2)
+
+      for {q, expected} <- [
+            {"needle", ["needle.person@gmail.com"]},
+            {"GMAIL", ["needle.person@gmail.com"]},
+            {"needle example", []},
+            {".com", ["haystack@example.com", "needle.person@gmail.com"]}
+          ] do
+        emails =
+          conn
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> get("/api/invitations", q: q, sort: "email", direction: "asc")
+          |> json_response(200)
+          |> get_in(["data", "invitations"])
+          |> Enum.map(& &1["email"])
+
+        assert emails == expected, "q=#{inspect(q)}"
+      end
     end
 
     test "returns 400 for invalid or mismatched cursors", %{conn: conn} do
@@ -700,10 +718,6 @@ defmodule DhcWeb.InvitationsControllerTest do
   # inserts the invitation row. No `auth.users` row, no `user_profiles` row,
   # and no Stripe customer is created at issue time; acceptance creates the
   # customer (the adapter returns the setup-configured "cus_accept").
-  #
-  # `search_text` is a `GENERATED ALWAYS AS (to_tsvector(email)) STORED`
-  # column, so it is intentionally omitted — Postgres populates it from
-  # `email` and the websearch query matches against it.
   #
   # `seconds` offsets `created_at` so cursor pagination tests get a
   # deterministic newest-first ordering without relying on insertion timing.

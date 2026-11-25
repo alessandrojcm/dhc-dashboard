@@ -451,7 +451,7 @@ defmodule DhcWeb.WaitlistControllerTest do
                json_response(conn, 200)
     end
 
-    test "supports websearch text search", %{conn: conn} do
+    test "supports text search", %{conn: conn} do
       insert_waitlist_profile(first_name: "Needle", last_name: "Person")
       insert_waitlist_profile(first_name: "Haystack", last_name: "Person")
 
@@ -461,6 +461,42 @@ defmodule DhcWeb.WaitlistControllerTest do
         |> get("/api/waitlist/entries", q: "Needle")
 
       assert %{"data" => %{"entries" => [%{"fullName" => "Needle Person"}], "totalCount" => 1}} =
+               json_response(conn, 200)
+    end
+
+    test "search matches partial names, case-insensitively, across first and last name",
+         %{conn: conn} do
+      insert_waitlist_profile(first_name: "Alessandro", last_name: "Lovelace")
+      insert_waitlist_profile(first_name: "Alex", last_name: "Hopper")
+
+      for {q, expected} <- [
+            {"ale", ["Alessandro Lovelace", "Alex Hopper"]},
+            {"LOVE", ["Alessandro Lovelace"]},
+            {"ale  hop", ["Alex Hopper"]},
+            {"zzz", []}
+          ] do
+        names =
+          conn
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> get("/api/waitlist/entries", q: q, sort: "fullName", direction: "asc")
+          |> json_response(200)
+          |> get_in(["data", "entries"])
+          |> Enum.map(& &1["fullName"])
+
+        assert names == expected, "q=#{inspect(q)}"
+      end
+    end
+
+    test "search matches the email", %{conn: conn} do
+      insert_waitlist_profile(first_name: "Needle", email: "needle.person@gmail.com")
+      insert_waitlist_profile(first_name: "Haystack", email: "haystack@example.com")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries", q: "@gmail")
+
+      assert %{"data" => %{"entries" => [%{"fullName" => "Needle Waitlist"}], "totalCount" => 1}} =
                json_response(conn, 200)
     end
 
@@ -1251,7 +1287,7 @@ defmodule DhcWeb.WaitlistControllerTest do
     {:ok, _waitlist} =
       %WaitlistEntry{
         id: waitlist_id,
-        email: "#{waitlist_id}@example.com",
+        email: Keyword.get(attrs, :email, "#{waitlist_id}@example.com"),
         status: Keyword.get(attrs, :status, "waiting"),
         removed_at: if(Keyword.get(attrs, :status) == "removed", do: registration_date),
         initial_registration_date: registration_date,
@@ -1262,9 +1298,7 @@ defmodule DhcWeb.WaitlistControllerTest do
       |> Repo.insert()
 
     # user_profiles via the UserProfile schema — Ecto handles the `created_at`
-    # timestamp mapping and autodumps the :binary_id PK/FKs. `search_text` is a
-    # generated column (not a schema field), so Postgres auto-populates it from
-    # first_name/last_name — the websearch tests rely on this.
+    # timestamp mapping and autodumps the :binary_id PK/FKs.
     {:ok, _profile} =
       %UserProfile{
         id: profile_id,

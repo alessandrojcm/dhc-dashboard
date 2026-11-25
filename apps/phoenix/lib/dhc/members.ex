@@ -13,8 +13,10 @@ defmodule Dhc.Members do
   alias Dhc.CursorPagination
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
+  alias Dhc.TermSearch
   alias Dhc.UserProfiles.UserProfile
 
+  require Dhc.TermSearch
   require Logger
 
   @insurance_form_link_key "hema_insurance_form_link"
@@ -656,12 +658,17 @@ defmodule Dhc.Members do
 
   defp filter_list_search(query, nil), do: query
 
+  # Every term must appear in the first name, last name or principal email.
   defp filter_list_search(query, q) do
     where(
       query,
-      [_m, p, u, _wg],
-      fragment("? @@ websearch_to_tsquery('english', ?)", field(p, :search_text), ^q) or
-        fragment("strpos(lower(?), lower(?)) > 0", u.email, ^q)
+      ^TermSearch.every_term(q, fn term ->
+        dynamic(
+          [_m, p, u, _wg],
+          TermSearch.contains(p.first_name, ^term) or TermSearch.contains(p.last_name, ^term) or
+            TermSearch.contains(u.email, ^term)
+        )
+      end)
     )
   end
 
