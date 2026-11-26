@@ -237,7 +237,7 @@ test.describe("Beginners waitlist view", () => {
 
 		await expect(page).not.toHaveURL(/beginners-workshop/);
 		await expect(
-			page.getByRole("link", { name: "Beginners Workshop" }),
+			page.getByRole("link", { name: "Beginners' Workshops", exact: true }),
 		).toHaveCount(0);
 	});
 });

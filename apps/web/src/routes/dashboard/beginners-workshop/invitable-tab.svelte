@@ -263,8 +263,7 @@ const filteredPeople = $derived(
 		{#if search}{filteredPeople.length} of {people.length} attendees{:else}{people.length}
 			{people.length === 1 ? "attendee" : "attendees"} ready{/if}<span
 			class="hidden sm:inline"
-		>
-			· Invited people leave this list. Resend or delete from Members →
+			>{" "}· Invited people leave this list. Resend or delete from Members →
 			Invitations.</span
 		>
 	</footer>

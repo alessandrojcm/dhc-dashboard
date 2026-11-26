@@ -7,10 +7,10 @@ import {
 	getSortedRowModel,
 	type TableOptions,
 } from "@tanstack/table-core";
-import dayjs from "dayjs";
 import { LoaderCircle, Search, X } from "@lucide/svelte";
+import { formatDublinDate } from "#lib/club-calendar.js";
+import { Skeleton } from "#lib/components/ui/skeleton/index.js";
 import { createRawSnippet } from "svelte";
-import { Badge } from "#lib/components/ui/badge/index.js";
 import { Button } from "#lib/components/ui/button/index.js";
 import {
 	createSvelteTable,
@@ -74,22 +74,41 @@ const standingLabel = $derived(
 	waitlist.standing === "removed" ? "removed" : "waiting",
 );
 
-function formatDate(value: string | null | undefined) {
-	return value ? dayjs(value).format("DD/MM/YYYY") : "N/A";
+/** An instant's Dublin day (`12 Oct 2026`), or `fallback` when there is none. */
+function formatDate(value: string | null | undefined, fallback = "N/A") {
+	return value ? formatDublinDate(value) : fallback;
 }
 
-/**
- * The Status cell: the standing, when a removed person was removed, and
- * whether they hold a Carried Fee (ALE-388).
- */
+/** The row controls; the desktop table splits them across two columns. */
+function actionProps(entry: WaitlistEntry) {
+	return {
+		name: entry.fullName,
+		adminNotes: entry.adminNotes ?? "N/A",
+		onEdit: (adminNotes: string) =>
+			waitlist.updateAdminNotes(entry.id, adminNotes),
+		onRestore: waitlist.offers(entry, "restore")
+			? () => waitlist.restore(entry.id)
+			: undefined,
+		restoreDisabled: waitlist.isRestoring,
+		onWithdraw: waitlist.offers(entry, "withdraw")
+			? () => openWithdraw(entry)
+			: undefined,
+		onDelete: waitlist.offers(entry, "delete_person")
+			? () => openDelete(entry)
+			: undefined,
+	};
+}
+
+/** The Status badge: the standing, and when a removed person was removed. */
 function statusText(entry: WaitlistEntry) {
-	const standing =
-		entry.status === "removed"
-			? `Removed ${formatDate(entry.removedAt)}`
-			: "Waiting";
-	return waitlist.carriedFee(entry.id)
-		? `${standing} · Workshop credit`
-		: standing;
+	return entry.status === "removed"
+		? `Removed ${formatDate(entry.removedAt)}`
+		: "Waiting";
+}
+
+/** Whether the person holds a Carried Fee (ALE-388), shown under the badge. */
+function hasCredit(entry: WaitlistEntry) {
+	return Boolean(waitlist.carriedFee(entry.id));
 }
 
 const tableOptions = $state<TableOptions<WaitlistEntry>>({
@@ -117,24 +136,20 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 	},
 	columns: [
 		{
-			header: "Actions",
+			id: "expand",
+			header: () =>
+				renderSnippet(
+					createRawSnippet((label: () => string) => ({
+						render: () => `<span class="sr-only">${label()}</span>`,
+					})),
+					"Details",
+				),
 			cell: ({ row }) => {
 				return renderComponent(ActionButtons, {
-					adminNotes: row.original.adminNotes ?? "N/A",
+					...actionProps(row.original),
+					part: "expand",
 					isExpanded: row.getIsExpanded(),
 					onToggleExpand: () => row.toggleExpanded(),
-					onEdit: (adminNotes) =>
-						waitlist.updateAdminNotes(row.original.id, adminNotes),
-					onRestore: waitlist.offers(row.original, "restore")
-						? () => waitlist.restore(row.original.id)
-						: undefined,
-					restoreDisabled: waitlist.isRestoring,
-					onWithdraw: waitlist.offers(row.original, "withdraw")
-						? () => openWithdraw(row.original)
-						: undefined,
-					onDelete: waitlist.offers(row.original, "delete_person")
-						? () => openDelete(row.original)
-						: undefined,
 				});
 			},
 		},
@@ -144,7 +159,7 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
 					header: "Position",
-					class: "p-2",
+					class: "-ml-2 h-8 gap-1 px-2",
 					sortDirection: column.getIsSorted(),
 				}),
 		},
@@ -152,7 +167,9 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 			accessorKey: "fullName",
 			header: "Full Name",
 			footer: ({ table }) =>
-				`Total ${table.getRowCount() ?? 0} people ${standingLabel}`,
+				waitlist.isLoading
+					? ""
+					: `Total ${table.getRowCount() ?? 0} people ${standingLabel}`,
 			cell: ({ getValue }) => {
 				return renderSnippet(
 					createRawSnippet((value) => ({
@@ -164,49 +181,12 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 			},
 		},
 		{
+			// Email and phone share one column so the table fits a laptop screen.
 			accessorKey: "email",
-			header: "Email",
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<a href="mailto:${value()}" class="text-primary underline-offset-4 hover:underline">${value()}</a>`,
-					})),
-					getValue(),
-				);
-			},
+			header: "Contact",
+			cell: ({ row }) => renderSnippet(contactCell, row.original),
 		},
-		{
-			accessorKey: "phoneNumber",
-			header: "Phone Number",
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () => `<div class="w-[120px]">${value()}</div>`,
-					})),
-					getValue(),
-				);
-			},
-		},
-		{
-			accessorKey: "socialMediaConsent",
-			header: "Social  Consent",
-			cell: ({ getValue }) => {
-				return renderComponent(Badge, {
-					variant:
-						getValue() !== "no"
-							? getValue() === "yes_recognizable"
-								? "default"
-								: "secondary"
-							: "destructive",
-					class: "text-xs",
-					children: createRawSnippet(() => ({
-						render: () =>
-							`<p class="first-letter:capitalize">${getValue().replace("_", ", ")}</p>`,
-					})),
-				});
-			},
-		},
+		// Social media consent is in each person's expanded details, not a column.
 		{
 			accessorKey: "status",
 			header: "Status",
@@ -214,6 +194,7 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 				return renderComponent(WaitlistStatusBadge, {
 					removed: row.original.status === "removed",
 					text: () => statusText(row.original),
+					credit: () => hasCredit(row.original),
 				});
 			},
 		},
@@ -223,7 +204,7 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
 					header: "Age",
-					class: "p-2",
+					class: "-ml-2 h-8 gap-1 px-2",
 					sortDirection: column.getIsSorted(),
 				}),
 			cell: ({ getValue }) => {
@@ -242,15 +223,15 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Initial Registration",
-					class: "p-2",
+					header: "Registered",
+					class: "-ml-2 h-8 gap-1 px-2",
 					sortDirection: column.getIsSorted(),
 				}),
 			cell: ({ getValue }) => {
 				return renderSnippet(
 					createRawSnippet(() => ({
 						render: () =>
-							`<div class="w-[120px]">${dayjs(getValue()).format("DD/MM/YYYY")}</div>`,
+							`<div class="tabular-nums">${formatDate(getValue())}</div>`,
 					})),
 					getValue(),
 				);
@@ -258,15 +239,24 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 		},
 		{
 			accessorKey: "lastContacted",
-			header: "Last Contacted",
+			header: "Last contacted",
 			cell: ({ getValue }) => {
 				return renderSnippet(
 					createRawSnippet((value) => ({
-						render: () => `<div class="w-[120px]">${value()}</div>`,
+						render: () => `<div class="tabular-nums">${value()}</div>`,
 					})),
-					getValue() ?? "N/A",
+					formatDate(getValue(), "Never"),
 				);
 			},
+		},
+		{
+			id: "actions",
+			header: "Actions",
+			cell: ({ row }) =>
+				renderComponent(ActionButtons, {
+					...actionProps(row.original),
+					part: "tools",
+				}),
 		},
 	],
 	get data() {
@@ -284,6 +274,19 @@ const tableOptions = $state<TableOptions<WaitlistEntry>>({
 });
 const table = createSvelteTable(tableOptions);
 </script>
+
+{#snippet contactCell(entry: WaitlistEntry)}
+	<div class="min-w-48 whitespace-normal">
+		<a
+			href="mailto:{entry.email}"
+			class="break-all text-primary underline-offset-4 hover:underline"
+			>{entry.email}</a
+		>
+		{#if entry.phoneNumber}
+			<p class="tabular-nums text-muted-foreground">{entry.phoneNumber}</p>
+		{/if}
+	</div>
+{/snippet}
 
 {#snippet emptyState()}
 	<Empty.Root>
@@ -309,9 +312,13 @@ const table = createSvelteTable(tableOptions);
 				<h2 id="waitlist-title" class="font-heading text-2xl text-foreground">
 					Waitlist
 				</h2>
-				<p class="mt-1 text-sm text-muted-foreground">
-					{waitlist.count} people {standingLabel}
-				</p>
+				{#if waitlist.isLoading}
+					<Skeleton class="mt-1.5 h-4 w-28" />
+				{:else}
+					<p class="mt-1 text-sm text-muted-foreground">
+						{waitlist.count} people {standingLabel}
+					</p>
+				{/if}
 			</div>
 			{#if waitlist.isFetching}
 				<div
@@ -402,7 +409,7 @@ const table = createSvelteTable(tableOptions);
 									: header.column.getIsSorted() === "desc"
 										? "descending"
 										: undefined}
-								class="px-4 text-xs font-bold uppercase tracking-wide text-muted-foreground"
+								class="px-3 text-xs font-bold uppercase tracking-wide text-muted-foreground"
 							>
 								<FlexRender
 									content={header.column.columnDef.header}
@@ -417,7 +424,7 @@ const table = createSvelteTable(tableOptions);
 				{#each table.getRowModel().rows as row (row.id)}
 					<Table.Row>
 						{#each row.getVisibleCells() as cell (cell.id)}
-							<Table.Cell class="px-4 py-3.5">
+							<Table.Cell class="px-3 py-3.5">
 								<FlexRender
 									content={cell.column.columnDef.cell}
 									context={cell.getContext()}
@@ -429,24 +436,41 @@ const table = createSvelteTable(tableOptions);
 						<Table.Row>
 							<Table.Cell
 								colspan={row.getVisibleCells().length}
-								class="p-4 bg-muted/20"
+								class="whitespace-normal bg-muted/20 p-4"
 							>
-								<WaitlistEntryDetails
-									entry={row.original}
-									layout="table"
-									carriedFee={waitlist.carriedFee(row.original.id)}
-									waitlistId={row.original.id}
-									carriedFeeDeps={deps?.carriedFee}
-								/>
+								<!-- `w-0 min-w-full`: fill the row without widening the table. -->
+								<div class="w-0 min-w-full">
+									<WaitlistEntryDetails
+										entry={row.original}
+										layout="table"
+										carriedFee={waitlist.carriedFee(row.original.id)}
+										waitlistId={row.original.id}
+										carriedFeeDeps={deps?.carriedFee}
+									/>
+								</div>
 							</Table.Cell>
 						</Table.Row>
 					{/if}
 				{:else}
-					<Table.Row
-						><Table.Cell colspan={table.getAllColumns().length} class="p-0"
-							>{@render emptyState()}</Table.Cell
-						></Table.Row
-					>
+					{#if waitlist.isLoading}
+						<!-- Until the first page arrives the waitlist is unknown, not empty. -->
+						{#each { length: 4 }, index (index)}
+							<Table.Row class="hover:bg-transparent">
+								<Table.Cell
+									colspan={table.getAllColumns().length}
+									class="px-4 py-3.5"
+								>
+									<Skeleton class="h-9 w-full" />
+								</Table.Cell>
+							</Table.Row>
+						{/each}
+					{:else}
+						<Table.Row
+							><Table.Cell colspan={table.getAllColumns().length} class="p-0"
+								>{@render emptyState()}</Table.Cell
+							></Table.Row
+						>
+					{/if}
 				{/each}
 			</Table.Body>
 			<Table.Footer class="bg-muted/20">
@@ -470,7 +494,13 @@ const table = createSvelteTable(tableOptions);
 
 	<!-- Mobile Card View (hidden on desktop) -->
 	<div class="lg:hidden">
-		{#if table.getRowCount() === 0}
+		{#if waitlist.isLoading}
+			<div class="space-y-3 p-4 sm:p-5">
+				{#each { length: 3 }, index (index)}
+					<Skeleton class="h-32 w-full" />
+				{/each}
+			</div>
+		{:else if table.getRowCount() === 0}
 			{@render emptyState()}
 		{/if}
 		<ul class="divide-y divide-border" aria-label="People on the waitlist">
@@ -490,32 +520,20 @@ const table = createSvelteTable(tableOptions);
 						<!-- Actions -->
 						<div>
 							<ActionButtons
-								adminNotes={row.original.adminNotes ?? "N/A"}
+								{...actionProps(row.original)}
 								isExpanded={row.getIsExpanded()}
 								onToggleExpand={() => row.toggleExpanded()}
-								onEdit={(adminNotes) =>
-									waitlist.updateAdminNotes(row.original.id, adminNotes)}
-								onRestore={waitlist.offers(row.original, "restore")
-									? () => waitlist.restore(row.original.id)
-									: undefined}
-								restoreDisabled={waitlist.isRestoring}
-								onWithdraw={waitlist.offers(row.original, "withdraw")
-									? () => openWithdraw(row.original)
-									: undefined}
-								onDelete={waitlist.offers(row.original, "delete_person")
-									? () => openDelete(row.original)
-									: undefined}
 							/>
 						</div>
 					</div>
 
 					<!-- Status -->
 					<div class="mb-3">
-						<Badge
-							variant={row.original.status === "removed"
-								? "outline"
-								: "secondary"}>{statusText(row.original)}</Badge
-						>
+						<WaitlistStatusBadge
+							removed={row.original.status === "removed"}
+							text={() => statusText(row.original)}
+							credit={() => hasCredit(row.original)}
+						/>
 					</div>
 
 					<!-- Email -->
@@ -548,27 +566,17 @@ const table = createSvelteTable(tableOptions);
 							Registered
 						</div>
 						<div class="col-span-2 text-sm">
-							{#if row.original.initialRegistrationDate}
-								{dayjs(row.original.initialRegistrationDate).format(
-									"MMM D, YYYY",
-								)}
-							{:else}
-								N/A
-							{/if}
+							{formatDate(row.original.initialRegistrationDate)}
 						</div>
 					</div>
 
 					<!-- Last Contacted -->
 					<div class="grid grid-cols-3 py-1">
 						<div class="text-sm font-medium text-muted-foreground">
-							Last Contact
+							Last contacted
 						</div>
 						<div class="col-span-2 text-sm">
-							{#if row.original.lastContacted}
-								{dayjs(row.original.lastContacted).format("MMM D, YYYY")}
-							{:else}
-								Never
-							{/if}
+							{formatDate(row.original.lastContacted, "Never")}
 						</div>
 					</div>
 
@@ -622,9 +630,11 @@ const table = createSvelteTable(tableOptions);
 			>
 				Previous
 			</Button>
-			<p class="text-sm text-muted-foreground">
-				{waitlist.count} total
-			</p>
+			{#if !waitlist.isLoading}
+				<p class="text-sm text-muted-foreground">
+					{waitlist.count} total
+				</p>
+			{/if}
 			<Button
 				variant="outline"
 				disabled={!waitlist.nextCursor || waitlist.isFetching}

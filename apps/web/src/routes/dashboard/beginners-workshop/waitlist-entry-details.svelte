@@ -2,6 +2,7 @@
 import type { BeginnersCarriedFeeStatus, WaitlistEntry } from "@dhc/api-client";
 import { carriedFeeLabel } from "#lib/beginners-workshops/console.js";
 import { Button } from "#lib/components/ui/button/index.js";
+import { formatSocialMediaConsent } from "#lib/social-media-consent.js";
 import { cn } from "#lib/utils.js";
 import CarriedFeePanel from "./carried-fee-panel.svelte";
 import type { CarriedFeePanelDeps } from "./carried-fee-panel.svelte.js";
@@ -13,6 +14,7 @@ type Props = {
 		| "guardianLastName"
 		| "guardianPhoneNumber"
 		| "medicalConditions"
+		| "socialMediaConsent"
 	>;
 	/** `table` lays the panels out as bordered cards side by side; `card` stacks them. */
 	layout: "table" | "card";
@@ -83,6 +85,13 @@ const panel = $derived(
 		<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
 		<p class="text-xs">
 			{entry.medicalConditions || "None reported"}
+		</p>
+	</div>
+
+	<div class={panel}>
+		<h3 class="text-sm font-medium mb-2">Social media</h3>
+		<p class="text-xs" data-testid="waitlist-social-media-consent">
+			{formatSocialMediaConsent(entry.socialMediaConsent)}
 		</p>
 	</div>
 

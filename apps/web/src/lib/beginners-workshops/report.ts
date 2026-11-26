@@ -6,6 +6,7 @@ import type {
 	BeginnersWorkshopReportExitsAfterPaying,
 	BeginnersWorkshopReportExitsBeforePaying,
 	BeginnersWorkshopReportGroup,
+	BeginnersWorkshopReportOutcome,
 	BeginnersWorkshopReportRate,
 } from "@dhc/api-client";
 import { formatFee } from "#lib/beginners-workshops/presentation.js";
@@ -80,6 +81,54 @@ export function exitsAfterPayingDetail({
 		[cancelledRefunded, "cancelled with refund requested"],
 		[withdrawn, "withdrawn"],
 	]);
+}
+
+/** How the people offered a place were offered it, skipping empty kinds. */
+export function contactedDetail({
+	batch,
+	fastTrack,
+}: Pick<BeginnersWorkshopReportOutcome["contacted"], "batch" | "fastTrack">) {
+	return detail([
+		[batch, "automatic"],
+		[fastTrack, "added by staff"],
+	]);
+}
+
+/** Who attended and who did not, skipping empty kinds. */
+export function attendanceDetail({
+	attended,
+	noShow,
+}: Pick<BeginnersWorkshopReportOutcome["attendance"], "attended" | "noShow">) {
+	return detail([
+		[attended, "attended"],
+		[noShow, "did not attend"],
+	]);
+}
+
+/** Attendees not yet members, skipping empty kinds. */
+export function afterAttendingDetail({
+	invitable,
+	invitedNotJoined,
+}: BeginnersWorkshopReportOutcome["afterAttending"]) {
+	return detail([
+		[invitable, "ready to invite"],
+		[invitedNotJoined, "invited, not yet joined"],
+	]);
+}
+
+/** One offer round on a line (the phone layout), skipping empty outcomes. */
+export function groupDetail(group: BeginnersWorkshopReportGroup): string {
+	return [
+		`${group.contacted} contacted`,
+		detail([
+			[group.paidInWindow, "paid within reply period"],
+			[group.paidLater, "paid later"],
+			[group.declined, "declined"],
+			[group.unpaidAtCutoff, "unpaid at deadline"],
+		]),
+	]
+		.filter(Boolean)
+		.join(" · ");
 }
 
 function detail(parts: [number, string][]): string {

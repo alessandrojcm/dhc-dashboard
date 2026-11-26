@@ -30,7 +30,7 @@ type NavigationDefinition = NavigationGroupDefinition[];
 
 export const navigation: NavigationDefinition = [
 	{
-		title: "Beginners Workshop",
+		title: "Beginners' Workshops",
 		url: resolve("dashboard/beginners-workshop"),
 		requires: "beginners.waitlist.manage",
 	},

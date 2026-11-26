@@ -2,7 +2,7 @@
 import dayjs from "dayjs";
 import MemberStatusBadge from "./member-status-badge.svelte";
 import type { Member } from "@dhc/api-client";
-import type { SocialMediaConsent } from "./member-table.types";
+import { formatSocialMediaConsent } from "#lib/social-media-consent.js";
 import MemberWeapons from "./member-weapons.svelte";
 
 type Props = {
@@ -19,15 +19,6 @@ function formatDate(value: string | null, fallback = "Not recorded"): string {
 	return value && dayjs(value).isValid()
 		? dayjs(value).format("D MMM YYYY")
 		: fallback;
-}
-
-function formatConsent(consent: SocialMediaConsent): string {
-	const labels = {
-		no: "No consent",
-		yes_recognizable: "Yes, recognizable",
-		yes_unrecognizable: "Yes, unrecognizable",
-	} satisfies Record<SocialMediaConsent, string>;
-	return labels[consent];
 }
 
 const guardianName = $derived(
@@ -132,7 +123,7 @@ const guardianName = $derived(
 					Social media
 				</dt>
 				<dd class="mt-1 text-sm text-foreground">
-					{formatConsent(member.socialMediaConsent)}
+					{formatSocialMediaConsent(member.socialMediaConsent)}
 				</dd>
 			</div>
 		</dl>

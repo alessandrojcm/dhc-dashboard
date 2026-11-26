@@ -31,16 +31,19 @@ let formError = $state<string | null>(null);
 const form = $derived(reOffer.for(intakeId));
 </script>
 
+<!-- Badge-height (28px), so a row with the action is the same height as one
+     without, and it reads as part of the row rather than a separate control. -->
 <Button
 	type="button"
-	variant="secondary"
-	class="min-h-11"
+	variant="outline"
+	class="h-7 gap-1.5 rounded-md px-2.5 text-xs shadow-none has-[>svg]:px-2.5"
+	aria-label={`Offer ${name} their place again`}
 	onclick={() => {
 		formError = null;
 		open = true;
 	}}
 >
-	<RotateCcw class="size-4" aria-hidden="true" />{intakeCommandLabel(
+	<RotateCcw class="size-3.5" aria-hidden="true" />{intakeCommandLabel(
 		"re_offer",
 	)}
 </Button>

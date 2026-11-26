@@ -257,9 +257,12 @@ test.describe("Beginners' Workshop money", () => {
 
 		await openWaitlist(page, first);
 		const row = waitlistRow(page, person.name);
-		await expect(row).toContainText("Waiting · Workshop credit");
+		await expect(row).toContainText(/Waiting\s*Workshop credit/);
 		await row
-			.getByRole("button", { name: "Withdraw from the Waitlist" })
+			.getByRole("button", { name: `More actions for ${person.name}` })
+			.click();
+		await page
+			.getByRole("menuitem", { name: "Withdraw from the Waitlist" })
 			.click();
 
 		const dialog = page.getByRole("dialog", {
@@ -306,7 +309,10 @@ test.describe("Beginners' Workshop money", () => {
 		});
 
 		await row
-			.getByRole("button", { name: "Withdraw from the Waitlist" })
+			.getByRole("button", { name: `More actions for ${person.name}` })
+			.click();
+		await page
+			.getByRole("menuitem", { name: "Withdraw from the Waitlist" })
 			.click();
 		const dialog = page.getByRole("dialog", {
 			name: `Withdraw ${person.name} from the Waitlist`,
@@ -334,7 +340,10 @@ test.describe("Beginners' Workshop money", () => {
 
 		await openWaitlist(page, first);
 		const row = waitlistRow(page, person.name);
-		await row.getByRole("button", { name: "Delete this person" }).click();
+		await row
+			.getByRole("button", { name: `More actions for ${person.name}` })
+			.click();
+		await page.getByRole("menuitem", { name: "Delete this person" }).click();
 
 		const dialog = page.getByRole("dialog", { name: `Delete ${person.name}` });
 		await expect(dialog).toContainText("Nobody is emailed.");

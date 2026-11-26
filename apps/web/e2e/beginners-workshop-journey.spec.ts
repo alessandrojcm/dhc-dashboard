@@ -143,7 +143,9 @@ test.describe("Beginners' Workshop journey", () => {
 			const row = page.getByRole("listitem").filter({ hasText: venue });
 			await expect(row).toContainText(/18:30.*20:15/);
 			await row
-				.getByRole("link", { name: `Manage workshop on ${workshopDate}` })
+				.getByRole("link", {
+					name: `Manage workshop on ${dayjs(workshopDate).format("ddd D MMM YYYY")}`,
+				})
 				.click();
 			await expect(page).toHaveURL(
 				/\/dashboard\/beginners-workshop\/workshops\/[0-9a-f-]+$/,

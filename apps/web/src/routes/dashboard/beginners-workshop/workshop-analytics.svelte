@@ -90,9 +90,14 @@ const uncontactedWaiting = $derived(
 	report?.queue.uncontactedWaiting ?? analytics?.uncontactedCount ?? 0,
 );
 
+// For report readers the queue figures come from the report, so wait for it
+// rather than showing the analytics count first and swapping it on arrival.
+const reportLoading = $derived(canManageWorkshops && reportQuery.isPending);
+
 const cards = $derived([
 	{
 		label: "Waiting",
+		loading: analyticsQuery.isLoading || reportLoading,
 		value: formatNumber(waiting),
 		note: "People still in the queue",
 		breakdown: [
@@ -103,6 +108,7 @@ const cards = $derived([
 	},
 	{
 		label: "Average age",
+		loading: analyticsQuery.isLoading,
 		value: (analytics?.averageAge ?? 0).toLocaleString("en-IE", {
 			maximumFractionDigits: 1,
 		}),
@@ -111,6 +117,7 @@ const cards = $derived([
 	},
 	{
 		label: "Largest age group",
+		loading: analyticsQuery.isLoading,
 		value: largestAgeGroup.value > 0 ? largestAgeGroup.shortLabel : "No data",
 		note: `${formatNumber(largestAgeGroup.value)} waiting people`,
 		icon: ChartColumn,
@@ -119,6 +126,7 @@ const cards = $derived([
 		? [
 				{
 					label: "Longest wait",
+					loading: reportLoading,
 					value: report ? formatDays(report.queue.longestWaitDays) : "—",
 					note: report
 						? `Median ${formatDays(report.queue.medianWaitDays)}`
@@ -170,24 +178,28 @@ const cards = $derived([
 							<card.icon class="size-4" aria-hidden="true" />
 						</span>
 					</div>
-					{#if analyticsQuery.isLoading}
-						<Skeleton class="h-10 w-20" />
+					{#if card.loading}
+						<Skeleton class="h-9 w-20" />
 					{:else}
 						<p class="text-3xl font-bold tabular-nums text-foreground">
 							{card.value}
 						</p>
 					{/if}
 					<p class="mt-2 text-xs leading-5 text-muted-foreground">
-						{card.note}
+						{card.loading ? " " : card.note}
 					</p>
 					{#if card.breakdown}
 						<ul class="mt-3 space-y-1.5">
 							{#each card.breakdown as item (item.label)}
 								<li class="flex items-center justify-between gap-2 text-xs">
 									<span class="text-muted-foreground">{item.label}</span>
-									<span class="font-semibold tabular-nums text-foreground"
-										>{formatNumber(item.value)}</span
-									>
+									{#if card.loading}
+										<Skeleton class="h-4 w-5" />
+									{:else}
+										<span class="font-semibold tabular-nums text-foreground"
+											>{formatNumber(item.value)}</span
+										>
+									{/if}
 								</li>
 							{/each}
 						</ul>
@@ -220,17 +232,26 @@ const cards = $derived([
 					>
 						{#each ageBuckets as bucket (bucket.shortLabel)}
 							<div class="flex h-full min-w-0 flex-1 flex-col justify-end">
-								<div
-									class="mb-2 text-center text-xs font-semibold tabular-nums text-foreground"
-								>
-									{bucket.value}
-								</div>
-								<div class="flex h-[calc(100%-3.5rem)] items-end">
+								<div class="flex h-[calc(100%-1.5rem)] items-end">
+									<!-- An empty range keeps a 2px stub so zero reads differently from missing. -->
 									<div
-										class="w-full rounded-t-md bg-primary transition-[height] duration-300"
-										style:height={`${bucket.percentageOfMaximum}%`}
+										class={[
+											"relative w-full",
+											bucket.value > 0
+												? "rounded-t-md bg-primary"
+												: "bg-muted-foreground/30",
+										]}
+										style:height={bucket.value > 0
+											? `${bucket.percentageOfMaximum}%`
+											: "2px"}
 										aria-hidden="true"
-									></div>
+									>
+										<span
+											class="absolute inset-x-0 bottom-full mb-1.5 text-center text-xs font-semibold tabular-nums text-foreground"
+										>
+											{bucket.value}
+										</span>
+									</div>
 								</div>
 								<div
 									class="mt-2 truncate text-center text-[10px] font-medium text-muted-foreground sm:text-xs"
@@ -283,7 +304,7 @@ const cards = $derived([
 								</div>
 								<div class="h-2.5 overflow-hidden rounded-full bg-muted">
 									<div
-										class="h-full rounded-full bg-accent transition-[width] duration-300"
+										class="h-full rounded-full bg-primary"
 										style:width={`${gender.percentage}%`}
 									></div>
 								</div>

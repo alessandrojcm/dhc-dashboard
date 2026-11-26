@@ -100,6 +100,7 @@ function isActive(url: string) {
 								class={props.class}
 								href="/dashboard"
 								onclick={toggleSidebar}
+								data-active={isActive("/dashboard")}
 								aria-current={isActive("/dashboard") ? "page" : undefined}
 							>
 								<House /><span>Home</span>
@@ -131,6 +132,7 @@ function isActive(url: string) {
 												class={props.class}
 												href={item.url}
 												onclick={toggleSidebar}
+												data-active={isActive(item.url)}
 												aria-current={isActive(item.url) ? "page" : undefined}
 											>
 												<ItemIcon /><span>{item.title}</span>
@@ -152,6 +154,7 @@ function isActive(url: string) {
 								class={props.class}
 								href={group.url}
 								onclick={toggleSidebar}
+								data-active={isActive(group.url)}
 								aria-current={isActive(group.url) ? "page" : undefined}
 							>
 								<GroupIcon /><span>{group.title}</span>

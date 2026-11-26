@@ -10,18 +10,22 @@ import type {
 	BeginnersWorkshopReport,
 	BeginnersWorkshopReportOutcome,
 } from "@dhc/api-client";
-import { ChevronDown, ChevronRight, PanelsTopLeft } from "@lucide/svelte";
+import { ChevronRight, PanelsTopLeft } from "@lucide/svelte";
 import { resolve } from "$app/paths";
 import { SvelteSet } from "svelte/reactivity";
 import { formatCivilDate, formatDublinInstant } from "#lib/club-calendar.js";
 import {
+	afterAttendingDetail,
+	attendanceDetail,
 	carriedFeesNote,
+	contactedDetail,
 	countWithRate,
 	exitsAfterPayingDetail,
 	exitsBeforePayingDetail,
 	formatDays,
 	formatFigure,
 	formatRate,
+	groupDetail,
 	groupLabel,
 } from "#lib/beginners-workshops/report.js";
 import { Badge } from "#lib/components/ui/badge/index.js";
@@ -82,6 +86,20 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 	return outcome.status === "cancelled";
 }
 </script>
+
+{#snippet detailLine(text: string)}
+	{#if text}<p class="text-xs font-normal text-muted-foreground">{text}</p>{/if}
+{/snippet}
+
+{#snippet figure(label: string, value: string, detail: string)}
+	<div class="min-w-0">
+		<dt class="text-xs text-muted-foreground">{label}</dt>
+		<dd class="font-semibold tabular-nums">
+			{value}
+			{@render detailLine(detail)}
+		</dd>
+	</div>
+{/snippet}
 
 <section aria-labelledby="bw-report-planning" class="mt-8">
 	<div class="mb-4">
@@ -157,8 +175,9 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 			</Empty.Header>
 		</Empty.Root>
 	{:else}
+		<!-- The table needs ~1120px; below `lg` each workshop is a card instead. -->
 		<div
-			class="overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm"
+			class="hidden overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm lg:block"
 		>
 			<Table.Root
 				class="min-w-[1120px] text-[0.8125rem] [&_td]:px-3 [&_td]:py-2 [&_td]:whitespace-normal [&_td]:font-semibold [&_td_p]:mt-0.5 [&_td_p]:text-xs [&_td_p]:font-normal [&_td_p]:leading-4 [&_th]:h-10 [&_th]:px-3 [&_th]:whitespace-normal [&_th]:font-semibold"
@@ -184,7 +203,7 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 						{@const open = expanded.has(outcome.workshopId)}
 						<Table.Row
 							data-testid="report-outcome"
-							class="align-top text-foreground transition-colors even:bg-muted/25 hover:bg-muted/50"
+							class="align-top text-foreground even:bg-muted/25 hover:[&,&>svelte-css-wrapper]:[&>th,td]:bg-transparent"
 						>
 							<Table.Cell>
 								<div class="flex items-start gap-2">
@@ -196,7 +215,12 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 										aria-label={`${open ? "Hide" : "Show"} offer rounds for ${formatCivilDate(outcome.date)}`}
 										onclick={() => toggle(outcome.workshopId)}
 									>
-										{#if open}<ChevronDown />{:else}<ChevronRight />{/if}
+										<ChevronRight
+											class={[
+												"transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
+												open && "rotate-90",
+											]}
+										/>
 									</Button>
 									<div class="min-w-48 max-w-64">
 										<p class="font-semibold text-foreground">
@@ -208,7 +232,7 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 											{/if}
 										</p>
 										<p class="text-xs text-muted-foreground">
-											{outcome.venue} · Offer rounds: {outcome.batchesSent}
+											{outcome.venue}
 										</p>
 										<a
 											class="mt-1 inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-6"
@@ -224,19 +248,16 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 							</Table.Cell>
 							<Table.Cell class="text-right tabular-nums">
 								{outcome.contacted.total}
-								<p class="text-xs text-muted-foreground">
-									{outcome.contacted.batch} automatic · {outcome.contacted
-										.fastTrack} added by staff
-								</p>
+								{@render detailLine(contactedDetail(outcome.contacted))}
 							</Table.Cell>
 							<Table.Cell class="text-right tabular-nums">
 								{countWithRate(
 									outcome.exitsBeforePaying.total,
 									outcome.exitsBeforePaying.rate,
 								)}
-								<p class="text-xs text-muted-foreground">
-									{exitsBeforePayingDetail(outcome.exitsBeforePaying)}
-								</p>
+								{@render detailLine(
+									exitsBeforePayingDetail(outcome.exitsBeforePaying),
+								)}
 							</Table.Cell>
 							<Table.Cell class="text-right tabular-nums">
 								{outcome.paid.total}
@@ -251,20 +272,16 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 									outcome.exitsAfterPaying.total,
 									outcome.exitsAfterPaying.rate,
 								)}
-								<p class="text-xs text-muted-foreground">
-									{exitsAfterPayingDetail(outcome.exitsAfterPaying)}
-								</p>
+								{@render detailLine(
+									exitsAfterPayingDetail(outcome.exitsAfterPaying),
+								)}
 							</Table.Cell>
 							<Table.Cell class="text-right tabular-nums">
 								{#if cancelled(outcome)}
 									—
 								{:else}
 									{formatRate(outcome.attendance.rate)}
-									<p class="text-xs text-muted-foreground">
-										{outcome.attendance.attended} attended · {outcome.attendance
-											.noShow}
-										did not attend
-									</p>
+									{@render detailLine(attendanceDetail(outcome.attendance))}
 								{/if}
 							</Table.Cell>
 							<Table.Cell class="text-right tabular-nums">
@@ -272,14 +289,18 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 									—
 								{:else}
 									{outcome.afterAttending.joined} joined
-									<p class="text-xs text-muted-foreground">
-										{outcome.afterAttending.invitable} ready to invite · {outcome
-											.afterAttending.invitedNotJoined} invited, not yet joined
-									</p>
+									{@render detailLine(
+										afterAttendingDetail(outcome.afterAttending),
+									)}
 								{/if}
 							</Table.Cell>
 							<Table.Cell
-								class="bg-primary/5 text-right font-semibold tabular-nums text-primary"
+								class={[
+									"bg-primary/5 text-right font-semibold tabular-nums",
+									outcome.conversionRate === null
+										? "text-muted-foreground"
+										: "text-primary",
+								]}
 							>
 								{formatRate(outcome.conversionRate)}
 							</Table.Cell>
@@ -362,5 +383,129 @@ function cancelled(outcome: BeginnersWorkshopReportOutcome) {
 				<p>Expand a row to see automatic offers and people added by staff.</p>
 			</div>
 		</div>
+
+		<ul
+			class="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card text-card-foreground shadow-sm lg:hidden"
+			aria-label="Past workshop outcomes, newest first"
+		>
+			{#each report.outcomes as outcome (outcome.workshopId)}
+				{@const open = expanded.has(outcome.workshopId)}
+				<li class="p-4" data-testid="report-outcome-card">
+					<div class="flex items-start justify-between gap-3">
+						<div class="min-w-0">
+							<p class="flex flex-wrap items-center gap-2 font-semibold">
+								{formatCivilDate(outcome.date)}
+								{#if cancelled(outcome)}
+									<Badge variant="destructive">Cancelled</Badge>
+								{/if}
+							</p>
+							<p class="mt-0.5 text-sm text-muted-foreground">
+								{outcome.venue}
+							</p>
+						</div>
+						<a
+							class="inline-flex min-h-11 shrink-0 items-center gap-1 text-sm font-medium text-primary underline underline-offset-4 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							href={resolve(
+								"/dashboard/beginners-workshop/workshops/[workshopId]",
+								{ workshopId: outcome.workshopId },
+							)}
+						>
+							<PanelsTopLeft class="size-3.5" aria-hidden="true" /> Manage
+						</a>
+					</div>
+
+					<dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+						{@render figure(
+							"Contacted",
+							String(outcome.contacted.total),
+							contactedDetail(outcome.contacted),
+						)}
+						{@render figure(
+							"Left before paying",
+							countWithRate(
+								outcome.exitsBeforePaying.total,
+								outcome.exitsBeforePaying.rate,
+							),
+							exitsBeforePayingDetail(outcome.exitsBeforePaying),
+						)}
+						{@render figure(
+							"Paid",
+							String(outcome.paid.total),
+							outcome.paid.carriedFee > 0
+								? `${outcome.paid.carriedFee} using credit`
+								: "",
+						)}
+						{@render figure(
+							"Left after paying",
+							countWithRate(
+								outcome.exitsAfterPaying.total,
+								outcome.exitsAfterPaying.rate,
+							),
+							exitsAfterPayingDetail(outcome.exitsAfterPaying),
+						)}
+						{#if !cancelled(outcome)}
+							{@render figure(
+								"Attendance",
+								formatRate(outcome.attendance.rate),
+								attendanceDetail(outcome.attendance),
+							)}
+							{@render figure(
+								"Joined the club",
+								formatRate(outcome.conversionRate),
+								[
+									`${outcome.afterAttending.joined} joined`,
+									afterAttendingDetail(outcome.afterAttending),
+								]
+									.filter(Boolean)
+									.join(" · "),
+							)}
+						{/if}
+					</dl>
+
+					<Button
+						variant="ghost"
+						size="sm"
+						class="-ml-2 mt-2 min-h-11 text-primary hover:bg-muted hover:text-primary"
+						aria-expanded={open}
+						aria-label={`${open ? "Hide" : "Show"} offer rounds for ${formatCivilDate(outcome.date)}`}
+						onclick={() => toggle(outcome.workshopId)}
+					>
+						<ChevronRight
+							class={[
+								"transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
+								open && "rotate-90",
+							]}
+							aria-hidden="true"
+						/>
+						{open ? "Hide" : "Show"} offer rounds
+					</Button>
+					{#if open}
+						{#if outcome.groups.length === 0}
+							<p class="mt-1 text-sm text-muted-foreground">
+								Nobody was contacted.
+							</p>
+						{:else}
+							<ul
+								class="mt-1 space-y-2 border-l-4 border-primary/40 pl-3 text-sm"
+							>
+								{#each outcome.groups as group (group.kind + (group.number ?? ""))}
+									<li data-testid="report-group-card">
+										<p class="font-semibold">{groupLabel(group)}</p>
+										{#if group.windowEndsAt}
+											<p class="text-xs text-muted-foreground">
+												Reply by {formatDublinInstant(group.windowEndsAt)}
+											</p>
+										{/if}
+										<p class="text-xs text-muted-foreground">
+											{groupDetail(group)}
+										</p>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					{/if}
+				</li>
+			{/each}
+		</ul>
 	{/if}
 </section>

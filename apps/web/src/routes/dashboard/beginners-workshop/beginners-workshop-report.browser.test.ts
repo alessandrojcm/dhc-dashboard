@@ -1,8 +1,10 @@
+import "../../../app.css";
 import type {
 	BeginnersWorkshopReport,
 	BeginnersWorkshopReportOutcome,
 } from "@dhc/api-client";
-import { expect, test } from "vitest";
+import { beforeEach, expect, test } from "vitest";
+import { page } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
 import Report from "./beginners-workshop-report.svelte";
 
@@ -98,6 +100,11 @@ const report = (
 	...overrides,
 });
 
+// The outcomes table shows from `lg` up; below it each workshop is a card.
+beforeEach(async () => {
+	await page.viewport(1280, 900);
+});
+
 test("ALE-397: planning cards show the 12-month figures and the liabilities", async () => {
 	const screen = await render(Report, { report: report() });
 
@@ -148,6 +155,9 @@ test("ALE-397: outcomes list each workshop with its rates; cancelled ones have n
 	const off = rows.filter({ hasText: "Sat 21 Nov 2026" });
 	await expect.element(off).toHaveTextContent("Cancelled");
 	await expect.element(off).not.toHaveTextContent("%");
+	// Zero parts of a detail line are left out.
+	await expect.element(off).toHaveTextContent("2 added by staff");
+	await expect.element(off).not.toHaveTextContent("0 automatic");
 	await expect
 		.element(off.getByRole("link", { name: "Manage" }))
 		.toHaveAttribute(
@@ -178,6 +188,40 @@ test("ALE-397: a row expands into its Batches and fast-tracks", async () => {
 	await expect
 		.element(groups.filter({ hasText: "Added by staff" }))
 		.toHaveTextContent("Added by staff 2 2 0 0 0");
+});
+
+test("on a phone each workshop is a card with its figures and offer rounds", async () => {
+	await page.viewport(390, 844);
+	const screen = await render(Report, { report: report() });
+
+	await expect
+		.element(screen.getByTestId("report-outcome").first())
+		.not.toBeVisible();
+	const cards = screen.getByTestId("report-outcome-card");
+	expect(cards.elements()).toHaveLength(2);
+
+	const done = cards.filter({ hasText: "Sat 14 Nov 2026" });
+	await expect.element(done).toBeVisible();
+	await expect.element(done).toHaveTextContent("Left before paying 2 · 22%");
+	await expect
+		.element(done)
+		.toHaveTextContent("Joined the club 50% 2 joined · 1 ready to invite");
+	await expect
+		.element(cards.filter({ hasText: "Sat 21 Nov 2026" }))
+		.not.toHaveTextContent("Attendance");
+
+	await screen
+		.getByRole("button", { name: "Show offer rounds for Sat 14 Nov 2026" })
+		.click();
+	await expect
+		.element(
+			screen
+				.getByTestId("report-group-card")
+				.filter({ hasText: "Offer round 1" }),
+		)
+		.toHaveTextContent(
+			"7 contacted · 4 paid within reply period · 1 paid later · 1 declined · 1 unpaid at deadline",
+		);
 });
 
 test("ALE-397: says so when there are no past workshops", async () => {

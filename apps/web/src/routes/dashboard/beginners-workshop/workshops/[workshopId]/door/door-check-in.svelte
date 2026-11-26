@@ -149,7 +149,7 @@ async function finish() {
 	>
 		<div class="flex flex-col gap-2">
 			<h2
-				class="text-xs font-bold tracking-wider text-muted-foreground uppercase"
+				class="font-sans text-xs font-bold tracking-wider text-muted-foreground uppercase"
 			>
 				Attendance
 			</h2>

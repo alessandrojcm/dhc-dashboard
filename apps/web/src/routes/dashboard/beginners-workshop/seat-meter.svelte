@@ -1,6 +1,7 @@
 <!--
 	ALE-378: Phoenix's seat meter — paid seats, live Seat Holds, free seats.
 	ALE-391: after Attendance Finalisation it reads attended / no-show.
+	One dot per place, for every capacity, so meters read the same side by side.
 -->
 <script lang="ts">
 import type { BeginnersWorkshopSeats } from "@dhc/api-client";
@@ -43,11 +44,18 @@ const cells = $derived(
 			></span>
 		{/each}
 	</div>
+	<!-- A count is coloured only when it is above zero: a red 0 reads as a problem. -->
 	<p class="text-[11px] text-muted-foreground" data-testid="seat-meter">
 		{#if finalised}
-			<strong class="text-emerald-800">{seats.attended}</strong> attended ·
-			<strong class="text-destructive">{seats.noShow}</strong> did not attend
-			out of {seats.capacity} places
+			<strong
+				class={seats.attended > 0 ? "text-emerald-800" : "text-foreground"}
+				>{seats.attended}</strong
+			>
+			attended ·
+			<strong class={seats.noShow > 0 ? "text-destructive" : "text-foreground"}
+				>{seats.noShow}</strong
+			>
+			did not attend out of {seats.capacity} places
 		{:else}
 			<strong class="text-foreground">{seats.paid}</strong> paid
 			{#if seats.holds}· <strong class="text-sky-800">{seats.holds}</strong> paying

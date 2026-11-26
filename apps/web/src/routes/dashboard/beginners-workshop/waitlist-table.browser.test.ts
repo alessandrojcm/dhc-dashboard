@@ -173,7 +173,7 @@ test("renders a removed person's removal date from the URL filter", async () => 
 	await expect
 		.element(screen.getByRole("radio", { name: "Removed" }))
 		.toHaveAttribute("aria-checked", "true");
-	await expect.element(desktop.getByText("Removed 12/03/2026")).toBeVisible();
+	await expect.element(desktop.getByText("Removed 12 Mar 2026")).toBeVisible();
 	await expect
 		.element(desktop.getByText("Total 1 people removed"))
 		.toBeVisible();
@@ -250,9 +250,10 @@ test("Withdraw opens the refund module's dialog, asking Phoenix's refund choice 
 	const desktop = screen.getByRole("table");
 	await expect.element(desktop.getByText("Ada Paid")).toBeVisible();
 	await desktop
-		.getByRole("row")
-		.filter({ hasText: "Ada Paid" })
-		.getByRole("button", { name: "Withdraw from the Waitlist" })
+		.getByRole("button", { name: "More actions for Ada Paid" })
+		.click();
+	await screen
+		.getByRole("menuitem", { name: "Withdraw from the Waitlist" })
 		.click();
 
 	let dialog = screen.getByRole("dialog", {
@@ -267,9 +268,10 @@ test("Withdraw opens the refund module's dialog, asking Phoenix's refund choice 
 	await dialog.getByRole("button", { name: "Keep them" }).click();
 
 	await desktop
-		.getByRole("row")
-		.filter({ hasText: "Bea Unpaid" })
-		.getByRole("button", { name: "Withdraw from the Waitlist" })
+		.getByRole("button", { name: "More actions for Bea Unpaid" })
+		.click();
+	await screen
+		.getByRole("menuitem", { name: "Withdraw from the Waitlist" })
 		.click();
 	dialog = screen.getByRole("dialog", {
 		name: "Withdraw Bea Unpaid from the Waitlist",
@@ -301,24 +303,77 @@ test("ALE-417: Withdraw and Delete render only for the people Phoenix offers the
 	await expect.element(desktop.getByText("Bea Withheld")).toBeVisible();
 	expect(listPeople).toHaveBeenCalledWith(["a", "b"]);
 
-	// The desktop row and the mobile card each render one of each, for Ada.
+	// The desktop row and the mobile card each offer one menu, for Ada only.
 	for (const layout of [desktop, mobile]) {
-		for (const name of ["Withdraw from the Waitlist", "Delete this person"]) {
-			await expect.element(layout.getByRole("button", { name })).toBeVisible();
-			expect(layout.getByRole("button", { name }).elements()).toHaveLength(1);
-		}
+		await expect
+			.element(
+				layout.getByRole("button", { name: "More actions for Ada Offered" }),
+			)
+			.toBeVisible();
+		expect(
+			layout.getByRole("button", { name: /^More actions for/ }).elements(),
+		).toHaveLength(1);
 	}
+	await desktop
+		.getByRole("button", { name: "More actions for Ada Offered" })
+		.click();
 	await expect
 		.element(
-			desktop
-				.getByRole("row")
-				.filter({ hasText: "Ada Offered" })
-				.getByRole("button", { name: "Delete this person" }),
+			screen.getByRole("menuitem", { name: "Withdraw from the Waitlist" }),
 		)
+		.toBeVisible();
+	await expect
+		.element(screen.getByRole("menuitem", { name: "Delete this person" }))
 		.toBeVisible();
 	expect(
 		desktop.getByRole("button", { name: "Restore to the Waitlist" }).elements(),
 	).toHaveLength(0);
+});
+
+test("social media consent is in the expanded details, not a column", async () => {
+	const ada = entry("a", {
+		fullName: "Ada Masked",
+		socialMediaConsent: "yes_unrecognizable",
+	});
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries: vi.fn(async () => page([ada])),
+			listPeople: people({}),
+			notify: { success: () => {}, error: () => {} },
+			url: () => new URL(BASE),
+			navigate: () => {},
+		},
+	});
+
+	const desktop = screen.getByRole("table");
+	await expect.element(desktop.getByText("Ada Masked")).toBeVisible();
+	expect(
+		screen.getByRole("columnheader", { name: /social/i }).elements(),
+	).toHaveLength(0);
+
+	await desktop.getByRole("button", { name: "Expand row" }).click();
+	await expect
+		.element(desktop.getByTestId("waitlist-social-media-consent"))
+		.toHaveTextContent("Yes, unrecognizable");
+});
+
+test("while the first page loads it never claims the waitlist is empty", async () => {
+	const screen = await render(WaitlistTableTestWrapper, {
+		deps: {
+			listEntries: vi.fn(() => new Promise<never>(() => {})),
+			listPeople: people({}),
+			notify: { success: () => {}, error: () => {} },
+			url: () => new URL(BASE),
+			navigate: () => {},
+		},
+	});
+
+	await expect
+		.element(screen.getByRole("heading", { name: "Waitlist", exact: true }))
+		.toBeVisible();
+	expect(screen.getByText("No people found").elements()).toHaveLength(0);
+	expect(screen.getByText(/\b0 people waiting/).elements()).toHaveLength(0);
+	expect(screen.getByText("0 total").elements()).toHaveLength(0);
 });
 
 // ALE-388: the Waitlist entry shows the person's Carried Fee.
@@ -342,17 +397,17 @@ test("shows a Carried Fee holder's fee on their entry", async () => {
 
 	const desktop = screen.getByRole("table");
 	await expect
-		.element(desktop.getByText("Waiting · Workshop credit"))
+		.element(desktop.getByText("Workshop credit", { exact: true }))
 		.toBeVisible();
 	expect(listPeople).toHaveBeenCalledWith(["a", "b"]);
 	expect(
-		desktop.getByText("Waiting · Workshop credit").elements(),
+		desktop.getByText("Workshop credit", { exact: true }).elements(),
 	).toHaveLength(1);
 	await expect
 		.element(
 			screen
 				.getByRole("list", { name: "People on the waitlist" })
-				.getByText("Waiting · Workshop credit"),
+				.getByText("Workshop credit", { exact: true }),
 		)
 		.toBeVisible();
 });
@@ -386,7 +441,10 @@ test("ALE-396: Delete opens the refund module's dialog, asking about a holder's 
 
 	const desktop = screen.getByRole("table");
 	await expect.element(desktop.getByText("Bea Removed")).toBeVisible();
-	await desktop.getByRole("button", { name: "Delete this person" }).click();
+	await desktop
+		.getByRole("button", { name: "More actions for Bea Removed" })
+		.click();
+	await screen.getByRole("menuitem", { name: "Delete this person" }).click();
 
 	const dialog = screen.getByRole("dialog", { name: "Delete Bea Removed" });
 	await expect
